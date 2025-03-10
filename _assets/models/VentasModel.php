@@ -1091,7 +1091,10 @@ class VentasModel extends Model{
                     INNER JOIN ISLAS isd on v.codisl = isd.cod 
                     INNER JOIN Productos T3 ON V.codprd = T3.cod
                     INNER JOIN TG.dbo.Estaciones E ON isd.codgas = E.Codigo
-c                    AND codprd IN(179, 180,181,2,3,1,192,193) 
+                    Where 
+                    fch BETWEEN $fromInt
+                    AND $untilInt
+                   AND codprd IN(179, 180,181,2,3,1,192,193) 
                     GROUP BY
                         E.Codigo,T3.den, fch,nrotur,codgas,codprd,E.estructura,E.Nombre
                 ),
@@ -1126,7 +1129,7 @@ c                    AND codprd IN(179, 180,181,2,3,1,192,193)
                 ) AS ptv
                 ORDER BY Zona,Estacion asc;
             ";
-           
+          
 
         return $this->sql->select($query, []);
     }
