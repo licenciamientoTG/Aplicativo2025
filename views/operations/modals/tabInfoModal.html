@@ -1,0 +1,70 @@
+<div class="row">
+    <div class="col-12 py-2 px-3">
+        <ul class="list-group">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Código de estación
+                <span>{{ station.Codigo }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Nombre de estación
+                <span>{{ station.Nombre }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Lugar de expedición
+                <span>{{ station.LugarExpedicion }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Servidor
+                <span>{{ station.Servidor }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Base de datos
+                <span>{{ station.BaseDatos }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Permiso CRE
+                <span>{{ station.PermisoCRE }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Límite de recolección
+                <span>${{ station.LimiteRecolecta | number_format(2, '.', ',') }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Límite por fajilla
+                <span>${{ tabulator.LimiteFajilla | number_format(2, '.', ',') }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Zona
+                <span>{{ station.Zona }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Id Tabulador
+                <span>{{ tabulator.Id }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Fecha de tabulador
+                <span>{{ tabulator.FechaTabular }} ({{ tabulator.FechaInt }})</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Turno
+                <span>{{ tabulator.Turno }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Usuario responsable
+                <span>{{ tabulator.Usuario }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Total
+                <span>${{ tabulator.Total | number_format(2, '.', ',') }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Estatus
+                <span>{{ tabulator.Estatus }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Tipo de cambio
+                <span>${{ tabulator.TipoCambio | number_format(2, '.', ',') }}</span>
+            </li>
+        </ul>
+    </div>
+</div>

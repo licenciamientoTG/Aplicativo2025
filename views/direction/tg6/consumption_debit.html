@@ -1,0 +1,108 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Credito Consumo Cliente{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Credito Consumo Cliente{% endblock %}
+{% block content %}
+<div class="card col-3">
+    <div class="card-body">
+        <form action="/direction/consumption_customer_credit" method="post">
+            <div class="row">
+                <div class="col">
+                    <div class="form-group">
+                        <label for="yearSelect">Seleccionar Año</label>
+                        <select class="form-control" id="yearSelect" name="year">
+                            <!-- Opciones generadas dinámicamente -->
+                        </select>
+                    </div>
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item refresh_inventory_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Titulo</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <div id="filtro-inventory_table" class="mb-1">
+                    <!-- <div class="row">
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="Estación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="Producto"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CAP" placeholder="Capacidad"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VOLUMEN" placeholder="Volumen"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PORCENTAJE" placeholder="Porcentaje"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VENTA" placeholder="Venta"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PROMEDIO" placeholder="Promedio"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DIASINV" placeholder="Días inventario"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
+                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                    </div> -->
+                </div>
+                <table class="table table-borderless my-0 w-100" id="cumsumption_credit_table" data-year="{{year}}">
+                    <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Enero</th>
+                        <th>Febrero</th>
+                        <th>Marzo</th>
+                        <th>Abril</th>
+                        <th>Mayo</th>
+                        <th>Junio</th>
+                        <th>Julio</th>
+                        <th>Agosto</th>
+                        <th>Septiembre</th>
+                        <th>Octubre</th>
+                        <th>Noviembre</th>
+                        <th>Diciembre</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}direction.js"></script>
+<script>
+    // Rango de años
+    const startYear = 2000;
+    const endYear = new Date().getFullYear(); // Año actual
+    const select = document.getElementById('yearSelect');
+
+    // Generar opciones de años
+    for (let year = endYear; year >= startYear; year--) {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+
+        // Seleccionar el año en curso por defecto
+        if (year === endYear) {
+            option.selected = true;
+        }
+
+        select.appendChild(option);
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,247 @@
+<div class="card">
+    <div class="card-header pb-0">
+        <h3 class="card-title"> Información del cliente</h3>
+    </div>
+    <div class="card-body pt-0 pb-0">
+        <dl class="row" style="font-size: small">
+            <dt class="col-sm-4">Nombre:</dt>
+            <dd class="col-sm-8">{{ client.Nombre }}</dd>
+            <dt class="col-sm-4">RFC:</dt>
+            <dd class="col-sm-8">{{ client.rfc }}</dd>
+            <dt class="col-sm-4">Dirección:</dt>
+            <dd class="col-sm-8">{{ client.Domicilio ~ ' ' ~ client.colonia ~ ' ' ~ client.Ciudad ~ ' ' ~ client.Estado }}</dd>
+            <dt class="col-sm-4">Correo:</dt>
+            <dd class="col-sm-8">{{ client.correo }}</dd>
+            <dt class="col-sm-4">Tipo de cliente:</dt>
+            <dd class="col-sm-8">{{ client.Tipo }}</dd>
+        </dl>
+    </div>
+</div>
+
+{% if client_vehicles != false %}
+<div class="card">
+    <div class="card-header pb-0">
+            <div class="card-actions float-end">
+                <div class="dropdown position-relative">
+                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            class="feather feather-more-horizontal align-middle">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="19" cy="12" r="1"></circle>
+                            <circle cx="5" cy="12" r="1"></circle>
+                        </svg>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a class="dropdown-item" href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#stickerModal" data-codcli="{{ client.cod }}">Política de engomados</a>
+                    </div>
+                </div>
+            </div>
+        <h3 class="card-title"> Vehículos del cliente</h3>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="datatables_vehicles" class="table table-sm w-100" style="font-size:small;" data-codcli="{{ client.cod }}">
+            <thead>
+                <tr>
+                    <th>VEHÍCULO</th>
+                    <th>TARJETA</th>
+                    <th>PLACAS</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>ENGOMADO</th>
+                    <th>PATRIMONIAL</th>
+                    <th>STATUS</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vehicle in client_vehicles %}
+                    <tr>
+                        <td>{{ vehicle.NV }}</td>
+                        <td>{{ vehicle.Tarjeta }}</td>
+                        <td>{{ vehicle.Placas }}</td>
+                        <td>{{ vehicle.Descripcion }}</td>
+                        <td>{{ vehicle.Engomado }}</td>
+                        <td>{{ vehicle.nropat }}</td>
+                        <td>{{ vehicle.Estado }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Acciones
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="/marketing/print_card/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir tarjeta</a></li>
+                                    <li><a class="dropdown-item" href="/marketing/print_card_2/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir tarjeta (+QueGas)</a></li>
+                                    <li><a class="dropdown-item" href="/marketing/print_sticker/{{ vehicle.Tarjeta }}/{{ vehicle.cod }}" target="_blank">Imprimir engomado</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>VEHíCULO</th>
+                    <th>TARJETA</th>
+                    <th>PLACAS</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>ENGOMADO</th>
+                    <th>PATRIMONIAL</th>
+                    <th>STATUS</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+{% if client_drivers %}
+<div class="card">
+    <div class="card-header pb-0">
+            <div class="card-actions float-end">
+                <div class="dropdown position-relative">
+                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            class="feather feather-more-horizontal align-middle">
+                            <circle cx="12" cy="12" r="1"></circle>
+                            <circle cx="19" cy="12" r="1"></circle>
+                            <circle cx="5" cy="12" r="1"></circle>
+                        </svg>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a class="dropdown-item" href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#stickerModal" data-codcli="{{ client.cod }}">Política de engomados</a>
+                    </div>
+                </div>
+            </div>
+        <h3 class="card-title"> Choferes del cliente</h3>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="datatables_drivers" class="table table-sm w-100" style="font-size:small;" data-codcli="{{ client.cod }}">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>NOMBRE</th>
+                    <th>DIAS</th>
+                    <th>HORARIOS</th>
+                    <th>STATUS</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for driver in client_drivers %}
+                    <tr>
+                        <td>{{ driver.nrocho }}</td>
+                        <td>{{ driver.den }}</td>
+                        <td>{{ get_week_days(driver.diacar) }}</td>
+                        <td>{{ driver.hraini }} - {{ driver.hrafin}}</td>
+                        <td>{{ driver.codest < 0 ? '<b class="text-danger">Inactivo</b>' : '<b class="text-success">Activo</b>' }}</td>
+                        <td>
+                            <div class="btn-group">
+                                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Acciones
+                                </button>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="/marketing/print_driver_card/{{ driver.codcli }}/{{ driver.nrocho }}" target="_blank">Imprimir tarjeta</a></li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>ID</th>
+                    <th>NOMBRE</th>
+                    <th>DIAS</th>
+                    <th>HORARIOS</th>
+                    <th>STATUS</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% else %}
+    <div class="alert alert-warning alert-dismissible fade show p-3" role="alert">
+        <strong>¡Atención! </strong> No existen choferes asignados a este cliente
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+{% endif %}
+
+
+<!-- Modal -->
+<div class="modal fade" id="stickerModal" tabindex="-1" aria-labelledby="stickerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content ">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="stickerModalLabel">Política de engomados y tarjetas</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/marketing/stickerModal" method="post">
+                <div class="modal-body">
+                    <p>Por favor, seleccione los vehiculos por categoria: </p>
+                    <div class="card-body table-responsive">
+                        <table id="datatables_vehicles_pol" class="table table-sm w-100" style="font-size:small;"
+                            data-codcli="{{ client.cod }}">
+                            <thead>
+                                <tr>
+                                    <th>VEHÍCULO</th>
+                                    <th>TARJETA</th>
+                                    <th>PLACAS</th>
+                                    <th>DESCRIPCIÓN</th>
+                                    <th>ENGOMADO</th>
+                                    <th class="w-5">Tarjeta</th>
+                                    <th class="w-5">Engomado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for vehicle in client_vehicles %}
+                                <tr>
+                                    <td>{{ vehicle.NV }}</td>
+                                    <td>{{ vehicle.Tarjeta }}</td>
+                                    <td>{{ vehicle.Placas }}</td>
+                                    <td>{{ vehicle.Descripcion }}</td>
+                                    <td>{{ vehicle.Engomado }}</td>
+                                    <td>
+                                        <div class="form-check form-switch fs-5">
+                                            <input class="form-check-input" type="checkbox" name="tarjeta_{{ vehicle.NV }}" role="switch" id="tarjeta_{{ vehicle.NV }}">
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="form-check form-switch fs-5">
+                                            <input class="form-check-input" type="checkbox" name="engomado_{{ vehicle.NV }}" role="switch" id="engomado_{{ vehicle.NV }}">
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th>VEHíCULO</th>
+                                    <th>TARJETA</th>
+                                    <th>PLACAS</th>
+                                    <th>DESCRIPCIÓN</th>
+                                    <th>ENGOMADO</th>
+                                    <th>Tarjeta</th>
+                                    <th>Engomado</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="client_name" value="{{ client.Nombre }}">
+                    <input type="hidden" name="codcli" value="{{ client.cod }}">
+                    <button type="submit" class="btn btn-success">Imprimir política</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-danger p-3" role="alert">
+    No existen vehículos registrados para este cliente.
+</div>
+{% endif %}

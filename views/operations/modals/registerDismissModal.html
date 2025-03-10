@@ -1,0 +1,147 @@
+<div class="row">
+    <div class="col-12 py-2">
+        <ul class="nav nav-pills mb-3 px-4" id="pills-tab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="pills-register-tab" data-bs-toggle="pill" data-bs-target="#pills-register" type="button" role="tab" aria-controls="pills-register" aria-selected="true">Alta de empleados</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pills-dismiss-tab" data-bs-toggle="pill" data-bs-target="#pills-dismiss" type="button" role="tab" aria-controls="pills-dismiss" aria-selected="false">Baja de empleados</button>
+            </li>
+        </ul>
+        <div class="tab-content" id="pills-tabContent">
+            <div class="tab-pane fade show active" id="pills-register" role="tabpanel" aria-labelledby="pills-register-tab" tabindex="0">
+                <div class="card mb-0">
+                    <div class="card-body pb-0">
+                        <form action="/operations/registerForm" id="registerForm" method="post">
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">Nombre(s):</label>
+                                <div class="col-sm-9">
+                                    <input type="text" class="form-control" placeholder="Ingrese el nombre" id="name" name="name" required>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">Apellido(s):</label>
+                                <div class="col-sm-9">
+                                    <input type="text" class="form-control" placeholder="Ingrese los apellidos" id="lastname" name="lastname" required>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">No de reloj:</label>
+                                <div class="col-sm-9">
+                                    <input type="number" class="form-control" placeholder="Ingrese el No de reloj" id="clock" name="clock" required>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">Comentarios:</label>
+                                <div class="col-sm-9">
+                                    <textarea class="form-control" rows="3" id="comments" name="comments"></textarea>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <div class="col-sm-12">
+                                    <input type="hidden" name="station" value="{{ station.Nombre }}">
+                                    <input type="hidden" name="codgas" value="{{ station.Codigo }}">
+                                    <input type="hidden" name="mojo_user_id" value="{{ station.mojo_user_id }}">
+                                    <input type="hidden" name="email" value="{{ station.email }}">
+                                    <input type="hidden" name="mojo_access_key" value="{{ mojo_access_key }}">
+                                    <button type="submit" class="btn btn-primary w-100">Enviar información</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="pills-dismiss" role="tabpanel" aria-labelledby="pills-dismiss-tab" tabindex="0">
+                <div class="card mb-0">
+                    <div class="card-body pb-0">
+                        <form action="/operations/dismissForm" method="post" id="dismissForm">
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">Empleado: </label>
+                                <div class="col-sm-9">
+                                    <select class="selectpicker form-control" data-live-search="true" name="responsable_id" id="responsable_id" placeholder="Seleccione al colaborador" required>
+                                        {% for responsable in responsables %}
+                                        <option value="{{ responsable.Codigo }}">{{ responsable.Nombre }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label class="col-form-label col-sm-3 text-sm-end">Comentarios: </label>
+                                <div class="col-sm-9">
+                                    <textarea class="form-control" rows="3" name="comments"></textarea>
+                                </div>
+                            </div>
+                            <input type="hidden" name="station" value="{{ station.Nombre }}">
+                            <input type="hidden" name="codgas" value="{{ station.Codigo }}">
+                            <input type="hidden" name="mojo_user_id" value="{{ station.mojo_user_id }}">
+                            <input type="hidden" name="email" value="{{ station.email }}">
+                            <input type="hidden" name="mojo_access_key" value="{{ mojo_access_key }}">
+                            <button type="submit" class="btn btn-primary w-100">Baja de empleado</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $('.selectpicker').selectpicker();
+    // vamos a agregar un spinner de bootastrap sobre el formuario #dismissForm cuando este se envié
+    // Agregar un spinner al formulario de baja cuando se envía
+    $('#dismissForm').submit(function () {
+        // Crear el contenedor para el spinner
+        var spinnerContainer = $('<div class="spinner-container"></div>');
+        var spinner = $('<div class="spinner-border text-primary" role="status"></div>');
+
+        // Añadir el spinner y el contenedor al formulario
+        $('#dismissForm').append(spinnerContainer.append(spinner));
+
+        // Deshabilitar el boton de enviar
+        $('#dismissForm button[type="submit"]').attr('disabled', true);
+    });
+
+    // Agregar un spinner al formulario de baja cuando se envía
+    $('#registerForm').submit(function () {
+        // Crear el contenedor para el spinner
+        var spinnerContainer = $('<div class="spinner-container"></div>');
+        var spinner = $('<div class="spinner-border text-primary" role="status"></div>');
+
+        // Añadir el spinner y el contenedor al formulario
+        $('#registerForm').append(spinnerContainer.append(spinner));
+
+        // Deshabilitar el boton de enviar
+        $('#registerForm button[type="submit"]').attr('disabled', true);
+
+
+        // const formData = new FormData();
+        // formData.append('title', 'Alta de colaborador');
+        // formData.append('description', 'Favor de dar de alta a colaborador');
+        // formData.append('ticket_queue_id', 53551);
+        // formData.append('priority_id', 30);
+        // formData.append('assigned_to_id', 5061558);
+        //
+        //
+        // const accessKey = $('input#mojo_access_key').val();
+        //
+        // formData.append('access_key', accessKey);
+        //
+        // const Http = new XMLHttpRequest();
+        // Http.open("POST", "https://totalgas.mojohelpdesk.com/api/v2/tickets");
+        // Http.setRequestHeader("Authorization", `Bearer ${accessKey}`); // Use Authorization header with Bearer token
+        //
+        // Http.send(formData);
+        //
+        // Http.onreadystatechange = (e) => {
+        //     if (Http.readyState === 4) {
+        //         if (Http.status === 200 || Http.status === 201) {
+        //             console.log('Ticket created successfully:', Http.responseText);
+        //             // Optionally, display a success message to the user
+        //         } else {
+        //             console.error('Error creating ticket:', Http.responseText);
+        //             // Optionally, display an error message to the user
+        //         }
+        //     }
+        // };
+    });
+</script>

@@ -1,0 +1,699 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Control Despachos{% endblock %}
+{% block mycss %}
+<style>
+    /* .table th, .table td {
+        white-space: nowrap;
+        padding: 0.25rem 0.5rem;
+    } */
+    table.dataTable.table-striped>tbody>tr.odd>* {
+        box-shadow: inset 0 0 0 9999px rgba(105, 202, 218, 0.103);
+    }
+    .table-striped-columns>:not(caption)>tr>:nth-child(2n), .table-striped>tbody>tr:nth-of-type(odd)>* {
+        --bs-table-color-type: #000;
+        --bs-table-bg-type: var(--bs-table-striped-bg);
+    }
+    .table{
+        --bs-table-color: #000;
+        font-size : 12px;
+    }
+    .btn-selected {
+        background-color: #007bff;
+        color: white;
+    }   
+    .collapses-container{
+        display: flex;
+        justify-content: center;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: flex-start;
+
+    }
+    .collapses-container a{
+        text-decoration: none;
+        margin:0 30px ;
+    }
+
+    .list-group-item{
+        padding: 0.5rem;
+        margin-bottom: 0px;
+    }
+    /* p{
+        margin-bottom: 0px;
+    } */
+    /* .collapse{
+        margin: 0px;
+        width: 33%;
+    } */
+    .div_collapse{
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+    }
+    .colum_date{
+        background-color: #000000a6  !important;
+        color: white !important;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Control Despachos{% endblock %}
+{% block content %}
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="daily_distpaches-tab" data-bs-toggle="tab" data-bs-target="#daily_distpaches" type="button" role="tab" aria-controls="daily_distpaches" aria-selected="true">Diario</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="daily_distpaches_est-tab" data-bs-toggle="tab" data-bs-target="#daily_distpaches_est" type="button" role="tab" aria-controls="daily_distpaches_est" aria-selected="true">Diario - Estaciones</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="dailypivot_distpaches-tab" data-bs-toggle="tab" data-bs-target="#dailypivot_distpaches" type="button" role="tab" aria-controls="dailypivot_distpaches" aria-selected="true">Resumen Diario</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link " id="resumen_distpaches-tab" data-bs-toggle="tab" data-bs-target="#resumen_distpaches" type="button" role="tab" aria-controls="resumen_distpaches" aria-selected="true">Resumen Mensual</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="pivot_factura_global-tab" data-bs-toggle="tab" data-bs-target="#pivot_factura_global" type="button" role="tab" aria-controls="pivot_factura_global" aria-selected="true">Factura Global</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane active" id="daily_distpaches" role="tabpanel" aria-labelledby="daily_distpaches-tab">
+        <div class="card col-12">
+            <div class="card-body">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label for="billed" class="col-form-label col-form-label-sm">Facturado: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="billed" id="billed" placeholder="Facturado" required>
+                                <option value="0" selected>Todo</option>
+                                <option value="1">NO</option>
+                                <option value="2">SI</option>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label for="uuid" class="col-form-label col-form-label-sm">Timbrado: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="uuid" id="uuid" placeholder="Timbrado" required>
+                                <option value="0" selected>Todo</option>
+                                <option value="1">NO</option>
+                                <option value="2">SI</option>
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" id="buscar" class="btn btn-primary btn-block w-100">
+                                <i data-feather="search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card flex-fill">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Control Despachos - Corporativo</h5>
+
+                <!-- <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item datatables_dispatches" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div> -->
+            </div>
+            <div id="collapses-container" class="collapses-container" ></div>
+            <div class="card-body table-responsive control_dispaches_table">
+                <div class="row" id="no_selected">
+                    <div class="col-12">
+                        <div class="alert alert-warning alert-dismissible" role="alert">
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <div class="alert-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            </div>
+                            <div class="alert-message">
+                                <strong>¡Atención!</strong> Seleccione un rango de fechas y una gasolinera para generar el reporte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="element_hidden" hidden>
+                    <div style="display: flex;">
+
+                        <div class="card-body text-start">
+                            <h5 class="card-title">Tipo de Cliente </h5>
+                            <div class="mb-3">
+                                <button class="btn btn-outline-primary" id="cliente-credito">Cliente Crédito</button>
+                                <button class="btn btn-outline-primary" id="cliente-debito">Cliente Débito</button>
+                                <button class="btn btn-outline-primary" id="monedero">Monedero</button>
+                                <button class="btn btn-outline-primary" id="factura-global">Factura Global</button>
+                                <button class="btn btn-outline-primary" id="contado">Contado</button>
+                                <button class="btn btn-outline-primary" id="na">N/A</button>
+                                <button class="btn btn-outline-primary" id="limpiar">Limpiar</button>
+                            </div>
+    
+                        </div>
+                        <div class="card-body text-start">
+                            <h5 class="card-title">Timbrado</h5>
+                            <div class="mb-3">
+                                <button class="btn btn-outline-success" id="uuid_true"><i data-feather="check"></i></button>
+                                <button class="btn btn-outline-danger" id="uuid_false"><i data-feather="x"></i></button>
+                                <button class="btn btn-outline-info" id="limpiar_uuid"><i data-feather="refresh-cw"></i></button>
+                            </div>
+    
+                        </div>
+                    </div>
+
+                    <div id="filtro-datatables_dispatches" class="mb-1">
+                        <div class="row">
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="fecha" placeholder="Fecha"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="hora_formateada" placeholder="Hora"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="turno" placeholder="Turno"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="despacho" placeholder="Despacho"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="producto" placeholder="Producto"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="estacion" placeholder="Estación"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="empresa" placeholder="Empresa"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="cliente_fac" placeholder="Cliente "></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="cantidad" placeholder="Cantidad"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="importe" placeholder="Importe"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="precio" placeholder="Precio"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="despachador" placeholder="Despachador"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="tipo_pago" placeholder="Pago"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="factura" placeholder="Factura"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="UUID" placeholder="UUID"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="txtref" placeholder="Notas"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="rut" placeholder="RUT"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="denominacion" placeholder="Denominacion"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="codigo_cliente" placeholder="Código Cliente"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="tipo_cliente" placeholder="Tipo Cliente"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="tipo_cliente_aplicativo" placeholder="Tipo Cliente Aplicativo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="vehiculo" placeholder="Vehículo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="placas" placeholder="Placas"></div>
+                            <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                        </div>
+                    </div>
+                    <table class="table table-hover table-sm table-striped    w-100" id="datatables_dispatches" data-from="{{ from }}" data-until="{{ until }}" data-codgas="{{ codgas }}">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th>Turno</th>
+                                <th>Despacho</th>
+                                <th>Producto</th>
+                                <th>Estacion</th>
+                                <th>Empresa</th>
+                                <th>Cliente</th>
+                                <th>Cantidad</th>
+                                <th>Importe</th>
+                                <th>Precio</th>
+                                <th>Despachador</th>
+                                <th>Pago</th>
+                                <th>Factura</th>
+                                <th>UUID</th>
+                                <th>Notas</th>
+                                <th>Rut</th>
+                                <th>Denominacion</th>
+                                <th>Codigo</th>
+                                <th>Tipo</th>
+                                <th>Tipo Aplicativo</th>
+                                <th>Vehiculo</th>
+                                <th>Placas</th>
+                            </tr>
+                        </thead>
+                            <tbody>
+                            </tbody>
+                        <tfoot>
+                            <tr>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane " id="daily_distpaches_est" role="tabpanel" aria-labelledby="daily_distpaches_est-tab">
+        <div class="card col-12">
+            <div class="card-body">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="from1" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from1" id="from1" value="{{ from1 == false ? ('now' | date('Y-m-d')) : from1 }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="until1" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until1" id="until1" value="{{ until1 == false ? ('now' | date('Y-m-d')) : until1 }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="codgas1" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="codgas1" id="codgas1" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label for="billed1" class="col-form-label col-form-label-sm">Facturado: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="billed1" id="billed1" placeholder="Facturado" required>
+                                <option value="0" selected>Todo</option>
+                                <option value="1">NO</option>
+                                <option value="2">SI</option>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label for="uuid1" class="col-form-label col-form-label-sm">Timbrado: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="uuid1" id="uuid1" placeholder="Timbrado" required>
+                                <option value="0" selected>Todo</option>
+                                <option value="1">NO</option>
+                                <option value="2">SI</option>
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" id="est_buscar" class="btn btn-primary btn-block w-100"><i data-feather="search"></i> Buscar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card flex-fill">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Control Despachos - Estaciones</h5>
+            </div>
+            <div id="collapses-container" class="collapses-container" ></div>
+            <div class="card-body table-responsive datatables_dispatches_est">
+                <div class="row" id="no_selected2">
+                    <div class="col-12">
+                        <div class="alert alert-warning alert-dismissible" role="alert">
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <div class="alert-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            </div>
+                            <div class="alert-message">
+                                <strong>¡Atención!</strong> Seleccione un rango de fechas y una gasolinera para generar el reporte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="element_hidden2" hidden>
+                   
+
+                    <div id="filtro-datatables_dispatches_est" class="mb-1">
+                        <div class="row">
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1fecha" placeholder="Fecha"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1hora_formateada" placeholder="Hora"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1turno" placeholder="Turno"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1despacho" placeholder="Despacho"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1producto" placeholder="Producto"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1estacion" placeholder="Estación"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1empresa" placeholder="Empresa"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1cliente_fac" placeholder="Cliente "></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1cantidad" placeholder="Cantidad"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1importe" placeholder="Importe"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1precio" placeholder="Precio"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1despachador" placeholder="Despachador"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1tipo_pago" placeholder="Pago"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1factura" placeholder="Factura"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1UUID" placeholder="UUID"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1txtref" placeholder="Notas"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1rut" placeholder="RUT"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1denominacion" placeholder="Denominacion"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1codigo_cliente" placeholder="Código Cliente"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1tipo_cliente" placeholder="Tipo Cliente"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1tipo_cliente_aplicativo" placeholder="Tipo Cliente Aplicativo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1vehiculo" placeholder="Vehículo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="1placas" placeholder="Placas"></div>
+                            <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                        </div>
+                    </div>
+                    <table class="table table-hover table-sm table-striped    w-100" id="datatables_dispatches_est" data-from="{{ from }}" data-until="{{ until }}" data-codgas="{{ codgas }}">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th>Turno</th>
+                                <th>Despacho</th>
+                                <th>Producto</th>
+                                <th>Estacion</th>
+                                <th>Empresa</th>
+                                <th>Cliente</th>
+                                <th>Cantidad</th>
+                                <th>Importe</th>
+                                <th>Precio</th>
+                                <th>Despachador</th>
+                                <th>Pago</th>
+                                <th>Factura</th>
+                                <th>UUID</th>
+                                <th>Notas</th>
+                                <th>Rut</th>
+                                <th>Denominacion</th>
+                                <th>Codigo</th>
+                                <th>Tipo</th>
+                                <th>Tipo Aplicativo</th>
+                                <th>Vehiculo</th>
+                                <th>Placas</th>
+                            </tr>
+                        </thead>
+                            <tbody>
+                            </tbody>
+                        <tfoot>
+                            <tr>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane " id="dailypivot_distpaches" role="tabpanel" aria-labelledby="dailypivot_distpaches-tab">
+        <div class="card col-12">
+            <div class="card-body">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="from3" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from3" id="from3" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="until3" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until3" id="until3" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="codgas3" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="codgas3" id="codgas3" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" id="buscar_pivot_daily" class="btn btn-primary btn-block w-100">
+                                <i data-feather="search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="card flex-fill">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Facturacion Diaria</h5>
+            </div>
+            <div class="card-body table-responsive table_pivot_daily">
+                <div class="row" id="no_selected3">
+                    <div class="col-12">
+                        <div class="alert alert-warning alert-dismissible" role="alert">
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <div class="alert-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            </div>
+                            <div class="alert-message">
+                                <strong>¡Atención!</strong> Seleccione un rango de fechas y una gasolinera para generar el reporte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="element_hidden3" hidden>
+                    <table class="table table-hover table-sm   table-striped-columns w-100" id="pivot_daily_dispatches_table" >
+                        <thead id="pivot_daily_dispatches_table_head">
+                        </thead>
+                        <tbody>
+                        </tbody>
+
+                    </table>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tab-pane " id="resumen_distpaches" role="tabpanel" aria-labelledby="resumen_distpaches-tab">
+        <div class="card col-12">
+            <div class="card-body">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="from2" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from2" id="from2" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="until2" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until2" id="until2" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="codgas2" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="codgas2" id="codgas2" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" id="buscar_pivot" class="btn btn-primary btn-block w-100">
+                                <i data-feather="search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="card flex-fill">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Facturacion global mensual</h5>
+
+            </div>
+            <div class="card-body table-responsive table_pivot">
+                <div class="row" id="no_selected6">
+                    <div class="col-12">
+                        <div class="alert alert-warning alert-dismissible" role="alert">
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <div class="alert-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            </div>
+                            <div class="alert-message">
+                                <strong>¡Atención!</strong> Seleccione un rango de fechas y una gasolinera para generar el reporte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="element_hidden6" hidden>
+                    <table class="table table-hover table-sm table-striped  w-100" id="pivot_dispatches_table" >
+                        <thead>
+                            <tr>
+                                <th>Estacion</th>
+                                <th>Contado</th>
+                                <th>Credito</th>
+                                <th>Debito</th>
+                                <th>Monedero</th>
+                                <th>Factura Global</th>
+                                <th>N/A</th>
+                                <th>Total</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                            <tfoot>
+                            <tr>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <div class="tab-pane " id="pivot_factura_global" role="tabpanel" aria-labelledby="pivot_factura_global-tab">
+        <div class="card col-12">
+            <div class="card-body">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="from4" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from4" id="from4" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="until4" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until4" id="until4" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                        </div>
+                        <div class="col-2">
+                            <label for="codgas4" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="codgas4" id="codgas4" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" id="buscar_factura_global" class="btn btn-primary btn-block w-100">
+                                <i data-feather="search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="card flex-fill">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Facturacion global Diaria - Estaciones</h2>
+            </div>
+            <div class="card-body table-responsive pivot_facturacion_diaria">
+                <div class="row" id="no_selected4">
+                    <div class="col-12">
+                        <div class="alert alert-warning alert-dismissible" role="alert">
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            <div class="alert-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            </div>
+                            <div class="alert-message">
+                                <strong>¡Atención!</strong> Seleccione un rango de fechas y una gasolinera para generar el reporte
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="element_hidden4" hidden>
+                    <table class="table table-hover table-sm   table-striped-columns " id="pivot_facturacion_diaria_table" >
+                        <thead id="pivot_facturacion_diaria_table_head">
+                        </thead>
+                        <tbody>
+                        </tbody>
+
+                    </table>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+
+
+
+<div class="modal fade" id="DispachesTypeModal" tabindex="-1" aria-labelledby="DispachesTypeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl" >
+      <div class="modal-content">
+        <div class="modal-header">
+          <h1 class="modal-title fs-5" id="DispachesTypeModalLabel">Despachos</h1>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div id="DispachesTypeModalContent">
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+{% block myjs %}
+
+<!-- <script src="{{ JS }}income.js"></script> -->
+<script src="{{ JS }}income/ControlDispaches.js"></script>
+<script>
+$('#buscar').on('click', function() {
+    actualizarDataTable();
+});
+$('#est_buscar').on('click', function() {
+    actualizarDataTableEst();
+});
+$('#buscar_pivot').on('click', function() {
+    actualizarDataTablePivot();
+});
+$('#buscar_pivot_daily').on('click', function() {
+    actualizarDailyPivot();
+});
+$('#buscar_factura_global').on('click', function() {
+    actualizarFacturaGlobal();
+});
+
+
+
+
+
+
+</script>
+
+
+{% endblock %}

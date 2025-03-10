@@ -1,0 +1,51 @@
+<div class="modal-body">
+    <table class="table table-sm w-100" id="credit" style="font-size:x-small;">
+        <thead>
+            <tr>
+                <th>HORA</th>
+                <th>DESPACHO</th>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>PLACAS</th>
+                <th>TARJETA</th>
+                <th>PRODUCTO</th>
+                <th>LITROS</th>
+                <th>MONTO</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% set total = 0 %}
+        {% for disp in dispatches %}
+            <tr>
+                <td>{{ text_to_int(disp.hratrn) }}</td>
+                <td>{{ disp.Despacho }}</td>
+                <td>{{ disp.codcli }}</td>
+                <td class="truncated">{{ disp.Cliente }}</td>
+                <td>{{ disp.Placas }}</td>
+                <td>{{ disp.Tarjeta }}</td>
+                <td>{{ disp.Producto }}</td>
+                <td>{{ disp.can | number_format(3,'.',',') }}</td>
+                <td><p class="text-nowrap m-0 p-0 ">$ {{ disp.mto | number_format(2,'.',',') }}</p></td>
+                {% set total = total + disp.mto %}
+            </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th>HORA</th>
+                <th>DESPACHO</th>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>PLACAS</th>
+                <th>TARJETA</th>
+                <th>PRODUCTO</th>
+                <th>LITROS</th>
+                <th>${{ total | number_format(2,'.',',') }}</th>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+<div class="modal-footer">
+    <button type="submit" class="btn btn-primary" id="exportExcelCredit">Descargar reporte</button>
+    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+</div>

@@ -1,0 +1,312 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Abastos - Transportistas{% endblock %}
+{% block mycss %}
+{% endblock %}
+{% block menutitle %}Transportistas{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="javascript:void(0);" id="addCarrier" data-bs-toggle="modal" data-bs-target="#addCarrierModal"><i data-feather="plus"></i> Agregar</a>
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item daily_summary_shortge_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body pt-0">
+        <div class="row table-responsive">
+            <table class="table table-sm w-100" id="cre_carriers_table">
+                <thead>
+                <tr>
+                    <th class="w-5">Id</th>
+                    <th>Nombre</th>
+                    <th>RFC</th>
+                    <th>Permiso CRE</th>
+                    <th class="w-10">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                </tbody>
+                <tfoot>
+                <tr>
+                    <th class="w-5">Id</th>
+                    <th>Nombre</th>
+                    <th>RFC</th>
+                    <th>Permiso CRE</th>
+                    <th class="w-10">Acciones</th>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="addCarrierModal" tabindex="-1" aria-labelledby="addCarrierModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="/supply/addCarrierModal" id="addCarrierForm" method="post">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="addCarrierModalLabel">Agregar Transportista</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="companyName" class="col-form-label text-end">Denominación: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="companyName" name="companyName" class="form-control w-100" placeholder="Ingrese el nombre de la compañia" required>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="rfc" class="col-form-label text-end">RFC: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="rfc" name="rfc" class="form-control w-100" required placeholder="XAXX010101000">
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="crePermissionCarrier" class="col-form-label text-end">Permiso CRE: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="crePermissionCarrier" name="crePermissionCarrier" class="form-control w-100" required placeholder="Ingrese el Permiso CRE del transportista">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editCarrierModal" tabindex="-1" aria-labelledby="editCarrierModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <form action="/supply/editCarrierModal" id="editCarrierForm" method="post">
+                <div class="modal-header">
+                    <h1 class="modal-title fs-5" id="editCarrierModalLabel">Editar Transportista</h1>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="companyName" class="col-form-label text-end">Denominación: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="editCompanyName" name="companyName" class="form-control w-100" placeholder="Ingrese el nombre de la compañia" required>
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="rfc" class="col-form-label text-end">RFC: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="editRfc" name="rfc" class="form-control w-100" required placeholder="XAXX010101000">
+                        </div>
+                    </div>
+                    <div class="row my-2">
+                        <div class="col-3">
+                            <label for="crePermissionCarrier" class="col-form-label text-end">Permiso CRE: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="editCrePermissionCarrier" name="crePermissionCarrier" class="form-control w-100" required placeholder="Ingrese el Permiso CRE del transportista">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="id" id="carrierId" value="">
+                    <button type="submit" class="btn btn-primary">Editar</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+    $(document).ready(function() {
+        // Vamos a inicializar la datatable cre_carriers_table
+        let cre_carriers_table = $('#cre_carriers_table').DataTable({
+            colReorder: true,
+            order: [0, "asc"],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none',
+                    // Título del archivo de exportación
+                    title: 'Precios de Combustibles',
+                }
+            ],
+            ajax: {
+                url: '/supply/creCarriers',
+                type: 'POST',
+                error: function() {
+                    $('#cre_carriers_table').waitMe('hide');
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: [
+                { data: 'id' },
+                { data: 'name' },
+                { data: 'rfc' },
+                { data: 'cre' },
+                {
+                    data: null,
+                    render: function(data, type, row) {
+                        // Vamos a abrir el modal #editCarrierModal
+                        return `<a href="#" class="btn btn-sm btn-primary editCarrier" data-bs-toggle="modal" data-bs-target="#editCarrierModal" data-id="${row.id}" data-name="${row.name}" data-rfc="${row.rfc}" data-cre="${row.cre}">Editar</a>`;
+                    }
+                }
+
+            ],
+            rowId: 'id',
+            // Cuando termine de cargar la tabla
+            initComplete: function() {
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+
+        // Vamos a procesar el formulario de agregar transportista #addCarrierForm
+        $('#addCarrierForm').submit(function(e) {
+            e.preventDefault();
+            let form = $(this);
+            let url = form.attr('action');
+            let data = form.serialize();
+
+            // Vamos a validar que el RFC cumpla con cierto patron
+            const rfcInput = $('#rfc').val();
+
+            const rfcPattern = /^[A-ZÑ&]{3,4}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[A-Z\d]{3}$/
+
+            if (!rfcPattern.test(rfcInput)) {
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">El RFC no cumple con el patrón. Favor de verificar.</p>
+                </div>`
+                );
+                return false;
+            }
+
+            // Ahora vamos a validad que el premiso CRE cumpla con cierto patron
+            let crePermissionCarrier = $('#crePermissionCarrier').val();
+
+            // Define el patrón de permiso CRE
+            const crePermissionPattern = /^(PL)\/[1-9][0-9]{2,6}\/(TRA|DIS)\/(OM|DUC|TM)\/(20)[1-9][0-9]$/;
+
+            if (!crePermissionPattern.test(crePermissionCarrier)) {
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">El Permiso CRE no cumple con el patrón. Favor de verificar.</p>
+                </div>`
+                );
+                return false;
+            }
+
+            $.post(url, data, function(response) {
+                if (response.status == 'success') {
+                    toastr.success(response.message, '¡Éxito!', { timeOut: 3000 });
+                    cre_carriers_table.ajax.reload();
+                    // removemos el .loading de la clase table-responsive
+                    $('.table-responsive').removeClass('loading');
+                    $('#addCarrierModal').modal('hide');
+                } else {
+                    toastr.error(response.message, '¡Error!', { timeOut: 3000 });
+                }
+            }, 'json');
+        });
+
+        // cuando se abra el modal #editCarrierModal
+        $('#editCarrierModal').on('show.bs.modal', function(event) {
+            let button = $(event.relatedTarget);
+            let id = button.data('id');
+            let name = button.data('name');
+            let rfc = button.data('rfc');
+            let cre = button.data('cre');
+
+            $('#carrierId').val(id);
+            $('#editCompanyName').val(name);
+            $('#editRfc').val(rfc);
+            $('#editCrePermissionCarrier').val(cre);
+            $('#editCarrierForm').attr('action', '/supply/editCarrierModal/' + id);
+        });
+
+
+        // Vamos a procesar el formulario de agregar transportista #addCarrierForm
+        $('#editCarrierForm').submit(function(e) {
+            e.preventDefault();
+            let form = $(this);
+            let url = form.attr('action');
+            let data = form.serialize();
+
+            // Vamos a validar que el RFC cumpla con cierto patron
+            const rfcInput = $('#editRfc').val();
+
+            const rfcPattern = /^[A-ZÑ&]{3,4}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])[A-Z\d]{3}$/
+
+            if (!rfcPattern.test(rfcInput)) {
+                toastr.error('El RFC no cumple con el patrón. Favor de verificar.', '¡Error!', { timeOut: 3000 });
+                return false;
+            }
+
+            // Ahora vamos a validad que el premiso CRE cumpla con cierto patron
+            let crePermissionCarrier = $('#editCrePermissionCarrier').val();
+
+            // Define el patrón de permiso CRE
+            const crePermissionPattern = /^(PL)\/[1-9][0-9]{2,6}\/(TRA|DIS)\/(OM|DUC|TM)\/(20)[1-9][0-9]$/;
+
+            if (!crePermissionPattern.test(crePermissionCarrier)) {
+                toastr.error('El Permiso CRE no cumple con el patrón. Favor de verificar.', '¡Error!', { timeOut: 3000 });
+                return false;
+            }
+
+            $.post(url, data, function(response) {
+                if (response.status == 'success') {
+                    toastr.success(response.message, '¡Éxito!', { timeOut: 3000 });
+                    cre_carriers_table.ajax.reload();
+                    // removemos el .loading de la clase table-responsive
+                    $('.table-responsive').removeClass('loading');
+                    $('#editCarrierModal').modal('hide');
+                } else {
+                    toastr.error(response.message, '¡Error!', { timeOut: 3000 });
+                }
+            }, 'json');
+        });
+    });
+</script>
+{% endblock %}

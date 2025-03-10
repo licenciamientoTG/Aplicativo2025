@@ -1,0 +1,560 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte de Anticipos de débito{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Reporte de Anticipos de débito{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <form action="#" method="get" id="anticipo_form">
+            <div class="row">
+                <div class="col">
+                    <label for="from">Desde</label>
+                    <input type="month" class="form-control" name="input_from" id="input_from" value="{{ input_from }}" required>
+                </div>
+                <div class="col">
+                    <label for="until">Hasta</label>
+                    <input type="month" class="form-control" name="input_until" id="input_until" value="{{ input_until }}" required>
+                </div>
+                <div class="col" style="padding-top: 19px">
+                    <button id="submitButton" class="btn btn-primary btn-block w-100">Generar reporte</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card">
+    {% if input_from is not null %}
+    <div class="card-body myContent">
+        <ul class="nav nav-pills">
+            <li class="nav-item">
+                <button class="nav-link active" id="home-tab" data-bs-toggle="tab" data-bs-target="#home-tab-pane" type="button" role="tab" aria-controls="home-tab-pane" aria-selected="true">Por mes</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="customer-tab" data-bs-toggle="tab" data-bs-target="#customer-tab-pane" type="button" role="tab" aria-controls="customer-tab-pane" aria-selected="true">Por cliente</button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link" id="lasts-tab" data-bs-toggle="tab" data-bs-target="#lasts-tab-pane" type="button" role="tab" aria-controls="lasts-tab-pane" aria-selected="true">Últimos 12 meses</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+            <div class="tab-pane fade show active" id="home-tab-pane" role="tabpanel" aria-labelledby="home-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-4 d-flex">
+                        <div class="card flex-fill">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Lista de anticipos por mes</h5>
+                            </div>
+                            <table class="table my-0 table-sm">
+                                <thead>
+                                <tr>
+                                    <th>Mes</th>
+                                    <th>Monto</th>
+                                    <th>Cant. Anticipos</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% set total_registros = 0 %}
+                                {% set total_monto = 0 %}
+                                {% for item in anticipos_cards %}
+                                <tr>
+                                    <td>
+                                        {{ item.NombreDelMes }} {{ item.DiaFinalDelMes | slice(0, 4)}}
+                                    </td>
+                                    <td class="d-xl-table-cell">
+                                        ${{ item.Total | number_format(2, '.', ',') }}
+                                    </td>
+                                    <td class="d-xl-table-cell text-end">
+                                        {{ item.CantidadDeRegistros | number_format(0, '.', ',') }}
+                                    </td>
+                                    <td>
+                                        <a href="/administration/get_advances/{{ item.DiaInicialDelMes }}/{{ item.DiaFinalDelMes }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-right align-middle me-2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+                                    </td>
+                                </tr>
+                                {% set total_registros = total_registros + item.CantidadDeRegistros %}
+                                {% set total_monto = total_monto + item.Total %}
+                                {% endfor %}
+                                <tr>
+                                    <th>TOTALES: </th>
+                                    <th class="d-xl-table-cell">$ {{ total_monto | number_format(2, '.', ',') }}</th>
+                                    <th class="d-xl-table-cell text-end">{{ total_registros | number_format(0, '.', ',') }}</th>
+                                    <th></th>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="myGraphAnticipos"></canvas>
+                                <p class="text-center" style="color: rgb(102, 102, 102)"><b>Periodo</b></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+            </div>
+
+            <div class="tab-pane fade show" id="lasts-tab-pane" role="tabpanel" aria-labelledby="lasts-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-4 d-flex">
+                        <div class="card flex-fill">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Últimos 12 meses de anticipos</h5>
+                            </div>
+                            <table class="table my-0 table-sm">
+                                <thead>
+                                <tr>
+                                    <th>Mes</th>
+                                    <th>Monto</th>
+                                    <th>Registros</th>
+                                    <th></th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% for item in anticipos_graph %}
+                                <tr>
+                                    <td>
+                                        {{ item.NombreDelMes }} {{ item.DiaFinalDelMes | slice(0, 4)}}
+                                    </td>
+                                    <td class="d-none d-xl-table-cell">
+                                        ${{ item.Total | number_format(2, '.', ',') }}
+                                    </td>
+                                    <td class="d-none d-xl-table-cell text-end">
+                                        {{ item.CantidadDeRegistros | number_format(0, '.', ',') }}
+                                    </td>
+                                    <td>
+                                        <a href="#"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-arrow-right align-middle me-2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-8">
+                        <div class="card">
+                            <div class="card-body">
+                                <canvas id="myChartAnticipos"></canvas>
+                                <p class="text-center" style="color: rgb(102, 102, 102)"><b>Últimos 12 meses</b></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade show" id="customer-tab-pane" role="tabpanel" aria-labelledby="customer-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-12 d-flex">
+                        <div class="card flex-fill">
+                            <div class="card-header">
+                                <div class="card-actions float-end">
+                                    <div class="dropdown position-relative">
+                                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                                        </a>
+
+                                        <div class="dropdown-menu dropdown-menu-end">
+                                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                            <a class="dropdown-item" href="#">Another action</a>
+                                            <a class="dropdown-item" href="#">Something else here</a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <h5 class="card-title mb-0">Registros de anticipos</h5>
+                            </div>
+                            <div class="card-body table-responsive">
+
+                                <div class="row mt-3">
+
+                                    <div class="col-sm-6 col-xl-4">
+                                        <div class="card shadow border">
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col mt-0">
+                                                        <h5 class="card-title">100% de clientes</h5>
+                                                    </div>
+
+                                                    <div class="col-auto">
+                                                        <div class="stat text-primary">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-percent align-middle"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <h1 class="mt-1 mb-3">$ {{ total_100 }}</h1>
+                                                <div class="mb-0">
+                                                    <span class="badge badge-primary-light">{{ count_100 }}</span>
+                                                    <span class="text-muted">Clientes en el periodo</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xl-4">
+                                        <div class="card shadow border">
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col mt-0">
+                                                        <h5 class="card-title">80% de ingresos</h5>
+                                                    </div>
+
+                                                    <div class="col-auto">
+                                                        <div class="stat text-primary">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-percent align-middle"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <h1 class="mt-1 mb-3">$ {{ total_80 }}</h1>
+                                                <div class="mb-0">
+                                                    <span class="badge badge-primary-light">{{ count_80 }}</span>
+                                                    <span class="text-muted">Clientes en el periodo</span>
+                                                </div>
+                                                <div class="d-flex justify-content-end">
+                                                    <a href="/administration/get_advance_clients/80/{{ from }}/{{ until }}" target="_blank" class="text-right">Ver detalles -></a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xl-4">
+                                        <div class="card shadow border">
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col mt-0">
+                                                        <h5 class="card-title">20% de ingresos</h5>
+                                                    </div>
+
+                                                    <div class="col-auto">
+                                                        <div class="stat text-primary">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-percent align-middle"><line x1="19" y1="5" x2="5" y2="19"></line><circle cx="6.5" cy="6.5" r="2.5"></circle><circle cx="17.5" cy="17.5" r="2.5"></circle></svg>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <h1 class="mt-1 mb-3">$ {{ total_20 }}</h1>
+                                                <div class="mb-0">
+                                                    <span class="badge badge-primary-light">{{ count_20 }}</span>
+                                                    <span class="text-muted">Clientes en el periodo</span>
+                                                </div>
+                                                <div class="d-flex justify-content-end">
+                                                    <a href="/administration/get_advance_clients/20/{{ from }}/{{ until }}" target="_blank" class="text-right">Ver detalles -></a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="filtro-datatables_customer_anticipos" class="mb-1">
+                                    <div class="row">
+                                        <!-- Agrega tus elementos de filtrado aquí -->
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE1" placeholder="CLIENTE"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="STATUS"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RFC" placeholder="RFC"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO1" placeholder="TIPO"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO1" placeholder="PRODUCTO"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TOTAL1" placeholder="TOTAL"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CONSUMOS" placeholder="CONSUMOS"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOCALCULADO" placeholder="SALDOCALCULADO"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOINGRESADO" placeholder="SALDOINGRESADO"></div>
+                                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DIFERENCIA" placeholder="DIFERENCIA"></div>
+
+                                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                                    </div>
+                                    <!-- Puedes agregar más filtros según tus necesidades -->
+                                </div>
+                                <table id="datatables_customer_anticipos" class="table table-sm w-100" style="font-size:small;">
+                                    <thead>
+                                    <tr>
+                                        <th>CODCLIENTE</th>
+                                        <th>CLIENTE</th>
+                                        <th>STATUS</th>
+                                        <th>RFC</th>
+                                        <th>TIPO</th>
+                                        <th>PRODUCTO</th>
+                                        <th>ANTICIPOS</th>
+                                        <th>CONSUMOS</th>
+                                        <th>SALDO CALCULADO</th>
+                                        <th>SALDO INGRESADO</th>
+                                        <th>DIFERENCIA</th>
+                                        <th>ULTIMO DEPOSITO</th>
+                                        <th>ULTIMO CONSUMO</th>
+                                        <th class="w-5"></th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                    <tfoot>
+                                    <tr>
+                                        <th>CODCLIENTE</th>
+                                        <th>CLIENTE</th>
+                                        <th>STATUS</th>
+                                        <th>RFC</th>
+                                        <th>TIPO</th>
+                                        <th>PRODUCTO</th>
+                                        <th>ANTICIPOS</th>
+                                        <th>CONSUMOS</th>
+                                        <th>SALDO CALCULADO</th>
+                                        <th>SALDO INGRESADO</th>
+                                        <th>DIFERENCIA</th>
+                                        <th>ULTIMO DEPOSITO</th>
+                                        <th>ULTIMO CONSUMO</th>
+                                        <th class="w-5"></th>
+                                    </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning alert-outline alert-dismissible m-3" role="alert">
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <div class="alert-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle text-center"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        </div>
+        <div class="alert-message">
+            <strong>¡Atención!</strong> Seleccione un rango de fechas para visualizar los datos.
+        </div>
+    </div>
+    {% endif %}
+    <input type="hidden" id="from" value="{{ from }}">
+    <input type="hidden" id="until" value="{{ until }}">
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+<script>
+    $(document).ready(function() {
+
+        function formatCurrency(value) {
+            // Convertir el valor a número
+            var numberValue = parseFloat(value);
+            if (isNaN(numberValue)) {
+                return '$0.00'; // Valor predeterminado si no es un número
+            }
+            // Formatear el número como moneda
+            return '$' + numberValue.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        }
+
+        // Datos pasados desde PHP a Twig
+        var labels = {{ anticipos_cards_labels|raw }};
+        var values = {{ anticipos_cards_values|raw }};
+
+        // Color específico
+        var specificColor = '#9C9F31';
+
+        // Generar un array con el mismo color específico para todos los puntos
+        var pointBackgroundColors = 'rgba(156, 159, 49, 0.1)';
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myGraphAnticipos').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'line', // Cambia el tipo de gráfico a línea
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Montos de anticipos',
+                        data: values,
+                        borderColor: specificColor,
+                        backgroundColor: pointBackgroundColors,
+                        pointStyle: 'circle',
+                        pointRadius: 10,
+                        pointHoverRadius: 15
+                    }
+                ]
+            },
+            options: {
+                tooltips: {
+                    callbacks: {
+                        label: function(tooltipItem) {
+                            return formatCurrency(tooltipItem.value);
+                        }
+                    }
+                },
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Monto de anticipos', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    },
+                    y: {
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Formatear valor como moneda
+                                return '$' + value.toLocaleString('es-ES', { minimumFractionDigits: 2 });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+<script>
+    $(document).ready(function() {
+        // Cuando se envie el formulario #anticipo_form vamos a poner la clase .loading a la tabla
+        $('#anticipo_form').submit(function() {
+            $('.myContent').addClass('loading');
+        });
+
+        let datatables_anticipos_2 = $('#datatables_anticipos_2').DataTable({
+            colReorder: true,
+            order: [3, "desc"],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none',
+                    // Título del archivo de exportación
+                    title: 'Anticipos',
+                }
+            ],
+            ajax: {
+                url: '/administration/datatables_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+                type: 'POST',
+                error: function() {
+                    $('#datatables_anticipos_2').waitMe('hide');
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                {'data': 'FACTURA'},
+                {'data': 'TIPO'},
+                {'data': 'PRODUCTO'},
+                {'data': 'CUENTA'},
+                {'data': 'MONTO', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'IVA', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'TOTAL', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'CFDI'},
+                {'data': 'PAGO'},
+                {'data': 'CLIENTE'},
+                {'data': 'ESTACION'},
+                {'data': 'REGISTRO'},
+                {'data': 'FECHA'}
+            ],
+            createdRow: function (row, data, dataIndex) {
+            },
+            initComplete: function () {
+                $('.dt-buttons').addClass('d-none');
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+
+        // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+        $('#filtro-datatables_anticipos_2 input').on('keyup  change clear', function () {
+            datatables_anticipos_2
+                .column(0).search($('#FACTURA').val().trim())
+                .column(1).search($('#TIPO').val().trim())
+                .column(2).search($('#PRODUCTO').val().trim())
+                .column(3).search($('#CUENTA').val().trim())
+                .column(4).search($('#MONTO').val().trim())
+                .column(5).search($('#IVA').val().trim())
+                .column(6).search($('#TOTAL').val().trim())
+                .column(7).search($('#CFDI').val().trim())
+                .column(8).search($('#PAGO').val().trim())
+                .column(9).search($('#CLIENTE').val().trim())
+                .column(10).search($('#ESTACION').val().trim())
+                .column(11).search($('#REGISTRO').val().trim())
+                .column(12).search($('#FECHA').val().trim())
+                .draw();
+        });
+
+        // Agregar un evento clic de refresh
+        $('.refresh_datatables_anticipos_2').on('click', function () {
+            datatables_anticipos_2.clear().draw();
+            datatables_anticipos_2.ajax.reload();
+            $('#datatables_anticipos_2').waitMe('hide');
+        });
+
+        function formatCurrency(value) {
+            // Convertir el valor a número
+            var numberValue = parseFloat(value);
+            if (isNaN(numberValue)) {
+                return '$0.00'; // Valor predeterminado si no es un número
+            }
+            // Formatear el número como moneda
+            return '$' + numberValue.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        }
+
+        // Datos pasados desde PHP a Twig
+        var labels = {{ anticipos_graph_labels|raw }};
+        var values = {{ anticipos_graph_values|raw }};
+
+        // Color específico
+        var specificColor = '#9C9F31';
+
+        // Generar un array con el mismo color específico para todos los puntos
+        var pointBackgroundColors = 'rgba(156, 159, 49, 0.1)';
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartAnticipos').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'line', // Cambia el tipo de gráfico a línea
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Dataset',
+                        data: values,
+                        borderColor: specificColor,
+                        backgroundColor: pointBackgroundColors,
+                        pointStyle: 'circle',
+                        pointRadius: 10,
+                        pointHoverRadius: 15
+                    }
+                ]
+            },
+            options: {
+                tooltips: {
+                    callbacks: {
+                        label: function(tooltipItem) {
+                            return formatCurrency(tooltipItem.value);
+                        }
+                    }
+                },
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Monto de anticipos', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    },
+                    y: {
+                        ticks: {
+                            callback: function(value, index, values) {
+                                // Formatear valor como moneda
+                                return '$' + value.toLocaleString('es-ES', { minimumFractionDigits: 2 });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}

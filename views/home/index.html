@@ -1,0 +1,130 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Dashboard{% endblock %}
+{% block content %}
+
+{% if authorized(6) %}
+
+<div class="row">
+    <div class="col-sm-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title" style="color: #0095DA;">T-Maxima Regular</h5>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="stat text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ today_sales[0].Monto | number_format(2, '.', ',') }}</h1>
+                <h5 class="mt-1 mb-3">Volumen: {{ today_sales[0].Volumen | number_format(2, '.', ',') ~ ' lts' }} | <b class="m-0 p-0" style="font-size: x-small;">{{ now | date('Y-m-d')}}</b></h5>
+
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title" style="color: #A6CE39;">T-Super Premium</h5>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="stat text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ today_sales[1].Monto | number_format(2, '.', ',') }}</h1>
+                <h5 class="mt-1 mb-3">Volumen: {{ today_sales[1].Volumen | number_format(2, '.', ',') ~ ' lts' }} | <b class="m-0 p-0" style="font-size: x-small;">{{ now | date('Y-m-d')}}</b></h5>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title" style="color: #231E20;">Diesel Automotriz</h5>
+                    </div>
+
+                    <div class="col-auto">
+                        <div class="stat text-primary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                        </div>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ today_sales[2].Monto | number_format(2, '.', ',') }}</h1>
+                <h5 class="mt-1 mb-3">Volumen: {{ today_sales[2].Volumen | number_format(2, '.', ',') ~ ' lts' }} | <b class="m-0 p-0" style="font-size: x-small;">{{ now | date('Y-m-d')}}</b></h5>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{# <div class="row">
+    <div class="col-8">
+        <div class="card flex-fill w-100">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Ventas últimas 12 semanas - T-Maxima Regular</h5>
+            </div>
+            <div class="card-body py-3">
+                <div class="chart chart-sm"><div class="chartjs-size-monitor"><div class="chartjs-size-monitor-expand"><div class=""></div></div><div class="chartjs-size-monitor-shrink"><div class=""></div></div></div>
+                    <canvas id="MaximaChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> #}
+{% endblock %}
+{% block myjs %}
+{# <script>
+    // Datos para la gráfica de líneas
+    const data = {
+        labels: ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio'],
+        datasets: [{
+          label: 'Datos de ejemplo',
+          data: [10, 20, 15, 25, 30, 22], // Valores de la línea
+          borderColor: 'rgba(0, 149, 218, 1)', // Color de la línea
+          backgroundColor: 'rgba(0, 149, 218, 0.3)', // Color de relleno bajo la línea
+          tension: 0.4, // Curvatura de la línea (0-1)
+          borderWidth: 2 // Ancho de la línea
+        }]
+      };
+  </script> #}
+
+<script>
+    // Obtener la dirección IP local utilizando la API WebRTC
+    function getLocalIP() {
+        const RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+        const pc = new RTCPeerConnection();
+
+        pc.createDataChannel("");
+
+        pc.createOffer()
+            .then(offer => pc.setLocalDescription(offer))
+            .catch(error => console.error(error));
+
+        pc.onicecandidate = function (e) {
+            if (e.candidate) {
+                const ipRegex = /\d+\.\d+\.\d+\.\d+/;
+                const ipAddress = ipRegex.exec(e.candidate.candidate);
+
+                if (ipAddress && ipAddress.length > 0) {
+                    console.log("La dirección IP local es: " + ipAddress[0]);
+                } else {
+                    console.error("No se pudo obtener la dirección IP local");
+                }
+            }
+        };
+    }
+
+    getLocalIP();
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Marketing{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Tarjetas de clientes{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="card">
+        <div class="card-body">
+            <form id="findClientForm" method="post">
+                <div class="row">
+                    <div class="col-3">
+                        <label for="codcli" class="form-label">Código de cliente: </label>
+                        <input type="number" min="1" step="1" class="form-control" id="codcli" name="codcli">
+                    </div>
+                    <div class="col-3">
+                        <label for="tar" class="form-label">Tarjeta: </label>
+                        <input type="number" min="1" step="1" class="form-control" id="tar" name="tar">
+                    </div>
+                    <div class="col-3 d-flex flex-column justify-content-between">
+                        <div></div>
+                        <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+                    </div>
+                </div>
+            </form>
+            <div class="row"><div class="form-text">Ingrese el código de identificación del cliente</div></div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="contentWrap">
+
+</div>
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}marketing.js"></script>
+{% endblock %}

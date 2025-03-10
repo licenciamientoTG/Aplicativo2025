@@ -1,0 +1,74 @@
+
+<div class="modal-body">
+    <!-- Información de la Factura -->
+    <h5>Factura</h5>
+    <table class="table table-bordered">
+        <tbody>
+            <tr>
+                <th>Folio</th>
+                <td>{{ invoice[0].Folio }}</td>
+                <th>Serie</th>
+                <td>{{ invoice[0].Serie }}</td>
+            </tr>
+            <tr>
+                <th>Fecha</th>
+                <td>{{ invoice[0].Fecha }}</td>
+                <th>Emisor RFC</th>
+                <td>{{ invoice[0].EmisorRfc }}</td>
+            </tr>
+            <tr>
+                <th>Receptor RFC</th>
+                <td>{{ invoice[0].ReceptorRfc }}</td>
+                <th>Total</th>
+                <td>{{ invoice[0].Total }}</td>
+            </tr>
+            <tr>
+                <th>UUID</th>
+                <td colspan="3">{{ invoice[0].UUID }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Conceptos relacionados -->
+    <h5>Conceptos</h5>
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>Cantidad</th>
+                <th>ClaveProdServ</th>
+                <th>ClaveUnidad</th>
+                <th>Descripción</th>
+                <th>Valor Unitario</th>
+                <th>Importe</th>
+                <th>Impuesto</th>
+                <th>Tasa/Cuota</th>
+                <th>Tipo Factor</th>
+                <th>Importe Impuesto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for concepto in invoice %}
+            <tr>
+                <td>{{ concepto.Cantidad }}</td>
+                <td>{{ concepto.ClaveProdServ }}</td>
+                <td>{{ concepto.ClaveUnidad }}</td>
+                <td>{{ concepto.Descripcion }}</td>
+                <td>{{ concepto.ValorUnitario }}</td>
+                <td>{{ concepto.Importe }}</td>
+                <td>{{ concepto.Impuesto }}</td>
+                <td>{{ concepto.TasaOCuota }}</td>
+                <td>{{ concepto.TipoFactor }}</td>
+                <td>{{ concepto.ImporteImpuesto }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="10" class="text-center">No hay conceptos relacionados para esta factura.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+</div>

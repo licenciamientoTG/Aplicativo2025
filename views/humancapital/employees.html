@@ -1,0 +1,105 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Permisos{% endblock %}
+{% block content %}
+<div class="card heather_employees">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Public info</h5>
+    </div>
+    <div class="card-body">
+        <div class="row" style="width: 100%;">
+            <div class="col ">
+                <input type="file" class="form-control " name="file_to_upload" id="file_to_upload" accept="csv" required>
+            </div>
+            <div class="col-3" >
+                <button onclick="upload_file_rh()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: auto;">Guardar</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item refresh_datatables_permissions" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Permisos</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <div id="filtro-datatables_permissions" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ID" placeholder="Id"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLASE" placeholder="Clase"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DEPARTAMENTO" placeholder="Departamento"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESCRIPCION" placeholder="Descripción"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
+                <div class="col p-1 text-center">
+                    <button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#permissionModal"><i data-feather="plus"></i></button>
+                </div>
+            </div>
+        </div>
+        <table id="datatables_employees" class="table table-sm w-100" style="font-size:small;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>NÚMERO</th>
+                    <th>NOMBRE</th>
+                    <th>DEPARTAMENTO</th>
+                    <th>FECHA DE INGRESO</th>
+                    <th>ACTIVO</th>
+                    <th>FECHA DE BAJA</th>
+                    <th>RECONTRATAR</th>
+                    <th>MOTIVO DE BAJA</th>
+                    <th>EQUIPO</th>
+                    <th>ANTIGÜEDAD</th>
+                    <th>BAJA CORRECTA</th>
+                    <th>PUESTO ID</th>
+                    <th>EMPRESA ID</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>ID</th>
+                    <th>NÚMERO</th>
+                    <th>NOMBRE</th>
+                    <th>DEPARTAMENTO</th>
+                    <th>FECHA DE INGRESO</th>
+                    <th>ACTIVO</th>
+                    <th>FECHA DE BAJA</th>
+                    <th>RECONTRATAR</th>
+                    <th>MOTIVO DE BAJA</th>
+                    <th>EQUIPO</th>
+                    <th>ANTIGÜEDAD</th>
+                    <th>BAJA CORRECTA</th>
+                    <th>PUESTO ID</th>
+                    <th>EMPRESA ID</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}humancapital/employess.js"></script>
+{% endblock %}

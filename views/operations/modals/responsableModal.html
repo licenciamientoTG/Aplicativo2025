@@ -1,0 +1,69 @@
+<form method="post" action="/operations/responsableModal" id="responsableModal">
+<div class="modal-body px-0">
+    <div class="card">
+        <div class="card-body">
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">Nombre(s):</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" placeholder="Nombre(s)" id="name" name="name" value="{{ responsable ? responsable.Nombre : '' }}">
+                </div>
+            </div>
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">No de reloj:</label>
+                <div class="col-sm-9">
+                    <input type="number" min="1" step="1" class="form-control" id="clock" name="clock" value="{{ responsable ? responsable.Codigo : '' }}">
+                </div>
+            </div>
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">Código externo:</label>
+                <div class="col-sm-9">
+                    <input type="text" class="form-control" placeholder="Código externo" id="codext" name="codext" value="{{ responsable ? responsable.codext : '' }}">
+                </div>
+            </div>
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">Puesto de trabajo</label>
+                <div class="col-sm-9">
+                    <select class="selectpicker w-100" data-live-search="true" name="pto" id="pto">
+                        <option value="GERENTE" {{ responsable ? (responsable.Puesto == 'GERENTE' ? 'selected' : ''  ) : '' }}>Gerente</option>
+                        <option value="Subgerente" {{ responsable ? (responsable.Puesto == 'Subgerente' ? 'selected' : ''  ) : '' }}>Subgerente</option>
+                        <option value="Supervisor" {{ responsable ? (responsable.Puesto == 'Supervisor' ? 'selected' : ''  ) : '' }}>Supervisor</option>
+                        <option value="Despachador"  {{ responsable ? (responsable.Puesto == 'Despachador' ? 'selected' : ''  ) : 'selected' }}>Despachador</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">Status</label>
+                <div class="col-sm-9">
+                    <select class="selectpicker w-100" data-live-search="true" name="status" id="status" placeholder="Status">
+                        <option value="1" {{ responsable ? (responsable.Status == 1 ? 'selected' : ''  ) : 'selected' }}>Activo</option>
+                        <option value="0" {{ responsable ? (responsable.Status == 0 ? 'selected' : ''  ) : '' }}>Inactivo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-3 row">
+                <label class="col-form-label col-sm-3 text-sm-end">Estación</label>
+                <div class="col-sm-9">
+                    <select class="selectpicker w-100" data-live-search="true" name="IdEstacion" id="IdEstacion" placeholder="Estación">
+                        {% for station in stations %}
+                        <option value="{{ station.cod }}" {{ responsable ? (responsable.codgas == station.cod ? 'selected' : ''  ) : '' }}>{{ station.abr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-footer">
+    <input type="hidden" name="action" value="{{ responsable ? 'editar' : 'guardar' }}">
+    <input type="hidden" name="codoriginal" value="{{ responsable ? responsable.Codigo : 0 }}">
+    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+    <button type="submit" class="btn btn-primary">Guardar</button>
+</div>
+</form>
+
+<script>
+    $('#responsableModal').submit(function(event) {
+        // Vamos a agregar la case .loading al body para mostrar el spinner
+        $('#responsableModal').addClass('loading');
+    });
+</script>

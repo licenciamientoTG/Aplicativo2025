@@ -1,0 +1,122 @@
+<div class="card-body">
+    <h5 class="card-title">Agente evaluado: {{ data[0].AssignedUserName }}</h5>
+    <h6 class="card-subtitle mb-2 text-body-secondary">Periodo: {{ date_range | upper }} | {{ from }} - {{ until }}</h6>
+    <hr>
+    <canvas id="agentChart" width="400" height="200"></canvas>
+    <hr>
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-body p-2">
+                    <table class="table table-sm text-center table-striped table-bordered" style="font-size: small;" id="myTable{{ agent[0].AssignedUserName }}">
+                        <thead class>
+                        <tr>
+                            {% if date_range == 'semanal' %}
+                            <th>Semana</th>
+                            {% elseif date_range == 'mensual' %}
+                            <th>Mes</th>
+                            {% else %}
+                            <th>Año</th>
+                            {% endif %}
+                            <th class="text-primary">Tickets Total</th>
+                            <th class="text-success">Tickets Resueltos</th>
+                            <th class="text-warning">Tickets Pendientes</th>
+                            <th class="text-danger">Tickets Urgentes</th>
+                            <th class="text-info">Tickets Normales</th>
+                            <th class="text-info">Tiempo Total</th>
+                            <th class="text-info">Tiempo Promedio</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% set total = 0 %}
+                        {% set totalResolvedTickets = 0 %}
+                        {% set totalPendingTickets = 0 %}
+                        {% set totalUrgentTickets = 0 %}
+                        {% set totalNormalTickets = 0 %}
+                        {% set TotalHoursDifference = 0 %}
+                        {% set AverageHoursDifference = 0 %}
+                        {% set count = 0 %}
+                        {% for result in data %}
+                        <tr>
+                            <td>
+                                {% if date_range == 'semanal' %}
+                                <p class="m-0 p-0">{{ result.WeekISO }} ({{ result.StartOfWeek | date("d/m/Y") }} - {{ result.EndOfWeek | date("d/m/Y") }})</p>
+                                {% elseif date_range == 'mensual' %}
+                                <p class="m-0 p-0">{{ result.MonthName }}</p>
+                                {% else %}
+                                <p class="m-0 p-0">{{ result.Year }}</p>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <p class="m-0 p-0">{{ result.TotalTickets }}</p>
+                            </td>
+                            <td>{{ result.ResolvedTickets }}</td>
+                            <td>{{ result.PendingTickets }}</td>
+                            <td>{{ result.UrgentTickets }}</td>
+                            <td>{{ result.NormalTickets }}</td>
+                            <td>{{ result.TotalHoursDifference | number_format(2, '.', ',') }}</td>
+                            <td>{{ result.AverageHoursDifference | number_format(2, '.', ',') }}</td>
+                        </tr>
+                        {% set total = total + result.TotalTickets %}
+                        {% set totalResolvedTickets = totalResolvedTickets + result.ResolvedTickets %}
+                        {% set totalPendingTickets = totalPendingTickets + result.PendingTickets %}
+                        {% set totalUrgentTickets = totalUrgentTickets + result.UrgentTickets %}
+                        {% set totalNormalTickets = totalNormalTickets + result.NormalTickets %}
+                        {% set TotalHoursDifference = TotalHoursDifference + result.TotalHoursDifference %}
+                        {% set AverageHoursDifference = AverageHoursDifference + result.AverageHoursDifference %}
+                        {% set count = count + 1 %}
+                        {% endfor %}
+                        </tbody>
+                        <tfoot>
+                        <tr>
+                            <th>Total</th>
+                            <th>{{ total }}</th>
+                            <th>{{ totalResolvedTickets }}</th>
+                            <th>{{ totalPendingTickets }}</th>
+                            <th>{{ totalUrgentTickets }}</th>
+                            <th>{{ totalNormalTickets }}</th>
+                            <th>{{ (TotalHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                            <th>{{ (AverageHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                        </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var labels = {{ tickets_labels|raw }};
+    var values = {{ tickets_values|raw }};
+    var ctx = document.getElementById('agentChart').getContext('2d');
+    var agentChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Total Tickets',
+                data: values,
+                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            scales: {
+                xAxes: [{
+                    ticks: {
+                        beginAtZero: true, // Asegura que el eje X comience en cero
+                        min: 0             // Establece el valor mínimo en cero
+                    }
+                }],
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true
+                    }
+                }]
+            }
+        }
+    });
+
+</script>

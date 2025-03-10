@@ -1,0 +1,253 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Análisis de diferencias{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Ingresos{% endblock %}
+{% block content %}
+
+<div class="row">
+    <div class="col-sm-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Total en Cortes</h5>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ totalCorte | number_format(2, '.', ',') }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Total en Control de Despachos</h5>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ totalDespachado | number_format(2, '.', ',') }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Total en Control de Consumos</h5>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3">$ {{ totalValesR | number_format(2, '.', ',') }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0">
+                        <h5 class="card-title">Diferencia</h5>
+                    </div>
+                </div>
+                <h1 class="mt-1 mb-3 {{ real_diff != 0 ? 'text-danger' : '' }}" >$ {{ real_diff | number_format(2, '.', ',') }}</h1>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header pb-0">
+                <button class="btn btn-success" id="sheetjsexport"><b>Exportar a Excel</b></button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-6">
+        <div class="card">
+            <div class="card-header pb-0">
+                <h5 class="card-title mb-0">Control de Despachos (Crédito y débito)</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="datatables_diff_analysis" class="table table-sm w-100 text-nowrap" style="font-size:x-small;">
+                    <thead>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>HORA</th>
+                        <th>CLIENTE</th>
+                        <th>TIPO</th>
+                        <th>TARJETA</th>
+                        <th>PRODUCTO</th>
+                        <th>FACTURA</th>
+                        <th>PRECIO</th>
+                        <th>MONTO</th>
+                        <th>DATOS</th>
+                        <th>TURNO</th>
+                        <th>ISLA</th>
+                        <th>FECHA</th>
+                        <th>ESTACIÓN</th>
+                        <th>COINCIDENCIA</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>HORA</th>
+                        <th>CLIENTE</th>
+                        <th>TIPO</th>
+                        <th>TARJETA</th>
+                        <th>PRODUCTO</th>
+                        <th>FACTURA</th>
+                        <th>PRECIO</th>
+                        <th>MONTO</th>
+                        <th>DATOS</th>
+                        <th>TURNO</th>
+                        <th>ISLA</th>
+                        <th>FECHA</th>
+                        <th>ESTACIÓN</th>
+                        <th>COINCIDENCIA</th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="card">
+            <div class="card-header pb-0">
+                <h5 class="card-title mb-0">Cortes</h5>
+            </div>
+            <div class="card-body table-responsive table-datatables_consumes">
+                <table id="datatables_consumes" class="table table-sm w-100 text-nowrap" style="font-size:x-small;">
+                    <thead>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>TURNO</th>
+                        <th>CLIENTE</th>
+                        <th>TIPO</th>
+                        <th>PRODUCTO</th>
+                        <th>FACTURA</th>
+                        <th>PRECIO</th>
+                        <th>MONTO</th>
+                        <th>COINCIDENCIA</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>TURNO</th>
+                        <th>CLIENTE</th>
+                        <th>TIPO</th>
+                        <th>PRODUCTO</th>
+                        <th>FACTURA</th>
+                        <th>PRECIO</th>
+                        <th>MONTO</th>
+                        <th>COINCIDENCIA</th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<input type="hidden" name="nrotur" id="nrotur" value="{{ nrotur }}">
+<input type="hidden" name="codval" id="codval" value="{{ codval }}">
+<input type="hidden" name="fch" id="fch" value="{{ fch }}">
+<input type="hidden" name="fch" id="fecha" value="{{ fecha }}">
+<input type="hidden" name="codgas" id="codgas" value="{{ codgas }}">
+<input type="hidden" name="station" id="station" value="{{ station }}">
+{% endblock %}
+{% block myjs %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script src="{{ JS }}income.js"></script>
+<script>
+
+    $(document).ready(function() {
+
+        // Botón de exportación
+        $('#sheetjsexport').click(function() {
+
+            const station = $('#station').val();
+            const fecha = $('#fecha').val();
+
+            const workbook = XLSX.utils.book_new();
+
+            // Obtener datos de la primera tabla
+            const diffAnalysisData = $('#datatables_diff_analysis').DataTable().rows().data().toArray();
+
+            // Ahora vamos a agregar 5 filas vacías al inicio de la tabla
+            for (let i = 0; i < 3; i++) {
+                diffAnalysisData.unshift({});
+            }
+
+            const diffAnalysisSheet = XLSX.utils.json_to_sheet(diffAnalysisData);
+
+            console.log(diffAnalysisSheet);
+
+            // Vamos a agregar información en la fila 1 de nuestra hoja de cálculo
+            // Primero en A1 pero sin sobreescribir la información
+            XLSX.utils.sheet_add_aoa(diffAnalysisSheet, [
+                ['Estación', station, '', '', '', '', '', '', '', '','','','','',''],
+            ], {origin: 'A1'});
+            XLSX.utils.sheet_add_aoa(diffAnalysisSheet, [
+                ['Fecha', fecha, '', '', '', '', '', '', '', '','','','','',''],
+            ], {origin: 'A2'});
+
+            XLSX.utils.sheet_add_aoa(diffAnalysisSheet, [
+                ['DESPACHO', 'HORA', 'CLIENTE', 'TIPO', 'TARJETA', 'PRODUCTO', 'FACTURA', 'PRECIO', 'MONTO', 'DATOS', 'TURNO', 'ISLA', 'FECHA', 'ESTACIÓN', 'COINCIDENCIA']
+            ], {origin: 'A4'});
+
+            // Ahora vamos a combinar las celdas A5 hasta la K5
+            diffAnalysisSheet['!merges'] = [
+                {s: {r: 2, c: 0}, e: {r: 2, c: 14}},
+            ];
+
+            // Luego en esa cell vamos a agregar un texto
+            diffAnalysisSheet['A3'] = {t: 's', v: 'Control de Despachos (Crédito y débito)', s: {font: {bold: true, sz: 18}}, alignment: {horizontal: 'center'}};
+
+            XLSX.utils.book_append_sheet(workbook, diffAnalysisSheet, 'Análisis de Diferencias');
+
+            // Obtener datos de la segunda tabla
+            const consumesData = $('#datatables_consumes').DataTable().rows().data().toArray();
+            // Ahora vamos a agregar 5 filas vacías al inicio de la tabla
+            for (let i = 0; i < 3; i++) {
+                consumesData.unshift({});
+            }
+
+            const consumesSheet = XLSX.utils.json_to_sheet(consumesData);
+
+            // Vamos a agregar información en la fila 1 de nuestra hoja de cálculo | Primero en A1 pero sin sobreescribir la información
+            XLSX.utils.sheet_add_aoa(consumesSheet, [
+                ['Estación', station, '', '', '', '', '', '', '', ''],
+            ], {origin: 'A1'});
+            XLSX.utils.sheet_add_aoa(consumesSheet, [
+                ['Fecha', fecha, '', '', '', '', '', '', '', ''],
+            ], {origin: 'A2'});
+
+            XLSX.utils.sheet_add_aoa(consumesSheet, [
+                ['DESPACHO', 'TURNO', 'CLIENTE', 'TIPO', 'PRODUCTO', 'FACTURA', 'PRECIO', 'MONTO', 'COINCIDENCIA']
+            ], {origin: 'A4'});
+
+            // Ahora vamos a combinar las celdas A5 hasta la H5
+            consumesSheet['!merges'] = [
+                {s: {r: 2, c: 0}, e: {r: 2, c: 8}}
+            ];
+
+            // Luego en esa cell vamos a agregar un texto
+            consumesSheet['A3'] = {t: 's', v: 'Cortes', s: {font: {bold: true, sz: 18}}, alignment: {horizontal: 'center'}};
+
+            XLSX.utils.book_append_sheet(workbook, consumesSheet, 'Cortes');
+
+            // Generar y descargar el archivo Excel
+            XLSX.writeFile(workbook, station + '_' + fecha + '.xlsx');
+        });
+    });
+
+</script>
+
+{% endblock %}

@@ -1,0 +1,252 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Venta Mensual Turno{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Venta Mensual Turno{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+</style>
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="sale_month_turn-tab" data-bs-toggle="tab" data-bs-target="#sale_month_turn" type="button" role="tab" aria-controls="sale_month_turn" aria-selected="true">Venta x Turno Totales</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="sale_month_turn_no_total-tab" data-bs-toggle="tab" data-bs-target="#sale_month_turn_no_total" type="button" role="tab" aria-controls="sale_month_turn_no_total" aria-selected="true">Venta Mensual x Turno Sin Totales</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="sale_month_turn_base-tab" data-bs-toggle="tab" data-bs-target="#sale_month_turn_base" type="button" role="tab" aria-controls="sale_month_turn_base" aria-selected="true">Venta Mensual x Turno Base</button>
+    </li>
+</ul>
+
+
+<div class="tab-content">
+    <div class="tab-pane active" id="sale_month_turn" role="tabpanel" aria-labelledby="sale_month_turn-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" id="until" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Zona </label>
+                        <select class="form-control form-control-sm" name="zona" id="zona" required>
+                            <option value="0">Todas</option>
+                            <option value="ZONA 1">Zona 1</option>
+                            <option value="ZONA 2">Zona 2</option>
+                            <option value="ZONA 3">Zona 3</option>
+                            <option value="ZONA 4 (Bajío)">Zona 4</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_sale_month_turn" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Venta x Turno Totales (LTS)</h5>
+            </div>
+            <div class="card-body table-responsive" id="cont">
+                <div id="filtro-sale_month_turn_table" class="mb-1">
+                    <div class="row">
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Estacion" placeholder="Estacion"></div>
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Producto" placeholder="Producto"></div>
+                    </div>
+                </div>
+                <table id="sale_month_turn_table" class="table table-hover table-sm w-100" >
+                    <thead class="table-info">
+
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="tab-pane " id="sale_month_turn_no_total" role="tabpanel" aria-labelledby="sale_month_turn_no_total-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from2" id="from2" value="{{  'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until2"  id="until2" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Zona </label>
+                        <select class="form-control form-control-sm" name="zona2" id="zona2" required>
+                            <option value="0">Todas</option>
+                            <option value="ZONA 1">Zona 1</option>
+                            <option value="ZONA 2">Zona 2</option>
+                            <option value="ZONA 3">Zona 3</option>
+                            <option value="ZONA 4 (Bajío)">Zona 4</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_sale_month_turn_no_total" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Venta x Turno (LTS)</h5>
+            </div>
+        
+            <div class="card-body table-responsive" id="cont">
+                <div id="filtro-sale_month_turn_table_no_total" class="mb-1">
+                    <div class="row">
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Estacion" placeholder="Estacion"></div>
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Producto" placeholder="Producto"></div>
+                    </div>
+                </div>
+                <table id="sale_month_turn_table_no_total" class="table table-hover table-sm w-100" >
+                    <thead >
+                       
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                   
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+    <div class="tab-pane " id="sale_month_turn_base" role="tabpanel" aria-labelledby="sale_month_turn_base-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from3" id="from3" value="{{  'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until3"  id="until3" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Zona </label>
+                        <select class="form-control form-control-sm" name="zona3" id="zona3" required>
+                            <option value="0">Todas</option>
+                            <option value="ZONA 1">Zona 1</option>
+                            <option value="ZONA 2">Zona 2</option>
+                            <option value="ZONA 3">Zona 3</option>
+                            <option value="ZONA 4 (Bajío)">Zona 4</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_sale_month_turn_base" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Venta x Turno Mes Base</h5>
+            </div>
+            <div class="card-body table-responsive" id="cont">
+                <table id="sale_month_turn_base_table" class="table table-hover table-sm w-100" >
+                    <thead>
+                        <tr>
+                            <th>Año</th>
+                            <th>Mes</th>
+                            <th>Turno</th>
+                            <th>Producto</th>
+                            <th>Código Gasolinera</th>
+                            <th>Estación</th>
+                            <th>Código Producto</th>
+                            <th>Ventas Reales</th>
+                            <th>Monto Vendido</th>
+                            <th>Código Empresa</th>
+                            <th>Empresa</th>
+                            <th>Estructura</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}commercial.js"></script>
+<script>
+$('#seach_sale_month_turn').on('click', function() {
+    sale_month_turn_table();
+});
+$('#seach_sale_month_turn_no_total').on('click', function() {
+    sale_month_turn_table_no_total();
+});
+$('#seach_sale_month_turn_base').on('click', function() {
+    sale_month_turn_base_table();
+});
+
+
+
+</script>
+
+</script>
+{% endblock %}

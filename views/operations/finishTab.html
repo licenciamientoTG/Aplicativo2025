@@ -1,0 +1,178 @@
+<div class="card {{ Estatus == 2 ? 'shadow-success' : 'shadow' }}">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Cerrar tabulador {{ Estatus == 2 ? '<b class="text-success">(Cerrado)</b>' : '' }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #0095DA;">T-Máxima Regular</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ totals_sales[0].Monto | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen: {{ totals_sales[0].Volumen | number_format(3, '.', ',') }} lts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #A6CE39;">T-Super Premium</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ totals_sales[1].Monto | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen: {{ totals_sales[1].Volumen | number_format(3, '.', ',') }} lts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Diesel Automotriz</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ totals_sales[2].Monto | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen: {{ totals_sales[2].Volumen | number_format(3, '.', ',') }} lts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Productos</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ TotalProductos | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen:  N/A</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Totalizado</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ (totals_sales[0].Monto + totals_sales[1].Monto + totals_sales[2].Monto) | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen: {{ (totals_sales[0].Volumen + totals_sales[1].Volumen + totals_sales[2].Volumen) | number_format(3, '.', ',') }} lts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-sm-6">
+
+            </div>
+            <div class="col-sm-6">
+
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-6">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Descripción</th>
+                            <th>Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set morralla = 0 %}
+                        {% set total = 0 %}
+                        {% for row in valores %}
+                        <tr>
+                            <td>{{ row.ValorDescripcion }}</td>
+                            <td>$ {{ row.Total | number_format(2, '.', ',') }}</td>
+                            {% set total = (total + row.Total) %}
+                        </tr>
+                        {% if row.ValorDescripcion == 'Morralla' %}
+                            {% set morralla = row.Total %}
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>TOTAL</th>
+                            <th>$ {{ total | number_format(2, '.', ',') }}</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="col-6">
+                <div class="card shadow">
+                    <div class="card-body p-2">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Total efectivo en Tabulador</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-1 mb-1">${{ (Total - morralla) | number_format(2, '.', ',') }}</h4>
+                    </div>
+                </div>
+                <div class="card shadow">
+                    <div class="card-body p-2">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Total morralla en Tabulador</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-1 mb-1">${{ morralla | number_format(2, '.', ',') }}</h4>
+                    </div>
+                </div>
+                <div class="card flex-fill shadow">
+                    <div class="card-body p-2">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Total venta en ControlGas</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ (totals_sales[0].Monto + totals_sales[1].Monto + totals_sales[2].Monto + TotalProductos ) | number_format(2, '.', ',') }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-body">
+                {% if Estatus == 2 %}
+                <form method="post" id="open_tab_form">
+                    <input type="hidden" name="tabulator_id" value="{{ Id }}">
+                    <input type="hidden" name="turno" value="{{ Turno }}">
+                    <input type="hidden" name="fecha_tabular" value="{{ FechaTabular }}">
+                    <input type="hidden" name="db_string" value="{{ DBString }}">
+                    <button type="submit" class="btn btn-success btn-block w-100">Tabulador cerrado</button>
+                </form>
+                {% else %}
+                <button type="button" class="btn btn-primary btn-block w-100" onclick="close_tabulator(`{{ Id }}`);">Cerrar tabulador</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        // Deseleccionar cualquier elemento seleccionado
+        $('.selectpicker').selectpicker();
+    });
+</script>

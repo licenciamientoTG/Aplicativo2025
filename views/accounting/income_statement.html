@@ -1,0 +1,28 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Contabilidad{% endblock %}
+{% block mycss %}
+{% endblock %}
+{% block menutitle %}Estímulo fiscal{% endblock %}
+{% block content %}
+<div class="card m-0">
+    <form action="#" method="post">
+        <div class="card-body">
+            <div class="row">
+                <div class="col">
+                    <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required>
+                </div>
+                <div class="col-2 d-flex flex-column justify-content-between">
+                    <div></div>
+                    <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+{% endblock %}

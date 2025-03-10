@@ -1,0 +1,78 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Responsables{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card table-responsive">
+            <div class="card-header pb-0">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#responsableModal"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Agregar responsable</a>
+                            <a class="dropdown-item" href="javascript:void(0);" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item refresh_responsables_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Listado de personal responsable por estación</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-striped table-sm w-100" style="font-size: small;" id="responsables_table">
+                    <thead>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>No de Reloj</th>
+                        <th>Estatus</th>
+                        <th>Puesto</th>
+                        <th>Estación</th>
+                        <th>Alta</th>
+                        <th>Responsable</th>
+                        <th class="w-10">Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>Código</th>
+                        <th>Nombre</th>
+                        <th>No de Reloj</th>
+                        <th>Estatus</th>
+                        <th>Puesto</th>
+                        <th>Estación</th>
+                        <th>Alta</th>
+                        <th>Responsable</th>
+                        <th>Acciones</th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="responsableModal" tabindex="-1" aria-labelledby="responsableModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="responsableModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+{% endblock %}

@@ -1,0 +1,481 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Dashboard de Clientes de Débito y Crédito{% endblock %}
+{% block mycss %}
+<style>
+    .bootstrap-select .dropdown-toggle {
+        max-width: 300px !important; /* Ajusta el 100% a otro valor fijo si es necesario */
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Dashboard de Clientes de Débito y Crédito{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <form action="#" method="get">
+            <div class="row">
+                <div class="col">
+                    <label for="from">Desde</label>
+                    <input type="month" class="form-control" name="from" id="from" value="{{ from }}" required>
+                </div>
+                <div class="col">
+                    <label for="until">Hasta</label>
+                    <input type="month" class="form-control" name="until" id="until" value="{{ until }}" required>
+                </div>
+                <div class="col">
+                    <label for="cliente">Cliente</label>
+                    <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="cliente" name="cliente[]" data-width="100%" multiple placeholder="Seleccione un cliente"></select>
+                </div>
+                <div class="col" style="padding-top: 19px">
+                    <input type="hidden" name="codcli">
+                    <button id="submitButton" class="btn btn-primary btn-block w-100">Generar reporte</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<div class="row">
+    <div class="col-xl-6 col-xxl-5 d-flex">
+        <div class="w-100">
+            <div class="row">
+                <div class="col-sm-6">
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col mt-0">
+                                    <h5 class="card-title">Clientes débito</h5>
+                                </div>
+                                <div class="col-auto">
+                                    <div class="stat text-primary">
+                                        <i data-feather="users"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <h2 class="mt-1 mb-3">{{ debits|length | number_format(0,'.',',') }} clientes</h2>
+                            <div class="mb-0">
+                                <span class="badge badge-primary-light">{{ debits|last['AcumuladoRegistros'] |number_format(0,'.',',') }}</span>
+                                <span class="text-muted">consumos</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col mt-0">
+                                    <h5 class="card-title">Totales débito</h5>
+                                </div>
+
+                                <div class="col-auto">
+                                    <div class="stat text-primary">
+                                        <i data-feather="dollar-sign"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <h2 class="mt-1 mb-3">$ {{ debits|last['TotalesGenerales'] | number_format(2, '.', ',') }}</h2>
+                            <div class="mb-0">
+                                <span class="badge badge-primary-light">{{ debits|last['AcumuladoVolumenesTotales'] | number_format(0,'.',',') }}</span>
+                                <span class="text-muted">Volumen en litros</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col mt-0">
+                                    <h5 class="card-title">Clientes crédito</h5>
+                                </div>
+
+                                <div class="col-auto">
+                                    <div class="stat text-primary">
+                                        <i data-feather="users"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <h2 class="mt-1 mb-3">{{ credits|length | number_format(0,'.',',') }} clientes</h2>
+                            <div class="mb-0">
+                                <span class="badge badge-primary-light">{{ credits|last['AcumuladoRegistros'] |number_format(0,'.',',') }}</span>
+                                <span class="text-muted"> consumos</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card shadow">
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col mt-0">
+                                    <h5 class="card-title">Totales crédito</h5>
+                                </div>
+
+                                <div class="col-auto">
+                                    <div class="stat text-primary">
+                                        <i data-feather="dollar-sign"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <h2 class="mt-1 mb-3">$ {{ credits|last['TotalesGenerales'] | number_format(2, '.', ',') }}</h2>
+                            <div class="mb-0">
+                                <span class="badge badge-primary-light">{{ credits|last['AcumuladoVolumenesTotales'] | number_format(0,'.',',') }}</span>
+                                <span class="text-muted">Volumen en litros</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-6 col-xxl-7">
+        <div class="card flex-fill w-100 shadow">
+            <div class="card-header">
+                <div class="float-end">
+                    <div class="col-auto">
+                        <button class="btn btn-sm btn-primary"><i data-feather="download"></i></button>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Montos mensuales</h5>
+            </div>
+            <div class="card-body pt-2 pb-3">
+                <div class="chart chart-sm"><div class="chartjs-size-monitor"><div class="chartjs-size-monitor-expand"><div class=""></div></div><div class="chartjs-size-monitor-shrink"><div class=""></div></div></div>
+                    <canvas id="myChart" style="display: block; height: 250px; width: 100% !important;" width="840" height="312" class="chartjs-render-monitor"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12 col-lg-8 col-xxl-8 d-flex">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </a>
+
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#">Action</a>
+                            <a class="dropdown-item" href="#">Another action</a>
+                            <a class="dropdown-item" href="#">Something else here</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Clientes de crédito</h5>
+            </div>
+            <table class="table table-borderless my-0">
+                <thead>
+                <tr>
+                    <th>Clientes</th>
+                    <th>Consumos</th>
+                    <th class="d-none d-xxl-table-cell">Volumen</th>
+                    <th class="d-none d-xl-table-cell">Monto</th>
+                    <th>Porcentaje</th>
+                    <th class="d-none d-xl-table-cell">Acciones</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total Clientes</strong>
+                                <div class="text-muted">
+                                    {{ debits|length | number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total despachos</strong>
+                                <div class="text-muted">
+                                    {{ debits|last['AcumuladoRegistros'] |number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xxl-table-cell">
+                        <strong>Litros</strong>
+                        <div class="text-muted">
+                            {{ debits|last['AcumuladoVolumenesTotales'] | number_format(3,'.',',') }}
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <strong>Total</strong>
+                        <div class="text-muted">
+                            $ {{ debits|last['TotalesGenerales'] | number_format(2, '.', ',') }}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column w-100">
+                            <span class="me-2 mb-1 text-muted">100%</span>
+                            <div class="progress progress-sm bg-success-light w-100">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 100%;"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <a href="#" class="btn btn-primary btn-sm"><i data-feather="eye"></i> </a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total Clientes</strong>
+                                <div class="text-muted">
+                                    {{ debits80|length | number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total despachos</strong>
+                                <div class="text-muted">
+                                    {{ debits80|last['AcumuladoRegistros'] |number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xxl-table-cell">
+                        <strong>Litros</strong>
+                        <div class="text-muted">
+                            {{ debits80|last['AcumuladoVolumenesTotales'] | number_format(3,'.',',') }}
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <strong>Total</strong>
+                        <div class="text-muted">
+                            $ {{ debits80|last['TotalesGenerales'] | number_format(2, '.', ',') }}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column w-100">
+                            <span class="me-2 mb-1 text-muted">80%</span>
+                            <div class="progress progress-sm bg-primary-light w-100">
+                                <div class="progress-bar bg-primary" role="progressbar" style="width: 80%;"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <a href="#" class="btn btn-primary btn-sm"><i data-feather="eye"></i> </a>
+                    </td>
+                </tr>
+                <tr>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total Clientes</strong>
+                                <div class="text-muted">
+                                    {{ (debits|length - debits80|length) | number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex">
+                            <div class="flex-grow-1 ms-3">
+                                <strong>Total despachos</strong>
+                                <div class="text-muted">
+                                    {{ (debits|last['AcumuladoRegistros'] - debits80|last['AcumuladoRegistros']) |number_format(0,'.',',') }}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xxl-table-cell">
+                        <strong>Litros</strong>
+                        <div class="text-muted">
+                            {{ (debits|last['AcumuladoVolumenesTotales'] - debits80|last['AcumuladoVolumenesTotales']) | number_format(3,'.',',') }}
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <strong>Total</strong>
+                        <div class="text-muted">
+                            $ {{ (debits|last['TotalesGenerales'] - debits80|last['TotalesGenerales']) | number_format(2, '.', ',') }}
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column w-100">
+                            <span class="me-2 mb-1 text-muted">20%</span>
+                            <div class="progress progress-sm bg-info-light w-100">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: 20%;"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <a href="#" class="btn btn-primary btn-sm"><i data-feather="eye"></i> </a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4 col-xxl-4 d-flex">
+        <div class="card flex-fill w-100">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </a>
+
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#">Action</a>
+                            <a class="dropdown-item" href="#">Another action</a>
+                            <a class="dropdown-item" href="#">Something else here</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Browser Usage</h5>
+            </div>
+            <div class="card-body d-flex">
+                <div class="align-self-center w-100">
+                    <div class="py-3">
+                        <div class="chart chart-xs"><div class="chartjs-size-monitor"><div class="chartjs-size-monitor-expand"><div class=""></div></div><div class="chartjs-size-monitor-shrink"><div class=""></div></div></div>
+                            <canvas id="myDoughnutChart" style="display: block; height: 150px; width: 282px;" width="253" height="134" class="chartjs-render-monitor"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+<script>
+    $(document).ready(function() {
+        // Vamos a agregar la clase .loading a nuestro body
+        $('.container-fluid').addClass('loading');
+        // Vamos a popular el select #cliente con los clientes que tenemos en la base de datos
+        $.ajax({
+            url: '/administration/search_credit_and_debits_clients',
+            type: 'GET',
+            dataType: 'json',
+            success: function(data) {
+                $('#cliente').empty();
+                $.each(data, function(i, item) {
+                    console.log(item);
+                    $('#cliente').append($('<option>', {
+                        value: item.cod,
+                        text: item.den
+                    }));
+                });
+                $('#cliente').selectpicker('refresh');
+            },
+            error: function(data) {
+                console.log(data);
+            },
+            complete: function() {
+                $('.container-fluid').removeClass('loading');
+            }
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+
+        // Datos pasados desde PHP a Twig
+        var labels = {{ labels_graph1|raw }};
+        var values_graph1_debitos = {{ values_graph1_debitos|raw }};
+        var values_graph1_creditos = {{ values_graph1_creditos|raw }};
+
+
+        var ctx = document.getElementById('myChart').getContext('2d');
+
+        var myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels, // etiquetas para el eje x
+                datasets: [
+                    {
+                        label: 'Montos Débito',
+                        data: values_graph1_debitos, // datos del primer dataset
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 1,
+                        fill: false
+                    },
+                    {
+                        label: 'Montos Crédito',
+                        data: values_graph1_creditos, // datos del segundo dataset
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                        borderWidth: 1,
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', (event) => {
+        var ctx = document.getElementById('myDoughnutChart').getContext('2d');
+
+        var myDoughnutChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Montos Débito', 'Montos Crédito'],
+                datasets: [
+                    {
+                        label: 'Dataset 1',
+                        data: [300, 50], // Primer conjunto de datos
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.2)',
+                            'rgba(153, 102, 255, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(153, 102, 255, 1)'
+                        ],
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Dataset 2',
+                        data: [100, 200], // Segundo conjunto de datos
+                        backgroundColor: [
+                            'rgba(255, 206, 86, 0.2)',
+                            'rgba(54, 162, 235, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(255, 206, 86, 1)',
+                            'rgba(54, 162, 235, 1)'
+                        ],
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                }
+            }
+        });
+    });
+</script>
+
+
+{% endblock %}

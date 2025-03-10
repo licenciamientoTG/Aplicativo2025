@@ -1,0 +1,483 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Cd. Juárez{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Historico Precios{% endblock %}
+{% block content %}
+
+<style>
+.group_column{
+    background-color: #36c733 !important;
+    --bs-table-bg:#36c733 !important;
+}
+.style_card_graph{
+        display: flex;
+    padding: 30px;
+    flex-direction: column;
+    align-content: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.card-title{
+    font-size: 1.2rem;
+}
+</style>
+<div class="card col-12">
+    <div class="card-body">
+        <div class="card-body">
+            <form action="graph_prices"  method="get">
+
+                <div class="row">
+                    <div class="col-2">
+                        <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                        <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+    
+                    </div>
+                    <div class="col-2">
+                        <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                        <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                    </div>
+                    <div class="col-2">
+                        <label for="plaza_id" class="col-form-label col-form-label-sm">Plaza: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="plaza_id" id="plaza_id"  required>
+                            {% for plaza in plazas %}
+                            <option value="{{ plaza.Id_plaza }}" {{ (plaza_id == plaza.Id_plaza) ? "selected" : "" }} >{{ plaza.nombre }} </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 d-flex flex-column justify-content-between">
+                        <div></div>
+                        <button type="submit" class="btn btn-primary btn-block w-100" style="margin-top: 32px;">Buscar</button>
+
+                        <!-- <button type="button" id="search_graph" class="btn btn-primary btn-block w-100">
+                            <i data-feather="search"></i> Buscar
+                        </button> -->
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="no_selected">
+    <div class="col-12">
+        <div class="alert alert-warning alert-dismissible" role="alert">
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="alert-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            </div>
+            <div class="alert-message">
+                <strong>¡Atención!</strong> Seleccione un rango de fechas y una plaza para generar el reporte
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="div_graph" hidden>
+
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="maxima-tab" data-bs-toggle="tab" data-bs-target="#maxima" type="button" role="tab" aria-controls="maxima" aria-selected="true">T- Máxima</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="super-tab" data-bs-toggle="tab" data-bs-target="#super" type="button" role="tab" aria-controls="super" aria-selected="false">T- Super</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="diesel-tab" data-bs-toggle="tab" data-bs-target="#diesel" type="button" role="tab" aria-controls="diesel" aria-selected="false">Diesel</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="myTabContent">
+        <div class="tab-pane fade show active" id="maxima" role="tabpanel" aria-labelledby="maxima-tab">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card flex-fill">
+                        <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                            <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                        </svg>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                        <a class="dropdown-item historic_price_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0">Histórico de Precios T-Maxima</h5>
+                        </div>
+                        <div class="card-body table-responsive">
+                            <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_table_pivot" data-product="1" data-from="{{from}}" data-until="{{until}}">
+                                <thead>
+                                <tr>
+                                <th class="table-success">Grupo</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                                <tfoot>
+                                <tr>
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_semanal">T-Máxima  (Semanal)</h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="week_graph_maxima"></canvas></div>
+                    </div>
+                </div>
+            </div>
+    
+    
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_mensual">T-Máxima  (Mensual)</h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="month_graph_maxima"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="super" role="tabpanel" aria-labelledby="super-tab">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card flex-fill">
+                        <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                            <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                        </svg>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                        <a class="dropdown-item historic_price_super_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0">Histórico de Precios T-Super</h5>
+                        </div>
+                        <div class="card-body table-responsive">
+                            <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_super_table_pivot" data-product="2" data-from="{{from}}" data-until="{{until}}">
+                                <thead>
+                                <tr>
+                                <th class="table-primary">Grupo</th>
+                                    
+                                </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+    
+                                <tfoot>
+                                <tr>
+                                    
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_semanal_super"></h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="week_graph_super"></canvas></div>
+                    </div>
+                </div>
+            </div>
+    
+    
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_mensual_super">T-Super (Mensual)</h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="month_graph_super"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="diesel" role="tabpanel" aria-labelledby="diesel-tab">
+             <div class="row">
+                <div class="col-12">
+                    <div class="card flex-fill">
+                        <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                            <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                        </svg>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end">
+                                        <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                        <a class="dropdown-item historic_price_diesel_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0">Histórico de Precios Diesel</h5>
+                        </div>
+                        <div class="card-body table-responsive">
+                            <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_diesel_table_pivot" data-product="3" data-from="{{from}}" data-until="{{until}}">
+                                <thead>
+                                <tr>
+                                <th class="table-dark">Grupo</th>
+                                   
+                                </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+    
+                                <tfoot>
+                                <tr>
+                                    
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_semanal_diesel">Diesel  (Semanal)</h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="week_graph_diesel"></canvas></div>
+                    </div>
+                </div>
+            </div>
+    
+    
+    
+            <div class="row">
+             <div class="col-12">
+                <div class="card flex-fill style_card_graph" style="padding:30px">
+                   <div class="card-header">
+                            <div class="card-actions float-end">
+                                <div class="dropdown position-relative">
+                                </div>
+                            </div>
+                            <h5 class="card-title mb-0 title_mensual_diesel">Diesel  (Mensual)</h5>
+                        </div>
+                     <div style="width: 80%;"><canvas id="month_graph_diesel"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}/direction/graph_historic_prices.js"></script>
+
+<script>
+    // var months = {{ months|json_encode()|raw }};
+    // var labels = {{ ticket_users_labels|raw }};
+    // var values = {{ ticket_users_values|raw }};
+
+    var fromDatepost = "{{ from | raw }}";   // El valor de 'from' desde PHP
+    var untilDatepost = "{{ until | raw }}";  // El valor de 'until' desde PHP
+    var plazaIdpost = "{{ plaza_id | raw }}";  // El valor de 'plaza_id' desde PHP
+
+    console.log(fromDatepost);
+    console.log(untilDatepost);
+    console.log(plazaIdpost);
+
+    var week_graph_maxima = document.getElementById('week_graph_maxima').getContext('2d');
+    var month_graph_maxima = document.getElementById('month_graph_maxima').getContext('2d');
+
+    var week_graph_super= document.getElementById('week_graph_super').getContext('2d');
+    var month_graph_super = document.getElementById('month_graph_super').getContext('2d');
+
+
+    var week_graph_diesel= document.getElementById('week_graph_diesel').getContext('2d');
+    var month_graph_diesel = document.getElementById('month_graph_diesel').getContext('2d');
+
+document.addEventListener('DOMContentLoaded', async function() {
+
+    if (plazaIdpost != 0 && fromDatepost != '' && untilDatepost != '') {
+        toggleVisibility();
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
+        var plaza_id = document.getElementById('plaza_id').value;
+        var title_semanal = document.querySelector('.title_semanal');
+        var title_mensual = document.querySelector('.title_mensual');
+
+        var title_semanal_super = document.querySelector('.title_semanal_super');
+        var title_mensual_super = document.querySelector('.title_mensual_super');
+
+        var title_semanal_diesel = document.querySelector('.title_semanal_diesel');
+        var title_mensual_diesel = document.querySelector('.title_mensual_diesel');
+
+        var plazaSelect = document.getElementById('plaza_id'); // Selección del elemento select
+
+        function capitalizeWords(str) {
+            return str
+                .trim() // Eliminar espacios al principio y al final
+                .toLowerCase() // Convertir todo a minúsculas
+                .split(' ') // Dividir la cadena en palabras
+                .map(word => {
+                    // Capitalizar solo la primera letra de cada palabra
+                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                })
+                .join(' '); // Volver a unir las palabras
+        }
+
+        var plazaNombre = plazaSelect.options[plazaSelect.selectedIndex].text;
+        var plazaNombreCapitalizado = capitalizeWords(plazaNombre);
+
+        title_semanal.innerHTML = `T-Máxima (Semanal) - ${plazaNombreCapitalizado}`;
+        title_mensual.innerHTML = `T-Máxima (Mensual) - ${plazaNombreCapitalizado}`;
+
+        title_semanal_super.innerHTML = `T-Super (Semanal) - ${plazaNombreCapitalizado}`;
+        title_mensual_super.innerHTML = `T-Super (Mensual) - ${plazaNombreCapitalizado}`;
+
+        title_semanal_diesel.innerHTML = `Diesel (Semanal) - ${plazaNombreCapitalizado}`;
+        title_mensual_diesel.innerHTML = `Diesel (Mensual) - ${plazaNombreCapitalizado}`;
+
+        var currentYear = new Date().getFullYear();
+        
+        // Obtener el año de fromDate y untilDate
+        var fromYear = new Date(fromDate).getFullYear();
+        var untilYear = new Date(untilDate).getFullYear();
+        toggleVisibility();
+
+        if (fromYear === currentYear && untilYear === currentYear) {
+
+            await historic_price_table_pivot();
+            await historic_price_super_table_pivot();
+            
+            if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+                await historic_price_diesel_table_pivot();
+            }
+        }
+
+        await graph_week(week_graph_maxima,1);
+        await graph_month(month_graph_maxima,1);
+
+        await graph_week(week_graph_super,2);
+        await graph_month(month_graph_super,2);
+
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8){
+            console.log('entro');
+            await graph_week(week_graph_diesel,3);
+            await graph_month(month_graph_diesel,3);
+        }else{
+
+        
+        }
+        
+    }
+});
+
+$('#search_graph').on('click', async function () {
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var plaza_id = document.getElementById('plaza_id').value;
+    console.log(plaza_id);
+
+    var currentYear = new Date().getFullYear();
+    
+    // Obtener el año de fromDate y untilDate
+    var fromYear = new Date(fromDate).getFullYear();
+    var untilYear = new Date(untilDate).getFullYear();
+    toggleVisibility();
+
+    if (fromYear === currentYear && untilYear === currentYear) {
+
+        await historic_price_table_pivot();
+        await historic_price_super_table_pivot();
+        
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await historic_price_diesel_table_pivot();
+        }
+    }
+
+    await graph_week(week_graph_maxima,1);
+    await graph_month(month_graph_maxima,1);
+
+    await graph_week(week_graph_super,2);
+    await graph_month(month_graph_super,2);
+
+    if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8){
+        console.log('entro');
+        await graph_week(week_graph_diesel,3);
+        await graph_month(month_graph_diesel,3);
+    }else{
+
+      
+    }
+
+
+});
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+// var day_months = {{ daysArray|json_encode()|raw }};
+// var Id_plaza = {{ Id_plaza|json_encode()|raw }};
+// var product = {{ product|json_encode()|raw }};
+// const dynamicColumns = [
+//     { 'data': 'grupo' },
+// ];
+// day_months.forEach(function(process) {
+//     dynamicColumns.push({ 'data': process.formatted });
+// });
+// dynamicColumns.push({ 'data': 'average' });
+
+
+ </script>
+
+{% endblock %}
+
+

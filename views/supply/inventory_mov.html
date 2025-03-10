@@ -1,0 +1,87 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Abastos - Inventarios por turnos{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Inventarios por turnos{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form action="/supply/inventory_mov" method="get">
+            <div class="row">
+                <div class="col">
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from }}" required>
+                </div>
+                <div class="col">
+                    <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" required>
+                        {% for station in stations %}
+                        <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if station_id != false %}
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="javascript:void(0);" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item refresh_inventory_mov_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0"></h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table class="table table-borderless my-0 w-100 table-striped" id="inventory_mov_table">
+                    <thead>
+                    <tr>
+                        <th>ESTACIÓN</th>
+                        <th>TURNO</th>
+                        <th>PRODUCTO</th>
+                        <th>CAP. OPERATIVA</th>
+                        <th>VOLUMEN</th>
+                        <th>PORCENTAJE</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>ESTACIÓN</th>
+                        <th>TURNO</th>
+                        <th>PRODUCTO</th>
+                        <th>CAP. OPERATIVA</th>
+                        <th>VOLUMEN</th>
+                        <th>PORCENTAJE</th>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning alert-dismissible" role="alert">
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="alert-message">
+        <strong>¡Atención!</strong> Seleccione una estación para generar el reporte de inventarios por turnos
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+{% endblock %}

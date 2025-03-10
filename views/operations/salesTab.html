@@ -1,0 +1,240 @@
+<div class="card {{ status == 2 ? 'shadow-success' : 'shadow' }}">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                         class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="javascript:void(0);" id="exportExcel" data-bs-toggle="modal" data-bs-target="#wadModalSales"><i data-feather="file-text"></i> Agregar fajilla</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Ventas {{ status == 2 ? '<b class="text-success">(Cerrado)</b>' : '' }}</h5>
+    </div>
+    <div class="card-body table-responsive">
+        {# Tabla de asignaciones #}
+            <!-- Ahora vamos a introducir 1 cards por cada isla-->
+            {% for key, amount in valoresPorIsla %}
+            <div class="row d-flex pair-of-tables" id="row_{{ amount[0].codisl }}">
+                <div class="col-sm-5 mb-sm-0 d-flex flex-fill">
+                    <div class="card shadow flex-fill">
+                        <div class="card-body table-responsive">
+                            <h5 class="card-title">Formas de pago - {{ amount[0]['Isla'] }}</h5>
+                            <table class="table table-sm table-striped table-hover table-payments table1" style="font-size: x-small">
+                                <thead>
+                                <tr>
+                                    <th>FORMA PAGO</th>
+                                    <th>MONTO</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {% set total_amounts = 0 %}
+                                {% for row in amount %}
+                                    {% set total_amounts = (total_amounts + row.Total) %}
+                                    <tr>
+                                        <td class="text-nowrap">{{ row.ValorDescripcion }}</td>
+                                        <td class="text-nowrap">$ {{ row.Total | number_format(2) }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                <tr>
+                                    <th class="text-end">TOTAL</th>
+                                    <th class="text-nowrap">$ {{ total_amounts | number_format(2) }}</th>
+                                </tr>
+                                <tr>
+                                    <th class="text-end">Dif. Contado x Acreditar</th>
+                                    <th class="text-nowrap diff"></th>
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        {% if turno == 11 or turno == 41 %}
+                        <div class="card-footer">
+                            <form action="/operations/addWadSales2/{{ tabId }}/{{ amount[0].codisl }}" method="post" class="row formulario-ajax">
+                                <div class="col-5">
+                                    <label for="amount" class="visually-hidden">Monto: </label>
+                                    <!-- Aqui debo tomar el segundo parámetro-->
+                                    <input type="number" name="amount" id="amount" step="0.01" min="0.01" max="{{ LimiteFajilla }}" class="form-control form-control-sm" placeholder="0.00" required autofocus>
+                                    <p class="text-danger m-0 p-0"><small id="small_limit">Límite máximo:  ${{ LimiteFajilla | number_format(2) }}</small></p>
+                                </div>
+                                <div class="col-5">
+                                    <label for="currency" class="visually-hidden">Moneda: </label>
+                                    <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="currency" id="currency" placeholder="Moneda" required>
+                                        <option value="MXN" selected>MXN</option>
+                                        <option value="USD">USD</option>
+                                        <option value="MRL">MORRALLA</option>
+                                    </select>
+                                </div>
+                                <div class="col-2">
+                                    <input type="hidden" name="codisl" id="codisl" value="{{ amount[0].codisl }}">
+                                    <input type="hidden" name="Total" id="Total" value="{{ Total }}">
+                                    <input type="hidden" name="TotalPending" id="TotalPending" value="{{ TotalPending }}">
+                                    <input type="hidden" name="tabId" id="inputTabId" value="{{ tabId }}">
+                                    <input type="hidden" name="CodigoEstacion" value="{{ codigoestacion }}">
+                                    <input type="hidden" name="FechaTabular" value="{{ fechatabular }}">
+                                    <input type="hidden" name="Turno" id="Turno" value="{{ turno }}">
+                                    <input type="hidden" name="exchange_now" id="exchange_now" value="{{ exchange_now }}">
+                                    <input type="hidden" name="DBString" id="DBString" value="{{ DBString }}">
+                                    <input type="hidden" name="LimiteFajilla" id="LimiteFajilla" value="{{ LimiteFajilla }}">
+                                    <input type="hidden" name="islands" id="islands" value="{{ islands }}">
+                                    <input type="hidden" name="TotalDiff" id="TotalDiff" value="">
+                                    <button type="submit" class="btn btn-primary btn-sm w-100 mb-3 text-center" value="addWad" name="action" id="submitButton"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-save align-middle"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg></button>
+                                </div>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-sm-7 mb-3 mb-sm-0 d-flex flex-fill">
+                    <div class="card shadow flex-fill">
+                        <div class="card-body table-responsive">
+                            <h5 class="card-title">Ventas totales - {{ amount[0]['Isla'] }}</h5>
+                            <table class="table table-sm table-striped table-hover table-values table2" style="font-size: x-small">
+                                <thead>
+                                <tr>
+                                    <th>BOMBA</th>
+                                    <th>PRODUCTO</th>
+                                    <th>INICIAL</th>
+                                    <th>FINAL</th>
+                                    <th>VENDIDO</th>
+                                    <th>IMPORTE</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <!-- Vamos a crear una variable llamada total para totalizar en el footer -->
+                                {% set total = 0 %}
+                                {% for row in lecturasPorIsla[amount[0].codisl] %}
+                                <!-- Vamos a crear una variable llamada total para totalizar en el footer -->
+                                {% set total = total + row.finalAmount %}
+                                <tr>
+                                    <td class="text-nowrap">{{ row.nrobom }}</td>
+                                    <td class="text-nowrap">{{ row.Producto }}</td>
+                                    <td class="text-nowrap">{{ row.initialElectronicReading | number_format(3) }}</td>
+                                    <td class="text-nowrap">{{ (row.initialElectronicReading + row.finalElectronicReading) | number_format(3) }}</td>
+                                    <td class="text-nowrap">{{ row.finalElectronicReading | number_format(3) }}</td>
+                                    <td class="text-nowrap">$ {{ row.finalAmount | number_format(2) }}</td>
+                                </tr>
+                                {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                <tr>
+                                    <th colspan="5" class="text-end">TOTAL</th>
+                                    <th class="text-nowrap">$ {{ total | number_format(2) }}</th>
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+<script>
+    $(document).ready(function() {
+        $('.pair-of-tables').each(function() {
+
+            var limite_fajilla = {{ LimiteFajilla }};
+
+            var table1 = $(this).find('.table1');
+            var table2 = $(this).find('.table2');
+
+            var total1 = getTotal(table1);
+            var total2 = getTotal(table2);
+
+            var difference = total1 - total2;
+            console.log(difference + ' ' + limite_fajilla)
+
+            // Ahora sobre la table1 vamos a buscar el input#TotalDiff y le vamos a asignar el valor de difference
+            $(this).find('#TotalDiff').val(Math.abs(difference));
+
+            table1.find('.diff').append((difference < 0 ? '$ ' : '$ +' ) + difference.toLocaleString('en-US', {minimumFractionDigits: 2}) ).addClass(difference != 0 ? 'text-danger' : 'text-success');
+
+            if (difference > 0) {
+                // Ahora vamos a buscar el formulario y deshabilitar el input de amount y el input submit
+                table1.closest('.card').find('form input#amount').attr('disabled', 'disabled');
+                table1.closest('.card').find('form button#submitButton').attr('disabled', 'disabled');
+
+                // Ahora vamos a buscar el small#small_limit y vamos a poner el valor de LimiteFajilla
+                table1.closest('.card').find('small#small_limit').text('Límite alcanzado');
+            } else if(Math.abs(difference) < limite_fajilla) {
+                // Ahora vamos a buscar el formulario y poner el atributo max al input de amount
+                table1.closest('.card').find('form input#amount').attr('max', Math.abs(difference).toFixed(2));
+                // Ahora vamos a buscar el small#small_limit y vamos a poner el valor de LimiteFajilla
+                table1.closest('.card').find('small#small_limit').text('Límite máximo: $' + Math.abs(difference).toFixed(2));
+            }
+        });
+
+        function getTotal($table) {
+            var total = 0;
+            $table.find('tbody tr').each(function() {
+                var amount = parseFloat($(this).find('td:last-child').text().replace('$', '').replace(',', ''));
+                total += amount;
+            });
+            return total;
+        }
+
+        // Deseleccionar cualquier elemento seleccionado
+        $('.selectpicker').selectpicker();
+
+        // Vamos a inicializar las tablas con la clase table-values
+        $('.table-values').DataTable({
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none table-values',
+                }
+            ],
+            // Vamos a remover el input de busqueda
+            searching: false,
+            // Vamos a remover el paginador
+            paging: false,
+            // Vamos a remover la información de la cantidad de registros
+            info: false,
+            deferRender: true,
+            order: [[5, 'desc']],
+            initComplete: function () {
+                // $('.dt-buttons').addClass('d-none'); // Ocultar los botones de exportación
+                $('.table-responsive').removeClass('loading');
+            },
+        });
+
+        // Vamos a inicializar las tablas con la clase table-payments
+        $('.table-payments').DataTable({
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none table-payments',
+                }
+            ],
+            // Vamos a remover el input de busqueda
+            searching: false,
+            // Vamos a remover el paginador
+            paging: false,
+            // Vamos a remover la información de la cantidad de registros
+            info: false,
+            deferRender: true,
+            initComplete: function () {
+                // $('.dt-buttons').addClass('d-none'); // Ocultar los botones de exportación
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+
+        // Cuando se envie el formuario #addWadSalesForm vamos a poner la clase loading al modal
+        $('#addWadSalesForm').submit(function() {
+            $('#wadModalSales').addClass('loading');
+        });
+    });
+</script>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/_assets/models/DespachosLealtadModel.php" dialect="TSQL" />
+    <file url="file://$PROJECT_DIR$/_assets/models/DespachosModel.php" dialect="TSQL" />
+    <file url="file://$PROJECT_DIR$/_assets/models/VentasModel.php" dialect="TSQL" />
+    <file url="file://C:/xampp/htdocs/ConsumosLealtad.php" dialect="TSQL" />
+  </component>
+</project>

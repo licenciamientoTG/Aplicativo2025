@@ -1,0 +1,98 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Anticipos y consumos del cliente{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Anticipos y consumos del cliente{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-actions float-end">
+            <span class="badge text-bg-primary" id="badge-registers" style="font-size: 1rem !important;"></span>
+            <span class="badge text-bg-secondary" id="badge-anticipos" style="font-size: 1rem !important;"></span>
+            <span class="badge text-bg-info text-light" id="badge-consumos" style="font-size: 1rem !important;"></span>
+            <span class="badge text-light" id="badge-diferencia" style="font-size: 1rem !important;"></span>
+        </div>
+    </div>
+    <div class="card-header">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item refresh_datatables_credit_debit" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Depósitos y consumos</h5>
+    </div>
+
+    <div class="card-body">
+        <div id="filtro-datatables_customer_advances_details" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RFC" placeholder="RFC"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACDESP" placeholder="FAC/DESP"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTOANTICIPO" placeholder="ANTCICIPO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTOCONSUMO" placeholder="CONSUMO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDO" placeholder="SALDO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACION"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+
+                <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+            </div>
+            <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+        <table id="datatables_customer_advances_details" class="table table-sm w-100" style="font-size:small;">
+            <thead>
+            <tr>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>RFC</th>
+                <th>TIPO</th>
+                <th>FACT/DESP</th>
+                <th>PRODUCTO</th>
+                <th>ANTICIPO</th>
+                <th>CONSUMO</th>
+                <th>SALDO</th>
+                <th>ESTACIÓN</th>
+                <th>FECHA</th>
+            </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+            <tr>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>RFC</th>
+                <th>TIPO</th>
+                <th>FACT</th>
+                <th>PRODUCTO</th>
+                <th>ANTICIPO</th>
+                <th>CONSUMO</th>
+                <th>SALDO</th>
+                <th>ESTACIÓN</th>
+                <th>FECHA</th>
+            </tr>
+            </tfoot>
+        </table>
+
+        <input type="hidden" id="codcli" value="{{ codcli }}">
+        <input type="hidden" id="from" value="{{ from }}">
+        <input type="hidden" id="until" value="{{ until }}">
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+{% endblock %}

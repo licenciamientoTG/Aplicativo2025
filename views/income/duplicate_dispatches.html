@@ -1,0 +1,142 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Despachos Duplicados{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Ingresos{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item refresh_datatables_duplicate_dispatches" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Despachos Duplicados</h5>
+    </div>
+    <div class="card m-0">
+        <form action="#" method="get">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2">
+                        <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                        <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                    </div>
+                    <div class="col-2">
+                        <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                        <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                    </div>
+                    <div class="col-2">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación" required>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <label for="clientName" class="col-form-label col-form-label-sm">Cliente: </label>
+                        <input type="text" class="form-control" name="clientName" id="clientName" value="{{ clientName == false ? '' : clientName }}" placeholder="%Nombre de cliente%">
+                    </div>
+                    <div class="col-2">
+                        <label for="interval" class="col-form-label col-form-label-sm">Intérvalo: </label>
+                        <input type="text" class="form-control" name="interval" id="interval" value="{{ interval == false ? '15' : interval }}">
+                    </div>
+                    <div class="col-2 d-flex flex-column justify-content-between">
+                        <div></div>
+                        <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="card-body table-responsive">
+    {% if from == false %}
+        <div class="row">
+            <div class="col-12">
+                <h4>Seleccione una fecha para generar el reporte</h4>
+            </div>
+        </div>
+    {% else %}
+        <div id="filtro-container" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí, por ejemplo, inputs, selects, etc. -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="HORA" placeholder="Hora"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESPACHO" placeholder="Despacho"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="Cod Cliente"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="Cliente"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="Tipo"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PLACAS" placeholder="Placas"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TARJETA" placeholder="Tarjeta"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="GRUPO" placeholder="Grupo"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESCRIPCION" placeholder="Descripción"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="LITROS" placeholder="Litros"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="Monto"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="Producto"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACIÓN" placeholder="Estación"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="BOMBA" placeholder="Bomba"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="INCIDENCIA" placeholder="Incidencia"></div>
+                <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh_datatables_duplicate_dispatches"><i data-feather="refresh-ccw"></i></button></div>
+            </div>
+        <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+        <table id="datatables_duplicate_dispatches" class="table table-sm w-100 text-nowrap" style="font-size:x-small;" data-from="{{ from }}"  data-until="{{ until }}" data-interval="{{ interval }}" data-codgas="{{ codgas }}" data-client="{{ clientName }}">
+            <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>HORA</th>
+                    <th>DESPACHO</th>
+                    <th>COD CLIENTE</th>
+                    <th>CLIENTE</th>
+                    <th>TIPO</th>
+                    <th>PLACAS</th>
+                    <th>TARJETA</th>
+                    <th>GRUPO</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>LITROS</th>
+                    <th>MONTO</th>
+                    <th>PRODUCTO</th>
+                    <th>ESTACIÓN</th>
+                    <th>BOMBA</th>
+                    <th>INCIDENCIA</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>FECHA</th>
+                    <th>HORA</th>
+                    <th>DESPACHO</th>
+                    <th>COD CLIENTE</th>
+                    <th>CLIENTE</th>
+                    <th>TIPO</th>
+                    <th>PLACAS</th>
+                    <th>TARJETA</th>
+                    <th>GRUPO</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>LITROS</th>
+                    <th>MONTO</th>
+                    <th>PRODUCTO</th>
+                    <th>ESTACIÓN</th>
+                    <th>BOMBA</th>
+                    <th>INCIDENCIA</th>
+                </tr>
+            </tfoot>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}income.js"></script>
+{% endblock %}

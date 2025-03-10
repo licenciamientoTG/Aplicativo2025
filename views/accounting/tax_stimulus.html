@@ -1,0 +1,135 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Contabilidad{% endblock %}
+{% block mycss %}
+<style>
+    td {
+        padding: 4px !important;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Estímulo fiscal{% endblock %}
+{% block content %}
+<div class="card m-0">
+    <form action="#" method="post">
+        <div class="card-body">
+            <div class="row">
+                <div class="col">
+                    <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required>
+                </div>
+                <div class="col">
+                    <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                    <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}" required>
+                </div>
+                <div class="col">
+                    <label for="codgas" class="col-form-label col-form-label-sm">Estímulo 87: </label>
+                    <input type="number" class="form-control" name="est87" id="est87" min="0" max="5" step="0.01" value="{{ est87 is defined ? est87 : 0.00 }}" required>
+                </div>
+                <div class="col">
+                    <label for="codgas" class="col-form-label col-form-label-sm">Estímulo 91: </label>
+                    <input type="number" class="form-control" name="est91" id="est91" min="0" max="5" step="0.01" value="{{ est91 is defined ? est91 : 0.00 }}" required>
+                </div>
+                <div class="col-2 d-flex flex-column justify-content-between">
+                    <div></div>
+                    <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% if from != false %}
+<div class="row">
+    <div class="col-12 mt-3">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item refresh_stimulus_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Estímulo fiscal</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <div id="filtro-stimulus_table" class="mb-1">
+                    <div class="row">
+                        <!-- Agrega tus elementos de filtrado aquí -->
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="cveest" placeholder="Estación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="station" placeholder="Gasolinera"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="tax_date" placeholder="Fecha Corte"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="nropcc" placeholder="Permiso CRE"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="product" placeholder="Producto"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Cve_Producto" placeholder="Cve Producto"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="less150" placeholder="Menores 150"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="more150" placeholder="Mayores 150"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="consumes" placeholder="Consumos Propios"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="calibration" placeholder="Calibración"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="dues" placeholder="Cuota Estímulo"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="volume" placeholder="Volumen"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="volume_controlgas" placeholder="Volumen Volumétrico"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="difference" placeholder="Variación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="amount" placeholder="Importe Estímulo"></div>
+                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                    </div>
+                    <!-- Puedes agregar más filtros según tus necesidades -->
+                </div>
+                <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: x-small" id="stimulus_table">
+                    <thead>
+                    <tr>
+                        <th class="p-1">Estación</th>
+                        <th class="p-1">Gasolinera</th>
+                        <th class="p-1">Fecha Corte</th>
+                        <th class="p-1">Permiso CRE</th>
+                        <th class="p-1">Producto</th>
+                        <th class="p-1">Cve Producto</th>
+                        <th class="p-1">Menores 150</th>
+                        <th class="p-1">Mayores 150</th>
+                        <th class="p-1">Consumos Propios</th>
+                        <th class="p-1">Calibración</th>
+                        <th class="p-1">Cuota Estímulo</th>
+                        <th class="p-1">Volumen</th>
+                        <th class="p-1">Volumen Volumétrico</th>
+                        <th class="p-1">Variación</th>
+                        <th class="p-1">Importe Estímulo</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>Estación</th>
+                        <th>Gasolinera</th>
+                        <th>Fecha Corte</th>
+                        <th>Permiso CRE</th>
+                        <th>Producto</th>
+                        <th>Cve Producto</th>
+                        <th>Menores 150</th>
+                        <th>Mayores 150</th>
+                        <th>Consumos Propios</th>
+                        <th>Calibración</th>
+                        <th>Cuota Estímulo</th>
+                        <th>Volumen</th>
+                        <th>Volumen Volumétrico</th>
+                        <th>Variación</th>
+                        <th>Importe Estímulo</th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+{% endblock %}

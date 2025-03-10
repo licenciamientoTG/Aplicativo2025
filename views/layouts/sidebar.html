@@ -1,0 +1,421 @@
+<style type="text/css">
+  .menu_open{
+    background-color: #ffffff36 !important;
+    color: #ffffff !important;
+  }
+  .active_item{
+    background-color: #ffffff36 !important;
+    color: #ffffff !important;
+    font-weight: bolder !important;
+  }
+  .active_header{
+    background-color: #ffffff36 !important;
+    color: #ffffff !important;
+    font-weight: bolder !important;
+    padding: 1rem 1rem .375rem;
+  }
+</style>
+<nav id="sidebar" class="sidebar js-sidebar">
+  <div class="sidebar-content js-simplebar">
+    <a class="sidebar-brand" href="/home/index">
+      <img src="{{ IMAGES }}logos/logo_TotalGas_hor_azul.png" class="img-fluid" alt="...">
+    </a>
+    <ul class="sidebar-nav">
+      <li class="sidebar-item active">
+        <a class="sidebar-link" href="/home/index">
+          <i class="align-middle" data-feather="pie-chart"></i> <span class="align-middle">Dashboard</span>
+        </a>
+      </li>
+
+
+      {% if authorized(7) %} {# Ver módulo de Administración #}
+      <li class="sidebar-header">ADMINISTRACIÓN</li>
+      {% if authorized(8) %}
+      <li class="sidebar-item">
+        <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+        </a>
+        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a></li>
+        </ul>
+        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
+        </ul>
+      </li>
+      <li class="sidebar-item">
+        <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+        </a>
+        {% if authorized(41) %}
+        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
+        </ul>
+        {% endif %}
+
+        {% if authorized(39) %}
+        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
+        </ul>
+        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
+        </ul>
+        {% endif %}
+
+      </li>
+      {% endif %}
+      {% endif %}
+
+      {% if authorized(43) %} {# Ver módulo de Direccion #}
+      <li class="sidebar-header">DIRECCION</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/direction/monthly_dollar_sales_report"><i data-feather="dollar-sign"></i><span class="align-middle">Venta Dolares Mensual</span></a>
+      </li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/direction/tg6"><i data-feather="dollar-sign"></i><span class="align-middle">TG6</span></a>
+      </li>
+      <li class="sidebar-item">
+        <a data-bs-target="#direction_historic_prices" data-bs-toggle="collapse" class="sidebar-link collapsed active" aria-expanded="false">
+          <i data-feather="dollar-sign"></i> <span class="align-middle">Historico De Precios</span>
+        </a>
+        <ul id="direction_historic_prices" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/direction/historic_prices ">Historico</a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/direction/graph_prices">Graficos</a></li>
+        </ul>
+      </li>
+      <li class="sidebar-item">
+        <a data-bs-target="#direction_shortage_hours" data-bs-toggle="collapse" class="sidebar-link collapsed "  aria-expanded="false">
+          <i data-feather="arrow-down"></i> <span class="align-middle">Horas Sin Combustible</span>
+        </a>
+        <ul id="direction_shortage_hours" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link " href="/direction/historic_shortage ">Historico</a></li>
+          <li class="sidebar-item"><a class="sidebar-link " href="/direction/monthly_summary_shortge ">Resumen Mensual</a></li>
+          <li class="sidebar-item "><a class="sidebar-link  " href="/direction/daily_summary_shortge/1 ">T-Máxima</a></li>
+          <li class="sidebar-item"><a class="sidebar-link " href="/direction/daily_summary_shortge/2 ">T-Super</a></li>
+          <li class="sidebar-item "><a class="sidebar-link " href="/direction/daily_summary_shortge/3 ">Diesel</a></li>
+        </ul>
+      </li>
+
+      <!-- <li class="sidebar-item">
+        <a class="sidebar-link" href="/direction/historic_prices"><i data-feather="dollar-sign"></i><span class="align-middle">Historico De Precios</span></a>
+      </li> -->
+      {% endif %}
+
+
+
+
+
+
+      {% if authorized(32) %} {# Ver módulo de Abastos #}
+        <li class="sidebar-header">ABASTOS</li>
+        {% if authorized(33) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#supply_reports" data-bs-toggle="collapse" class="sidebar-link collapsed " aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="supply_reports" class="sidebar-dropdown list-unstyled collapse " data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/supply/inventory">Inventario de tanques</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/supply/tgr01">Mermas por estación</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/supply/creProducts">Combustibles por estaciones</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/supply/creSuppliers">Proveedores de combustible</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/supply/creCarriers">Transportistas</a></li>
+          </ul>
+        </li>
+        {% endif %}
+        {% if authorized(40) %}
+          {% if authorized(42) %}
+          <li class="sidebar-item">
+            <a data-bs-target="#supply_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+              <i data-feather="clipboard"></i> <span class="align-middle">Herramientas</span>
+            </a>
+            <ul id="supply_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+              <li class="sidebar-item"><a class="sidebar-link" href="/supply/fuel_prices">Precios de combustibles</a></li>
+              <li class="sidebar-item"><a class="sidebar-link" href="/supply/bulkUpload">Generación XML (Masivo)</a></li>
+            </ul>
+          </li>
+          {% endif %}
+        {% endif %}
+      {% endif %}
+      {% if authorized(62) %}
+        <li class="sidebar-header">COMERCIAL</li>
+        <li class="sidebar-item">
+          <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link collapsed " aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="commercial_reports" class="sidebar-dropdown list-unstyled collapse " data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sales_indicators">Indicadores de Venta</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_month_turn">Vta Mensual x Turno</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_day_turn">Ventas x Dia x Turno </a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_type_payment">Venta Por Rubro</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_week_zone">Vta Sem x Zona</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_lubricants">Venta Lubricantes</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/mystery_shopper">Mystery Shopper</a></li>
+          </ul>
+        </li>
+       
+      {% endif %}
+
+      {% if authorized(19) %}
+      <li class="sidebar-header">OPERACIONES</li>
+        {% if authorized(21) %}
+        <li class="sidebar-item">
+          <a class="sidebar-link" href="/operations/tabulator">
+            <i data-feather="dollar-sign"></i>
+            <span class="align-middle">Tabulador</span>
+          </a>
+        </li>
+        {% endif %}
+        {% if authorized(37) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#operations_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="operations_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            {% if authorized(38) %}
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/operations/sales">Ventas </a>
+            </li>
+            {% endif %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_day_turn">Ventas x Dia x Turno </a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/monitor">Monitor Tabuladores </a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/responsables">Responsables </a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/islands">Islas </a></li>
+            {% if authorized(49) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_stations">Ventas por estación</a></li>
+            {% endif %}
+          </ul>
+        </li>
+        {% endif %}
+      {% endif %}
+
+      {% if authorized(13) %}
+      <li class="sidebar-header">INGRESOS</li>
+      {% if authorized(14) %}
+      <li class="sidebar-item">
+        <a data-bs-target="#income_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+        </a>
+        <ul id="income_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(15) %}
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/duplicate_dispatches">Despachos duplicados </a></li>
+          {% endif %}
+          {% if authorized(16) %}
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/credit_debit_dispatches">Despachos Crédito y Débito </a></li>
+          {% endif %}
+          {% if authorized(31) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/income/vehicles">Vehículos </a></li>
+          {% endif %}
+          {% if authorized(34) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/income/kioskos">Ventas Kioskos </a></li>
+          {% endif %}
+          {% if authorized(35) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/income/diffs">Diferencias Crédito/Débito </a></li>
+          {% endif %}
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/control_dispatches">Control de Despachos </a></li>
+        </ul>
+      </li>
+      <li class="sidebar-item">
+        <a data-bs-target="#income_invoice_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="clipboard"></i> <span class="align-middle">Reportes Facturas</span>
+        </a>
+        <ul id="income_invoice_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/invoice_unstamped">Factura sin Timbrar </a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/overall_invoice">Factura Global </a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/invoiced_dispatched">Despachos facturados</a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/dispatches_clients_credit">Despachos Facturados Clientes Credito </a></li>
+          {% if authorized(36) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/income/pending_dispatches">Despachos pendientes por facturar </a></li>
+          {% endif %}
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/relation_invoice_advance">Relacion Facturas Anticipo </a></li>
+        </ul>
+      </li>
+      {% endif %}
+      {% if authorized(53) %}
+      <li class="sidebar-item">
+        <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+        </a>
+        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(52) %}
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/checking_tickets">Comprobación tickets</a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/print_labels">Generación de etiquetas</a></li>
+          {% endif %}
+        </ul>
+      </li>
+      {% endif %}
+      {% endif %}
+
+      {% if authorized(45) %}
+      <li class="sidebar-header">CONTABILIDAD</li>
+
+      {% if authorized(46) %}
+      <li class="sidebar-item">
+        <a data-bs-target="#accounting_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+        </a>
+        <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(47) %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a>
+          </li>
+          {% endif %}
+          {% if authorized(48) %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/inventories">Inventarios/Mermas</a>
+          </li>
+          {% endif %}
+          {% if authorized(61) %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/invoices">Facturas</a>
+          </li>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/income_statement">Estado Resultados</a>
+          </li>
+          {% endif %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/accounting/purchase_invoice">Compras Combustible</a>
+          </li>
+        </ul>
+      </li>
+      {% endif %}
+      {% endif %}
+
+      {% if authorized(23) %}
+      <li class="sidebar-header">MARKETING</li>
+
+        {% if authorized(24) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#marketing_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+          </a>
+          {% if authorized(26) %}
+          <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
+            </li>
+          </ul>
+
+          <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/mqg_cards">Tarjetas MasQueGas</a>
+            </li>
+          </ul>
+
+          {% endif %}
+        </li>
+        {% endif %}
+        {% if authorized(25) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#marketing_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="marketing_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r01">R01 Reporte de Sergio Martínez</a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r02">R02 Despachos pendientes facturar</a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r03">R03 Depósitos (Pagos C/Tarjeta)</a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r04">R04 Estímulo fiscal IEPS</a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r05">R05 Facturas vencidad</a>
+            </li>
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/r06">R06 Tarjeta a cliente</a>
+            </li>
+          </ul>
+        </li>
+        {% endif %}
+      {% endif %}
+
+      {% if authorized(3) %}
+      <li class="sidebar-header">SISTEMAS</li>
+        {% if authorized(22) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#it_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+          </a>
+          <ul id="it_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/it/date_to_int">Convertidor de fechas</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/it/release_dispatches">Liberador de despachos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/it/stations">Creador de estaciones</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/it/send_consumes">Enviar consumos</a></li>
+          </ul>
+        </li>
+        {% endif %}
+
+        {% if  authorized(4) %}
+        <li class="sidebar-item">
+          <a class="sidebar-link" href="/it/users">
+            <i data-feather="users"></i>
+            <span class="align-middle">Usuarios</span>
+          </a>
+        </li>
+        {% endif %}
+
+        {% if authorized(5) %}
+        <li class="sidebar-item">
+          <a class="sidebar-link" href="/it/permissions">
+            <i data-feather="shield"></i>
+            <span class="align-middle">Permisos</span>
+          </a>
+        </li>
+        {% endif %}
+      {% endif %}
+    </ul>
+  </div>
+</nav>
+
+<!-- <script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Get current path
+    const currentPath = window.location.pathname;
+    
+    // Select all sidebar links
+    const sidebarLinks = document.querySelectorAll('.sidebar-link');
+    function findSidebarHeader(element) {
+        let current = element;
+        while (current && !current.classList.contains('sidebar-header')) {
+            current = current.previousElementSibling;
+        }
+        return current;
+    }
+    // Iterate through links
+    sidebarLinks.forEach(link => {
+        // Compare link path with current path
+        if (link.getAttribute('href') === currentPath) {
+            // Add 'active' class to the link
+            link.classList.add('active_item');
+            // Add 'active' class to parent sidebar-item
+            const parentItem = link.closest('.sidebar-item');
+            parentItem.classList.add('active');
+            // Find and open the parent collapse menu if it exists
+            const parentCollapseMenu = parentItem.closest('ul.sidebar-dropdown');
+            if (parentCollapseMenu) {
+                // Add 'show' class to the collapse menu
+                parentCollapseMenu.classList.add('show');
+                // Find the trigger link and update its attributes
+                const triggerLink = parentCollapseMenu.previousElementSibling;
+                if (triggerLink && triggerLink.hasAttribute('data-bs-toggle')) {
+                    triggerLink.classList.remove('collapsed');
+                    triggerLink.setAttribute('aria-expanded', 'true');
+                }
+                // Add 'show' class to all sibling collapse menus
+                const siblingCollapseMenus = document.querySelectorAll(`ul#${parentCollapseMenu.id}`);
+                siblingCollapseMenus.forEach(menu => {
+                    menu.classList.add('show');
+                });
+
+                const header = findSidebarHeader(parentCollapseMenu.parentElement);
+                if (header) {
+                    header.classList.add('active_header');
+                }
+            }
+        }
+    });
+});
+</script> -->

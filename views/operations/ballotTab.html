@@ -1,0 +1,154 @@
+<div class="row">
+    <div class="col-4">
+        <div class="card">
+        <div class="card-body shadow">
+            <h5 class="card-title text-nowrap" style="color: gray;">Formulario (traslado de valores)</h5>
+            <form id="formBallot" method="post" action="/operations/formBallot">
+                <div class="mb-3">
+                    <label for="rem" class="form-label">No. Remision</label>
+                    <input type="number" min="1" step="1" class="form-control" id="rem" name="rem" required>
+                </div>
+                <div class="mb-3">
+                    <label for="tipo" class="form-label">Tipo</label>
+                    <select class="form-control" name="tipo" id="tipo" required>
+                        <option value="0">Seleciona una opcion</option>
+                        <option class="" value="MXN">Moneda Nacional</option>
+                        <option class="" value="USD">Dolares</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="cambio" class="form-label">Tipo de cambio</label>
+                    <input type="number" class="form-control" id="cambio" name="cambio" value="{{exchange_now}}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label for="sello" class="form-label">SeguriSello</label>
+                    <input type="text" class="form-control" id="sello" name="sello" required>
+                </div>
+                <div class="mb-3">
+                    <label for="fajilla" class="form-label">Fajillas</label>
+                    <input type="number" class="form-control" id="fajilla" name="fajilla"  required>
+                </div>
+                <input type="hidden" name="codest" value="{{ codest }}">
+                <input type="hidden" name="fecha" value="{{ fecha }}">
+                <input type="hidden" name="turno" value="{{ turno }}">
+                <input type="hidden" name="tabId" value="{{ tabId }}">
+                <input type="submit" value="Generar" class="btn btn-primary">
+            </form>
+        </div>
+        <div></div>
+    </div>
+    </div>
+    <div class="col-8">
+        <div class="card">
+        <div class="card-body shadow">
+            <h5 class="card-title text-nowrap" style="color: gray;">Papeletas</h5>
+            <table class="table table-sm" id="ballot_table">
+                <thead>
+                  <tr>
+                    <th scope="col">No. Remision</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Segurisello</th>
+                    <th scope="col">Fajillas</th>
+                    <th scope="col">Monto</th>
+                    <th scope="col">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                  </tr>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th scope="col">No. Remision</th>
+                        <th scope="col">Tipo</th>
+                        <th scope="col">Segurisello</th>
+                        <th scope="col">Fajillas</th>
+                        <th scope="col">Monto</th>
+                        <th scope="col">Acciones</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        </div>
+    </div>
+</div>
+
+<script>
+
+$(document).ready(function(){
+    $("#tipo").change(function(){
+        var tipoSeleccionado = $(this).val(); // Obtener el valor seleccionado
+
+        console.log("Tipo seleccionado:", tipoSeleccionado);
+        $.ajax({
+            url: "/operations/getvalues/" + tipoSeleccionado + '/' + "{{ codest }}",
+            type: "POST", // O usa "GET" si es necesario
+            success: function(response) {
+                console.log("Respuesta recibida:", response);
+                // Puedes actualizar un elemento de la página con los datos recibidos
+                $("#resultado").html(response);
+            },
+            error: function(xhr, status, error) {
+                console.error("Error en la petición AJAX:", error);
+            }
+        });
+    });
+
+    // Vamos a inicializar la tabla con el id ballot_table
+    $('#ballot_table').DataTable({
+        "paging": false,
+        "info": false,
+        "searching": false,
+        "ordering": false,
+        "autoWidth": false,
+        "responsive": true,
+        ajax: {
+            url: '/operations/ballot_table/' + {{ tabId }},
+            error: function() {
+                $('#ballot_table').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: [
+            {'data': 'NoRemision'},
+            {'data': 'Tipo'},
+            {'data': 'Segurisello'},
+            {'data': 'Fajillas'},
+            {'data': 'Monto'},
+            {'data': 'Acciones'}
+        ]
+    });
+
+})
+    document.getElementById("formBallot").addEventListener("submit", function(event) {
+    let cambioInput = document.getElementById("cambio");
+    let cambioValor = parseFloat(cambioInput.value);
+
+    if (isNaN(cambioValor) || cambioValor <= 0) {
+        alert("Numero invalido");
+        event.preventDefault();
+    }
+    if (fajilla.value < 0) {
+        alert("Numero invalido");
+        event.preventDefault();
+    }
+    if (rem.value == null) {
+        alert("Falta el numero de remision");
+        event.preventDefault();
+    }
+
+
+
+});
+</script>

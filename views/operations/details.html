@@ -1,0 +1,81 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Detalles por estación{% endblock %}
+{% block content %}
+
+<div class="row">
+    <div class="card shadow">
+        <div class="card-header">
+            <div class="card-actions float-end">
+                <div class="dropdown position-relative">
+                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                            <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                        </svg>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end">
+                        <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                        <a class="dropdown-item refresh_stimulus_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                    </div>
+                </div>
+            </div>
+            <h5 class="card-title mb-0">Inventarios y mermas</h5>
+        </div>
+        <div class="card-body table-responsive">
+            <div id="filtro-inventories_details_table" class="mb-1">
+                <div class="row">
+                    <!-- Agrega tus elementos de filtrado aquí -->
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACION"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOINICIAL" placeholder="SALDOINICIAL"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="COMPRAS" placeholder="COMPRAS"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VENTAS" placeholder="VENTAS"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDO" placeholder="SALDO"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOREAL" placeholder="SALDOREAL"></div>
+                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MERMA" placeholder="MERMA"></div>
+                    <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                </div>
+                <!-- Puedes agregar más filtros según tus necesidades -->
+            </div>
+            <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="inventories_details_table">
+                <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>ESTACIÓN</th>
+                    <th>PRODUCTO</th>
+                    <th>SALDOINICIAL</th>
+                    <th>COMPRAS</th>
+                    <th>VENTAS</th>
+                    <th>SALDO</th>
+                    <th>SALDOREAL</th>
+                    <th>MERMA</th>
+                </tr>
+                </thead>
+                <tbody>
+
+                </tbody>
+                <tfoot>
+                <tr>
+                    <th>FECHA</th>
+                    <th>ESTACIÓN</th>
+                    <th>PRODUCTO</th>
+                    <th>SALDOINICIAL</th>
+                    <th>COMPRAS</th>
+                    <th>VENTAS</th>
+                    <th>SALDO</th>
+                    <th>SALDOREAL</th>
+                    <th>MERMA</th>
+                </tr>
+                </tfoot>
+            </table>
+            <input type="hidden" name="from" id="from" value="{{ from }}">
+            <input type="hidden" name="until" id="until" value="{{ until }}">
+            <input type="hidden" name="codgas" id="codgas" value="{{ codgas }}">
+            <input type="hidden" name="codprd" id="codprd" value="{{ codprd }}">
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Anticipos{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Anticipos{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="row mt-3">
+        <div class="col-12 d-flex">
+            <div class="card flex-fill">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                            </a>
+
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item" href="#">Another action</a>
+                                <a class="dropdown-item" href="#">Something else here</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Registros de anticipos</h5>
+                </div>
+                <div class="card-body table-responsive">
+
+                    <div id="filtro-datatables_anticipos" class="mb-1">
+                        <div class="row">
+                            <!-- Agrega tus elementos de filtrado aquí -->
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACTURA" placeholder="FACTURA"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CUENTA" placeholder="CUENTA"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="MONTO"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="IVA" placeholder="IVA"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TOTAL" placeholder="TOTAL"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CFDI" placeholder="CFDI"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PAGO" placeholder="PAGO"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACION"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="REGISTRO" placeholder="REGISTRO"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                            <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                        </div>
+                        <!-- Puedes agregar más filtros según tus necesidades -->
+                    </div>
+                    <table id="datatables_anticipos" class="table table-sm w-100" style="font-size:small;">
+                        <thead>
+                        <tr>
+                            <th>FACTURA</th>
+                            <th>TIPO</th>
+                            <th>PRODUCTO</th>
+                            <th>CUENTA</th>
+                            <th>MONTO</th>
+                            <th>IVA</th>
+                            <th>TOTAL</th>
+                            <th>CFDI</th>
+                            <th>PAGO</th>
+                            <th>CLIENTE</th>
+                            <th>ESTACION</th>
+                            <th>REGISTRO</th>
+                            <th>FECHA</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                        <tfoot>
+                        <tr>
+                            <th>FACTURA</th>
+                            <th>TIPO</th>
+                            <th>PRODUCTO</th>
+                            <th>CUENTA</th>
+                            <th>MONTO</th>
+                            <th>IVA</th>
+                            <th>TOTAL</th>
+                            <th>CFDI</th>
+                            <th>PAGO</th>
+                            <th>CLIENTE</th>
+                            <th>ESTACION</th>
+                            <th>REGISTRO</th>
+                            <th>FECHA</th>
+                        </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <input type="hidden" id="from" value="{{ from }}">
+    <input type="hidden" id="until" value="{{ until }}">
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+{% endblock %}

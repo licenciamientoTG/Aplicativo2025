@@ -1,0 +1,328 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Cd. Juárez{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}{{name_plaza}}{% endblock %}
+{% block content %}
+
+<style>
+.group_column{
+    background-color: #36c733 !important;
+    --bs-table-bg:#36c733 !important;
+}
+.style_card_graph{
+        display: flex;
+    padding: 30px;
+    flex-direction: column;
+    align-content: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+</style>
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="maxima-tab" data-bs-toggle="tab" data-bs-target="#maxima" type="button" role="tab" aria-controls="maxima" aria-selected="true">T- Máxima</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="super-tab" data-bs-toggle="tab" data-bs-target="#super" type="button" role="tab" aria-controls="super" aria-selected="false">T- Super</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="diesel-tab" data-bs-toggle="tab" data-bs-target="#diesel" type="button" role="tab" aria-controls="diesel" aria-selected="false">Diesel</button>
+  </li>
+</ul>
+<div class="tab-content" id="myTabContent">
+    <div class="tab-pane fade show active" id="maxima" role="tabpanel" aria-labelledby="maxima-tab">
+        <div class="row">
+            <div class="col-12">
+                <div class="card flex-fill">
+                    <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                    </svg>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                    <a class="dropdown-item historic_price_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                </div>
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">Histórico de Precios T-Maxima</h5>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_table_pivot" data-product="1" data-from="{{from}}" data-until="{{until}}">
+                            <thead>
+                            <tr>
+                                <th class="table-success">Grupo</th>
+                                {% for day in daysArray %}
+                                    <th class='table-success' >{{day.display}}</th>
+                                {% endfor %}
+                                <th>Promedio</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+
+                            <tfoot>
+                            <tr>
+                                <th class="table-success">Total</th>
+                                {% for day in daysArray %}
+                                    <th></th>
+                                {% endfor %}
+                                <th></th>
+                            </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">T-Máxima {{name_plaza}} (Semanal)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="week_graph_maxima"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">T-Máxima {{name_plaza}} (Mensual)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="month_graph_maxima"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="super" role="tabpanel" aria-labelledby="super-tab">
+        <div class="row">
+            <div class="col-12">
+                <div class="card flex-fill">
+                    <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                    </svg>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                    <a class="dropdown-item historic_price_super_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                </div>
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">Histórico de Precios T-Super</h5>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_super_table_pivot" data-product="2" data-from="{{from}}" data-until="{{until}}">
+                            <thead>
+                            <tr>
+                                <th class="table-primary">Grupo</th>
+                                {% for day in daysArray %}
+                                    <th class='table-primary' >{{day.display}}</th>
+                                {% endfor %}
+                                <th>Promedio</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+
+                            <tfoot>
+                            <tr>
+                                <th class="table-primary">Total</th>
+                                {% for day in daysArray %}
+                                    <th></th>
+                                {% endfor %}
+                                <th></th>
+                            </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">T-Super {{name_plaza}} (Semanal)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="week_graph_super"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">T-Super {{name_plaza}} (Mensual)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="month_graph_super"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="diesel" role="tabpanel" aria-labelledby="diesel-tab">
+         <div class="row">
+            <div class="col-12">
+                <div class="card flex-fill">
+                    <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                    </svg>
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-end">
+                                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                    <a class="dropdown-item historic_price_diesel_table_pivot" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                                </div>
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">Histórico de Precios Diesel</h5>
+                    </div>
+                    <div class="card-body table-responsive">
+                        <table class="table table-borderless table-striped  table-hover w-100" id="historic_price_diesel_table_pivot" data-product="3" data-from="{{from}}" data-until="{{until}}">
+                            <thead>
+                            <tr>
+                                <th class="table-dark">Grupo</th>
+                                {% for day in daysArray %}
+                                    <th class='table-dark' >{{day.display}}</th>
+                                    {# <th>{{ proces.process_name|replace({'_': ' '})|title }}</th> #}
+                                {% endfor %}
+                                <th>Promedio</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+
+                            <tfoot>
+                            <tr>
+                                <th class="table-dark">Total</th>
+                                {% for day in daysArray %}
+                                    <th></th>
+                                    {# <th>{{ proces.process_name|replace({'_': ' '})|title }}</th> #}
+                                {% endfor %}
+                                <th></th>
+                            </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">Diesel {{name_plaza}} (Semanal)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="week_graph_diesel"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <div class="row">
+         <div class="col-12">
+            <div class="card flex-fill style_card_graph" style="padding:30px">
+               <div class="card-header">
+                        <div class="card-actions float-end">
+                            <div class="dropdown position-relative">
+                            </div>
+                        </div>
+                        <h5 class="card-title mb-0">Diesel {{name_plaza}} (Mensual)</h5>
+                    </div>
+                 <div style="width: 80%;"><canvas id="month_graph_diesel"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+
+{% endblock %}
+{% block myjs %}
+
+<script>
+////////////////////////////////////////////////////////////////////////////////////////////////
+var day_months = {{ daysArray|json_encode()|raw }};
+var Id_plaza = {{ Id_plaza|json_encode()|raw }};
+var product = {{ product|json_encode()|raw }};
+const dynamicColumns = [
+    { 'data': 'grupo' },
+];
+day_months.forEach(function(process) {
+    dynamicColumns.push({ 'data': process.formatted });
+});
+dynamicColumns.push({ 'data': 'average' });
+
+
+ </script>
+<script src="{{ JS }}/direction/graph_historic_prices.js"></script>
+
+<script>
+    const week_graph_maxima = document.getElementById('week_graph_maxima').getContext('2d');
+    const month_graph_maxima = document.getElementById('month_graph_maxima').getContext('2d');
+
+    const week_graph_super= document.getElementById('week_graph_super').getContext('2d');
+    const month_graph_super = document.getElementById('month_graph_super').getContext('2d');
+
+
+    const week_graph_diesel= document.getElementById('week_graph_diesel').getContext('2d');
+    const month_graph_diesel = document.getElementById('month_graph_diesel').getContext('2d');
+
+    graph_week(Id_plaza,week_graph_maxima,1);
+    graph_month(Id_plaza,month_graph_maxima,1);
+
+    graph_week(Id_plaza,week_graph_super,2);
+    graph_month(Id_plaza,month_graph_super,2);
+
+    graph_week(Id_plaza,week_graph_diesel,3);
+    graph_month(Id_plaza,month_graph_diesel,3);
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,64 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Herramientas{% endblock %}
+{% block content %}
+<style>
+    .xml-elemento {
+    border: 1px solid #ddd;
+    margin: 5px;
+    padding: 5px;
+}
+
+.xml-atributos span {
+    margin-right: 5px;
+    font-weight: bold;
+}
+</style>
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-3">
+                <label for="date_to_int" class="form-label">Fecha a entero: </label>
+                <input type="date" class="form-control" id="date_to_int" value="{{ now | date('Y-m-d') }}">
+            </div>
+            <div class="col-3 d-flex flex-column justify-content-between">
+                <div></div>
+                <button type="button" onclick="dateToInt()" class="btn btn-primary btn-block w-100">Filtrar</button>
+            </div>
+            <div class="col-3">
+                <label for="resultInt" class="form-label">Resultado: </label>
+                <input type="number" class="form-control" id="resultInt">
+            </div>
+        </div>
+        <div class="row"><div class="form-text">Toma una fecha como entrada y devuelve un valor numérico que representa la cantidad de días entre la fecha dada y el 1 de enero de 1900.</div></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-3">
+                <label for="int_to_date" class="form-label">Entero a fecha: </label>
+                <input type="number" min="1" max="99999" step="1" class="form-control" id="int_to_date" value="">
+            </div>
+            <div class="col-3 d-flex flex-column justify-content-between">
+                <div></div>
+                <button type="button" onclick="intToDate()" class="btn btn-primary btn-block w-100">Filtrar</button>
+            </div>
+            <div class="col-3">
+                <label for="resultDate" class="form-label">Resultado: </label>
+                <input type="date" class="form-control" id="resultDate">
+            </div>
+        </div>
+        <div class="row"><div class="form-text">Toma un valor numérico como entrada y devuelve una fecha que representa la cantidad de días entre la fecha dada y el 1 de enero de 1900.</div></div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+
+<script>
+
+{% endblock %}

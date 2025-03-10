@@ -1,0 +1,194 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Abastos - Inventario de tanques{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Inventario de tanques{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form action="/supply/inventory" method="post">
+            <div class="row">
+                <div class="col">
+                    <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" placeholder="Seleccione una estación">
+                    {% for station in stations %}
+                        <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                    {% endfor %}
+                    </select>
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% if station_id is defined %}
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                            <a class="dropdown-item refresh_inventory_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">{{ inventory[0].Estacion }}</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <div id="filtro-inventory_table" class="mb-1">
+                    <div class="row">
+                        <!-- Agrega tus elementos de filtrado aquí -->
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="Estación"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="Producto"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CAP" placeholder="Capacidad"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VOLUMEN" placeholder="Volumen"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PORCENTAJE" placeholder="Porcentaje"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VENTA" placeholder="Venta"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PROMEDIO" placeholder="Promedio"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DIASINV" placeholder="Días inventario"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
+                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                    </div>
+                    <!-- Puedes agregar más filtros según tus necesidades -->
+                </div>
+                <table class="table table-borderless my-0 w-100" id="inventory_table">
+                    <thead>
+                    <tr>
+                        <th>ESTACIÓN</th>
+                        <th>PRODUCTO</th>
+                        <th>CAP. OPERATIVA</th>
+                        <th>VOLUMEN</th>
+                        <th>PORCENTAJE</th>
+                        <th>VENTA TOTAL MES</th>
+                        <th>PROM DIA MES</th>
+                        <th>DIAS INV</th>
+                        <th>STATUS</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning alert-dismissible" role="alert">
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="alert-message">
+        <strong>¡Atención!</strong> Seleccione una estación para generar el reporte de inventarios
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+    // Vamos a inicializar el datatable
+    $(document).ready(function() {
+        // Tabla de usuarios
+        let inventory_table = $('#inventory_table').DataTable({
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none',
+                },
+                {
+                    extend: 'pdf', // Agrega el botón de exportación a PDF
+                    className: 'd-none',
+                    text: 'PDF',
+                    customize: function (doc) {
+                        // Establecer la orientación horizontal (apaisada)
+                        doc.pageOrientation = 'landscape';
+                        // Ajustar todas las columnas al ancho del PDF
+                        let colWidths = [];
+                        let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500; // Ancho de página para orientación horizontal o vertical
+                        let totalColWidths = 0;
+
+                        console.log(tableWidth);
+                        $('#inventory_table thead th').each(function () {
+                            let colWidth = $(this).outerWidth() / tableWidth;
+                            totalColWidths += colWidth;
+                            colWidths.push(colWidth * 100 + '%');
+                        });
+
+                        if (totalColWidths < 1) {
+                            colWidths.push('*'); // Columna extra para completar el ancho restante
+                        }
+
+                        doc.content[1].table.widths = colWidths;
+                    }
+                },
+                {
+                    extend: 'print', // Agrega el botón de impresión
+                    className: 'd-none',
+                }
+            ],
+            ajax: {
+                url: '/supply/inventory_table/' + $('select#station_id').val(),
+                error: function() {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: [
+                {'data': 'ESTACION'},
+                {'data': 'PRODUCTO'},
+                {'data': 'CAP', 'render': $.fn.dataTable.render.number( ',', '.', 0, '' )},
+                {'data': 'VOLUMEN'},
+                {'data': 'PORCENTAJE'},
+                {'data': 'VENTA'},
+                {'data': 'PROMEDIO'},
+                {'data': 'DIASINV'},
+                {'data': 'STATUS'},
+            ],
+            initComplete: function () {
+                $('.dt-buttons').addClass('d-none');
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+
+        // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+        $('#filtro-inventory_table input').on('keyup change clear', function () {
+            inventory_table
+                .column(0).search($('#ESTACION').val().trim())
+                .column(1).search($('#PRODUCTO').val().trim())
+                .column(2).search($('#CAP').val().trim())
+                .column(3).search($('#VOLUMEN').val().trim())
+                .column(4).search($('#PORCENTAJE').val().trim())
+                .column(5).search($('#VENTA').val().trim())
+                .column(6).search($('#PROMEDIO').val().trim())
+                .column(7).search($('#DIASINV').val().trim())
+                .column(8).search($('#STATUS').val().trim())
+                .draw();
+        });
+
+        // Agregar un evento clic de refresh
+        $('.refresh_inventory_table').on('click', function () {
+            inventory_table.clear().draw();
+            inventory_table.ajax.reload();
+            $('#inventory_table').waitMe('hide');
+        });
+    });
+</script>
+{% endblock %}

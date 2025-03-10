@@ -1,0 +1,109 @@
+<nav class="navbar navbar-expand navbar-light navbar-bg">
+    <a class="sidebar-toggle js-sidebar-toggle"><i class="hamburger align-self-center"></i></a>
+    <div class="navbar-collapse collapse">
+        {# <ul class="navbar-nav d-none d-lg-flex">
+            <li class="nav-item px-2 dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="megaDropdown" role="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    Mega Menu
+                </a>
+                <div class="dropdown-menu dropdown-menu-start dropdown-mega" aria-labelledby="megaDropdown">
+                    <div class="d-md-flex align-items-start justify-content-start">
+                        <div class="dropdown-mega-list">
+                            <div class="dropdown-header">UI Elements</div>
+                            <a class="dropdown-item" href="#">Alerts</a>
+                            <a class="dropdown-item" href="#">Buttons</a>
+                            <a class="dropdown-item" href="#">Cards</a>
+                            <a class="dropdown-item" href="#">Carousel</a>
+                            <a class="dropdown-item" href="#">General</a>
+                            <a class="dropdown-item" href="#">Grid</a>
+                            <a class="dropdown-item" href="#">Modals</a>
+                            <a class="dropdown-item" href="#">Tabs</a>
+                            <a class="dropdown-item" href="#">Typography</a>
+                        </div>
+                        <div class="dropdown-mega-list">
+                            <div class="dropdown-header">Forms</div>
+                            <a class="dropdown-item" href="#">Layouts</a>
+                            <a class="dropdown-item" href="#">Basic Inputs</a>
+                            <a class="dropdown-item" href="#">Input Groups</a>
+                            <a class="dropdown-item" href="#">Advanced Inputs</a>
+                            <a class="dropdown-item" href="#">Editors</a>
+                            <a class="dropdown-item" href="#">Validation</a>
+                            <a class="dropdown-item" href="#">Wizard</a>
+                        </div>
+                        <div class="dropdown-mega-list">
+                            <div class="dropdown-header">Tables</div>
+                            <a class="dropdown-item" href="#">Basic Tables</a>
+                            <a class="dropdown-item" href="#">Responsive Table</a>
+                            <a class="dropdown-item" href="#">Table with Buttons</a>
+                            <a class="dropdown-item" href="#">Column Search</a>
+                            <a class="dropdown-item" href="#">Muulti Selection</a>
+                            <a class="dropdown-item" href="#">Ajax Sourced Data</a>
+                        </div>
+                    </div>
+                </div>
+            </li>
+        </ul> #}
+        <ul class="navbar-nav navbar-align">
+            <li class="nav-item dropdown">
+                <a class="nav-icon dropdown-toggle" href="#" id="alertsDropdown" data-bs-toggle="dropdown">
+                    <div class="position-relative">
+                        <i class="align-middle" data-feather="bell"></i>
+                        <span class="indicator">0</span>
+                    </div>
+                </a>
+                <div class="dropdown-menu dropdown-menu-lg dropdown-menu-end py-0" aria-labelledby="alertsDropdown">
+                    <div class="dropdown-menu-header">
+                        0 Notificaciones nuevas
+                    </div>
+                    <div class="list-group">
+                        <a href="#" class="list-group-item">
+                            <div class="row g-0 align-items-center">
+                                <div class="col-2">
+                                    <i class="text-success" data-feather="check-circle"></i>
+                                </div>
+                                <div class="col-10">
+                                    <div class="text-dark">No existen notificaciones</div>
+                                    {# <div class="text-muted small mt-1">Restart server 12 to complete the update.</div> #}
+                                    {# <div class="text-muted small mt-1">30m ago</div> #}
+                                </div>
+                            </div>
+                        </a>
+                        {# Utilizar este código cuando se vayan a mandar llamar notificaciones para los usuarios #}
+                        {# <a href="#" class="list-group-item">
+                            <div class="row g-0 align-items-center">
+                                <div class="col-2">
+                                    <i class="text-danger" data-feather="alert-circle"></i>
+                                </div>
+                                <div class="col-10">
+                                    <div class="text-dark">Update completed</div>
+                                    <div class="text-muted small mt-1">Restart server 12 to complete the update.</div>
+                                    <div class="text-muted small mt-1">30m ago</div>
+                                </div>
+                            </div>
+                        </a> #}
+                    </div>
+                    {# <div class="dropdown-menu-footer">
+                        <a href="#" class="text-muted">Show all notifications</a>
+                    </div> #}
+                </div>
+            </li>
+            <li class="nav-item dropdown">
+                <a class="nav-icon dropdown-toggle d-inline-block d-sm-none" href="#" data-bs-toggle="dropdown">
+                    <i class="align-middle" data-feather="settings"></i>
+                </a>
+                <a class="nav-link dropdown-toggle d-none d-sm-inline-block" href="#" data-bs-toggle="dropdown">
+                    <i class="align-middle me-1" data-feather="user" style="width: 25px; height: 25px"></i> <span class="text-dark">{{ tg_user.Usuario }}</span>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="/it/profile"><i class="align-middle me-1" data-feather="user"></i> Perfil</a>
+                    <a class="dropdown-item" href="/it/binnacle"><i class="align-middle me-1" data-feather="calendar"></i> Bitácora de actividades</a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item" href="https://totalgas.mojohelpdesk.com/"><i class="align-middle me-1" data-feather="settings"></i> Mojo Helpdesk </a>
+                    <a class="dropdown-item" data-bs-toggle="modal" data-bs-target="#termsModal"><i class="align-middle me-1" data-feather="edit-3"></i> Terminos y condiciones </a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item" href="/_assets/includes/logout.inc.php"><i class="align-middle me-1" data-feather="log-out"></i> Cerrar sesión</a>
+                </div>
+            </li>
+        </ul>
+    </div>
+</nav>

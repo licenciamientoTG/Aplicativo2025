@@ -1,0 +1,33 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Etiquetas{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Etiquetas{% endblock %}
+{% block content %}
+<div class="card m-0">
+    <form action="#" method="post">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-2">
+                    <label for="until" class="col-form-label col-form-label-sm">Gasolinera: </label>
+                    <input type="text" class="form-control" name="station" id="station" value="">
+                </div>
+                <div class="col-2">
+                    <label for="from" class="col-form-label col-form-label-sm">Inicio: </label>
+                    <input type="number" step="1" min="1" max="999" class="form-control" name="from" id="from" value="1">
+                </div>
+                <div class="col-2">
+                    <label for="until" class="col-form-label col-form-label-sm">Final: </label>
+                    <input type="number" step="1" min="1" max="999" class="form-control" name="until" id="until" value="1">
+                </div>
+                <div class="col-2 d-flex flex-column justify-content-between">
+                    <div></div>
+                    <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}income.js"></script>
+{% endblock %}

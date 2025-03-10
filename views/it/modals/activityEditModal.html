@@ -1,0 +1,29 @@
+<form action="/it/edit_activity" method="post">
+    <div class="modal-body p-0">
+        <div class="mb-3">
+            <label for="activity_date" class="form-label">Fecha: </label>
+            <input type="date" class="form-control" id="activity_date" name="activity_date" value="{{ activity.activity_date }}">
+        </div>
+        <div class="mb-3">
+            <label for="start_hour" class="form-label">Hora inicial: </label>
+            <input type="time" class="form-control" id="start_hour" name="start_hour" value="{{ activity.start_hour }}" min="00:00" max="23:30" required>
+        </div>
+        <div class="mb-3">
+            <label for="end_hour" class="form-label">Hora final: </label>
+            <input type="time" class="form-control" id="end_hour" name="end_hour" value="{{ activity.end_hour }}" min="00:00" max="23:30" required>
+        </div>
+        <div class="mb-3">
+            <label for="title" class="form-label">Título: </label>
+            <input class="form-control" type="text" name="title" id="title" value="{{ activity.title }}">
+        </div>
+        <div class="mb-3">
+            <label for="description" class="form-label">Descripción: </label>
+            <textarea class="form-control" placeholder="Agregue la descripción del permiso" id="description" name="description">{{ activity.description }}</textarea>
+        </div>
+    </div>
+    <div class="modal-footer px-0">
+        <input type="hidden" name="id" id="activity_id" value="{{ activity.id }}">
+        <button type="submit" class="btn btn-primary">Editar actividad</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+    </div>
+</form>

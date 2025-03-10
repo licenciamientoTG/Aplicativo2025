@@ -1,0 +1,96 @@
+<form action="/operations/markDispatchesForm" id="markDispatchesForm" method="post">
+    <div class="modal-body">
+        {# Tabular #}
+        <div class="row g-3 mb-2 align-items-center">
+            <div class="col-3">
+              <label for="tabId" class="col-form-label w-100 text-end col-form-label-sm">Tabulador:</label>
+            </div>
+            <div class="col-9">
+              <input type="text" id="tabId" class="form-control form-control-sm" disabled readonly value="{{ tabular.Id }}">
+            </div>
+        </div>
+        {# Fecha #}
+        <div class="row g-3 mb-2 align-items-center">
+            <div class="col-3">
+              <label for="tabDate" class="col-form-label w-100 text-end col-form-label-sm">Fecha:</label>
+            </div>
+            <div class="col-9">
+              <input type="date" id="tabDate" class="form-control form-control-sm" disabled readonly value="{{ tabular.FechaTabular }}">
+            </div>
+        </div>
+        {# Turno #}
+        <div class="row g-3 mb-2 align-items-center">
+            <div class="col-3">
+              <label for="shift" class="col-form-label w-100 text-end col-form-label-sm">Turno:</label>
+            </div>
+            <div class="col-9">
+              <input type="text" id="shift" class="form-control form-control-sm" disabled readonly value="{{ tabular.Turno }}">
+            </div>
+        </div>
+
+
+        {# Tabular #}
+        <div class="row g-3 mb-2 align-items-center">
+          <div class="col-3">
+            <label for="CodigoValor" class="col-form-label w-100 text-end col-form-label-sm">Descripción:</label>
+          </div>
+          <div class="col-9">
+            <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="CodigoValor" id="CodigoValor" placeholder="Seleccione descripción" required>
+              <option value="13">Tarjeta EfectiCard</option>
+              <option value="14">Tarjeta TicketCar</option>
+              <option value="15">Tarjeta Inburgas</option>
+              <option value="16">Tarjeta Sodexo</option>
+              <option value="17">Tarjetas Afirme</option>
+              <option value="18">Tarjetas American Express</option>
+              <option value="19">Tarjetas Bancomer</option>
+              <option value="20">Tarjetas Banorte</option>
+              <option value="21">Tarjetas Santander</option>
+              <option value="22">Tarjetas Scotiabank</option>
+              <option value="23">Raspaditos</option>
+              <option value="24">Ultra Gas</option>
+              <option value="25">Vale Sodexo</option>
+              <option value="26">Vale Endenred</option>
+              <option value="27">Vale Efectivale</option>
+              <option value="28">Mobil FleetPro</option>
+              <option value="29">Promociones MKT</option>
+              <option value="30">Transferencias</option>
+            </select>
+          </div>
+      </div>
+
+      <div class="row g-3 mb-2 align-items-center">
+        <div class="col-3">
+          <label for="CodigoTar" class="col-form-label w-100 text-end col-form-label-sm"># Tarjeta:</label>
+        </div>
+        <div class="col-9">
+          <input type="text" id="CodigoTar" name="CodigoTar" class="form-control form-control-sm" maxlength="4" value="{{ now|date('md')}}" readonly>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-2 align-items-center">
+        <div class="col-3">
+          <label for="CodigoRut" class="col-form-label w-100 text-end col-form-label-sm">Autorización:</label>
+        </div>
+        <div class="col-9">
+          <input type="text" id="CodigoRut" name="CodigoRut" class="form-control form-control-sm" maxlength="6" value="{{ now|date('Ym')}}" readonly>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+        <input type="hidden" name="tabularId" value="{{ tabular.Id }}">
+        <button type="submit" class="btn btn-primary" id="markDispatches">Marcación de despachos </button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+    </div>
+</form>
+
+<script>
+    // vamos a crear una seria de efectos cuando se envie el form #markDispatchesForm
+    $('#markDispatchesForm').on('submit', function(e) {
+        // Deshabilitamos el botón de submit
+        $('#markDispatches').prop('disabled', true);
+        // Vamos a agregar la clase loading a la tabla
+        $('.table-responsive').addClass('loading');
+        // Vamos a agregar la clase loading al modal
+        $('#markDispatchesModal').addClass('loading');
+    });
+</script>

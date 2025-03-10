@@ -1,0 +1,1478 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Lista de tickets{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Administración{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-header pb-0">
+        <h5 class="card-title mb-0">Estadístico de tickets</h5>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <form action="#" method="get">
+                <div class="row">
+                    <div class="col">
+                        <label for="date_range" class="form-label col-form-label-sm">Periodicidad: </label>
+                        <select class="selectpicker form-control border" data-live-search="true" name="date_range" id="date_range" placeholder="Rangos" required>
+                            <option value="semanal" {{ date_range == 'semanal' ? 'selected' : 'selected' }}>Semanal</option>
+                            <option value="mensual" {{ date_range == 'mensual' ? 'selected' : '' }}>Mensual</option>
+                            <option value="anual" {{ date_range == 'anual' ? 'selected' : '' }}>Anual</option>
+                        </select>
+                    </div>
+                    <div class="col">
+                        <label for="from" class="form-label col-form-label-sm">Desde: </label>
+                        {% if date_range == 'mensual' %}
+                        <input type="month" class="form-control" name="from" id="from" value="{{ input_from }}" required min="1900" max="2100">
+                        {% elseif date_range == 'anual' %}
+                        <input type="number" class="form-control" name="from" id="from" value="{{ input_from }}" required min="2010" max="2100">
+                        {% else %}
+                        <input type="week" class="form-control" name="from" id="from" value="{{ input_from }}" required min="1900" max="2100">
+                        {% endif %}
+                    </div>
+                    <div class="col">
+                        <label for="until" class="form-label col-form-label-sm">Hasta: </label>
+                        {% if date_range == 'mensual' %}
+                        <input type="month" class="form-control" name="until" id="until" value="{{ input_until }}" required min="1900" max="2100">
+                        {% elseif date_range == 'anual' %}
+                        <input type="number" class="form-control" name="until" id="until" value="{{ input_until }}" required min="2010" max="2100">
+                        {% else %}
+                        <input type="week" class="form-control" name="until" id="until" value="{{ input_until }}" required min="1900" max="2100">
+                        {% endif %}
+
+                    </div>
+                    <div class="col">
+                        <label for="ticket_form" class="form-label col-form-label-sm">Formato: </label>
+                        <select class="selectpicker form-control border" data-live-search="true" name="ticket_form" id="ticket_form" placeholder="Formato" required>
+                            {% for tform in tickets_forms %}
+                            <option value="{{ tform.id_mojo }}" {{ ticket_form == tform.id_mojo ? 'selected' : '' }}>{{ tform.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col">
+                        <button type="input" class="btn btn-primary btn-block w-100" style="margin-top: 32px;">Buscar</button>
+                    </div>
+                    <div class="col">
+                        <a href="/administration/stats_tickets" class="btn btn-success btn-block w-100" style="margin-top: 32px;">Limpiar</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card-body table-responsive">
+        {% if ticket_form is not null %}
+        <ul class="nav nav-pills" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="home-tab" data-bs-toggle="tab" data-bs-target="#home-tab-pane" type="button" role="tab" aria-controls="home-tab-pane" aria-selected="true">General</button>
+            </li>
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false">Prioridad</a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" id="pills-action-tab" data-bs-toggle="pill" data-bs-target="#pills-action" href="#" role="tab" aria-controls="pills-action" aria-selected="false">T. Atn. Urgente</a></li>
+                    <li><a class="dropdown-item" id="pills-another-action-tab" data-bs-toggle="pill" data-bs-target="#pills-another-action" href="#" role="tab" aria-controls="pills-another-action" aria-selected="false">T. Atn. Normal</a></li>
+                </ul>
+            </li>
+<!--            <li class="nav-item" role="presentation">-->
+<!--                <button class="nav-link" id="customers-tab" data-bs-toggle="tab" data-bs-target="#customers-tab-pane" type="button" role="tab" aria-controls="customers-tab-pane" aria-selected="false">Clientes</button>-->
+<!--            </li>-->
+            <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#" role="button" aria-expanded="false">Clientes</a>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" id="customers-tab" data-bs-toggle="pill" data-bs-target="#customers-tab-pane" href="#" role="tab" aria-controls="customers-tab-pane" aria-selected="false">Por usuario</a></li>
+                    <li><a class="dropdown-item" id="group-tab" data-bs-toggle="pill" data-bs-target="#group-tab-pane" href="#" role="tab" aria-controls="group-tab-pane" aria-selected="false">Por grupo</a></li>
+                    <li><a class="dropdown-item" id="departments-tab" data-bs-toggle="pill" data-bs-target="#departments-tab-pane" href="#" role="tab" aria-controls="departments-tab-pane" aria-selected="false">Por departamento</a></li>
+                </ul>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="types-tab" data-bs-toggle="tab" data-bs-target="#types-tab-pane" type="button" role="tab" aria-controls="types-tab-pane" aria-selected="false">Tipos soporte</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="agents-tab" data-bs-toggle="tab" data-bs-target="#agents-tab-pane" type="button" role="tab" aria-controls="agents-tab-pane" aria-selected="false">Agentes</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="monthlyresults-tab" data-bs-toggle="tab" data-bs-target="#monthlyresults-tab-pane" type="button" role="tab" aria-controls="monthlyresults-tab-pane" aria-selected="false">Resultados mensuales</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="base-tab" data-bs-toggle="tab" data-bs-target="#base-tab-pane" type="button" role="tab" aria-controls="base-tab-pane" aria-selected="false">Base mojo</button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="myTabContent">
+
+            <div class="tab-pane fade show active" id="home-tab-pane" role="tabpanel" aria-labelledby="home-tab" tabindex="0">
+                <div class="row mt-3">
+                    {% for year, cards in groupedResults %}
+
+                        {% if date_range == 'anual' %}
+
+                            {% set resolved_porcent = ( (cards[4].ticket_count + cards[5].ticket_count) * 100 / (cards[0].ticket_count + cards[1].ticket_count + cards[2].ticket_count + cards[3].ticket_count + cards[4].ticket_count + cards[5].ticket_count) ) %}
+                            <div class="col-sm-6 col-xl-3">
+                                <div class="card shadow">
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col mt-0">
+                                                <h6>{{ year }}</h6>
+                                            </div>
+                                        </div>
+                                        <table class="table table-sm" style="font-size: small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Status </th>
+                                                <th>Cant.</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td data-toggle="tooltip" title="Nuevos: {{ cards[0].ticket_count }} | En progreso: {{ cards[1].ticket_count }} | En espera: {{cards[2].ticket_count }} | En espera de información: {{cards[3].ticket_count }}">Abiertos</td>
+                                                    <td>{{ cards[0].ticket_count + cards[1].ticket_count + cards[2].ticket_count + cards[3].ticket_count }}</td>
+                                                </tr>
+                                                <tr data-toggle="tooltip" title="Resueltos: {{cards[4].ticket_count }} | Cerrados: {{cards[5].ticket_count }}">
+                                                    <td>Resueltos</td>
+                                                    <td>{{ cards[4].ticket_count + cards[5].ticket_count }}</td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ cards[0].ticket_count + cards[1].ticket_count + cards[2].ticket_count + cards[3].ticket_count + cards[4].ticket_count + cards[5].ticket_count }}</th>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                        <div class="mb-0 mt-2">
+                                            <span class="badge text-bg-{{ resolved_porcent < 90 ? 'danger' : resolved_porcent < 95 ? 'warning' : 'success' }}">{{ resolved_porcent | number_format(2, '.', ',') }} %</span>
+                                            <span class="text-muted">Tickets resueltos</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% elseif date_range == 'semanal' %}
+                            {% for periodo, status in cards %}
+                            {% set resolved_porcent = ( (status[4].ticket_count + status[5].ticket_count) * 100 / (status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count) ) %}
+                            <div class="col-sm-6 col-xl-3">
+                                <div class="card shadow">
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col mt-0">
+                                                {% if date_range == 'semanal'%}
+                                                <h6>{{ periodo }} | {{status[0].initial_date | date("d/m/Y")}} - {{status[0].final_date | date("d/m/Y")}}</h6>
+                                                {% elseif date_range == 'mensual' %}
+                                                <h6>{{ periodo }} | {{ year }}</h6>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <table class="table table-sm" style="font-size: small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Status</th>
+                                                <th>Cant.</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
+                                                    <td>Abiertos</td>
+                                                    <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
+                                                    <td><a href="/administration/get_priority/{{ status[0].initial_date | date('Y-m-d') }}/{{ status[0].final_date | date('Y-m-d') }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                </tr>
+                                                <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
+                                                    <td>Resueltos</td>
+                                                    <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
+                                                    <td><a href="/administration/get_priority/{{ status[0].initial_date | date('Y-m-d') }}/{{ status[0].final_date | date('Y-m-d') }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                </tr>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count }}</th>
+                                                    <th></th>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                        <div class="mb-0 mt-2">
+                                            <span class="badge text-bg-{{ resolved_porcent < 90 ? 'danger' : resolved_porcent < 95 ? 'warning' : 'success' }}">{{ resolved_porcent | number_format(2, '.', ',') }} %</span>
+                                            <span class="text-muted">Tickets resueltos</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            {% for periodo, status in cards %}
+                            {% set resolved_porcent = ( (status[4].ticket_count + status[5].ticket_count) * 100 / (status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count) ) %}
+                            <div class="col-sm-6 col-xl-3">
+                                <div class="card shadow">
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col mt-0">
+                                                {% if date_range == 'semanal'%}
+                                                <h6>{{ periodo }} | {{status[0].initial_date | date("d/m/Y")}} - {{status[0].final_date | date("d/m/Y")}}</h6>
+                                                {% elseif date_range == 'mensual' %}
+                                                <h6>{{ periodo }} | {{ year }}</h6>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <table class="table table-sm" style="font-size: small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Status</th>
+                                                <th>Cant.</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
+                                                <td>Abiertos</td>
+                                                <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
+                                                <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+                                            <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
+                                                <td>Resueltos</td>
+                                                <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
+                                                <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count }}</th>
+                                                <th></th>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                        <div class="mb-0 mt-2">
+                                            <span class="badge text-bg-{{ resolved_porcent < 90 ? 'danger' : resolved_porcent < 95 ? 'warning' : 'success' }}">{{ resolved_porcent | number_format(2, '.', ',') }} %</span>
+                                            <span class="text-muted">Tickets resueltos</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-action" role="tabpanel" aria-labelledby="pills-action-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-5">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Prioridad Urgente</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            {% if urgent_tickets[0].week_number is defined %}
+                                                <thead>
+                                                <tr>
+                                                    <th>Semana</th>
+                                                    <th>Cant. Tickets</th>
+                                                    <th>Prom. Tiempo</th>
+                                                    <th></th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% set qty_rows = 0 %}
+                                                {% set total = 0 %}
+                                                {% set total_tickets = 0 %}
+                                                {% for ticket in urgent_tickets %}
+
+                                                <tr>
+                                                    <td>
+                                                        <p class="m-0 p-0">Sem. {{ ticket.week_number }}</p>
+                                                        <p class="m-0 p-0">{{ ticket.week_start_date | date("d/m/Y") }} - {{ ticket.week_end_date | date("d/m/Y") }}</p>
+                                                    </td>
+                                                    <td>{{ ticket.tickets_qty }}</td>
+                                                    <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                    <td>
+                                                        <a href="/administration/get_priority/{{ ticket.week_start_date | date('Y-m-d') }}/{{ ticket.week_end_date | date('Y-m-d') }}/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                    </td>
+                                                </tr>
+                                                {% set qty_rows = qty_rows + 1 %}
+                                                {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                                {% set total = total + ticket.avg_hours_elapsed %}
+                                                {% endfor %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ total_tickets }}</th>
+                                                    <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                    <th></th>
+                                                </tr>
+                                                </tfoot>
+                                            {% elseif urgent_tickets[0].month is defined %} <!-- Periodo Mensual -->
+                                                <thead>
+                                                <tr>
+                                                    <th>Mes</th>
+                                                    <th>Cant. Tickets</th>
+                                                    <th>Prom. Tiempo</th>
+                                                    <th></th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% set qty_rows = 0 %}
+                                                {% set total = 0 %}
+                                                {% set total_tickets = 0 %}
+                                                {% for ticket in urgent_tickets %}
+                                                <tr>
+                                                    <td>
+                                                        <p class="m-0 p-0">{{ ticket.month_name | upper }}</p>
+                                                        <p class="m-0 p-0">{{ ticket.month_start_date | date("d/m/Y") }} - {{ ticket.month_end_date | date("d/m/Y") }}</p>
+                                                    </td>
+                                                    <td>{{ ticket.tickets_qty }}</td>
+                                                    <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                    <td>
+                                                        <a href="/administration/get_priority/{{ ticket.month_start_date | date('Y-m-d') }}/{{ ticket.month_end_date | date('Y-m-d') }}/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                    </td>
+                                                </tr>
+                                                {% set qty_rows = qty_rows + 1 %}
+                                                {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                                {% set total = total + ticket.avg_hours_elapsed %}
+                                                {% endfor %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ total_tickets }}</th>
+                                                    <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                    <th></th>
+                                                </tr>
+                                                </tfoot>
+                                            {% else %} <!-- Periodo Anual -->
+
+                                            <thead>
+                                            <tr>
+                                                <th>Año</th>
+                                                <th>Cant. Tickets</th>
+                                                <th>Prom. Tiempo</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% set qty_rows = 0 %}
+                                            {% set total = 0 %}
+                                            {% set total_tickets = 0 %}
+                                            {% for ticket in urgent_tickets %}
+                                            <tr>
+                                                <td>
+                                                    <p class="m-0 p-0">{{ ticket.year }}</p>
+                                                </td>
+                                                <td>{{ ticket.tickets_qty }}</td>
+                                                <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                <td>
+                                                    <a href="/administration/get_priority/{{ ticket.year }}-01-01/{{ ticket.year }}-12-31/{{ticket_form}}/Urgentes" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                                                </td>
+                                            </tr>
+                                            {% set qty_rows = qty_rows + 1 %}
+                                            {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                            {% set total = total + ticket.avg_hours_elapsed %}
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total_tickets }}</th>
+                                                <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                <th></th>
+                                            </tr>
+                                            </tfoot>
+                                            {% endif %}
+
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChartAtnUrgent" style="max-height: 500px !important;"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Número de semana</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="pills-another-action" role="tabpanel" aria-labelledby="pills-another-action-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-5">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Prioridad Normal</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        {% if date_range == 'anual' %}
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Año</th>
+                                                <th>Cant. Tickets</th>
+                                                <th>Prom. Tiempo</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% set qty_rows = 0 %}
+                                            {% set total = 0 %}
+                                            {% set total_tickets = 0 %}
+                                            {% for ticket in normal_tickets %}
+                                            <tr>
+                                                <td>
+                                                    <p class="m-0 p-0">{{ ticket.year }}</p>
+                                                </td>
+                                                <td>{{ ticket.tickets_qty }}</td>
+                                                <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                <td><a href="/administration/get_priority/{{ ticket.year }}-01-01/{{ ticket.year }}-12-31/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+                                            {% set qty_rows = qty_rows + 1 %}
+                                            {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                            {% set total = total + ticket.avg_hours_elapsed %}
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total_tickets }}</th>
+                                                <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                <th></th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                        {% elseif date_range == 'semanal' %}
+                                            <table class="table table-sm" style="font-size: x-small;">
+                                                <thead>
+                                                <tr>
+                                                    <th>Semana</th>
+                                                    <th>Cant. Tickets</th>
+                                                    <th>Prom. Tiempo</th>
+                                                    <th></th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% set qty_rows = 0 %}
+                                                {% set total = 0 %}
+                                                {% set total_tickets = 0 %}
+                                                {% for ticket in normal_tickets %}
+                                                <tr>
+                                                    <td>
+                                                        <p class="m-0 p-0">Sem. {{ ticket.week_number }}</p>
+                                                        <p class="m-0 p-0">{{ ticket.week_start_date | date("d/m/Y") }} - {{ ticket.week_end_date | date("d/m/Y") }}</p>
+                                                    </td>
+                                                    <td>{{ ticket.tickets_qty }}</td>
+                                                    <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                    <td><a href="/administration/get_priority/{{ ticket.week_start_date | date('Y-m-d') }}/{{ ticket.week_end_date | date('Y-m-d') }}/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                </tr>
+                                                {% set qty_rows = qty_rows + 1 %}
+                                                {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                                {% set total = total + ticket.avg_hours_elapsed %}
+                                                {% endfor %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ total_tickets }}</th>
+                                                    <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                    <th></th>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        {% else %}
+                                            <table class="table table-sm" style="font-size: x-small;">
+                                                <thead>
+                                                <tr>
+                                                    <th>Mes</th>
+                                                    <th>Cant. Tickets</th>
+                                                    <th>Prom. Tiempo</th>
+                                                    <th></th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% set qty_rows = 0 %}
+                                                {% set total = 0 %}
+                                                {% set total_tickets = 0 %}
+                                                {% for ticket in normal_tickets %}
+                                                <tr>
+                                                    <td>
+                                                        <p class="m-0 p-0">{{ ticket.month_name | upper }}</p>
+                                                        <p class="m-0 p-0">{{ ticket.month_start_date | date("d/m/Y") }} - {{ ticket.month_end_date | date("d/m/Y") }}</p>
+                                                    </td>
+                                                    <td>{{ ticket.tickets_qty }}</td>
+                                                    <td>{{ ticket.avg_hours_elapsed|number_format(2,'.',',') }} hrs</td>
+                                                    <td><a href="/administration/get_priority/{{ ticket.month_start_date }}/{{ ticket.month_end_date }}/{{ticket_form}}/Normales" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                </tr>
+                                                {% set qty_rows = qty_rows + 1 %}
+                                                {% set total_tickets = total_tickets + ticket.tickets_qty %}
+                                                {% set total = total + ticket.avg_hours_elapsed %}
+                                                {% endfor %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ total_tickets }}</th>
+                                                    <th>{{ (total / qty_rows) | number_format(2, '.', ',') }} hrs</th>
+                                                    <th></th>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChartAtnNormal" style="max-height: 500px !important;"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Número de semana</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="customers-tab-pane" role="tabpanel" aria-labelledby="customers-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-5">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Por Usuario</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Cliente</th>
+                                                <th>Cant. tickets</th>
+                                                <th>Porcentaje</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <!-- vamos a obtener el total de registros -->
+                                            {% set total = 0 %}
+                                            {% for data in ticket_users %}
+                                                {% set total = total + data.total %}
+                                            {% endfor %}
+                                            {% for user in ticket_users %}
+                                            <tr>
+                                                <td data-toggle="tooltip" title="Id: {{user.user_id}}">
+                                                    {% if user.full_name is empty %}
+                                                        <b class="text-danger">Sin nombre de usuario</b>
+                                                    {% else %}
+                                                        {{ user.full_name }}
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ user.total }}</td>
+                                                <td>{{ ((user.total * 100) / total ) | number_format(1) }}%</td>
+                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/usuarios/{{ user.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total }}</th>
+                                                <th></th>
+                                                <th></th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChartCustomers" width="400" height="400"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Usuarios</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="group-tab-pane" role="tabpanel" aria-labelledby="group-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-5">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Por Grupo</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Grupo</th>
+                                                <th>Cant. tickets</th>
+                                                <th>Porcentaje</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <!-- vamos a obtener el total de registros -->
+                                            {% set total = 0 %}
+                                            {% for data in ticket_groups %}
+                                            {% set total = total + data.total %}
+                                            {% endfor %}
+                                            {% for group in ticket_groups %}
+                                            <tr>
+                                                <td data-toggle="tooltip" title="Id: {{group.user_id}}">
+                                                    {% if group.full_name is empty %}
+                                                    <b class="text-danger">Sin nombre de grupo</b>
+                                                    {% else %}
+                                                    {{ group.full_name }}
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ group.total }}</td>
+                                                <td>{{ ((group.total * 100) / total ) | number_format(1) }}%</td>
+                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/grupos/{{ group.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total }}</th>
+                                                <th></th>
+                                                <th></th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChartGroups" width="400" height="400"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Grupos</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="departments-tab-pane" role="tabpanel" aria-labelledby="departments-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-5">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Por Departamento</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            <thead>
+                                            <tr>
+                                                <th>Departamento</th>
+                                                <th>Cant. tickets</th>
+                                                <th>Porcentaje</th>
+                                                <th></th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <!-- vamos a obtener el total de registros -->
+                                            {% set total = 0 %}
+                                            {% for data in ticket_departments %}
+                                            {% set total = total + data.total %}
+                                            {% endfor %}
+                                            {% for departments in ticket_departments %}
+
+                                            <tr>
+                                                <td data-toggle="tooltip" title="Id: {{departments.user_id}}">
+                                                    {% if departments.full_name is empty %}
+                                                    <b class="text-danger">Sin nombre de grupo</b>
+                                                    {% else %}
+                                                    {{ departments.full_name }}
+                                                    {% endif %}
+                                                </td>
+                                                <td>{{ departments.total }}</td>
+                                                <td>{{ ((departments.total * 100) / total ) | number_format(1) }}%</td>
+                                                <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/departments/{{ departments.user_id }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                            </tr>
+
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total }}</th>
+                                                <th></th>
+                                                <th></th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChartDepartments" width="400" height="400"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Departamentos</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="types-tab-pane" role="tabpanel" aria-labelledby="types-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="col-md-4">
+                        <div class="card shadow">
+                            <div class="card-body">
+                                <h5 class="card-title">Tipos de soporte</h5>
+                                <div class="row">
+                                    <div class="col">
+                                        <table class="table table-sm" style="font-size: x-small;">
+                                            <thead>
+                                                <tr>
+                                                    <th>Problema</th>
+                                                    <th>Cant. tickets</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% set total = 0 %}
+                                                {% for type in supportTypes %}
+                                                <tr>
+                                                    <td>{{ type.problem }}</td>
+                                                    <td>{{ type.total }}</td>
+                                                    <td><a href="/administration/get_priority/{{ from | date('Y-m-d') }}/{{ until | date('Y-m-d') }}/{{ticket_form}}/supports/{{ type.problem }}" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                                </tr>
+                                                {% set total = total + type.total %}
+                                                {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <th>Total</th>
+                                                    <th>{{ total }}</th>
+                                                    <th></th>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col">
+                                        <canvas id="myChart" width="400" height="400"></canvas>
+                                        <p class="text-center" style="color: rgb(102, 102, 102)"><b>Tipos de soporte</b></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="agents-tab-pane" role="tabpanel" aria-labelledby="agents-tab" tabindex="0">
+
+                <!-- Botón para generar el PDF -->
+                {% set total = 0 %}
+                {% for agent in agents_total_tickets %}
+
+                <div class="card shadow">
+                    <div class="card-body container">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Agente: {{ agent[0].AssignedUserName }}</h5>
+                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#agentModal" data-agent="{{ agent[0].assigned_to_id ?? 0 }}"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file-text align-middle"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Generar Reporte</button>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="card shadow">
+                                    <div class="card-body p-2">
+                                        <table class="table table-sm text-center table-striped table-bordered" style="font-size: small;" id="myTable{{ agent[0].AssignedUserName }}">
+                                            <thead class>
+                                            <tr>
+                                                {% if date_range == 'semanal' %}
+                                                <th>Semana</th>
+                                                {% elseif date_range == 'mensual' %}
+                                                <th>Mes</th>
+                                                {% else %}
+                                                <th>Año</th>
+                                                {% endif %}
+                                                <th class="text-primary">Tickets Total</th>
+                                                <th class="text-success">Tickets Resueltos</th>
+                                                <th class="text-warning">Tickets Pendientes</th>
+                                                <th class="text-danger">Tickets Urgentes</th>
+                                                <th class="text-info">Tickets Normales</th>
+                                                <th class="text-info">Tiempo Total</th>
+                                                <th class="text-info">Tiempo Promedio</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            {% set total = 0 %}
+                                            {% set totalResolvedTickets = 0 %}
+                                            {% set totalPendingTickets = 0 %}
+                                            {% set totalUrgentTickets = 0 %}
+                                            {% set totalNormalTickets = 0 %}
+                                            {% set TotalHoursDifference = 0 %}
+                                            {% set AverageHoursDifference = 0 %}
+                                            {% set count = 0 %}
+
+                                            {% for result in agent %}
+                                            <tr>
+                                                <td>
+                                                    {% if date_range == 'semanal' %}
+                                                        <p class="m-0 p-0">{{ result.WeekISO }} ({{ result.StartOfWeek | date("d/m/Y") }} - {{ result.EndOfWeek | date("d/m/Y") }})</p>
+                                                    {% elseif date_range == 'mensual' %}
+                                                        <p class="m-0 p-0">{{ result.MonthName }}</p>
+                                                    {% else %}
+                                                    <p class="m-0 p-0">{{ result.Year }}</p>
+                                                    {% endif %}
+                                                </td>
+                                                <td>
+                                                    <p class="m-0 p-0">{{ result.TotalTickets }}</p>
+                                                </td>
+                                                <td>{{ result.ResolvedTickets }}</td>
+                                                <td>{{ result.PendingTickets }}</td>
+                                                <td>{{ result.UrgentTickets }}</td>
+                                                <td>{{ result.NormalTickets }}</td>
+                                                <td>{{ result.TotalHoursDifference | number_format(2, '.', ',') }}</td>
+                                                <td>{{ result.AverageHoursDifference | number_format(2, '.', ',') }}</td>
+                                            </tr>
+                                            {% set total = total + result.TotalTickets %}
+                                            {% set totalResolvedTickets = totalResolvedTickets + result.ResolvedTickets %}
+                                            {% set totalPendingTickets = totalPendingTickets + result.PendingTickets %}
+                                            {% set totalUrgentTickets = totalUrgentTickets + result.UrgentTickets %}
+                                            {% set totalNormalTickets = totalNormalTickets + result.NormalTickets %}
+                                            {% set TotalHoursDifference = TotalHoursDifference + result.TotalHoursDifference %}
+                                            {% set AverageHoursDifference = AverageHoursDifference + result.AverageHoursDifference %}
+                                            {% set count = count + 1 %}
+                                            {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th>Total</th>
+                                                <th>{{ total }}</th>
+                                                <th>{{ totalResolvedTickets }}</th>
+                                                <th>{{ totalPendingTickets }}</th>
+                                                <th>{{ totalUrgentTickets }}</th>
+                                                <th>{{ totalNormalTickets }}</th>
+                                                <th>{{ (TotalHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                                                <th>{{ (AverageHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="tab-pane fade" id="monthlyresults-tab-pane" role="tabpanel" aria-labelledby="monthlyresults-tab" tabindex="0">
+                <div class="row mt-3">
+                    {% for year, cards in groupedResultsMonths %}
+                        {% for periodo, status in cards %}
+
+                        {% set resolved_porcent = ( (status[4].ticket_count + status[5].ticket_count) * 100 / (status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count) ) %}
+                        <div class="col-sm-6 col-xl-3">
+                            <div class="card shadow">
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col mt-0">
+                                            <h6>{{ periodo }} | {{ year }}</h6>
+                                        </div>
+                                    </div>
+                                    <table class="table table-sm" style="font-size: small;">
+                                        <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Cant.</th>
+                                            <th></th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr data-toggle="tooltip" title="Nuevos: {{ status[0].ticket_count }} | En progreso: {{ status[1].ticket_count }} | En espera: {{status[2].ticket_count }} | En espera de información: {{status[3].ticket_count }}">
+                                            <td>Abiertos</td>
+                                            <td>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count }}</td>
+                                            <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/abiertos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                        </tr>
+                                        <tr data-toggle="tooltip" title="Resueltos: {{status[4].ticket_count }} | Cerrados: {{status[5].ticket_count }}">
+                                            <td>Resueltos</td>
+                                            <td>{{ status[4].ticket_count + status[5].ticket_count }}</td>
+                                            <td><a href="/administration/get_priority/{{ status[0].start_of_month }}/{{ status[0].end_of_month }}/{{ ticket_form }}/resueltos" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a></td>
+                                        </tr>
+                                        <tr>
+                                            <th>Total</th>
+                                            <th>{{ status[0].ticket_count + status[1].ticket_count + status[2].ticket_count + status[3].ticket_count + status[4].ticket_count + status[5].ticket_count }}</th>
+                                            <th></th>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                    <div class="mb-0 mt-2">
+                                        <span class="badge text-bg-{{ resolved_porcent < 90 ? 'danger' : resolved_porcent < 95 ? 'warning' : 'success' }}">{{ resolved_porcent | number_format(2, '.', ',') }} %</span>
+                                        <span class="text-muted">Tickets resueltos</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="base-tab-pane" role="tabpanel" aria-labelledby="base-tab" tabindex="0">
+                <div class="row mt-3">
+                    <div class="card">
+                        <div class="card-body table-responsive">
+                            <div id="filtro-datatables_tickets_2" class="mb-1">
+                                <div class="row">
+                                    <!-- Agrega tus elementos de filtrado aquí -->
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ID"           placeholder="ID"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO"         placeholder="TIPO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FORMULARIO"   placeholder="FORMULARIO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="GRUPO"        placeholder="GRUPO Cliente"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TITULO"       placeholder="TÍTULO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESCRIPCION"  placeholder="DESCRIPCIÓN"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CREADO"       placeholder="CREADO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RESUELTO"     placeholder="RESUELTO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TRESOLUCION"  placeholder="TRESOLUCIÓN"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="USUARIO"      placeholder="USUARIO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="AGENTE"       placeholder="AGENTE"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS"       placeholder="STATUS"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRIORIDAD"    placeholder="PRIORIDAD"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="COLA"         placeholder="COLA"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ASIGNADO"     placeholder="ASIGNADO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CC"           placeholder="CC"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ACTUALIZADO"  placeholder="ACTUALIZADO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CALIFICACION" placeholder="CALIFICACIÓN"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DEPARTAMENTO" placeholder="DEPARTAMENTO"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SOLICITANTE"  placeholder="SOLICITANTE"></div>
+                                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PROBLEMA"     placeholder="PROBLEMA"></div>
+                                    <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                                </div>
+                                <!-- Puedes agregar más filtros según tus necesidades -->
+                            </div>
+                            <table id="datatables_tickets_2" class="table table-striped table-sm w-100" style="font-size: x-small;">
+                                <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>TIPO</th>
+                                    <th>FORMULARIO</th>
+                                    <th>GRUPO</th>
+                                    <th>TÍTULO</th>
+                                    <th>DESCRIPCIÓN</th>
+                                    <th>CREADO</th>
+                                    <th>RESUELTO</th>
+                                    <th>T. RESOLUCIÓN</th>
+                                    <th>USUARIO</th>
+                                    <th>AGENTE</th>
+                                    <th>STATUS</th>
+                                    <th>PRIORIDAD</th>
+                                    <th>COLA</th>
+                                    <th>ASIGNADO</th>
+                                    <th>ACTUALIZADO</th>
+                                    <th>CALIFICACIÓN</th>
+                                    <th>DEPARTAMENTO</th>
+                                    <th>SOLICITANTE</th>
+                                    <th>PROBLEMA</th>
+                                    <th>ACCIONES</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+
+                                </tbody>
+                                <tfoot>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>TIPO</th>
+                                    <th>FORMULARIO</th>
+                                    <th>GRUPO</th>
+                                    <th>TÍTULO</th>
+                                    <th>DESCRIPCIÓN</th>
+                                    <th>CREADO</th>
+                                    <th>RESUELTO</th>
+                                    <th>T. RESOLUCIÓN</th>
+                                    <th>USUARIO</th>
+                                    <th>AGENTE</th>
+                                    <th>STATUS</th>
+                                    <th>PRIORIDAD</th>
+                                    <th>COLA</th>
+                                    <th>ASIGNADO</th>
+                                    <th>ACTUALIZADO</th>
+                                    <th>CALIFICACIÓN</th>
+                                    <th>DEPARTAMENTO</th>
+                                    <th>SOLICITANTE</th>
+                                    <th>PROBLEMA</th>
+                                    <th>ACCIONES</th>
+                                </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-warning alert-outline alert-dismissible" role="alert">
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="alert-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle text-center"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            </div>
+            <div class="alert-message">
+                <strong>¡Atención!</strong> Seleccione un rango de fechas para visualizar los datos.
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+
+<!-- Modal -->
+<div class="modal fade" id="agentModal" tabindex="-1" aria-labelledby="agentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="agentModalLabel">Reporte de evaluación</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body content card m-0 p-0">
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="printButton">Imprimir</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+
+
+<script>
+    $(document).ready(function() {
+        $('[data-toggle="tooltip"]').tooltip();
+
+        $('#date_range').change(function() {
+            var date_range = $(this).val();
+            var fromDate = $('#from');
+            var untilDate = $('#until');
+            var today = new Date();
+
+            if (date_range === 'semanal') {
+                var weekNumber = getWeekNumber(today);
+                fromDate.attr('type', 'week').val(today.getFullYear() + '-W' + (weekNumber < 10 ? '0' + weekNumber : weekNumber));
+                untilDate.attr('type', 'week').val(today.getFullYear() + '-W' + (weekNumber < 10 ? '0' + weekNumber : weekNumber));
+            } else if (date_range === 'mensual') {
+                fromDate.attr('type', 'month').val(today.getFullYear() + '-' + (today.getMonth() + 1 < 10 ? '0' + (today.getMonth() + 1) : today.getMonth() + 1));
+                untilDate.attr('type', 'month').val(today.getFullYear() + '-' + (today.getMonth() + 1 < 10 ? '0' + (today.getMonth() + 1) : today.getMonth() + 1));
+            } else if (date_range === 'anual') {
+                fromDate.attr('type', 'number').attr('min', '1900').attr('max', '2100').val(today.getFullYear());
+                untilDate.attr('type', 'number').attr('min', '1900').attr('max', '2100').val(today.getFullYear());
+            } else {
+                fromDate.attr('type', 'text');
+                untilDate.attr('type', 'text');
+            }
+        });
+
+        function getWeekNumber(d) {
+            d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay()||7));
+            var yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            var weekNo = Math.ceil(( ( (d - yearStart) / 86400000) + 1)/7);
+            return weekNo;
+        }
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ urgent_tickets_labels|raw }};
+        var values = {{ urgent_tickets_values|raw }};
+
+        // Color específico
+        var specificColor = '#9C9F31';
+
+        // Generar un array con el mismo color específico para todas las barras
+        var backgroundColors = Array(values.length).fill(specificColor);
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartAtnUrgent').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Tiempo Prom. de Atención',
+                        data: values,
+                        backgroundColor: backgroundColors,
+                        borderColor: 'rgba(156, 159, 49, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Límite de atención',
+                        type: 'line',
+                        data: Array(values.length).fill(3),
+                        borderColor: 'rgba(224, 149, 45, 1)',
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 0 // Para que no se muestren los puntos en la línea
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Tiempo en horas', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ normal_tickets_labels|raw }};
+        var values = {{ normal_tickets_values|raw }};
+
+        // Generar los colores basados en el valor
+        var backgroundColors = values.map(value => value > 24 ? '#dc3545' : 'green');
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartAtnNormal').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Tiempo Prom. de Atención',
+                        type: 'bar',
+                        data: values,
+                        backgroundColor: backgroundColors,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Límite de atención',
+                        type: 'line',
+                        data: Array(values.length).fill(24),
+                        borderColor: 'rgba(224, 149, 45, 1)',
+                        borderWidth: 2,
+                        fill: false,
+                        pointRadius: 0 // Para que no se muestren los puntos en la línea
+                    }
+                ]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Tiempo en horas', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ ticket_users_labels|raw }};
+        var values = {{ ticket_users_values|raw }};
+
+        // Color específico
+        var specificColor = '#20c997';
+
+        // Generar un array con el mismo color específico para todas las barras
+        var backgroundColors = Array(values.length).fill(specificColor);
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartCustomers').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cant. de tickets',
+                    data: values,
+                    backgroundColor: backgroundColors,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Cantidad de tickets', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ ticket_groups_labels|raw }};
+        var values = {{ ticket_groups_values|raw }};
+
+        // Color específico
+        var specificColor = '#20c997';
+
+        // Generar un array con el mismo color específico para todas las barras
+        var backgroundColors = Array(values.length).fill(specificColor);
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartGroups').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cant. de tickets',
+                    data: values,
+                    backgroundColor: backgroundColors,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Cantidad de tickets', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ ticket_departments_labels|raw }};
+        var values = {{ ticket_departments_values|raw }};
+
+        // Color específico
+        var specificColor = '#20c997';
+
+        // Generar un array con el mismo color específico para todas las barras
+        var backgroundColors = Array(values.length).fill(specificColor);
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChartDepartments').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cant. de tickets',
+                    data: values,
+                    backgroundColor: backgroundColors,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Cantidad de tickets', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true, // Activa la propiedad `display` para mostrar el título
+                            text: 'Cantidad'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true, // Activa la propiedad `display` para mostrar el título
+                            text: 'Tipo de Soporte'
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+    $(document).ready(function() {
+        // Datos pasados desde PHP a Twig
+        var labels = {{ supportTypes_labels|raw }};
+        var values = {{ supportTypes_values|raw }};
+
+        // Color específico
+        var specificColor = '#20c333';
+
+        // Generar un array con el mismo color específico para todas las barras
+        var backgroundColors = Array(values.length).fill(specificColor);
+
+        // Configuración del gráfico
+        var ctx = document.getElementById('myChart').getContext('2d');
+        var myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Cant. de tickets',
+                    data: values,
+                    backgroundColor: backgroundColors,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y', // Cambia el gráfico a horizontal
+                title: {
+                    display: true, // Activa la propiedad `display` para mostrar el título principal
+                    text: 'Cantidad', // Texto del título principal
+                    position: 'left' // Posición del título principal (arriba por defecto)
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    },
+                    y: {
+                        ticks: { // Configuración de las marcas del eje Y
+                            beginAtZero: true // Inicia las marcas desde cero
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+
+<script>
+
+    // Vamos a crear una funciona ajax para cuando se mande llamar el modal #agentModal
+    $('#agentModal').on('show.bs.modal', function (event) {
+        var button = $(event.relatedTarget); // Button that triggered the modal
+        var agent = button.data('agent'); // Extract info from data-* attributes
+        var from = '{{ from }}';
+        var until = '{{ until }}';
+        var date_range = '{{ date_range }}';
+        var ticket_form = '{{ ticket_form }}';
+
+        var modal = $(this);
+
+        $.ajax({
+            url: '/administration/get_agent_report/' + agent + '/' + from + '/' + until + '/' + date_range + '/' + ticket_form,
+            type: 'GET',
+            success: function (response) {
+                modal.find('.modal-body').html(response);
+
+                // Vamos a reiniciar la grafica agentChart
+                var ctx = document.getElementById('agentChart').getContext('2d');
+                document.getElementById('printButton').addEventListener('click', function() {
+                    // Asegúrate de que html2canvas esté cargado
+
+                    var modal = document.getElementById('agentModal');
+                    var footer = modal.querySelector('.modal-footer');
+
+                    // Guarda el tamaño original del modal
+                    var originalWidth = modal.offsetWidth;
+                    var originalHeight = modal.offsetHeight;
+
+                    // Oculta el footer
+                    footer.style.display = 'none';
+
+                    // Ajusta el tamaño del modal al tamaño del contenido
+                    modal.style.width = 'auto';
+                    modal.style.height = 'auto';
+
+                    // Usa html2canvas para capturar el contenido completo
+                    html2canvas(modal, {
+                        scale: 3, // Ajusta la escala según sea necesario
+                        useCORS: true
+                    }).then(function(canvas) {
+                        var imgData = canvas.toDataURL('image/png');
+
+                        // Usa jsPDF desde el objeto global jsPDF
+                        const { jsPDF } = window.jspdf;
+                        var pdf = new jsPDF('p', 'mm', 'a4');
+
+                        // Añade la imagen al PDF
+                        pdf.addImage(imgData, 'PNG', 10, 10, 180, 0); // Ajusta según sea necesario
+
+                        // Guarda el PDF
+                        pdf.save('reporte.pdf');
+
+                        // Restaura el tamaño original del modal
+                        modal.style.width = originalWidth + 'px';
+                        modal.style.height = originalHeight + 'px';
+
+                        // Muestra de nuevo el footer
+                        footer.style.display = '';
+                    });
+                });
+            }
+        });
+    });
+</script>
+
+{% endblock %}

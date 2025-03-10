@@ -1,0 +1,122 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Tabulador{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Nuevo tabulador</h5>
+            </div>
+            <div class="card-body h-100">
+                <form action="/operations/createTabulatorForm" method="post">
+                    <div class="mb-3">
+                        <label for="FechaTabular" class="form-label">Fecha: </label>
+                        <input type="date" class="form-control" name="FechaTabular" id="FechaTabular" value="{{ now | date('Y-m-d') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="Estacion" class="form-label">Estación: </label>
+                        <select class="form-control selectpicker get_exchange" data-live-search="true" name="Estacion" id="Estacion" placeholder="Estación" required>
+                            {% for station in stations %}
+                                {% if station.cod != 0 %}
+                                <option value="{{ station.cod }}">{{ station.abr }}</option>
+                                {% endif%}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="Turno" class="form-label">Turno: </label>
+                        <select class="selectpicker form-control get_exchange" data-live-search="true" name="Turno" id="Turno" placeholder="Turno" required>
+                            <option value="11">Tuno 1 (12:00am - 06:00am)</option>
+                            <option value="21">Tuno 2 (06:00am - 02:00pm)</option>
+                            <option value="31">Tuno 3 (02:00pm - 10:00pm)</option>
+                            <option value="41">Tuno 4 (10:00pm - 12:00am)</option>
+                        </select>
+                    </div>
+<!--                    <div class="mb-3">-->
+<!--                        <label for="exchange" class="form-label">Tipo de cambio: </label>-->
+<!--                        <input type="number" step="0.01" min="0.00" max="99.99" class="form-control" name="exchange" id="exchange" value="" readonly disabled>-->
+<!--                    </div>-->
+                    <div class="mb-3">
+                        <input type="hidden" name="IdEstacion" value="{{ station.id }}">
+                        <input type="submit" value="Generar nuevo tabulador" class="btn btn-primary w-100">
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                            </svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Listado de tabuladores</h5>
+            </div>
+            <div class="card-body h-100 table-responsive">
+                <div id="filtro-datatables_top_tabulators" class="mb-1">
+                    <div class="row">
+                        <!-- Agrega tus elementos de filtrado aquí -->
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FOLIO" placeholder="Folio"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="NOMBRE" placeholder="Nombre"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TURNO" placeholder="Turno"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SUBCORTE" placeholder="Subcorte"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="USUARIO" placeholder="Usuario"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTATUS" placeholder="estatus"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTOS" placeholder="productos"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TOTAL" placeholder="total"></div>
+                        <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+                    </div>
+                <!-- Puedes agregar más filtros según tus necesidades -->
+                </div>
+                <table id="datatables_top_tabulators" class="table table-sm w-100" style="font-size:x-small;" data-codgas="{{ tg_user['IdEstacion'] }}">
+                    <thead>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ESTACION</th>
+                            <th>TURNO</th>
+                            <th>SUB</th>
+                            <th>FECHA TABULAR</th>
+                            <th>USUARIO</th>
+                            <th>ESTATUS</th>
+                            <th>PRODS</th>
+                            <th>TOTAL</th>
+                            <th>ACCIONES</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ESTACION</th>
+                            <th>TURNO</th>
+                            <th>SUB</th>
+                            <th>FECHA TABULAR</th>
+                            <th>USUARIO</th>
+                            <th>ESTATUS</th>
+                            <th>PRODS</th>
+                            <th>TOTAL</th>
+                            <th>ACCIONES</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+{% endblock %}

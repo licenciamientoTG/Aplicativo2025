@@ -1,0 +1,403 @@
+<div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }}">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel_datatables_wads_tab">Descargar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Fajillas {{ tabulator.Estatus == 2 ? '<b class="text-success">(Cerrado)</b>' : '' }}</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <form class="row" id="wadForm">
+            <div class="col-3">
+                <label for="amount" class="visually-hidden">Monto: </label>
+                <!-- Aqui debo tomar el segundo parámetro-->
+                <input type="number" name="amount" id="amount" step="0.01" min="0.01" max="{{ tabulator.LimiteFajilla }}" class="form-control form-control-sm" placeholder="0.00" required autofocus>
+                <p class="text-danger m-0 p-0"><small>Límite máximo:  ${{ tabulator.LimiteFajilla | number_format(2) }}</small></p>
+            </div>
+            <div class="col-3">
+                <label for="island_id" class="visually-hidden">Isla</label>
+                <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="island_id" id="island_id" placeholder="Isla" required>
+                    {% for isl in islands %}
+                    <option value="{{ isl.Isla }}" {{ isl.Isla == island ? 'selected' : '' }}>{{ isl.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-3">
+                <label for="currency" class="visually-hidden">Moneda: </label>
+                <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="currency" id="currency" placeholder="Moneda" required>
+                    <option value="MXN" selected>MXN</option>
+                    <option value="USD">USD</option>
+                    <option value="MRL">MORRALLA</option>
+                </select>
+            </div>
+            <div class="col-3">
+                <input type="hidden" name="LimiteRecolecta" id="LimiteRecolecta" value="{{ tabulator.LimiteRecolecta }}">
+                <input type="hidden" name="Total" id="Total" value="{{ tabulator.Total }}">
+                <input type="hidden" name="TotalPending" id="TotalPending" value="{{ tabulator.TotalPending }}">
+                <input type="hidden" name="TotalPendingUSD" id="TotalPendingUSD" value="{{ tabulator.TotalPendingUSD }}">
+                <input type="hidden" name="TotalPendingMXN" id="TotalPendingMXN" value="{{ tabulator.TotalPendingMXN }}">
+                <input type="hidden" name="TotalPendingMRL" id="TotalPendingMRL" value="{{ tabulator.TotalPendingMRL }}">
+                <input type="hidden" name="tabId" id="inputTabId" value="{{ tabulator.Id }}">
+                <input type="hidden" name="CodigoEstacion" name="CodigoEstacion" value="{{ tabulator.CodigoEstacion }}">
+                <input type="hidden" name="Usuario" value="{{ tabulator.Usuario }}">
+                <input type="hidden" name="FechaTabular" value="{{ tabulator.FechaTabular }}">
+                <input type="hidden" name="Turno" value="{{ tabulator.Turno }}">
+                <input type="hidden" name="exchange_now" id="exchange_now" value="{{ exchange_now }}">
+                <input type="hidden" name="action" value="addWad">
+                {% if tabulator.Estatus == 2 %}
+                <button type="button" class="btn btn-success btn-sm w-100 mb-3" value="addWad" name="action" id="submitButton" disabled>Tabulador cerrado</button>
+                {% else %}
+                <button type="submit" class="btn btn-primary btn-sm w-100 mb-3" value="addWad" name="action" id="submitButton">Agregar</button>
+                {% endif %}
+            </div>
+        </form>
+        <hr>
+        <div class="card border">
+            <div class="card-body p-1 mb-1 mt-1 ">
+                <div class="row d-flex">
+                    <div class="col">
+                        <ul class="m-0">
+                            <li class="">
+                                <strong>Acumulado MXN: <b id="acumulated_mxn" class="text-primary">${{ totalMXN | number_format(2) }}</b></strong>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col">
+                        <ul class="m-0">
+                            <li class="">
+                                <strong>Acumulado USD: <b id="acumulated_usd" class="text-success">${{ totalUSD | number_format(2) }}</b></strong>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {# Tabla de asignaciones #}
+        <table id="datatables_wads_tab" class="table table-sm w-100" style="font-size:small;"
+            data-codgas="{{ tg_user['IdEstacion'] }}">
+            <thead>
+                <tr>
+                    <th>SEC</th>
+                    <th>RESPONSABLE</th>
+                    <th>ISLA</th>
+                    <th>MONEDA</th>
+                    <th>MONTO</th>
+                    <th>CAMBIO</th>
+                    <th>TOTAL</th>
+                    <th>ESTATUS</th>
+                    <th>HORA</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>SEC</th>
+                    <th>RESPONSABLE</th>
+                    <th>ISLA</th>
+                    <th>MONEDA</th>
+                    <th>MONTO</th>
+                    <th>CAMBIO</th>
+                    <th></th>
+                    <th>ESTATUS</th>
+                    <th>HORA</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+        <hr>
+        <table class="table table-bordered table-sm table-striped w-100" id="wads_table_total">
+            <thead>
+                <tr>
+                    <th>ISLA</th>
+                    <th>FAJILLAS</th>
+                    <th>MONTO MXN</th>
+                    <th>MONTO USD</th>
+                    <th>MONTO MORRALLA</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th></th>
+                    <th style="float: right;">TOTAL</th>
+                    <th></th>
+                    <th></th>
+                    <th></th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+
+<!-- Modal -->
+<div class="modal fade" id="editWadModal" tabindex="-1" aria-labelledby="editWadModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="editWadModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="content">
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    $(document).ready(function() {
+        // Deseleccionar cualquier elemento seleccionado
+        $('.selectpicker').selectpicker();
+
+        // Table de Fajillas en el Tab
+        let datatables_wads_tab = $('#datatables_wads_tab').DataTable({ // Tabla de fajillas en el tabulador
+            order: [0, "desc"],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'pdf',
+                    className: 'd-none datatables_wads_tab',
+                    // Título del archivo que se va a descargar
+                    title: 'Fajillas',
+                    // Prebenimos que se esporte la ultima columna
+                    exportOptions: {
+                        columns: ':visible:not(:last-child)'
+                    }
+                }
+            ],
+            deferRender: true,
+            initComplete: function () {
+                // $('.dt-buttons').addClass('d-none'); // Ocultar los botones de exportación
+                $('.table-responsive').removeClass('loading');
+            },
+
+            ajax: {
+                data: {'tabId': $('input#inputTabId').val(), 'CodigoEstacion': $('input#CodigoEstacion').val()},
+                url: '/operations/datatables_wads_tab'
+            },
+            columns: [
+                {'data': 'SEC'},
+                {'data': 'RESPONSABLE'},
+                {'data': 'ISLA'},
+                {'data': 'MONEDA'},
+                {'data': 'MONTO', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+                {'data': 'CAMBIO', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+                {'data': 'TOTAL', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+                {'data': 'ESTATUS'},
+                {'data': 'HORA'},
+                {'data': 'ACCIONES'},
+            ],
+            rowId: 'SEC',
+            createdRow: function (row, data, dataIndex) {
+
+            },
+            // Vamos a totalizar la columna de montos
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api(), data;
+                // Remove the formatting to get integer data for summation
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ?
+                            i : 0;
+                };
+                // Función para calcular el total
+                var calculateTotal = function () {
+                    return api
+                        .column(6, { search: 'applied' }) // Solo tomará en cuenta los datos visibles después de aplicar filtros
+                        .data()
+                        .reduce(function (a, b) {
+                            return intVal(a) + intVal(b);
+                        }, 0);
+                };
+                // Total inicial
+                var total = calculateTotal();
+                // Update footer
+                $(api.column(6).footer()).html(
+                    // Formatear el total con formato de moneda a dos decimales
+                    total.toLocaleString('es-MX', {
+                        style: 'currency',
+                        currency: 'MXN'
+                    })
+                );
+                // Evento draw para recalcular el total cuando se redibuja la tabla
+                api.on('draw', function () {
+                    var total = calculateTotal();
+                    $(api.column(6).footer()).html(
+                        total.toLocaleString('es-MX', {
+                            style: 'currency',
+                            currency: 'MXN'
+                        })
+                    );
+                });
+            }
+        });
+
+
+        let wads_table_total = $('#wads_table_total').DataTable({
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 100,
+            bFilter: false, // Desactiva el cuadro de búsqueda
+            bInfo: false,   // Desactiva la información sobre la cantidad de registros
+            bPaginate: false,   // Desactiva la paginación
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none',
+                }
+            ],
+            initComplete: function () {
+                $('.dt-buttons').addClass('d-none');
+                $('.table-responsive').removeClass('loading');
+            },
+            ajax: {
+                data: {'tabId': $('input#inputTabId').val()},
+                url: '/operations/wads_table_total'
+            },
+            columns: [
+                {'data': 'ISLA'},
+                {'data': 'FAJILLAS'},
+                {'data': 'Monto_MXN', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+                {'data': 'Monto_USD', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+                {'data': 'Monto_MRL', 'render': $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+            ],
+            rowId: 'SEC',
+            // Vamos a totalizar la columna de montos
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api(), data;
+                // Remove the formatting to get integer data for summation
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ?
+                            i : 0;
+                };
+                // Función para calcular el total
+                var calculateTotal = function (columnIndex) {
+                    return api
+                        .column(columnIndex, { search: 'applied' }) // Solo tomará en cuenta los datos visibles después de aplicar filtros
+                        .data()
+                        .reduce(function (a, b) {
+                            return intVal(a) + intVal(b);
+                        }, 0);
+                };
+                // Total inicial para columna 2
+                var totalColumn2 = calculateTotal(2);
+                // Total inicial para columna 3
+                var totalColumn3 = calculateTotal(3);
+                // Total inicial para columna 4
+                var totalColumn4 = calculateTotal(4);
+
+                // Update footer para columna 2
+                $(api.column(2).footer()).html(
+                    // Formatear el total con formato de moneda a dos decimales
+                    totalColumn2.toLocaleString('es-MX', {
+                        style: 'currency',
+                        currency: 'MXN'
+                    })
+                );
+                // Update footer para columna 3
+                $(api.column(3).footer()).html(
+                    // Formatear el total con formato de moneda a dos decimales
+                    totalColumn3.toLocaleString('es-MX', {
+                        style: 'currency',
+                        currency: 'MXN'
+                    })
+                );
+
+                // Update footer para columna 3
+                $(api.column(4).footer()).html(
+                    // Formatear el total con formato de moneda a dos decimales
+                    totalColumn4.toLocaleString('es-MX', {
+                        style: 'currency',
+                        currency: 'MXN'
+                    })
+                );
+                // Evento draw para recalcular el total cuando se redibuja la tabla
+                api.on('draw', function () {
+                    var totalColumn2 = calculateTotal(2);
+                    var totalColumn3 = calculateTotal(3);
+                    $(api.column(2).footer()).html(
+                        totalColumn2.toLocaleString('es-MX', {
+                            style: 'currency',
+                            currency: 'MXN'
+                        }) + ' MXN'
+                    );
+                    $(api.column(3).footer()).html(
+                        totalColumn3.toLocaleString('es-MX', {
+                            style: 'currency',
+                            currency: 'MXN'
+                        }) + ' USD'
+                    );
+                });
+            }
+        });
+    });
+
+
+$('#editWadModal').on('show.bs.modal', function (event) {
+    let modal = $(this);
+    // Obtener el valor del atributo data-tabId
+    let tabId = $(event.relatedTarget).data('tabid');
+    let secuencial = $(event.relatedTarget).data('secuencial');
+    let codgas = $(event.relatedTarget).data('codgas');
+
+    // Acciones que deseas realizar antes de que el modal se muestre
+    $.ajax({
+        url: `/operations/editWadModal/${tabId}/${secuencial}/${codgas}`,
+        method: 'GET',
+        dataType: 'json',
+        success: function(data) {
+            modal.find('.modal-dialog').addClass(data.size + ' ' + data.position);
+            modal.find('#editWadModalLabel').text(data.title);
+            modal.find('#content').html(data.content);
+            $('.selectpicker').selectpicker();
+        },
+        error: function(xhr, textStatus, errorThrown) {
+            console.error('AJAX error:', errorThrown);
+        }
+    });
+});
+
+$('#exportExcel_datatables_wads_tab').on('click', function () {
+    // Disparar el evento clic del botón de exportación de Excel del DataTable
+    $('.datatables_wads_tab').trigger('click');
+});
+
+// Vamos a inicializar las tablas con la clase table-measurements
+$('.table-measurements').DataTable({
+    dom: '<"top"Bf>rt<"bottom"lip>',
+    pageLength: 100,
+    buttons: [
+        {
+            extend: 'excel',
+            className: 'd-none table-measurements',
+        }
+    ],
+    deferRender: true,
+    initComplete: function () {
+        // $('.dt-buttons').addClass('d-none'); // Ocultar los botones de exportación
+        $('.table-responsive').removeClass('loading');
+    }
+});
+
+
+
+</script>

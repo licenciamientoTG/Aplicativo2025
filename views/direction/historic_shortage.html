@@ -1,0 +1,132 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Historico Desabasto{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Historico Desabasto{% endblock %}
+{% block content %}
+<style>
+    .heather_historic{
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        box-shadow: 0px 1px 5px 0px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+    }
+    .icon_delete {
+    cursor: pointer;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.icon_delete:hover {
+    transform: scale(1.2); /* Aumenta el tamaño del ícono */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Agrega una sombra */
+}
+</style>
+{# <link rel="stylesheet" type="text/css" href="{{ PLUGINS }}sweetalert2/sweetalert2.min.css"> #}
+
+    {% if authorized(44) %}
+    <div class="card col-12">
+        <div class="card-body">
+            <form id="form_add_hours">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-2">
+                            <label for="fecha_desabasto" class="col-form-label col-form-label-sm">Fecha: </label>
+                            <input type="date" min="2021-01-01" class="form-control" name="fecha_desabasto" id="fecha_desabasto" value="{{ 'now' | date('Y-m-d') }}" required>
+                        </div>
+                        <div class="col-2">
+                            <label for="id_estacion" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="id_estacion" id="id_estacion" placeholder="Estación" required>
+                                {% for station in stations %}
+                                <option value="{{ station.Codigo }}" >{{ station.Nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label for="horas" class="col-form-label col-form-label-sm">Horas: </label>
+                            <input type="number" min="0" step="0.01" max="1000" class="form-control" name="horas" id="horas"  placeholder="Horas" required>
+                        </div>
+                        <div class="col-2">
+                            <label for="id_producto" class="col-form-label col-form-label-sm">Producto: </label>
+                            <select class="selectpicker form-control" data-live-search="true" name="id_producto" id="id_producto" placeholder="Producto" required>
+                                <option value="1" >T-Maxima Regular</option>
+                                <option value="2" >T-Super Premium</option>
+                                <option value="3" >Diesel</option>
+                            </select>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <a type="submit" class="btn btn-primary btn-block w-100" id="download_info" onclick="SaveHoursShortage()"><i data-feather="save"></i> Guardar</a>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card flex-fill">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item historic_price_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- <h5 class="card-title mb-0">Titulo</h5> -->
+                </div>
+                <div class="card-body table-responsive">
+                    <div id="filtro-historic_shortage_table" class="mb-1">
+                        <div class="row">
+                            <div class="col-1 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_id_desabasto" placeholder="id"></div>
+                            <div class="col-1 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_fecha_desabasto" placeholder="fecha desabasto"></div>
+                            <div class="col-1 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_codigo" placeholder="codigo"></div>
+                            <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_nombre" placeholder="nombre"></div>
+                            <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_producto" placeholder="producto"></div>
+                            <div class="col-1 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_horas" placeholder="horas"></div>
+                            <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="col_razon_social" placeholder="razon social"></div>
+                        </div>
+                    </div>
+                    <table class="table table-borderless table-striped table-striped-columns my-0 w-100" id="historic_shortage_table">
+                        <thead>
+                        <tr>
+                            <th>Id</th>
+                            <th>Fecha</th>
+                            <th>Estacion</th>
+                            <th>Nombre</th>
+                            <th>Producto</th>
+                            <th>Horas</th>
+                            <th>Grupo</th>
+                            <th></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}
+{% block myjs %}
+{# <script type="text/javascript" src="{{ PLUGINS }}sweetalert2/sweetalert2.all.min.js"></script>
+ #}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.0/dist/sweetalert2.all.min.js"></script>
+<script src="{{ JS }}direction.js"></script>
+
+
+{% endblock %}

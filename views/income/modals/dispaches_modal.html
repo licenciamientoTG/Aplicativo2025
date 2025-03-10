@@ -1,0 +1,65 @@
+<style>
+.table-container-modal{
+    max-width: 100%; /* Limita el ancho máximo del contenedor */
+    overflow-x: auto;
+}
+
+</style>
+<div class="modal-body">
+
+    <div  class="table-container-modal">
+            <table class="table table-hover table-sm table-striped  table-responsive  w-100 datatables_dispatches_modal" >
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Despacho</th>
+                        <th>Producto</th>
+                        <th>Estacion</th>
+                        <th>Cliente</th>
+                        <th>Cantidad</th>
+                        <th>Importe</th>
+                        <th>Precio</th>
+                        <th>Despachador</th>
+                        <th>Pago</th>
+                        <th>Factura</th>
+                        <th>UUID</th>
+                        <th>Notas</th>
+                        <th>Rut</th>
+                        <th>Denominacion</th>
+                        <th>Codigo</th>
+                        <th>Tipo</th>
+                        <th>Vehiculo</th>
+                        <th>Placas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in dispatches %}
+                    <tr>
+                        <td class="text-nowrap">{{ item.fecha }}</td>
+                        <td class="text-nowrap">{{ item.hora_formateada }}</td>
+                        <td class="text-nowrap">{{ item.despacho }}</td>
+                        <td class="text-nowrap">{{ item.producto }}</td>
+                        <td class="text-nowrap">{{ item.estacion }}</td>
+                        <td class="text-nowrap">{{ item.cliente_fac??item.cliente_des }}</td>
+                        <td class="text-nowrap">{{item.cantidad   | round(3, 'floor') }}</td>
+                        <td class="text-nowrap">{{item.importe   | round(3, 'floor') }}</td>
+                        <td class="text-nowrap">{{item.precio   | round(3, 'floor') }}</td>
+                        <td class="text-nowrap">{{ item.despachador }}</td>
+                        <td class="text-nowrap">{{ item.tipo_pago??item.tipo_pago_despacho }}</td>
+                        <td class="text-nowrap">{{ item.factura??item.factura_desp }}</td>
+                        <td class="text-nowrap">{{ item.UUID }}</td>
+                        <td class="text-nowrap">{{ item.txtref }}</td>
+                        <td class="text-nowrap">{{ item.rut }}</td>
+                        <td class="text-nowrap">{{ item.denominacion }}</td>
+                        <td class="text-nowrap">{{ item.codigo_cliente }}</td>
+                        <td class="text-nowrap">{{ item.tipo_cliente }}</td>
+                        <td class="text-nowrap">{{ item.vehiculo }}</td>
+                        <td class="text-nowrap">{{ item.placas }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+    
+            </table>
+    </div>
+</div>

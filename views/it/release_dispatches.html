@@ -1,0 +1,121 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Liberación de despachos{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item refresh_datatables_release_dispatches" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card m-0">
+        <form action="#" method="get">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-3">
+                        <label for="nrotrn" class="col-form-label col-form-label-sm"># de despacho: </label>
+                        <input type="number" class="form-control" name="nrotrn" id="nrotrn" value="{{ nrotrn == false ? 0 : nrotrn }}">
+                    </div>
+                    <div class="col-3">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación">
+                            {% for station in stations %}
+                                {% if station.cod != 0 %}
+                                <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-3 d-flex flex-column justify-content-between">
+                        <div></div>
+                        <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    <div class="card-body table-responsive">
+    {% if nrotrn == false %}
+        <div class="alert alert-warning alert-dismissible" role="alert">
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <div class="alert-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle me-2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+            </div>
+            <div class="alert-message">
+                <strong>¡Atención!</strong> Ingrese un despacho para realizar la búsqueda.
+            </div>
+        </div>
+    {% else %}
+        <div id="filtro-datatables_release_dispatches" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESPACHO" placeholder="Despacho"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FDESPACHO" placeholder="F. Despacho"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="LITROS" placeholder="Litros"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="Monto"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACTURA" placeholder="Factura"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FACTEST" placeholder="Fact. Est."></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="UUID" placeholder="UUID"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RFC" placeholder="RFC"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="LOGFECHA" placeholder="Fecha Log"></div>
+                <div class="col p-1 text-center">
+                    <button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button>
+<!--                    <button type="button" class="btn btn-sm btn-warning refresh" onclick="release_dispatches('{{ from }}', '{{ until }}', '{{ codgas }}');">Liberar</button>-->
+                </div>
+            </div>
+        <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+        <table id="datatables_release_dispatches" class="table table-sm w-100 text-nowrap" style="font-size:x-small;" data-from="{{ from }}" data-until="{{ until }}" data-codgas="{{ codgas }}">
+            <thead>
+                <tr>
+                    {# nrotrn, fchtrn, can, mto, nrofac, gasfac, satuid, satrfc, logfch #}
+                    <th>DESPACHO</th>
+                    <th>F. DESPACHO</th>
+                    <th>LITROS</th>
+                    <th>MONTO</th>
+                    <th>FACTURA</th>
+                    <th>FACT. EST.</th>
+                    <th>UUID</th>
+                    <th>RFC</th>
+                    <th>LOGFECHA</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>DESPACHO</th>
+                    <th>F. DESPACHO</th>
+                    <th>LITROS</th>
+                    <th>MONTO</th>
+                    <th>FACTURA</th>
+                    <th>FACT. EST.</th>
+                    <th>UUID</th>
+                    <th>RFC</th>
+                    <th>LOGFECHA</th>
+                    <th>ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+    {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+{% endblock %}

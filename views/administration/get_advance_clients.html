@@ -1,0 +1,70 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Anticipos{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Anticipos{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <div id="filtro-datatables_customer_anticipos2" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="RFC" placeholder="RFC"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TOTAL" placeholder="TOTAL"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CONSUMOS" placeholder="CONSUMOS"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DIFERENCIA" placeholder="DIFERENCIA"></div>
+
+                <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+            </div>
+            <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+        <table id="datatables_customer_anticipos2" class="table table-sm w-100" style="font-size:small;">
+            <thead>
+            <tr>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>RFC</th>
+                <th>TIPO</th>
+                <th>PRODUCTO</th>
+                <th>MONTO</th>
+                <th>IVA</th>
+                <th>TOTAL</th>
+                <th>CONSUMOS</th>
+                <th>DIFERENCIA</th>
+                <th class="w-5"></th>
+            </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+            <tr>
+                <th>CODCLIENTE</th>
+                <th>CLIENTE</th>
+                <th>RFC</th>
+                <th>TIPO</th>
+                <th>PRODUCTO</th>
+                <th>MONTO</th>
+                <th>IVA</th>
+                <th>TOTAL</th>
+                <th>CONSUMOS</th>
+                <th>DIFERENCIA</th>
+                <th class="w-5"></th>
+            </tr>
+            </tfoot>
+        </table>
+
+        <input type="hidden" id="percent" value="{{ percent }}">
+        <input type="hidden" id="from" value="{{ from }}">
+        <input type="hidden" id="until" value="{{ until }}">
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+{% endblock %}

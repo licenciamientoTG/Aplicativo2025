@@ -1,0 +1,92 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Venta Dolares Mensual{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Venta Dolares Mensual{% endblock %}
+{% block content %}
+<style>
+    .bg-warning_1{
+        background-color:rgb(252 185 44 / 19%) !important;
+        
+    }
+    .month_group{
+        background-color: #d1d1d140 !important;
+    }
+    td{
+        text-align: end !important;
+
+    }
+</style>
+    <div class="row">
+        <div class="col-12">
+            <div class="card flex-fill">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item monthly_dollar_sales_report_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- <h5 class="card-title mb-0">Titulo</h5> -->
+                </div>
+                <div class="card-body table-responsive">
+                    <!-- <div id="filtro-monthly_dollar_sales_report_table" class="mb-1">
+                        <div class="row">
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Fecha" placeholder="Fecha"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Grupo" placeholder="Grupo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Precio" placeholder="Precio"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Producto" placeholder="Producto"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Plaza" placeholder="Plaza"></div>
+                        </div>
+                    </div> -->
+                    <table class="table text-right table-borderless  my-0 w-100" id="monthly_dollar_sales_report_table" >
+                        <thead>
+                            <tr>
+                                <th>Estación</th>
+                                <th>Año</th>
+                                <th class="text-nowrap">Ene USD</th>
+                                <th class="text-nowrap">Ene MX</th>
+                                <th class="text-nowrap">Feb USD</th>
+                                <th class="text-nowrap">Feb MX</th>
+                                <th class="text-nowrap">Mar USD</th>
+                                <th class="text-nowrap">Mar MX</th>
+                                <th class="text-nowrap">Abr USD</th>
+                                <th class="text-nowrap">Abr MX</th>
+                                <th class="text-nowrap">May USD</th>
+                                <th class="text-nowrap">May MX</th>
+                                <th class="text-nowrap">Jun USD</th>
+                                <th class="text-nowrap">Jun MX</th>
+                                <th class="text-nowrap">Jul USD</th>
+                                <th class="text-nowrap">Jul MX</th>
+                                <th class="text-nowrap">Ago USD</th>
+                                <th class="text-nowrap">Ago MX</th>
+                                <th class="text-nowrap">Sep USD</th>
+                                <th class="text-nowrap">Sep MX</th>
+                                <th class="text-nowrap">Oct USD</th>
+                                <th class="text-nowrap">Oct MX</th>
+                                <th class="text-nowrap">Nov USD</th>
+                                <th class="text-nowrap">Nov MX</th>
+                                <th class="text-nowrap">Dic USD</th>
+                                <th class="text-nowrap">Dic MX</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}direction.js"></script>
+
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Despachos mensuales{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Estaciones{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <form action="/stations/readings" method="post">
+            <div class="row">
+                <div class="col">
+                    <select class="form-select mb-3 selectpicker" name="tab_id">
+                        <option selected="">Selecciona un tabulador</option>
+                        {% for tab in tabulators %}
+                            <option value="{{ tab.Id }}">Id: {{ tab.Id ~ ' | Est: ' ~ tab.Estacion  ~ ' | Fecha: ' ~ tab.FechaTabular ~ ' | Turno: ' ~  tab.Turno }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col">
+                    <button type="submit" class="btn btn-primary btn-block w-100">Filtrar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if post == 1 %}
+    {% for bomba in bombas %}
+    <div class="card">
+        <div class="card-header mb-0 pb-0">
+            <h5 class="card-title mb-0">{{ bomba.den }} | Bomba {{ bomba.nro }} | Posición: {{ bomba.pos }} ({{ bomba.pos == 1 ? 'Máxima' : 'Super' }})</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col">
+                    <label>Lect. Mec. Inicial</label>
+                    <input type="number" step="1" min="0" class="form-control">
+                </div>
+                <div class="col">
+                    <label>Lect. Mec. Final</label>
+                    <input type="number" step="1" min="0" class="form-control">
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% endif %}
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}stations.js"></script>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Concentrado Mensual{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Concentrado Mensual{% endblock %}
+{% block content %}
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card flex-fill">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item refresh_monthly_summary_shortge_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- <h5 class="card-title mb-0">Titulo</h5> -->
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-borderless table-striped table-striped-columns my-0 w-100" id="monthly_summary_shortge_table">
+                        <thead>
+                        <tr>
+                            <th>Grupo</th>
+                            <th>Nombre</th>
+                            {% for month in months %}
+                            <th>{{month.name}} {{month.year}}</th>
+                            {% endfor %}
+                        </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+
+                        <tfoot>
+                            <tr>
+                                <th></th>
+                                <th>Nombre</th>
+                                {% for month in months %}
+                                <th>{{month.name}} {{month.year}}</th>
+                                {% endfor %}
+                            </tr>
+                            </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+{% endblock %}
+{% block myjs %}
+
+<script>
+var months = {{ months|json_encode()|raw }};
+
+   const dynamicColumns = [
+        { 'data': 'Denominacion' },
+        { 'data': 'nombre' },
+    ];
+    months.forEach(function(process) {
+        name=process.name+'-'+process.year;
+        dynamicColumns.push({ 'data': name });
+    });
+console.log(dynamicColumns);
+
+
+</script>
+<script src="{{ JS }}direction/shortage.js"></script>
+
+{% endblock %}

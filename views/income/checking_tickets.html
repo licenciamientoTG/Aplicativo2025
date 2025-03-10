@@ -1,0 +1,471 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Comprobación de tickets{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Comprobación de tickets{% endblock %}
+{% block content %}
+
+<div class="row">
+    <div class="col-8">
+        <div class="card m-0 mb-2 shadow">
+
+            <form action="#" method="get">
+
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col">
+                            <label for="from" class="col-form-label col-form-label-sm">Fecha: </label>
+                            <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ from }}">
+                        </div>
+                        <div class="col">
+                            <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="codgas" name="codgas" data-width="100%" required placeholder="Seleccione una estación">
+                                {% for gas in stations %}
+                                <option value="{{ gas.Codigo }}" {{ gas.Codigo in codgas ? 'selected' : '' }}>{{ gas.Nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label for="shift" class="col-form-label col-form-label-sm">Turno: </label>
+                            <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="shift" name="shift" data-width="100%" required placeholder="Seleccione el turno">
+                                <option value="0" {{ shift == 0 ? 'selected' : '' }}>Todos</option>
+                                <option value="1" {{ shift == 1 ? 'selected' : '' }}>Turno 1</option>
+                                <option value="2" {{ shift == 2 ? 'selected' : '' }}>Turno 2</option>
+                                <option value="3" {{ shift == 3 ? 'selected' : '' }}>Turno 3</option>
+                                <option value="4" {{ shift == 4 ? 'selected' : '' }}>Turno 4</option>
+                            </select>
+                        </div>
+                        <div class="col">
+                            <label for="dispatch_type" class="col-form-label col-form-label-sm">Tipo: </label>
+                            <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="dispatch_type" name="dispatch_type" data-width="100%" required placeholder="Seleccione el tipo de despacho">
+                                <option value="Crédito" {{ dispatch_type == 'Crédito' ? 'selected' : '' }}>Crédito</option>
+                                <option value="Débito" {{ dispatch_type == 'Débito' ? 'selected' : '' }}>Débito</option>
+                                <option value="Payworks" {{ dispatch_type == 'Payworks' ? 'selected' : '' }}>Payworks</option>
+                            </select>
+                        </div>
+                        <div class="col d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="submit" class="btn btn-primary btn-block w-100 btn-sm"><i data-feather="search"></i> Buscar</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card m-0 mb-2 shadow">
+            <form id="form_find">
+                <div class="card-body">
+                    <div class="row">
+                        <label for="from" class="col-form-label col-form-label-sm">Folio de despacho: </label>
+                        <div class="input-group">
+                            <input type="number" class="form-control form-control-sm" step="1" name="dispatch" id="dispatch" placeholder="Escanee el ticket de venta" aria-label="Number input" {{ codgas == 0 ? 'disabled readonly' : '' }} required autocomplete="off">
+                            <button class="btn btn-success btn-sm" type="submit"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check align-middle me-2"><polyline points="20 6 9 17 4 12"></polyline></svg> Verificar</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if codgas > 0 %}
+<div class="row ">
+    <div class="col">
+        <div class="alert alert-primary alert-outline alert-dismissible" role="alert">
+            <div class="alert-icon p-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-tag align-middle"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+            </div>
+            <div class="alert-message p-2 border-primary">
+                <strong>Total Registros: </strong> <i id="totalRecords"></i>
+            </div>
+            <div class="alert-message p-2 border-primary">
+                <strong>Marcados: </strong> <i id="totalCheckedRecords">1</i>
+            </div>
+            <div class="alert-message p-2 border-primary">
+                <strong>Pendientes: </strong> <i id="totalPendingRecords"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col">
+        <div class="alert alert-success alert-outline alert-dismissible" role="alert">
+            <div class="alert-icon p-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div class="alert-message p-2 border-success">
+                <strong>Monto total: </strong> <i id="formattedTotal"></i>
+            </div>
+            <div class="alert-message p-2 border-success">
+                <strong>Marcado: </strong> <i id="formattedCheckedTotal"></i>
+            </div>
+            <div class="alert-message p-2 border-success">
+                <strong>Pendiente: </strong> <i id="pendignAmount"></i>
+            </div>
+        </div>
+    </div>
+
+</div>
+<div class="card shadow">
+    <div class="card-header">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="generateExcel"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-file-text"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> Exportar todos los pendientes</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title">Listado de tickets por estación</h5>
+    </div>
+    <div class="card-body">
+        <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="all-tab" data-bs-toggle="tab" data-bs-target="#all-tab-pane" type="button" role="tab" aria-controls="all-tab-pane" aria-selected="true">Todos</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="checked-tab" data-bs-toggle="tab" data-bs-target="#checked-tab-pane" type="button" role="tab" aria-controls="checked-tab-pane" aria-selected="false" tabindex="-1">Verificados</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending-tab-pane" type="button" role="tab" aria-controls="pending-tab-pane" aria-selected="false" tabindex="-1">Pendientes</button>
+            </li>
+        </ul>
+        <div class="tab-content" id="myTabContent">
+            <div class="tab-pane fade show active" id="all-tab-pane" role="tabpanel" aria-labelledby="all-tab" tabindex="0">
+                <div class="card">
+                    <div class="card-body">
+                        <div id="filtro-all_dispatches_table" class="mb-1">
+                            <div class="row">
+                                <!-- Agrega tus elementos de filtrado aquí -->
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESPACHO" placeholder="DESPACHO"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACIÓN"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ISLA" placeholder="ISLA"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VOLUMEN" placeholder="VOLUMEN"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="MONTO"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TURNO" placeholder="TURNO"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="STATUS"></div>
+                                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="COMENTARIO" placeholder="COMENTARIO"></div>
+                                <div class="col p-1 text-center">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Small button group">
+                                        <button type="button" class="btn btn-primary refresh"><i data-feather="refresh-ccw"></i></button>
+                                        <button type="button" class="btn btn-success" id="all_dispatches_table_to_excel"><i data-feather="file-text"></i></button>
+                                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#mailModal"><i data-feather="mail"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Puedes agregar más filtros según tus necesidades -->
+                        </div>
+                        <table class="table table-borderless my-0 w-100" id="all_dispatches_table" style="font-size: x-small">
+                            <thead>
+                            <tr>
+                                <th>DESPACHO</th>
+                                <th>ESTACIÓN</th>
+                                <th>ISLA</th>
+                                <th>CODCLIENTE</th>
+                                <th>CLIENTE</th>
+                                <th>VOLUMEN</th>
+                                <th>MONTO</th>
+                                <th>TIPO</th>
+                                <th>TURNO</th>
+                                <th>FECHA</th>
+                                <th>PRODUCTO</th>
+                                <th>STATUS</th>
+                                <th>COMENTARIO</th>
+                                <th class="w-5">ACCIONES</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade table-responsive" id="checked-tab-pane" role="tabpanel" aria-labelledby="checked-tab" tabindex="0">
+                <div id="filtro-checked_dispatches_table" class="mb-1">
+                    <div class="row">
+                        <!-- Agrega tus elementos de filtrado aquí -->
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESPACHO" placeholder="DESPACHO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACIÓN"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ISLA" placeholder="ISLA"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VOLUMEN" placeholder="VOLUMEN"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="MONTO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TURNO" placeholder="TURNO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="STATUS"></div>
+                        <div class="col p-1 text-center">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Small button group">
+                                <button type="button" class="btn btn-primary refresh"><i data-feather="refresh-ccw"></i></button>
+                                <button type="button" class="btn btn-success" id="checked_dispatches_table_to_excel"><i data-feather="file-text"></i></button>
+                                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#mailModal"><i data-feather="mail"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Puedes agregar más filtros según tus necesidades -->
+                </div>
+                <table class="table table-borderless my-0 w-100" id="checked_dispatches_table" style="font-size: x-small">
+                    <thead>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>ESTACIÓN</th>
+                        <th>ISLA</th>
+                        <th>CODCLIENTE</th>
+                        <th>CLIENTE</th>
+                        <th>VOLUMEN</th>
+                        <th>MONTO</th>
+                        <th>TIPO</th>
+                        <th>TURNO</th>
+                        <th>FECHA</th>
+                        <th>PRODUCTO</th>
+                        <th>STATUS</th>
+                        <th class="w-5">ACCIONES</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+            <div class="tab-pane fade" id="pending-tab-pane" role="tabpanel" aria-labelledby="pending-tab" tabindex="0">
+                <div id="filtro-pending_dispatches_table" class="mb-1">
+                    <div class="row">
+                        <!-- Agrega tus elementos de filtrado aquí -->
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESPACHO" placeholder="DESPACHO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACIÓN"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ISLA" placeholder="ISLA"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CODCLIENTE" placeholder="CODCLIENTE"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLIENTE" placeholder="CLIENTE"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VOLUMEN" placeholder="VOLUMEN"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MONTO" placeholder="MONTO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TIPO" placeholder="TIPO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="TURNO" placeholder="TURNO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
+                        <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="STATUS"></div>
+                        <div class="col p-1 text-center">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Small button group">
+                                <button type="button" class="btn btn-primary refresh"><i data-feather="refresh-ccw"></i></button>
+                                <button type="button" class="btn btn-success" id="pending_dispatches_table_to_excel"><i data-feather="file-text"></i></button>
+                                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#mailModal"><i data-feather="mail"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Puedes agregar más filtros según tus necesidades -->
+                </div>
+                <table class="table table-borderless my-0 w-100" id="pending_dispatches_table" style="font-size: x-small">
+                    <thead>
+                    <tr>
+                        <th>DESPACHO</th>
+                        <th>ESTACIÓN</th>
+                        <th>ISLA</th>
+                        <th>CODCLIENTE</th>
+                        <th>CLIENTE</th>
+                        <th>VOLUMEN</th>
+                        <th>MONTO</th>
+                        <th>TIPO</th>
+                        <th>TURNO</th>
+                        <th>FECHA</th>
+                        <th>PRODUCTO</th>
+                        <th>STATUS</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-warning alert-outline alert-dismissible" role="alert">
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div class="alert-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-bell align-middle"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+    </div>
+    <div class="alert-message">
+        <strong>Por favor, </strong> llene los campos de búsqueda para obtener los resultados.
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal -->
+<div class="modal fade" id="notesModal" tabindex="-1" aria-labelledby="notesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="notesModalLabel">Agregar comentarios</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/income/save_notes" method="post" id="notes_form">
+            <div class="modal-body">
+                    <input type="hidden" name="id" id="dispatch_id">
+                    <div class="row my-1">
+                        <div class="col-3">
+                            <label for="input_dispatch" class="col-form-label text-end">Despacho: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="input_dispatch" name="input_dispatch" class="form-control w-100" readonly disabled>
+                        </div>
+                    </div>
+
+                    <div class="row my-1">
+                        <div class="col-3">
+                            <label for="input_codgas" class="col-form-label text-end">Estación: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="input_codgas" name="input_codgas" class="form-control w-100" readonly disabled>
+                        </div>
+                    </div>
+
+                    <div class="row my-1">
+                        <div class="col-3">
+                            <label for="input_notes" class="col-form-label text-end">Comentarios: </label>
+                        </div>
+                        <div class="col-9">
+                            <input type="text" id="input_notes" name="input_notes" class="form-control w-100">
+                        </div>
+                    </div>
+            </div>
+            <div class="modal-footer">
+                <button type="submit" class="btn btn-primary btn-sm">Guardar</button>
+                <button type="button" class="btn btn-danger btn-sm" data-bs-dismiss="modal">Cancelar</button>
+            </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="mailModal" tabindex="-1" aria-labelledby="mailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="mailModalLabel">Envio de correo</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/income/send_mail" method="post" id="mail_form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="sentTo" class="form-label">Enviar a: </label>
+                        <input type="text" class="form-control" id="sentTo" name="sentTo">
+
+                        <hr>
+                        <small class="text-primary">Se enviará un correo con todos los despachos pendientes de escanear correspondientes a la estación seleccionada y a la fecha indicada, abarcando todos los turnos.</small>
+                        <small class="text-primary">En el recuadro de arriba, puedes ingresar direcciones de correo adicionales, separadas por punto y coma (;). Ten en cuenta que solo se aceptan correos electrónicos que utilicen el dominio @totalgas.com.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-danger btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}income.js"></script>
+<script>
+    $(document).ready(function() {
+        // Vamos a enfocar el input
+        $('#dispatch').focus();
+
+        $('#form_find').on('submit', function(event) {
+
+            event.preventDefault(); // Prevenir el envío tradicional del formulario
+
+
+            // Obtener el valor del input
+            var dispatchValue = $('#dispatch').val();
+            var codgas = $('#codgas').val();
+            var shift = $('#shift').val();
+            var fch = $('#from').val();
+            var dispatch_type = $('#dispatch_type').val();
+
+            // Hacer la llamada AJAX
+            $.ajax({
+                url: '/income/form_find/' + dispatchValue + '/' + $('input#from').val() + '/' + codgas + '/' + shift, // Cambia esto por la URL a la que quieres enviar los datos
+                type: 'POST', // O 'GET' según lo que necesites
+                data: { dispatch: dispatchValue, 'dispatch_type': dispatch_type }, // Los datos que se envían al servidor
+                success: function(response) {
+                    if (response.status == 'success') {
+                        toastr.success(response.message, '¡Éxito!', { timeOut: 3000 });
+                        // Vamos a refrescar el datatable de despachos pendientes
+                        all_dispatches_table.clear().draw();
+                        all_dispatches_table.ajax.reload();
+                        $('#all_dispatches_table').waitMe('hide');
+
+                        checked_dispatches_table.clear().draw();
+                        checked_dispatches_table.ajax.reload();
+                        $('#checked_dispatches_table').waitMe('hide');
+
+                        pending_dispatches_table.clear().draw();
+                        pending_dispatches_table.ajax.reload();
+                        $('#pending_dispatches_table').waitMe('hide');
+                    } else if (response.status == 'warning') {
+                        toastr.warning(response.message, '¡Advertencia!', { timeOut: 3000 });
+                        if (response.message == 'Despacho encontrado en otra estación o turno.') {
+                            // Aqui vamos a disparar un alertify confirm para registrar el despacho en la estación y turno correspondiente
+                            alertify.confirm('Ticket no encontrado', `¿Desea registrar este ticket en la estación ${response.station} y el turno ${response.shift}?`,
+                                function(){
+                                    // Aqui tenemos que enviar el despacho a la estación y turno correspondiente
+                                    $.ajax({
+                                        url: '/income/register_dispatch/' + dispatchValue + '/' + response.codgas + '/' + fch, // Cambia esto por la URL a la que quieres enviar los datos
+                                        type: 'POST', // O 'GET' según lo que necesites
+                                        data: { dispatch: dispatchValue }, // Los datos que se envían al servidor
+                                        success: function(response) {
+                                            if (response.status == 'success') {
+                                                toastr.success(response.message, '¡Éxito!', { timeOut: 3000 });
+                                            } else if (response.status == 'error') {
+                                                toastr.error(response.message, '¡Error!', { timeOut: 3000 });
+                                            } else if (response.status == 'warning') {
+                                                toastr.warning(response.message, '¡Advertencia!', { timeOut: 3000 });
+                                            }
+                                        },
+                                        error: function(xhr, status, error) {
+                                            // Manejo de errores
+                                            console.error('Error en la solicitud AJAX:', error);
+                                        }
+                                    });
+                                },
+                                function(){
+                                    alertify.error('Operación cancelada')
+                                }
+                            );
+                        }
+                    } else if (response.status == 'error') {
+                        toastr.error(response.message, '¡Error!', { timeOut: 3000 });
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Manejo de errores
+                    console.error('Error en la solicitud AJAX:', error);
+                },
+                complete: function() {
+                    // Vamos a vaciar el input
+                    $('#dispatch').val('');
+                }
+            });
+        });
+    });
+    $(document).ready(function() {
+        $('#generateExcel').click(function() {
+            var fch = $('#from').val();
+            window.location.href = '/income/generateExcel/' + fch;
+            // Vamos a poner un .loading al body
+            $('body').addClass('loading');
+        });
+    });
+</script>
+{% endblock %}

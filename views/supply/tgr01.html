@@ -1,0 +1,149 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Merma por estación{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Merma por estación{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <form action="#" method="get" id="mermas_form">
+            <div class="row">
+                <div class="col">
+                    <label for="from">Fecha inicial: </label>
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required>
+                </div>
+                <div class="col">
+                    <label for="to">Fecha final: </label>
+                    <input type="date" class="form-control" name="to" id="to" value="{{ to == false ? ('now' | date('Y-m-d')) : to }}" required>
+                </div>
+                <div class="col">
+                    <label for="codgas">Estación: </label>
+                    <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="codgas" name="codgas" data-width="100%" required placeholder="Seleccione una estación">
+                        {% for gas in stations %}
+                        <option value="{{ gas.cod }}" {{ gas.cod == codgas ? 'selected' : '' }}>{{ gas.abr }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col">
+                    <label for="product">Producto: </label>
+                    <select class="selectpicker form-control" data-live-search="true" name="product" id="product" placeholder="Producto" required>
+                        <option value="0" {{ product == 0 ? 'selected' : ''}}>Todos</option>
+                        <option value="179" {{ product == 179 ? 'selected' : ''}}>T-Maxima Regular</option>
+                        <option value="180" {{ product == 180 ? 'selected' : ''}}>T-Super Premium</option>
+                        <option value="181" {{ product == 181 ? 'selected' : ''}}>Diesel</option>
+                        <option value="192" {{ product == 192 ? 'selected' : ''}}>Gasolina regular menor a 91 octanos</option>
+                        <option value="193" {{ product == 193 ? 'selected' : ''}}>Gasolina premium mayor o igual a 91 octanos</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label for="shift" style="color: transparent;"></label>
+                    <button type="submit" class="btn btn-primary btn-block w-100">Buscar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill table-responsive">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Últimos 1000 movimientos </h5>
+            </div>
+            <table class="table" id="losses_table" style="font-size: small">
+                <thead>
+                <tr>
+                    <th>FECHA</th>
+                    <th>ESTACIÓN</th>
+                    <th>PRODUCTO</th>
+                    <th>TURNO</th>
+                    <th>VENTAS REALES</th>
+                    <th>INV. FISICO</th>
+                    <th>COMPRA</th>
+                    <th>INV. INICIAL</th>
+                    <th>INV. CONTABLE</th>
+                    <th>DIFERENCIA</th>
+                    <th>ESTADO</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% set ventasreales = 0 %}
+                {% for row in data %}
+                <tr>
+                    <td>{{ row.Fecha | date('d-m-Y') }}</td>
+                    <td>{{ row.Estacion }}</td>
+                    <td>{{ row.Producto }}</td>
+                    <td>{{ row.Turno }}</td>
+                    <td>{{ row.VentasReales | number_format(2, '.', ',') }}</td>
+                    <td>{{ row.Inventario == 0 ? '-' : row.Inventario|number_format(2, '.', ',') }}</td>
+                    <td>{{ row.CantidadCompra | number_format(2, '.', ',') }}</td>
+                    <td>{{ row.InventarioInicial | number_format(2, '.', ',') }}</td>
+                    <td>{{ row.InventarioContable | number_format(2, '.', ',') }}</td>
+                    <td>{{ row.Diferencia | number_format(2, '.', ',') }}</td>
+                    <td>{{ row.Estado }}</td>
+                </tr>
+
+                {% set ventasreales = ventasreales + row.VentasReales %}
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                <tr>
+                    <th>FECHA</th>
+                    <th>ESTACIÓN</th>
+                    <th>PRODUCTO</th>
+                    <th>TURNO</th>
+                    <th>Total: {{ ventasreales | number_format(2, '.', ',') }}</th>
+                    <th>INV. FISICO</th>
+                    <th>COMPRA</th>
+                    <th>INV. CONTABLE</th>
+                    <th>DIFERENCIA</th>
+                    <th>ESTADO</th>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#losses_table').DataTable({
+            order: [[ 0, "desc" ]],
+            dom: 'rftip',  // Remueve el selector de longitud de página
+            pageLength: 100,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'buttons-excel d-none',
+                    title: 'Merma por estación',
+                }
+            ],
+        });
+
+        // Vamos a agregar un loader cuando se envie el formulario #mermas_form
+        $('#mermas_form').submit(function() {
+            $('.table-responsive').html(`
+                <div class="d-flex justify-content-center my-3">
+                  <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                  </div>
+                </div>
+            `);
+        });
+    });
+</script>
+{% endblock %}

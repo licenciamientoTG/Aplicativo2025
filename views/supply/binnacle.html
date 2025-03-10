@@ -1,0 +1,96 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Bitácora de movimientos{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Bitácora de movimientos actual{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </a>
+
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Últimos 1000 movimientos </h5>
+            </div>
+            <table class="table" id="binnacle_table">
+                <thead>
+                <tr>
+                    <th>FOLIO</th>
+                    <th>USUARIO</th>
+                    <th>ACCIÓN</th>
+                    <th>FECHA</th>
+                    <th>DIRECCIÓN</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for row in binnacle %}
+                <tr>
+                    <td>
+                        {{ row['id'] }}
+                    </td>
+                    <td class="d-xxl-table-cell">
+                        <strong>{{ row['Nombre'] }}</strong>
+                        <div class="text-muted">
+                            {{ row['Usuario'] }}
+                        </div>
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        <strong>{{ row.action |upper }}</strong>
+                        <div class="text-muted">
+                            {{ row.description }}
+                        </div>
+                    </td>
+                    <td>
+                        {{ row.register_date | date('d/m/Y H:i')}}
+                    </td>
+                    <td class="d-none d-xl-table-cell">
+                        {{ row.ip_address }}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                <tr>
+                    <th>FOLIO</th>
+                    <th>USUARIO</th>
+                    <th>ACCIÓN</th>
+                    <th>FECHA</th>
+                    <th>DIRECCIÓN</th>
+                </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+// Ahora vamos a incializar la tabla #binnacle_table
+<script>
+    $(document).ready(function() {
+        $('#binnacle_table').DataTable({
+            "order": [[ 0, "desc" ]],
+            "dom": 'rftip',  // Remueve el selector de longitud de página
+            "pageLength": 100,
+        });
+
+        $('#exportExcel').click(function() {
+            const workbook = XLSX.utils.book_new();
+            const binnacleData = $('#binnacle_table').DataTable().rows().data().toArray();
+            const ws = XLSX.utils.aoa_to_sheet(binnacleData);
+            XLSX.utils.book_append_sheet(workbook, ws, 'Bitácora');
+            XLSX.writeFile(workbook, 'bitacora.xlsx');
+        });
+    });
+
+</script>
+{% endblock %}

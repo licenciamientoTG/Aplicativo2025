@@ -1,0 +1,36 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Marketing{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Tarjetas MQG{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="card">
+        <div class="card-body">
+            <form method="post" action="#">
+                <div class="row">
+                    <div class="col-3">
+                        <label for="client_name" class="form-label">Nombre de cliente: </label>
+                        <input type="text" class="form-control" id="client_name" name="client_name">
+                    </div>
+                    <div class="col-3">
+                        <label for="card_number" class="form-label">Número de tarjeta: </label>
+                        <input type="number" min="1" step="1" class="form-control" id="card_number" name="card_number">
+                    </div>
+                    <div class="col-3">
+                        <label for="account_number" class="form-label">Número de cuenta: </label>
+                        <input type="number" min="1" step="1" class="form-control" id="account_number" name="account_number">
+                    </div>
+                    <div class="col-3 d-flex flex-column justify-content-between">
+                        <div></div>
+                        <button type="submit" class="btn btn-primary btn-block w-100">Crear</button>
+                    </div>
+                </div>
+            </form>
+            <div class="row"><div class="form-text">Ingrese el código de identificación del cliente</div></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}marketing.js"></script>
+{% endblock %}

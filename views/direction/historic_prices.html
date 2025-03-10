@@ -1,0 +1,131 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - Historico Precios{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Historico Precios{% endblock %}
+{% block content %}
+<style>
+    .heather_historic{
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 15px;
+        border: 1px solid #ddd;
+        box-shadow: 0px 1px 5px 0px rgba(0, 0, 0, 0.2);
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+    }
+</style>
+<div class="historic_pricess">
+
+    <div class="heather_historic">
+        <div class="card col-5">
+            <div class="card-body">
+                <form action="{{APP_NAME ~ CONTROLLER}}historic_prices" method="post" onsubmit="return checkSubmit();">
+                    <div class="row">
+                        <div class="col ">
+                            <label class="col-form-label-sm" for="">Desde: </label>
+                            <input type="date" value="{{ (from != false) ? from : 'now'|date('Y-m-d') }}" class="form-control form-control-sm" name="from" id="from" required>
+                        </div>
+                        <div class="col ">
+                            <label class="col-form-label-sm" for="">Hasta: </label>
+                            <input type="date" class="form-control form-control-sm" name="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" id="until" required>
+                        </div>
+                        <div class="col " style="padding-top: 37px">
+                            <div class="row">
+                                <div class="col">
+                                    <button type="submit" class="btn btn-sm btn-primary" style="width: 100%; margin-top: auto;">Generar Reporte</button>
+                                </div>
+        
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="card col-6">
+            <div class="card-body" style="display: flex;flex-direction: row;flex-wrap: nowrap;justify-content: center;align-items: center;padding: 5px;">
+                <div class="row" style="width: 100%;">
+                    <div class="col-3" >
+                        <button onclick="download_format()" class="btn btn-sm btn-success" style="width: 100%; margin-top: auto;">Descargar Formato</button>
+                    </div>
+                    <div class="col ">
+                        <input type="file" class="form-control " name="file_to_upload" id="file_to_upload" accept=".xls,.xlsx" required>
+                    </div>
+                    <div class="col-3" >
+                        <button onclick="upload_file()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: auto;">Guardar</button>
+                    </div>
+                   
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    
+    <div class="row">
+        <div class="col-12">
+            {% if from != null %}
+            <div class="card flex-fill">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item historic_price_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Titulo</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <div id="filtro-historic_price_table" class="mb-1">
+                        <div class="row">
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Fecha" placeholder="Fecha"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Grupo" placeholder="Grupo"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Precio" placeholder="Precio"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Producto" placeholder="Producto"></div>
+                            <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Plaza" placeholder="Plaza"></div>
+                        </div>
+                    </div>
+                    <table class="table table-borderless table-striped table-striped-columns my-0 w-100" id="historic_price_table" data-from="{{from}}" data-until="{{until}}">
+                        <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Grupo</th>
+                            <th>Precio</th>
+                            <th>Producto</th>
+                            <th>Plaza</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card shadow border-left-primary mt-3">
+                    <div class="card-body">
+                        Ingrese un rango de fechas
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+    
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}direction.js"></script>
+
+{% endblock %}

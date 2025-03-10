@@ -1,0 +1,124 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Vehículos{% endblock %}
+{% block mycss %}
+
+{% endblock %}
+{% block menutitle %}Kioskos{% endblock %}
+{% block content %}
+
+<div class="card m-0 mb-2">
+    <form action="#" method="post">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-2">
+                    <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from }}">
+                </div>
+                <div class="col-2">
+                    <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                    <input type="date" class="form-control" name="until" id="until" value="{{ until }}">
+                </div>
+                <div class="col-2 d-flex flex-column justify-content-between">
+                    <div></div>
+                    <button type="submit" class="btn btn-primary btn-block w-100"><i data-feather="search"></i> Buscar</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item refresh_datatables_kioskos" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Reporte de pagos</h5>
+    </div>
+
+    <div class="card-body table-responsive">
+        <div id="filtro-datatables_kioskos" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="FECHA"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="HORA" placeholder="HORA"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="NO_DESPACHO" placeholder="NO_DESPACHO"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="IMPORTE" placeholder="IMPORTE"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="REF_BANCARIA" placeholder="REF_BANCARIA"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="NO_TARJETA" placeholder="NO_TARJETA"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="AUTORIZACION" placeholder="AUTORIZACION"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="AFI_BANCARIA" placeholder="AFI_BANCARIA"></div>
+                <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
+            </div>
+            <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+
+        <table id="datatables_kioskos" class="table table-sm w-100 text-nowrap" style="font-size:small;">
+            <thead>
+            <tr>
+                <th>FECHA</th>
+                <th>HORA</th>
+                <th>NO DESPACHO</th>
+                <th>IMPORTE</th>
+                <th>REF BANCARIA</th>
+                <th>NO TARJETA</th>
+                <th>AUTORIZACIÓN</th>
+                <th>AFI BANCARIA</th>
+                <th>ACCIONES</th>
+            </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+            <tr>
+                <th>FECHA</th>
+                <th>HORA</th>
+                <th>NO DESPACHO</th>
+                <th>IMPORTE</th>
+                <th>REF BANCARIA</th>
+                <th>NO TARJETA</th>
+                <th>AUTORIZACIÓN</th>
+                <th>AFI BANCARIA</th>
+                <th>ACCIONES</th>
+            </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="ticketModal" tabindex="-1" aria-labelledby="ticketModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="ticketModalLabel">Impresión de ticket</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="display: flex; justify-content: center; align-items: center;">
+                <div id="ticket" class="p-2" style="max-width: 246px">
+                    <!-- Contenido del ticket -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-primary" id="print_button">Imprimir</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+<script src="{{ JS }}income.js"></script>
+{% endblock %}

@@ -1,0 +1,157 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Consulta de Tabulador{% endblock %}
+{% block content %}
+
+{% set subtotal_mx, total_mx, subtotal_usd, total_usd, total_usd_to_mxn = 0, 0, 0, 0, 0 %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    Tabulador: #{{ tabulator.Id }}
+                    <small class="float-end">Fecha de creación: {{ tabulator.FechaTabular | date('Y-m-d') }}</small>
+                </h5>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row">
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    Fajillas Moneda Nacional
+                    <small class="float-end">{{ contadorMXN }} Fajillas</small>
+                </h5>
+            </div>
+            <div class="card-body h-100">
+                <table id="datatables_mx_wads" class="table table-sm w-100" style="font-size:x-small;" data-codgas="{{ tg_user['IdEstacion'] }}">
+                    <thead>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ISLA</th>
+                            <th>MONEDA</th>
+                            <th>MONTO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for wad in wads %}
+                            {% if wad.Moneda == 'MXN' %}
+                            <tr>
+                                <td>{{ wad.Secuencial }}</td>
+                                <td>{{ wad.Isla }}</td>
+                                <td>{{ wad.Moneda }}</td>
+                                <td>$ {{ (wad.Monto) | number_format(2, '.', ',') }}</td>
+                            </tr>
+                            {% set subtotal_mx = subtotal_mx + wad.Monto %}
+                            {% set total_mx = total_mx + wad.Monto %}
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ISLA</th>
+                            <th>MONEDA</th>
+                            <th>MONTO</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="col-6 offset-6">
+                <div class="table-responsive">
+                    <table class="table table-sm w-100" style="font-size:x-small;">
+                        <tbody>
+                            <tr>
+                                <th style="width:50%">Subtotal:</th>
+                                <td>$ {{ subtotal_mx|number_format(2, '.', ',') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Total:</th>
+                                <td>$ {{ total_mx|number_format(2, '.', ',') }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    Fajillas Dolares
+                    <small class="float-end">{{ contadorUSD }} Fajillas</small>
+                </h5>
+            </div>
+            <div class="card-body h-100">
+                <table id="datatables_usd_wads" class="table table-sm w-100" style="font-size:x-small;" data-codgas="{{ tg_user['IdEstacion'] }}">
+                    <thead>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ISLA</th>
+                            <th>MONEDA</th>
+                            <th>MONTO</th>
+                            <th>CAMBIO</th>
+                            <th>TOTAL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for wad in wads %}
+                            {% if wad.Moneda == 'USD' %}
+                            <tr>
+                                <td>{{ wad.Secuencial }}</td>
+                                <td>{{ wad.Isla }}</td>
+                                <td>{{ wad.Moneda }}</td>
+                                <td>$ {{ (wad.Monto) | number_format(2, '.', ',') }}</td>
+                                <td>$ {{ wad.TipoCambio | number_format(2, '.', ',') }}</td>
+                                <td>$ {{ (wad.Monto * wad.TipoCambio) | number_format(2, '.', ',') }}</td>
+                            </tr>
+                            {% set subtotal_usd = subtotal_usd + wad.Monto %}
+                            {% set total_usd = total_usd + wad.Monto %}
+                            {% set total_usd_to_mxn = total_usd_to_mxn + (wad.Monto * wad.TipoCambio) %}
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>FOLIO</th>
+                            <th>ISLA</th>
+                            <th>MONEDA</th>
+                            <th>MONTO</th>
+                            <th>CAMBIO</th>
+                            <th>TOTAL</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="col-6 offset-6">
+                <div class="table-responsive">
+                    <table class="table table-sm w-100" style="font-size:x-small;">
+                        <tbody>
+                            <tr>
+                                <th>Subtotal USD:</th>
+                                <td>$ {{ subtotal_usd|number_format(2, '.', ',') }}</td>
+                            </tr>
+                            <tr>
+                                <th>Total USD:</th>
+                                <td>$ {{ total_usd|number_format(2, '.', ',') }}</td>
+                            </tr>
+                            <tr>
+                                <th class="text-primary">De USD a MXN:</th>
+                                <td class="text-primary">$ {{ total_usd_to_mxn|number_format(2, '.', ',') }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+{% endblock %}

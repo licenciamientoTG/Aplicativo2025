@@ -1,0 +1,89 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card flex-fill w-100">
+            <div class="card-header">
+                <div class="card-actions float-end">
+                    <div class="dropdown position-relative">
+                        <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg>
+                        </a>
+
+                        <div class="dropdown-menu dropdown-menu-end">
+                            <a class="dropdown-item" href="#">Action</a>
+                            <a class="dropdown-item" href="#">Another action</a>
+                            <a class="dropdown-item" href="#">Something else here</a>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="card-title mb-0">Historico de movimientos</h5>
+            </div>
+            <div class="card-body px-4 table-responsive">
+                <table id="datatables_history" class="table table-sm w-100 text-nowrap table-striped table-bordered" style="font-size:x-small;">
+                    <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>OPERACIÓN</th>
+                        <th>ELEMENTO</th>
+                        <th style="white-space: nowrap;overflow: hidden;text-overflow: ellipsis;width: 200px;">DATOS ORIGINALES</th>
+                        <th style="white-space: nowrap;overflow: hidden;text-overflow: ellipsis;width: 200px;">DATOS NUEVOS</th>
+                        <th>USUARIO</th>
+                        <th>FECHA</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for hist in history %}
+                    <tr>
+                        <td>{{ hist['Id'] }}</td>
+                        <td>{{ hist['TipoOperacion'] }}</td>
+                        <td>{{ hist['Tabla'] }}</td>
+                        <td style="white-space: nowrap;overflow: hidden;text-overflow: ellipsis; width: 200px;">{{ hist['DatosAnteriores'] }}</td>
+                        <td style="white-space: nowrap;overflow: hidden;text-overflow: ellipsis; width: 200px;">{{ hist['DatosNuevos'] }}</td>
+                        <td>{{ hist['Nombre'] }}</td>
+                        <td>{{ hist['Fecha_Formateada'] }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                    <tfoot>
+                    <tr>
+                        <th>ID</th>
+                        <th>OPERACIÓN</th>
+                        <th>ELEMENTO</th>
+                        <th>DATOS ORIGINALES</th>
+                        <th>DATOS NUEVOS</th>
+                        <th>USUARIO</th>
+                        <th>FECHA</th>
+                    </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+<script>
+    $(document).ready(function() {
+        // Deseleccionar cualquier elemento seleccionado
+        $('.selectpicker').selectpicker('val', '');
+
+        // Inicializar la tabla de responsables
+        var datatables_history = $('#datatables_history').DataTable({
+            colReorder: true,
+            order: [0, "desc"],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 25,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'd-none sampling_table',
+                }
+            ],
+        });
+    });
+</script>
+
+{% endblock %}

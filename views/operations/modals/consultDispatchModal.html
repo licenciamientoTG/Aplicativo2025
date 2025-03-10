@@ -1,0 +1,63 @@
+<form id="consultDispatchForm" method="post">
+    <div class="modal-body">
+            <div class="row">
+                <div class="col">
+                    <label for="dispatch" class="col-form-label">Despacho: </label>
+                    <input type="text" class="form-control" name="dispatch" id="dispatch" placeholder="Despacho">
+                </div>
+            </div>
+        <div class="row">
+            <div class="col-12 mt-2">
+                <div class="card shadow bg-dark text-light">
+                    <!-- vamos a poner una card dark -->
+                    <div class="card-body">
+                        <pre id="jsonDisplay"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <input type="hidden" name="codest" value="{{ codest }}">
+        <button type="submit" class="btn btn-primary" id="consultDispatchBtn">Consultar</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+    </div>
+</form>
+
+<script>
+    $(document).ready(function() {
+        $('#consultDispatchBtn').click(function(e) {
+            e.preventDefault(); // Prevenir el comportamiento por defecto del botón
+
+            // Obtener los datos del formulario
+            var formData = $('#consultDispatchForm').serialize();
+
+            // Enviar los datos por AJAX
+            $.ajax({
+                type: 'POST',
+                url: '/operations/consultDispatchForm', // Reemplaza 'URL_DEL_SERVIDOR' por la URL a la que enviarás el formulario
+                data: formData,
+                success: function(response) {
+                    // Manejar la respuesta del servidor aquí
+                    console.log('La consulta fue exitosa');
+                    console.log(response); // Puedes mostrar la respuesta en la consola o manipularla según tu necesidad
+
+                    // Obtener el elemento donde se mostrará el JSON formateado
+                    const jsonDisplay = document.getElementById('jsonDisplay');
+
+                    // Convertir el JSON en una cadena legible con espaciado
+                    const formattedJson = JSON.stringify(response, null, 4); // El tercer parámetro (4) establece la cantidad de espacios para el formato
+
+                    // Mostrar el JSON formateado en el elemento HTML
+                    jsonDisplay.textContent = formattedJson;
+
+                },
+                error: function(err) {
+                    // Manejar errores aquí
+                    console.error('Error al enviar la consulta:', err);
+                }
+            });
+        });
+    });
+
+</script>

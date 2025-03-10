@@ -1,0 +1,39 @@
+<form action="/operations/editWadModal/{{ tabulator.Id }}/{{ wad.Secuencial }}" method="post" id="editWadForm">
+    <div class="modal-body">
+        <div class="mb-3">
+            <label for="tabId" class="form-label">Tabulador: </label>
+            <input type="text" class="form-control" id="tabId" value="{{ tabulator.Id }}" readonly disabled>
+        </div>
+        <div class="mb-3">
+            <label for="secuencial" class="form-label">Secuencia: </label>
+            <input type="text" class="form-control" id="secuencial" value="{{ wad.Secuencial }}" readonly disabled>
+        </div>
+        <div class="mb-3">
+            <label for="currency" class="form-label">Moneda: </label>
+            <input type="text" class="form-control" id="currency" value="{{ wad.Moneda }}" readonly disabled>
+        </div>
+        <div class="mb-3">
+            <label for="amount" class="form-label">Monto: </label>
+            <input type="number" name="amount" id="amount" step="0.01" min="0.01" max="3000" class="form-control form-control-sm" value="{{ wad.Monto }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="island_id" class="form-label">Isla: </label>
+            <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="island_id" id="island_id" placeholder="Isla" required>
+                {% for island in islands %}
+                <option value="{{ island.cod }}" {{ wad.IdIsla == island.cod ? 'selected' : '' }}>{{ island.Isla }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <button type="submit" class="btn btn-primary">Editar fajilla</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+    </div>
+</form>
+
+<script>
+    $('#editWadForm').on('submit', function (e) {
+        var form = $(this);
+        form.addClass('loading');
+    });
+</script>

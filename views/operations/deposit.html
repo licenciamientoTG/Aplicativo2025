@@ -1,0 +1,547 @@
+<div class="row">
+  <div class="col-9">
+    <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }}">
+      <div class="card-header pb-0">
+        <div class="card-actions float-end">
+          <div class="dropdown position-relative">
+            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                   class="feather feather-more-horizontal align-middle">
+                <circle cx="12" cy="12" r="1"></circle>
+                <circle cx="19" cy="12" r="1"></circle>
+                <circle cx="5" cy="12" r="1"></circle>
+              </svg>
+            </a>
+            <div class="dropdown-menu dropdown-menu-end">
+              <a class="dropdown-item" href="#" id="exportExcel_deposit_table">Descargar</a>
+            </div>
+          </div>
+        </div>
+        <h5 class="card-title mb-0">Depósitos {{ tabulator.Estatus == 2 ? '<b class="text-success">(Cerrado)</b>' : '' }}</h5>
+      </div>
+      <div class="card-body" id="card_deposit">
+        <form class="row" method="post" action="#" id="formDeposit">
+          <div class="col-3">
+            <label for="currency" class="visually-hidden">Moneda: </label>
+            <select class="selectpicker form-control form-control-sm w-100" data-live-search="true" name="currency" id="currency" placeholder="Moneda" required>
+              <option value="MXN" selected>MXN</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <input type="hidden" name="tabId" value="{{ tabulator.Id }}">
+            <input type="hidden" name="CodigoEstacion" value="{{ tabulator.CodigoEstacion }}">
+            <input type="hidden" name="Usuario" value="{{ tabulator.Usuario }}">
+            <input type="hidden" name="FechaTabular" value="{{ tabulator.FechaTabular }}">
+            <input type="hidden" name="Turno" value="{{ tabulator.Turno }}">
+            <input type="hidden" name="exchange_now" id="exchange_now" value="{{ exchange_now }}">
+            {% if tabulator.Estatus == 2 %}
+            <button type="button" class="btn btn-success btn-sm w-100 mb-3" disabled>Tabulador cerrado</button>
+            {% else %}
+              {% if deposit_open %}
+              <button type="button" class="btn btn-primary btn-sm w-100 mb-3" onclick="toastr.warning('Antes de agregar un nuevo depósito registre el depósito actual', '¡Atención!', { timeOut: 2000 });">Abrir nuevo depósito</button>
+              {% else %}
+              <button type="submit" class="btn btn-primary btn-sm w-100 mb-3" value="addDeposit" name="action"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle me-2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Abrir nuevo depósito</button>
+              {% endif %}
+            {% endif%}
+          </div>
+          {% if deposit_open %}
+          <div class="col-3">
+            <a href="/operations/cancel_collect/{{ deposit_open.IdTabulador }}/{{ deposit_open.IdRecolecta }}" class="btn btn-sm btn-danger w-100"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Cancelar depósito</a>
+          </div>
+          {% endif %}
+        </form>
+        <hr>
+        {# Notificación de depósito abierto #}
+        {% if deposit_open %}
+        <form id="save_denominations_form">
+          <div class="row">
+            {% if deposit_open.CodigoValor == 6 %}
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <h5 class="card-title mb-0">Billetes MXN</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_thousand" class="col-form-label" style="font-size: x-small; text-align: right;">$1,000.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="30" id="bill_thousand" name="bill_thousand" class="form-control form-control-sm denomination_input" aria-describedby="bill_thousand" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_five_hundred" class="col-form-label" style="font-size: x-small; text-align: right;">$500.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="60" id="bill_five_hundred" name="bill_five_hundred" class="form-control form-control-sm denomination_input" aria-describedby="bill_five_hundred" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_two_hundred" class="col-form-label" style="font-size: x-small; text-align: right;">$200.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="150" id="bill_two_hundred" name="bill_two_hundred" class="form-control form-control-sm denomination_input" aria-describedby="bill_two_hundred" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_hundred" class="col-form-label" style="font-size: x-small; text-align: right;">$100.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="300" id="bill_hundred" name="bill_hundred" class="form-control form-control-sm denomination_input" aria-describedby="bill_hundred" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_fifty" class="col-form-label" style="font-size: x-small; text-align: right;">$50.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="600" id="bill_fifty" name="bill_fifty" class="form-control form-control-sm denomination_input" aria-describedby="bill_fifty" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_twenty" class="col-form-label" style="font-size: x-small; text-align: right;">$20.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" max="750" id="bill_twenty" name="bill_twenty" class="form-control form-control-sm denomination_input" aria-describedby="bill_twenty" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <h5 class="card-title mb-0">Monedas MXN</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_twenty" class="col-form-label" style="font-size: x-small; text-align: right;">$20.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_twenty" name="coin_twenty" class="form-control form-control-sm denomination_input" aria-describedby="coin_twenty" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_ten" class="col-form-label" style="font-size: x-small; text-align: right;">$10.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_ten" name="coin_ten" class="form-control form-control-sm denomination_input" aria-describedby="coin_ten" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_five" class="col-form-label" style="font-size: x-small; text-align: right;">$5.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_five" name="coin_five" class="form-control form-control-sm denomination_input" aria-describedby="coin_five" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_two" class="col-form-label" style="font-size: x-small; text-align: right;">$2.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_two" name="coin_two" class="form-control form-control-sm denomination_input" aria-describedby="coin_two" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_one" class="col-form-label" style="font-size: x-small; text-align: right;">$1.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_one" name="coin_one" class="form-control form-control-sm denomination_input" aria-describedby="coin_one" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_point_fifty" class="col-form-label" style="font-size: x-small; text-align: right;">$0.50:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_point_fifty" name="coin_point_fifty" class="form-control form-control-sm denomination_input" aria-describedby="coin_point_fifty" value="0" oninput="calcTotal(this)">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <div class="row">
+                    <div class="col mt-0">
+                      <h5 class="card-title">Resumen</h5>
+                    </div>
+                    <div class="col-auto">
+                      <div class="stat text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <h1 class="mt-1 mb-3 text-nowrap">$ {{ totalMXN.TotalValor | number_format(2, '.', ',') }}</h1>
+                  <div class="mb-0">
+                    <span class="text-primary">Disponible en fajillas MXN</span>
+                    <hr class="mb-0">
+                  </div>
+                </div>
+                <div class="card-body">
+                  <table class="table table-sm mt-2 mb-4">
+                    <tbody>
+                    <tr>
+                      <th>Subtotal billetes: </th>
+                      <td><i id="subtotal_bills"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Subtotal monedas: </th>
+                      <td><i id="subtotal_coins"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Diferencia: </th>
+                      <td><i id="subtotal_diff"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Total: </th>
+                      <td><i id="total" data-compare="{{ totalMXN.TotalValor }}"></i></td>
+                    </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <h5 class="card-title mb-0">Billetes USD</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_hundred_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$100.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_hundred_usd" name="bill_hundred_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_hundred_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_fifty_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$50.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_fifty_usd" name="bill_fifty_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_fifty_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_twenty_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$20.00:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_twenty_usd" name="bill_twenty_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_twenty_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_ten_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$10.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_ten_usd" name="bill_ten_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_ten_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_five_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$5.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_five_usd" name="bill_five_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_five_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_two_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$2.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_two_usd" name="bill_two_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_two_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="bill_one_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$1.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="bill_one_usd" name="bill_one_usd" class="form-control form-control-sm denomination_input" aria-describedby="bill_one_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <h5 class="card-title mb-0">Monedas USD</h5>
+                </div>
+                <div class="card-body">
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_one_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$1.00: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_one_usd" name="coin_one_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_one_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_half_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$0.50: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_half_usd" name="coin_half_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_half_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_quarter_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$0.25: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_quarter_usd" name="coin_quarter_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_quarter_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_dime_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$0.10: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_dime_usd" name="coin_dime_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_dime_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_nickel_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$0.05: </label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_nickel_usd" name="coin_nickel_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_nickel_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                  <div class="row mb-2">
+                    <div class="col-5 text-end">
+                      <label for="coin_penny_usd" class="col-form-label" style="font-size: x-small; text-align: right;">$0.01:</label>
+                    </div>
+                    <div class="col-7 px-0">
+                      <input type="number" step="1" min="0" id="coin_penny_usd" name="coin_penny_usd" class="form-control form-control-sm denomination_input" aria-describedby="coin_penny_usd" value="0" oninput="calcTotalUSD()">
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="card flex-fill shadow w-100">
+                <div class="card-header">
+                  <div class="row">
+                    <div class="col mt-0">
+                      <h5 class="card-title">Resumen</h5>
+                    </div>
+                    <div class="col-auto">
+                      <div class="stat text-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                      </div>
+                    </div>
+                  </div>
+                  <h2 class="mt-1 mb-3 text-nowrap">$ {{ totalUSD.TotalMonto | number_format(2, '.', ',') }} USD<span class="badge badge-primary-light" style="font-size: x-small">${{ totalUSD.TotalValor | number_format(2, '.', ',') }} MXN</span></h2>
+                  <div class="mb-0">
+                    <span class="text-primary">Disponible en fajillas USD</span>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <table class="table table-sm mt-2 mb-4">
+                    <tbody>
+                    <tr>
+                      <th>Subtotal billetes: </th>
+                      <td><i id="subtotal_bills"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Subtotal monedas: </th>
+                      <td><i id="subtotal_coins"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Diferencia: </th>
+                      <td><i id="subtotal_diff"></i></td>
+                    </tr>
+                    <tr>
+                      <th>Total: </th>
+                      <td><i id="total" data-compare="{{ totalUSD.TotalMonto }}"></i></td>
+                    </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+          <input type="hidden" name="IdRecolecta" value="{{ deposit_open.IdRecolecta }}">
+          <input type="hidden" name="IdTabulador" value="{{ deposit_open.IdTabulador }}">
+          <input type="hidden" name="currency_form" id="currency_form" value="{{ deposit_open.CodigoValor }}">
+          <input type="submit" class="btn btn-primary w-100" value="Registrar depósito" id="save_denominations">
+        </form>
+        {% else %}
+        <div class="alert alert-warning alert-dismissible fade show p-3" role="alert">
+          <strong>¡Atención! </strong> Genere un nuevo depósito para ingresar las denominaciones
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endif %}
+        {# Tabla de depósitos #}
+      </div>
+    </div>
+  </div>
+  <div class="col-3">
+    <div class="card shadow">
+      <div class="card-body">
+        <div class="row">
+          <div class="col mt-0">
+            <h5 class="card-title text-primary">Para depositar</h5>
+          </div>
+          <div class="col-auto">
+            <div class="stat text-success">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle text-success"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+          </div>
+        </div>
+        <h4 class="mt-1 mb-3"> <small class="badge badge-primary-light">${{ totalMXN.TotalValor | number_format(2, '.', ',') }} MXN</small></h4>
+        <h4 class="mt-1 mb-3"> <small class="badge badge-success-light text-dark">${{ totalUSD.TotalMonto | number_format(2, '.', ',') }} USD (${{ totalUSD.TotalValor | number_format(2, '.', ',') }} MXN)</small></h4>
+      </div>
+    </div>
+    <div class="card shadow">
+      <div class="card-body">
+        <div class="row">
+          <div class="col mt-0">
+            <h5 class="card-title text-success">Depositado</h5>
+          </div>
+          <div class="col-auto">
+            <div class="stat text-success">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-dollar-sign align-middle text-success"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+          </div>
+        </div>
+        <h4 class="mt-1 mb-3"> <small class="badge badge-primary-light">${{ (totalDepositedMXN - totalDepositedUSD.TotalValor) | number_format(2, '.', ',') }} MXN *</small></h4>
+        <h4 class="mt-1 mb-3"> <small class="badge badge-success-light text-dark">${{ totalDepositedUSD.TotalMonto | number_format(2, '.', ',') }} USD (${{ totalDepositedUSD.TotalValor | number_format(2, '.', ',') }} MXN)</small></h4>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card shadow">
+  <div class="card-header">
+    <h5 class="card-title mb-0">Depósitos</h5>
+  </div>
+  <div class="card-body">
+    {# Tabla de depósitos realizados #}
+    <div class="table-responsive">
+      <table class="table table-striped table-sm" id="deposit_table">
+        <thead>
+          <tr>
+            <th>DESC.</th>
+            <th>TOTAL</th>
+            <th>MONEDA</th>
+            <th>HORA</th>
+            <th>STATUS</th>
+            <th>ACCIONES</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for deposit in collects %}
+          <tr>
+            <td>{{ deposit.Descripcion }}</td>
+            <td>${{ deposit.Total | number_format(2, '.', ',') }}</td>
+            <td class="fw-bold text-{{ deposit.CodigoValor == 6 ? 'primary' : 'success' }}">{{ deposit.CodigoValor == 6 ? 'MXN' : 'USD' }}</td>
+            <td>{{ deposit.HoraCompleta }}</td>
+            <td>{{ deposit.Estatus == 1 ? '<span class="badge bg-primary">Abierto</span>' : '<span class="badge bg-success">Cerrado</span>' }}</td>
+            <td>
+              {% if tg_user.Id == 6177 %}
+
+                {% if deposit.Estatus == 1 %}
+
+                {% else %}
+                  <a href="javascript:void(0);" onclick="details_deposit(`{{ deposit.IdTabulador }}`, `{{ deposit.IdRecolecta }}`);"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                  <a href="/operations/print_deposit/{{ deposit.IdTabulador }}/{{ deposit.IdRecolecta }}" class="text-success" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-printer align-middle me-2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></a>
+                {% endif %}
+                <a href="javascript:void(0);" onclick="delete_deposit(`{{ deposit.IdTabulador }}`, `{{ deposit.IdRecolecta }}`);" class="text-danger"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash align-middle"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></a>
+              {% else %}
+                {% if deposit.Estatus == 1 %}
+
+                {% else %}
+                <a href="javascript:void(0);" onclick="details_deposit(`{{ deposit.IdTabulador }}`, `{{ deposit.IdRecolecta }}`);"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>
+                <a href="/operations/print_deposit/{{ deposit.IdTabulador }}/{{ deposit.IdRecolecta }}" class="text-success" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-printer align-middle me-2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></a>
+                <a href="javascript:void(0);" onclick="toastr.error("No tiene privilegios para realizar esta acción. Solicite apoyo al departamento de sistemas.")"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash align-middle"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></a>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+  </div>
+</div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="detailsDepositModal" tabindex="-1" aria-labelledby="detailsDepositModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h1 class="modal-title fs-5" id="detailsDepositModalLabel"></h1>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div id="content">
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  $(document).ready(function() {
+    // Cuando el formuario formDeposit se envía
+    $('#formDeposit').on('submit', function(e) {
+      // Deshabilitar el botón de submit
+      $('#save_denominations').prop('disabled', true);
+      // Mostrar el spinner
+      $('#save_denominations').val('Registrando depósito...');
+      // Mostrar loader
+      $('#card_deposit').addClass('loading');
+    });
+
+    // Deseleccionar cualquier elemento seleccionado
+    $('.selectpicker').selectpicker();
+
+    $('#deposit_table').DataTable({
+      colReorder: true,
+      dom: '<"top"Bf>rt<"bottom"lip>',
+      pageLength: 100,
+      // Vamos a ordenar de manera descendente por la columna 3
+        order: [
+            [3, 'asc']
+        ],
+      buttons: [
+        {
+          extend: 'excel',
+          className: 'd-none deposit_table',
+          // Título del archivo Excel
+          title: 'Depósitos',
+        }
+      ],
+      rowId: 'Id',
+      initComplete: function () {
+        $('.dt-buttons').addClass('d-none');
+        $('.table-responsive').removeClass('loading');
+      }
+    });
+  });
+
+  $('#exportExcel_deposit_table').on('click', function () {
+    // Disparar el evento clic del botón de exportación de Excel del DataTable
+    $('.deposit_table').trigger('click');
+  });
+</script>

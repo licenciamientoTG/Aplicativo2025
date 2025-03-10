@@ -1,0 +1,32 @@
+{{ dump(valores) }}
+
+<div class="card shadow m-1">
+    <div class="card-body table-responsive">
+        <h5 class="card-title">Formas de pago - {{ valores[0].Isla }}</h5>
+        <table class="table table-sm table-striped table-hover table-payments tableModal1 dataTable" style="font-size: x-small" id="DataTables_Table_4" role="grid">
+            <thead>
+            <tr role="row"><th class="sorting_asc" tabindex="0" aria-controls="DataTables_Table_4" rowspan="1" colspan="1" aria-sort="ascending" aria-label="FORMA PAGO: activate to sort column descending" style="width: 137.883px;">FORMA PAGO</th><th class="sorting" tabindex="0" aria-controls="DataTables_Table_4" rowspan="1" colspan="1" aria-label="MONTO: activate to sort column ascending" style="width: 71.7913px;">MONTO</th></tr>
+            </thead>
+            <tbody>
+            {% set total_amounts = 0 %}
+            {% for row in valores %}
+            {% set total_amounts = (total_amounts + row.Total) %}
+            <tr>
+                <td class="text-nowrap">{{ row.ValorDescripcion }}</td>
+                <td class="text-nowrap">$ {{ row.Total | number_format(2) }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+            <tr>
+                <th class="text-end">TOTAL</th>
+                <th class="text-nowrap">$ {{ total_amounts | number_format(2) }}</th>
+            </tr>
+            <tr>
+                <th class="text-end">Dif. Contado x Acreditar</th>
+                <th class="text-nowrap diff">{{ TotalDiff }}</th>
+            </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>

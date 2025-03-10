@@ -1,0 +1,176 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas Compra{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Facturas Compra{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="invoice_purchase-tab" data-bs-toggle="tab" data-bs-target="#invoice_purchase" type="button" role="tab" aria-controls="invoice_purchase" aria-selected="true">Facturas Compra</button>
+    </li>
+</ul>
+
+
+<div class="tab-content">
+    <div class="tab-pane active" id="invoice_purchase" role="tabpanel" aria-labelledby="invoice_purchase-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Producto </label>
+                        <select class="form-control form-control-sm" name="product" id="product" required>
+                            <option value="0">Todas</option>
+                            <option value="1">Maxima</option>
+                            <option value="2">Super</option>
+                            <option value="3">Disel</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_invoice_purchase" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Facturas Compra </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="invoice_purchase_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Fecha Vencimiento</th>
+                            <th>Proveedor</th>
+                            <th>Factura</th>
+                            <th>Referencia</th>
+                            <th>Estación</th>
+                            <th>Producto</th>
+                            <th>Empresa</th>
+                            <th>UUID SAT</th>
+                            <th>Cantidad CG</th>
+                            <th>Precio CG</th>
+                            <th>Monto CG</th>
+                            <th>Importe CG</th>
+                            <th>IVA CG</th>
+                            <th>IEPS CG</th>
+                            <th>Cantidad 1G</th>
+                            <th>Precio 1G</th>
+                            <th>IVA 1G</th>
+                            <th>IEPS 1G</th>
+                            <th>Subtotal 1G</th>
+                            <th>Total 1G</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Fecha Vencimiento</th>
+                            <th>Proveedor</th>
+                            <th>Factura</th>
+                            <th>Referencia</th>
+                            <th>Estación</th>
+                            <th>Producto</th>
+                            <th>Empresa</th>
+                            <th>UUID SAT</th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+<script>
+$('#seach_invoice_purchase').on('click', function() {
+    invoice_purchase_table();
+});
+
+
+
+</script>
+
+</script>
+{% endblock %}

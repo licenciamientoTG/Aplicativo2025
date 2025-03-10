@@ -1,0 +1,706 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block mycss %}
+<style>
+    .spinner-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.7); /* Fondo semitransparente */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000; /* Asegura que esté sobre el formulario */
+    }
+
+    .spinner-border {
+        z-index: 1001; /* Asegura que esté sobre el fondo semitransparente */
+    }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="row">
+    <div class="col-12">
+        <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }}">
+            <div class="card-header mb-0 pb-0">
+                <h5 class="card-title mb-0">
+                    <a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#tabInfoModal">Tabulador: #{{
+                        tabulator.Id }}</a> <b id="totalTab">(Total: ${{ tabulator.Total | number_format(2, '.', ',')
+                    }}) </b>
+                    <small class="float-end" data-toggle="tooltip" data-html="true" title="Ingreso: ${{ totals.total_ingresado | number_format(2) }} | Ventas: ${{ totals.total_ventas | number_format(2) }}"><h4><a href="javascript:void(0);"><span class="mx-1 badge bg-teal" id="diff_tab_span">Diferencia: ${{ (totals.total_ingresado - totals.total_ventas) | number_format(2) }}</span></a></h4></small>
+                    <small class="float-end"><h4><a href="/operations/history/{{ tabulator.Id }}"><span class="mx-1 badge bg-warning-dark">Historial</span></a></h4></small>
+                    <small class="float-end ml-1"><h4><span class="mx-1 badge bg-primary">Tipo de cambio: ${{ tabulator.TipoCambio }}</span></h4></small>
+                    <small class="float-end"><h4><span class="mx-1 badge bg-teal">Turno: {{ tabulator.Turno }}</span></h4></small>
+                    <small class="float-end"><h4><span class="mx-1 badge bg-purple">Fecha: {{ tabulator.FechaTabular | date('Y-m-d') }}</span></h4></small>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% for island in all_islands %}
+                <button class="btn btn-{{ island.Diferencia < 0 ? 'info' : 'success' }} mt-1" data-bs-toggle="modal" data-bs-target="#islandInfoModal" data-island="{{ island.codisl }}" id="{{ island.codisl }}">
+                    {{ island.Isla }}<br>${{ island.Diferencia | number_format(2, '.', ',') }}
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card tabulator_window">
+            <div class="card-body">
+                <div class="d-flex align-items-start">
+                    <div class="nav flex-column nav-pills me-3" id="v-pills-tab" role="tablist"
+                         aria-orientation="vertical">
+                        <button class="nav-link text-nowrap text-start" id="v-pills-assignation-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="assignation"
+                                data-bs-target="#v-pills-assignation" type="button" role="tab"
+                                aria-controls="v-pills-assignation" aria-selected="true">1. Asignaciones
+                        </button>
+                        <button class="pill nav-link text-nowrap  text-start" id="v-pills-wads-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="wads"
+                                data-island="{{ island }}" data-bs-target="#v-pills-wads" type="button" role="tab"
+                                aria-controls="v-pills-wads" aria-selected="false">2. Fajillas
+                        </button>
+                        <button class="pill nav-link text-nowrap  text-start" id="v-pills-deposit-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="deposit"
+                                data-bs-target="#v-pills-deposit" type="button" role="tab"
+                                aria-controls="v-pills-deposit" aria-selected="false">3. Depósitos <small>{{ tabulator.TotalPending > 0 ? '<div class="spinner-grow text-warning spinner-grow-sm" role="status"><span class="visually-hidden">Loading...</span></div>' : '' }}</small></button>
+                        <button class="nav-link text-nowrap  text-start" id="v-pills-dispatches-tab" data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="dispatches" data-bs-target="#v-pills-dispatches" type="button" role="tab" aria-controls="v-pills-dispatches" aria-selected="false">4. Despachos                   </button>
+                        <button class="nav-link text-nowrap  text-start" id="v-pills-sampling-tab" data-bs-toggle="pill"
+                                data-tabid="{{ tabulator.Id }}" data-action="sampling"
+                                data-bs-target="#v-pills-sampling" type="button" role="tab"
+                                aria-controls="v-pills-sampling" aria-selected="false">5. Jarreos
+                        </button>
+                        <button class="nav-link text-nowrap  text-start" id="v-pills-readings-tab" data-bs-toggle="pill"
+                                data-tabid="{{ tabulator.Id }}" data-action="readings"
+                                data-bs-target="#v-pills-readings" type="button" role="tab"
+                                aria-controls="v-pills-readings" aria-selected="false">6. Lecturas
+                        </button>
+                        <button class="pill nav-link text-nowrap  text-start" id="v-pills-sales-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="sales_tab"
+                                data-bs-target="#v-pills-sales" type="button" role="tab" aria-controls="v-pills-sales"
+                                aria-selected="false">7. Ventas
+                        </button>
+                        <button class="pill nav-link text-nowrap  text-start" id="v-pills-finish-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="finish"
+                                data-bs-target="#v-pills-finish" type="button" role="tab" aria-controls="v-pills-finish"
+                                aria-selected="false">8. Cerrar
+                        </button>
+                        <button class="pill nav-link text-nowrap  text-start" id="v-pills-ballot-tab"
+                                data-bs-toggle="pill" data-tabid="{{ tabulator.Id }}" data-action="ballot"
+                                data-bs-target="#v-pills-ballot" type="button" role="tab" aria-controls="v-pills-ballot"
+                                aria-selected="false">9. Papeletas
+                        </button>
+                    </div>
+                    <div class="tab-content w-100" id="v-pills-tabContent">
+                        <div class="tab-pane fade" id="v-pills-assignation" role="tabpanel"
+                             aria-labelledby="v-pills-assignation-tab" tabindex="0">
+                            <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }}">
+                                <div class="card-header pb-0">
+                                    <div class="card-actions float-end">
+                                        <div class="dropdown position-relative">
+                                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                     viewBox="0 0 24 24" fill="none"
+                                                     stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                     stroke-linejoin="round"
+                                                     class="feather feather-more-horizontal align-middle">
+                                                    <circle cx="12" cy="12" r="1"></circle>
+                                                    <circle cx="19" cy="12" r="1"></circle>
+                                                    <circle cx="5" cy="12" r="1"></circle>
+                                                </svg>
+                                            </a>
+                                            <div class="dropdown-menu dropdown-menu-end">
+                                                <a class="dropdown-item" href="#"
+                                                   id="exportExcel_datatables_assignations">Descargar</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <h5 class="card-title mb-0">Asignación de responsables {{ tabulator.Estatus == 2 ? '<b
+                                            class="text-success">(Cerrado)</b>' : '' }}</h5>
+                                </div>
+                                <div class="card-body table-responsive">
+                                    <form class="row" method="post" action="#" id="assignation_form">
+                                        <div class="col-3">
+                                            <label for="island" class="visually-hidden">Isla</label>
+                                            <select class="selectpicker form-control form-control-sm w-100"
+                                                    data-live-search="true" name="island" id="island"
+                                                    placeholder="Seleccione la isla" required>
+                                                {% for island in islands %}
+                                                <option value="{{ island.cod }}">{{ island.Isla }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-3">
+                                            <label for="responsable_id" class="visually-hidden">Responsable</label>
+                                            <select class="selectpicker form-control form-control-sm w-100"
+                                                    data-live-search="true" name="responsable_id" id="responsable_id"
+                                                    placeholder="Seleccione al responsable" required>
+                                                {% for responsable in responsables %}
+                                                <option value="{{ responsable.Codigo }}">{{ responsable.Nombre }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="hidden" name="station_server" id="station_server" value="{{ tabulator.station_server }}">
+                                            <input type="hidden" name="Efectivo" id="Efectivo" value="{{ tabulator.Efectivo }}">
+                                            <input type="hidden" name="Morralla" id="Morralla" value="{{ tabulator.Morralla }}">
+                                            <input type="hidden" name="fechaTabularInt" id="fechaTabularInt" value="{{ tabulator.fechaTabularInt }}">
+                                            <input type="hidden" name="tabId" id="tabId" value="{{ tabulator.Id }}">
+                                            <input type="hidden" name="Estatus" id="Estatus" value="{{ tabulator.Estatus }}">
+                                            <input type="hidden" name="CodigoEstacion" id="CodigoEstacion" value="{{ tabulator.CodigoEstacion }}">
+                                            <input type="hidden" name="FechaTabular" id="FechaTabular" value="{{ tabulator.FechaTabular }}">
+                                            <input type="hidden" name="Turno" id="Turno" value="{{ tabulator.Turno }}">
+                                            <input type="hidden" name="Islands" id="Islands" value="{{ tabulator.Islands }}">
+                                            <input type="hidden" name="TotalProductos" id="TotalProductos" value="{{ tabulator.TotalProductos }}">
+                                            <input type="hidden" name="Total" id="Total" value="{{ tabulator.Total }}">
+                                            <input type="hidden" name="DBString" id="DBString" value="{{ tabulator.DBString }}">
+                                            <input type="hidden" name="mojo_access_key" id="mojo_access_key" value="{{ tabulator.mojo_access_key }}">
+                                            <input type="hidden" name="LimiteFajilla" id="LimiteFajilla" value="{{ tabulator.LimiteFajilla }}">
+                                            <input type="hidden" name="exchange_now" id="exchange_now" value="{{ tabulator.TipoCambio }}">
+                                            <input type="hidden" name="TotalPending" id="TotalPending" value="{{ tabulator.TotalPending }}">
+
+                                            <button type="submit" class="btn btn-primary mb-3 btn-sm" value="assignation" name="action">Asignar responsable</button>
+                                            <button type="button" class="btn btn-info  mb-3 btn-sm" data-bs-toggle="modal" data-bs-target="#registerDismissModal"> Alta/Baja de colaborador</button>
+                                        </div>
+                                    </form>
+                                    <hr>
+                                    {# Tabla de asignaciones #}
+                                    <table id="datatables_assignations" class="table table-sm w-100"
+                                           style="font-size:small;" data-codgas="{{ tg_user['IdEstacion'] }}">
+                                        <thead>
+                                        <tr>
+                                            <th>ISLA</th>
+                                            <th>RESPONSABLE</th>
+                                            <th>FECHA</th>
+                                            <th>TURNO</th>
+                                            <th>ESTACIÓN</th>
+                                            <th>ACCIONES</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        {% for assignation in assignments %}
+                                        <tr>
+                                            <td>{{ assignation.IslaNombre }}</td>
+                                            <td>{{ assignation.Nombre }}</td>
+                                            <td>{{ assignation.Fecha | date('Y-m-d') }}</td>
+                                            <td>{{ assignation.Turno }}</td>
+                                            <td>{{ assignation.Estacion }}</td>
+                                            <td>
+                                                {% if tabulator.Estatus == 2 %}
+                                                <a href="javascript:void(0);" class="text-muted" disabled><i
+                                                        data-feather="trash-2"></i></a>
+                                                {% else %}
+                                                <a href="/operations/delete_assignment/{{ assignation.Gasolinera }}/{{ assignation.Fecha }}/{{ assignation.Turno }}/{{ assignation.Isla }}/{{ assignation.Responsable}}/{{ assignation.IdTabulador }}"
+                                                   class="text-danger"
+                                                   onclick="const tableResponsiveElement = document.querySelector('.table-responsive'); tableResponsiveElement.classList.add('loading');"><i
+                                                        data-feather="trash-2"></i></a>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                        <tfoot>
+                                        <tr>
+                                            <th>ISLA</th>
+                                            <th>RESPONSABLE</th>
+                                            <th>FECHA</th>
+                                            <th>TURNO</th>
+                                            <th>ESTACIÓN</th>
+                                            <th>ACCIONES</th>
+                                        </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-wads" role="tabpanel" aria-labelledby="v-pills-wads-tab"
+                             tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-deposit" role="tabpanel"
+                             aria-labelledby="v-pills-deposit-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-dispatches" role="tabpanel"
+                             aria-labelledby="v-pills-dispatches-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }} w-100">
+                                    <div class="card-header mb-0 pb-0">
+                                        <div class="card-actions float-end">
+                                            <div class="dropdown position-relative">
+                                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                         viewBox="0 0 24 24" fill="none"
+                                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                         stroke-linejoin="round"
+                                                         class="feather feather-more-horizontal align-middle">
+                                                        <circle cx="12" cy="12" r="1"></circle>
+                                                        <circle cx="19" cy="12" r="1"></circle>
+                                                        <circle cx="5" cy="12" r="1"></circle>
+                                                    </svg>
+                                                </a>
+                                                <div class="dropdown-menu dropdown-menu-end">
+                                                    <a class="dropdown-item" href="#" id="exportExcel_dispatches_table">Descargar</a>
+                                                    <a class="dropdown-item" href="#" data-bs-toggle="modal"
+                                                       data-bs-target="#consultDispatchModal">Consultar</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <h5 class="card-title mb-0">Despachos {{ tabulator.Estatus == 2 ? '<b
+                                                class="text-success">(Cerrado)</b>' : '' }}</h5>
+                                    </div>
+                                    <div class="card-header d-flex">
+                                        <button class="btn mb-1 btn-info ms-auto" data-bs-toggle="modal"
+                                                data-bs-target="#markDispatchesModal">
+                                            <svg
+                                                    xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                    stroke-width="2"
+                                                    stroke-linecap="round" stroke-linejoin="round"
+                                                    class="feather feather-list align-middle me-2">
+                                                <line x1="8" y1="6" x2="21" y2="6"></line>
+                                                <line x1="8" y1="12" x2="21" y2="12"></line>
+                                                <line x1="8" y1="18" x2="21" y2="18"></line>
+                                                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                                                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                                                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                                            </svg>
+                                            Marcación de despachos
+                                        </button>
+                                        <button class="btn mb-1 btn-warning mx-1" data-bs-toggle="modal"
+                                                data-bs-target="#creditModal"><i data-feather="credit-card"></i> Crédito
+                                        </button>
+                                        <button class="btn mb-1 btn-warning mx-1" data-bs-toggle="modal"
+                                                data-bs-target="#debitModal"><i data-feather="credit-card"></i> Débito
+                                        </button>
+                                        <button class="btn mb-1 btn-warning mx-1" data-bs-toggle="modal"
+                                                data-bs-target="#debitModal">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                 stroke-linecap="round" stroke-linejoin="round"
+                                                 class="feather feather-shopping-cart align-middle me-2">
+                                                <circle cx="9" cy="21" r="1"></circle>
+                                                <circle cx="20" cy="21" r="1"></circle>
+                                                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                                            </svg>
+                                            Productos
+                                        </button>
+                                    </div>
+                                    <div class="card-body mt-0 pt-0 table-responsive">
+                                        <table class="table table-dispatches table-sm w-100" id="dispatches_table"
+                                               style="font-size:x-small;">
+                                            <thead>
+                                            <tr>
+                                                <th></th>
+                                                <th>DESPACHO</th>
+                                                <th>FECHA</th>
+                                                <th>CLIENTE</th>
+                                                <th>PRODUCTO</th>
+                                                <th>LITROS</th>
+                                                <th>MONTO</th>
+                                                <th>ISLA</th>
+                                                <th>BOMBA</th>
+                                                <th>FACTURA</th>
+                                                <th>VALOR</th>
+                                                <th>ACCIONES</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            </tbody>
+                                            <tfoot>
+                                            <tr>
+                                                <th></th>
+                                                <th>DESPACHO</th>
+                                                <th>FECHA</th>
+                                                <th>CLIENTE</th>
+                                                <th>PRODUCTO</th>
+                                                <th>LITROS</th>
+                                                <th>MONTO</th>
+                                                <th>ISLA</th>
+                                                <th>BOMBA</th>
+                                                <th>FACTURA</th>
+                                                <th>VALOR</th>
+                                                <th>ACCIONES</th>
+                                            </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-sampling" role="tabpanel"
+                             aria-labelledby="v-pills-sampling-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }} w-100">
+                                    <div class="card-header mb-0 pb-0">
+                                        <div class="card-actions float-end">
+                                            <div class="dropdown position-relative">
+                                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                         viewBox="0 0 24 24" fill="none"
+                                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                         stroke-linejoin="round"
+                                                         class="feather feather-more-horizontal align-middle">
+                                                        <circle cx="12" cy="12" r="1"></circle>
+                                                        <circle cx="19" cy="12" r="1"></circle>
+                                                        <circle cx="5" cy="12" r="1"></circle>
+                                                    </svg>
+                                                </a>
+                                                <div class="dropdown-menu dropdown-menu-end">
+                                                    <a class="dropdown-item" href="#" id="exportExcel_sampling_table">Descargar
+                                                        tabla</a>
+                                                    <a class="dropdown-item"
+                                                       href="/operations/download_format/{{ tabulator.Id }}">Descargar
+                                                        formato</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <h5 class="card-title mb-0">Jarreos {{ tabulator.Estatus == 2 ? '<b
+                                                class="text-success">(Cerrado)</b>' : '' }}</h5>
+                                    </div>
+                                    <div class="card-body mt-0 pt-0">
+                                        {# Tabla de sampling realizados #}
+                                        <div class="table-responsive">
+                                            <table class="table table-striped table-sm fixed-header-table"
+                                                   id="sampling_table"
+                                                   style="font-size:small;">
+                                                <thead>
+                                                <tr>
+                                                    <th>TRANSACCIÓN</th>
+                                                    <th>FECHA</th>
+                                                    <th>TURNO</th>
+                                                    <th>BOMBA</th>
+                                                    <th>PRODUCTO</th>
+                                                    <th>DESCRIPCIÓN</th>
+                                                    <th>CANT.</th>
+                                                    <th>TOTAL</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                {% if samplings %}
+                                                {% for sampling in samplings %}
+                                                <tr>
+                                                    <td>{{ sampling.Transaccion }}</td>
+                                                    <td>
+                                                        <p class="text-nowrap">{{ sampling.Fecha }}
+                                                            {{ sampling.Hora }}</p>
+                                                    </td>
+                                                    <td>{{ sampling.Turno }}</td>
+                                                    <td>{{ sampling.Bomba }}</td>
+                                                    <td>{{ sampling.Producto }}</td>
+                                                    <td
+                                                            class="fw-bold {{ sampling.Descripcion == 'T-Super Premium' ? 'text-success' : ( sampling.Descripcion == 'T-Maxima Regular' ? 'text-primary' : '' ) }}">
+                                                        {{ sampling.Descripcion }}
+                                                    </td>
+                                                    <td>{{ sampling.Cantidad | number_format(3, '.', ',') }} lts
+                                                    </td>
+                                                    <td>${{ sampling.Total | number_format(2, '.', ',') }}</td>
+                                                </tr>
+                                                {% else %}
+                                                <tr>
+                                                    <td colspan="8">
+                                                        <p class="text-center text-danger">Sin información de
+                                                            jarreos</p>
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                                {% endif %}
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>TRANSACCIÓN</th>
+                                                    <th>FECHA</th>
+                                                    <th>TURNO</th>
+                                                    <th>BOMBA</th>
+                                                    <th>PRODUCTO</th>
+                                                    <th>DESCRIPCIÓN</th>
+                                                    <th>CANT.</th>
+                                                    <th>TOTAL</th>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-readings" role="tabpanel"
+                             aria-labelledby="v-pills-readings-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }} w-100">
+                                    <div class="card-header mb-0 pb-0">
+                                        <div class="card-actions float-end">
+                                            <div class="dropdown position-relative">
+                                                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                                                         viewBox="0 0 24 24" fill="none"
+                                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                                         stroke-linejoin="round"
+                                                         class="feather feather-more-horizontal align-middle">
+                                                        <circle cx="12" cy="12" r="1"></circle>
+                                                        <circle cx="19" cy="12" r="1"></circle>
+                                                        <circle cx="5" cy="12" r="1"></circle>
+                                                    </svg>
+                                                </a>
+                                                <div class="dropdown-menu dropdown-menu-end">
+                                                    <a class="dropdown-item" href="#" id="exportExcel_readings_table">Descargar</a>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <h5 class="card-title mb-0">Lecturas {{ tabulator.Estatus == 2 ? '<b
+                                                class="text-success">(Cerrado)</b>' : '' }}</h5>
+                                    </div>
+                                    <div class="card-body mt-0 pt-0">
+                                        {# Tabla de sampling realizados #}
+                                        <div class="table-responsive w-100">
+                                            <table class="table table-striped table-sm w-100" id="readings_table"
+                                                   style="font-size:x-small;">
+                                                <thead>
+                                                <tr>
+                                                    <th>ISLA</th>
+                                                    <th>BOMBA</th>
+                                                    <th>PRODUCTO</th>
+                                                    <th>L. INI. ELECT.</th>
+                                                    <th>L. FIN. ELECT.</th>
+                                                    <th>LTS. VEN. ELECT.</th>
+                                                    <th>L. INI. MEC.</th>
+                                                    <th>L. FIN. MEC.</th>
+                                                    <th>LTS. VEN. MEC.</th>
+                                                    <th>DIF. LITROS</th>
+                                                </tr>
+                                                </thead>
+                                                <tbody>
+                                                </tbody>
+                                                <tfoot>
+                                                <tr>
+                                                    <th>ISLA</th>
+                                                    <th>BOMBA</th>
+                                                    <th>PRODUCTO</th>
+                                                    <th>L. INI. ELECT.</th>
+                                                    <th>L. FIN. ELECT.</th>
+                                                    <th>LTS. VEN. ELECT.</th>
+                                                    <th>L. INI. MEC.</th>
+                                                    <th>L. FIN. MEC.</th>
+                                                    <th>LTS. VEN. MEC.</th>
+                                                    <th>DIF. LITROS</th>
+                                                </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-sales" role="tabpanel"
+                             aria-labelledby="v-pills-sales-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-finish" role="tabpanel"
+                             aria-labelledby="v-pills-finish-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="tab-pane fade" id="v-pills-ballot" role="tabpanel"
+                             aria-labelledby="v-pills-ballot-tab" tabindex="0">
+                            <div class="d-flex justify-content-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="markDispatchesModal" tabindex="-1" aria-labelledby="markDispatchesModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="markDispatchesModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="content">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="historyModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="content">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="creditModal" tabindex="-1" aria-labelledby="creditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="creditModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="debitModal" tabindex="-1" aria-labelledby="debitModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="debitModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="consultDispatchModal" tabindex="-1" aria-labelledby="consultDispatchModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="consultDispatchModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0">
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" name="assignments" id="assignments" value="{{ assignments }}">
+
+<!-- Modal -->
+<div class="modal fade" id="registerDismissModal" tabindex="-1" aria-labelledby="registerDismissModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="registerDismissModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0 px-0">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="tabInfoModal" tabindex="-1" aria-labelledby="tabInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="tabInfoModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0 px-0">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="islandInfoModal" tabindex="-1" aria-labelledby="islandInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="islandInfoModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content pb-0 pt-0 px-0">
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Cuando la variable blocked_tab sea igual a 1 vamos a agregar un modal que no se pueda remover -->
+{% if blocked_tab == 1 %}
+<div class="modal fade show" id="blockModal" tabindex="-1" aria-labelledby="blockModalLabel" aria-hidden="true" style="display: block;" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border">
+            <div class="modal-header">
+                <h5 class="modal-title" id="blockModalLabel">Acción Requerida</h5>
+            </div>
+            <div class="modal-body">
+                La pantalla está bloqueada. Por favor, realiza la captura de la recepción de pipa en el ControlGas para desbloquear el Tabulador.
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if assignments == false %}
+{% endif %}
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+<script>
+    $(document).ready(function () {
+        $('[data-toggle="tooltip"]').tooltip();
+        // Deseleccionar cualquier elemento seleccionado
+        $('.selectpicker').selectpicker('val', '');
+
+
+        // Aqui vamos a evaluar por medio de fetch de javascript si el turno 1 de hoy esta abierto
+        // Function to check if "Turno 1" is open today
+        function checkTurno1Status() {
+            fetch(`/operations/check_turno_status/{{ tabulator.Turno }}/{{ tabulator.FechaTabular }}/{{ tabulator.CodigoEstacion }}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'open') {
+                        toastr.warning('Por favor, cierra el tabulador del Turno anterior antes de continuar con el actual.', '¡Atención!', { timeOut: 3000 });
+                    } else {
+                        console.log('Turno anterior cerrado.');
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        // Call the function to check the status
+        checkTurno1Status();
+
+        // function unblockScreen() {
+        //     // Aquí puedes añadir la condición de desbloqueo que prefieras
+        //     // Si ya se ha completado la recepción de pipa, cierra el modal
+        //     const modal = document.getElementById('blockModal');
+        //     const modalInstance = bootstrap.Modal.getInstance(modal);
+        //     modalInstance.hide();  // Cierra el modal
+        // }
+    });
+</script>
+
+{% endblock %}

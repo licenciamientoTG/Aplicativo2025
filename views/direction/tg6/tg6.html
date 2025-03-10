@@ -1,0 +1,487 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - TG6{% endblock %}
+{% block mycss %}
+<style>
+#card_canva_vta {
+    background: linear-gradient(135deg, #2c3e50, #4b79a1); /* Degradado oscuro */
+    border: 1px solid #1a252f; /* Borde oscuro */
+    padding: 10px;
+    border-radius: 15px; /* Bordes redondeados */
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5); /* Sombra */
+    color: white; /* Texto en blanco */
+}
+
+#vta_vs_meta_canva {
+    background-color: rgba(0, 0, 0, 0.2); /* Fondo semi-transparente para la gráfica */
+    border-radius: 10px; /* Bordes redondeados */
+}
+
+    .border_end {
+        border-right: 1px solid #00000078 !important;
+        border-left: 1px solid #00000078 !important;
+    }
+    .table th, .table td {
+        white-space: nowrap;
+        padding: 0.25rem 0.5rem;
+    }
+    .td_num {
+        text-align: right;
+    }
+    .bg-yellow { background-color: #ffff00 !important;  }
+    .bg-lightgreen { background-color: #90ee90 !important;   }
+    .bg-lightblue { background-color: #add8e6;   }
+    .bg-orange { background-color: #ffa500 !important;   }
+    .margin-row { height: 20px; }
+    .bg-brown {background-color: #8040009a;  }
+
+
+     .table-orange {
+     
+
+    --bs-table-color: #000;
+    --bs-table-bg: orange;
+    --bs-table-border-color: orange;
+    --bs-table-striped-bg: orange;
+    --bs-table-striped-color: #000;
+    --bs-table-active-bg: #orange;
+    --bs-table-active-color: #000;
+    --bs-table-hover-bg: orange;
+    --bs-table-hover-color: #000
+    }
+
+</style>
+{% endblock %}
+{% block menutitle %}TG6{% endblock %}
+
+{% block content %}
+
+
+
+ <ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="VtaVsVenHistoric-tab" data-bs-toggle="tab" data-bs-target="#VtaVsVenHistoric" type="button" role="tab" aria-controls="VtaVsVenHistoric" aria-selected="true">Vta vs Emp Historico</button>
+      </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link " id="CreditCount-tab" data-bs-toggle="tab" data-bs-target="#CreditCount" type="button" role="tab" aria-controls="CreditCount" aria-selected="true">Cre Consumo Cuenta</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="CreditClient-tab" data-bs-toggle="tab" data-bs-target="#CreditClient" type="button" role="tab" aria-controls="CreditClient" aria-selected="false">Cre Consumo Cliente</button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="DebitCount-tab" data-bs-toggle="tab" data-bs-target="#DebitCount" type="button" role="tab" aria-controls="DebitCount" aria-selected="false">Debito Consumos</button>
+    </li>
+  </ul>
+
+<div class="tab-content">
+	<div class="tab-pane active" id="VtaVsVenHistoric" role="tabpanel" aria-labelledby="VtaVsVenHistoric-tab">
+		<div class="card">
+			<div class="card-body text-end">
+				<div class="mb-3">
+					<button class="btn btn-outline-success" onclick="downloadExcel()">Descargar</button>
+				</div>
+			</div>
+			<div class="card-body">
+				<div class="container-fluid mt-3">
+					<div class="table-responsive">
+						<table class="table   table-bordered">
+							<thead>
+								<tr class="">
+									<th></th>
+									{% for item in months_resumen %}
+										<td class="fw-bolder bg-yellow">{{ item.name }}
+											{{ item.year }}</td>
+									{% endfor %}
+									<th>TOTAL</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr class="margin-row">
+									<td colspan="14"></td>
+								</tr>
+								<tr class="bg-lightgreen">
+									<th class="bg-lightgreen fw-bolder">Venta Cre/Deb</th>
+									{% for item in months_resumen %}
+										{% set sum_mouth_mun = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+												{% set sum_mouth_mun = data.sum_mouth_mun %}
+											{% endif %}
+										{% endfor %}
+										<td class=" td_num bg-lightgreen fw-bolder">{{ sum_mouth_mun }}</td>
+									{% endfor %}
+									<td class="bg-lightgreen"></td>
+								</tr>
+								<tr>
+									<th class="fw-bolder">Crédito</th>
+									{% for item in months_resumen %}
+										{% set sum_cre_mun = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+												{% set sum_cre_mun = data.sum_cre_mun %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num">{{ sum_cre_mun }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr>
+									<th class="fw-bolder">Débito</th>
+									{% for item in months_resumen %}
+										{% set sum_deb = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+												{% set sum_deb = data.sum_deb %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num">{{ sum_deb }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr class="margin-row">
+									<td colspan="14"></td>
+								</tr>
+								<tr class="bg-lightblue">
+									<th class="fw-bolder">Meta</th>
+									{% for item in months_resumen %}
+										{% set sum_meta_mouth = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set sum_meta_mouth = data.sum_meta_mouth %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num fw-bolder">{{ sum_meta_mouth }}</td>
+									{% endfor %}
+								</tr>
+								<tr>
+									<th class="fw-bolder">Crédito</th>
+									{% for item in months_resumen %}
+										{% set sum_meta_cre = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set sum_meta_cre = data.sum_meta_cre %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num">{{ sum_meta_cre }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr>
+									<th class="fw-bolder">Débito</th>
+									{% for item in months_resumen %}
+										{% set sum_meta_deb = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set sum_meta_deb = data.sum_meta_deb %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num">{{ sum_meta_deb }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr class="margin-row">
+									<td colspan="14"></td>
+								</tr>
+								<tr class="bg-brown ">
+									<th class="text-white fw-bolder">% LOGRO</th>
+									{% for item in months_resumen %}
+										{% set percentage_achieved = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set percentage_achieved = data.percentage_achieved %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num text-white fw-bolder">{{ percentage_achieved }}
+											%</td>
+									{% endfor %}
+								</tr>
+								<tr>
+									<th>Crédito</th>
+									{% for item in months_resumen %}
+										{% set percentage_achieved_cred = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set percentage_achieved_cred = data.percentage_achieved_cred %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num ">{{ percentage_achieved_cred }}
+											%</td>
+									{% endfor %}
+									<td>%</td>
+								</tr>
+								<tr>
+									<th>Débito</th>
+									{% for item in months_resumen %}
+										{% set percentage_achieved_deb = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set percentage_achieved_deb = data.percentage_achieved_deb %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num ">{{ percentage_achieved_deb }}
+											%</td>
+									{% endfor %}
+									<td>%</td>
+								</tr>
+								<tr class="margin-row">
+									<td colspan="14"></td>
+								</tr>
+								<tr class="bg-orange">
+									<th class=" fw-bolder">Venta Cre - Mun</th>
+									{% for item in months_resumen %}
+										{% set cred_mun_jua = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set cred_mun_jua = data.cred_mun_jua %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num  fw-bolder">{{ cred_mun_jua }}
+										</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr>
+									<th>Crédito Municipal</th>
+									{% for item in months_resumen %}
+										{% set cred_mun_jua = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set cred_mun_jua = data.cred_mun_jua %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num ">{{ cred_mun_jua }}
+										</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr class="margin-row">
+									<td colspan="14"></td>
+								</tr>
+								<tr class="bg-yellow ">
+									<th class=" fw-bolder">Venta Total</th>
+									{% for item in months_resumen %}
+										{% set VentasReales = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set VentasReales = data.VentasReales %}
+											{% endif %}
+										{% endfor %}
+										<td class="td_num  fw-bolder">{{ VentasReales }}
+										</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr>
+									<th class=" fw-bolder">Venta Cre/Deb</th>
+									{% for item in months_resumen %}
+										{% set sum_mouth = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set sum_mouth = data.sum_mouth %}
+											{% endif %}
+										{% endfor %}
+										<td class=" td_num ">{{ sum_mouth }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+								<tr>
+									<th class=" fw-bolder">Venta Contado</th>
+									{% for item in months_resumen %}
+										{% set sales_cash = 0 %}
+										{% for data in meta_venta %}
+											{% if data.mes == item.numero and data.año == item.year %}
+
+												{% set sales_cash = data.sales_cash %}
+											{% endif %}
+										{% endfor %}
+										<td class=" td_num  ">{{ sales_cash }}</td>
+									{% endfor %}
+									<td></td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div class="card" id="card_canva_vta">
+			<div>
+				<canvas id="vta_vs_meta_canva" width="400" height="130"></canvas>
+			</div>
+		</div>
+	</div>
+	<div class="tab-pane  " id="CreditCount" role="tabpanel" aria-labelledby="CreditCount-tab">
+		<div class="card-header">
+			<h5 class="card-title mb-0">Credito Consumo Cuenta</h5>
+		</div>
+		<div class="card-body">
+			<table class="table  table-sm table-hover  w-100" id="comsumption_credit_count_table">
+				<thead>
+					<tr class=" ">
+						<th>Cliente</th>
+						<th>Nombre</th>
+						<th class="d-none">Nombre</th>
+						<th>Asesor</th>
+						<th>Ingreso</th>
+						{% for month in months %}
+							<th class="table-info text-nowrap text-left">{{month.name}}</th>
+						{% endfor %}
+						<th class="table-success">Consumo Mayor</th>
+						<th class="table-primary">Proyeccion</th>
+						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-info">Zona</th>
+
+					</tr>
+				</thead>
+				<tbody></tbody>
+				<tfoot>
+					<tr>
+						<th></th>
+						<th></th>
+						<th class="d-none"></th>
+						<th></th>
+						<th></th>
+						{% for month in months %}
+							<th class="text-nowrap text-left"></th>
+						{% endfor %}
+						<th></th>
+						<th></th>
+						<th></th>
+						<th></th>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+	</div>
+	<div class="tab-pane " id="CreditClient" role="tabpanel" aria-labelledby="CreditClient-tab">
+		<div class="card-header">
+			<h5 class="card-title mb-0">Credito Consumo Cliente</h5>
+		</div>
+		<div class="card-body">
+
+			<table class="table  table-sm table-hover  w-100" id="comsumption_credit_client_table">
+				<thead>
+					<tr class=" ">
+						<th>Cliente</th>
+						<th>Nombre</th>
+						<th class="d-none">Nombre</th>
+						<th>Asesor</th>
+						<th>Ingreso</th>
+						{% for month in months %}
+							<th class="table-success text-nowrap text-left">{{month.name}}</th>
+						{% endfor %}
+						<th class="table-success">Consumo Mayor</th>
+						<th class="table-primary">Proyeccion</th>
+						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-success">Zona</th>
+
+					</tr>
+				</thead>
+				<tbody></tbody>
+				<tfoot>
+					<tr>
+						<th></th>
+						<th></th>
+						<th class="d-none"></th>
+						<th></th>
+						<th></th>
+						{% for month in months %}
+							<th class="text-nowrap text-left"></th>
+						{% endfor %}
+						<th></th>
+						<th></th>
+						<th></th>
+						<th></th>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+	</div>
+	<div class="tab-pane " id="DebitCount" role="tabpanel" aria-labelledby="DebitCount-tab">
+		<div class="card-header">
+			<h5 class="card-title mb-0">Debito Consumo</h5>
+		</div>
+		<div class="card-body">
+			<table class="table  table-sm table-hover  w-100" id="comsumption_debit_table">
+				<thead>
+					<tr class=" ">
+						<th>Cliente</th>
+						<th>Nombre</th>
+						<th class="d-none">Nombre</th>
+						<th>Asesor</th>
+						<th>Ingreso</th>
+						{% for month in months %}
+							<th class="table-orange text-nowrap text-left">{{month.name}}</th>
+						{% endfor %}
+						<th class="table-success">Consumo Mayor</th>
+						<th class="table-primary">Proyeccion</th>
+						<th class="table-info text-nowrap">Proy vs Cons</th>
+						<th class="table-orange">Zona</th>
+
+					</tr>
+				</thead>
+				<tbody></tbody>
+				<tfoot>
+					<tr>
+						<th></th>
+						<th></th>
+						<th class="d-none"></th>
+						<th></th>
+						<th></th>
+						{% for month in months %}
+							<th class="text-nowrap text-left"></th>
+						{% endfor %}
+						<th></th>
+						<th></th>
+						<th></th>
+						<th></th>
+					</tr>
+				</tfoot>
+			</table>
+		</div>
+	</div>
+</div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@0.7.0"></script> -->
+{# <script type="text/javascript" src="{{ PLUGINS }}chartjs4/index.ts"></script> #}
+
+<script>
+    var months = {{ months|json_encode()|raw }};
+
+$('button[data-bs-toggle="tab"]').on('shown.bs.tab', async function (e) {
+    var target = $(e.target).data('bs-target');
+
+    if (target == '#CreditCount' && !$.fn.DataTable.isDataTable('#comsumption_credit_count_table')) {
+        var CreditColumns  = await  dynamicColumns(months,target);
+        initConsumptionCreditCountTable(CreditColumns);
+    }
+    if (target == '#CreditClient' && !$.fn.DataTable.isDataTable('#comsumption_credit_client_table')) {
+        var CreditClientColumns  = await  dynamicColumns(months, target);
+        initConsumptionCreditClientTable(CreditClientColumns);
+
+    }
+    if (target == '#DebitCount' && !$.fn.DataTable.isDataTable('#comsumption_debit_table')) {
+        var DebColumns  = await  dynamicColumns(months, target);
+        initConsumptionDebitTable(DebColumns);
+    }
+});
+
+</script>
+<script  src="{{ JS }}direction/tg6.js"></script>
+
+
+{% endblock %}
