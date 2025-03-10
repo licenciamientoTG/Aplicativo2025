@@ -30,7 +30,7 @@ class TabulatorModel extends Model{
      * @throws Exception
      */
     public function get_tabulator($tab_id) : array|false {
-        return (($rs = $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_info_tabulador]', [$tab_id])) ? $rs[0] : false );
+        return (($rs = $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_info_tabulador_completo]', [$tab_id])) ? $rs[0] : false );
     }
 
     /**
@@ -297,115 +297,121 @@ class TabulatorModel extends Model{
     }
 
     function get_totals_comparison($tabId, $codgas, $fecha, $turno, $islands) {
-        // Definir los turnos y calcular turno anterior y siguiente
-        $shifts = [11, 21, 31, 41];
-        $currentIndex = array_search($turno, $shifts);
-
-        // Calcular turno anterior y su fecha
-        $previousIndex = ($currentIndex + count($shifts) - 1) % count($shifts);
-        $previousShift = $shifts[$previousIndex];
-        $previousDate = ($previousShift == 41 && $turno == 11) ? ($fecha - 1) : $fecha;
-
-        // Calcular turno siguiente y su fecha
-        $nextIndex = ($currentIndex) % count($shifts);
-        $nextShift = $shifts[$nextIndex];
-        $nextDate = ($nextShift == 11 && $turno == 41) ? ($fecha + 1) : $fecha;
-
         // Configuración de la conexión
         $linkedServer = $this->linked_server[$codgas];
         $dbName = $this->short_databases[$codgas];
 
-        // Consulta para obtener total ingresado
-        $totalIngresadoQuery = "
-        SELECT SUM(total) AS total_ingresado FROM (
-            -- Movimientos de tarjetas
-            SELECT COALESCE(query_result.mto_total, 0) AS total
-            FROM OPENQUERY({$linkedServer}, '
-                SELECT SUM(mto) AS mto_total
-                FROM {$dbName}.[MovimientosTar]
-                WHERE fchmov = {$fecha} 
-                  AND codgas = {$codgas} 
-                  AND nrotur = {$turno} 
-                  AND codisl IN ({$islands}) 
-                  AND NOT (codbco = 0 AND tiptar IN (84, 68, 67, 72))
-            ') AS query_result
-            
-            UNION ALL
-            
-            -- Despachos a clientes específicos
-            SELECT COALESCE(query_result.mto_total, 0) AS total
-            FROM OPENQUERY({$linkedServer}, '
-                SELECT SUM(d.mto) AS mto_total
-                FROM {$dbName}.[Despachos] d
-                JOIN {$dbName}.[Clientes] c ON d.codcli = c.cod
-                WHERE d.fchtrn = {$fecha} 
-                  AND d.codgas = {$codgas} 
-                  AND d.nrotur = {$turno} 
-                  AND d.codisl IN ({$islands}) 
-                  AND c.tipval IN(3,4)
-            ') AS query_result
-            
-            UNION ALL
-            
-            -- Valores del tabulador
-            SELECT COALESCE(SUM(t1.Monto), 0) AS total
-            FROM [TG].[dbo].[TabuladorDetalle] t1
-            WHERE t1.Id = {$tabId} 
-              AND t1.CodigoValor IN (6, 192) 
-              AND t1.Isla IN ({$islands})
-        ) AS ingresos";
+        return (($rs = $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_totales_comparacion]', [$tabId, $codgas, $fecha, $turno, $islands, $linkedServer, $dbName])) ? $rs[0] : false );
 
-        // Consulta para obtener total ventas
-        $totalVentasQuery = "
-        SELECT SUM(total) AS total_ventas FROM (
-            -- Mediciones entre turnos
-            SELECT COALESCE(query_result.amount_total, 0) AS total
-            FROM OPENQUERY({$linkedServer}, '
-                SELECT SUM(med_desp.amount) AS amount_total
-                FROM {$dbName}.[Medicion] m
-                JOIN (
-                    SELECT 
-                        nrobom, 
-                        codprd,
-                        SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END) AS amount
-                    FROM {$dbName}.[Despachos]
-                    WHERE fchcor = {$nextDate}
-                      AND nrotur = {$nextShift}
-                      AND codprd IN (1,2,3,179,180,181,192,193)
-                      AND codisl IN ({$islands})
-                    GROUP BY nrobom, codprd
-                ) med_desp ON m.nrobom = med_desp.nrobom AND m.codprd = med_desp.codprd
-                WHERE m.fch = {$previousDate}
-                  AND m.nrotur = {$previousShift}
-                  AND m.codisl IN ({$islands})
-            ') AS query_result
-            
-            UNION ALL
-            
-            -- Otros productos vendidos
-            SELECT COALESCE(query_result.mto_total, 0) AS total
-            FROM OPENQUERY({$linkedServer}, '
-                SELECT SUM(mto) AS mto_total
-                FROM {$dbName}.[Despachos]
-                WHERE fchcor = {$nextDate}
-                  AND nrotur = {$nextShift}
-                  AND codisl IN ({$islands})
-                  AND codprd NOT IN (0,179,180,181,192,193)
-            ') AS query_result
-        ) AS ventas";
-
-        // Ejecutar consultas
-        $totalIngresado = $this->sql->select($totalIngresadoQuery, [])[0]['total_ingresado'] ?? 0;
-        $totalVentas = $this->sql->select($totalVentasQuery, [])[0]['total_ventas'] ?? 0;
-
-        // Calcular saldo y asegurar precisión
-        $saldo = $totalVentas - $totalIngresado;
-
-        return [
-            'total_ingresado' => number_format($totalIngresado, 2, '.', ''),
-            'total_ventas' => number_format($totalVentas, 2, '.', ''),
-            'saldo' => number_format($saldo, 2, '.', '')
-        ];
+//        // Definir los turnos y calcular turno anterior y siguiente
+//        $shifts = [11, 21, 31, 41];
+//        $currentIndex = array_search($turno, $shifts);
+//
+//        // Calcular turno anterior y su fecha
+//        $previousIndex = ($currentIndex + count($shifts) - 1) % count($shifts);
+//        $previousShift = $shifts[$previousIndex];
+//        $previousDate = ($previousShift == 41 && $turno == 11) ? ($fecha - 1) : $fecha;
+//
+//        // Calcular turno siguiente y su fecha
+//        $nextIndex = ($currentIndex) % count($shifts);
+//        $nextShift = $shifts[$nextIndex];
+//        $nextDate = ($nextShift == 11 && $turno == 41) ? ($fecha + 1) : $fecha;
+//
+//        // Configuración de la conexión
+//        $linkedServer = $this->linked_server[$codgas];
+//        $dbName = $this->short_databases[$codgas];
+//
+//        // Consulta para obtener total ingresado
+//        $totalIngresadoQuery = "
+//        SELECT SUM(total) AS total_ingresado FROM (
+//            -- Movimientos de tarjetas
+//            SELECT COALESCE(query_result.mto_total, 0) AS total
+//            FROM OPENQUERY({$linkedServer}, '
+//                SELECT SUM(mto) AS mto_total
+//                FROM {$dbName}.[MovimientosTar]
+//                WHERE fchmov = {$fecha}
+//                  AND codgas = {$codgas}
+//                  AND nrotur = {$turno}
+//                  AND codisl IN ({$islands})
+//                  AND NOT (codbco = 0 AND tiptar IN (84, 68, 67, 72))
+//            ') AS query_result
+//
+//            UNION ALL
+//
+//            -- Despachos a clientes específicos
+//            SELECT COALESCE(query_result.mto_total, 0) AS total
+//            FROM OPENQUERY({$linkedServer}, '
+//                SELECT SUM(d.mto) AS mto_total
+//                FROM {$dbName}.[Despachos] d
+//                JOIN {$dbName}.[Clientes] c ON d.codcli = c.cod
+//                WHERE d.fchtrn = {$fecha}
+//                  AND d.codgas = {$codgas}
+//                  AND d.nrotur = {$turno}
+//                  AND d.codisl IN ({$islands})
+//                  AND c.tipval IN(3,4)
+//            ') AS query_result
+//
+//            UNION ALL
+//
+//            -- Valores del tabulador
+//            SELECT COALESCE(SUM(t1.Monto), 0) AS total
+//            FROM [TG].[dbo].[TabuladorDetalle] t1
+//            WHERE t1.Id = {$tabId}
+//              AND t1.CodigoValor IN (6, 192)
+//              AND t1.Isla IN ({$islands})
+//        ) AS ingresos";
+//
+//        // Consulta para obtener total ventas
+//        $totalVentasQuery = "
+//        SELECT SUM(total) AS total_ventas FROM (
+//            -- Mediciones entre turnos
+//            SELECT COALESCE(query_result.amount_total, 0) AS total
+//            FROM OPENQUERY({$linkedServer}, '
+//                SELECT SUM(med_desp.amount) AS amount_total
+//                FROM {$dbName}.[Medicion] m
+//                JOIN (
+//                    SELECT
+//                        nrobom,
+//                        codprd,
+//                        SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END) AS amount
+//                    FROM {$dbName}.[Despachos]
+//                    WHERE fchcor = {$nextDate}
+//                      AND nrotur = {$nextShift}
+//                      AND codprd IN (1,2,3,179,180,181,192,193)
+//                      AND codisl IN ({$islands})
+//                    GROUP BY nrobom, codprd
+//                ) med_desp ON m.nrobom = med_desp.nrobom AND m.codprd = med_desp.codprd
+//                WHERE m.fch = {$previousDate}
+//                  AND m.nrotur = {$previousShift}
+//                  AND m.codisl IN ({$islands})
+//            ') AS query_result
+//
+//            UNION ALL
+//
+//            -- Otros productos vendidos
+//            SELECT COALESCE(query_result.mto_total, 0) AS total
+//            FROM OPENQUERY({$linkedServer}, '
+//                SELECT SUM(mto) AS mto_total
+//                FROM {$dbName}.[Despachos]
+//                WHERE fchcor = {$nextDate}
+//                  AND nrotur = {$nextShift}
+//                  AND codisl IN ({$islands})
+//                  AND codprd NOT IN (0,179,180,181,192,193)
+//            ') AS query_result
+//        ) AS ventas";
+//
+//        // Ejecutar consultas
+//        $totalIngresado = $this->sql->select($totalIngresadoQuery, [])[0]['total_ingresado'] ?? 0;
+//        $totalVentas = $this->sql->select($totalVentasQuery, [])[0]['total_ventas'] ?? 0;
+//
+//        // Calcular saldo y asegurar precisión
+//        $saldo = $totalVentas - $totalIngresado;
+//
+//        return [
+//            'total_ingresado' => number_format($totalIngresado, 2, '.', ''),
+//            'total_ventas' => number_format($totalVentas, 2, '.', ''),
+//            'saldo' => number_format($saldo, 2, '.', '')
+//        ];
     }
 
     function check_turno_status($turno, $fecha, $codgas) : bool {
