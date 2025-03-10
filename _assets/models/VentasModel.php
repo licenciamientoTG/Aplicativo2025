@@ -602,7 +602,9 @@ class VentasModel extends Model{
                         FOR AñoMes IN ($pivotColumns)
                     )ptv
                     order by Estacion, Descripcion";
-
+echo '<pre>';
+var_dump($query);
+die();
 
         return $this->sql->select($query, []);
     }
@@ -935,6 +937,7 @@ class VentasModel extends Model{
     }
 
     function getLubricants($from, $until){
+
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);
         $untilDate = DateTime::createFromFormat('Y-m-d', $until);
         $fromInt = dateToInt($from);
@@ -1041,6 +1044,104 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
+    function getLubricantsMonth($from, $until){
+
+        $fromDate = DateTime::createFromFormat('Y-m-d', $from);
+        $untilDate = DateTime::createFromFormat('Y-m-d', $until);
+        $fromInt = dateToInt($from);
+        $untilInt = dateToInt($until);
+        $currentDate = clone $fromDate;
+        
+        $months = [];
+        while ($currentDate <= $untilDate) {
+            $monthNumber = (int)$currentDate->format('m'); // Número de mes sin ceros a la izquierda
+            $year = $currentDate->format('Y');
+            $months[] = ['month' => $monthNumber, 'year' => $year];
+            $currentDate->modify('first day of next month');
+        }
+    
+        // Generar columnas dinámicas para el PIVOT
+        $columns = [];
+        foreach ($months as $month) {
+            $columns[] = "[{$month['year']}_{$month['month']}_monto]";
+            $columns[] = "[{$month['year']}_{$month['month']}_cantidad]";
+        }
+        $columnsList = implode(',', $columns);
+    
+        // Construir consulta SQL dinámica
+        $query = "
+                WITH DatosMensual AS (
+            SELECT
+                CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS Fecha,
+                MONTH(CONVERT(SMALLDATETIME, fch - 1, 103)) AS Mes,
+                YEAR(CONVERT(SMALLDATETIME, fch - 1, 103)) AS [year],
+                isd.codgas AS codigo,
+                g.abr AS Estacion,
+                T3.den AS producto,
+                [codprd] AS CodProducto,
+                SUM(canven) AS VentasCantidad,
+                SUM(mtoven) AS MontoVentas
+            FROM [SG12].[dbo].[Ventas] v
+            INNER JOIN [SG12].[dbo].ISLAS isd ON v.codisl = isd.cod 
+            INNER JOIN [SG12].[dbo].Gasolineras g ON codgas = g.cod 
+            INNER JOIN [SG12].[dbo].Productos T3 ON V.codprd = T3.cod
+            WHERE 
+                fch BETWEEN 45631
+                AND 45721
+                AND codprd NOT IN (179, 180, 181, 1, 2, 3, 192, 193)
+            GROUP BY
+                g.abr,
+                T3.den,
+                fch,
+                codgas,
+                codprd
+        ),
+        DatosParaPivot AS (
+            SELECT 
+                CONCAT([year], '_', FORMAT(Mes, '00')) as [date],
+                codigo,
+                Estacion,
+                producto,
+                SUM(MontoVentas) AS VentasTotalesMonto,
+                SUM(VentasCantidad) AS VentasTotalesCantidad
+            FROM DatosMensual
+            GROUP BY [year], Mes, codigo, Estacion, producto
+        )
+        SELECT 
+            codigo,
+            Estacion,
+            producto,
+            [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
+        FROM (
+            SELECT 
+                codigo,
+                Estacion,
+                Producto,
+                CONCAT([date], '_monto') AS TipoMes,
+                VentasTotalesMonto AS Valor
+            FROM DatosParaPivot
+            UNION ALL
+            SELECT 
+                codigo,
+                Estacion,
+                producto,
+                CONCAT([date], '_cantidad') AS TipoMes,
+                VentasTotalesCantidad AS Valor
+            FROM DatosParaPivot
+        ) AS SourceTable
+        PIVOT (
+            SUM(Valor)
+            FOR TipoMes IN (
+                [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
+            )
+        ) AS PivotTable
+        ORDER BY codigo;
+        ";
+    
+        return $this->sql->select($query, []);
+    }
+    
+
     function getSaleWeekZone($from, $until){
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);
         $untilDate = DateTime::createFromFormat('Y-m-d', $until);
@@ -1303,105 +1404,6 @@ class VentasModel extends Model{
                 ) AS PivotTable
                 ORDER BY fch desc, turn;";
 
-        return $this->sql->select($query, []);
-    }
-
-
-
-    function getLubricantsMonth($from, $until){
-
-        $fromDate = DateTime::createFromFormat('Y-m-d', $from);
-        $untilDate = DateTime::createFromFormat('Y-m-d', $until);
-        $fromInt = dateToInt($from);
-        $untilInt = dateToInt($until);
-        $currentDate = clone $fromDate;
-        
-        $months = [];
-        while ($currentDate <= $untilDate) {
-            $monthNumber = (int)$currentDate->format('m'); // Número de mes sin ceros a la izquierda
-            $year = $currentDate->format('Y');
-            $months[] = ['month' => $monthNumber, 'year' => $year];
-            $currentDate->modify('first day of next month');
-        }
-    
-        // Generar columnas dinámicas para el PIVOT
-        $columns = [];
-        foreach ($months as $month) {
-            $columns[] = "[{$month['year']}_{$month['month']}_monto]";
-            $columns[] = "[{$month['year']}_{$month['month']}_cantidad]";
-        }
-        $columnsList = implode(',', $columns);
-    
-        // Construir consulta SQL dinámica
-        $query = "
-                WITH DatosMensual AS (
-            SELECT
-                CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS Fecha,
-                MONTH(CONVERT(SMALLDATETIME, fch - 1, 103)) AS Mes,
-                YEAR(CONVERT(SMALLDATETIME, fch - 1, 103)) AS [year],
-                isd.codgas AS codigo,
-                g.abr AS Estacion,
-                T3.den AS producto,
-                [codprd] AS CodProducto,
-                SUM(canven) AS VentasCantidad,
-                SUM(mtoven) AS MontoVentas
-            FROM [SG12].[dbo].[Ventas] v
-            INNER JOIN [SG12].[dbo].ISLAS isd ON v.codisl = isd.cod 
-            INNER JOIN [SG12].[dbo].Gasolineras g ON codgas = g.cod 
-            INNER JOIN [SG12].[dbo].Productos T3 ON V.codprd = T3.cod
-            WHERE 
-                fch BETWEEN 45631
-                AND 45721
-                AND codprd NOT IN (179, 180, 181, 1, 2, 3, 192, 193)
-            GROUP BY
-                g.abr,
-                T3.den,
-                fch,
-                codgas,
-                codprd
-        ),
-        DatosParaPivot AS (
-            SELECT 
-                CONCAT([year], '_', FORMAT(Mes, '00')) as [date],
-                codigo,
-                Estacion,
-                producto,
-                SUM(MontoVentas) AS VentasTotalesMonto,
-                SUM(VentasCantidad) AS VentasTotalesCantidad
-            FROM DatosMensual
-            GROUP BY [year], Mes, codigo, Estacion, producto
-        )
-        SELECT 
-            codigo,
-            Estacion,
-            producto,
-            [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
-        FROM (
-            SELECT 
-                codigo,
-                Estacion,
-                Producto,
-                CONCAT([date], '_monto') AS TipoMes,
-                VentasTotalesMonto AS Valor
-            FROM DatosParaPivot
-            UNION ALL
-            SELECT 
-                codigo,
-                Estacion,
-                producto,
-                CONCAT([date], '_cantidad') AS TipoMes,
-                VentasTotalesCantidad AS Valor
-            FROM DatosParaPivot
-        ) AS SourceTable
-        PIVOT (
-            SUM(Valor)
-            FOR TipoMes IN (
-                [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
-            )
-        ) AS PivotTable
-        ORDER BY codigo;
-        ";
-    
         return $this->sql->select($query, []);
     }
 }

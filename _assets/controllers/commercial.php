@@ -37,6 +37,13 @@ class Commercial{
         $until = $_POST['until'] ?? null;
         echo $this->twig->render($this->route . 'sale_lubricants.html', compact('from', 'until'));
     }
+    
+    public function sale_lubricants_month($from = null, $until = null) {
+        $from = $_POST['from'] ?? null;
+        $until = $_POST['until'] ?? null;
+        echo $this->twig->render($this->route . 'sale_lubricants.html', compact('from', 'until'));
+    }
+
     public function  mystery_shopper(){
         echo $this->twig->render($this->route . 'mystery_shopper.html');
     }
