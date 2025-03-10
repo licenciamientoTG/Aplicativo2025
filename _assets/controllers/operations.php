@@ -185,9 +185,6 @@ class Operations{
                 $blocked_tab = 0;
             }
             $tabulator = $this->tabulatorModel->get_tabulator($tabId);
-
-            $totals = $this->tabulatorModel->get_totals_comparison($tabId, $tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands']);
-
             $all_islands = $this->getInitialReadingsByIslands3($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
             $samplings = $this->despachosModel->get_jarreos($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno']);
             $islands = $this->islandModel->get_available_islands_by_tab($tabulator['CodigoEstacion'], $tabulator['Id']);
@@ -348,7 +345,7 @@ class Operations{
     }
 
     function get_sales_in_isle($isle, $tabId, $turno, $fechatabular, $codigoestacion, $limiteFajilla, $islands) {
-            $totals = $this->tabulatorModel->get_totals_comparison($tabId, $codigoestacion, dateToInt($fechatabular), $turno, $islands);
+        $totals = $this->tabulatorModel->get_totals_comparison($tabId, $codigoestacion, dateToInt($fechatabular), $turno, $islands);
 
         $ventas = "";
         $valores  = $this->movimientosTarModel->get_total_islands(dateToInt($fechatabular), $codigoestacion, $isle, intval($turno), $tabId);
@@ -2114,7 +2111,6 @@ class Operations{
     }
     
     function print_ballot($id) {
-
         $ballot = $this->ballotModel->get_ballot_by_id($id);
         $datosEstacion = $this->ballotModel->get_station_data($ballot[0]['CodEstacion']);
         $tabulator = $this->tabulatorModel->get_tabulator($ballot[0]['IdTabulador']);
@@ -2125,13 +2121,17 @@ class Operations{
 
         $valores = $this->ballotModel->get_ballot_values($formatDate2, $turno, $ballot[0]['CodEstacion']);
 
-        $moneda = ($ballot[0]['Moneda'] == 'MXN') ? $valores[0] : $valores[1] ;
+        $moneda = ($ballot[0]['Moneda'] == 'MXN') ? $valores[0] : $valores[1];
 
         function numeroALetras($numero) {
             $formatter = new NumberFormatter("es", NumberFormatter::SPELLOUT);
             return ucfirst($formatter->format($numero));
         }
+
         $monto = $moneda['Monto'];
+        $tipoCambio = $ballot[0]['TipoCambio'];
+        $montoDolares = $monto / $tipoCambio; // Conversión a dólares
+
         $partes = explode('.', number_format($monto, 2, '.', ''));
         $parteEntera = (int) $partes[0];
         $parteDecimal = isset($partes[1]) ? $partes[1] : '00';
@@ -2139,59 +2139,65 @@ class Operations{
 
         $pdf = new PDF_Code128();
         $pdf->AddPage('P');
-        $pdf->Image('_assets/images/papeleta.jpg', 0, 0, 210, 297, 'JPG');
-        $pdf->SetFont('Arial','',7);
+        //$pdf->Image('_assets/images/papeletaDE.jpg', 0, 0, 210, 297, 'JPG');
+        $pdf->SetFont('Arial','',9);
         $pdf->SetTextColor(0,0,0);
-        $pdf->setxy(30, 32);
+
+        $pdf->setxy(12, 27);
         $pdf->Cell(65.5,10,$datosEstacion[0]['NoCuenta'], 0, 0, 'L');
 
         if (in_array($ballot[0]['Turno'], [11,21])) {
-            $pdf->setxy(87, 23);
+            $pdf->setxy(73, 18);
             $pdf->Cell(65.5,10,'X', 0, 0, 'L');//MAT
         } elseif (in_array($ballot[0]['Turno'], [31,41])) {
-            $pdf->setxy(111, 22);
+            $pdf->setxy(97, 18);
             $pdf->Cell(65.5,10,'X', 0, 0, 'L');//VESP
         }
 
-        $pdf->setxy(27, 23);
+        $pdf->setxy(11, 18);
         $pdf->Cell(65.5, 10, $formatDate, 0, 0, 'L');
-        $pdf->setxy(56, 23);
+        $pdf->setxy(40, 18);
         $pdf->Cell(65.5, 10, substr($ballot[0]['FechaCreacion'], 11, 5), 0, 0, 'L');
-        $pdf->setxy(35, 41);
+        $pdf->setxy(18, 36);
         $pdf->Cell(65.5,10,$datosEstacion[0]['EstacionNombre'], 0, 0, 'L');
-        $pdf->setxy(35, 50);
+        $pdf->setxy(17, 44);
         $pdf->Cell(65.5,10, utf8_decode($datosEstacion[0]['Domicilio']), 0, 0, 'L');
+
         if ($ballot[0]['Moneda'] == 'MXN') {
-            $pdf->setxy(72, 58);
+            $pdf->setxy(58, 54);
             $pdf->Cell(65.5,10,"X", 0, 0, 'L');//MN
         } else {
-            $pdf->setxy(92, 58);
+            $pdf->setxy(80, 54);
             $pdf->Cell(65.5,10,"X", 0, 0, 'L');//USD
         }
-        
-        $pdf->setxy(69, 23);
+
+        $pdf->setxy(52, 18);
         $pdf->Cell(65.5,10,"Turno:" . strval($ballot[0]['Turno'])[0], 0, 0, 'L');
-        $pdf->setxy(147, 41);
-        $pdf->Cell(65.5,10,"TC:" . number_format($ballot[0]['TipoCambio'], 2), 0, 0, 'L');
-        $pdf->setxy(148, 32);
+        $pdf->setxy(140, 36);
+        $pdf->Cell(65.5,10,"TC:" . number_format($tipoCambio, 2), 0, 0, 'L');
+        $pdf->setxy(138, 29);
         $pdf->Cell(65.5,10,$ballot[0]['Id'], 0, 0, 'L');
-        $pdf->setxy(35, 100);
+        $pdf->setxy(15, 92);
         $pdf->Cell(65.5,10,$datosEstacion[0]['BancoNombre'], 0, 0, 'L');
-        $pdf->setxy(35, 108);
+        $pdf->setxy(15, 102);
         $pdf->Cell(150, 10, $datosEstacion[0]['Direccion'], 0, 0, 'L');
-        $pdf->setxy(80, 90);
+        $pdf->setxy(60, 120);
         $pdf->Cell(65.5,10,$ballot[0]['SeguriSello'], 0, 0, 'L');
-        $pdf->setxy(35, 90);
+        $pdf->setxy(20, 85);
         $pdf->Cell(65.5,10,$ballot[0]['CantidadFajillas'], 0, 0, 'L');
-        $pdf->setxy(35, 79);
-        $pdf->Cell(65.5, 10, number_format($monto, 2), 0, 0, 'L');
-        $pdf->setxy(35, 68);
-        $pdf->Cell(65.5, 10, $montoLetra, 0, 0, 'L');
-        $pdf->setxy(35, 139);
+        $pdf->setxy(15, 74);
+        $pdf->Cell(65.5, 10,"$" . number_format($monto, 2) . "MN", 0, 0, 'L');
+        if ($ballot[0]['Moneda'] != 'MXN') {
+            $pdf->setxy(50, 74);
+            $pdf->Cell(65.5, 10,"$" . number_format($montoDolares, 2) . "USD", 0, 0, 'L');
+        }
+        $pdf->setxy(15, 62);
+        $pdf->Cell(65.5, 10, utf8_decode($montoLetra), 0, 0, 'L');
+        $pdf->setxy(15, 133);
         $pdf->Cell(65.5,10,$_SESSION['tg_user']['Nombre'], 0, 0, 'L');
-        $pdf->setxy(35, 143);
+        $pdf->setxy(15, 137);
         $pdf->Cell(65.5,10,date('Y-m-d'), 0, 0, 'L');
-        $pdf->setxy(35, 147);
+        $pdf->setxy(15, 141);
         $pdf->Cell(65.5,10,date('H:i'), 0, 0, 'L');
         $pdf->Output();
     }
