@@ -313,6 +313,7 @@ async function sales_type_payment_table(){
                 'fromDate':fromDate,
                 'untilDate':untilDate,
                 'zona':zona,
+                'total':0,
                 'dinamicColumns': dynamicColumns
             },
             url: '/commercial/sales_type_payment_table',
@@ -388,9 +389,10 @@ async function sales_type_payment_table(){
 
     $('#filtro-sales_type_payment_table input').on('keyup  change clear', function () {
         sales_type_payment_table
-            .column(0).search($('#Zona').val().trim())
-            .column(1).search($('#Estacion').val().trim())
-            .column(2).search($('#Descripcion').val().trim())
+            .column(0).search($('#Empresa').val().trim())
+            .column(1).search($('#Zona').val().trim())
+            .column(2).search($('#Estacion').val().trim())
+            .column(3).search($('#Descripcion').val().trim())
             .draw();
       });
     $('.sales_type_payment_table').on('click', function () {
@@ -442,9 +444,10 @@ async function sales_type_payment_totals_table(){
                 'fromDate':fromDate,
                 'untilDate':untilDate,
                 'zona':zona,
+                'total':1,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sales_type_payment_totals_table',
+            url: '/commercial/sales_type_payment_table',
             error: function() {
                 $('#sales_type_payment_totals_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -493,9 +496,10 @@ async function sales_type_payment_totals_table(){
 
     $('#filtro-sales_type_payment_totals_table input').on('keyup  change clear', function () {
         sales_type_payment_totals_table
-            .column(0).search($('#Zona2').val().trim())
-            .column(1).search($('#Estacion2').val().trim())
-            .column(2).search($('#Descripcion2').val().trim())
+            .column(0).search($('#Empresa2').val().trim())
+            .column(1).search($('#Zona2').val().trim())
+            .column(2).search($('#Estacion2').val().trim())
+            .column(3).search($('#Descripcion2').val().trim())
             .draw();
       });
     $('.sales_type_payment_totals_table').on('click', function () {
@@ -515,6 +519,7 @@ function generateSalesPaymentColumns(fromDate, untilDate, table) {
     ];
 
     columns.push(
+        { data: 'Empresa',title:'Empresa', className: 'text-left text-nowrap table-info' },
         { data: 'Zona',title:'Zona', className: 'text-left text-nowrap table-info' },
         { data: 'Estacion',title:'Estacion', className: 'text-left text-nowrap table-info' },
         { data: 'Descripcion', title: 'Descripcion', className: 'text-left text-nowrap table-info' },
@@ -523,8 +528,8 @@ function generateSalesPaymentColumns(fromDate, untilDate, table) {
     let theadHTML = '<tr>';
     let tfootHTML = '<tr>';
      // Agregar las columnas fijas al thead y tfoot
-     theadHTML += '<th>Zona</th><th>Estación</th><th>Producto</th>';
-     tfootHTML += '<th>Zona</th><th>Estación</th><th>Producto</th>'; // Espacios en blanco para las columnas fijas
+     theadHTML += '<th>Empresa</th><th>Zona</th><th>Estación</th><th>Producto</th>';
+     tfootHTML += '<th>Empresa</th><th>Zona</th><th>Estación</th><th>Producto</th>'; // Espacios en blanco para las columnas fijas
    
     let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
 

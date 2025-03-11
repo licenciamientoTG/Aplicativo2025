@@ -136,7 +136,7 @@ class Commercial{
     }
     function sales_type_payment_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
-        $rows = $this->ventas->getSalesTypePayment($_POST['fromDate'], $_POST['untilDate'], $_POST['zona']);
+        $rows = $this->ventas->getSalesTypePayment($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'],$_POST['total']);
         $data=[];
 
         foreach ($rows as $key => $row) {

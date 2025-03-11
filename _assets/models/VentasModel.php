@@ -521,7 +521,7 @@ class VentasModel extends Model{
             return $this->sql->select($query, []);
     }
 
-    function getSalesTypePayment($from, $until, $zona) {
+    function getSalesTypePayment($from, $until, $zona,$total) {
         $fromstring = date('Y-d-m', strtotime($from));
         $untilstring = date('Y-d-m', strtotime($until));
 
@@ -542,69 +542,87 @@ class VentasModel extends Model{
 
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
-            $monthName = ucfirst(strftime('%B', $currentDate->getTimestamp())); // Nombre del mes en español
             $months[] = "[".$year ."_". $monthNumber ."]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
-
+        $pivotColumns_final = implode(' , ', array_map(function($col) {
+            return "ISNULL($col, 0) as $col";
+        }, $months));
+        // Calcular la suma total dinámicamente
         $totalSum = implode(' + ', array_map(function($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $query ="
-                    DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '". $fromstring."') + 1;
-                    DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '". $untilstring."') + 1;
-                    declare  @cod_gas INT = NULL;
+        $group_total=' empresa, Zona, Estacion, Descripcion, YEAR(Fecha), MONTH(Fecha)';
+        $Descripcion = 'Descripcion,';
+        if($total == '1'){
 
-                    WITH ValuesTable as ( 
-                        SELECT v.cod AS CodFormaPago,
-                           E.Codigo AS CodGas,
-                            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, i.fch - 1, 103), 103) AS Fecha,
-                            E.Nombre AS Estacion,
-							 E.estructura as Zona,
-                            /* i.nrotur AS Turno,*/
-                            v.den AS Descripcion,
-                            SUM(i.can) AS Cantidad,
-                            SUM(i.mto) AS Monto
-                        FROM SG12.dbo.Valores v
-                            INNER JOIN SG12.dbo.Ingresos i
-                                ON v.cod = i.codval
-                            INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+            $group_total = " GROUPING SETS (
+                                (empresa, Zona, Estacion, Descripcion, YEAR(Fecha), MONTH(Fecha)), -- Agrupación normal por producto
+                                (empresa, Zona, Estacion, YEAR(Fecha), MONTH(Fecha)) -- Total por estación
+                            )";
+            $Descripcion ='CASE
+                WHEN Descripcion IS NULL THEN \'Total Estación\'
+                ELSE Descripcion
+            END AS Descripcion,';
 
-                        WHERE i.fch
-                            BETWEEN @fecha_inicial_int AND @fecha_fin_int $zona_query
-                             AND E.Codigo = CASE
-                                            WHEN @cod_gas IS NOT NULL AND @cod_gas <> 0 THEN
-                                                @cod_gas
-                                            ELSE
-                                                E.Codigo
-                                        END
-                            /* AND v.cod IN ( 5, 6, 192, 53 )*/
-                        GROUP BY CONVERT(VARCHAR, CONVERT(SMALLDATETIME, i.fch - 1, 103), 103), v.cod, E.Codigo, E.Nombre, v.den,E.estructura
-                    )
-                    select *,($totalSum) AS Total
-                    from (
-                    select 
+        }
+
+    
+    
+
+        $query = "
+                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+
+                WITH ValuesTable AS (
+                    SELECT 
+                        v.cod AS CodFormaPago,
+                        E.Codigo AS CodGas,
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
+                        E.Nombre AS Estacion,
+                        E.estructura AS Zona,
+                        v.den AS Descripcion,
+                        SUM(i.can) AS Cantidad,
+                        SUM(i.mto) AS Monto,
+                        emp.den AS Empresa
+                    FROM SG12.dbo.Valores v
+                    INNER JOIN SG12.dbo.Ingresos i ON v.cod = i.codval
+                    INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                    INNER JOIN SG12.dbo.Gasolineras g ON i.codgas = g.cod
+                    INNER JOIN SG12.dbo.Empresas emp ON g.codemp = emp.cod
+                    WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int $zona_query
+                    GROUP BY 
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)), 
+                        v.cod, E.Codigo, E.Nombre, v.den, E.estructura, emp.den
+                )
+
+                SELECT 
+                    Empresa,
                     Zona,
                     Estacion,
-                    Descripcion,
-                    --DATEPART(Year, Fecha) as [year],
-                    --DATEPART(MONTH, Fecha) as [month],
-                    ISNULL(SUM(Monto),0) as sum_monto,
-                    concat(DATEPART(Year, Fecha) ,'_',DATEPART(MONTH, Fecha)) as [AñoMes]
-                    from ValuesTable
-                    group by Zona,Estacion,Descripcion, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)
-                    ) as src
-                    pivot (
-                        sum(sum_monto)
-                        FOR AñoMes IN ($pivotColumns)
-                    )ptv
-                    order by Estacion, Descripcion";
-echo '<pre>';
-var_dump($query);
-die();
+                    $Descripcion
+                    ($totalSum) AS Total,
+                    $pivotColumns_final
+                FROM (
+                    SELECT 
+                        Empresa,
+                        Zona,
+                        Estacion,
+                        Descripcion,
+                        SUM(Monto) AS sum_monto,
+                        CONCAT(YEAR(Fecha), '_', MONTH(Fecha)) AS AñoMes
+                    FROM ValuesTable
+                  GROUP BY  $group_total
+                ) AS src
+                PIVOT (
+                    SUM(sum_monto)
+                    FOR AñoMes IN ($pivotColumns)
+                ) ptv
+                ORDER BY Estacion, Descripcion;
+            ";
 
         return $this->sql->select($query, []);
     }
