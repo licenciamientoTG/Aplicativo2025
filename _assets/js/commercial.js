@@ -509,6 +509,246 @@ async function sales_type_payment_totals_table(){
     });
     
 }
+
+
+async function mounth_group_table(){
+    if ($.fn.DataTable.isDataTable('#mounth_group_table')) {
+        $('#mounth_group_table').DataTable().destroy();  // Destruye la tabla existente
+        $('#mounth_group_table thead').empty(); // Limpia el encabezado
+        $('#mounth_group_table tbody').empty(); // Limpia el cuerpo
+        $('#mounth_group_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+    }
+    var fromDate = document.getElementById('from3').value;
+    var untilDate = document.getElementById('until3').value;
+    var grupo = document.getElementById('grupo3').value;
+
+    var dynamicColumns = generateMounthGroupColumns(fromDate, untilDate,'mounth_group_table');
+    console.log(dynamicColumns);
+    let mounth_group_table =$('#mounth_group_table').DataTable({
+        order: [0, "asc"],
+        colReorder: false,
+        // columnDefs: [{ visible: true, targets: groupColumn }],
+
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        // pageLength: 150,
+        ordering: true,
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+         fixedColumns: {
+            leftColumns: 3,
+         },
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'grupo':grupo,
+                'total':0,
+                'dinamicColumns': dynamicColumns
+            },
+            url: '/commercial/mounth_group_table',
+            error: function() {
+                $('#mounth_group_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            complete: function () {
+                $('.table-responsive').removeClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: dynamicColumns,
+        destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+        },
+        footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+
+            // Función para obtener sumatoria de una columna
+            var intVal = function (i) {
+                return typeof i === 'string' 
+                    ? i.replace(/[\$,]/g, '') * 1 
+                    : typeof i === 'number' 
+                        ? i 
+                        : 0;
+            };
+
+            // Recorremos las columnas desde la tercera en adelante
+            api.columns().every(function (index) {
+                if (index > 3) { // Desde la tercera columna en adelante
+                    // Sumatoria de los datos filtrados (página actual)
+                    var filteredSum = api
+                        .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+                        .data()
+                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+                    // Sumatoria de todos los datos (incluyendo no visibles)
+                    var totalSum = api
+                        .column(index, { page: 'all' }) // Todos los datos
+                        .data()
+                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+                    // Actualizar el footer con ambas sumatorias
+                    var footer = $(api.column(index).footer());
+                    footer.html(`
+                        <div>Filtrado: ${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                    `);
+                }
+            });
+        }
+    }).on('xhr.dt', function(e, settings, json, xhr) {
+        if (json && json.data) {
+            generateCards(json.data); // Llamar a la función con los datos obtenidos
+        }
+    });
+
+
+    $('#filtro-mounth_group_table input').on('keyup  change clear', function () {
+        mounth_group_table
+            .column(0).search($('#Grupo3').val().trim())
+            .column(1).search($('#Empresa3').val().trim())
+            .column(2).search($('#Descripcion3').val().trim())
+            .column(3).search($('#MedioPago3').val().trim())
+            .draw();
+      });
+    $('.mounth_group_table').on('click', function () {
+        mounth_group_table.clear().draw();
+        mounth_group_table.ajax.reload();
+        $('#mounth_group_table').waitMe('hide');
+    });
+}
+function generateCards(data) {
+    var group_data = Object.values(groupAndSum(data));
+
+    let container = document.getElementById('cardContainer');
+    container.innerHTML = '';
+
+    group_data.forEach(row => {
+        let card = document.createElement('div');
+        // Convertir el objeto MediosPago a un array
+        var medios_pago = Object.values(row.MediosPago);
+        
+        // Crear una tabla para los medios de pago
+        let table = document.createElement('table');
+        table.className = 'table table_card table-sm'; // Añade clases Bootstrap si estás usando Bootstrap
+        
+        // Crear encabezado de la tabla
+        let thead = document.createElement('thead');
+        thead.innerHTML = `
+            <tr>
+                <th>Medio de Pago</th>
+                <th>Monto</th>
+                <th>Porcentaje</th>
+            </tr>
+        `;
+        table.appendChild(thead);
+        
+        // Crer cuerpo de la tabla
+        let tbody = document.createElement('tbody');
+        
+        // Ahora podemos usar forEach porque medios_pago es un array
+        medios_pago.forEach(med => {
+            // Calcular el porcentaje del total
+            let porcentaje = (med.TotalSum / row.TotalSum) * 100;
+            
+            let tr = document.createElement('tr');
+            let total_sum = Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(med.TotalSum);
+            console.log(total_sum)
+            tr.innerHTML = `
+                <td>${med.MedioPago}</td>
+                <td class="text-end">${total_sum}</td>
+                <td class="text-end">${porcentaje.toFixed(2)}%</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        table.appendChild(tbody);
+        let total_sum = Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(row.TotalSum);
+        card.className = 'card card_group';
+        card.innerHTML = `
+            <div class="card-body body_card">
+                <h5 class="card-title">${row.Grupo}</h5>
+                <p class="card-text"><strong>Total: ${total_sum}</strong></p>
+            </div>
+        `;
+        
+        // Agregar la tabla después de establecer el innerHTML
+        card.querySelector('.card-body').appendChild(table);
+        
+        container.appendChild(card);
+    });
+}
+function groupAndSum(data) {
+    return data.reduce((acc, item) => {
+        let group = item.Grupo;
+        let paymentMethod = item.MedioPago;
+
+        // Si el grupo no existe en el acumulador, lo inicializamos con su total general
+        if (!acc[group]) {
+            acc[group] = { 
+                Grupo: group, 
+                TotalSum: 0,  // Total general del grupo
+                MediosPago: {} // Detalle de medios de pago
+            };
+        }
+
+        // Si el medio de pago no existe dentro del grupo, lo inicializamos
+        if (!acc[group].MediosPago[paymentMethod]) {
+            acc[group].MediosPago[paymentMethod] = { 
+                MedioPago: paymentMethod, 
+                TotalSum: 0 // Total por medio de pago
+            };
+        }
+
+        // Recorremos las claves del objeto y sumamos solo las numéricas (excluyendo las especificadas)
+        Object.keys(item).forEach(key => {
+            if (!["Grupo", "Empresa", "Descripcion", "MedioPago", "Total"].includes(key)) {
+                let value = parseFloat(item[key]) || 0;
+                
+                // Sumamos al total del grupo
+                acc[group].TotalSum += value;
+                
+                // Sumamos al total del medio de pago dentro del grupo
+                acc[group].MediosPago[paymentMethod].TotalSum += value;
+            }
+        });
+
+        return acc;
+    }, {});
+}
+
+
+function updateCards() {
+    let data = $('#mounth_group_table').DataTable().rows().data().toArray();
+    generateCards(data);
+
+}
 function generateSalesPaymentColumns(fromDate, untilDate, table) {
     const startDate = new Date(fromDate + "T00:00:00"); // Asegurarte de usar el inicio del día
     const endDate = new Date(untilDate + "T00:00:00");
@@ -530,6 +770,79 @@ function generateSalesPaymentColumns(fromDate, untilDate, table) {
      // Agregar las columnas fijas al thead y tfoot
      theadHTML += '<th>Empresa</th><th>Zona</th><th>Estación</th><th>Producto</th>';
      tfootHTML += '<th>Empresa</th><th>Zona</th><th>Estación</th><th>Producto</th>'; // Espacios en blanco para las columnas fijas
+   
+    let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+
+    while (currentMonth  <= endDate) {
+        var YearName = currentMonth.getFullYear();
+        const monthYear = currentMonth.getFullYear() + "_" + (currentMonth.getMonth() + 1);
+        let data_monto = `${monthYear}`;
+        let monthName = monthNames[currentMonth.getMonth()]; // Obtener el nombre del mes
+
+
+        columns.push(
+            {
+                data: data_monto,
+                title: `${monthName} ${YearName}`,
+                render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+                className: 'text-end text-nowrap '
+            },
+        );
+        theadHTML += `<th>${monthName}</th>`;
+        tfootHTML += `<th></th>`;
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+    }
+    columns.push(
+        { data: 'Total',
+            title:'Total', 
+            className: 'text-left text-nowrap table-info' ,
+            render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+
+        },
+    );
+    theadHTML += `<th>Total</th>`;
+    tfootHTML += `<th></th>`;
+
+    // Cerrar las filas correctamente
+    theadHTML += '</tr>';
+    tfootHTML += '</tr>';
+    tablename = document.getElementById(table);
+    console.log(table);
+    console.log(tablename);
+    thead = tablename.getElementsByTagName('thead')[0];
+    tfoot = tablename.getElementsByTagName('tfoot')[0];
+    thead.innerHTML = theadHTML;
+    tfoot.innerHTML = tfootHTML;
+    // $('#{table} thead').html(theadHTML);
+    // $('#{table} tfoot').html(tfootHTML);
+
+    return columns;
+}
+
+
+
+
+function generateMounthGroupColumns(fromDate, untilDate, table) {
+    const startDate = new Date(fromDate + "T00:00:00"); // Asegurarte de usar el inicio del día
+    const endDate = new Date(untilDate + "T00:00:00");
+    const columns = [];
+    const monthNames = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+    ];
+
+    columns.push(
+        { data: 'Grupo',title:'Grupo', className: 'text-left text-nowrap table-info' },
+        { data: 'Empresa',title:'Empresa', className: 'text-left text-nowrap table-info' },
+        { data: 'Descripcion', title: 'Descripcion', className: 'text-left text-nowrap table-info' },
+        { data: 'MedioPago', title: 'MedioPago', className: 'text-left text-nowrap table-info' },
+    );
+
+    let theadHTML = '<tr>';
+    let tfootHTML = '<tr>';
+     // Agregar las columnas fijas al thead y tfoot
+     theadHTML += '<th>Grupo</th><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
+     tfootHTML += '<th>Grupo</th><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>'; // Espacios en blanco para las columnas fijas
    
     let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
 

@@ -151,6 +151,23 @@ class Commercial{
         }
         echo json_encode(array("data" => $data));
     }
+    function mounth_group_table(){
+        $dinamicColumns = $_POST['dinamicColumns'];
+        $rows = $this->ventas->getMounthGruopPayment($_POST['fromDate'], $_POST['untilDate'],$_POST['grupo'], 0);
+        $data=[];
+
+        foreach ($rows as $key => $row) {
+            $entry=[];
+                foreach ($dinamicColumns as $key => $column) {
+                    $colun_name = $column['data'];
+
+                    $entry[$colun_name] = $row[$colun_name];
+
+                }
+            $data[] = $entry;
+        }
+        echo json_encode(array("data" => $data));
+    }
     function sales_type_payment_totals_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->ventas->getSalesTypePaymentTotal($_POST['fromDate'], $_POST['untilDate'],$_POST['zona']);

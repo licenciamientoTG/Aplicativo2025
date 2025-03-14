@@ -29,6 +29,56 @@ tr.group:hover {
     color: white !important;
 
 }
+#cardContainer {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    width: 100%;
+    margin: 0;
+    padding: 5px;
+}
+.body_card{
+    padding: 10px;
+    box-sizing: border-box;
+
+}
+.card_group {
+    width: 24%;
+    border: 1px solid #a7d162;
+    margin-bottom: 20px;
+    /* Añadir márgenes laterale*/
+    margin-left: 5px;
+    margin-right: 5px;
+    /* Asegurar que el padding interno no cause desbordamiento */
+    box-sizing: border-box;
+    padding: 10px;
+}
+
+
+@media (max-width: 1500px) {
+    .card_group {
+        width: 32%;
+    }
+}
+/* Media query para pantallas más pequeñas */
+@media (max-width: 992px) {
+    .card_group {
+        width: 40%;
+    }
+}
+
+/* Para pantallas aún más pequeñas como móviles */
+@media (max-width: 576px) {
+    .card_group {
+        width: 100%;
+    }
+}
+.card-body.table-responsive {
+    overflow-x: auto;
+    width: 100%;
+    padding: 15px;
+}
 </style>
 <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
@@ -36,6 +86,9 @@ tr.group:hover {
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link " id="sales_type_payment_totals-tab" data-bs-toggle="tab" data-bs-target="#sales_type_payment_totals" type="button" role="tab" aria-controls="sales_type_payment_totals" aria-selected="true">Venta por Rubro Totales</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="mounth_group-tab" data-bs-toggle="tab" data-bs-target="#mounth_group" type="button" role="tab" aria-controls="mounth_group" aria-selected="true">Venta por Grupo Mensual</button>
     </li>
 </ul>
 
@@ -154,6 +207,67 @@ tr.group:hover {
         </div>
 
     </div>
+
+
+
+    <div class="tab-pane " id="mounth_group" role="tabpanel" aria-labelledby="mounth_group-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from3" id="from3" value="2025-01-01" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until3" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" id="until3" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Grupo </label>
+                        <select class="form-control form-control-sm" name="grupo3" id="grupo3" required>
+                            <option value="0">Todas</option>
+                            <option value="Gasomex">Gasomex</option>
+                            <option value="TG">TG</option>
+                            <option value="SMA">SMA</option>
+                            <option value="TSA">TSA</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_mounth_group" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Venta Grupo Mensual</h5>
+            </div>
+            <div id="cardContainer" class="row"></div>
+
+        
+            <div class="card-body table-responsive" id="cont">
+                <div id="filtro-mounth_group_table" class="mb-1">
+                    <div class="row">
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Grupo3" placeholder="Grupo"></div>
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Empresa3" placeholder="Empresa"></div>
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="Descripcion3" placeholder="Descripcion"></div>
+                        <div class="col-2 p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MedioPago3" placeholder="MedioPago"></div>
+                    </div>
+                </div>
+                <table id="mounth_group_table" class="table table-striped table-sm w-100" >
+                    <thead id="mounth_group_table_head">
+                       
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                   
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
 </div>
 
 
@@ -168,6 +282,10 @@ $('#seach_sales_type_payment').on('click', function() {
 });
 $('#seach_sales_type_payment_totals').on('click', function() {
     sales_type_payment_totals_table();
+});
+
+$('#seach_mounth_group').on('click', function() {
+    mounth_group_table();
 });
 
 

@@ -310,6 +310,8 @@ async function invoice_purchase_table(){
             {'data': 'IEPS', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
             {'data': 'Subtotal', render: $.fn.dataTable.render.number(',', '.', 2)},
             {'data': 'Total', render: $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'folio_dr'},
+
         ],
         deferRender: true,
         // destroy: true, 

@@ -168,7 +168,10 @@ class Accounting{
                     'importe'           => $row['importe'],
                     'IEPS'              => $row['IEPS'],
                     'imp_des_pro'       => $row['imp_des_pro'],
-                    'imp_id_otr_sis_pro'=> $row['imp_id_otr_sis_pro']
+                    'imp_id_otr_sis_pro'=> $row['imp_id_otr_sis_pro'],
+                    'folio_dr'          => $row['folio_dr'],
+                    'num_parc_dr'       => $row['num_parc_dr'],
+                    'id_pag_det'        => $row['id_pag_det'],
                 );
             }
             $data = array("data" => $data);

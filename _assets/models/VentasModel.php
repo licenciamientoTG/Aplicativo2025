@@ -721,6 +721,117 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
+
+
+    function getMounthGruopPayment($from, $until, $grupo, $total) {
+        $fromstring = date('Y-d-m', strtotime($from));
+        $untilstring = date('Y-d-m', strtotime($until));
+
+        $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
+        $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
+        // Normalizar las fechas al primer día del mes
+        $dateFrom->modify('first day of this month');
+        $dateUntil->modify('first day of this month');
+        $months = [];
+        $currentDate = clone $dateFrom;
+
+        // Generar dinámicamente las columnas del PIVO
+        while ($currentDate <= $dateUntil) {
+
+            $year = $currentDate->format('Y');
+            $monthNumber = (int)$currentDate->format('m');
+            $months[] = "[".$year ."_". $monthNumber ."]";
+            $currentDate->modify('+1 month');
+        }
+        // Convertir el array en una cadena separada por comas
+        $pivotColumns = implode(', ', $months);
+        $pivotColumns_final = implode(' , ', array_map(function($col) {
+            return "ISNULL($col, 0) as $col";
+        }, $months));
+        // Calcular la suma total dinámicamente
+        $totalSum = implode(' + ', array_map(function($col) {
+            return "ISNULL($col, 0)";
+        }, $months));
+
+        $group_total='  Grupo,empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $Descripcion = 'Descripcion,';
+        if($total == '1'){
+
+            $group_total = " GROUPING SETS (
+                                 (Grupo,empresa, Descripcion, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)),
+                                (Grupo,empresa, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha))
+                            )";
+            $Descripcion ='CASE
+                WHEN Descripcion IS NULL THEN \'Total Estación\'
+                ELSE Descripcion
+            END AS Descripcion,';
+
+        }
+
+        $grupo_string ='';
+
+        if ($grupo != '0'){
+            $grupo_string ="and E.grupo = '{$grupo}' ";
+        }
+        $query = "
+                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+
+                WITH ValuesTable AS (
+                    SELECT 
+                        v.cod AS CodFormaPago,
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
+                        v.den AS Descripcion,
+                        SUM(i.can) AS Cantidad,
+                        SUM(i.mto) AS Monto,
+                        emp.den AS Empresa,
+						E.grupo as Grupo,
+                       CASE 
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
+							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)') THEN 'VALERAS'
+						    ELSE 'OTRO'
+                        END AS MedioPago
+                    FROM SG12.dbo.Valores v
+                    INNER JOIN SG12.dbo.Ingresos i ON v.cod = i.codval
+                    INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                    INNER JOIN SG12.dbo.Empresas emp ON E.codemp = emp.cod
+                    WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int 
+                    $grupo_string 
+                    GROUP BY 
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)), 
+                        v.cod,v.den,emp.den,E.grupo
+                )
+
+                SELECT 
+                     Grupo,
+                    Empresa,
+                    MedioPago,
+                    $Descripcion
+                    ($totalSum) AS Total,
+                    $pivotColumns_final
+                FROM (
+                    SELECT 
+                        Grupo,
+                        Empresa,
+                        MedioPago,
+                        Descripcion,
+                        SUM(Monto) AS sum_monto,
+                        CONCAT(YEAR(Fecha), '_', MONTH(Fecha)) AS AñoMes
+                    FROM ValuesTable
+                  GROUP BY  $group_total
+                ) AS src
+                PIVOT (
+                    SUM(sum_monto)
+                    FOR AñoMes IN ($pivotColumns)
+                ) ptv
+                ORDER BY Grupo, Descripcion;
+            ";
+
+        return $this->sql->select($query, []);
+    }
     function getSalesMonthTotal($from, $until, $zona,$total) {
         $fromstring = date('Y-d-m', strtotime($from));
         $untilstring = date('Y-d-m', strtotime($until));
@@ -731,7 +842,6 @@ class VentasModel extends Model{
         }
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
-
 
         // Verificar si las fechas son válidas
         if (!$dateFrom || !$dateUntil) {
@@ -754,7 +864,6 @@ class VentasModel extends Model{
                 $monthName = ucfirst(strftime('%B', $currentDate->getTimestamp())); // Nombre del mes en español
                 $months[] = "[".$year ."_". $monthNumber ."_".$turn."]";
             }
-
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas

@@ -69,7 +69,10 @@ class DocumentosModel extends Model{
 	vt2.imp_importe as importe,
 	vt2.imp_mto_ieps as IEPS,
 	vt2.imp_des_pro,
-	vt2.imp_id_otr_sis_pro
+	vt2.imp_id_otr_sis_pro,
+    pag.folio_dr,
+	pag.num_parc_dr,
+	pag.id_pag_det
 FROM SG12.dbo.DocumentosC t1
 LEFT JOIN SG12.dbo.Proveedores t2 ON t1.codopr = t2.cod   
 LEFT JOIN SG12.dbo.Documentos t3 ON t1.nro = t3.nro AND t1.codgas = t3.codgas AND t3.nroitm = 1 AND t3.tip = 1
@@ -78,6 +81,7 @@ LEFT JOIN SG12.dbo.Empresas t5 ON t1.codemp = t5.cod
 Left JOIN SG12.dbo.Gasolineras t6 on t1.codgas= t6.cod
 LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_doc vt   ON  t1.satuid  COLLATE Modern_Spanish_CI_AS  = vt.imp_uuid  COLLATE Modern_Spanish_CI_AS 
 LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_part vt2   ON vt.imp_id_com  =vt2.imp_id_com and vt2.imp_id_otr_sis_pro !='0'
+LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_pag_det_prov pag on t1.satuid  COLLATE Modern_Spanish_CI_AS  = pag.uuid_dr  COLLATE Modern_Spanish_CI_AS  and pag.uuid !=''and pag.num_parc_dr not in  (2,3,4) and pag.id_pag_det !=0
 WHERE 
     t1.fch BETWEEN $fromInt AND $untilInt
     AND t1.codemp = 1 
@@ -85,106 +89,14 @@ WHERE
     AND t1.codopr != 0
     AND t1.satuid IS NOT NULL
 	 $queryProduct
-                            
         ";
 
     
-
+        
         return $this->sql->select($query, []);
     } 
 
 
-    function GetInvoicePurchase2($from, $until, $product) {
-        $queryProduct = '';
-        if ($product == 1) {
-            $queryProduct = "and t3.codprd in (179, 192)";
-        }
-        if ($product == 2) {
-            $queryProduct = "and t3.codprd in (180, 193)";
-        }
-        if ($product == 3) {
-            $queryProduct = "and t3.codprd in (181)";
-        }
-        $fromInt = dateToInt($from);
-        $untilInt = dateToInt($until);
-    
-        // Instead of temporary tables, use a subquery approach
-        $query = "
-        SELECT 
-            base.*,
-            vt.no_fact,
-            Ogcfdi.RfcEmisor,
-            Ogcfdi.Subtotal,
-            Ogcfdi.Total,
-            Ogcfdi.MetodoPago,
-            Ogcfdi.IvaImporte,
-            Ogcfdi.TasaOCuota
-        FROM (
-            SELECT 
-                CONVERT(VARCHAR, CONVERT(SMALLDATETIME, t1.fch - 1, 103), 103) AS 'Fecha',
-                CONVERT(VARCHAR, CONVERT(SMALLDATETIME, t1.vto - 1, 103), 103) AS 'Fecha_vencimiento',
-                t2.cod AS cod_proveedor,
-                t2.den AS proveedor,
-                REPLACE(
-                    SUBSTRING(
-                        t1.txtref, 
-                        CHARINDEX('@F:', t1.txtref) + 3, 
-                        CHARINDEX('@', t1.txtref, CHARINDEX('@F:', t1.txtref) + 3) - CHARINDEX('@F:', t1.txtref) - 3
-                    ), 
-                    '-', 
-                    ''
-                ) COLLATE Modern_Spanish_CI_AS AS Factura,
-                t1.txtref,
-                t4.den AS producto,
-                t5.den AS Empresa,
-                t1.satuid,
-                t3.can,
-                t3.pre,
-                (t3.mto)/100 AS mto,
-                (t3.mtoori)/100 AS mtoori,
-                (t3.mtoiva)/100 AS mtoiva,
-                (t3.mtoiie)/100 AS mtoiie
-            FROM SG12.dbo.DocumentosC t1
-            LEFT JOIN SG12.dbo.Proveedores t2 ON t1.codopr = t2.cod   
-            LEFT JOIN SG12.dbo.Documentos t3 ON t1.nro = t3.nro AND t1.codgas = t3.codgas AND t3.nroitm = 1 AND t3.tip = 1
-            LEFT JOIN SG12.dbo.Productos t4 ON t3.codprd = t4.cod 
-            LEFT JOIN SG12.dbo.Empresas t5 ON t1.codemp = t5.cod
-            WHERE 
-                t1.fch BETWEEN $fromInt AND $untilInt
-                AND t1.codemp = 1 
-                AND t1.tip = 1
-                AND t1.codopr != 0
-                AND t1.satuid IS NOT NULL
-                $queryProduct
-        ) AS base
-        LEFT JOIN OPENQUERY([192.168.0.5], 
-            'SELECT
-                t1.RfcEmisor,
-                t1.Subtotal, 
-                t1.Total, 
-                t1.MetodoPago, 
-                t1.UUIDTimbre,
-                sub.IvaImporte,
-                sub.TasaOCuota
-            FROM [1G_TOTALGAS].dbo.CFDIdataComprobante t1
-            LEFT JOIN (  
-                SELECT 
-                    t1.IdComprobante,
-                    t1.UUIDTimbre,
-                    SUM(t3.importe) AS IvaImporte,
-                    TasaOCuota 
-                FROM [1G_TOTALGAS].[dbo].[CFDIdataComprobante] t1
-                LEFT JOIN [1G_TOTALGAS].[dbo].[CFDIdataConcepto] t2 ON t1.IdComprobante = t2.IdComprobante
-                LEFT JOIN [1G_TOTALGAS].[dbo].[CFDIdataImpuestoConcepto] t3 ON t2.IdConcepto = t3.IdConcepto
-                GROUP BY t1.IdComprobante, t1.UUIDTimbre, TasaOCuota
-            ) sub ON sub.UUIDTimbre = t1.UUIDTimbre') Ogcfdi 
-        ON Ogcfdi.UUIDTimbre COLLATE Modern_Spanish_CI_AS = base.satuid COLLATE Modern_Spanish_CI_AS
-        LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.vt_cxp_pagos_det vt 
-        ON base.Factura COLLATE Modern_Spanish_CI_AS = vt.no_fact COLLATE Modern_Spanish_CI_AS
-        ORDER BY Fecha";
-    
-        return $this->sql->select($query, []);
-    }
 
     function get_anticipos_customer($from, $until) : array | false {
         $query = "
@@ -699,154 +611,5 @@ WHERE
 
 
 
-    function GetInvoicePurchase3($from, $until, $product) {
-        $queryProduct = '';
-        if ($product == 1) {
-            $queryProduct = "and t3.codprd in (179, 192)";
-        } elseif ($product == 2) {
-            $queryProduct = "and t3.codprd in (180, 193)";
-        } elseif ($product == 3) {
-            $queryProduct = "and t3.codprd in (181)";
-        }
-        
-        $fromInt = dateToInt($from);
-        $untilInt = dateToInt($until);
-        
-        // Conexión PDO (asume que ya tienes una conexión configurada)
-        // Si no la tienes, deberías crearla:
-        $pdo = new PDO('sqlsrv:Server=192.168.0.6;Database=SG12', 'cguser', 'sahei1712');
-        
-        try {
-            // 1. Primero, asegúrate de que la tabla temporal no exista
-            // $pdo->exec("DROP TABLE IF EXISTS #ControlGasTable");
-
-            $pdo->exec("IF OBJECT_ID('tempdb..#ControlGasTable') IS NOT NULL DROP TABLE #ControlGasTable");
-            
-            // 2. Crea la tabla temporal
-            $pdo->exec("
-                CREATE TABLE #ControlGasTable (
-                    Fecha date,
-                    Fecha_vencimiento date,
-                    cod_proveedor INT,
-                    proveedor VARCHAR(255),
-                    Factura VARCHAR(50),
-                    txtref VARCHAR(255),
-                    producto VARCHAR(255),
-                    Empresa VARCHAR(255),
-                    satuid VARCHAR(50),
-                    can DECIMAL(18,2),
-                    pre DECIMAL(18,2),
-                    mto DECIMAL(18,2),
-                    mtoori DECIMAL(18,2),
-                    mtoiva DECIMAL(18,2),
-                    mtoiie DECIMAL(18,2)
-                )
-            ");
-            
-            // 3. Inserta datos en la tabla temporal
-            $insertQuery = "
-                INSERT INTO #ControlGasTable
-                SELECT 
-                    CONVERT(SMALLDATETIME, t1.fch - 1, 103) AS 'Fecha',
-                    CONVERT(SMALLDATETIME, t1.vto - 1, 103) AS 'Fecha_vencimiento',
-                    t2.cod AS cod_proveedor,
-                    t2.den AS proveedor,
-                    REPLACE(
-                        SUBSTRING(
-                            t1.txtref, 
-                            CHARINDEX('@F:', t1.txtref) + 3, 
-                            CHARINDEX('@', t1.txtref, CHARINDEX('@F:', t1.txtref) + 3) - CHARINDEX('@F:', t1.txtref) - 3
-                        ), 
-                        '-', 
-                        ''
-                    ) COLLATE Modern_Spanish_CI_AS AS Factura,
-                    t1.txtref,
-                    t4.den AS producto,
-                    t5.den AS Empresa,
-                    t1.satuid,
-                    t3.can,
-                    t3.pre,
-                    (t3.mto)/100 AS mto,
-                    (t3.mtoori)/100 AS mtoori,
-                    (t3.mtoiva)/100 AS mtoiva,
-                    (t3.mtoiie)/100 AS mtoiie
-                FROM SG12.dbo.DocumentosC t1
-                LEFT JOIN SG12.dbo.Proveedores t2 ON t1.codopr = t2.cod   
-                LEFT JOIN SG12.dbo.Documentos t3 ON t1.nro = t3.nro AND t1.codgas = t3.codgas AND t3.nroitm = 1 AND t3.tip = 1
-                LEFT JOIN SG12.dbo.Productos t4 ON t3.codprd = t4.cod 
-                LEFT JOIN SG12.dbo.Empresas t5 ON t1.codemp = t5.cod
-                WHERE 
-                    t1.fch BETWEEN :fromInt AND :untilInt
-                    AND t1.codemp = 1 
-                    AND t1.tip = 1
-                    AND t1.codopr != 0
-                    AND t1.satuid IS NOT NULL
-                    {$queryProduct}
-            ";
-            
-            $stmt = $pdo->prepare($insertQuery);
-            $stmt->bindParam(':fromInt', $fromInt, PDO::PARAM_INT);
-            $stmt->bindParam(':untilInt', $untilInt, PDO::PARAM_INT);
-            $stmt->execute();
-            
-            // 4. Consulta final para obtener los resultados
-            $finalQuery = "
-                SELECT 
-                    cgt.*,
-                    vt.no_fact,
-                    Ogcfdi.RfcEmisor,
-                    Ogcfdi.Subtotal,
-                    Ogcfdi.Total,
-                    Ogcfdi.MetodoPago,
-                    Ogcfdi.IvaImporte,
-                    Ogcfdi.TasaOCuota
-                FROM #ControlGasTable cgt
-                LEFT JOIN OPENQUERY([192.168.0.5], 
-                    'SELECT
-                        t1.RfcEmisor,
-                        (t1.Subtotal - t1.Descuento) as Subtotal, 
-                        (t1.Total - t1.Descuento) as Total, 
-                        t1.MetodoPago, 
-                        t1.UUIDTimbre,
-                        sub.IvaImporte,
-                        sub.TasaOCuota
-                    FROM [1G_TOTALGAS].dbo.CFDIdataComprobante t1
-                    LEFT JOIN (  
-                        SELECT 
-                            t1.IdComprobante,
-                            t1.UUIDTimbre,
-                            SUM(t3.importe) AS IvaImporte,
-                            TasaOCuota 
-                        FROM [1G_TOTALGAS].[dbo].[CFDIdataComprobante] t1
-                        LEFT JOIN [1G_TOTALGAS].[dbo].[CFDIdataConcepto] t2 ON t1.IdComprobante = t2.IdComprobante
-                        LEFT JOIN [1G_TOTALGAS].[dbo].[CFDIdataImpuestoConcepto] t3 ON t2.IdConcepto = t3.IdConcepto
-                        GROUP BY t1.IdComprobante, t1.UUIDTimbre, TasaOCuota
-                    ) sub ON sub.UUIDTimbre = t1.UUIDTimbre') Ogcfdi 
-                ON Ogcfdi.UUIDTimbre COLLATE Modern_Spanish_CI_AS = cgt.satuid COLLATE Modern_Spanish_CI_AS
-                LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_aux vt 
-     ON cgt.Factura COLLATE Modern_Spanish_CI_AS = vt.no_fact COLLATE Modern_Spanish_CI_AS   AND vt.id_tip_doc = 92 AND vt.saldo = 0 and vt.id_cpt=39
-                ORDER BY Fecha
-            ";
-
-            $records=array();
-            $i=0;
-            $stmt = $pdo->query($finalQuery);
-            while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $records[$i++] = $row;	//Put row into array
-            }
-            
-            // echo '<pre>';
-            // var_dump($records);
-            // die();
-            
-            // 5. Limpia la tabla temporal (opcional, pero recomendado)
-           
-            return $records;
-            
-        } catch (PDOException $e) {
-            // Manejo de errores
-            error_log('Error en la consulta SQL: ' . $e->getMessage());
-            return false;
-        }
-    }
+    
 }
