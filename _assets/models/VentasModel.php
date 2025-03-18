@@ -1213,8 +1213,8 @@ class VentasModel extends Model{
             INNER JOIN [SG12].[dbo].Gasolineras g ON codgas = g.cod 
             INNER JOIN [SG12].[dbo].Productos T3 ON V.codprd = T3.cod
             WHERE 
-                fch BETWEEN 45631
-                AND 45721
+                fch BETWEEN $fromInt
+                AND $untilInt
                 AND codprd NOT IN (179, 180, 181, 1, 2, 3, 192, 193)
             GROUP BY
                 g.abr,
@@ -1225,7 +1225,7 @@ class VentasModel extends Model{
         ),
         DatosParaPivot AS (
             SELECT 
-                CONCAT([year], '_', FORMAT(Mes, '00')) as [date],
+                CONCAT([year], '_', [Mes]) as [date],
                 codigo,
                 Estacion,
                 producto,
@@ -1238,7 +1238,7 @@ class VentasModel extends Model{
             codigo,
             Estacion,
             producto,
-            [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
+            {$columnsList}
         FROM (
             SELECT 
                 codigo,
@@ -1259,15 +1259,14 @@ class VentasModel extends Model{
         PIVOT (
             SUM(Valor)
             FOR TipoMes IN (
-                [2024_12_monto],[2024_12_cantidad],[2025_01_monto],[2025_01_cantidad],[2025_02_monto],[2025_02_cantidad],[2025_03_monto],[2025_03_cantidad]
+                {$columnsList}
             )
         ) AS PivotTable
         ORDER BY codigo;
         ";
-    
+        
         return $this->sql->select($query, []);
     }
-    
 
     function getSaleWeekZone($from, $until){
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);

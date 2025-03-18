@@ -1,4 +1,3 @@
-// console.log('Comercial.js');
 // comentarios
 async function mistery_shopper_table(){
     if ($.fn.DataTable.isDataTable('#mistery_shopper_table')) {
@@ -6,7 +5,6 @@ async function mistery_shopper_table(){
         $('#mistery_shopper_table thead').empty(); // Limpia el encabezado
         $('#mistery_shopper_table tbody').empty(); // Limpia el cuerpo
         $('#mistery_shopper_table tfoot').empty(); // Limpia el pie de tabla si lo usas
-        console.log('Tabla destruida');
     }
     var fromDate = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
@@ -138,8 +136,6 @@ async function lubricants_table(){
     var untilDate = document.getElementById('until').value;
 
     var dynamicColumns = generateDateColumns(fromDate, untilDate);
-    console.log(dynamicColumns);
-
 
    $('#lubricants_table').DataTable({
         order: [0, "asc"],
@@ -150,9 +146,11 @@ async function lubricants_table(){
             leftColumns: 3
          },
         buttons: [
-            { extend: 'excel', className: 'd-none' },
-            { extend: 'pdf', className: 'd-none', text: 'PDF' },
-            { extend: 'print', className: 'd-none' }
+            {
+                extend: 'excel',
+                className: 'btn btn-sm btn-success',
+                text: '<i class="fa fa-file-excel"></i> Excel',
+            }
         ],
         ajax: {
             method: 'POST',
@@ -190,7 +188,7 @@ async function lubricants_table(){
         createdRow: function (row, data, dataIndex) {
         },
         initComplete: function () {
-            $('.dt-buttons').addClass('d-none');
+            // $('.dt-buttons').addClass('d-none');
             $('.table-responsive').removeClass('loading');
         },
         footerCallback: function (row, data, start, end, display) {
@@ -507,7 +505,7 @@ async function sales_type_payment_totals_table(){
         sales_type_payment_totals_table.ajax.reload();
         $('#sales_type_payment_totals_table').waitMe('hide');
     });
-    
+
 }
 
 
@@ -523,7 +521,6 @@ async function mounth_group_table(){
     var grupo = document.getElementById('grupo3').value;
 
     var dynamicColumns = generateMounthGroupColumns(fromDate, untilDate,'mounth_group_table');
-    console.log(dynamicColumns);
     let mounth_group_table =$('#mounth_group_table').DataTable({
         order: [0, "asc"],
         colReorder: false,
@@ -679,7 +676,6 @@ function generateCards(data) {
             
             let tr = document.createElement('tr');
             let total_sum = Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN'}).format(med.TotalSum);
-            console.log(total_sum)
             tr.innerHTML = `
                 <td>${med.MedioPago}</td>
                 <td class="text-end">${total_sum}</td>
@@ -807,8 +803,6 @@ function generateSalesPaymentColumns(fromDate, untilDate, table) {
     theadHTML += '</tr>';
     tfootHTML += '</tr>';
     tablename = document.getElementById(table);
-    console.log(table);
-    console.log(tablename);
     thead = tablename.getElementsByTagName('thead')[0];
     tfoot = tablename.getElementsByTagName('tfoot')[0];
     thead.innerHTML = theadHTML;
@@ -880,8 +874,6 @@ function generateMounthGroupColumns(fromDate, untilDate, table) {
     theadHTML += '</tr>';
     tfootHTML += '</tr>';
     tablename = document.getElementById(table);
-    console.log(table);
-    console.log(tablename);
     thead = tablename.getElementsByTagName('thead')[0];
     tfoot = tablename.getElementsByTagName('tfoot')[0];
     thead.innerHTML = theadHTML;
@@ -896,7 +888,6 @@ function generateMounthGroupColumns(fromDate, untilDate, table) {
 async function upload_file_mystery() {
     const fileInput = document.getElementById('file_to_upload');
     const date_mystery = document.getElementById('date_mystery').value;
-    console.log(date_mystery);
 
     if (!date_mystery) {
         toastr.error('Por favor, selecciona una fecha.', '¡Error!', { timeOut: 3000 });
@@ -922,7 +913,6 @@ async function upload_file_mystery() {
         });
 
         const data = await response.json();
-        console.log( data);
 
         if (data['success'] == false) {
             toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
@@ -1337,7 +1327,6 @@ async function sale_week_zone_table(){
     var untilDate = document.getElementById('until').value;
 
     var dynamicColumns = generateSaleWeekZoneColumns(fromDate, untilDate);
-    console.log(dynamicColumns);
 
 
    var sale_week_zone_table =$('#sale_week_zone_table').DataTable({
@@ -1463,10 +1452,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var zona = document.getElementById('zona').value;
 
         var dynamicColumns = GenerateSalesIndicatorsColumns(fromDate, untilDate,'sales_indicators_table');
-        console.log(dynamicColumns);
-        console.log(fromDate);
-        console.log(untilDate);
-        console.log(zona);
         let sales_indicators_table =$('#sales_indicators_table').DataTable({
             order: [0, "asc"],
             colReorder: false,
@@ -1598,10 +1583,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var zona = document.getElementById('zona2').value;
     
         var dynamicColumns = GenerateSalesIndicatorsColumns(fromDate, untilDate,'sales_indicators_totals_table');
-        console.log(dynamicColumns);
-        console.log(fromDate);
-        console.log(untilDate);
-        console.log(zona);
         let sales_indicators_totals_table =$('#sales_indicators_totals_table').DataTable({
             order: [0, "asc"],
             colReorder: false,
@@ -1850,7 +1831,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     
         var dynamicColumns = generateMonthColumns(fromDate, untilDate);
         console.log(dynamicColumns);
-    
         $('#lubricants_table_month').DataTable({
             order: [0, "asc"],
             colReorder: false,
@@ -1860,9 +1840,12 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 leftColumns: 3
             },
             buttons: [
-                { extend: 'excel', className: 'd-none' },
-                { extend: 'pdf', className: 'd-none', text: 'PDF' },
-                { extend: 'print', className: 'd-none' }
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+                
             ],
             ajax: {
                 method: 'POST',
@@ -1883,7 +1866,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             createdRow: function (row, data, dataIndex) {
             },
             initComplete: function () {
-                $('.dt-buttons').addClass('d-none');
                 $('.table-responsive').removeClass('loading');
             },
             footerCallback: function (row, data, start, end, display) {
@@ -1916,7 +1898,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         while (currentMonthStart <= endDate) {
             let year = currentMonthStart.getFullYear();
-            let month = (currentMonthStart.getMonth() + 1).toString().padStart(2, '0');
+            let month = (currentMonthStart.getMonth() + 1).toString();
             let data_monto = `${year}_${month}_monto`;
             let data_cantidad = `${year}_${month}_cantidad`;
     
