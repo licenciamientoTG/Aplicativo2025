@@ -71,7 +71,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <div class="row">
                     <div class="col-2 ">
                         <label class="col-form-label-sm" for="">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  'now'|date('Y-m-d') }}" required>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  first_date }}" required>
                     </div>
                     <div class="col-2 ">
                         <label class="col-form-label-sm" for="">Hasta: </label>
@@ -121,7 +121,14 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>IEPS 1G</th>
                             <th>Subtotal 1G</th>
                             <th>Total 1G</th>
-                            <th>Pagada</th>
+                            <th>Num Pago</th>
+                            <th>Id Factura</th>
+                            <th>Referencia</th>
+                            <th>Fecha Pago</th>
+                            <th>Monto Pago</th>
+                            <th>Monto Pago a Fac</th>
+                            <th>Cuenta</th>
+                            <th>Banco</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -150,6 +157,12 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th></th>
                             <th></th>
                             <th>Pagada</th>
+                            <th>Referencia</th>
+                            <th>Fecha Pago</th>
+                            <th>Monto Pago</th>
+                            <th>Monto Pago a Fac</th>
+                            <th>Cuenta</th>
+                            <th>Banco</th>
                         </tr>
                     </tfoot>
                 </table>

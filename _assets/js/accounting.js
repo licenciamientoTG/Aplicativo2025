@@ -288,15 +288,15 @@ async function invoice_purchase_table(){
             }
         },
         columns: [
-            {'data': 'Fecha'},
+            {'data': 'Fecha',className:'text-nowrap'},
             {'data': 'Fecha_vencimiento'},
-            {'data': 'proveedor'},
+            {'data': 'proveedor',className:'text-nowrap'},
             {'data': 'Factura'},
             {'data': 'txtref'},
-            {'data': 'Estacion'},  // Falta en tu DataTable
+            {'data': 'Estacion',className:'text-nowrap'},  // Falta en tu DataTable
             {'data': 'producto'},
             {'data': 'Empresa'},
-            {'data': 'satuid'},
+            {'data': 'satuid',className:'text-nowrap'},
 
             {'data': 'can', render: $.fn.dataTable.render.number(',', '.', 2)},
             {'data': 'pre', render: $.fn.dataTable.render.number(',', '.', 2)},
@@ -310,7 +310,14 @@ async function invoice_purchase_table(){
             {'data': 'IEPS', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
             {'data': 'Subtotal', render: $.fn.dataTable.render.number(',', '.', 2)},
             {'data': 'Total', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'folio_dr'},
+            {'data': 'Numero_pago_OG'},
+            {'data': 'num_factura_OG'},
+            {'data': 'Ref_Numerica'},
+            {'data': 'fecha_pago',className:'text-nowrap'},
+            {'data': 'monto_pago', render: $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'monto_pago_fac', render: $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'cuenta'},
+            {'data': 'banco'},
 
         ],
         deferRender: true,
@@ -337,7 +344,7 @@ async function invoice_purchase_table(){
             var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
             api.columns().every(function (index) {
-                if (index > 8) { // Desde la tercera columna en adelante
+                if (index > 8 && index < 21 ) { // Desde la tercera columna en adelante
                     // Sumatoria de los datos filtrados (página actual)
                     var filteredSum = api
                         .column(index, { page: 'current' }) // Solo datos visibles (filtrados)

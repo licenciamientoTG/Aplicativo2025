@@ -34,65 +34,74 @@ class DocumentosModel extends Model{
         $untilInt = dateToInt($until);
 
         $query = "
-
-       SELECT 
-    CONVERT(SMALLDATETIME, t1.fch - 1, 103) AS 'Fecha',
-    CONVERT(SMALLDATETIME, t1.vto - 1, 103) AS 'Fecha_vencimiento',
-    t2.cod AS cod_proveedor,
-    t2.den AS proveedor,
-    REPLACE(
-        SUBSTRING(
-            t1.txtref, 
-            CHARINDEX('@F:', t1.txtref) + 3, 
-            CHARINDEX('@', t1.txtref, CHARINDEX('@F:', t1.txtref) + 3) - CHARINDEX('@F:', t1.txtref) - 3
-        ), 
-        '-', 
-        ''
-    ) COLLATE Modern_Spanish_CI_AS AS Factura,
-    t1.txtref,
-	t1.codgas,
-	t6.abr as Estacion,
-    t4.den AS producto,
-    t5.den AS Empresa,
-    t1.satuid,
-    t3.can,
-    t3.pre,
-    (t3.mto)/100 AS mto,
-    (t3.mtoori)/100 AS mtoori,
-    (t3.mtoiva)/100 AS mtoiva,
-    (t3.mtoiie)/100 AS mtoiie,
-	vt.imp_importe_simptos as Subtotal,
-    vt.imp_total as Total,
-    vt.imp_impto as IvaImporte,
-	vt2.imp_cant as cantidad,
-	vt2.imp_ult_cto as precio,
-	vt2.imp_importe as importe,
-	vt2.imp_mto_ieps as IEPS,
-	vt2.imp_des_pro,
-	vt2.imp_id_otr_sis_pro,
-    pag.folio_dr,
-	pag.num_parc_dr,
-	pag.id_pag_det
-FROM SG12.dbo.DocumentosC t1
-LEFT JOIN SG12.dbo.Proveedores t2 ON t1.codopr = t2.cod   
-LEFT JOIN SG12.dbo.Documentos t3 ON t1.nro = t3.nro AND t1.codgas = t3.codgas AND t3.nroitm = 1 AND t3.tip = 1
-LEFT JOIN SG12.dbo.Productos t4 ON t3.codprd = t4.cod 
-LEFT JOIN SG12.dbo.Empresas t5 ON t1.codemp = t5.cod
-Left JOIN SG12.dbo.Gasolineras t6 on t1.codgas= t6.cod
-LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_doc vt   ON  t1.satuid  COLLATE Modern_Spanish_CI_AS  = vt.imp_uuid  COLLATE Modern_Spanish_CI_AS 
-LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_part vt2   ON vt.imp_id_com  =vt2.imp_id_com and vt2.imp_id_otr_sis_pro !='0'
-LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_pag_det_prov pag on t1.satuid  COLLATE Modern_Spanish_CI_AS  = pag.uuid_dr  COLLATE Modern_Spanish_CI_AS  and pag.uuid !=''and pag.num_parc_dr not in  (2,3,4) and pag.id_pag_det !=0
-WHERE 
-    t1.fch BETWEEN $fromInt AND $untilInt
-    AND t1.codemp = 1 
-    AND t1.tip = 1
-    AND t1.codopr != 0
-    AND t1.satuid IS NOT NULL
+            SELECT 
+                CONVERT(DATE, DATEADD(DAY, -1, t1.fch)) AS 'Fecha',
+                CONVERT(DATE, DATEADD(DAY, -1, t1.vto)) AS 'Fecha_vencimiento',
+                t2.cod AS cod_proveedor,
+                t2.den AS proveedor,
+                REPLACE(
+                    SUBSTRING(
+                        t1.txtref,
+                        CHARINDEX('@F:', t1.txtref) + 3,
+                        CHARINDEX('@', t1.txtref, CHARINDEX('@F:', t1.txtref) + 3) - CHARINDEX('@F:', t1.txtref) - 3
+                    ),
+                    '-',
+                    ''
+                ) COLLATE Modern_Spanish_CI_AS AS Factura,
+                t1.txtref,
+                t1.codgas,
+                t6.abr as Estacion,
+                t4.den AS producto,
+                t5.den AS Empresa,
+                t1.satuid,
+                t3.can,
+                t3.pre,
+                (t3.mto)/100 AS mto,
+                (t3.mtoori)/100 AS mtoori,
+                (t3.mtoiva)/100 AS mtoiva,
+                (t3.mtoiie)/100 AS mtoiie,
+                t7.imp_importe_simptos as Subtotal,
+                t7.imp_total as Total,
+                t7.imp_impto as IvaImporte,
+                t8.imp_cant as cantidad,
+                t8.imp_ult_cto as precio,
+                t8.imp_importe as importe,
+                t8.imp_mto_ieps as IEPS,
+                t8.imp_des_pro,
+                t8.imp_id_otr_sis_pro,
+                t9.folio_dr,
+                t9.num_parc_dr,
+                t9.id_pag_det,
+                t13.num_doc as num_factura_OG,
+                t10.num_doc as Numero_pago_OG,
+                t10.num_doc_cli as Ref_Numerica,
+                CONVERT(VARCHAR(10), t10.fecha, 120) AS fecha_pago,
+                t10.monto AS monto_pago,
+                t9.ImpPag_dr AS monto_pago_fac,
+                t11.num as cuenta,
+                t12.nom as banco
+            FROM SG12.dbo.DocumentosC t1
+            LEFT JOIN SG12.dbo.Proveedores t2 ON t1.codopr = t2.cod
+            LEFT JOIN SG12.dbo.Documentos t3 ON t1.nro = t3.nro AND t1.codgas = t3.codgas AND t3.nroitm = 1 AND t3.tip = 1
+            LEFT JOIN SG12.dbo.Productos t4 ON t3.codprd = t4.cod 
+            LEFT JOIN SG12.dbo.Empresas t5 ON t1.codemp = t5.cod
+            Left JOIN SG12.dbo.Gasolineras t6 on t1.codgas= t6.cod
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_doc t7   ON  t1.satuid  COLLATE Modern_Spanish_CI_AS  = t7.imp_uuid  COLLATE Modern_Spanish_CI_AS
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.imp_com_part t8   ON t7.imp_id_com  =t8.imp_id_com and t8.imp_id_otr_sis_pro !='0'
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_pag_det_aux_prov t9 on t1.satuid  COLLATE Modern_Spanish_CI_AS  = t9.uuid_dr  COLLATE Modern_Spanish_CI_AS  and t9.uuid !=''and t9.num_parc_dr not in  (2,3,4) and t9.id_pag_det !=0
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_pagos t10 on t9.id_pago = t10.id_pago
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.bco_cuentas t11 on t10.id_cta = t11.id_cta
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.bco_bancos t12 on t11.id_bco = t12.id_bco
+            LEFT JOIN [192.168.0.5].[1G_TOTALGAS].dbo.cxp_doc t13 on t1.satuid  COLLATE Modern_Spanish_CI_AS  = t13.uuid  COLLATE Modern_Spanish_CI_AS 
+        WHERE 
+            t1.fch BETWEEN $fromInt AND $untilInt
+            AND t1.codemp = 1 
+            AND t1.tip = 1
+            AND t1.codopr != 0
+            AND t1.satuid IS NOT NULL
 	 $queryProduct
         ";
 
-    
-        
         return $this->sql->select($query, []);
     } 
 

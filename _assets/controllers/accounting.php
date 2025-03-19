@@ -27,7 +27,8 @@ class Accounting{
     }
     public function purchase_invoice() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            echo $this->twig->render($this->route . 'purchase_invoice.html');
+            $first_date = date('Y-01-01');
+            echo $this->twig->render($this->route . 'purchase_invoice.html', compact('first_date'));
         }
     }
     public function InvoiceConceptModal(){
@@ -172,6 +173,14 @@ class Accounting{
                     'folio_dr'          => $row['folio_dr'],
                     'num_parc_dr'       => $row['num_parc_dr'],
                     'id_pag_det'        => $row['id_pag_det'],
+                    'Ref_Numerica'      => $row['Ref_Numerica'],
+                    'fecha_pago'        => $row['fecha_pago'],
+                    'monto_pago'        => $row['monto_pago'],
+                    'monto_pago_fac'    => $row['monto_pago_fac'],
+                    'cuenta'            => $row['cuenta'],
+                    'banco'             => $row['banco'],
+                    'num_factura_OG'            => $row['num_factura_OG'],
+                    'Numero_pago_OG'            => $row['Numero_pago_OG'],
                 );
             }
             $data = array("data" => $data);
