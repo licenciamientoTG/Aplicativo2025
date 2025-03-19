@@ -27,7 +27,7 @@ define('CONTROLLERS', ASSETS.'controllers'.DS);
 define('MODELS', ASSETS.'models'.DS);
 
 // Creamos constantes para rutas de directorios y archivos basadas en URL
-define('URL', 'http://192.168.0.3:400'.APP_NAME);
+define('URL', 'http://192.168.0.3:400/'.APP_NAME);
 define('URI', $_SERVER["REQUEST_URI"]);
 define('REL_ASSETS', APP_NAME.'_assets'.DS);
 define('REL_CLASSES', REL_ASSETS.'classes'.DS);

@@ -11,7 +11,7 @@ function sql() {
 
 function connect_bd() {
     try {
-        $conn =  new PDO("sqlsrv:Server=192.168.0.6;Database=TG", 'cguser', 'sahei1712');
+        $conn =  new PDO("sqlsrv:Server=192.168.0.6;Database=TG;TrustServerCertificate=yes", 'cguser', 'sahei1712');
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         return $conn;
     } catch (PDOException $e) {

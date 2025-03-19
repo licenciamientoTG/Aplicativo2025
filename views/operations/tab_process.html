@@ -21,7 +21,6 @@
 </style>
 {% endblock %}
 {% block content %}
-
 <div class="row">
     <div class="col-12">
         <div class="card {{ tabulator.Estatus == 2 ? 'shadow-success' : 'shadow' }}">
@@ -30,7 +29,7 @@
                     <a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#tabInfoModal">Tabulador: #{{
                         tabulator.Id }}</a> <b id="totalTab">(Total: ${{ tabulator.Total | number_format(2, '.', ',')
                     }}) </b>
-                    <small class="float-end" data-toggle="tooltip" data-html="true" title="Ingreso: ${{ totals.total_ingresado | number_format(2) }} | Ventas: ${{ totals.total_ventas | number_format(2) }}"><h4><a href="javascript:void(0);"><span class="mx-1 badge bg-teal" id="diff_tab_span">Diferencia: ${{ (totals.total_ingresado - totals.total_ventas) | number_format(2) }}</span></a></h4></small>
+                    <small class="float-end" data-toggle="tooltip" data-html="true" title="Ingreso: ${{ tabulator.total_ingresado | number_format(2) }} | Ventas: ${{ tabulator.total_ventas | number_format(2) }}"><h4><a href="javascript:void(0);"><span class="mx-1 badge bg-teal" id="diff_tab_span">Diferencia: ${{ (tabulator.total_ingresado - tabulator.total_ventas) | number_format(2) }}</span></a></h4></small>
                     <small class="float-end"><h4><a href="/operations/history/{{ tabulator.Id }}"><span class="mx-1 badge bg-warning-dark">Historial</span></a></h4></small>
                     <small class="float-end ml-1"><h4><span class="mx-1 badge bg-primary">Tipo de cambio: ${{ tabulator.TipoCambio }}</span></h4></small>
                     <small class="float-end"><h4><span class="mx-1 badge bg-teal">Turno: {{ tabulator.Turno }}</span></h4></small>
@@ -605,7 +604,6 @@
     </div>
 </div>
 
-<input type="hidden" name="assignments" id="assignments" value="{{ assignments }}">
 
 <!-- Modal -->
 <div class="modal fade" id="registerDismissModal" tabindex="-1" aria-labelledby="registerDismissModalLabel"

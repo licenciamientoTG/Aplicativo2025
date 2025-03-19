@@ -38,13 +38,15 @@ class MySqlPdoHandler{
 	 * Return: Void
 	 */
 	public function connect($dbname, $host="192.168.0.6") {
+		// print_r(PDO::getAvailableDrivers());
+
 		$this->_username = 'cguser';
 		$this->_password = 'sahei1712';
 		$this->dbname = $dbname;
 
 		try{
 			$this->_connection = null;	//Close connection. Destroy the object.
-			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname", $this->_username, $this->_password);
+			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname;TrustServerCertificate=yes", $this->_username, $this->_password);
 			$this->_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 			$this->_connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 		}catch(PDOException $e) {

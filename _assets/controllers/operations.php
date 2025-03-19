@@ -167,6 +167,7 @@ class Operations{
                 }
             }
         }
+       
 
         echo $this->twig->render($this->route . 'consult.html', compact('wads', 'tabulator', 'contadorUSD', 'contadorMXN'));
     }
@@ -179,19 +180,23 @@ class Operations{
      */
     function tab_process(int $tabId, $island = false) : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){ // Si el método de envío es GET
-
-            $blocked_tab = 0;
-            if ($_SESSION['tg_user']['Id'] == "6177") {
+            try {
                 $blocked_tab = 0;
-            }
-            $tabulator = $this->tabulatorModel->get_tabulator($tabId);
-            $all_islands = $this->getInitialReadingsByIslands3($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
-            $samplings = $this->despachosModel->get_jarreos($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno']);
-            $islands = $this->islandModel->get_available_islands_by_tab($tabulator['CodigoEstacion'], $tabulator['Id']);
-            $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
-            $assignments = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
+                if ($_SESSION['tg_user']['Id'] == "6177" || $_SESSION['tg_user']['Id'] == "6296") {
+                    $blocked_tab = 0;
+                }
+                $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+                $all_islands = $this->getInitialReadingsByIslands3($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
+                $samplings = $this->despachosModel->get_jarreos($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno']);
+                $islands = $this->islandModel->get_available_islands_by_tab($tabulator['CodigoEstacion'], $tabulator['Id']);
+                $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
+                $assignments = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
 
-            echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'totals', 'blocked_tab'));
+                echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'blocked_tab'));
+            } catch (\Throwable $th) {
+                setFlashMessage('error', $th->getMessage()); // Mostramos un mensaje de error
+                redirect(); // Redireccionamos a la misma página
+            }
         } else { // Si el método de envío es POST
             switch ($_POST['action']) { // Dependiendo de la acción que se haya enviado
                 case 'assignation': // Si la acción es asignación

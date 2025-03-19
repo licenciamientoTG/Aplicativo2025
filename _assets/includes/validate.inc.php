@@ -47,9 +47,11 @@
             binnacle_register_prices($_SESSION['tg_user']['Id'], 'Login', 'Inicio de sesión', $_POST['ip'], 'Login', 'Login');
         }
 
-
         $redirectRoute = $_POST['route'] != "/index.php" ? $_POST['route'] : 'home/index';
-        header("Location: /$redirectRoute");
+        // var_dump($redirectRoute);
+        // die;
+        header("Location: /home/index");
+        // header("Location: /$redirectRoute");
         die();
     } else {
         header('Location: /?error=bad_user');
