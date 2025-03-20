@@ -2135,12 +2135,20 @@ class Operations{
 
         $monto = $moneda['Monto'];
         $tipoCambio = $ballot[0]['TipoCambio'];
-        $montoDolares = $monto / $tipoCambio; // Conversión a dólares
+        $montoDolares = $monto / $tipoCambio;
 
-        $partes = explode('.', number_format($monto, 2, '.', ''));
-        $parteEntera = (int) $partes[0];
-        $parteDecimal = isset($partes[1]) ? $partes[1] : '00';
-        $montoLetra = numeroALetras($parteEntera) . " con " . $parteDecimal . "/100";
+        //si el monto es usd imprimir monto en letra de dlls
+        if ($ballot[0]['Moneda'] == 'MXN') {
+            $partes = explode('.', number_format($monto, 2, '.', ''));
+            $parteEntera = (int) $partes[0];
+            $parteDecimal = isset($partes[1]) ? $partes[1] : '00';
+            $montoLetra = numeroALetras($parteEntera) . " con " . $parteDecimal . "/100 MN";
+        } else {
+            $partes = explode('.', number_format($montoDolares, 2, '.', ''));
+            $parteEntera = (int) $partes[0];
+            $parteDecimal = isset($partes[1]) ? $partes[1] : '00';
+            $montoLetra = numeroALetras($parteEntera) . " con " . $parteDecimal . "/100 USD";
+        }
 
         $pdf = new PDF_Code128();
         $pdf->AddPage('P');
