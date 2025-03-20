@@ -1925,3 +1925,136 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         return columns;
     }
+
+
+    async function mounth_company_table(){
+        if ($.fn.DataTable.isDataTable('#mounth_company_table')) {
+            $('#mounth_company_table').DataTable().destroy();  // Destruye la tabla existente
+            $('#mounth_company_table thead').empty(); // Limpia el encabezado
+            $('#mounth_company_table tbody').empty(); // Limpia el cuerpo
+            $('#mounth_company_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+        }
+        var fromDate = document.getElementById('from3').value;
+        var untilDate = document.getElementById('until3').value;
+        var grupo = document.getElementById('grupo3').value;
+    
+        var dynamicColumns = generateMounthGroupColumns(fromDate, untilDate,'mounth_company_table');
+        let mounth_company_table =$('#mounth_company_table').DataTable({
+            order: [0, "asc"],
+            colReorder: false,
+            // columnDefs: [{ visible: true, targets: groupColumn }],
+    
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            // pageLength: 150,
+            ordering: true,
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+             fixedColumns: {
+                leftColumns: 3,
+             },
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                    'grupo':grupo,
+                    'total':0,
+                    'dinamicColumns': dynamicColumns
+                },
+                url: '/commercial/mounth_company_table',
+                error: function() {
+                    $('#mounth_company_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+    
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+    
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                complete: function () {
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: dynamicColumns,
+            destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+            },
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api();
+    
+                // Función para obtener sumatoria de una columna
+                var intVal = function (i) {
+                    return typeof i === 'string' 
+                        ? i.replace(/[\$,]/g, '') * 1 
+                        : typeof i === 'number' 
+                            ? i 
+                            : 0;
+                };
+    
+                // Recorremos las columnas desde la tercera en adelante
+                api.columns().every(function (index) {
+                    if (index > 3) { // Desde la tercera columna en adelante
+                        // Sumatoria de los datos filtrados (página actual)
+                        var filteredSum = api
+                            .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                
+                        // Sumatoria de todos los datos (incluyendo no visibles)
+                        var totalSum = api
+                            .column(index, { page: 'all' }) // Todos los datos
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                
+                        // Actualizar el footer con ambas sumatorias
+                        var footer = $(api.column(index).footer());
+                        footer.html(`
+                            <div>Filtrado: ${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                            <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        `);
+                    }
+                });
+            }
+        }).on('xhr.dt', function(e, settings, json, xhr) {
+            if (json && json.data) {
+                generateCards(json.data); // Llamar a la función con los datos obtenidos
+            }
+        });
+    
+    
+        $('#filtro-mounth_company_table input').on('keyup  change clear', function () {
+            mounth_company_table
+                .column(0).search($('#Grupo3').val().trim())
+                .column(1).search($('#Empresa3').val().trim())
+                .column(2).search($('#Descripcion3').val().trim())
+                .column(3).search($('#MedioPago3').val().trim())
+                .draw();
+          });
+        $('.mounth_company_table').on('click', function () {
+            mounth_company_table.clear().draw();
+            mounth_company_table.ajax.reload();
+            $('#mounth_company_table').waitMe('hide');
+        });
+    }
