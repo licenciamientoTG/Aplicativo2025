@@ -1934,11 +1934,12 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_company_table tbody').empty(); // Limpia el cuerpo
             $('#mounth_company_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
-        var fromDate = document.getElementById('from3').value;
-        var untilDate = document.getElementById('until3').value;
-        var grupo = document.getElementById('grupo3').value;
+        var fromDate = document.getElementById('from4').value;
+        var untilDate = document.getElementById('until4').value;
+        var company = document.getElementById('company4').value;
     
-        var dynamicColumns = generateMounthGroupColumns(fromDate, untilDate,'mounth_company_table');
+        var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate);
+        updateTableHeaders(fromDate, untilDate,'mounth_company_table');
         let mounth_company_table =$('#mounth_company_table').DataTable({
             order: [0, "asc"],
             colReorder: false,
@@ -1966,7 +1967,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 data: {
                     'fromDate':fromDate,
                     'untilDate':untilDate,
-                    'grupo':grupo,
+                    'company':company,
                     'total':0,
                     'dinamicColumns': dynamicColumns
                 },
@@ -2003,7 +2004,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             },
             footerCallback: function (row, data, start, end, display) {
                 var api = this.api();
-    
                 // Función para obtener sumatoria de una columna
                 var intVal = function (i) {
                     return typeof i === 'string' 
@@ -2012,22 +2012,19 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                             ? i 
                             : 0;
                 };
-    
                 // Recorremos las columnas desde la tercera en adelante
                 api.columns().every(function (index) {
-                    if (index > 3) { // Desde la tercera columna en adelante
+                    if (index > 2) { // Desde la tercera columna en adelante
                         // Sumatoria de los datos filtrados (página actual)
                         var filteredSum = api
                             .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
                             .data()
                             .reduce((a, b) => intVal(a) + intVal(b), 0);
-                
                         // Sumatoria de todos los datos (incluyendo no visibles)
                         var totalSum = api
                             .column(index, { page: 'all' }) // Todos los datos
                             .data()
                             .reduce((a, b) => intVal(a) + intVal(b), 0);
-                
                         // Actualizar el footer con ambas sumatorias
                         var footer = $(api.column(index).footer());
                         footer.html(`
@@ -2037,19 +2034,16 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                     }
                 });
             }
-        }).on('xhr.dt', function(e, settings, json, xhr) {
+        }).off('xhr.dt').on('xhr.dt', function(e, settings, json, xhr) {
             if (json && json.data) {
-                generateCards(json.data); // Llamar a la función con los datos obtenidos
+                generateCardsCompany(json.data, fromDate, untilDate, company);
             }
         });
-    
-    
         $('#filtro-mounth_company_table input').on('keyup  change clear', function () {
             mounth_company_table
-                .column(0).search($('#Grupo3').val().trim())
-                .column(1).search($('#Empresa3').val().trim())
-                .column(2).search($('#Descripcion3').val().trim())
-                .column(3).search($('#MedioPago3').val().trim())
+                .column(0).search($('#Empresa4').val().trim())
+                .column(1).search($('#Descripcion4').val().trim())
+                .column(2).search($('#MedioPago4').val().trim())
                 .draw();
           });
         $('.mounth_company_table').on('click', function () {
@@ -2057,4 +2051,335 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             mounth_company_table.ajax.reload();
             $('#mounth_company_table').waitMe('hide');
         });
+    }
+
+
+    async function generateCardsCompany(data,fromDate,untilDate,company) {
+        const currentData = data; // Los datos que ya usas para renderCards
+
+        var lastYearFrom = subtracYear(fromDate);
+        var lastYearUntil = subtracYear(untilDate);
+        var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil);
+        try {
+            const response = await fetch('/commercial/mounth_company_table2', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json, text/javascript, */*',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                credentials: 'include',
+                body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&company=${company}&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
+            });
+            console.log(response);
+            const jsonData = await response.json();
+            if (jsonData && jsonData.data) {
+                const previousData = jsonData.data;
+                renderComparativeCards(currentData, previousData, 'comparativeContainer');
+
+            }
+        } catch (error) {
+            console.error("Error al obtener los datos del año anterior:", error);
+        }
+        
+    }
+    function groupAndSumCompay(data) {
+        return data.reduce((acc, item) => {
+            let Empresa = item.Empresa;
+            let paymentMethod = item.MedioPago;
+            if (!acc[Empresa]) {// Si el grupo no existe en el acumulador, lo inicializamos con su total general
+                acc[Empresa] = { 
+                    Grupo: Empresa, 
+                    TotalSum: 0,  // Total general del grupo
+                    MediosPago: {} // Detalle de medios de pago
+                };
+            }
+            if (!acc[Empresa].MediosPago[paymentMethod]) {// Si el medio de pago no existe dentro del grupo, lo inicializamos
+                acc[Empresa].MediosPago[paymentMethod] = { 
+                    MedioPago: paymentMethod, 
+                    TotalSum: 0 // Total por medio de pago
+                };
+            }
+            Object.keys(item).forEach(key => {// Recorremos las claves del objeto y sumamos solo las numéricas (excluyendo las especificadas)
+                if (![ "Empresa", "Descripcion", "MedioPago", "Total"].includes(key)) {
+                    let value = parseFloat(item[key]) || 0;
+
+                    // Sumamos al total del grupo
+                    acc[Empresa].TotalSum += value;
+                    // Sumamos al total del medio de pago dentro del grupo
+                    acc[Empresa].MediosPago[paymentMethod].TotalSum += value;
+                }
+            });
+            return acc;
+        }, {});
+    }
+
+    function subtracYear(dateStr){
+        const date = new Date(dateStr);
+        date.setFullYear(date.getFullYear() - 1);
+        return date.toISOString().split('T')[0];
+    }
+
+
+    function buildPaymentTable(mediosPago, totalSum) {
+        let table = document.createElement('table');
+        table.className = 'table table_card table-sm';
+        let thead = document.createElement('thead');
+        thead.innerHTML = `
+            <tr>
+                <th>Medio de Pago</th>
+                <th>Monto</th>
+                <th>Porcentaje</th>
+            </tr>
+        `;
+        table.appendChild(thead);
+        let tbody = document.createElement('tbody');
+        Object.values(mediosPago).forEach(med => {
+            let tr = document.createElement('tr');
+            let porcentaje = (med.TotalSum / totalSum) * 100;
+            tr.innerHTML = `
+                <td>${med.MedioPago}</td>
+                <td class="text-end">${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(med.TotalSum)}</td>
+                <td class="text-end">${porcentaje.toFixed(2)}%</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        return table;
+    }
+    
+    // Función que renderiza las cards comparativas
+    function renderComparativeCards(currentData, previousData, containerId) {
+        const currentGroups = groupAndSumCompay(currentData);
+        const previousGroups = groupAndSumCompay(previousData);
+        const allGroups = new Set([...Object.keys(currentGroups), ...Object.keys(previousGroups)]);
+    
+        let container = document.getElementById(containerId);
+        container.innerHTML = '';
+        allGroups.forEach(group => {
+            // Título para el grupo
+            let groupTitle = document.createElement('h4');
+            groupTitle.textContent = group;
+            groupTitle.style.marginLeft = '15px';
+            container.appendChild(groupTitle);
+            
+            // Contenedor para la comparación (fila en display flex)
+            let rowDiv = document.createElement('div');
+            rowDiv.style.display = 'flex';
+            rowDiv.style.alignItems = 'flex-start';
+            rowDiv.style.gap = '10px';
+            rowDiv.style.marginBottom = '20px';
+            
+            // Definimos totales para el grupo
+            const previousTotal = previousGroups[group] ? previousGroups[group].TotalSum : 0;
+            const currentTotal  = currentGroups[group]  ? currentGroups[group].TotalSum  : 0;
+            
+            // Card para el Año Pasado
+            let previousCard = document.createElement('div');
+            previousCard.style.flex = '1';
+            previousCard.className = 'card card_group';
+            let previousCardBody = document.createElement('div');
+            previousCardBody.className = 'card-body body_card';
+            let previousTitle = document.createElement('h5');
+            previousTitle.className = 'card-title';
+            previousTitle.textContent = 'Año Anterior';
+            previousCardBody.appendChild(previousTitle);
+            if (previousGroups[group]) {
+                let previousTotalP = document.createElement('p');
+                previousTotalP.className = 'card-text';
+                previousTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(previousTotal)}</strong>`;
+                previousCardBody.appendChild(previousTotalP);
+                let previousTable = buildPaymentTable(previousGroups[group].MediosPago, previousTotal);
+                previousCardBody.appendChild(previousTable);
+            } else {
+                let noData = document.createElement('p');
+                noData.textContent = 'Sin datos';
+                previousCardBody.appendChild(noData);
+            }
+            previousCard.appendChild(previousCardBody);
+            
+            // Card para la diferencia (más delgada)
+            let diffCard = document.createElement('div');
+            diffCard.style.flex = '1 0 0%'; // Ancho fijo para la card de diferencia
+            diffCard.className = 'card card_group';
+            let diffCardBody = document.createElement('div');
+            diffCardBody.className = 'card-body body_card';
+            let diffTitle = document.createElement('h5');
+            diffTitle.className = 'card-title';
+            diffTitle.textContent = 'Diferencia';
+            diffCardBody.appendChild(diffTitle);
+            
+            // Diferencia total
+            let diff = currentTotal - previousTotal;
+            let diffPercentage = previousTotal !== 0 ? (diff / previousTotal) * 100 : 0;
+            let diffColor = diff > 0 ? 'green' : (diff < 0 ? 'red' : 'gray');
+            
+            let diffP = document.createElement('p');
+            diffP.className = 'card-text';
+            diffP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diff)}</strong>`;
+            diffP.style.color = diffColor;
+            diffCardBody.appendChild(diffP);
+            
+            let diffPercentageP = document.createElement('p');
+            diffPercentageP.className = 'card-text';
+            diffPercentageP.innerHTML = `<strong>Porcentaje: ${diffPercentage.toFixed(2)}%</strong>`;
+            diffPercentageP.style.color = diffColor;
+            diffCardBody.appendChild(diffPercentageP);
+            
+            // Generamos la tabla de diferencias por medio de pago
+            let previousMedios = previousGroups[group] ? previousGroups[group].MediosPago : {};
+            let currentMedios  = currentGroups[group] ? currentGroups[group].MediosPago : {};
+            let diffTable = buildDiffPaymentTable(previousMedios, currentMedios);
+            diffCardBody.appendChild(diffTable);
+            
+            diffCard.appendChild(diffCardBody);
+            
+            // Card para el Año Actual
+            let currentCard = document.createElement('div');
+            currentCard.style.flex = '1';
+            currentCard.className = 'card card_group';
+            let currentCardBody = document.createElement('div');
+            currentCardBody.className = 'card-body body_card';
+            let currentTitle = document.createElement('h5');
+            currentTitle.className = 'card-title';
+            currentTitle.textContent = 'Año Actual';
+            currentCardBody.appendChild(currentTitle);
+            if (currentGroups[group]) {
+                let currentTotalP = document.createElement('p');
+                currentTotalP.className = 'card-text';
+                currentTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(currentTotal)}</strong>`;
+                currentCardBody.appendChild(currentTotalP);
+                let currentTable = buildPaymentTable(currentGroups[group].MediosPago, currentTotal);
+                currentCardBody.appendChild(currentTable);
+            } else {
+                let noData = document.createElement('p');
+                noData.textContent = 'Sin datos';
+                currentCardBody.appendChild(noData);
+            }
+            currentCard.appendChild(currentCardBody);
+            
+            // Agregar las tres cards a la fila: Primero Año Pasado, luego Año Actual y finalmente Diferencia
+            rowDiv.appendChild(previousCard);
+            rowDiv.appendChild(currentCard);
+            rowDiv.appendChild(diffCard);
+            
+            // Agregar la fila al contenedor principal
+            container.appendChild(rowDiv);
+        });
+    }
+    
+    function buildDiffPaymentTable(previousMedios = {}, currentMedios = {}, previousTotalGroup = 0, currentTotalGroup = 0) {
+        // Unión de los nombres de medios de pago
+        const allMedios = new Set([
+            ...Object.keys(previousMedios),
+            ...Object.keys(currentMedios)
+        ]);
+        
+        let table = document.createElement('table');
+        table.className = 'table table_card table-sm';
+        
+        // Encabezado: se muestran "Medio de Pago", "Diferencia Monto" y "Diferencia %"
+        let thead = document.createElement('thead');
+        thead.innerHTML = `
+            <tr>
+                <th>Medio de Pago</th>
+                <th>Diferencia Monto</th>
+                <th>Diferencia %</th>
+            </tr>
+        `;
+        table.appendChild(thead);
+        
+        // Cuerpo de la tabla
+        let tbody = document.createElement('tbody');
+        allMedios.forEach(medio => {
+            const previousValue = previousMedios[medio] ? previousMedios[medio].TotalSum : 0;
+            const currentValue  = currentMedios[medio]  ? currentMedios[medio].TotalSum  : 0;
+            const diffAmount = currentValue - previousValue;
+            
+            // Calcular el porcentaje que representa cada medio en el total del grupo
+            const previousPercent = previousTotalGroup !== 0 ? (previousValue / previousTotalGroup) * 100 : 0;
+            const currentPercent  = currentTotalGroup !== 0 ? (currentValue / currentTotalGroup) * 100 : 0;
+            const diffPercentage = currentPercent - previousPercent;
+            
+            // Se asigna color en función de la diferencia de porcentajes
+            const diffColor = diffPercentage > 0 ? 'green' : (diffPercentage < 0 ? 'red' : 'gray');
+            
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${medio}</td>
+                <td class="text-end">${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diffAmount)}</td>
+                <td class="text-end" style="color: ${diffColor};">
+                    <strong>${diffPercentage.toFixed(2)}%</strong>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        
+        table.appendChild(tbody);
+        return table;
+    }
+    
+    
+
+    function getMounthCompanyColumns(fromDate, untilDate) {
+        const startDate = new Date(fromDate + "T00:00:00");
+        const endDate = new Date(untilDate + "T00:00:00");
+        const columns = [];
+        const monthNames = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ];
+    
+        columns.push(
+            { data: 'Empresa', title: 'Empresa', className: 'text-left text-nowrap table-info' },
+            { data: 'Descripcion', title: 'Descripcion', className: 'text-left text-nowrap table-info' },
+            { data: 'MedioPago', title: 'MedioPago', className: 'text-left text-nowrap table-info' },
+        );
+    
+        let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        while (currentMonth <= endDate) {
+            const YearName = currentMonth.getFullYear();
+            const monthYear = `${YearName}_${currentMonth.getMonth() + 1}`;
+            const monthName = monthNames[currentMonth.getMonth()];
+            columns.push({
+                data: monthYear,
+                title: `${monthName} ${YearName}`,
+                render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+                className: 'text-end text-nowrap'
+            });
+            currentMonth.setMonth(currentMonth.getMonth() + 1);
+        }
+        columns.push({
+            data: 'Total',
+            title: 'Total',
+            className: 'text-left text-nowrap table-info',
+            render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+        });
+        return columns;
+    }
+
+    function updateTableHeaders(fromDate, untilDate, tableId) {
+        const startDate = new Date(fromDate + "T00:00:00");
+        const endDate = new Date(untilDate + "T00:00:00");
+        const monthNames = [
+            "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+        ];
+    
+        let theadHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
+        let tfootHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
+    
+        let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        while (currentMonth <= endDate) {
+            let monthName = monthNames[currentMonth.getMonth()];
+            theadHTML += `<th>${monthName}</th>`;
+            tfootHTML += `<th></th>`;
+            currentMonth.setMonth(currentMonth.getMonth() + 1);
+        }
+    
+        theadHTML += '<th>Total</th></tr>';
+        tfootHTML += '<th></th></tr>';
+    
+        const table = document.getElementById(tableId);
+        table.getElementsByTagName('thead')[0].innerHTML = theadHTML;
+        table.getElementsByTagName('tfoot')[0].innerHTML = tfootHTML;
     }

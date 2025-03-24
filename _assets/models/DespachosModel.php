@@ -2020,46 +2020,47 @@ class DespachosModel extends Model{
     function get_all_dispatches_just_to_release($from) : array|false {
         $query = "DECLARE @Fecha INT = {$from};
                   SELECT
-                    t2.id,
-                    t1.nrotrn Despacho,
-                    t4.abr Estacion,
-                    t7.den Isla,
-                    t1.codcli,
-                    t6.den AS Cliente,
-                    t1.can Volumen,
-                    t1.mto Monto,
-                    COALESCE(t2.notes, '--') AS notes,
-                    CASE t6.tipval
+                    dl.id,
+                    d.nrotrn AS Despacho,
+                    g.abr AS Estacion,
+                    i.den AS Isla,
+                    d.codcli,
+                    c.den AS Cliente,
+                    d.can AS Volumen,
+                    d.mto AS Monto,
+                    COALESCE(dl.notes, '--') AS notes,
+                    CASE c.tipval
                         WHEN 3 THEN N'Crédito'
                         WHEN 4 THEN N'Débito'
                     END AS Tipo,
-                    CONVERT(VARCHAR(5), DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)), 108) AS hora_formateada,
-                    CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) Fecha,
-                    (t1.nrotur / 10) AS turno,
-                    t5.abr,
-                    t5.den Producto,
+                    CONVERT(VARCHAR(5), DATEADD(MINUTE, d.hratrn % 100, DATEADD(HOUR, d.hratrn / 100, 0)), 108) AS hora_formateada,
+                    CONVERT(VARCHAR(10), DATEADD(DAY, -1, CAST(d.fchtrn AS DATETIME)), 23) AS Fecha,
+                    (d.nrotur / 10) AS turno,
+                    p.abr,
+                    p.den AS Producto,
                     'Sin verificar' AS Verificador, 
                     CASE 
-                        WHEN DATEDIFF(DAY, CAST(CONVERT(VARCHAR(100), CAST(t2.fchcor AS DATETIME) - 1, 23) AS DATE), CAST(t2.created_at AS DATE)) > 2 
+                        WHEN dl.fchcor IS NOT NULL AND DATEDIFF(DAY, DATEADD(DAY, -1, CAST(dl.fchcor AS DATETIME)), CAST(dl.created_at AS DATE)) > 2 
                         THEN 1 
                         ELSE 0 
                     END AS incidencia
-                  FROM SG12.dbo.Despachos t1
-                    LEFT JOIN (SELECT * FROM [TG].[dbo].[despachos_liberados] WHERE fchcor = @Fecha) t2 ON t1.nrotrn = t2.nrotrn AND t1.codgas = t2.codgas
-                    LEFT JOIN SG12.dbo.Clientes t3 ON t1.codcli = t3.cod
-                    LEFT JOIN SG12.dbo.Gasolineras t4 ON t1.codgas = t4.cod
-                    LEFT JOIN SG12.dbo.Productos t5 ON t1.codprd = t5.cod
-                    LEFT JOIN SG12.dbo.Clientes t6 ON t1.codcli = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Islas] t7 ON t1.codisl = t7.cod
-                  WHERE
-                    t2.nrotrn IS NULL
-                    AND t2.codgas IS NULL
-                    AND t1.fchcor = @Fecha
-                    AND t1.codcli > 0
-                    AND t3.tipval IN (3, 4)
-                    AND t1.mto > 0
-                  ORDER BY t1.nrotrn ASC;
-                    ;";
+                FROM SG12.dbo.Despachos d
+                LEFT JOIN (
+                    SELECT * 
+                    FROM [TG].[dbo].[despachos_liberados] 
+                    WHERE fchcor = @Fecha
+                ) dl ON d.nrotrn = dl.nrotrn AND d.codgas = dl.codgas
+                LEFT JOIN SG12.dbo.Clientes c ON d.codcli = c.cod
+                LEFT JOIN SG12.dbo.Gasolineras g ON d.codgas = g.cod
+                LEFT JOIN SG12.dbo.Productos p ON d.codprd = p.cod
+                LEFT JOIN [SG12].[dbo].[Islas] i ON d.codisl = i.cod
+                WHERE
+                    dl.nrotrn IS NULL
+                    AND d.fchcor = @Fecha
+                    AND d.codcli > 0
+                    AND c.tipval IN (3, 4)
+                    AND d.mto > 0
+                ORDER BY d.nrotrn ASC;";
         return ($this->sql->select($query, [])) ?: false ;
     }
 

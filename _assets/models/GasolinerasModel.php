@@ -83,6 +83,14 @@ class GasolinerasModel extends Model{
         $query = 'SELECT TOP (1) cod, abr, den, dom, col FROM [SG12].[dbo].[Gasolineras] WHERE cod = ?;';
         return ($this->sql->select($query, [$cod])) ?: false ;
     }
+    public function get_company(){
+        $query = 'SELECT t1.codemp, t2.den
+                    FROM [SG12].[dbo].[Gasolineras] t1
+                    left join SG12.dbo.Empresas t2 on t1.codemp = t2.cod
+                    group by t1.codemp,t2.den';
+        $params = [];
+        return ($this->sql->select($query)) ?: false ;
+    }
 
     /**
      * @return array|false

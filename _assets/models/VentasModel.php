@@ -832,7 +832,7 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getMounthCompanyPayment($from, $until, $grupo, $total) {
+    function getMounthCompanyPayment($from, $until, $company, $total) {
         $fromstring = date('Y-d-m', strtotime($from));
         $untilstring = date('Y-d-m', strtotime($until));
 
@@ -862,39 +862,28 @@ class VentasModel extends Model{
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total='  Grupo,empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $group_total='  empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
         $Descripcion = 'Descripcion,';
-        if($total == '1'){
+        
 
-            $group_total = " GROUPING SETS (
-                                 (Grupo,empresa, Descripcion, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)),
-                                (Grupo,empresa, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha))
-                            )";
-            $Descripcion ='CASE
-                WHEN Descripcion IS NULL THEN \'Total Estación\'
-                ELSE Descripcion
-            END AS Descripcion,';
+        $company_string ='';
 
+        if ($company != '0'){
+            $company_string ="and emp.cod = '{$company}' ";
         }
-
-        $grupo_string ='';
-
-        if ($grupo != '0'){
-            $grupo_string ="and E.grupo = '{$grupo}' ";
-        }
+        
         $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
 
                 WITH ValuesTable AS (
-                    SELECT 
+                     SELECT 
                         v.cod AS CodFormaPago,
                         CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
                         v.den AS Descripcion,
                         SUM(i.can) AS Cantidad,
                         SUM(i.mto) AS Monto,
                         emp.den AS Empresa,
-						E.grupo as Grupo,
                        CASE 
 							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
@@ -908,14 +897,13 @@ class VentasModel extends Model{
                     INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
                     INNER JOIN SG12.dbo.Empresas emp ON E.codemp = emp.cod
                     WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int 
-                    $grupo_string 
+                    $company_string 
                     GROUP BY 
                         CONVERT(DATE, DATEADD(DAY, -1, i.fch)), 
-                        v.cod,v.den,emp.den,E.grupo
-                )
+                        v.cod,v.den,emp.den
+                    )
 
                 SELECT 
-                     Grupo,
                     Empresa,
                     MedioPago,
                     $Descripcion
@@ -923,7 +911,6 @@ class VentasModel extends Model{
                     $pivotColumns_final
                 FROM (
                     SELECT 
-                        Grupo,
                         Empresa,
                         MedioPago,
                         Descripcion,
@@ -936,11 +923,9 @@ class VentasModel extends Model{
                     SUM(sum_monto)
                     FOR AñoMes IN ($pivotColumns)
                 ) ptv
-                ORDER BY Grupo, Descripcion;
+                ORDER BY Empresa, Descripcion;
             ";
-            echo '<pre>';
-            var_dump($query);
-            die();
+
 
         return $this->sql->select($query, []);
     }

@@ -22,6 +22,7 @@ class Commercial{
     public $route;
     public VentasModel $ventas;
     public DespachosModel $despachosModel;
+    public GasolinerasModel $gasolineras;
     public AuditoriaMysteryModel $auditoriaMysteryModel;
 
     public function __construct($twig) {
@@ -29,6 +30,7 @@ class Commercial{
         $this->route                 = 'views/commercial/';
         $this->ventas                = new VentasModel;
         $this->despachosModel        = new DespachosModel;
+        $this->gasolineras           = new GasolinerasModel;
         $this->auditoriaMysteryModel = new AuditoriaMysteryModel;
     }
 
@@ -57,7 +59,8 @@ class Commercial{
         echo $this->twig->render($this->route . 'sales_indicators.html');
     }
     public function sale_type_payment(){
-        echo $this->twig->render($this->route . 'sale_type_payment.html');
+        $companys = $this->gasolineras->get_company();
+        echo $this->twig->render($this->route . 'sale_type_payment.html', compact('companys'));
     }
     function sale_month_turn_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
@@ -170,19 +173,37 @@ class Commercial{
     }
     function mounth_company_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
-        $rows = $this->ventas->getMounthCompanyPayment($_POST['fromDate'], $_POST['untilDate'],$_POST['grupo'], 0);
+        $rows = $this->ventas->getMounthCompanyPayment($_POST['fromDate'], $_POST['untilDate'],$_POST['company'], 0);
         $data=[];
-
         foreach ($rows as $key => $row) {
             $entry=[];
                 foreach ($dinamicColumns as $key => $column) {
                     $colun_name = $column['data'];
-
                     $entry[$colun_name] = $row[$colun_name];
 
                 }
             $data[] = $entry;
         }
+        echo json_encode(array("data" => $data));
+    }
+    function mounth_company_table2(){
+        $dinamicColumnsJson = $_POST['dinamicColumns'];
+        $dinamicColumns = json_decode($dinamicColumnsJson, true);
+
+        $rows = $this->ventas->getMounthCompanyPayment($_POST['fromDate'], $_POST['untilDate'],$_POST['company'], 0);
+       
+        $data=[];
+      
+        foreach ($rows as $key => $row) {
+            $entry=[];
+                foreach ($dinamicColumns as $key => $column) {
+                    $colun_name = $column['data'];
+                    $entry[$colun_name] = $row[$colun_name];
+
+                }
+            $data[] = $entry;
+        }
+    
         echo json_encode(array("data" => $data));
     }
     function sales_type_payment_totals_table(){

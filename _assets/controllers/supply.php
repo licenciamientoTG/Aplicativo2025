@@ -345,7 +345,7 @@ class Supply{
                 }
             }
 
-            binnacle_register_prices($_SESSION['tg_user']['Id'], 'Creación', "Se creó un nuevo precio | codprd: {$codprd}, codgas: {$codgas}, fch: {$fch}, hra: {$hour}, pre: {$pre}, iva: {$iva}, ieps: {$ieps}.", $_SERVER['REMOTE_ADDR'], 'supply.php', 'send_prices');
+            // binnacle_register_prices($_SESSION['tg_user']['Id'], 'Creación', "Se creó un nuevo precio | codprd: {$codprd}, codgas: {$codgas}, fch: {$fch}, hra: {$hour}, pre: {$pre}, iva: {$iva}, ieps: {$ieps}.", $_SERVER['REMOTE_ADDR'], 'supply.php', 'send_prices');
             $this->preciosModel->capture_prices($codprd, dateToInt($fch), $hour, $pre, $iva, $codgas, $ieps_val);
         }
         setFlashMessage('success', 'Precios enviados correctamente');

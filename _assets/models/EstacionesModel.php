@@ -33,6 +33,7 @@ class EstacionesModel extends Model{
         return ($this->sql->select($query, [$id])[0]) ?: false ;
     }
 
+
     /**
      * @return array|false
      * @throws Exception
