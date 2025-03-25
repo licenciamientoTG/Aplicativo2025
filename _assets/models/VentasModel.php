@@ -929,6 +929,100 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
+    function getMounthEstationPayment($from, $until, $estation, $total) {
+        $fromstring = date('Y-d-m', strtotime($from));
+        $untilstring = date('Y-d-m', strtotime($until));
+
+        $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
+        $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
+        // Normalizar las fechas al primer día del mes
+        $dateFrom->modify('first day of this month');
+        $dateUntil->modify('first day of this month');
+        $months = [];
+        $currentDate = clone $dateFrom;
+
+        // Generar dinámicamente las columnas del PIVO
+        while ($currentDate <= $dateUntil) {
+
+            $year = $currentDate->format('Y');
+            $monthNumber = (int)$currentDate->format('m');
+            $months[] = "[".$year ."_". $monthNumber ."]";
+            $currentDate->modify('+1 month');
+        }
+        // Convertir el array en una cadena separada por comas
+        $pivotColumns = implode(', ', $months);
+        $pivotColumns_final = implode(' , ', array_map(function($col) {
+            return "ISNULL($col, 0) as $col";
+        }, $months));
+        // Calcular la suma total dinámicamente
+        $totalSum = implode(' + ', array_map(function($col) {
+            return "ISNULL($col, 0)";
+        }, $months));
+
+        $group_total='  Estacion, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $Descripcion = 'Descripcion,';
+
+        $estation_string ='';
+
+        if ($estation != '0'){
+            $estation_string ="and i.codgas = '{$estation}' ";
+        }
+
+        $query = "
+                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+
+                WITH ValuesTable AS (
+                     SELECT
+                        v.cod AS CodFormaPago,
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
+                        v.den AS Descripcion,
+                        SUM(i.can) AS Cantidad,
+                        SUM(i.mto) AS Monto,
+                       CASE
+							WHEN v.den IN (' Efectivo MN', ' DOLARES', ' Morralla MN', 'Transferencias') THEN 'EFECTIVO'
+							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
+							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
+							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)') THEN 'VALERAS'
+						    ELSE 'OTRO'
+                        END AS MedioPago,
+                    E.Nombre as Estacion
+                    FROM SG12.dbo.Valores v
+                    INNER JOIN SG12.dbo.Ingresos i ON v.cod = i.codval
+                    INNER JOIN TG.dbo.Estaciones E ON i.codgas = E.Codigo
+                    WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                    $estation_string
+                    GROUP BY
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)),
+                        v.cod,v.den,E.Nombre
+                    )
+
+                SELECT 
+                    Estacion,
+                    MedioPago,
+                    $Descripcion
+                    ($totalSum) AS Total,
+                    $pivotColumns_final
+                FROM (
+                    SELECT 
+                        Estacion,
+                        MedioPago,
+                        Descripcion,
+                        SUM(Monto) AS sum_monto,
+                        CONCAT(YEAR(Fecha), '_', MONTH(Fecha)) AS AñoMes
+                    FROM ValuesTable
+                  GROUP BY  $group_total
+                ) AS src
+                PIVOT (
+                    SUM(sum_monto)
+                    FOR AñoMes IN ($pivotColumns)
+                ) ptv
+                ORDER BY Estacion, Descripcion;
+            ";
+
+        return $this->sql->select($query, []);
+    }
     function getSalesMonthTotal($from, $until, $zona,$total) {
         $fromstring = date('Y-d-m', strtotime($from));
         $untilstring = date('Y-d-m', strtotime($until));

@@ -59,8 +59,9 @@ class Commercial{
         echo $this->twig->render($this->route . 'sales_indicators.html');
     }
     public function sale_type_payment(){
+        $estations = $this->gasolineras->get_estations_servidor();
         $companys = $this->gasolineras->get_company();
-        echo $this->twig->render($this->route . 'sale_type_payment.html', compact('companys'));
+        echo $this->twig->render($this->route . 'sale_type_payment.html', compact('companys','estations'));
     }
     function sale_month_turn_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
@@ -206,6 +207,27 @@ class Commercial{
     
         echo json_encode(array("data" => $data));
     }
+    function mounth_estation_table(){
+        if($_POST['json'] == 1){
+            $dinamicColumns = json_decode($_POST['dinamicColumns'], true);
+        }else{
+            $dinamicColumns = $_POST['dinamicColumns'];
+        }
+        $rows = $this->ventas->getMounthEstationPayment($_POST['fromDate'], $_POST['untilDate'],$_POST['estation'], 0);
+        $data=[];
+        foreach ($rows as $key => $row) {
+            $entry=[];
+                foreach ($dinamicColumns as $key => $column) {
+                    $colun_name = $column['data'];
+                    $entry[$colun_name] = $row[$colun_name];
+
+                }
+            $data[] = $entry;
+        }
+   
+        echo json_encode(array("data" => $data));
+    }
+
     function sales_type_payment_totals_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->ventas->getSalesTypePaymentTotal($_POST['fromDate'], $_POST['untilDate'],$_POST['zona']);
@@ -266,9 +288,6 @@ class Commercial{
         }
         echo json_encode(array("data" => $data));
     }
-
-
-
     function mistery_shopper_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->auditoriaMysteryModel->getMysteryShopper($_POST['fromDate'], $_POST['untilDate']);

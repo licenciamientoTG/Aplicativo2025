@@ -1924,8 +1924,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         return columns;
     }
-
-
     async function mounth_company_table(){
         if ($.fn.DataTable.isDataTable('#mounth_company_table')) {
             $('#mounth_company_table').DataTable().destroy();  // Destruye la tabla existente
@@ -1936,14 +1934,13 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var fromDate = document.getElementById('from4').value;
         var untilDate = document.getElementById('until4').value;
         var company = document.getElementById('company4').value;
-    
-        var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate);
+
+        var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate,'mounth_company_table');
         updateTableHeaders(fromDate, untilDate,'mounth_company_table');
         let mounth_company_table =$('#mounth_company_table').DataTable({
             order: [0, "asc"],
             colReorder: false,
             // columnDefs: [{ visible: true, targets: groupColumn }],
-    
             dom: '<"top"Bf>rt<"bottom"lip>',
             // pageLength: 150,
             ordering: true,
@@ -1951,9 +1948,9 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             scrollX: true,
             scrollCollapse: true,
             paging: false,
-             fixedColumns: {
+            fixedColumns: {
                 leftColumns: 3,
-             },
+            },
             buttons: [
                 {
                     extend: 'excel',
@@ -2051,14 +2048,12 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             $('#mounth_company_table').waitMe('hide');
         });
     }
-
-
     async function generateCardsCompany(data,fromDate,untilDate,company) {
         const currentData = data; // Los datos que ya usas para renderCards
 
         var lastYearFrom = subtracYear(fromDate);
         var lastYearUntil = subtracYear(untilDate);
-        var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil);
+        var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_company_table');
         try {
             const response = await fetch('/commercial/mounth_company_table2', {
                 method: 'POST',
@@ -2110,14 +2105,41 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             return acc;
         }, {});
     }
+    function groupAndSumEstation(data) {
+        return data.reduce((acc, item) => {
+            let Estacion = item.Estacion;
+            let paymentMethod = item.MedioPago;
+            if (!acc[Estacion]) {// Si el grupo no existe en el acumulador, lo inicializamos con su total general
+                acc[Estacion] = { 
+                    Grupo: Estacion, 
+                    TotalSum: 0,  // Total general del grupo
+                    MediosPago: {} // Detalle de medios de pago
+                };
+            }
+            if (!acc[Estacion].MediosPago[paymentMethod]) {// Si el medio de pago no existe dentro del grupo, lo inicializamos
+                acc[Estacion].MediosPago[paymentMethod] = { 
+                    MedioPago: paymentMethod, 
+                    TotalSum: 0 // Total por medio de pago
+                };
+            }
+            Object.keys(item).forEach(key => {// Recorremos las claves del objeto y sumamos solo las numéricas (excluyendo las especificadas)
+                if (![ "Estacion", "Descripcion", "MedioPago", "Total"].includes(key)) {
+                    let value = parseFloat(item[key]) || 0;
 
+                    // Sumamos al total del grupo
+                    acc[Estacion].TotalSum += value;
+                    // Sumamos al total del medio de pago dentro del grupo
+                    acc[Estacion].MediosPago[paymentMethod].TotalSum += value;
+                }
+            });
+            return acc;
+        }, {});
+    }
     function subtracYear(dateStr){
         const date = new Date(dateStr);
         date.setFullYear(date.getFullYear() - 1);
         return date.toISOString().split('T')[0];
     }
-
-
     function buildPaymentTable(mediosPago, totalSum) {
         let table = document.createElement('table');
         table.className = 'table table_card table-sm';
@@ -2144,11 +2166,16 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         table.appendChild(tbody);
         return table;
     }
-    
     // Función que renderiza las cards comparativas
     function renderComparativeCards(currentData, previousData, containerId) {
-        const currentGroups = groupAndSumCompay(currentData);
-        const previousGroups = groupAndSumCompay(previousData);
+        console.log(containerId);
+        if(containerId == 'comparativeEstationContainer'){
+            var currentGroups = groupAndSumEstation(currentData);
+            var previousGroups = groupAndSumEstation(previousData);
+        }else{
+            var currentGroups = groupAndSumCompay(currentData);
+            var previousGroups = groupAndSumCompay(previousData);
+        }
         const allGroups = new Set([...Object.keys(currentGroups), ...Object.keys(previousGroups)]);
     
         let container = document.getElementById(containerId);
@@ -2299,8 +2326,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             // Calcular el porcentaje que representa cada medio en el total del grupo
             const previousPercent = previousTotalGroup !== 0 ? (previousValue / previousTotalGroup) * 100 : 0;
             const currentPercent  = currentTotalGroup !== 0 ? (currentValue / currentTotalGroup) * 100 : 0;
-            console.log(previousValue, previousTotalGroup);
-            console.log(previousPercent, currentPercent);
             const diffPercentage = currentPercent - previousPercent;
             
             // Se asigna color en función de la diferencia de porcentajes
@@ -2320,10 +2345,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         table.appendChild(tbody);
         return table;
     }
-    
-    
-
-    function getMounthCompanyColumns(fromDate, untilDate) {
+    function getMounthCompanyColumns(fromDate, untilDate, tableId) {
         const startDate = new Date(fromDate + "T00:00:00");
         const endDate = new Date(untilDate + "T00:00:00");
         const columns = [];
@@ -2331,13 +2353,18 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
         ];
-    
+        if (tableId == "mounth_estation_table") {
+            columns.push({ data: 'Estacion', title: 'Estacion', className: 'text-left text-nowrap table-info' });
+        }else{
+            columns.push({ data: 'Empresa', title: 'Empresa', className: 'text-left text-nowrap table-info' });
+
+        }
+
         columns.push(
-            { data: 'Empresa', title: 'Empresa', className: 'text-left text-nowrap table-info' },
             { data: 'Descripcion', title: 'Descripcion', className: 'text-left text-nowrap table-info' },
             { data: 'MedioPago', title: 'MedioPago', className: 'text-left text-nowrap table-info' },
         );
-    
+
         let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
         while (currentMonth <= endDate) {
             const YearName = currentMonth.getFullYear();
@@ -2361,16 +2388,22 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
     }
 
     function updateTableHeaders(fromDate, untilDate, tableId) {
+        console.log(tableId);
         const startDate = new Date(fromDate + "T00:00:00");
         const endDate = new Date(untilDate + "T00:00:00");
         const monthNames = [
             "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
             "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
         ];
-    
-        let theadHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
-        let tfootHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
-    
+        if (tableId == "mounth_estation_table") {
+            var theadHTML = '<tr><th>Estacion</th><th>Descripcion</th><th>MedioPago</th>';
+            var tfootHTML = '<tr><th>Estacion</th><th>Descripcion</th><th>MedioPago</th>';
+        }else{
+
+            var theadHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
+            var tfootHTML = '<tr><th>Empresa</th><th>Descripcion</th><th>MedioPago</th>';
+        }
+
         let currentMonth = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
         while (currentMonth <= endDate) {
             let monthName = monthNames[currentMonth.getMonth()];
@@ -2385,4 +2418,158 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         const table = document.getElementById(tableId);
         table.getElementsByTagName('thead')[0].innerHTML = theadHTML;
         table.getElementsByTagName('tfoot')[0].innerHTML = tfootHTML;
+    }
+
+    async function mounth_estation_table(){
+        if ($.fn.DataTable.isDataTable('#mounth_estation_table')) {
+            $('#mounth_estation_table').DataTable().destroy();  // Destruye la tabla existente
+            $('#mounth_estation_table thead').empty(); // Limpia el encabezado
+            $('#mounth_estation_table tbody').empty(); // Limpia el cuerpo
+            $('#mounth_estation_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+        }
+        var fromDate = document.getElementById('from5').value;
+        var untilDate = document.getElementById('until5').value;
+        var estation = document.getElementById('estation5').value;
+
+        var dynamicColumns = getMounthCompanyColumns(fromDate, untilDate,'mounth_estation_table');
+        updateTableHeaders(fromDate, untilDate,'mounth_estation_table');
+        let mounth_estation_table =$('#mounth_estation_table').DataTable({
+            order: [0, "asc"],
+            colReorder: false,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            // pageLength: 150,
+            ordering: true,
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+             fixedColumns: {
+                leftColumns: 3,
+             },
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                    'estation':estation,
+                    'json':0,
+                    'total':0,
+                    'dinamicColumns': dynamicColumns
+                },
+                url: '/commercial/mounth_estation_table',
+                error: function() {
+                    $('#mounth_estation_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+    
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+    
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                complete: function () {
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: dynamicColumns,
+            destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+            },
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api();
+                // Función para obtener sumatoria de una columna
+                var intVal = function (i) {
+                    return typeof i === 'string' 
+                        ? i.replace(/[\$,]/g, '') * 1 
+                        : typeof i === 'number' 
+                            ? i 
+                            : 0;
+                };
+                // Recorremos las columnas desde la tercera en adelante
+                api.columns().every(function (index) {
+                    if (index > 2) { // Desde la tercera columna en adelante
+                        // Sumatoria de los datos filtrados (página actual)
+                        var filteredSum = api
+                            .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                        // Sumatoria de todos los datos (incluyendo no visibles)
+                        var totalSum = api
+                            .column(index, { page: 'all' }) // Todos los datos
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                        // Actualizar el footer con ambas sumatorias
+                        var footer = $(api.column(index).footer());
+                        footer.html(`
+                            <div>Filtrado: ${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                            <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        `);
+                    }
+                });
+            }
+        }).off('xhr.dt').on('xhr.dt', function(e, settings, json, xhr) {
+            if (json && json.data) {
+                 generateCardsEstation(json.data, fromDate, untilDate, estation);
+            }
+        });
+        $('#filtro-mounth_estation_table input').on('keyup  change clear', function () {
+            mounth_estation_table
+                .column(0).search($('#Empresa4').val().trim())
+                .column(1).search($('#Descripcion4').val().trim())
+                .column(2).search($('#MedioPago4').val().trim())
+                .draw();
+          });
+        $('.mounth_estation_table').on('click', function () {
+            mounth_estation_table.clear().draw();
+            mounth_estation_table.ajax.reload();
+            $('#mounth_estation_table').waitMe('hide');
+        });
+    }
+
+    async function generateCardsEstation(data,fromDate,untilDate,estation) {
+        const currentData = data; // Los datos que ya usas para renderCards
+
+        var lastYearFrom = subtracYear(fromDate);
+        var lastYearUntil = subtracYear(untilDate);
+        var dynamicColumns = getMounthCompanyColumns(lastYearFrom, lastYearUntil,'mounth_estation_table');
+        try {
+            const response = await fetch('/commercial/mounth_estation_table', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json, text/javascript, */*',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                credentials: 'include',
+                body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&estation=${estation}&json=1&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
+            });
+            const jsonData = await response.json();
+            if (jsonData && jsonData.data) {
+
+                const previousData = jsonData.data;
+                renderComparativeCards(currentData, previousData, 'comparativeEstationContainer');
+
+            }
+        } catch (error) {
+            console.error("Error al obtener los datos del año anterior:", error);
+        }
+        
     }
