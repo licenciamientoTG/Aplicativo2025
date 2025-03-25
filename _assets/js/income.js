@@ -757,11 +757,13 @@ let datatables_pending_dispatches_for_invoice = $('#datatables_pending_dispatche
     buttons: [
         {
             extend: 'excel',
-            className: 'd-none',
+            className: 'btn btn-success',
+            text: 'Excel',
+            filename: 'Despachos Pendientes de Facturar',
         },
         {
             extend: 'pdf', // Agrega el botón de exportación a PDF
-            className: 'd-none',
+            className: 'btn btn-danger',
             text: 'PDF',
             customize: function (doc) {
                 // Establecer la orientación horizontal (apaisada)
@@ -785,10 +787,7 @@ let datatables_pending_dispatches_for_invoice = $('#datatables_pending_dispatche
                 doc.content[1].table.widths = colWidths;
             }
         },
-        {
-            extend: 'print', // Agrega el botón de impresión
-            className: 'd-none',
-        }
+       
     ],
     ajax: {
         url: '/income/datatables_pending_dispatches_for_invoice/' + $('input#from').val() + '/' + $('input#until').val() + '/' + $('select#type').val() + '/' + $('select#status').val(),
@@ -818,20 +817,11 @@ let datatables_pending_dispatches_for_invoice = $('#datatables_pending_dispatche
         {'data': 'CODCLIENTE'},
         {'data': 'CLIENTE'},
         {'data': 'TIPO'},
-        {'data': 'STATUS'},
         {'data': 'FACTURA'},
         {'data': 'UUID'},
     ],
     createdRow: function (row, data, dataIndex) {
         // Si monto es menor o igual 0, se pinta la celda de color rojo
-        if (data['MONTO'] <= 0) {
-            $('td', row).eq(5).addClass('bg-danger text-light text-center');
-        }
-
-        // Si CANTIDAD es menor o igual 0, se pinta la celda de color rojo
-        if (data['CANTIDAD'] <= 0) {
-            $('td', row).eq(4).addClass('bg-danger text-light text-center');
-        }
 
         // Si tipo es 'Crédito', se pinta la celda de color rojo
         if (data['TIPO'] === 'Crédito') {
@@ -844,7 +834,6 @@ let datatables_pending_dispatches_for_invoice = $('#datatables_pending_dispatche
         }
     },
     initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
         $('.table-responsive').removeClass('loading');
     }
 });
@@ -861,9 +850,8 @@ $('#filtro-datatables_pending_dispatches_for_invoice input').on('keyup  change c
         .column(6).search($('#CODCLIENTE').val().trim())
         .column(7).search($('#CLIENTE').val().trim())
         .column(8).search($('#TIPO').val().trim())
-        .column(9).search($('#STATUS').val().trim())
-        .column(10).search($('#FACTURA').val().trim())
-        .column(11).search($('#UUID').val().trim())
+        .column(9).search($('#FACTURA').val().trim())
+        .column(10).search($('#UUID').val().trim())
         .draw();
 });
 

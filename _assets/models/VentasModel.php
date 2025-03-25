@@ -1110,53 +1110,35 @@ class VentasModel extends Model{
     function GetSalesDayTurnBase($from, $until, $zona,){
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
-        $query = "              
-                   WITH ValuesTable AS ( 
-                    SELECT  
-                        --CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha', 
-                        CONVERT(Date, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
-                      month (CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day',
-                        isd.codgas AS CodGasolinera,
-						v.codprd CodProduct,
-                        case
-						when T3.den =' Magna ' then 'T-Maxima Regular'
-						when T3.den ='   T-Maxima Regular' then 'T-Maxima Regular'
-						when T3.den =' Gasolina Regular Menor a 91 Octanos' then 'T-Maxima Regular'
-						when T3.den =' Premium' then 'T-Super Premium'
-						when T3.den ='   T-Super Premium' then 'T-Super Premium'
-						when T3.den =' Gasolina Premium Mayor o Igual a 91 Octanos' then 'T-Super Premium'
-						when T3.den =' Diesel ' then 'Diesel Automotriz'
-						when T3.den ='   Diesel Automotriz' then 'Diesel Automotriz'
-						else T3.den
-						end
-						as 'product',
-                        LEFT(CAST(v.nrotur AS VARCHAR), 1)  AS turn,
-                        sum(v.canven) AS VentasReales,
-                        v.fch,
-						g.abr as estation_name,
-						E.estructura as [zone],
-						g.codemp as CodEmp,
-						t2.den as [empresa]
-                    FROM [SG12].[dbo].[Ventas] v
-                    INNER JOIN ISLAS isd on v.codisl = isd.cod 
-                    INNER JOIN Gasolineras g ON codgas = g.cod 
-                    INNER JOIN Productos T3 ON V.codprd = T3.cod
-					INNER JOIN TG.dbo.Estaciones E ON g.cod = E.Codigo
-					LEFT JOIN SG12.dbo.Empresas t2 on g.codemp = t2.cod
-					WHERE 
-                        fch BETWEEN $fromint AND $untilint
-                         codprd IN (179, 180, 181, 2, 3, 1, 192, 193)
-                        AND nrotur IN (11, 21, 31, 41)
-                    GROUP BY
-                        fch,
-                        isd.codgas,
-                        T3.den,
-                        nrotur,
-                        codprd,g.abr,E.estructura,g.codemp,t2.den
-                )
-                select * from ValuesTable";
+        $query = "
+                  WITH SalesData AS (
+                        SELECT
+                            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
+                            Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
+                            datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
+                            datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day',
+                            isd.codgas AS CodGasolinera,
+                            LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
+                            sum(canven) AS VentasReales,
+                            fch,
+                            T3.den as Producto,
+                            g.abr as Estacion
+                        FROM [SG12].[dbo].[Ventas] v
+                        INNER JOIN ISLAS isd on v.codisl = isd.cod 
+                        INNER JOIN Gasolineras g ON codgas = g.cod 
+                        INNER JOIN Productos T3 ON V.codprd = T3.cod
+                        WHERE 
+                            fch BETWEEN $fromint AND $untilint
+                            AND codprd IN (179, 180, 181, 2, 3, 1, 192, 193)
+                            AND nrotur IN (11, 21, 31, 41)
+                        GROUP BY
+                            fch,
+                            isd.codgas,
+                            T3.den,
+                            nrotur,
+                            codprd,g.abr
+                    )
+                    select * from SalesData order by  Fecha desc ,CodGasolinera desc, turn desc";
         return $this->sql->select($query, []);
     }
 
@@ -1626,7 +1608,7 @@ class VentasModel extends Model{
                     FOR CodGasolinera IN ( {$columnsList})
                 ) AS PivotTable
                 ORDER BY fch desc, turn;";
-
+              
         return $this->sql->select($query, []);
     }
 }

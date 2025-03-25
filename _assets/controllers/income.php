@@ -438,7 +438,7 @@ class Income{
 
     function datatables_pending_dispatches_for_invoice($from, $until, $type, $status) : void {
         $data = [];
-        if ($dispatches = $this->despachosModel->get_pending_dispatches_for_invoice(dateToInt($from), dateToInt($until), $type, $status)) {
+        if ($dispatches = $this->despachosModel->get_pending_dispatches_for_invoice(dateToInt($from),dateToInt($until), $type, $status)) {
             foreach ($dispatches as $dispatch) {
                 $data[] = array(
                     'FECHA'     => $dispatch['Fecha'],
@@ -450,7 +450,6 @@ class Income{
                     'CODCLIENTE' => $dispatch['codcli'],
                     'CLIENTE'   => $dispatch['Cliente'],
                     'TIPO'      => $dispatch['Tipo'],
-                    'STATUS'    => strtoupper($status),
                     'FACTURA'   => $dispatch['Factura'],
                     'UUID'      => $dispatch['UUID'],
                 );

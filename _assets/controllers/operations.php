@@ -2000,18 +2000,15 @@ class Operations{
         if ($rows = $this->ventas->GetSalesDayTurnBase($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'])) {
             foreach ($rows as $row) {
                 $data[] = array(
-                    'Año'            => $row['Año'],
-                    'Mes'            => $row['Mes'],
-                    'Turno'          => $row['Turno'],
-                    'Producto'       => $row['Producto'],
-                    'CodGasolinera'  => $row['CodGasolinera'],
-                    'Estacion'       => $row['Estacion'],
-                    'CodProducto'    => $row['CodProducto'],
-                    'VentasReales'   => number_format($row['VentasReales'], 2),
-                    'MontoVendido'   => number_format($row['MontoVendido'], 2),
-                    'CodEmp'         => $row['CodEmp'],
-                    'den'            => $row['den'],
-                    'estructura'     => $row['estructura']
+                    'Fecha'         => $row['Fecha'],
+                    'year'          => $row['year'],
+                    'mounth'        => $row['mounth'],
+                    'day'           => $row['day'],
+                    'CodGasolinera' => $row['CodGasolinera'],
+                    'turn'          => $row['turn'],
+                    'VentasReales'  => number_format($row['VentasReales'], 2),
+                    'Producto'      => $row['Producto'],
+                    'Estacion'      => $row['Estacion'],
                 );
             }
             $data = array("data" => $data);

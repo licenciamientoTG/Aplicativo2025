@@ -2424,10 +2424,6 @@ async function sale_day_base_table(){
     if ($.fn.DataTable.isDataTable('#sale_day_base_table')) {
         $('#sale_day_base_table').DataTable().destroy();
         $('#sale_day_base_table thead .filter').remove();
-        // $('#sale_day_base_table').DataTable().destroy();  // Destruye la tabla existente
-        // $('#sale_day_base_table thead').empty(); // Limpia el encabezado
-        // $('#sale_day_base_table tbody').empty(); // Limpia el cuerpo
-        // $('#sale_day_base_table tfoot').empty(); // Limpia el pie de tabla si lo usas
     }
     var fromDate = document.getElementById('from3').value;
     var untilDate = document.getElementById('until3').value;
@@ -2468,7 +2464,7 @@ async function sale_day_base_table(){
                 'untilDate':untilDate,
                 'zona':zona
             },
-            url: '/commercial/sale_day_base_table',
+            url: '/operations/sale_day_base_table',
             error: function() {
                 $('#sale_day_base_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
@@ -2488,16 +2484,15 @@ async function sale_day_base_table(){
             }
         },
         columns: [
+            {'data': 'Fecha'},
             {'data': 'year'},
             {'data': 'mounth'},
             {'data': 'day'},
-            {'data': 'product'},
+            {'data': 'CodGasolinera'},
             {'data': 'turn'},
             {'data': 'VentasReales'},
-            {'data': 'estation_name'},
-            {'data': 'zone'},
-            {'data': 'empresa'},
-            
+            {'data': 'Producto'},
+            {'data': 'Estacion'},
         ],
         deferRender: true,
         // destroy: true, 

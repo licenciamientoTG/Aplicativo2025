@@ -1830,7 +1830,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         var untilDate = document.getElementById('until_month').value;
     
         var dynamicColumns = generateMonthColumns(fromDate, untilDate);
-        console.log(dynamicColumns);
         $('#lubricants_table_month').DataTable({
             order: [0, "asc"],
             colReorder: false,
@@ -2070,7 +2069,6 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 credentials: 'include',
                 body: `fromDate=${lastYearFrom}&untilDate=${lastYearUntil}&company=${company}&total=${0}&dinamicColumns=${encodeURIComponent(JSON.stringify(dynamicColumns))}`
             });
-            console.log(response);
             const jsonData = await response.json();
             if (jsonData && jsonData.data) {
                 const previousData = jsonData.data;
@@ -2161,80 +2159,64 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             groupTitle.textContent = group;
             groupTitle.style.marginLeft = '15px';
             container.appendChild(groupTitle);
-            
+
             // Contenedor para la comparación (fila en display flex)
             let rowDiv = document.createElement('div');
             rowDiv.style.display = 'flex';
             rowDiv.style.alignItems = 'flex-start';
             rowDiv.style.gap = '10px';
             rowDiv.style.marginBottom = '20px';
-            
+
             // Definimos totales para el grupo
             const previousTotal = previousGroups[group] ? previousGroups[group].TotalSum : 0;
             const currentTotal  = currentGroups[group]  ? currentGroups[group].TotalSum  : 0;
-            
+
             // Card para el Año Pasado
-            let previousCard = document.createElement('div');
-            previousCard.style.flex = '1';
-            previousCard.className = 'card card_group';
-            let previousCardBody = document.createElement('div');
-            previousCardBody.className = 'card-body body_card';
-            let previousTitle = document.createElement('h5');
-            previousTitle.className = 'card-title';
-            previousTitle.textContent = 'Año Anterior';
-            previousCardBody.appendChild(previousTitle);
-            if (previousGroups[group]) {
-                let previousTotalP = document.createElement('p');
-                previousTotalP.className = 'card-text';
-                previousTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(previousTotal)}</strong>`;
-                previousCardBody.appendChild(previousTotalP);
-                let previousTable = buildPaymentTable(previousGroups[group].MediosPago, previousTotal);
-                previousCardBody.appendChild(previousTable);
-            } else {
-                let noData = document.createElement('p');
-                noData.textContent = 'Sin datos';
-                previousCardBody.appendChild(noData);
-            }
-            previousCard.appendChild(previousCardBody);
-            
-            // Card para la diferencia (más delgada)
-            let diffCard = document.createElement('div');
-            diffCard.style.flex = '1 0 0%'; // Ancho fijo para la card de diferencia
-            diffCard.className = 'card card_group';
-            let diffCardBody = document.createElement('div');
-            diffCardBody.className = 'card-body body_card';
-            let diffTitle = document.createElement('h5');
-            diffTitle.className = 'card-title';
-            diffTitle.textContent = 'Diferencia';
-            diffCardBody.appendChild(diffTitle);
-            
-            // Diferencia total
-            let diff = currentTotal - previousTotal;
-            let diffPercentage = previousTotal !== 0 ? (diff / previousTotal) * 100 : 0;
-            let diffColor = diff > 0 ? 'green' : (diff < 0 ? 'red' : 'gray');
-            
-            let diffP = document.createElement('p');
-            diffP.className = 'card-text';
-            diffP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diff)}</strong>`;
-            diffP.style.color = diffColor;
-            diffCardBody.appendChild(diffP);
-            
-            let diffPercentageP = document.createElement('p');
-            diffPercentageP.className = 'card-text';
-            diffPercentageP.innerHTML = `<strong>Porcentaje: ${diffPercentage.toFixed(2)}%</strong>`;
-            diffPercentageP.style.color = diffColor;
-            diffCardBody.appendChild(diffPercentageP);
-            
-            // Generamos la tabla de diferencias por medio de pago
-            let previousMedios = previousGroups[group] ? previousGroups[group].MediosPago : {};
-            let currentMedios  = currentGroups[group] ? currentGroups[group].MediosPago : {};
-            let diffTable = buildDiffPaymentTable(previousMedios, currentMedios);
-            diffCardBody.appendChild(diffTable);
-            
-            diffCard.appendChild(diffCardBody);
-            
-            // Card para el Año Actual
-            let currentCard = document.createElement('div');
+            let previousCard = CreatePreviosCard(group, previousGroups, previousTotal);
+            let currentCard = CreateCurrentCard(group, currentGroups, currentTotal);
+            let DiffCard = CreateDiffCard(group, previousGroups, currentGroups, previousTotal, currentTotal);
+
+
+            rowDiv.appendChild(previousCard);
+            rowDiv.appendChild(currentCard);
+            rowDiv.appendChild(DiffCard);
+            container.appendChild(rowDiv);
+        });
+    }
+
+    function CreateDiffCard(group, previousGroups, currentGroups, previousTotal, currentTotal) {
+        let diffCard = document.createElement('div');
+        diffCard.style.flex = '1 0 0%'; // Ancho fijo para la card de diferencia
+        diffCard.className = 'card card_group';
+        let diffCardBody = document.createElement('div');
+        diffCardBody.className = 'card-body body_card';
+        let diffTitle = document.createElement('h5');
+        diffTitle.className = 'card-title';
+        diffTitle.textContent = 'Diferencia';
+        diffCardBody.appendChild(diffTitle);
+
+        // Diferencia total
+        let diff = currentTotal - previousTotal;
+        let diffPercentage = previousTotal !== 0 ? (diff / previousTotal) * 100 : 0;
+        let diffColor = diff > 0 ? 'green' : (diff < 0 ? 'red' : 'gray');
+
+        let diffP = document.createElement('p');
+        diffP.className = 'card-text';
+        diffP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diff)}</strong>`;
+        diffP.style.color = diffColor;
+        diffCardBody.appendChild(diffP);
+
+        // Generamos la tabla de diferencias por medio de pago
+        let previousMedios = previousGroups[group] ? previousGroups[group].MediosPago : {};
+        let currentMedios  = currentGroups[group] ? currentGroups[group].MediosPago : {};
+        let diffTable = buildDiffPaymentTable(previousMedios, currentMedios,previousTotal, currentTotal);
+        diffCardBody.appendChild(diffTable);
+
+        diffCard.appendChild(diffCardBody);
+        return diffCard;
+    }
+    function  CreateCurrentCard(group, currentGroups, currentTotal) {
+        let currentCard = document.createElement('div');
             currentCard.style.flex = '1';
             currentCard.className = 'card card_group';
             let currentCardBody = document.createElement('div');
@@ -2256,15 +2238,34 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                 currentCardBody.appendChild(noData);
             }
             currentCard.appendChild(currentCardBody);
-            
-            // Agregar las tres cards a la fila: Primero Año Pasado, luego Año Actual y finalmente Diferencia
-            rowDiv.appendChild(previousCard);
-            rowDiv.appendChild(currentCard);
-            rowDiv.appendChild(diffCard);
-            
-            // Agregar la fila al contenedor principal
-            container.appendChild(rowDiv);
-        });
+            return currentCard;
+    }
+
+    function CreatePreviosCard(group, previousGroups, previousTotal) {
+        let previousCard = document.createElement('div');
+        previousCard.style.flex = '1';
+        previousCard.className = 'card card_group';
+        let previousCardBody = document.createElement('div');
+        previousCardBody.className = 'card-body body_card';
+        let previousTitle = document.createElement('h5');
+        previousTitle.className = 'card-title';
+        previousTitle.textContent = 'Año Anterior';
+        previousCardBody.appendChild(previousTitle);
+        if (previousGroups[group]) {
+            let previousTotalP = document.createElement('p');
+            previousTotalP.className = 'card-text';
+            previousTotalP.innerHTML = `<strong>Total: ${Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' }).format(previousTotal)}</strong>`;
+            previousCardBody.appendChild(previousTotalP);
+            let previousTable = buildPaymentTable(previousGroups[group].MediosPago, previousTotal);
+            previousCardBody.appendChild(previousTable);
+        } else {
+            let noData = document.createElement('p');
+            noData.textContent = 'Sin datos';
+            previousCardBody.appendChild(noData);
+        }
+        previousCard.appendChild(previousCardBody);
+
+        return previousCard;
     }
     
     function buildDiffPaymentTable(previousMedios = {}, currentMedios = {}, previousTotalGroup = 0, currentTotalGroup = 0) {
@@ -2298,15 +2299,17 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             // Calcular el porcentaje que representa cada medio en el total del grupo
             const previousPercent = previousTotalGroup !== 0 ? (previousValue / previousTotalGroup) * 100 : 0;
             const currentPercent  = currentTotalGroup !== 0 ? (currentValue / currentTotalGroup) * 100 : 0;
+            console.log(previousValue, previousTotalGroup);
+            console.log(previousPercent, currentPercent);
             const diffPercentage = currentPercent - previousPercent;
             
             // Se asigna color en función de la diferencia de porcentajes
-            const diffColor = diffPercentage > 0 ? 'green' : (diffPercentage < 0 ? 'red' : 'gray');
+            const diffColor = diffAmount > 0 ? 'green' : (diffAmount < 0 ? 'red' : 'gray');
             
             let tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${medio}</td>
-                <td class="text-end">${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diffAmount)}</td>
+                <td class="text-end" style="color: ${diffColor};">${Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(diffAmount)}</td>
                 <td class="text-end" style="color: ${diffColor};">
                     <strong>${diffPercentage.toFixed(2)}%</strong>
                 </td>

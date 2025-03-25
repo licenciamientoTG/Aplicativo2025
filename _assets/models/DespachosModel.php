@@ -687,39 +687,51 @@ class DespachosModel extends Model{
     }
 
     function get_pending_dispatches_for_invoice($from, $until, int $type, $status) : array|false {
+       
+        $stringStatus = '';
+
+        if($status == 'pendiente'){
+            $stringStatus = 'AND t1.nrofac = 0';
+        }else{
+            $stringStatus = 'AND t1.nrofac != 0';
+        }
+        $stringType = ' and t2.tipval in (4,3)';
+        if ($type == 4) {
+            $stringType = ' and t2.tipval =4';
+        } else if ($type == 3) {
+            $stringType = 'and t2.tipval =3';
+        }
         $query = "
             DECLARE @tipo INT = $type;
-            DECLARE @status VARCHAR(20) = '$status';
-            SELECT
-                CONVERT(VARCHAR,CONVERT(SMALLDATETIME, fchtrn - 1,106),103) AS 'Fecha',
-                t1.nrotrn,
-                t3.abr Estacion,
-                CASE
-                    WHEN t1.codprd IN (179,192) THEN N'T-Máxima Regular'
-                    WHEN t1.codprd IN (180,193) THEN 'T-Super Premium'
-                    WHEN t1.codprd = 181 THEN 'Diesel Automotriz'
-                END Producto,
-                t1.codcli,
-                t2.den Cliente,
-                t1.can Volumen,
-                t1.mto Monto,
-                t1.nrofac Factura,
-                CASE
-                    WHEN t2.tipval = 3 THEN 'Crédito'
-                    WHEN t2.tipval = 4 THEN 'Débito'
-                END Tipo,
-                t1.nrofac Factura,
-                t1.satuid UUID
-            FROM
-                [SG12].[dbo].[Despachos] t1
-                LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
-                LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod
-            WHERE
-                t1.fchtrn BETWEEN {$from} AND {$until}
-                AND ((@tipo = 3 AND t2.tipval = 3) OR (@tipo = 4 AND t2.tipval = 4) OR (@tipo = 0 AND t2.tipval IN (3, 4)))
-                AND ((@status = 'pendiente' AND t1.nrofac = 0) OR (@status = 'facturado' AND t1.nrofac > 0))
-            ORDER BY
-                t1.nrotrn DESC;
+            WITH ValuesTable AS (
+                    SELECT
+                            CONVERT(DATE, DATEADD(DAY, -1, t1.fchtrn)) AS Fecha,
+                            t1.nrotrn,
+                            t3.abr Estacion,
+                            t4.den as Producto,
+                            t1.codcli,
+                            t2.den Cliente,
+                            t1.can Volumen,
+                            t1.mto Monto,
+                            CASE
+                                WHEN t2.tipval = 3 THEN 'Crédito'
+                                WHEN t2.tipval = 4 THEN 'Débito'
+                            END Tipo,
+                            t1.nrofac Factura,
+                            t1.satuid UUID
+                        FROM
+                            [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                            LEFT JOIN [SG12].[dbo].[Clientes] t2 ON t1.codcli = t2.cod
+                            LEFT JOIN [SG12].[dbo].[Gasolineras] t3 ON t1.codgas = t3.cod
+                            LEFT JOIN [SG12].[dbo].[Productos] t4 ON t1.codprd = t4.cod
+                        WHERE
+                            t1.fchtrn BETWEEN $from AND $until
+                            and t1.mto != 0
+                            and t1.can != 0
+                           $stringType
+                            $stringStatus
+            )
+            select * from  ValuesTable order by Fecha desc;
             ";
         return ($this->sql->select($query, [])) ?: false ;
     }
