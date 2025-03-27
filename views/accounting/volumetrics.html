@@ -1,0 +1,155 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Contabilidad{% endblock %}
+{% block mycss %}
+<style>
+    td {
+        padding: 4px !important;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Generador de volumétricos{% endblock %}
+{% block content %}
+<div class="card m-0">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-3">
+                <label for="from" class="col-form-label col-form-label-sm">Usuario ControlGas: </label>
+                <input type="text" class="form-control" name="cg_user" id="cg_user" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
+            </div>
+            <div class="col-3">
+                <label for="until" class="col-form-label col-form-label-sm">Contraseña ControlGas: </label>
+                <input type="password" class="form-control" name="cg_password" id="cg_password" autocomplete="new-password">
+            </div>
+            <div class="col-2 d-flex flex-column justify-content-between">
+                <div></div>
+                <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Verificar</button>
+            </div>
+            <!-- Vamos a agregar un text indicando cuales son las fechas a procesar -->
+            <div class="col-12">
+                <label for="from" class="col-form-label col-form-label-sm text-primary">Fechas a procesar: {{ from }} hasta {{ until }}</label>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card mt-1">
+    <div class="card-body">
+        <h5 class="card-title">Listado de estaciones</h5>
+        <!-- Ahora agregamos una tabla con las siguientes columnas: Nombre, Permiso CRE, IP, Estatus y Acciones -->
+         <table class="table table-striped table-hover table-sm" id="stations_table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Permiso CRE</th>
+                    <th>Empresa</th>
+                    <th>IP</th>
+                    <th>Estatus</th>
+                    <th>Notas</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí cargaremos los datos de las estaciones -->
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Permiso CRE</th>
+                    <th>Empresa</th>
+                    <th>IP</th>
+                    <th>Estatus</th>
+                    <th>Notas</th>
+                    <th>Acciones</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+<script>
+    // Vamos a inicializar nuestro datatable
+    $('#stations_table').DataTable({
+        paging: false,
+        lengthChange: false,
+        searching: true,
+        ordering: true,
+        info: true,
+        autoWidth: false,
+        // Agregamos el AJAX
+        ajax: {
+            "url": "/accounting/volumetrics_table",
+            "type": "GET",
+            "data": {
+                "inicial":  $("input#from").val(),
+                "final":    $("input#until").val(),
+                "est87":    $("input#est87").val(),
+                "est91":    $("input#est91").val(),
+            },
+            "beforeSend": function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        // Agregamos las columnas
+        "columns": [
+            { "data": "name" },
+            { "data": "permission_cre" },
+            { "data": "company" },
+            { "data": "ip" },
+            { "data": "status" },
+            { "data": "notes" },
+            { "data": "actions" },
+        ]
+    });
+
+    function executeScript(ip) {
+        // Tomamos el valor del campo cg_user
+        var user = $('#cg_user').val();
+        // Tomamos el valor del campo cg_password
+        var password = $('#cg_password').val();
+
+        // Vamos a verificar si los campos están vacíos
+        if (user === '' || password === '') {
+            alert('Debes ingresar el Usuario ControlGas y la Contraseña ControlGas');
+            return;
+        }
+
+        // Agrega un console.log para verificar los datos
+        console.log('Enviando datos:', {
+            ip: ip,
+            user: user,
+            password: password
+        });
+
+        // Vamos a usar una funcion de AJAX
+        $.ajax({
+            url: '/accounting/execute_volumetrics_script/',
+            type: 'POST',
+            data: JSON.stringify({
+                ip: ip,
+                user: user,
+                password: password
+            }),
+            contentType: 'application/json', // Importante: especificar content type
+            dataType: 'json', // Importante: especificar que esperas JSON
+            success: function(response) {
+                if (response.success) {
+                    alert('Script ejecutado correctamente\n\nDetalles:\n' + 
+                        (response.output ? response.output.join('\n') : 'Sin información adicional'));
+                } else {
+                    alert('Error al ejecutar el script:\n' + 
+                        (response.error || 'Error desconocido') + 
+                        '\n\nDetalles:\n' + 
+                        (response.output ? response.output.join('\n') : 'Sin información adicional'));
+                }
+                console.log(response);
+            },
+            error: function(xhr, status, error) {
+                alert('Error de conexión: ' + error + '\n\nDetalles del error:\n' + xhr.responseText);
+                console.error('Error details:', xhr.responseText);
+            }
+        });
+    }
+</script>
+{% endblock %}

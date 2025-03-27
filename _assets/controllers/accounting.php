@@ -5,6 +5,7 @@ class Accounting{
     public XmlCreModel $xmlCreModel;
     public FacturasModel $facturas;
     public DocumentosModel $Documentos;
+    public EstacionesModel $estacionesModel;
 
     /**
      * @param $twig
@@ -15,6 +16,7 @@ class Accounting{
         $this->xmlCreModel  = new XmlCreModel();
         $this->facturas     = new FacturasModel();
         $this->Documentos     = new DocumentosModel();
+        $this->estacionesModel = new EstacionesModel();
     }
 
     /**
@@ -187,6 +189,155 @@ class Accounting{
             echo json_encode($data);
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
+    }
+
+    function volumetrics() {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            // La fecha inicial sera el primer dia del mes anterior
+            $from = date('Y-m-01', strtotime('-1 month'));
+            // La fecha final sera el ultimo dia del mes anterior
+            $until = date('Y-m-t', strtotime('-1 month'));
+            echo $this->twig->render($this->route . 'volumetrics.html', compact('from', 'until'));
+        }
+    }
+
+    function volumetrics_table() {
+        $data = [];
+        $from = date('Y-m-01', strtotime('-1 month'));
+        $until = date('Y-m-t', strtotime('-1 month'));
+    
+        $stations = $this->estacionesModel->get_actives_stations();
+        foreach ($stations as $key => $station) {
+            $volumetrics_data = $this->estacionesModel->get_volumetrics($station['PermisoCRE'], $from, $until);
+            
+            // // Ejecutar script PSEXEC
+            // $psexec_result = $this->execute_volumetrics_script($station['Ip']);
+    
+            $actions = '
+            <div class="btn-group" role="group" aria-label="Basic mixed styles example">
+                <button type="button" class="btn btn-success" onclick="executeScript(\'' . $station['Ip'] . '\')">Generar</button>
+                <form method="post" action="/accounting/download_volumetrics/'. $from .'/'. $until .'">
+                    <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
+                    <button type="input" class="btn btn-primary">Descargar</button>
+                </form>
+                <form method="post" action="/accounting/delete_volumetrics/'. $from .'/'. $until .'">
+                    <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
+                    <button type="input" class="btn btn-danger">Eliminar</button>
+                </form>
+            </div>
+            ';
+    
+            $data[] = array(
+                "name" => $station['Nombre'],
+                "permission_cre" => $station['PermisoCRE'],
+                "company" => $station['Company'],
+                "ip" => $station['Ip'],
+                "status" => ((@fsockopen($station['Ip'], 1433, $errno, $errstr, 2)) ? "✅" : "❌"),
+                "notes" => "<p class=\"text-nowrap m-0 p-0\">Archivos PL: {$volumetrics_data['Total_PL']}</p><p class=\"text-nowrap m-0 p-0\">Archivos D: {$volumetrics_data['Total_D']}</p><p class=\"text-nowrap m-0 p-0\">Archivos M: {$volumetrics_data['Total_M']}</p>",
+                "actions" => $actions
+            );
+        }
+    
+        json_output(array("data" => $data));
+    }
+
+    function delete_volumetrics($from, $until) {
+        $permisoCre = $_POST['permisoCre'];
+        $this->estacionesModel->delete_volumetrics($permisoCre, $from, $until);
+        redirect('/accounting/volumetrics');
+    }
+
+    function download_volumetrics($from, $until) {
+        $permisoCre = $_POST['permisoCre'];
+        if ($files = $this->estacionesModel->download_volumetrics($permisoCre, $from, $until)) {
+            // Carpeta temporal
+            $tempDir = sys_get_temp_dir() . '/volumetrics_' . uniqid();
+            mkdir($tempDir, 0777, true);
+            foreach ($files as $index => $contenido) {
+                $filePath = $tempDir . '/' . $contenido['name'];
+                file_put_contents($filePath, $contenido['contentxml']);
+            }
+        }
+
+        // Crear el archivo ZIP
+        $zipFile = $tempDir . '.zip';
+        $zip = new ZipArchive();
+        if ($zip->open($zipFile, ZipArchive::CREATE) === TRUE) {
+            foreach (glob("$tempDir/*.xml") as $file) {
+                $zip->addFile($file, basename($file));
+            }
+            $zip->close();
+        } else {
+            die("No se pudo crear el archivo ZIP.");
+        }
+
+        // Descargar el archivo
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="volumetricos_' . date('Ymd_His') . '.zip"');
+        header('Content-Length: ' . filesize($zipFile));
+        readfile($zipFile);
+
+        // Limpieza
+        array_map('unlink', glob("$tempDir/*.xml"));
+        rmdir($tempDir);
+        unlink($zipFile);
+        // Tenemos que redirigir la pagina
+        redirect('/accounting/volumetrics');
+    }
+
+    function execute_volumetrics_script() {
+        // Comando PSEXEC usando la ruta local del script en el equipo remoto
+        $command = 'C:\PSTools\PsExec.exe \\192.168.16.101 -u Administrador -p T0t4lG4s2020 -i 1 -d C:\Software\Scripts\volumetric_runner\sgcv.exe --user AOchoa --password Fl3x.2025..';
+        
+        // Especificamos los descriptores para capturar stdin, stdout y stderr
+        $descriptorspec = [
+            0 => ["pipe", "r"], // stdin
+            1 => ["pipe", "w"], // stdout
+            2 => ["pipe", "w"]  // stderr
+        ];
+        
+        // Ejecutamos el comando
+        $process = proc_open($command, $descriptorspec, $pipes);
+
+        
+        if (is_resource($process)) {
+            // Cerramos la entrada si no la vamos a usar
+            fclose($pipes[0]);
+            
+            // Obtenemos la salida estándar y de error
+            $output = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            
+            $errorOutput = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+            
+            // Cerramos el proceso y obtenemos el código de retorno
+            $return_var = proc_close($command);
+            
+            if ($return_var === 0) {
+                json_output([
+                    'success'      => true,
+                    'command'      => $command,
+                    'output'       => $output,
+                    'error_code'   => $return_var,
+                    'error_output' => $errorOutput
+                ]);
+            } else {
+                json_output([
+                    'success'      => false,
+                    'error'        => 'Hubo un error al ejecutar el script',
+                    'command'      => $command,
+                    'error_code'   => $return_var,
+                    'output'       => $output,
+                    'error_output' => $errorOutput
+                ]);
+            }
+        } else {
+            json_output([
+                'success' => false,
+                'error'   => 'No se pudo iniciar el proceso'
+            ]);
         }
     }
 }

@@ -151,4 +151,35 @@ class EstacionesModel extends Model{
             return $codigoString;
         }
     }
+
+    function get_actives_stations() {
+        $query = "SELECT Codigo, RFC AS [Company], Nombre, Servidor AS [Ip], PermisoCRE FROM [TG].[dbo].[Estaciones] WHERE activa = 1 AND Codigo NOT IN (0);";
+        return $this->sql->select($query);
+    }
+
+    function get_volumetrics($permisoCre, $from, $until) : array|false {
+        $query = "SELECT
+                COUNT(CASE WHEN name LIKE 'PL_%' THEN 1 END) AS Total_PL,
+                COUNT(CASE WHEN name LIKE 'D_%' THEN 1 END) AS Total_D,
+                COUNT(CASE WHEN name LIKE 'M_%' THEN 1 END) AS Total_M
+            FROM [TG].[dbo].[VolumeticosXML]
+            WHERE permisoCre = '{$permisoCre}'
+            AND FileDate BETWEEN '{$from}' AND '{$until}';";
+
+        return  (($rs = $this->sql->select($query))) ? $rs[0] : false ;
+    }
+
+    function delete_volumetrics($permisoCre, $from, $until) {
+        $query = "DELETE FROM [TG].[dbo].[VolumeticosXML]
+            WHERE permisoCre = ?
+            AND FileDate BETWEEN '{$from}' AND '{$until}';";
+        return $this->sql->delete($query, [$permisoCre]);
+    }
+
+    function download_volumetrics($permisoCre, $from, $until) : array|false {
+        $query = "SELECT name, contentxml FROM [TG].[dbo].[VolumeticosXML]
+            WHERE permisoCre = '{$permisoCre}'
+            AND FileDate BETWEEN '{$from}' AND '{$until}';";
+        return  (($rs = $this->sql->select($query))) ? $rs : false ;
+    }
 }
