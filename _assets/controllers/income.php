@@ -33,6 +33,7 @@ class Income{
 
         $this->twig             = $twig;
         $this->route            = 'views/income/';
+
     }
 
     /**

@@ -349,6 +349,8 @@
         modal.find('.modal-footer input[name="creSubProductBrandId"]').val(creSubProductBrandId);
         modal.find('.modal-footer input[name="rowid"]').val(rowid);
         modal.find('.modal-footer input[name="controlGasProductId"]').val(controlGasProductId);
+
+        $('#PermisoProveedorCRE').selectpicker({ liveSearch: true });
     });
 
     // Vamos a lanzar un alert cuando el elemento RecibioDescuentoSi este checked
@@ -568,6 +570,10 @@
     // Cuando el formulario #bulkUploadForm se envíe vamos a añadir la clase .loading al body
     $('#bulkUploadForm').on('submit', function() {
         $('body').addClass('loading');
+    });
+
+    $(document).ready(function() {
+        $('#PermisoProveedorCRE').selectpicker({ liveSearch: true });
     });
 
 </script>

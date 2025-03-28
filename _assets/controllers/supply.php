@@ -44,6 +44,9 @@ class Supply{
         $this->creSuppliersModel            = new CreSuppliersModel();
         $this->creCarriersModel             = new CreCarriersModel();
         $this->xsdEstacionServicioVolumenCompradoModel = new XsdEstacionServicioVolumenCompradoModel();
+
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
     }
 
     /**
@@ -225,7 +228,10 @@ class Supply{
 
         $prices = [];
         foreach ($stations as $station) {
-            $prices[] = $this->gasolinerasModel->get_fuel_prices_by_station($station['Servidor'], $station['BaseDatos'], $station['Codigo'], $station['Estacion'], $station['Nombre']);
+            $stationPrices = $this->gasolinerasModel->get_fuel_prices_by_station($station['Servidor'], $station['BaseDatos'], $station['Codigo'], $station['Estacion'], $station['Nombre']);
+            // Añadir el permisoCre a cada precio de la estación
+            $stationPrices[0]['permisoCre'] = $station['PermisoCRE'];
+            $prices[] = $stationPrices;
         }
         if ($prices) {
             foreach ($prices as $item) {
@@ -271,7 +277,7 @@ class Supply{
 
                 $data[] = array(
                     'CODEST'               => $item[0]['station'],
-                    'ESTACION'             => $item[0]['station_name'],
+                    'ESTACION'             => $item[0]['station_name'] . '<p class="m-0 p-0 text-nowrap">'. $item[0]['permisoCre'] .'</p>',
                     'PRECIOANTERIORMAXIMA' => '<p class="m-0 p-0 text-center">$'. number_format($item[0]['pre_anterior_codprd_179'], 2, '.', ',') . '<p class="m-0 p-0 text-center">'. (intToDate($item[0]['fch_anterior_codprd_179'])) . '</p>',
                     'PRECIONUEVOMAXIMA'    => $options_maxima . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: '. $item[0]['hra_actual_codprd_179'] .'">'. (intToDate($item[0]['fch_actual_codprd_179'])) . '</p>',
                     'DIFERENCIAMAXIMA'     => (is_null($item[0]['pre_actual_codprd_179']) ? 'N/A' : ('$' . number_format($item[0]['pre_actual_codprd_179'] - $item[0]['pre_anterior_codprd_179'], 2, '.', ','))),
@@ -422,8 +428,9 @@ class Supply{
     }
 
     function tgr01() {
-        isset($_GET['codgas']) ? $codgas = $_GET['codgas'] : $codgas = 7;
+        
         $stations = $this->gasolinerasModel->get_active_stations();
+        isset($_GET['codgas']) ? $codgas = $_GET['codgas'] : $codgas = 7;
         isset($_GET['from']) ? $from = $_GET['from'] : $from = date('Y-m-d');
         isset($_GET['to']) ? $to = $_GET['to'] : $to = date('Y-m-d');
         isset($_GET['shift']) ? $shift = $_GET['shift'] : $shift = 0;

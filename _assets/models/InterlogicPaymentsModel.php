@@ -32,6 +32,9 @@ class InterlogicPaymentsModel extends Model{
 
 
     public function get_rows($from, $until) : array|false {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+        
         $from = $from;
         $until = date('Y-m-d', strtotime($until . ' +1 day'));
 
@@ -62,8 +65,8 @@ class InterlogicPaymentsModel extends Model{
                 FROM
                     [interlogic].[dbo].[payments]
                 WHERE 
-                    created_at BETWEEN @from AND @until
-                ORDER BY created_at DESC;";
+                    fechaHora BETWEEN @from AND @until
+                ORDER BY fechaHora DESC;";
         return ($this->sql->select($query, [])) ?: false ;
     }
 

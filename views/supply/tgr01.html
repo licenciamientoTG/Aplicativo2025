@@ -143,6 +143,9 @@
                   </div>
                 </div>
             `);
+            // Tambien vamos a agregar un loader cuando se envie el formulario #mermas en el formulario
+            $(this).find(':input[type="submit"]').prop('disabled', true);
+            return true;
         });
     });
 </script>

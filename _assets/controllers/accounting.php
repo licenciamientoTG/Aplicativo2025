@@ -287,57 +287,28 @@ class Accounting{
     }
 
     function execute_volumetrics_script() {
-        // Comando PSEXEC usando la ruta local del script en el equipo remoto
-        $command = 'C:\PSTools\PsExec.exe \\192.168.16.101 -u Administrador -p T0t4lG4s2020 -i 1 -d C:\Software\Scripts\volumetric_runner\sgcv.exe --user AOchoa --password Fl3x.2025..';
-        
-        // Especificamos los descriptores para capturar stdin, stdout y stderr
-        $descriptorspec = [
-            0 => ["pipe", "r"], // stdin
-            1 => ["pipe", "w"], // stdout
-            2 => ["pipe", "w"]  // stderr
-        ];
-        
-        // Ejecutamos el comando
-        $process = proc_open($command, $descriptorspec, $pipes);
+        // Ejemplo de uso
+        try {
+            $ejecucionRemota = new SMBRemoteExecution(
+                '192.168.5.101', 
+                'Software/Scripts/volumetric_runner'
+            );
 
-        
-        if (is_resource($process)) {
-            // Cerramos la entrada si no la vamos a usar
-            fclose($pipes[0]);
-            
-            // Obtenemos la salida estándar y de error
-            $output = stream_get_contents($pipes[1]);
-            fclose($pipes[1]);
-            
-            $errorOutput = stream_get_contents($pipes[2]);
-            fclose($pipes[2]);
-            
-            // Cerramos el proceso y obtenemos el código de retorno
-            $return_var = proc_close($command);
-            
-            if ($return_var === 0) {
-                json_output([
-                    'success'      => true,
-                    'command'      => $command,
-                    'output'       => $output,
-                    'error_code'   => $return_var,
-                    'error_output' => $errorOutput
-                ]);
+            if ($ejecucionRemota->conectarCompartido()) {
+                $resultado = $ejecucionRemota->ejecutarArchivoRemoto('sgcv.exe');
+                
+                if ($resultado) {
+                    echo "Archivo ejecutado exitosamente";
+                } else {
+                    echo "Error al ejecutar el archivo";
+                }
+
+                $ejecucionRemota->desconectarCompartido();
             } else {
-                json_output([
-                    'success'      => false,
-                    'error'        => 'Hubo un error al ejecutar el script',
-                    'command'      => $command,
-                    'error_code'   => $return_var,
-                    'output'       => $output,
-                    'error_output' => $errorOutput
-                ]);
+                echo "No se pudo conectar al recurso compartido";
             }
-        } else {
-            json_output([
-                'success' => false,
-                'error'   => 'No se pudo iniciar el proceso'
-            ]);
+        } catch (Exception $e) {
+            echo "Error: " . $e->getMessage();
         }
     }
 }

@@ -102,11 +102,13 @@ class GasolinerasModel extends Model{
     }
 
     function GetVentasLogistica($from, $until, $codgas, $product) {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
         return ($this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_inventarios_por_turno]', [$from, $until, $codgas, $product])) ?: false ;
     }
 
     public function get_active_station_TG() : array|false {
-        $query = 'SELECT Codigo, Nombre, Estacion, iva, Servidor, BaseDatos FROM [TG].[dbo].[Estaciones] WHERE activa = 1 AND Codigo > 0;';
+        $query = 'SELECT Codigo, Nombre, Estacion, iva, Servidor, BaseDatos, PermisoCRE FROM [TG].[dbo].[Estaciones] WHERE activa = 1 AND Codigo > 0;';
         $rs = $this->sql->select($query);
         $actives = [];
         if ($rs) {
