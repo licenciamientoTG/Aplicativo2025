@@ -31,6 +31,7 @@ class Direction{
     public CreDebMensualModel $CreDebMensualModel;
     public MetaVentaModel $MetaVentaModel;
     public VentasModel $VentasModel;
+    public ValesRModel $valesr;
 
 
     /**
@@ -49,6 +50,7 @@ class Direction{
         $this->CreDebMensualModel    = new CreDebMensualModel();
         $this->MetaVentaModel        = new MetaVentaModel();
         $this->VentasModel        = new VentasModel();
+        $this->valesr        = new ValesRModel();
 
     }
 
@@ -119,6 +121,30 @@ class Direction{
         $months = self::get_months_list(); // Asumiendo que esta función ya te da los meses
         $months = array_reverse($months); // Si también necesitas invertir los meses
         echo $this->twig->render($this->route . 'tg6/tg6.html', compact('months', 'currentYear', 'months_resumen', 'meta_venta'));
+    }
+    function tg6_product() {
+        
+        echo $this->twig->render($this->route . 'tg6/tg6_product.html');
+    }
+
+    public function credit_debit_product_table() {
+
+        if ($rows = $this->valesr->GetCreditoProduct($_POST['fromDate'], $_POST['untilDate'], $_POST['tipo'])) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'CodigoCliente'        => $row['CodigoCliente'],
+                    'Cliente'              => $row['Cliente'],
+                    'Tipo'                 => $row['Tipo'],
+                    'Diesel Automotriz'    => $row['Diesel Automotriz'],
+                    'T-Maxima Regular'     => $row['T-Maxima Regular'],
+                    'T-Super Premium'      => $row['T-Super Premium'],
+                    'Total Litros'         => $row['Total Litros']
+                );
+            }
+            echo json_encode(['data' => $data]);
+        } else {
+            echo json_encode(['data' => []]);
+        }
     }
 
     function consumption_customer_credit() {

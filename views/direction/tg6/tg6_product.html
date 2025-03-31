@@ -1,0 +1,160 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Direccion - TG6{% endblock %}
+{% block mycss %}
+<style>
+#card_canva_vta {
+    background: linear-gradient(135deg, #2c3e50, #4b79a1); /* Degradado oscuro */
+    border: 1px solid #1a252f; /* Borde oscuro */
+    padding: 10px;
+    border-radius: 15px; /* Bordes redondeados */
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5); /* Sombra */
+    color: white; /* Texto en blanco */
+}
+
+#vta_vs_meta_canva {
+    background-color: rgba(0, 0, 0, 0.2); /* Fondo semi-transparente para la gráfica */
+    border-radius: 10px; /* Bordes redondeados */
+}
+
+    .border_end {
+        border-right: 1px solid #00000078 !important;
+        border-left: 1px solid #00000078 !important;
+    }
+    .table th, .table td {
+        white-space: nowrap;
+        padding: 0.25rem 0.5rem;
+    }
+    .td_num {
+        text-align: right;
+    }
+    .bg-yellow { background-color: #ffff00 !important;  }
+    .bg-lightgreen { background-color: #90ee90 !important;   }
+    .bg-lightblue { background-color: #add8e6;   }
+    .bg-orange { background-color: #ffa500 !important;   }
+    .margin-row { height: 20px; }
+    .bg-brown {background-color: #8040009a;  }
+
+
+     .table-orange {
+     
+
+    --bs-table-color: #000;
+    --bs-table-bg: orange;
+    --bs-table-border-color: orange;
+    --bs-table-striped-bg: orange;
+    --bs-table-striped-color: #000;
+    --bs-table-active-bg: #orange;
+    --bs-table-active-color: #000;
+    --bs-table-hover-bg: orange;
+    --bs-table-hover-color: #000
+    }
+
+</style>
+{% endblock %}
+{% block menutitle %}TG6{% endblock %}
+
+{% block content %}
+
+
+
+ <ul class="nav nav-tabs" id="myTab" role="tablist">
+  
+    <li class="nav-item" role="presentation">
+      <button class="nav-link " id="SalesProduct-tab" data-bs-toggle="tab" data-bs-target="#SalesProduct" type="button" role="tab" aria-controls="SalesProduct" aria-selected="true">Ventas Credito/Debito Producto</button>
+    </li>
+   
+  </ul>
+
+  <div class="tab-content">
+    
+    <div class="tab-pane active" id="SalesProduct" role="tabpanel" aria-labelledby="SalesProduct-tab">
+       <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date('Y-m-01') }}"  required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{  'now'|date('Y-m-d') }}"  required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Tipo </label>
+                        <select class="form-select form-select-sm" id="tipo" name="tipo" required>
+                            <option value="0" selected disabled>Seleccione</option>
+                            <option value="28">Credito</option>
+                            <option value="127">Debito</option>
+                        </select>
+                    </div>
+
+                    <div class="col-2 " >
+                        <button id="seach_credit_debit_product_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+       <div class="card">
+           <div class="card-header">
+             <h5 class="card-title mb-0">Ventas Credito/Debito Producto LTS</h5>
+           </div>
+           <div class="card-body" id="card_table">
+                <div class="table-responsive d-none">
+                    <table class="table table-sm table-hover w-100" id="credit_debit_product_table" >
+                    <thead class="table-info">
+                        <tr>
+                        <th>Código Cliente</th>
+                        <th>Nombre del Cliente</th>
+                        <th>Tipo</th>
+                        <th>Diesel Automotriz</th>
+                        <th>T-Maxima Regular</th>
+                        <th>T-Super Premium</th>
+                        <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        </tr>
+                    </tfoot>
+                    </table>
+                </div>
+                <div id="alert_credit_debit_product_table" >
+                    <div class="alert alert-warning alert-dismissible mt-2" role="alert">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <div class="alert-message">
+                            <strong>¡Atención!</strong> Seleccione un rango de fechas para generar el reporte de ventas
+                        </div>
+                    </div>
+                </div>
+           </div>
+       </div>
+    </div>
+  </div>
+  
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@0.7.0"></script> -->
+ <!-- <script type="text/javascript" src="{{ PLUGINS }}chartjs4/index.ts"></script>  -->
+
+ <script  src="{{ JS }}direction/tg6.js"></script>
+<script>
+$('#seach_credit_debit_product_table').on('click', function() {
+    credit_debit_product_table();
+});
+
+</script>
+
+
+{% endblock %}

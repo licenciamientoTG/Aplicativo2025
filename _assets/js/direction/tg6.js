@@ -1,9 +1,154 @@
 console.log('tg6');
 
-$(document).ready(async function () {
-    const vta_vs_meta_canva= document.getElementById('vta_vs_meta_canva').getContext('2d');
-     vta_vs_meta_canvas(vta_vs_meta_canva);
-});
+// $(document).ready(async function () {
+//     const vta_vs_meta_canva= document.getElementById('vta_vs_meta_canva').getContext('2d');
+//      vta_vs_meta_canvas(vta_vs_meta_canva);
+// });
+
+async function credit_debit_product_table(){
+    if ($.fn.DataTable.isDataTable('#credit_debit_product_table')) {
+        $('#credit_debit_product_table').DataTable().destroy();
+        $('#credit_debit_product_table thead .filter').remove();
+       
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var tipo = document.getElementById('tipo').value;
+
+    if (tipo == 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Por favor, seleccione una fecha y un tipo de producto.</p>
+            </div>`
+        );
+        return;
+        
+    }
+
+    $('#credit_debit_product_table thead').prepend($('#credit_debit_product_table thead tr').clone().addClass('filter'));
+    $('#credit_debit_product_table thead tr.filter th').each(function (index) {
+        col = $('#credit_debit_product_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#credit_debit_product_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#credit_debit_product_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let credit_debit_product_table =$('#credit_debit_product_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'tipo':tipo,
+            },
+            url: '/direction/credit_debit_product_table',
+            timeout: 600000, 
+            error: function() {
+                $('#credit_debit_product_table').waitMe('hide');
+                $('#card_table').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').removeClass('d-none');
+                $('#alert_credit_debit_product_table').addClass('d-none');
+                $('#card_table').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'CodigoCliente', className: 'text-nowrap' },
+            { data: 'Cliente', className: 'text-nowrap' },
+            { data: 'Tipo' },
+            { data: 'Diesel Automotriz', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end' },
+            { data: 'T-Maxima Regular', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end' },
+            { data: 'T-Super Premium', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end' },
+            { data: 'Total Litros', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end' }
+        ],
+        rowId: 'CodigoCliente',
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+        },
+        initComplete: function () {
+            $('#card_table').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+
+            // Función para sumar valores en una columna
+            var intVal = function (i) {
+                return typeof i === 'string' ?
+                    i.replace(/[\$,]/g, '') * 1 :
+                    typeof i === 'number' ? i : 0;
+            };
+        
+            // Lista de columnas a sumar (desde 'can' en adelante)
+            var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+            api.columns().every(function (index) {
+                if (index > 2  ) { // Desde la tercera columna en adelante
+                    // Sumatoria de los datos filtrados (página actual)
+                    var filteredSum = api
+                        .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+                        .data()
+                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+                    // Sumatoria de todos los datos (incluyendo no visibles)
+                    var totalSum = api
+                        .column(index, { page: 'all' }) // Todos los datos
+                        .data()
+                        .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+                    // Actualizar el footer con ambas sumatorias
+                    var footer = $(api.column(index).footer());
+                    footer.html(`
+                        <div>${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                    `);
+                }
+            });
+        
+          
+        }
+    });
+}
 
 
 async function dynamicColumns(months,target){
@@ -491,3 +636,5 @@ function downloadExcel() {
         alert('Error al descargar el archivo');
     });
 }
+
+

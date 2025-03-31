@@ -62,4 +62,84 @@ class ValesRModel extends Model
         $params = [];
         return $this->sql->select($query, $params);
     }
+
+    function GetCreditoProduct($from,$until,$tipo){
+        $fromstring = date('Y-d-m', strtotime($from));
+        $untilstring = date('Y-d-m', strtotime($until));
+
+        $query = "
+            DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
+            DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
+            DECLARE @tipo INT = $tipo;
+
+            WITH Datos AS (
+                SELECT 
+                v.codcli AS CodigoCliente, -- C�digo del cliente
+                c.den AS Cliente, -- Nombre del cliente
+                --pr.den as producto,
+                CASE
+                WHEN pr.den =' Gasolina Regular Menor a 91 Octanos' THEN 'T-Maxima Regular'
+                WHEN pr.den ='   T-Maxima Regular' THEN 'T-Maxima Regular'
+                WHEN pr.den ='   T-Super Premium' THEN 'T-Super Premium'
+                WHEN pr.den =' Gasolina Premium Mayor o Igual a 91 Octanos' THEN 'T-Super Premium'
+                WHEN pr.den ='   Diesel Automotriz' THEN 'Diesel Automotriz'
+                ELSE ''
+                END AS producto,
+                CASE
+                    WHEN v.codval = 28 THEN 'Credito' -- Vale de cr�dito
+                    WHEN v.codval = 127 THEN 'Debito' -- Vale de d�bito
+                    ELSE '' -- Otros tipos no especificados
+                END AS Tipo,
+                ISNULL( -- Subconsulta para obtener la suma de litros
+                    (
+                        SELECT SUM(d.can) 
+                        FROM [SG12].dbo.Despachos d (NOLOCK)
+                        WHERE d.codcli = v.codcli -- Filtrar por cliente
+                        and d.codprd = v.codprd
+                        AND d.fchtrn BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                    ), 0) AS Litros -- Valor por defecto 0 si no hay datos
+            FROM 
+                [SG12].[dbo].[ValesR] v
+            LEFT JOIN [SG12].[dbo].[Clientes] c ON c.cod = v.codcli -- Unir con Clientes
+            LEFT JOIN [SG12].dbo.Productos pr on v.codprd = pr.cod
+            WHERE 
+                c.codest >= 0 -- Filtrar clientes activos
+                AND v.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int -- Filtrar por rango de fechas
+                AND v.codval IN (@tipo) -- Filtrar por tipos de vale espec�ficos
+                and pr.den is not null
+            GROUP BY	
+                v.codcli, -- Agrupar por cliente
+                pr.den, -- Agrupar por cliente
+                v.codprd, -- Agrupar por nombre de cliente
+                c.den, -- Agrupar por nombre de cliente
+                CASE 
+                    WHEN v.codval = 28 THEN 'Credito' -- Agrupar por tipo de vale
+                    WHEN v.codval = 127 THEN 'Debito'
+                    ELSE ''
+                END
+            )
+            --select * from Datos
+
+            -- PIVOT: Litros por Producto
+            SELECT 
+                CodigoCliente,
+                Cliente,
+                Tipo,
+                ISNULL([Diesel Automotriz], 0) AS [Diesel Automotriz],
+                ISNULL([T-Maxima Regular], 0) AS [T-Maxima Regular],
+                ISNULL([T-Super Premium], 0) AS [T-Super Premium],
+                ISNULL([Diesel Automotriz], 0) 
+				+ ISNULL([T-Maxima Regular], 0) 
+				+ ISNULL([T-Super Premium], 0) AS [Total Litros]
+            FROM Datos
+            PIVOT (
+                SUM(Litros)
+                FOR Producto IN ([Diesel Automotriz], [T-Maxima Regular], [T-Super Premium])
+            ) AS p
+            ORDER BY CodigoCliente;
+        ";
+
+        $params = [];
+        return $this->sql->select($query, $params);
+    }
 }
