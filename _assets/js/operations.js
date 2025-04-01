@@ -2081,11 +2081,11 @@ var sales_stations_table = $('#sales_stations_table').DataTable({
         {'data': 'Estación'},
         {'data': 'Producto'},
         {'data': 'Despachos', 'render': $.fn.dataTable.render.number( ',', '.', 0)},
-        {'data': 'Volumen', render: $.fn.dataTable.render.number( ',', '.', 3, '', ' lts')},
+        {'data': 'Volumen', render: $.fn.dataTable.render.number( ',', '.', 3 )},
         {'data': 'Precio'},
         {'data': 'Importe', render: $.fn.dataTable.render.number( ',', '.', 2, '$' )},
-        {'data': 'Crédito', render: $.fn.dataTable.render.number( ',', '.', 3, '', ' lts' )},
-        {'data': 'Débito', render: $.fn.dataTable.render.number( ',', '.', 3, '', ' lts' )},
+        {'data': 'Crédito', render: $.fn.dataTable.render.number( ',', '.', 3)},
+        {'data': 'Débito', render: $.fn.dataTable.render.number( ',', '.', 3 )},
         {'data': 'Acciones'}
     ],
     createdRow: function (row, data, dataIndex) {

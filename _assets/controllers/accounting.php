@@ -287,28 +287,40 @@ class Accounting{
     }
 
     function execute_volumetrics_script() {
-        // Ejemplo de uso
-        try {
-            $ejecucionRemota = new SMBRemoteExecution(
-                '192.168.5.101', 
-                'Software/Scripts/volumetric_runner'
-            );
+        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])){
+            // Leer el contenido del cuerpo de la petición
+            $json = file_get_contents('php://input');
 
-            if ($ejecucionRemota->conectarCompartido()) {
-                $resultado = $ejecucionRemota->ejecutarArchivoRemoto('sgcv.exe');
-                
-                if ($resultado) {
-                    echo "Archivo ejecutado exitosamente";
-                } else {
-                    echo "Error al ejecutar el archivo";
-                }
+            // Decodificar el JSON recibido a un array asociativo
+            $data = json_decode($json, true);
 
-                $ejecucionRemota->desconectarCompartido();
-            } else {
-                echo "No se pudo conectar al recurso compartido";
-            }
-        } catch (Exception $e) {
-            echo "Error: " . $e->getMessage();
+            // Acceder a los datos enviados
+            $remoteIP = isset($data['ip']) ? $data['ip'] : null;
+            $user = isset($data['user']) ? $data['user'] : null;
+            $password = isset($data['password']) ? $data['password'] : null;
+
+            // Ruta completa al ejecutable C# compilado
+            $exePath = 'C:\\Software\\Scripts\\ExecSGCV\\bin\\Release\\net9.0\\win-x64\\ExecSGCV.exe';
+            
+            // Construir el comando usando escapeshellarg para cada parte
+            $cmd = escapeshellarg($exePath) . ' ' . escapeshellarg($remoteIP) . ' ' . escapeshellarg($user) . ' ' . escapeshellarg($password) . ' 2>&1';
+            
+            // Ejecuta el comando y captura la salida en un array y el código de retorno
+            $output = [];
+            $returnVar = 0;
+            exec($cmd, $output, $returnVar);
+            
+            echo "<pre>";
+            echo "Comando ejecutado: " . $cmd . "\n\n";
+            echo "Código de retorno: " . $returnVar . "\n\n";
+            echo "Salida:\n" . implode("\n", $output);
+            echo "</pre>";
+            
+            return $output;
+        } else {
+            echo "No se ha recibido ningún POST.";
         }
     }
+    
+
 }

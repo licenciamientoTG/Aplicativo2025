@@ -324,6 +324,10 @@ async function invoice_purchase_table(){
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
             $('td:eq(15)', row).addClass('border_OG');
+            if (data['mto'] !=  data['Subtotal']) {
+                $('td:eq(19)', row).addClass('bg-danger');
+                
+            }
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
