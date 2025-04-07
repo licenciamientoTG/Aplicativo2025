@@ -1,6 +1,14 @@
 <?php
+
+
 class Xml
 {
+    public $twig;
+    public $xsdReportesVolumenesModel;
+    public $xsdEstacionServicioVolumenModel;
+    public $xsdEstacionServicioVolumenVendidoInventariosModel;
+    public $xsdEstacionServicioVolumenCompradoModel;
+
     public function __construct($twig) {
         $this->twig = $twig;
         $this->xsdReportesVolumenesModel = new XsdReportesVolumenesModel();
@@ -17,7 +25,7 @@ class Xml
         // Vamos a hacer un arreglo con las estaciones
         $stations      = explode(',', $codgas_string);
         $cabecera      = $this->xsdReportesVolumenesModel->get_cabecera($from);
-        
+
         $file_name = $_GET['companyDenominacion'] . '_' . $_GET['from'];
 
         $precioCompraSinDescuento = 0;
@@ -41,6 +49,12 @@ class Xml
                 $station_inventory = $this->xsdEstacionServicioVolumenCompradoModel->get_purchases($cabecera['id'], $station['id']);
                 if (is_array($station_inventory) || is_object($station_inventory)) {
                     foreach ($station_inventory as $row) {
+
+                        if ($row['permisoTransportistaCRE'] == '-------PENDIENTE-------') {
+                            // Aqui vamos a retornar con el mensaje de que faltan actualizar los datos de las recepciones de combustible
+                            setFlashMessage('error', 'Es necesario actualizar todas las recepciones de combustible.');
+                            redirect();
+                        }
                         $precioCompraSinDescuento = round($row['precioCompraSinDescuento'], 2);
 
                         if (isset($row['volumenComprado']) && is_numeric($row['volumenComprado']) && $row['volumenComprado'] >= 0 && $row['volumenComprado'] <= 999999999) {

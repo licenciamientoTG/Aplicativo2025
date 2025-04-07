@@ -12,22 +12,21 @@
 <div class="card m-0">
     <div class="card-body">
         <div class="row">
-            <div class="col-3">
-                <label for="from" class="col-form-label col-form-label-sm">Usuario ControlGas: </label>
-                <input type="text" class="form-control" name="cg_user" id="cg_user" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
-            </div>
-            <div class="col-3">
-                <label for="until" class="col-form-label col-form-label-sm">Contraseña ControlGas: </label>
-                <input type="password" class="form-control" name="cg_password" id="cg_password" autocomplete="new-password">
-            </div>
-            <div class="col-2 d-flex flex-column justify-content-between">
-                <div></div>
-                <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Verificar</button>
-            </div>
-            <!-- Vamos a agregar un text indicando cuales son las fechas a procesar -->
-            <div class="col-12">
-                <label for="from" class="col-form-label col-form-label-sm text-primary">Fechas a procesar: {{ from }} hasta {{ until }}</label>
-            </div>
+            <form method="get" id="verify_form">
+                <div class="row">
+                    <div class="col-2">
+                        <label for="from" class="col-form-label col-form-label-sm">Usuario ControlGas: </label>
+                    <input type="text" class="form-control" name="cg_user" id="cg_user" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
+                    </div>
+                    <div class="col-2">
+                        <label for="until" class="col-form-label col-form-label-sm">Contraseña ControlGas: </label>
+                        <input type="password" class="form-control" name="cg_password" id="cg_password" autocomplete="new-password">
+                    </div>
+                    <div class="col-12">
+                        <label for="from" class="col-form-label col-form-label-sm text-primary">Fechas a procesar: {{ from }} hasta {{ until }}</label>
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 </div>

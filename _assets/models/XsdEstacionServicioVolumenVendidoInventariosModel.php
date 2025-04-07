@@ -91,7 +91,8 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
             t1.volumenVendido Ventas,
             LTRIM(t7.den) AS controlGasProduct,
             t4.nombre AS subProduct,
-            t5.nombre AS subProductBrand
+            t5.nombre AS subProductBrand,
+            t8.TotalVolumenComprado
         FROM
             [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] t1
             LEFT JOIN [devTotalGas].[dbo].[creProductsByStations] t2 ON t1.controlGasStationId = t2.controlGasStationId AND t1.controlGasProductId = t2.controlGasProductId
@@ -100,6 +101,21 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
             LEFT JOIN [devTotalGas].[dbo].[creTipoSubProductoMarca] t5 ON t2.creSubProductBrandId = t5.tipoSubProductoMarcaId
             LEFT JOIN [TG].[dbo].[Estaciones] t6 ON t1.controlGasStationId = t6.Codigo
             LEFT JOIN [SG12].[dbo].[Productos] t7 ON t1.controlGasProductId = t7.cod
+            LEFT JOIN (SELECT
+                    xsdReportesVolumenesId,
+                    xsdEstacionServicioVolumenId,
+                    controlGasStationId,
+                    controlGasProductId,
+                    SUM(volumenComprado) AS TotalVolumenComprado
+                FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado]
+                WHERE xsdEstacionServicioVolumenId IS NOT NULL
+                GROUP BY
+                    xsdReportesVolumenesId,
+                    xsdEstacionServicioVolumenId,
+                    controlGasStationId,
+                    controlGasProductId) t8 ON t1.controlGasStationId = t8.controlGasStationId
+   AND t1.controlGasProductId = t8.controlGasProductId
+   AND t1.xsdReportesVolumenesId = t8.xsdReportesVolumenesId
         WHERE t1.xsdReportesVolumenesId = {$reportId} AND t1.controlGasStationId IN ({$codgas})";
 
         return ($rs=$this->sql->select($query)) ? $rs : false ;

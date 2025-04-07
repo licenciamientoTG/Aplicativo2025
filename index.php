@@ -1,8 +1,5 @@
 <?php
 session_start();
-
-
-
 require('_assets/classes/header.class.php');
 require('_assets/classes/twig_functions.php');
 require('_assets/classes/php_functions.php');

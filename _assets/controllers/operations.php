@@ -1391,8 +1391,8 @@ class Operations{
     function sales_table() : void {
 
         $data = [];
-        $from   = dateToInt($_GET['from']);
-        $until  = dateToInt($_GET['until']);
+        $from   = $_GET['from'];
+        $until  = $_GET['until'];
 
         $sales  = [];
         for ($i=$from; $i <= $until; $i++) {

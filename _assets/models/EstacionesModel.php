@@ -140,7 +140,7 @@ class EstacionesModel extends Model{
     }
 
     function getStationsByCompany($companies) {
-        $query = "SELECT Codigo FROM [TG].[dbo].[Estaciones] WHERE RFC IN ('{$companies}') AND activa = 1 AND Codigo > 0 AND Codigo NOT IN (17);";
+        $query = "SELECT Codigo FROM [TG].[dbo].[Estaciones] WHERE RFC IN ('{$companies}') AND activa = 1 AND Codigo > 0 AND Codigo NOT IN (17, 38);";
         if ($rs = $this->sql->select($query)) {
             // Extraer los valores de "Codigo"
             $codigoArray = array_column($rs, "Codigo");

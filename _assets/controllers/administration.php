@@ -1114,7 +1114,6 @@ class Administration{
 
                 // Append row response to the main response array
                 $response[] = $row_response;
-
             }
             echo json_encode($response);
         } else {
