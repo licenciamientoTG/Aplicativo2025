@@ -101,7 +101,9 @@ class DocumentosModel extends Model{
             AND t1.satuid IS NOT NULL
 	 $queryProduct
         ";
-
+        // echo '<pre>';
+        // var_dump($query);
+        // die();
         return $this->sql->select($query, []);
     } 
 
@@ -618,7 +620,4 @@ class DocumentosModel extends Model{
 
     }
 
-
-
-    
 }

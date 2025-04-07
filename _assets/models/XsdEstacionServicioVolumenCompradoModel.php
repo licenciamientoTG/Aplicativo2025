@@ -29,9 +29,11 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                        ([xsdReportesVolumenesId],[xsdEstacionServicioVolumenId],[controlGasStationId],[controlGasProductId],[productoId],[subProductoId],[subproductoMarcaId],[tipoCompra],[tipoDocumento],[permisoProveedorCRE],[volumenComprado],[precioCompraSinDescuento],[recibioDescuento],[tipoDescuentoId],[otroTipoDescuento],[precioCompraConDescuento],[pagoServicioFlete],[costoFlete],[permisoTransportistaCRE])
                  VALUES
                        (?,{$xsdEstacionServicioVolumenId},{$controlGasStationId},{$controlGasProductId},{$ProductoId},{$SubProductoId},{$creSubProductBrandId},{$TipoCompra},{$TipoDocumento},'{$PermisoProveedorCRE}',{$VolumenComprado},{$PrecioCompraSinDescuento},{$RecibioDescuento},{$TipoDescuentoId},'{$OtroTipoDescuento}',{$PrecioCompraConDescuento},{$PagoServicioFlete},{$CostoFlete},'{$PermisoTransportistaCRE}');";
-        echo '<pre>';
-        var_dump($query);
-        die();
+        if ($_SESSION['tg_user']['Id'] == 6177) {
+            echo '<pre>';
+            var_dump($query);
+            die();
+        }
         if ($id = $this->sql->insert($query, [$xsdReportesVolumenesId])) {
             return $this->sql->select("SELECT	t1.* FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] t1 WHERE t1.id = ?;", [$id])[0];
         } else {
@@ -44,6 +46,11 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                        ([xsdReportesVolumenesId],[xsdEstacionServicioVolumenId],[controlGasStationId],[controlGasProductId],[productoId],[subProductoId],[subproductoMarcaId],[tipoCompra],[tipoDocumento],[permisoProveedorCRE],[volumenComprado],[precioCompraSinDescuento],[recibioDescuento],[pagoServicioFlete],[costoFlete],[permisoTransportistaCRE])
                  VALUES
                        (?,{$xsdEstacionServicioVolumenId},{$controlGasStationId},{$controlGasProductId},{$ProductoId},{$SubProductoId},{$creSubProductBrandId},{$TipoCompra},{$TipoDocumento},'{$PermisoProveedorCRE}',{$VolumenComprado},{$PrecioCompraSinDescuento},{$RecibioDescuento},{$PagoServicioFlete},{$CostoFlete},'{$PermisoTransportistaCRE}');";
+        if ($_SESSION['tg_user']['Id'] == 6177) {
+            echo '<pre>';
+            var_dump($query);
+            die();
+        }
         if ($id = $this->sql->insert($query, [$xsdReportesVolumenesId])) {
             return $this->sql->select("SELECT	t1.* FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] t1 WHERE t1.id = ?;", [$id])[0];
         } else {

@@ -2076,16 +2076,15 @@ var sales_stations_table = $('#sales_stations_table').DataTable({
     },
     deferRender: true,
     columns: [
-
         {'data': 'Fecha'},
         {'data': 'Estación'},
         {'data': 'Producto'},
-        {'data': 'Despachos', 'render': $.fn.dataTable.render.number( ',', '.', 0)},
-        {'data': 'Volumen', render: $.fn.dataTable.render.number( ',', '.', 3 )},
+        {'data': 'Despachos', 'render': $.fn.dataTable.render.number( '', '.', 0)},
+        {'data': 'Volumen', render: $.fn.dataTable.render.number( '', '.', 3 )},
         {'data': 'Precio'},
-        {'data': 'Importe', render: $.fn.dataTable.render.number( ',', '.', 2, '$' )},
-        {'data': 'Crédito', render: $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'Débito', render: $.fn.dataTable.render.number( ',', '.', 3 )},
+        {'data': 'Importe', render: $.fn.dataTable.render.number( '', '.', 2, '$' )},
+        {'data': 'Crédito', render: $.fn.dataTable.render.number( '', '.', 3)},
+        {'data': 'Débito', render: $.fn.dataTable.render.number( '', '.', 3 )},
         {'data': 'Acciones'}
     ],
     createdRow: function (row, data, dataIndex) {
@@ -2179,7 +2178,7 @@ async function sales_day_table(dynamicColumns){
         destroy: true, 
         rowId: 'year',
         createdRow: function (row, data, dataIndex) {
-          
+
         },
         initComplete: function (settings, json) {
             console.log('DataTable initialization complete');

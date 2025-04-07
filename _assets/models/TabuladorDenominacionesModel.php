@@ -118,7 +118,7 @@ class TabuladorDenominacionesModel extends Model{
                         WHEN d.Tipo = 1 THEN 'Moneda'
                         WHEN d.Tipo = 2 THEN 'Billete'
                     ELSE 'Otro'
-                END AS Tipo FROM [TG].[dbo].TabuladorDenominaciones t (NOLOCK) LEFT JOIN [TG].[dbo].Denominacion d (NOLOCK) ON t.Denominacion = d.Id WHERE t.IdRecolecta = ? AND t.IdTabulador = ?;";
+                END AS Tipo FROM [TG].[dbo].TabuladorDenominaciones t (NOLOCK) LEFT JOIN [TG].[dbo].Denominacion d (NOLOCK) ON t.Denominacion = d.Id WHERE t.IdRecolecta = ? AND t.IdTabulador = ? ORDER BY t.Valor DESC;";
         return $this->sql->select($query, [$IdRecolecta, $IdTabulador]) ?: false ;
     }
 

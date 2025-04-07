@@ -470,7 +470,7 @@ class VentasModel extends Model{
                     dm.*,
                     CASE 
                         WHEN dm.Año = YEAR(GETDATE()) AND dm.Mes = MONTH(GETDATE()) 
-                            THEN (dm.VentasCantidad / DAY(GETDATE())) * DAY(EOMONTH(GETDATE()))
+    THEN (dm.VentasCantidad / (DAY(GETDATE()) - 1)) * DAY(EOMONTH(GETDATE()))
                         ELSE dm.VentasCantidad
                     END AS ProyeccionMensual,
                     t2.budget_monthy AS presupuesto_mensual,

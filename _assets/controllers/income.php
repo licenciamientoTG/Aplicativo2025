@@ -543,6 +543,8 @@ class Income{
     }
 
     function datatables_dispatches() : void {
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
         $data = [];
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];

@@ -383,3 +383,155 @@ async function invoice_purchase_table(){
         }
     });
 }
+async function payments_table(){
+    if ($.fn.DataTable.isDataTable('#payments_table')) {
+        $('#payments_table').DataTable().destroy();
+        $('#payments_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+
+    $('#payments_table thead').prepend($('#payments_table thead tr').clone().addClass('filter'));
+    $('#payments_table thead tr.filter th').each(function (index) {
+        col = $('#payments_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#payments_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#payments_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let payments_table =$('#payments_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate
+            },
+            url: '/accounting/payments_table',
+            timeout: 600000, 
+            error: function() {
+                $('#payments_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'num_doc', className: 'text-nowrap' },              // Número de pago
+            { data: 'clave' },
+            // { data: 'id_prov' },
+            { data: 'nom1' },                                            // Nombre del proveedor
+            { data: 'cuenta' },                                          // t5.num
+            { data: 'Ref_num' },                                         // t1.num_doc_cli
+            { data: 'banco' },                                           // t6.nom
+            { data: 'ref_ben' },
+            { data: 'fecha', className: 'text-nowrap' },                 // Fecha del pago
+            { data: 'monto', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
+            { data: 'folio' },                                           // t8.id_doc
+            { data: 'fec_doc' },
+            { data: 'cargo', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
+            { data: 'importe', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'imptos', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'aplicado', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'ptg_apl', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'uuid_i', className: 'text-nowrap' },
+            { data: 'control' },                                         // Valor constante 'Control'
+            { data: 'Fecha_control' },
+            { data: 'Fecha_vencimiento' },
+            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mtoori', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mtoiva', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'total_control', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'producto' },                                        // t9.den
+            { data: 'estacion' }                                         // t9.abr
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+            if (parseInt(data['total']) !== parseInt(data['total_control'])) {
+                console.log(data['uuid_i']);
+                console.log(parseInt(data['total']));
+                console.log(parseInt(data['total_control']));
+                $('td:eq(19)', row).addClass('bg-danger');
+            }
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+            // var api = this.api();
+
+            // // Función para sumar valores en una columna
+            // var intVal = function (i) {
+            //     return typeof i === 'string' ?
+            //         i.replace(/[\$,]/g, '') * 1 :
+            //         typeof i === 'number' ? i : 0;
+            // };
+        
+            // // Lista de columnas a sumar (desde 'can' en adelante)
+            // var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+            // api.columns().every(function (index) {
+            //     if (index > 8 && index < 21 ) { // Desde la tercera columna en adelante
+            //         // Sumatoria de los datos filtrados (página actual)
+            //         var filteredSum = api
+            //             .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+            //             .data()
+            //             .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+            //         // Sumatoria de todos los datos (incluyendo no visibles)
+            //         var totalSum = api
+            //             .column(index, { page: 'all' }) // Todos los datos
+            //             .data()
+            //             .reduce((a, b) => intVal(a) + intVal(b), 0);
+            
+            //         // Actualizar el footer con ambas sumatorias
+            //         var footer = $(api.column(index).footer());
+            //         footer.html(`
+            //             <div>${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+            //             <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+            //         `);
+            //     }
+            // });
+        }
+    });
+}

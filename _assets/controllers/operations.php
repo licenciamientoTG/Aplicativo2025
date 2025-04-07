@@ -1278,7 +1278,9 @@ class Operations{
     function sales() : void {
         $today_sales = $this->despachosModel->get_today_sales($this->todayInt);
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            echo $this->twig->render($this->route . 'sales.html', compact('today_sales'));
+            $from = isset($_GET['from']) ? $_GET['from'] : date('Y-m-d');
+            $until = isset($_GET['until']) ? $_GET['until'] : date('Y-m-d');
+            echo $this->twig->render($this->route . 'sales.html', compact('today_sales', 'from', 'until'));
         } else {
             $from        = dateToInt($_POST['from']);
             $until       = dateToInt($_POST['until']);
@@ -1389,8 +1391,8 @@ class Operations{
     function sales_table() : void {
 
         $data = [];
-        $from   = $_GET['from'];
-        $until  = $_GET['until'];
+        $from   = dateToInt($_GET['from']);
+        $until  = dateToInt($_GET['until']);
 
         $sales  = [];
         for ($i=$from; $i <= $until; $i++) {
@@ -1400,9 +1402,9 @@ class Operations{
             $response[2]['Producto'] = 'T-Super Premium';
             $sales[] = $response;
         }
-
         foreach ($sales as $sale) {
             foreach ($sale as $s) {
+                
                 // Crear un objeto DateTime a partir de la cadena de fecha
                 $date = DateTime::createFromFormat('Y-m-d H:i:s.u', $s['Fecha']);
                 $data[] = array(

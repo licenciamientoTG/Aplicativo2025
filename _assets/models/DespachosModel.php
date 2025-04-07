@@ -626,6 +626,8 @@ class DespachosModel extends Model{
     }
 
     function sp_obtener_diferencias_por_valor($from, $until, $codgas) : array|false {
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
         $params = [$from, $until, $codgas];
         return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_diferencias]', $params) ?: false;
     }
@@ -781,163 +783,174 @@ class DespachosModel extends Model{
         return ($this->sql->select($query, $params)) ?: false ;
     }
 
-    function control_dispatches2($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
-        $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
-        $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
+        function control_dispatches2($from, $until, $codgas,$uuid,$tipo_cliente,$billed) :array|false {
+            $uuid_true = " AND (t1.satuid IS NOT NULL OR t3.satuid IS NOT NULL)";
+            $uuid_false = " AND  t1.satuid IS NULL AND t3.satuid IS NULL AND t1.tiptrn != 53";
 
 
-        $billed_true = " AND (t3.nro is not null or t1.nrofac !=0)";
-        $billed_false = " AND  t3.nro is null and t1.nrofac =0 ";
-        $where = "";
-        $where = $codgas != 0 ? "AND t1.codgas = $codgas" : "";
-        $where .= ($uuid != 0) ? ($uuid == 1 ? $uuid_false : ($uuid == 2 ? $uuid_true : "")): "";
-        $where .= ($billed != 0) ? ($billed == 1 ? $billed_false : ($billed == 2 ? $billed_true : "")): "";
-        if (!empty($tipo_cliente)) {
-            $where .= " AND 
+            $billed_true = " AND (t3.nro is not null or t1.nrofac !=0)";
+            $billed_false = " AND  t3.nro is null and t1.nrofac =0 ";
+            $where = "";
+            $where = $codgas != 0 ? "AND t1.codgas = $codgas" : "";
+            $where .= ($uuid != 0) ? ($uuid == 1 ? $uuid_false : ($uuid == 2 ? $uuid_true : "")): "";
+            $where .= ($billed != 0) ? ($billed == 1 ? $billed_false : ($billed == 2 ? $billed_true : "")): "";
+            if (!empty($tipo_cliente)) {
+                $where .= " AND 
+                            CASE 
+                                WHEN t10.codval = 28 THEN 'cliente_credito'
+                                WHEN t10.codval = 127 THEN 'cliente_debito'
+                                WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
+                                WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
+                                WHEN t3.codopr = 21701354 THEN 'factura_global'
+                                ELSE 'N/A'
+                            END = '$tipo_cliente'";
+            }
+
+            $params = [$from, $until, ];
+            $query = "WITH CTE AS (
+                        SELECT
+                        --CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) as fecha,
+                        CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
+                        CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
+                        SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
+                        t1.nrotrn as 'despacho',
+                        t8.den as 'producto',
+                        t6.abr as 'estacion',
+                        t7.den as 'empresa',
+                        t2.den as 'cliente_des',
+                        t5.den as 'cliente_fac',
+                        t1.can as 'cantidad',
+                        t1.mto as 'importe',
+                        t1.pre as 'precio',
+                        t1.gasfac,
+                        t1.nrofac,
+                        CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS 'despachador',
                         CASE 
-                            WHEN t10.codval = 28 THEN 'cliente_credito'
-                            WHEN t10.codval = 127 THEN 'cliente_debito'
-                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'monedero'
-                            WHEN t3.codopr != 21701354 AND t10.codval IS NULL THEN 'contado'
-                            WHEN t3.codopr = 21701354 THEN 'factura_global'
-                            ELSE 'N/A'
-                        END = '$tipo_cliente'";
-        }
+                            WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
 
-        $params = [$from, $until, ];
-        $query = "WITH CTE AS (
-                    SELECT
-                    --CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) as fecha,
-                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
-                    CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
-                    SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
-                    t1.nrotrn as 'despacho',
-                    t8.den as 'producto',
-                    t6.abr as 'estacion',
-                    t7.den as 'empresa',
-                    t2.den as 'cliente_des',
-                    t5.den as 'cliente_fac',
-                    t1.can as 'cantidad',
-                    t1.mto as 'importe',
-                    t1.pre as 'precio',
-                    t1.gasfac,
-                    t1.nrofac,
-                    CASE WHEN t9.cod <> 0 THEN t9.den ELSE '' END AS 'despachador',
-                    CASE 
-                        WHEN t3.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
-                        WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
+                            ELSE CAST(t3.nro AS VARCHAR(10)) 
+                        END AS 'factura',
+                        CASE 
+                            WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                            ELSE CAST(t1.nrofac AS VARCHAR(10)) 
+                        END AS 'factura_desp',
+                        case 
+                        when t1.satuid is not null Then t1.satuid 
+                        else t3.satuid
+                        end as 'UUID',
+                        t3.satuid as 'UUID_fac',
+                        t1.satuid as 'UUID_dep',
+                        t1.rut,
+                        t13.den as 'denominacion',
+                        t1.codcli as 'codigo_cliente',
+                        t10.codval,
+                        t2.tipval,
+                        CASE
+                            WHEN t13.den in (' Tarjeta EfectiCard',
+                                            ' SMARTBT - EFECTIVALE',
+                                            ' Tarjeta TicketCar',
+                                            ' Vale Efectivale',
+                                            'Ultra Gas',
+                                            ' Tarjeta Inburgas',
+                                            ' Vale Edenred',
+                                            ' Tarjetas Sodexo (Pluxee)',
+                                            'Mobil FleetPro',
+                                            ' SMARTBT - SODEXO WIZEO',
+                                            ' Vale Sodexo') THEN 'Monedero'
+                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
+                            WHEN t10.codval = 28 THEN 'Cliente Crédito'
+                            WHEN t10.codval = 127 THEN 'Cliente Débito'
+                            WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
+                            WHEN t3.codopr = 21701354 THEN 'Factura Global'
+                            else 'N/A'
+                        END as 'tipo_cliente_aplicativo',
+                        CASE 
+                            WHEN t10.codval = 28 THEN 'Cliente Crédito'
+                            WHEN t10.codval = 127 THEN 'Cliente Débito'
+                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
+                            WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
+                            WHEN t3.codopr = 21701354 THEN 'Factura Global'
+                            else 'N/A'
+                        END as 'tipo_cliente',
+                        t14.den as 'efectos_c',
+                        t11.nroveh as 'vehiculo',
+                        t11.plc as 'placas',
+                        t3.txtref,
+                        t3.tipref,
+                        CASE
+                            WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
+                            WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
+                            WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
+                        END AS 'tipo_pago',
+                        CASE
+                            WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
+                            WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
+                            WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
+                            WHEN t1.tiptrn = 0 THEN 'Efectivo'
+                        END AS 'tipo_pago_despacho',
+                        --'t1',
+                        --t1.*,
+                        --'t3',
+                        --t3.*,
+                        --'12',
+                        --t12.*,
+                        --'13',
+                        --t13.*,
+                        --'t10',
+                        --t10.*,
+                        t1.tiptrn,
+                        t6.cvecli,
+                        ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
+                        FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                        LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
+                        LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
+                        LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
+                        LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
+                        LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
+                        LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
+                        LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
+                        LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
+                        LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
+                        /* LEFT JOIN [SG12].[dbo].MovimientosTar t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas and t12.mto != 0 and t12.tipmov != 97 and t12.tipmov != 86 */
+                        LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
+                        LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod 
+                        LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
+                            Where 
+                            t1.mto != 0 and
+                            t1.tiptrn  not in (65,74) and
+                            t1.fchtrn BETWEEN  $from and  $until  {$where}
+                            )
+                SELECT * 
+                    FROM CTE WITH (NOLOCK)
+                    WHERE rn = 1
+                    ORDER BY fecha, hora_formateada;";
+                    
+                    try {
+//                          $rs = $this->sql->select($query, []);
+// echo '<pre>';
+// if ($rs !== false) {
+//     echo "Total filas: " . count($rs) . "\n";
+// } else {
+//     echo "Sin resultados o error.";
+// }
+// die();
+                        return ($rs=$this->sql->select($query,array())) ? $rs : false ;
 
-                        ELSE CAST(t3.nro AS VARCHAR(10)) 
-                    END AS 'factura',
-                    CASE 
-                        WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                        ELSE CAST(t1.nrofac AS VARCHAR(10)) 
-                    END AS 'factura_desp',
-                    case 
-                    when t1.satuid is not null Then t1.satuid 
-                    else t3.satuid
-                    end as 'UUID',
-                    t3.satuid as 'UUID_fac',
-                    t1.satuid as 'UUID_dep',
-                    t1.rut,
-                    t13.den as 'denominacion',
-                    t1.codcli as 'codigo_cliente',
-                    t10.codval,
-                    t2.tipval,
-                    CASE
-                        WHEN t13.den in (' Tarjeta EfectiCard',
-										' SMARTBT - EFECTIVALE',
-										' Tarjeta TicketCar',
-										' Vale Efectivale',
-										'Ultra Gas',
-										' Tarjeta Inburgas',
-										' Vale Edenred',
-										' Tarjetas Sodexo (Pluxee)',
-										'Mobil FleetPro',
-										' SMARTBT - SODEXO WIZEO',
-										' Vale Sodexo') THEN 'Monedero'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente_aplicativo',
-                    CASE 
-                        WHEN t10.codval = 28 THEN 'Cliente Crédito'
-                        WHEN t10.codval = 127 THEN 'Cliente Débito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Monedero'
-                        WHEN  t3.codopr != 21701354 AND t10.codval is null THEN 'Contado'
-                        WHEN t3.codopr = 21701354 THEN 'Factura Global'
-                        else 'N/A'
-                    END as 'tipo_cliente',
-                    t14.den as 'efectos_c',
-                    t11.nroveh as 'vehiculo',
-                    t11.plc as 'placas',
-                    t3.txtref,
-                    t3.tipref,
-                    CASE
-                        WHEN t3.tipref = 4 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Credito'
-                        WHEN t3.tipref = 28 AND t1.logmsk IN (2, 3) THEN 'Tarjeta Debito'
-                        WHEN t3.tipref = 1 AND t1.logmsk IN (2, 3) THEN 'Efectivo'
-                    END AS 'tipo_pago',
-                    CASE
-                        WHEN t1.tiptrn = 51 AND t1.gasfac != 2 THEN 'Tarjeta Credito'
-                        WHEN t1.tiptrn = 52 AND t1.gasfac != 2 THEN 'Tarjeta Debito'
-                        WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
-                        WHEN t1.tiptrn = 0 THEN 'Efectivo'
-                    END AS 'tipo_pago_despacho',
-                    --'t1',
-                    --t1.*,
-                    --'t3',
-                    --t3.*,
-                    --'12',
-                    --t12.*,
-                    --'13',
-                    --t13.*,
-                    --'t10',
-                    --t10.*,
-                    t1.tiptrn,
-                    t6.cvecli,
-                    ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
-                    FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
-                    LEFT JOIN [SG12].[dbo].Clientes t2 on t1.codcli = t2.cod
-                    LEFT JOIN [SG12].[dbo].DocumentosC t3 on t1.nrofac = t3.nro and t1.codgas = t3.codgas
-                    LEFT JOIN [SG12].[dbo].Clientes t5 on t3.codopr = t5.cod
-                    LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t1.codgas = t6.cod
-                    LEFT JOIN [SG12].[dbo].[Empresas] t7 ON t6.codemp = t7.cod
-                    LEFT JOIN [SG12].[dbo].[Productos] t8 on t1.codprd = t8.cod
-                    LEFT JOIN [SG12].[dbo].[Responsables] t9 on t1.codres = t9.cod
-                    LEFT JOIN [SG12].[dbo].[ClientesValores] t10 ON t1.codcli = t10.codcli and t10.codest !=-1 and  t10.codval in(127,28)
-                    LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
-                    /* LEFT JOIN [SG12].[dbo].MovimientosTar t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas and t12.mto != 0 and t12.tipmov != 97 and t12.tipmov != 86 */
-                    LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                    LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod 
-                    LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
-                        Where 
-                        t1.mto != 0 and
-                        t1.tiptrn  not in (65,74) and
-                        /* t1.codprd in (179, 180, 181, 192, 193) and */
-                        t1.fchtrn BETWEEN  ? and  ? {$where}
-                        /* order by t1.fchtrn asc, t1.hratrn asc */
-                        )
-            SELECT * 
-            FROM CTE
-            WHERE rn = 1
-            ORDER BY fecha, hora_formateada;
-                    ";
-                   
-        return ($this->sql->select($query, $params)) ?: false ;
-    }
+                    } catch (Exception $e) {
+                        echo "Error al ejecutar la consulta: " . $e->getMessage();
+                        return false;
+                    }       
+                 }
 
     function pivot_dispatches($from, $until, $codgas){
         $where = "";
@@ -2411,4 +2424,4 @@ class DespachosModel extends Model{
         return ($this->sql->select($query)) ?: false ;
 
     }
-}
+}   

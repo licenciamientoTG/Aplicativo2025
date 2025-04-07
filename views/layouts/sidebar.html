@@ -250,39 +250,28 @@
       {% if authorized(45) %}
       <li class="sidebar-header">CONTABILIDAD</li>
 
-      {% if authorized(46) %}
-      <li class="sidebar-item">
-        <a data-bs-target="#accounting_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
-          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
-        </a>
-        <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          {% if authorized(47) %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a>
-          </li>
-          {% endif %}
-          {% if authorized(48) %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/operations/inventories">Inventarios/Mermas</a>
-          </li>
-          {% endif %}
-          {% if authorized(61) %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/accounting/invoices">Facturas</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/accounting/income_statement">Estado Resultados</a>
-          </li>
-          {% endif %}
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/accounting/purchase_invoice">Compras Combustible</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a>
-          </li>
-        </ul>
-      </li>
-      {% endif %}
+        {% if authorized(46) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#accounting_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            {% if authorized(47) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a></li>
+            {% endif %}
+            {% if authorized(48) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/inventories">Inventarios/Mermas</a></li>
+            {% endif %}
+            {% if authorized(61) %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/invoices">Facturas</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/income_statement">Estado Resultados</a></li>
+            {% endif %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchase_invoice">Compras Combustible</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/supplier_payments">Pagos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li>
+          </ul>
+        </li>
+        {% endif %}
       {% endif %}
 
       {% if authorized(23) %}
@@ -298,14 +287,13 @@
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
             </li>
-          </ul>
-
-          <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/income/control_dispatches">Control de Despachos </a></li>
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/mqg_cards">Tarjetas MasQueGas</a>
             </li>
           </ul>
 
+          
           {% endif %}
         </li>
         {% endif %}

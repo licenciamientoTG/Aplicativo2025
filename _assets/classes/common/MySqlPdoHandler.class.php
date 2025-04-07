@@ -37,11 +37,11 @@ class MySqlPdoHandler{
 	/**
 	 * Return: Void
 	 */
-	public function connect($dbname, $host="192.168.0.6") {
+	public function connect($dbname, $host = "192.168.0.6", $username = 'cguser', $password = 'sahei1712') {
 		// print_r(PDO::getAvailableDrivers());
 
-		$this->_username = 'cguser';
-		$this->_password = 'sahei1712';
+		$this->_username = $username;
+		$this->_password = $password;
 		$this->dbname = $dbname;
 
 		try{
