@@ -586,6 +586,90 @@ class Supply{
         echo $this->twig->render($this->route . 'bulk_upload.html', $twigVars);
     }
 
+    function bulkUpload2() {
+        // Fechas
+        $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
+        $fiveDaysAgo = (new DateTime('-5 days'))->format('Y-m-d');
+    
+        // Datos iniciales
+        $companies = $this->estacionesModel->getCompanies();
+        $suppliers = $this->creSuppliersModel->getRows();
+        $carriers = $this->creCarriersModel->getRows();
+        
+        // Parámetros
+        $from       = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
+        $companyRfc = $_GET['company'] ?? '';
+    
+        // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
+        $data = $this->gasolinerasModel->get_active_station_TG();
+        $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
+        $stations = array_values($dataFiltered);
+    
+        // Arreglo común para renderizar la vista
+        $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
+    
+        if (!empty($_GET['company'])) {
+            // Obtiene las estaciones asociadas a la compañía
+            $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
+            $twigVars['codgas_string'] = $codgas_string;
+    
+            // Obtiene los productos asociados a las estaciones para la fecha indicada
+            $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
+    
+            // Obtiene el reporte de volumen una sola vez
+            if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
+                $reportId = $reporteVolumenes['id'];
+    
+                // Procesa cada producto
+                foreach ($codgas_products as $item) {
+                    // Inserta o recupera el registro de la estación en la tabla de volumen
+                    $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
+    
+                    // Si no existe el registro en la tabla de inventarios vendidos, lo inserta o actualiza
+                    if (!$this->xsdEstacionServicioVolumenVendidoInventariosModel->exists($reportId, $item['controlGasStationId'], $item['controlGasProductId'])) {
+                        $this->xsdEstacionServicioVolumenVendidoInventariosModel->insertOrUpdateRow(
+                            $reportId,
+                            $estacionServicioVolumen['id'],
+                            $item['controlGasStationId'],
+                            $item['controlGasProductId'],
+                            $item['creProductId'],
+                            $item['creSubProductId'],
+                            $item['creSubProductBrandId'],
+                            intval($item['SaldoInicial']),
+                            intval($item['Ventas']),
+                            intval($item['SaldoFinal']),
+                            intval($item['Merma'])
+                        );
+                    }
+                }
+    
+                // Obtiene los productos actualizados
+                $products = $this->xsdEstacionServicioVolumenVendidoInventariosModel->getProductsByStations($codgas_string, $reportId);
+                $groupedData = [];
+    
+                // Agrupa los productos por estación y agrega la información de compras
+                foreach ($products as $item) {
+                    $controlGasStationId = $item['controlGasStationId'];
+                    if (!isset($groupedData[$controlGasStationId])) {
+                        $groupedData[$controlGasStationId] = [];
+                    }
+                    $item['compras'] = $this->xsdEstacionServicioVolumenCompradoModel->getPurchaseByProduct(
+                        $item['xsdReportesVolumenesId'],
+                        $item['xsdEstacionServicioVolumenId'],
+                        $item['controlGasProductId']
+                    );
+                    $groupedData[$controlGasStationId][] = $item;
+                }
+                $twigVars['groupedData'] = $groupedData;
+            }
+        } else {
+            $twigVars['codgas_string'] = '';
+        }
+
+        // Renderiza la vista con todas las variables
+        echo $this->twig->render($this->route . 'bulk_upload.html', $twigVars);
+    }
+
     function creSuppliers() {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'creSuppliers.html');

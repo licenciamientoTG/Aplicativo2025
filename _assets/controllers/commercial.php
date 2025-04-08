@@ -349,10 +349,8 @@ class Commercial{
                 'message' => 'Error al importar los datos.'
             ]);
         }
-
-
-
     }
+    
     public function import_data(){
         try {
             ini_set('memory_limit', '256M');

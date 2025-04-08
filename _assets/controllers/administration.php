@@ -447,6 +447,8 @@ class Administration{
     }
 
     function update_mojo() {
+        ini_set('memory_limit', '256M');
+            ini_set('max_execution_time', 300);
         $data = $this->get_latest_tickets(1);
         foreach ($data as $ticket) {
             $ticket = $this->get_ticket($ticket['id']);

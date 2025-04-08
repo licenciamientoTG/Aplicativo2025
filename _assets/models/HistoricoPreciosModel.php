@@ -190,7 +190,7 @@ class HistoricoPreciosModel extends Model{
                     id_grupo,
                     year_num,
                     month_num,
-                    CAST(MAX(precios) AS DECIMAL(10, 2)) AS max_precio,
+                    CAST(avg(precios) AS DECIMAL(10, 2)) AS max_precio,
                     MIN(fecha_precio) AS fecha_inicio_mes,
                     MAX(fecha_precio) AS fecha_fin_mes
                 FROM MonthlyPrices
@@ -207,6 +207,7 @@ class HistoricoPreciosModel extends Model{
             $product,
             $Id_plaza,
         ];
+        
         return ($this->sql->select($query,$params)) ?: false ;
     }
 
