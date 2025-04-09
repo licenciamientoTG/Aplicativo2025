@@ -809,8 +809,7 @@ class DespachosModel extends Model{
             $params = [$from, $until, ];
             $query = "WITH CTE AS (
                         SELECT
-                        --CAST(CONVERT(VARCHAR(100), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) as fecha,
-                        CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
+                        CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha, 
                         CAST(CONVERT(TIME, DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0))) AS TIME(0)) AS hora_formateada,
                         SUBSTRING(CAST(t1.nrotur AS VARCHAR(3)), 1, 1)  as 'turno',
                         t1.nrotrn as 'despacho',
@@ -835,6 +834,7 @@ class DespachosModel extends Model{
 
                             ELSE CAST(t3.nro AS VARCHAR(10)) 
                         END AS 'factura',
+                        CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS 'FechaFactura',
                         CASE 
                             WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
                             WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
@@ -898,16 +898,6 @@ class DespachosModel extends Model{
                             WHEN t1.tiptrn = 53 AND t1.gasfac != 2 THEN 'Efectivale'
                             WHEN t1.tiptrn = 0 THEN 'Efectivo'
                         END AS 'tipo_pago_despacho',
-                        --'t1',
-                        --t1.*,
-                        --'t3',
-                        --t3.*,
-                        --'12',
-                        --t12.*,
-                        --'13',
-                        --t13.*,
-                        --'t10',
-                        --t10.*,
                         t1.tiptrn,
                         t6.cvecli,
                         ROW_NUMBER() OVER(PARTITION BY t1.nrotrn ORDER BY t1.fchtrn ASC, t1.hratrn ASC) AS rn
@@ -934,16 +924,8 @@ class DespachosModel extends Model{
                     FROM CTE WITH (NOLOCK)
                     WHERE rn = 1
                     ORDER BY fecha, hora_formateada;";
-                    
                     try {
-//                          $rs = $this->sql->select($query, []);
-// echo '<pre>';
-// if ($rs !== false) {
-//     echo "Total filas: " . count($rs) . "\n";
-// } else {
-//     echo "Sin resultados o error.";
-// }
-// die();
+
                         return ($rs=$this->sql->select($query,array())) ? $rs : false ;
 
                     } catch (Exception $e) {
@@ -2298,6 +2280,7 @@ class DespachosModel extends Model{
                         WHEN t3.nro BETWEEN 1300000000 AND 1399999999 THEN ''E '' + SUBSTRING(CAST(t3.nro AS VARCHAR(10)), 4, 10)
                         ELSE CAST(t3.nro AS VARCHAR(10)) 
                     END AS \"factura\",
+                    CONVERT(DATE, DATEADD(DAY, -1, t3.fch)) AS [FechaFactura],
 					 CASE 
                         WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN ''Z '' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
                         WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN ''T '' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
@@ -2383,6 +2366,7 @@ class DespachosModel extends Model{
             ";
         }
         $final_query = implode(" UNION ALL ", $union_queries);
+       
 
         return ($this->sql->select($final_query)) ?: false ;
     }

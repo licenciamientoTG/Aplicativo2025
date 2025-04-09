@@ -437,7 +437,6 @@ class VentasModel extends Model{
 
         }
 
-        
         $query = "
             WITH DatosMensual AS (
                 SELECT
@@ -445,7 +444,13 @@ class VentasModel extends Model{
                     DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) AS Mes,
                     isd.codgas AS codigo,
                     g.abr AS Estacion,
-                    T3.den AS producto,
+                    case
+						when  v.codprd = 179 then 'T-Maxima Regular'
+						when  v.codprd = 192 then 'T-Maxima Regular'
+						when  v.codprd = 180 then 'T-Super Premium'
+						when  v.codprd = 193 then 'T-Super Premium'
+						when  v.codprd = 181 then 'Diesel Automotriz'
+					end as producto,
                     v.codprd AS CodProducto,
                     SUM(v.canven) AS VentasCantidad
                 FROM [SG12].[dbo].[Ventas] v
@@ -1023,152 +1028,124 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getSalesMonthTotal($from, $until, $zona,$total) {
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
-
+    function getSalesMonthTotal($from, $until, $zona, $turn, $total) {
+     
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
+    
         $zona_query = "";
-        if (isset($zona) && $zona != 0) {
+        if (!empty($zona) && $zona != 0) {
             $zona_query = "AND E.estructura = '{$zona}'";
         }
+    
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
-
-        // Verificar si las fechas son válidas
-        if (!$dateFrom || !$dateUntil) {
-            die("Error: Formato de fecha incorrecto. Asegúrate de enviar las fechas en formato 'd-m-Y'.");
-        }
-
-        // Normalizar las fechas al primer día del mes
+    
         $dateFrom->modify('first day of this month');
         $dateUntil->modify('first day of this month');
-
+    
         $months = [];
-        $turns = [11,21,31,41];
-        $currentDate = clone $dateFrom;
+        $turns = [11, 21, 31, 41];
+        $turnstring ='';
+        if ($turn != '0'){
+            $turnstring ="and v.nrotur = '{$turn}' ";
+            $turns = [$turn];
+        }
 
-        // Generar dinámicamente las columnas del PIVOT
+
+        $currentDate = clone $dateFrom;
+    
         while ($currentDate <= $dateUntil) {
-            foreach ($turns as $key => $turn) {
+            foreach ($turns as $turn) {
                 $year = $currentDate->format('Y');
-                $monthNumber = (int)$currentDate->format('m');
-                $monthName = ucfirst(strftime('%B', $currentDate->getTimestamp())); // Nombre del mes en español
-                $months[] = "[".$year ."_". $monthNumber ."_".$turn."]";
+                $monthNumber = (int)$currentDate->format('n'); // sin ceros a la izquierda
+                $months[] = "[{$year}_{$monthNumber}_{$turn}]";
             }
             $currentDate->modify('+1 month');
         }
-        // Convertir el array en una cadena separada por comas
-        $pivotColumns = implode(', ', $months);
- 
-
-        $totalSum = implode(' + ', array_map(function($col) {
-            return "ISNULL($col, 0)";
-        }, $months));
-        if($total == 1){
-
-            $query_total = "UNION ALL
     
-                        -- Agregamos los totales por estación
-                        SELECT  
-                            DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Año,
-                            DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Mes,
-                            nrotur AS Turno,
-                            'Total Estación' AS Producto,
-                            isd.codgas AS CodGasolinera,
-                            g.abr AS Estacion,
-                            NULL AS CodProducto,
-                            SUM(canven) AS VentasReales
-                        FROM [SG12].[dbo].[Ventas] v
-                        INNER JOIN ISLAS isd ON v.codisl = isd.cod 
-                        INNER JOIN Gasolineras g ON codgas = g.cod 
-                        INNER JOIN Productos T3 ON V.codprd = T3.cod
-                        INNER JOIN TG.dbo.Estaciones E ON g.cod = E.Codigo
-                        WHERE 
-                            fch BETWEEN @fecha_inicial_int AND @fecha_fin_int 
-                            AND codprd IN(179, 180, 181, 2, 3, 1, 192, 193) 
-                             $zona_query
-                        GROUP BY
-                            DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
-                            DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
-                            nrotur,
-                            isd.codgas,
-                            g.abr";
-        }else{
-            $query_total = "";
+        $pivotColumns = implode(', ', $months);
+        $totalSum = implode(' + ', array_map(fn($col) => "ISNULL($col, 0)", $months));
+
+        $group_total = 'CONCAT(DATEPART(YEAR, FechaReal), \'_\', DATEPART(MONTH, FechaReal), \'_\', v.nrotur),
+                    T3.den,
+                    isd.codgas,
+                    v.codprd,
+                    g.abr';
+        if ($total == 1) {
+            $group_total = ' GROUPING SETS (
+                (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal), v.nrotur, T3.den, isd.codgas, g.abr, v.codprd),
+                (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal), isd.codgas, g.abr)
+            )';
         }
-
-        $query ="
-                    DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '". $fromstring."') + 1;
-                    DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '". $untilstring."') + 1;
-                    declare  @cod_gas INT = NULL;
-
-                   WITH ValuesTable AS ( 
-                    SELECT  
-                        DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Año,
-                        DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Mes,
-                        nrotur AS Turno,
-                        CASE 
-                            WHEN T3.den IS NULL THEN 'Total Estación'
-                            ELSE T3.den 
-                        END AS Producto,
-                        isd.codgas AS CodGasolinera,
-                        g.abr AS Estacion,
-                        [codprd] AS CodProducto,
-                        SUM(canven) AS VentasReales
-                    FROM [SG12].[dbo].[Ventas] v
-                    INNER JOIN ISLAS isd ON v.codisl = isd.cod 
-                    INNER JOIN Gasolineras g ON codgas = g.cod 
-                    INNER JOIN Productos T3 ON V.codprd = T3.cod
-                    INNER JOIN TG.dbo.Estaciones E ON g.cod = E.Codigo
-                    WHERE 
-                        fch BETWEEN @fecha_inicial_int AND @fecha_fin_int 
-                        AND codprd IN(179, 180, 181, 2, 3, 1, 192, 193) 
-                         $zona_query
-                    GROUP BY
-                        DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
-                        DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
-                        nrotur,
-                        T3.den,
-                        isd.codgas,
-                        g.abr,
-                        [codprd]
-                    $query_total
-                )
-                SELECT * 
+       
+        $query = "
+            DECLARE @fecha_inicial_int INT = DATEDIFF(DAY, 0, '{$fromstring}') + 1;
+            DECLARE @fecha_fin_int INT = DATEDIFF(DAY, 0, '{$untilstring}') + 1;
+            DECLARE @cod_gas INT = NULL;
+    
+            WITH ValuesTable AS (
+                SELECT  
+                    CONCAT(DATEPART(YEAR, FechaReal), '_', DATEPART(MONTH, FechaReal), '_', v.nrotur) AS Fecha,
+                    CASE
+                        WHEN T3.den IN ('   T-Maxima Regular', ' Gasolina Regular Menor a 91 Octanos') THEN 'T-Maxima Regular'
+                        WHEN T3.den IN ('   T-Super Premium', ' Gasolina Premium Mayor o Igual a 91 Octanos') THEN 'T-Super Premium'
+                        WHEN T3.den = '   Diesel Automotriz' THEN 'Diesel Automotriz'
+                        ELSE 'Total Estación'
+                    END AS Producto,
+                    isd.codgas AS CodGasolinera,
+                    g.abr AS Estacion,
+                    v.codprd,
+                    SUM(v.canven) AS VentasReales
+                FROM [SG12].[dbo].[Ventas] v
+                CROSS APPLY (
+                    SELECT DATEADD(DAY, v.fch - 1, '19000101') AS FechaReal
+                ) AS F
+                INNER JOIN ISLAS isd ON v.codisl = isd.cod 
+                INNER JOIN Gasolineras g ON isd.codgas = g.cod 
+                INNER JOIN Productos T3 ON v.codprd = T3.cod
+                INNER JOIN TG.dbo.Estaciones E ON g.cod = E.Codigo
+                WHERE 
+                    v.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int
+                    AND v.codprd IN (179, 180, 181, 2, 3, 1, 192, 193)
+                    $zona_query
+                    $turnstring
+                GROUP BY 
+                $group_total
+                   
+            )
+            SELECT *
+            FROM (
+               SELECT *, ($totalSum) AS total
                 FROM (
-                    SELECT 
-                        Producto, 
-                        CodGasolinera, 
-                        Estacion, 
-                        VentasReales,
-                        CONCAT(Año,'_',Mes,'_',Turno) as turno_mes
+                    SELECT Producto, CodGasolinera, Estacion, Fecha, VentasReales,codprd
                     FROM ValuesTable
                 ) AS SourceTable
-                PIVOT (
-                    SUM(VentasReales)
-                    FOR turno_mes IN ($pivotColumns)
-                ) AS PivotTable
-                WHERE 
-                    COALESCE($pivotColumns) IS NOT NULL
-                ORDER BY 
-                    CodGasolinera,
-                    CASE 
-                        WHEN Producto = 'Total Estación' THEN 1
-                        ELSE 0
-                    END;";
+            PIVOT (
+                SUM(VentasReales)
+                FOR Fecha IN ($pivotColumns)
+            ) AS PivotTable
+             ) AS FinalResult
+            ORDER BY  CodGasolinera,Producto,codprd
 
+        ";
+
+       
         return $this->sql->select($query, []);
+
     }
+    
+
     function GetSalesMonthBase($from, $until, $zona,){
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
-        $query = "              
-                   WITH ValuesTable AS ( 
-                    SELECT  
+        $query = "
+                   WITH ValuesTable AS (
+                    SELECT
                         DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Año,
                         DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Mes,
-                        nrotur AS Turno,
-                        T3.den as Producto,
+                        SUBSTRING(CAST(v.nrotur AS VARCHAR(3)), 1, 1)  as [Turno],
+                         T3.den as Producto,
                         isd.codgas AS CodGasolinera,
                         g.abr AS Estacion,
                         [codprd] AS CodProducto,

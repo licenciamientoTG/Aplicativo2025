@@ -28,6 +28,26 @@
       </li>
 
 
+      {% if authorized(62) %}
+        <li class="sidebar-header">Reportes</li>
+        <li class="sidebar-item">
+          <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link collapsed " aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">TG3-Operaciones</span>
+          </a>
+          <ul id="commercial_reports" class="sidebar-dropdown list-unstyled collapse " data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sales_indicators">1. Indicadores de Venta</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_month_turn">2. Venta Mensual x Turno</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_day_turn">Ventas x Dia x Turno </a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_type_payment">Venta Por Rubro</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_week_zone">Vta Sem x Zona</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_lubricants">Venta Lubricantes</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/commercial/mystery_shopper">Mystery Shopper</a></li>
+          </ul>
+        </li>
+       
+      {% endif %}
+
+
       {% if authorized(7) %} {# Ver módulo de Administración #}
       <li class="sidebar-header">ADMINISTRACIÓN</li>
       {% if authorized(8) %}
@@ -64,6 +84,7 @@
       </li>
       {% endif %}
       {% endif %}
+
 
       {% if authorized(43) %} {# Ver módulo de Direccion #}
       <li class="sidebar-header">DIRECCION</li>

@@ -24,6 +24,7 @@ class Commercial{
     public DespachosModel $despachosModel;
     public GasolinerasModel $gasolineras;
     public AuditoriaMysteryModel $auditoriaMysteryModel;
+    public BudgetModel $budget;
 
     public function __construct($twig) {
         $this->twig                  = $twig;
@@ -32,6 +33,7 @@ class Commercial{
         $this->despachosModel        = new DespachosModel;
         $this->gasolineras           = new GasolinerasModel;
         $this->auditoriaMysteryModel = new AuditoriaMysteryModel;
+        $this->budget = new BudgetModel;
     }
 
     public function sale_lubricants($from = null, $until = null) {
@@ -65,23 +67,8 @@ class Commercial{
     }
     function sale_month_turn_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
-        $rows = $this->ventas->getSalesMonthTotal($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'],1);
-        $data=[];
-        foreach ($rows as $key => $row) {
-            $entry=[];
-                foreach ($dinamicColumns as $key => $column) {
-                    $colun_name = $column['data'];
-
-                    $entry[$colun_name] = $row[$colun_name];
-
-                }
-            $data[] = $entry;
-        }
-        echo json_encode(array("data" => $data));
-    }
-    function sale_month_turn_table_no_total(){
-        $dinamicColumns = $_POST['dinamicColumns'];
-        $rows = $this->ventas->getSalesMonthTotal($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'],0);
+        $rows = $this->ventas->getSalesMonthTotal($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'],$_POST['turn'],$_POST['total']);
+        
         $data=[];
         foreach ($rows as $key => $row) {
             $entry=[];
@@ -427,6 +414,154 @@ class Commercial{
                 return 'Una extensión de PHP detuvo la subida del archivo.';
             default:
                 return 'Error desconocido al subir el archivo.';
+        }
+    }
+    function import_file_budget(){
+        $mouth = date('m', strtotime($_POST['date_budget']));
+        $year = date('Y', strtotime($_POST['date_budget']));
+        $budget = $this->budget->getBudget($mouth,$year);
+        if($budget){
+            echo json_encode([
+                'success' => false, 
+                'message' => 'Ya existe un presupuesto para la fecha seleccionada.'
+            ]);
+            return;
+        }
+        $data  = self:: import_data_budget();
+        if (!$data['success']) { // Validar éxito
+            echo json_encode($data); // Devuelve el error directamente
+            return;
+        }
+        $insert = $this->budget->insertBudgetData($data['data']);
+        if($insert){
+            echo json_encode([
+                'success' => true,
+                'message' => 'Datos importados correctamente.'
+            ]);
+        }else{
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al importar los datos.'
+            ]);
+        }
+       
+    }
+    function import_data_budget(){
+        try {
+            ini_set('memory_limit', '256M');
+            ini_set('max_execution_time', 300);
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['file_to_upload'])) {
+                throw new Exception('No se ha subido ningún archivo.');
+            }
+            $file = $_FILES['file_to_upload'];
+
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('Error al subir el archivo: ' . $this->getFileErrorMessage($file['error']));
+            }
+            $maxima192=[33,34,35,36,37,38];
+            $inputFileType = 'Xlsx';
+            $sheetname = 'PRESUPUESTO';
+            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader($inputFileType);
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            $spreadsheet = $reader->load($file['tmp_name']);
+            $worksheet = $spreadsheet->getSheetByName($sheetname);
+            if (!$worksheet) {
+                throw new Exception("No se encontró la hoja '{$sheetname}' en el archivo.");
+            }
+            $datos = [];
+            foreach ($worksheet->getRowIterator() as $row) {
+                $fila = $row->getRowIndex(); // Número de fila actual
+                $codgas = $worksheet->getCell("a{$fila}")->getValue(); // Estación
+                $maxima = $worksheet->getCell("D{$fila}")->getValue(); // Estación
+                $super = $worksheet->getCell("E{$fila}")->getValue(); // Estación
+                $diesel = $worksheet->getCell("F{$fila}")->getValue(); // Estación
+                $codprd = 0;
+                // Solo guardar si ambas columnas tienen valores
+                if (!empty($codgas) && !empty($maxima)) {
+                    $codprd = 179;
+                    if(in_array($codgas,$maxima192)){
+                        $codprd = 192;
+                    }
+                    $datos[] = [
+                        'codgas' => $codgas,
+                        'codprd' => $codprd,
+                        'budget_monthy' => $maxima,
+                        'date_budget' => (new DateTime($_POST['date_budget'] . '-01'))->format('Y-m-d H:i:s') . '.000',
+                        'date_added' => date('Y-m-d H:i:s'),
+                        'year' => date('Y', strtotime($_POST['date_budget'])),
+                        'month' => date('m', strtotime($_POST['date_budget'])),
+                    ];
+                }
+                if (!empty($codgas) && !empty($super)) {
+                    $codprd = 180;
+                    if(in_array($codgas,$maxima192)){
+                        $codprd = 193;
+                    }
+                    $datos[] = [
+                        'codgas' => $codgas,
+                        'codprd' => $codprd,
+                        'budget_monthy' => $super,
+                        'date_budget' => (new DateTime($_POST['date_budget'] . '-01'))->format('Y-m-d H:i:s') . '.000',
+                        'date_added' => date('Y-m-d H:i:s'),
+                        'year' => date('Y', strtotime($_POST['date_budget'])),
+                        'month' => date('m', strtotime($_POST['date_budget'])),
+                    ];
+                }
+                if (!empty($codgas) && !empty($diesel)) {
+                    $codprd = 181;
+
+                    $datos[] = [
+                        'codgas' => $codgas,
+                        'codprd' => $codprd,
+                        'budget_monthy' => $diesel,
+                        'date_budget' => (new DateTime($_POST['date_budget'] . '-01'))->format('Y-m-d H:i:s') . '.000',
+                        'date_added' => date('Y-m-d H:i:s'),
+                        'year' => date('Y', strtotime($_POST['date_budget'])),
+                        'month' => date('m', strtotime($_POST['date_budget'])),
+                    ];
+                }
+            }
+            if (empty($datos)) {
+                throw new Exception('El archivo no contiene datos válidos.');
+            }
+    
+            return [
+                'success' => true,
+                'data' => $datos
+            ];
+
+
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function download_format_budget(){
+        $file = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents/budgetDocumento.xlsx';
+
+        if (file_exists($file)) {
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename=' . basename($file));
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file));
+            ob_clean();
+            flush();
+            readfile($file);
+            exit;
+        } else {
+
+            http_response_code(404);
+            echo 'El archivo no fue encontrado.';
         }
     }
    

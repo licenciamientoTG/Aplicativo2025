@@ -96,6 +96,8 @@ function actualizarDataTable() {
                {'data': 'despachador'},
                {'data': 'tipo_pago'},
                {'data': 'factura'},
+               {'data': 'FechaFactura'},
+
                {'data': 'UUID'},
                {'data': 'txtref'},
                {'data': 'rut'},
@@ -295,6 +297,7 @@ function actualizarDataTableEst() {
                {'data': 'despachador'},
                {'data': 'tipo_pago'},
                {'data': 'factura'},
+               {'data': 'FechaFactura'},
                {'data': 'UUID'},
                {'data': 'txtref'},
                {'data': 'rut'},

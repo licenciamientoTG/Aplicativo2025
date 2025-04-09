@@ -952,8 +952,10 @@ async function sale_month_turn_table(){
     var fromDate = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
     var zona = document.getElementById('zona').value;
+    var turn = document.getElementById('turn').value;
+    var total = 1;
 
-    var dynamicColumns = generateSalesMonthColumns(fromDate, untilDate);
+    var dynamicColumns = generateSalesMonthColumns(fromDate, untilDate,turn,'sale_month_turn_table');
 
     var groupColumn = 0;
     let sale_month_turn_table =$('#sale_month_turn_table').DataTable({
@@ -975,7 +977,12 @@ async function sale_month_turn_table(){
             {
                 extend: 'excel',
                 className: 'btn btn-success',
-                text: ' Excel'
+                text: ' Excel',
+                exportOptions: {
+                    rows: function (idx, data, node) {
+                        return data.Producto !== 'Total Estación'; // 👈 EXCLUYE esta fila
+                    }
+                }
             },
         ],
         ajax: {
@@ -984,6 +991,8 @@ async function sale_month_turn_table(){
                 'fromDate':fromDate,
                 'untilDate':untilDate,
                 'zona':zona,
+                'turn':turn,
+                'total':total,
                 'dinamicColumns': dynamicColumns
             },
             url: '/commercial/sale_month_turn_table',
@@ -1029,9 +1038,54 @@ async function sale_month_turn_table(){
 
         },
         footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+
+            // Función para sumar valores en una columna
+            var intVal = function (i) {
+                return typeof i === 'string' ?
+                    i.replace(/[\$,]/g, '') * 1 :
+                    typeof i === 'number' ? i : 0;
+            };
+            api.columns().every(function (index) {
+                if (index > 1) { // Desde la tercera columna en adelante
+        
+                    // 🔍 Obtener nombre del campo (key del objeto de datos)
+                    var columnName = api.column(index).dataSrc();
+        
+                    // Sumatoria de los datos de la página actual, excluyendo 'Total Estación'
+                    let filteredSum = data.reduce((sum, row) => {
+                        if (row.Producto !== 'Total Estación') {
+                            sum += intVal(row[columnName]);
+                        }
+                        return sum;
+                    }, 0);
+        
+                    // Sumatoria total (todos los datos filtrados), excluyendo 'Total Estación'
+                    let totalSum = 0;
+                    api.rows({ search: 'applied' }).every(function () {
+                        const rowData = this.data();
+                        if (rowData.Producto !== 'Total Estación') {
+                            totalSum += intVal(rowData[columnName]);
+                        }
+                    });
+        
+                    // Mostrar en footer
+                    $(api.column(index).footer()).html(`
+                        <div>Total: ${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div>Filtrado: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                    `);
+                }
+            });
         }
     });
-
+    $('#filtroProducto').on('change', function () {
+        const value = $(this).val();
+        // Asumiendo que la columna "Producto" está en el índice 1
+        $('#sale_month_turn_table').DataTable()
+            .column(1)
+            .search(value)
+            .draw();
+    });
 
     $('#filtro-sale_month_turn_table input').on('keyup  change clear', function () {
         sale_month_turn_table
@@ -1047,7 +1101,7 @@ async function sale_month_turn_table(){
 }
 
 
-function generateSalesMonthColumns(fromDate, untilDate) {
+function generateSalesMonthColumns(fromDate, untilDate,turn, table) {
     const startDate = new Date(fromDate + "T00:00:00"); // Asegurarte de usar el inicio del día
     const endDate = new Date(untilDate + "T00:00:00");
     const columns = [];
@@ -1055,7 +1109,11 @@ function generateSalesMonthColumns(fromDate, untilDate) {
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     ];
-    const turns  = [11,21,31,41];
+    var turns  = [11,21,31,41];
+
+    if(turn != 0){
+        turns = [turn];
+    }
 
     columns.push(
         { data: 'Estacion',title:'Estacion',name:'Estacion', className: 'text-left text-nowrap border_center',rowspam: 2 },
@@ -1093,22 +1151,25 @@ function generateSalesMonthColumns(fromDate, untilDate) {
 
         currentMonth.setMonth(currentMonth.getMonth() + 1);
     }
-    // columns.push(
-    //     { data: 'Total',
-    //         title:'Total', 
-    //         className: 'text-left text-nowrap table-info' ,
-    //         render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+    columns.push(
+        { data: 'total',
+            title:'Total', 
+            className: 'text-left text-nowrap table-info' ,
+            render: $.fn.dataTable.render.number(',', '.', 2, )
 
-    //     },
-    // );
-    // theadHTML += `<th>Total</th>`;
-    // tfootHTML += `<th></th>`;
+        },
+    );
+    theadHTML += `<th>Total</th>`;
+     tfootHTML += `<th></th>`;
 
     // Cerrar las filas correctamente
     theadHTML += '</tr>';
     tfootHTML += '</tr>';
-    // $('#sales_type_payment_table thead').html(theadHTML);
-    // $('#sales_type_payment_table tfoot').html(tfootHTML);
+    // $('#sale_month_turn_table thead').html(theadHTML);
+    var tablename = document.getElementById(table);
+    tablename.querySelector('tfoot').innerHTML = tfootHTML;
+
+    // $('#sale_month_turn_table tfoot').html(tfootHTML);
 
     return columns;
 }
@@ -1125,8 +1186,10 @@ async function sale_month_turn_table_no_total(){
     var fromDate = document.getElementById('from2').value;
     var untilDate = document.getElementById('until2').value;
     var zona = document.getElementById('zona2').value;
+    var turn = document.getElementById('turn2').value;
+    var total = 0;
 
-    var dynamicColumns = generateSalesMonthColumns(fromDate, untilDate);
+    var dynamicColumns = generateSalesMonthColumns(fromDate, untilDate,turn,'sale_month_turn_table_no_total');
 
     var groupColumn = 0;
     let sale_month_turn_table_no_total =$('#sale_month_turn_table_no_total').DataTable({
@@ -1157,10 +1220,12 @@ async function sale_month_turn_table_no_total(){
                 'fromDate':fromDate,
                 'untilDate':untilDate,
                 'zona':zona,
+                'turn':turn,
+                'total':total,
                 'dinamicColumns': dynamicColumns
             },
-            url: '/commercial/sale_month_turn_table_no_total',
-            error: function() {
+            url: '/commercial/sale_month_turn_table',
+                error: function() {
                 $('#sale_month_turn_table_no_total').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
 
@@ -1203,14 +1268,58 @@ async function sale_month_turn_table_no_total(){
 
         },
         footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+
+            // Función para sumar valores en una columna
+            var intVal = function (i) {
+                return typeof i === 'string' ?
+                    i.replace(/[\$,]/g, '') * 1 :
+                    typeof i === 'number' ? i : 0;
+            };
+            api.columns().every(function (index) {
+                if (index > 1) { // Desde la tercera columna en adelante
+        
+                    // 🔍 Obtener nombre del campo (key del objeto de datos)
+                    var columnName = api.column(index).dataSrc();
+        
+                    // Sumatoria de los datos de la página actual, excluyendo 'Total Estación'
+                    let filteredSum = data.reduce((sum, row) => {
+                        if (row.Producto !== 'Total Estación') {
+                            sum += intVal(row[columnName]);
+                        }
+                        return sum;
+                    }, 0);
+        
+                    // Sumatoria total (todos los datos filtrados), excluyendo 'Total Estación'
+                    let totalSum = 0;
+                    api.rows({ search: 'applied' }).every(function () {
+                        const rowData = this.data();
+                        if (rowData.Producto !== 'Total Estación') {
+                            totalSum += intVal(rowData[columnName]);
+                        }
+                    });
+        
+                    // Mostrar en footer
+                    $(api.column(index).footer()).html(`
+                        <div>Total: ${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div>Filtrado: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                    `);
+                }
+            });
         }
     });
 
-
+    $('#filtroProducto2').on('change', function () {
+        const value = $(this).val();
+        // Asumiendo que la columna "Producto" está en el índice 1
+        $('#sale_month_turn_table_no_total').DataTable()
+            .column(1)
+            .search(value)
+            .draw();
+    });
     $('#filtro-sale_month_turn_table_no_total input').on('keyup  change clear', function () {
         sale_month_turn_table_no_total
             .column(0).search($('#Estacion').val().trim())
-            .column(1).search($('#Producto').val().trim())
             .draw();
       });
     $('.sale_month_turn_table_no_total').on('click', function () {
@@ -1548,21 +1657,26 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
                         } else {
                             // Si no es "Cumplimiento", calcular la suma
                             var sum = dataColumn.reduce((a, b) => intVal(a) + intVal(b), 0);
-            
                             $(api.column(index).footer()).html($.fn.dataTable.render.number(',', '.', 2, '$').display(sum));
                         }
                     }
                 });
             }
-            
-            
+
+        });
+        $('#filtroProducto').on('change', function () {
+            const value = $(this).val();
+            // Asumiendo que la columna "Producto" está en el índice 1
+            $('#sales_indicators_table').DataTable()
+                .column(1)
+                .search(value)
+                .draw();
         });
 
 
         $('#filtro-sales_indicators_table input').on('keyup  change clear', function () {
             sales_indicators_table
                 .column(0).search($('#Estacion').val().trim())
-                .column(1).search($('#producto').val().trim())
                 .draw();
         });
         $('.sales_indicators_table').on('click', function () {
@@ -1696,11 +1810,17 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
             
         });
     
-    
+        $('#filtroProducto2').on('change', function () {
+            const value = $(this).val();
+            // Asumiendo que la columna "Producto" está en el índice 1
+            $('#sales_indicators_totals_table').DataTable()
+                .column(1)
+                .search(value)
+                .draw();
+        });
         $('#filtro-sales_indicators_totals_table input').on('keyup  change clear', function () {
             sales_indicators_totals_table
                 .column(0).search($('#Estacion2').val().trim())
-                .column(1).search($('#producto2').val().trim())
                 .draw();
           });
         $('.sales_indicators_totals_table').on('click', function () {
@@ -2573,3 +2693,81 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         }
         
     }
+
+    async function upload_file_budget() {
+        const fileInput = document.getElementById('file_to_upload');
+        const date_budget = document.getElementById('date_budget').value;
+    
+        if (!date_budget) {
+            toastr.error('Por favor, selecciona una fecha.', '¡Error!', { timeOut: 3000 });
+            return;
+        }
+    
+        const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+    
+        if (!file) {
+            toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
+            return;
+        }
+    
+        $('.mistery_heather').addClass('loading');
+        const formData = new FormData();
+        formData.append('file_to_upload', file);
+        formData.append('date_budget', date_budget);
+    
+        try {
+            const response = await fetch('/commercial/import_file_budget', {
+                method: 'POST',
+                body: formData
+            });
+    
+            const data = await response.json();
+    
+            if (data['success'] == false) {
+                toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+                $('.mistery_heather').removeClass('loading');
+                fileInput.value = '';
+                return;
+            }
+    
+            if (data['success'] == true) {
+                toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+                $('.mistery_heather').removeClass('loading');
+                fileInput.value = '';
+                mistery_shopper_table();
+                // setTimeout(() => {
+                //     window.location.reload();
+                // }, 2000);
+            } 
+        } catch (error) {
+            console.error('Error al subir el archivo:', error);
+            $('.mistery_heather').removeClass('loading');
+            $('.mistery_heather').removeClass('loading');
+    
+            toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+        }
+        $('.mistery_heather').removeClass('loading');
+    
+    }
+    function download_format_budget(){
+        fetch('/commercial/download_format_budget')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error en la descarga del archivo');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'BudgetDocument.xlsx'; // Nombre del archivo a descargar
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error:', error));
+    
+     }
+    
