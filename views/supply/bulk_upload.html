@@ -19,7 +19,7 @@
                 </div>
                 <div class="col">
                     <label for="company">Empresa: </label>
-                    <select class="form-control form-control-sm border" id="company" name="company" data-width="100%" required placeholder="Seleccione una estación">
+                    <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="company" name="company" data-width="100%" required placeholder="Seleccione una estación">
                         {% for company in companies %}
                         <option value="{{ company.rfc }}" {{ companyRfc == company.rfc ? 'selected' : '' }}>{{ company.denominacion }}</option>
                         {% endfor %}
@@ -80,10 +80,7 @@
                                 <td class="{{ product.Ventas < 0 ? 'bg-danger text-light fw-bold' : '' }}">{{ product.Ventas | number_format(0) }}</td>
                                 <td class="{{ product.SaldoFinal < 0 ? 'bg-danger text-light fw-bold' : '' }}">{{ product.SaldoFinal | number_format(0) }}</td>
                                 <td class="{{ product.Merma > 500 ? 'bg-warning dark fw-bold' : '' }}">{{ product.Merma | number_format(0) }}</td>
-                                <td>{{ product.compras | raw }}
-
-                                    {# <p class="p-0 m-0">Total recibido: {{ product.TotalVolumenComprado }}</p></p> #}
-                                </td>
+                                <td>{{ product.compras | raw }}</td>
                                 <td>
                                     <div class="btn-group" role="group" aria-label="Basic example">
                                         <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal" data-saldoinicial="{{ product.SaldoInicial }}" data-ventas="{{ product.Ventas }}" data-saldofinal="{{ product.SaldoFinal }}" data-codgas="{{ product.controlGasStationId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" data-merma="{{ product.merma }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
@@ -162,11 +159,118 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h1 class="modal-title fs-5" id="addPurchaseModalLabel">Actualizar datos de la recepción</h1>
+                <h1 class="modal-title fs-5" id="addPurchaseModalLabel">Agregar proveedor</h1>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form id="frmCapturaProveedor" action="/supply/frmCapturaProveedor" method="post">
-                
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-12 col-xl-6">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="TipoCompra">Tipo de compra: </label>
+                                <select class="selectpicker form-control" data-live-search="true" name="TipoCompra" id="TipoCompra" required>
+                                    <option value="0" selected>Nacional</option>
+                                    <option value="1">Importación</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-6">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="TipoDocumento">Tipo de documento: </label>
+                                <select class="selectpicker form-control" data-live-search="true" name="TipoDocumento" id="TipoDocumento" required>
+                                    <option value="1" selected>Compra</option>
+                                    <option value="2">Remisión</option>
+                                    <option value="3">Consignación</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="PermisoProveedorCRE">Proveedor: </label>
+                                <select class="selectpicker form-control" data-live-search="true" name="PermisoProveedorCRE" id="PermisoProveedorCRE" required placeholder="Seleccione un proveedor">
+                                    {% for supplier in suppliers %}
+                                    <option value="{{ supplier.crePermissionSupplier }}">{{ supplier.crePermissionSupplier }} - {{ supplier.companyName }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-12 col-xl-6">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="VolumenComprado">Volumen comprado (lts)*:</label>
+                                <div class="input-group mb-3">
+                                    <input type="number" min="0" step="1" class="form-control" id="VolumenComprado" name="VolumenComprado" required>
+                                    <span class="input-group-text">lts</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-6">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="PrecioCompraSinDescuento">Precio de compra sin descuento*:</label>
+                                <div class="input-group mb-3">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" min="0" step="0.01" class="form-control" id="PrecioCompraSinDescuento" name="PrecioCompraSinDescuento" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <label class="control-label" style="margin-right: 10px;">¿Recibió algún descuento sobre el precio presentado?<span class="form-text">*</span>:</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="RecibioDescuento" id="RecibioDescuentoSi" value="1">
+                                <label class="form-check-label" for="RecibioDescuentoSi">Sí</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="RecibioDescuento" id="RecibioDescuentoNo" value="0" checked>
+                                <label class="form-check-label" for="RecibioDescuentoNo">No</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row" id="divRecibioDescuento"></div>
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <label class="control-label" style="margin-right: 10px;">¿Pagó por servicio de flete?<span class="form-text">*</span>:</label>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="PagoServicioFlete" id="PagoServicioFleteSi" value="1">
+                                <label class="form-check-label" for="PagoServicioFleteSi">Sí</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="PagoServicioFlete" id="PagoServicioFleteNo" value="0" checked>
+                                <label class="form-check-label" for="PagoServicioFleteNo">No</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row" id="divPagoServicioFlete"></div>
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <label class="col-form-label col-form-label-sm" for="PermisoTransportistaCRE">Transportista: </label>
+                                <select class="selectpicker form-control form-control-sm border" data-live-search="true" id="PermisoTransportistaCRE" name="PermisoTransportistaCRE" data-width="100%" required placeholder="Seleccione un transportista">
+                                    <option value="">Seleccione un transportista...</option>
+                                    {% for carrier in carriers %}
+                                    <option value="{{ carrier.crePermissionCarrier }}">{{ carrier.crePermissionCarrier }} - {{ carrier.companyName }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="from" value="{{ from }}">
+                    <input type="hidden" name="codgas" value="">
+                    <input type="hidden" name="creProductId" value="">
+                    <input type="hidden" name="creSubProductId" value="">
+                    <input type="hidden" name="creSubProductBrandId" value="">
+                    <input type="hidden" name="rowid" value="">
+                    <input type="hidden" name="controlGasProductId" value="">
+                    <button type="submit" class="btn btn-primary" id="btnEnviarFormulario">Guardar cambios</button>
+                    <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
+                </div>
             </form>
         </div>
     </div>
@@ -235,38 +339,16 @@
         const creSubProductBrandId = button.data('cresubproductbrandid');
         const rowid = button.data('rowid');
         const controlGasProductId = button.data('controlgasproductid');
-        const from = $('input#from').val();
 
         // Actualizar el contenido del modal
         const modal = $(this);
-
-        let $select = $('.selectpicker');
-
-        // Limpiar opciones anteriores
-        $select.empty();
-        // Vamos a mandar un ajax a que nos traiga un html
-        $.ajax({
-            url: '/supply/frmCapturaCompra',
-            type: 'post',
-            data: {
-                'codgas': codgas,
-                'creProductId': creProductId,
-                'creSubProductId': creSubProductId,
-                'creSubProductBrandId': creSubProductBrandId,
-                'rowid': rowid,
-                'controlGasProductId': controlGasProductId,
-                'from': from,
-            },
-            success: function(response) {
-                $('#frmCapturaProveedor').html();
-                if(response.success) {
-                    modal.find('#frmCapturaProveedor').html(response.html);
-                } else {
-                    alert('Error al cargar el formulario de captura');
-                }
-                $('.selectpicker').selectpicker('refresh');
-            }
-        });
+        // Vamos a agregar los valores de los atributos data-* al formulario
+        modal.find('.modal-footer input[name="codgas"]').val(codgas);
+        modal.find('.modal-footer input[name="creProductId"]').val(creProductId);
+        modal.find('.modal-footer input[name="creSubProductId"]').val(creSubProductId);
+        modal.find('.modal-footer input[name="creSubProductBrandId"]').val(creSubProductBrandId);
+        modal.find('.modal-footer input[name="rowid"]').val(rowid);
+        modal.find('.modal-footer input[name="controlGasProductId"]').val(controlGasProductId);
 
         $('#PermisoProveedorCRE').selectpicker({ liveSearch: true });
     });
@@ -390,7 +472,7 @@
                     // Vamos a cerrar el modal
                     $('#addPurchaseModal').modal('hide');
                     // Ahora vamos a buscar el tr con el id response.rowid y vamos a actualizar los valores de sus t
-                    $(`tr#${response.rowid}`).find('td').eq(5).append(<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#purchaseDataModal" data-id="${response.data.id}">${response.data.volumenComprado} lts (${response.data.permisoProveedorCRE})</a><a class="text-danger ml-2" onclick="confirm_delete(${response.data.id});"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></a></p>);
+                    $(`tr#${response.rowid}`).find('td').eq(5).append(`<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#purchaseDataModal" data-id="${response.data.id}">${response.data.volumenComprado} lts (${response.data.permisoProveedorCRE})</a><a class="text-danger ml-2" onclick="confirm_delete(${response.data.id});"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></a></p>`);
                 } else {
                     // Vamos a mostrar un mensaje de alerta
                     alert('Ocurrió un error al registrar la compra');
@@ -493,7 +575,6 @@
     $(document).ready(function() {
         $('#PermisoProveedorCRE').selectpicker({ liveSearch: true });
     });
-
 
 </script>
 {% endblock %}

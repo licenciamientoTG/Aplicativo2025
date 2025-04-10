@@ -134,6 +134,28 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
         $rs = $this->sql->select($query);
         if ($rs) {
             // Con este código se agrega la función de eliminar compra
+            foreach ($rs as $row) {
+                $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#purchaseDataModal" data-id="'. $row['id'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['permisoProveedorCRE'] .')</a>
+                <a href="javascript:void(0);" class="text-danger ml-2" onclick="confirm_delete('. $row['id'] .');"><i data-feather="trash-2"></i></a>
+                </p>';
+            }
+
+            // Con esta función eliminas la opcion de eliminar compra
+            // foreach ($rs as $row) {
+            //     $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['permisoProveedorCRE'] .')</a></p>';
+            // }
+            return $purchase;
+        } else {
+            return false;
+        }
+    }
+
+    function getPurchaseByProduct2($xsdReportesVolumenesId, $xsdEstacionServicioVolumenId, $controlGasProductId) {
+        $purchase = "";
+        $query = "SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] WHERE xsdReportesVolumenesId = {$xsdReportesVolumenesId} AND xsdEstacionServicioVolumenId = {$xsdEstacionServicioVolumenId} AND controlGasProductId = {$controlGasProductId};";
+        $rs = $this->sql->select($query);
+        if ($rs) {
+            // Con este código se agrega la función de eliminar compra
             // foreach ($rs as $row) {
             //     $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#purchaseDataModal" data-id="'. $row['id'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['permisoProveedorCRE'] .')</a>
             //     <a href="javascript:void(0);" class="text-danger ml-2" onclick="confirm_delete('. $row['id'] .');"><i data-feather="trash-2"></i></a>
@@ -294,4 +316,17 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
         ];
         return $this->sql->update($query, $params);
     }
+
+    function save_no_discount($xsdReportesVolumenesId,$xsdEstacionServicioVolumenId,$controlGasStationId, $controlGasProductId,$ProductoId,$SubProductoId,$creSubProductBrandId,$TipoCompra,$TipoDocumento,$PermisoProveedorCRE,$VolumenComprado,$PrecioCompraSinDescuento,$RecibioDescuento,$PagoServicioFlete,$CostoFlete,$PermisoTransportistaCRE) {
+        $query = "INSERT INTO [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado]
+                       ([xsdReportesVolumenesId],[xsdEstacionServicioVolumenId],[controlGasStationId],[controlGasProductId],[productoId],[subProductoId],[subproductoMarcaId],[tipoCompra],[tipoDocumento],[permisoProveedorCRE],[volumenComprado],[precioCompraSinDescuento],[recibioDescuento],[pagoServicioFlete],[costoFlete],[permisoTransportistaCRE])
+                 VALUES
+                       (?,{$xsdEstacionServicioVolumenId},{$controlGasStationId},{$controlGasProductId},{$ProductoId},{$SubProductoId},{$creSubProductBrandId},{$TipoCompra},{$TipoDocumento},'{$PermisoProveedorCRE}',{$VolumenComprado},{$PrecioCompraSinDescuento},{$RecibioDescuento},{$PagoServicioFlete},{$CostoFlete},'{$PermisoTransportistaCRE}');";
+        if ($id = $this->sql->insert($query, [$xsdReportesVolumenesId])) {
+            return $this->sql->select("SELECT	t1.* FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] t1 WHERE t1.id = ?;", [$id])[0];
+        } else {
+            return false;
+        }
+    }
+
 }

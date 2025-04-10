@@ -1,4 +1,22 @@
 <?php
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpSpreadsheet\NamedRange;
+use PhpOffice\PhpSpreadsheet\Settings;
+use PhpOffice\PhpSpreadsheet\Chart\Chart;
+use PhpOffice\PhpSpreadsheet\Chart\DataSeries;
+use PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues;
+use PhpOffice\PhpSpreadsheet\Chart\Legend;
+use PhpOffice\PhpSpreadsheet\Chart\PlotArea;
+use PhpOffice\PhpSpreadsheet\Chart\Title;
+use PhpOffice\PhpSpreadsheet\Helper\Sample;
+use PhpOffice\PhpSpreadsheet\Reader\IReader;
 class Accounting{
     public $twig;
     public $route;
@@ -290,9 +308,9 @@ class Accounting{
                     <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
                     <button type="input" class="btn btn-primary">Descargar</button>
                 </form>
-                <form method="post" action="/accounting/delete_volumetrics/'. $from .'/'. $until .'">
+                <form method="post" action="/accounting/excel_volumetrics/'. $from .'/'. $until .'">
                     <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
-                    <button type="input" class="btn btn-danger">Eliminar</button>
+                    <button type="input" class="btn btn-info">Excel</button>
                 </form>
             </div>
             ';
@@ -390,4 +408,48 @@ class Accounting{
             echo "No se ha recibido ningún POST.";
         }
     }
-}
+    function excel_volumetrics($from, $until) {
+        $permisoCre = $_POST['permisoCre'] ?? null;
+        if (!$permisoCre) {
+            http_response_code(400);
+            echo "Falta el permiso CRE";
+            return;
+        }
+    
+        try {
+            $spreadsheet = $this->estacionesModel->sp_obtener_entregas_volumetricas_por_rango(
+                $permisoCre, $from, $until, 'D'
+            );
+
+            if (!$spreadsheet instanceof Spreadsheet) {
+                throw new Exception("The function sp_obtener_entregas_volumetricas_por_rango did not return a valid Spreadsheet object.");
+            }
+    
+            $writer = new Xlsx($spreadsheet);
+            $fileName = "entregas_" . date('Ymd_His') . ".xlsx";
+            $filePath = __DIR__ . "/../../../tmp_excel/" . $fileName;
+    
+            // Asegúrate de que exista la carpeta tmp_excel y tenga permisos
+            if (!is_dir(dirname($filePath))) {
+                mkdir(dirname($filePath), 0777, true);
+            }
+    
+            // Guardar archivo en disco primero
+            $writer->save($filePath);
+    
+            // Enviar archivo al navegador
+            header("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            header("Content-Disposition: attachment; filename=\"$fileName\"");
+            header("Content-Length: " . filesize($filePath));
+    
+            readfile($filePath);
+            unlink($filePath); // opcional: eliminar archivo después de descargar
+            exit;
+    
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo "Error generando Excel: " . $e->getMessage();
+        }
+    }
+    
+}    

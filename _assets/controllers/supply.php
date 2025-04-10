@@ -487,7 +487,7 @@ class Supply{
         }
     }
 
-    function bulkUpload() {
+    function bulkUpload2() {
 
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
@@ -513,7 +513,6 @@ class Supply{
         $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
 
         if (!empty($_GET['company'])) {
-
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
             $twigVars['codgas_string'] = $codgas_string;
@@ -524,7 +523,6 @@ class Supply{
                 $reportId = $reporteVolumenes['id'];
                 // Procesa cada producto
                 foreach ($codgas_products as $item) {
-                    
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
                     $fechaReferencia = new DateTime('2025-04-02');
@@ -573,7 +571,7 @@ class Supply{
                     if (!isset($groupedData[$controlGasStationId])) {
                         $groupedData[$controlGasStationId] = [];
                     }
-                    $item['compras'] = $this->xsdEstacionServicioVolumenCompradoModel->getPurchaseByProduct($item['xsdReportesVolumenesId'],$item['xsdEstacionServicioVolumenId'],$item['controlGasProductId']);
+                    $item['compras'] = $this->xsdEstacionServicioVolumenCompradoModel->getPurchaseByProduct2($item['xsdReportesVolumenesId'],$item['xsdEstacionServicioVolumenId'],$item['controlGasProductId']);
                     $groupedData[$controlGasStationId][] = $item;
                 }
                 $twigVars['groupedData'] = $groupedData;
@@ -583,43 +581,47 @@ class Supply{
         }
 
         // Renderiza la vista con todas las variables
-        echo $this->twig->render($this->route . 'bulk_upload.html', $twigVars);
+        echo $this->twig->render($this->route . 'bulk_upload2.html', $twigVars);
     }
 
-    function bulkUpload2() {
+    function bulkUpload() {
+
+        ini_set('memory_limit', '256M');
+        ini_set('max_execution_time', 300);
+
         // Fechas
         $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
         $fiveDaysAgo = (new DateTime('-5 days'))->format('Y-m-d');
-    
+
         // Datos iniciales
         $companies = $this->estacionesModel->getCompanies();
         $suppliers = $this->creSuppliersModel->getRows();
         $carriers = $this->creCarriersModel->getRows();
-        
+
         // Parámetros
         $from       = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
         $companyRfc = $_GET['company'] ?? '';
-    
+
         // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
         $data = $this->gasolinerasModel->get_active_station_TG();
         $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
         $stations = array_values($dataFiltered);
-    
+
         // Arreglo común para renderizar la vista
         $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
-    
+
         if (!empty($_GET['company'])) {
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
             $twigVars['codgas_string'] = $codgas_string;
-    
+
             // Obtiene los productos asociados a las estaciones para la fecha indicada
             $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
-    
+
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
                 $reportId = $reporteVolumenes['id'];
-    
+
                 // Procesa cada producto
                 foreach ($codgas_products as $item) {
                     // Inserta o recupera el registro de la estación en la tabla de volumen
@@ -728,22 +730,23 @@ class Supply{
     function frmCapturaProveedor() {
         // Verifica si la petición es de tipo POST
         if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
-
+            echo '<pre>';
+            var_dump($_POST);
+            die();
             // Recibe los datos del formulario (productos, proveedor, precios, etc.)
+            $controlGasStationId      = $_POST['codgas'];
             $ProductoId               = $_POST['creProductId'];
             $SubProductoId            = $_POST['creSubProductId'];
             $creSubProductBrandId     = $_POST['creSubProductBrandId'];
             $TipoCompra               = $_POST['TipoCompra'];
             $TipoDocumento            = $_POST['TipoDocumento'];
             $PermisoProveedorCRE      = $_POST['PermisoProveedorCRE'];
-            // $VolumenComprado          = $_POST['VolumenComprado'];
+            $VolumenComprado          = $_POST['VolumenComprado'];
             $PrecioCompraSinDescuento = $_POST['PrecioCompraSinDescuento'];
             $RecibioDescuento         = $_POST['RecibioDescuento'];
             $PagoServicioFlete        = $_POST['PagoServicioFlete'];
             $PermisoTransportistaCRE  = $_POST['PermisoTransportistaCRE'];
-            $controlGasStationId      = $_POST['codgas'];
             $controlGasProductId      = $_POST['controlGasProductId'];
-
 
             // Obtiene la cabecera del reporte por fecha
             $cabecera = $this->xsdReportesVolumenesModel->get_cabecera($_POST['from']);
@@ -775,6 +778,7 @@ class Supply{
                     $TipoCompra,
                     $TipoDocumento,
                     $PermisoProveedorCRE,
+                    $VolumenComprado,
                     $PrecioCompraSinDescuento,
                     $RecibioDescuento,
                     $TipoDescuentoId,
@@ -796,10 +800,9 @@ class Supply{
                     // Error al guardar
                     json_output(['status' => 'error', 'message' => 'No se pudieron guardar los datos']);
                 }
-
             } else {
                 // Si NO recibió descuento, se guarda con otra función
-                if ($rs = $this->xsdEstacionServicioVolumenCompradoModel->update_volumen_comprado(
+                if ($rs = $this->xsdEstacionServicioVolumenCompradoModel->save_no_discount(
                     $cabecera['id'],
                     $station['id'],
                     $controlGasStationId,
@@ -810,12 +813,13 @@ class Supply{
                     $TipoCompra,
                     $TipoDocumento,
                     $PermisoProveedorCRE,
+                    $VolumenComprado,
                     $PrecioCompraSinDescuento,
                     $RecibioDescuento,
                     $PagoServicioFlete,
                     $CostoFlete,
                     $PermisoTransportistaCRE,
-                    $_POST['id']
+                    $controlGasProductId
                 )) {
                     // Respuesta de éxito
                     json_output([
@@ -831,6 +835,71 @@ class Supply{
             }
         }
     }
+
+    function frmCapturaProveedor2() {
+        // Verifica si la petición es de tipo POST
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            // Recibe los datos del formulario (productos, proveedor, precios, etc.)
+            $controlGasStationId      = $_POST['codgas'];
+            $ProductoId               = $_POST['creProductId'];
+            $SubProductoId            = $_POST['creSubProductId'];
+            $creSubProductBrandId     = $_POST['creSubProductBrandId'];
+            $TipoCompra               = $_POST['TipoCompra'];
+            $TipoDocumento            = $_POST['TipoDocumento'];
+            $PermisoProveedorCRE      = $_POST['PermisoProveedorCRE'];
+            $PrecioCompraSinDescuento = $_POST['PrecioCompraSinDescuento'];
+            $RecibioDescuento         = $_POST['RecibioDescuento'];
+            $PagoServicioFlete        = $_POST['PagoServicioFlete'];
+            $PermisoTransportistaCRE  = $_POST['PermisoTransportistaCRE'];
+            $controlGasProductId      = $_POST['controlGasProductId'];
+
+            $id = $_POST['rowid'];
+
+            // Obtiene la cabecera del reporte por fecha
+            $cabecera = $this->xsdReportesVolumenesModel->get_cabecera($_POST['from']);
+            // Obtiene el ID de la estación dentro del reporte
+            $station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $_POST['codgas']);
+
+            // Determina el costo del flete, si aplica
+            if ($PagoServicioFlete) {
+                $CostoFlete = $_POST['CostoFlete'];
+            } else {
+                $CostoFlete = 0;
+            }
+
+            // Si NO recibió descuento, se guarda con otra función
+            if ($rs = $this->xsdEstacionServicioVolumenCompradoModel->update_volumen_comprado(
+                $cabecera['id'],
+                $station['id'],
+                $controlGasStationId,
+                $controlGasProductId,
+                $ProductoId,
+                $SubProductoId,
+                $creSubProductBrandId,
+                $TipoCompra,
+                $TipoDocumento,
+                $PermisoProveedorCRE,
+                $PrecioCompraSinDescuento,
+                $RecibioDescuento,
+                $PagoServicioFlete,
+                $CostoFlete,
+                $PermisoTransportistaCRE,
+                $id
+            )) {
+                // Respuesta de éxito
+                json_output([
+                    'status' => 'success',
+                    'message' => 'Datos guardados correctamente',
+                    'data' => $rs,
+                    'rowid' => $_POST['rowid']
+                ]);
+            } else {
+                // Error al guardar sin descuento
+                json_output(['status' => 'error', 'message' => 'No se pudieron guardar los datos']);
+            }
+        }
+    }
+
 
     function getPurchaseData($id) {
         if ($data = $this->xsdEstacionServicioVolumenCompradoModel->getRow($id)) {
