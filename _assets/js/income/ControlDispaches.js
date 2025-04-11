@@ -1203,6 +1203,28 @@ function actualizarDataTableInvoceDispatched() {
 }
 
 function actualizarOveralInvoiceTable() {
+
+
+    if ($.fn.DataTable.isDataTable('#overal_invoice_table')) {
+        $('#overal_invoice_table').DataTable().destroy();
+        $('#overal_invoice_table thead .filter').remove();
+    }
+    $('#overal_invoice_table thead').prepend($('#overal_invoice_table thead tr').clone().addClass('filter'));
+    $('#overal_invoice_table thead tr.filter th').each(function (index) {
+        col = $('#overal_invoice_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#overal_invoice_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#overal_invoice_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
     var from = $('#from').val();
     var until = $('#until').val();
     var codgas = $('#codgas').val();
@@ -1302,19 +1324,7 @@ function actualizarOveralInvoiceTable() {
     
     // Actualizar los datos del DataTable
     
-    $('#filtro-overal_invoice_table input').on('keyup  change clear', function () {
-        overal_invoice_table
-        .column(0).search($('#factura').val().trim())                // Fecha
-        .column(1).search($('#satuid').val().trim())      // Hora formateada
-        .column(2).search($('#fecha').val().trim())             // Despacho
-        .column(3).search($('#vigencia').val().trim())             // Producto
-        .column(4).search($('#FechasConcatenadas').val().trim())             // Estación
-        .column(5).search($('#txtref').val().trim())              // Empresa
-        .column(6).search($('#TipoPago').val().trim())          // Cliente facturación
-        .column(7).search($('#NrotrnConcatenados').val().trim())          // Cliente facturación
-        .column(8).search($('#estado').val().trim())          // Cliente facturación
-        .draw();
-    });
+   
     // Agregar un evento clic de refresh
     $('.refresh_overal_invoice_table').on('click', function () {
         overal_invoice_table.clear().draw();
@@ -1325,6 +1335,27 @@ function actualizarOveralInvoiceTable() {
 
 
 function actualizarOveralInvoiceOutTable() {
+
+    if ($.fn.DataTable.isDataTable('#overal_invoice_out_table')) {
+        $('#overal_invoice_out_table').DataTable().destroy();
+        $('#overal_invoice_out_table thead .filter').remove();
+    }
+    $('#overal_invoice_out_table thead').prepend($('#overal_invoice_out_table thead tr').clone().addClass('filter'));
+    $('#overal_invoice_out_table thead tr.filter th').each(function (index) {
+        col = $('#overal_invoice_out_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#overal_invoice_out_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#overal_invoice_out_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
     var from2 = $('#from2').val();
     var until2 = $('#until2').val();
     var codgas2 = $('#codgas2').val();
@@ -1341,9 +1372,7 @@ function actualizarOveralInvoiceOutTable() {
         );
         return;
     }
-    if ($.fn.DataTable.isDataTable('#overal_invoice_out_table')) {
-        $('#overal_invoice_out_table').DataTable().destroy();
-    }
+   
     $('#element_hidden2').removeAttr('hidden');
     $('#no_selected2').attr('hidden',true);
 

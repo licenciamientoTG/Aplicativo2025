@@ -1865,6 +1865,9 @@ class DespachosModel extends Model{
                         ) = ''Incorrecto''";
         }
         foreach ($stations as $key => $station) {
+            if ($station['codigo'] == 39) {
+               continue;
+            }
             $station_name = str_replace(' ', '_', $station['estacion_nombre']);
 
             $server_ip = $station['servidor'];
@@ -1943,6 +1946,8 @@ class DespachosModel extends Model{
             $queryParts[] = $subQuery;
         }
         $finalQuery = implode(" UNION ALL ", $queryParts);
+
+   
 
          $params = [];
         return ($this->sql->select($finalQuery,$params)) ? : false;

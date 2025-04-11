@@ -9,6 +9,7 @@
     }
 </style>
 
+<!-- AG Grid JS -->
 <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="sale_day_product-tab" data-bs-toggle="tab" data-bs-target="#sale_day_product" type="button" role="tab" aria-controls="sale_day_product" aria-selected="true">Ventas por Dia por Producto</button>
@@ -30,7 +31,7 @@
                         <div class="row">
                             <div class="col-2 ">
                                 <label class="col-form-label" for="">Desde: </label>
-                                <input type="date" value="2025-01-20" class="form-control form-control-sm" name="from" id="from" required>
+                                <input type="date" value="{{ 'first day of this month'|date('Y-m-d') }}" class="form-control form-control-sm" name="from" id="from" required>
                             </div>
                             <div class="col-2 ">
                                 <label class="col-form-label" for="">Hasta: </label>
@@ -239,9 +240,6 @@ $('#seach_sales_day_shif').on('click',async function() {
     await sales_day_table_shif(dynamicColumns);
 });
 
-
-
 </script>
 
-</script>
 {% endblock %}

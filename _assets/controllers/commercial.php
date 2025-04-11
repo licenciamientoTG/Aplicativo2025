@@ -106,6 +106,7 @@ class Commercial{
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
+
     
     function sales_indicators_table(){
 

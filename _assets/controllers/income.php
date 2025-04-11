@@ -498,6 +498,8 @@ class Income{
     }
 
     function overal_invoice_out_table(){
+        ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
+        set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.
         $data = [];
         $codgas = $_POST['codgas'];
         $status = $_POST['status'];

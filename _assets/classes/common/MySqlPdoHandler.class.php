@@ -46,7 +46,7 @@ class MySqlPdoHandler{
 
 		try{
 			$this->_connection = null;	//Close connection. Destroy the object.
-			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname;TrustServerCertificate=yes", $this->_username, $this->_password);
+			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname;TrustServerCertificate=yes;MultipleActiveResultSets=1", $this->_username, $this->_password);
 			$this->_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 			$this->_connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 		}catch(PDOException $e) {
