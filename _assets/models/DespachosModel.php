@@ -2413,4 +2413,64 @@ class DespachosModel extends Model{
         return ($this->sql->select($query)) ?: false ;
 
     }
+    function sales_cash_hour_table($fromDate, $untilDate, $codgas) {
+        // Generar fechas como columnas dinámicas
+        $dates = [];
+        $start = new DateTime($fromDate);
+        $end = new DateTime($untilDate);
+        $from_int = dateToInt($fromDate);
+        $until_int = dateToInt($untilDate);
+    
+        while ($start <= $end) {
+            $formatted = $start->format('Y-m-d');
+            $dates[] = $formatted;
+            $start->modify('+1 day');
+        }
+    
+        // Crear columnas para el PIVOT y SELECT con ISNULL
+        $columnsList = implode(',', array_map(fn($d) => "[$d]", $dates));
+        $selectList = implode(',', array_merge(
+            ['Hora'],
+            array_map(fn($d) => "ISNULL([$d], 0) AS [$d]", $dates)
+        ));
+    
+        $query = "
+            WITH datosDespachos AS (
+                SELECT 
+                    DATEPART(HOUR, CAST(DATEADD(MINUTE, t1.hratrn % 100, DATEADD(HOUR, t1.hratrn / 100, 0)) AS TIME)) AS Hora,
+                    CONVERT(VARCHAR, DATEADD(DAY, t1.fchtrn - 1, '19000101'), 23) AS FechaTexto,
+                    t1.mto
+                FROM despachos t1
+                LEFT JOIN Clientes t2 ON t1.codcli = t2.cod
+                LEFT JOIN ClientesValores t3 ON t2.cod = t3.codcli AND t3.codest = 0 AND t3.codval IN (127, 28)
+                LEFT JOIN MovimientosTar t4 ON t1.nrotrn = t4.nrotrn AND t1.codgas = t4.codgas AND t4.tipmov != 82
+                LEFT JOIN [SG12].[dbo].Valores t13 ON t4.codbco = t13.cod AND t4.codbco = -1128
+                WHERE
+                    t1.codgas = {$codgas}
+                    AND (t2.tipval NOT IN (3, 4) OR t2.tipval IS NULL)
+                    AND t1.tar >= 0
+                    and t1.fchtrn BETWEEN $from_int AND $until_int
+
+            ),
+            resumen AS (
+                SELECT Hora, FechaTexto, SUM(ISNULL(mto, 0)) AS TotalMto
+                FROM datosDespachos
+                GROUP BY Hora, FechaTexto
+            )
+            SELECT {$selectList}
+            FROM (
+                SELECT Hora, FechaTexto, TotalMto
+                FROM resumen
+            ) AS SourceTable
+            PIVOT (
+                SUM(TotalMto)
+                FOR FechaTexto IN ({$columnsList})
+            ) AS PivotTable
+            ORDER BY Hora;
+        ";
+    
+        return $this->sql->select($query, []);
+    }
+    
+    
 }   

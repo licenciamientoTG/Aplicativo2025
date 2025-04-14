@@ -1,0 +1,88 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Ventas por Hora Efectivo{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Ventas por Hora Efectivo{% endblock %}
+{% block content %}
+<style>
+    table thead .text-end {
+      font-size: .7rem;
+    }
+    #salesHourLineChart {
+    max-height: 400px;
+    height: 400px;
+}
+</style>
+
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between;" >
+    <div class="card col">
+        <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label" for="">Desde: </label>
+                        <input type="date" value="{{ 'first day of this month'|date('Y-m-d') }}" class="form-control form-control-sm" name="from" id="from" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" id="until" required>
+                    </div>
+                    <div class="col-2">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación" required>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}" {{ (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_sales_cash_hour" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+        </div>
+    </div>
+    
+</div>
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title">Ventas por Hora Efectivo</h5>
+    </div>
+
+    <div class="card-body table-responsive">
+
+        <table id="sales_cash_hour_table" class="table table-striped table-bordered table-hover table-sm w-100" >
+            <thead id="dynamicHeadersTable">
+                <!-- <tr>
+                    <th>Año</th>
+                </tr> -->
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot id="dynamicFootersTable">
+                <!-- <tr>
+                    <th>Año</th>
+                </tr> -->
+            </tfoot>
+        </table>
+    </div>
+</div>
+<div class="card mt-4">
+    <div class="card-body">
+        <h5 class="card-title">Ingresos por Hora (Comparativa por Día)</h5>
+        <canvas id="salesHourLineChart" class="w-100" style="max-height: 400px;"></canvas>
+    </div>
+</div>
+
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}operations.js"></script>
+<script>
+$('#seach_sales_cash_hour').on('click',async function() {
+    await sales_cash_hour_table();
+}); 
+
+</script>
+
+{% endblock %}

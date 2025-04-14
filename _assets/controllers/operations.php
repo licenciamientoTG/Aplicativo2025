@@ -179,6 +179,8 @@ class Operations{
      * @throws Exception
      */
     function tab_process(int $tabId, $island = false) : void {
+        ini_set('memory_limit', '256M');
+        ini_set('max_execution_time', 300);
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){ // Si el método de envío es GET
             try {
                 $blocked_tab = 0;
@@ -1964,6 +1966,34 @@ class Operations{
             }
         }
         json_output(array("data" => $data));
+    }
+    public function SalesHourCash() : void {
+        // Imprimimos el segmento de red del cliente
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $stations= array_filter($stations, function($station) {
+            return $station['cod'] != '0';
+        });
+        $stations = array_values($stations); // Reindexar el array después de filtrar
+       
+        echo $this->twig->render($this->route . 'SalesHourCash.html', compact('stations'));
+    }
+
+    function sales_cash_hour_table(){
+        $dinamicColumns = $_POST['dinamicColumns'];
+        $rows = $this->despachosModel->sales_cash_hour_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas']);
+        
+        $data=[];
+        foreach ($rows as $key => $row) {
+            $entry=[];
+                foreach ($dinamicColumns as $key => $column) {
+                    $colun_name = $column['data'];
+
+                    $entry[$colun_name] =  round($row[$colun_name],2);
+
+                }
+            $data[] = $entry;
+        }
+        echo json_encode(array("data" => $data));
     }
 
     public function get_estations() {

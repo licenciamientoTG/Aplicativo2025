@@ -310,7 +310,7 @@ class Accounting{
                 </form>
                 <form method="post" action="/accounting/excel_volumetrics/'. $from .'/'. $until .'">
                     <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
-                    <button type="input" class="btn btn-info">Excel</button>
+                    <button type="input" class="btn btn-info" '. (($volumetrics_data['Total_D'] == 0) ? 'disabled' : '') .' onClick="load_table();">Excel</button>
                 </form>
             </div>
             ';
@@ -409,6 +409,10 @@ class Accounting{
         }
     }
     function excel_volumetrics($from, $until) {
+        ini_set('memory_limit', '512M'); // puedes subir a 1024M si hace falta
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+
         $permisoCre = $_POST['permisoCre'] ?? null;
         if (!$permisoCre) {
             http_response_code(400);

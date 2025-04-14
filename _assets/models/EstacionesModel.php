@@ -186,67 +186,77 @@ class EstacionesModel extends Model{
             AND FileDate BETWEEN '{$from}' AND '{$until}';";
         return  (($rs = $this->sql->select($query))) ? $rs : false ;
     }
-    function sp_obtener_entregas_volumetricas_por_rango($permisoCRE, $fechaInicio, $fechaFin, $fileType) {
-        $spreadsheet = new Spreadsheet();
-        $spreadsheet->removeSheetByIndex(0); // Elimina la hoja por defecto
-    
-        try {
-            $inicio = new DateTime($fechaInicio);
-            $fin = new DateTime($fechaFin);
-        } catch (Exception $e) {
-            throw new Exception("Formato de fecha inválido");
-        }
-    
-        if ($inicio > $fin) {
-            throw new Exception("La fecha de inicio no puede ser mayor a la fecha de fin.");
-        }
-    
-        while ($inicio <= $fin) {
-            $fecha = $inicio->format('Y-m-d');
-    
-            try {
-                $resultadoDia = $this->sp_obtener_entregas_volumetricas($permisoCRE, $fecha, $fileType);
-    
-                if (!empty($resultadoDia)) {
-                    // Crear una hoja por día
-                    $hoja = $spreadsheet->createSheet();
-                    $hoja->setTitle(str_replace('-', '', $fecha)); // Excel no permite algunos caracteres
-    
-                    // Escribir encabezados si sabes la estructura de los datos
-                    $col = 1;
-                    foreach (array_keys($resultadoDia[0]) as $campo) {
-                        $hoja->setCellValueByColumnAndRow($col, 1, $campo);
-                        $col++;
-                    }
-    
-                    // Escribir los datos
-                    $row = 2;
-                    foreach ($resultadoDia as $fila) {
-                        $col = 1;
-                        foreach ($fila as $valor) {
-                            $hoja->setCellValueByColumnAndRow($col, $row, $valor);
-                            $col++;
-                        }
-                        $row++;
-                    }
-                }
-    
-            } catch (Exception $e) {
-                error_log("Error en $fecha: " . $e->getMessage());
-            }
-    
-            $inicio->modify('+1 day');
-        }
-    
-        // Descargar el archivo Excel
-        $writer = new Xlsx($spreadsheet);
-        $fileName = "entregas_volumetricas_" . date('Ymd_His') . ".xlsx";
-    
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header("Content-Disposition: attachment; filename=\"$fileName\"");
-        $writer->save("php://output");
-        exit;
+
+function sp_obtener_entregas_volumetricas_por_rango($permisoCRE, $fechaInicio, $fechaFin, $fileType)     {
+
+    set_time_limit(0);
+    ini_set('max_execution_time', 0);
+    $spreadsheet = new Spreadsheet();
+    $spreadsheet->removeSheetByIndex(0); // Elimina hoja por defecto
+
+    try {
+        $inicio = new DateTime($fechaInicio);
+        $fin = new DateTime($fechaFin);
+    } catch (Exception $e) {
+        throw new Exception("Formato de fecha inválido");
     }
+
+    if ($inicio > $fin) {
+        throw new Exception("La fecha de inicio no puede ser mayor a la fecha de fin.");
+    }
+
+    while ($inicio <= $fin) {
+        $fecha = $inicio->format('Y-m-d');
+
+        try {
+            $resultadoDia = $this->sp_obtener_entregas_volumetricas($permisoCRE, $fecha, $fileType);
+
+            if (!empty($resultadoDia)) {
+                $titulo = str_replace('-', '', $fecha);
+
+                // Crear y activar hoja
+                $hoja = new Worksheet($spreadsheet, $titulo);
+                $spreadsheet->addSheet($hoja);
+                $spreadsheet->setActiveSheetIndex($spreadsheet->getIndex($hoja));
+                $hoja = $spreadsheet->getActiveSheet();
+
+                // Encabezados
+                $col = 1;
+                $row = 1;
+                foreach (array_keys($resultadoDia[0]) as $campo) {
+                    $hoja->setCellValue([$col++, $row], $campo);
+                }
+
+                // Datos
+                $row = 2;
+                foreach ($resultadoDia as $fila) {
+                    $col = 1;
+                    foreach ($fila as $valor) {
+                        $hoja->setCellValue([$col++, $row], $valor);
+                    }
+                    $row++;
+                }
+            }
+
+        } catch (Exception $e) {
+            error_log("Error en $fecha: " . $e->getMessage());
+        }
+
+        $inicio->modify('+1 day');
+    }
+
+    // Descargar el archivo Excel
+    $writer = new Xlsx($spreadsheet);
+    $fileName = "entregas_volumetricas_" . date('Ymd_His') . ".xlsx";
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header("Content-Disposition: attachment; filename=\"$fileName\"");
+    $writer->save("php://output");
+    exit;
+}
+
+
+
     function sp_obtener_entregas_volumetricas($permisoCRE, $fecha, $fileType)
     {
         $params = [$permisoCRE, $fecha, $fileType];

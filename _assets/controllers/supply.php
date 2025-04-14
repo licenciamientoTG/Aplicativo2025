@@ -730,9 +730,7 @@ class Supply{
     function frmCapturaProveedor() {
         // Verifica si la petición es de tipo POST
         if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
-            echo '<pre>';
-            var_dump($_POST);
-            die();
+           
             // Recibe los datos del formulario (productos, proveedor, precios, etc.)
             $controlGasStationId      = $_POST['codgas'];
             $ProductoId               = $_POST['creProductId'];

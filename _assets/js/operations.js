@@ -2507,3 +2507,320 @@ async function sale_day_base_table(){
         }
     });
 }
+
+
+
+
+
+
+
+
+
+
+async function sales_cash_hour_table(){
+    let chartAlreadyDrawn = false;
+
+    if ($.fn.DataTable.isDataTable('#sales_cash_hour_table')) {
+        $('#sales_cash_hour_table').DataTable().destroy();  // Destruye la tabla existente
+        $('#sales_cash_hour_table thead').empty(); // Limpia el encabezado
+        $('#sales_cash_hour_table tbody').empty(); // Limpia el cuerpo
+        $('#sales_cash_hour_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('codgas').value;
+    if(codgas == ''){
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Seleccione una estacion</p>
+            </div>
+            `);
+            return;
+    }
+
+    var dynamicColumns = getHourDateColumns(fromDate, untilDate, 'sales_cash_hour_table');
+    updateTableHeadersByDay(fromDate, untilDate, 'sales_cash_hour_table');
+
+
+    let sales_cash_hour_table =$('#sales_cash_hour_table').DataTable({
+        order: [0, "asc"],
+        colReorder: false,
+        // columnDefs: [{ visible: true, targets: groupColumn }],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        // pageLength: 150,
+        scrollX: true,
+        paging: false,
+        fixedColumns: {
+            leftColumns: 1,
+        },
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: { 
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas,
+                'dinamicColumns': dynamicColumns
+            },
+            url: '/operations/sales_cash_hour_table',
+            error: function() {
+                $('#sales_cash_hour_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            complete: function () {
+                $('.table-responsive').removeClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: dynamicColumns,
+        destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+            // Calcular máximo por columna una sola vez
+            if (!window.columnMaxValues) {
+                window.columnMaxValues = {};
+                this.api().columns().every(function (colIndex) {
+                    if (colIndex === 0) return; // Saltar 'Hora'
+                    let max = 0;
+                    this.data().each(function (value) {
+                        let numericVal = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.-]+/g, '')) : value;
+                        numericVal = isNaN(numericVal) ? 0 : numericVal;
+                        if (numericVal > max) {
+                            max = numericVal;
+                        }
+                    });
+                    window.columnMaxValues[colIndex] = max;
+                });
+            }
+            // Aplicar clase a la celda si es igual al valor máximo de su columna
+            $('td', row).each(function (i) {
+                if (i === 0) return; // Saltar columna 'Hora'
+                const cellText = $(this).text().replace(/[^0-9.-]+/g, '');
+                const cellValue = parseFloat(cellText);
+                const isMax = !isNaN(cellValue) && cellValue === window.columnMaxValues[i];
+        
+                if (isMax) {
+                    $(this).addClass('bg-success text-white fw-bold');
+                }
+            });
+        },        
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            window.columnMaxValues = null;
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    }).on('xhr.dt', function (e, settings, json, xhr) {
+        if (json && json.data && !chartAlreadyDrawn) {
+            drawSalesHourChart(json.data);
+            chartAlreadyDrawn = true;
+        }
+    });
+    $('#filtro-sales_cash_hour_table input').on('keyup  change clear', function () {
+        sales_cash_hour_table
+            .column(0).search($('#Empresa4').val().trim())
+            .column(1).search($('#Descripcion4').val().trim())
+            .column(2).search($('#MedioPago4').val().trim())
+            .draw();
+      });
+      $('.sales_cash_hour_table').on('click', function () {
+        chartAlreadyDrawn = false;
+        sales_cash_hour_table.clear().draw();
+        sales_cash_hour_table.ajax.reload();
+        $('#sales_cash_hour_table').waitMe('hide');
+    });
+}
+
+function getHourDateColumns(fromDate, untilDate, tableId) {
+    const startDate = new Date(fromDate + "T00:00:00");
+    const endDate = new Date(untilDate + "T00:00:00");
+    const columns = [];
+
+    // Columna fija: hora
+    columns.push({ data: 'Hora', title: 'Hora', className: 'text-center table-info' });
+
+    const formatDate = (date) => {
+        return date.toISOString().split('T')[0]; // formato yyyy-mm-dd
+    };
+
+    const formatTitle = (date) => {
+        return date.toLocaleDateString('es-MX', { weekday: 'short', day: '2-digit' });
+        // Ejemplo: 'lun. 03'
+    };
+
+    const dateIterator = new Date(startDate);
+    while (dateIterator <= endDate) {
+        const dateKey = formatDate(dateIterator);     // '2024-06-01'
+        const dateTitle = formatTitle(dateIterator);  // 'lun. 01'
+
+        columns.push({
+            data: dateKey,
+            title: dateTitle.charAt(0).toUpperCase() + dateTitle.slice(1), // Capitaliza la primera letra
+            render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+            className: 'text-end text-nowrap'
+        });
+
+        dateIterator.setDate(dateIterator.getDate() + 1);
+    }
+
+    return columns;
+}
+function updateTableHeadersByDay(fromDate, untilDate, tableId) {
+    const startDate = new Date(fromDate + "T00:00:00");
+    const endDate = new Date(untilDate + "T00:00:00");
+
+    let theadHTML = '<tr><th>Hora</th>';
+    let tfootHTML = '<tr><th>Hora</th>';
+
+    const formatDate = (date) => {
+        return date.toISOString().split('T')[0];
+    };
+
+    const dateIterator = new Date(startDate);
+    while (dateIterator <= endDate) {
+        const dateKey = formatDate(dateIterator);
+        theadHTML += `<th>${dateKey}</th>`;
+        tfootHTML += `<th></th>`;
+        dateIterator.setDate(dateIterator.getDate() + 1);
+    }
+
+    theadHTML += '</tr>';
+    tfootHTML += '</tr>';
+
+    const table = document.getElementById(tableId);
+    table.getElementsByTagName('thead')[0].innerHTML = theadHTML;
+    table.getElementsByTagName('tfoot')[0].innerHTML = tfootHTML;
+}
+function drawSalesHourChart(data) {
+    // Obtener etiquetas (horas) desde el primer objeto
+    const horas = data.map(row => row.Hora.toString().padStart(2, '0')); // ['00', '01', ... '23']
+
+    // Obtener los días (claves distintas de 'Hora')
+    const allKeys = Object.keys(data[0]);
+    const dias = allKeys.filter(k => k !== 'Hora');
+    const promedioData = data.map(row => {
+        const valoresHora = dias.map(dia => {
+            const val = parseFloat((row[dia] || 0).toString().replace(/[^0-9.-]+/g, ''));
+            return isNaN(val) ? 0 : val;
+        });
+    
+        const suma = valoresHora.reduce((a, b) => a + b, 0);
+        return (suma / valoresHora.length).toFixed(2); // Promedio por hora
+    });
+    const datasets = [
+        {
+            label: 'Promedio horario',
+            data: promedioData,
+            borderColor: '#000000',
+            backgroundColor: '#000000',
+            borderDash: [5, 5],
+            fill: false,
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 0
+        },
+        // ...tus líneas por día vienen después
+        ...dias.map((dia, index) => {
+            const color = getRandomColor(index);
+            const valores = data.map(row => parseFloat((row[dia] || 0).toString().replace(/[^0-9.-]+/g, '')));
+    
+            // Encontrar la posición del máximo
+            const maxVal = Math.max(...valores);
+            const highlightPoints = valores.map(v => (v === maxVal ? 6 : 0)); // punto grande si es el mayor
+    
+            return {
+                label: dia,
+                data: valores,
+                borderColor: color,
+                backgroundColor: color,
+                fill: false,
+                tension: 0.3,
+                borderWidth: 2,
+                pointRadius: highlightPoints,
+                pointHoverRadius: highlightPoints.map(p => (p > 0 ? 8 : 4)),
+            };
+        })
+    ];
+    // Construir datasets por día
+    
+    // Destruir instancia anterior si existe
+    if (window.salesHourChartInstance) {
+        window.salesHourChartInstance.destroy();
+    }
+
+    const ctx = document.getElementById('salesHourLineChart').getContext('2d');
+    window.salesHourChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: horas,
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            stacked: false,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Ingresos por Hora (Comparativa por Día)'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                },
+                legend: {
+                    position: 'bottom'
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Hora'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: 'Monto en Pesos'
+                    },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+
+function getRandomColor(index) {
+    const colors = [
+        '#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8',
+        '#6f42c1', '#fd7e14', '#20c997', '#e83e8c', '#343a40'
+    ];
+    return colors[index % colors.length]; // Cicla si hay más días que colores
+}
