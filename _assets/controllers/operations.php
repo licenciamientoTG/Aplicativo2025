@@ -1406,7 +1406,6 @@ class Operations{
         }
         foreach ($sales as $sale) {
             foreach ($sale as $s) {
-                
                 // Crear un objeto DateTime a partir de la cadena de fecha
                 $date = DateTime::createFromFormat('Y-m-d H:i:s.u', $s['Fecha']);
                 $data[] = array(
