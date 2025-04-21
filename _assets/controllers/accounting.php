@@ -1,22 +1,4 @@
 <?php
-
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
-use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
-use PhpOffice\PhpSpreadsheet\Shared\Date;
-use PhpOffice\PhpSpreadsheet\NamedRange;
-use PhpOffice\PhpSpreadsheet\Settings;
-use PhpOffice\PhpSpreadsheet\Chart\Chart;
-use PhpOffice\PhpSpreadsheet\Chart\DataSeries;
-use PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues;
-use PhpOffice\PhpSpreadsheet\Chart\Legend;
-use PhpOffice\PhpSpreadsheet\Chart\PlotArea;
-use PhpOffice\PhpSpreadsheet\Chart\Title;
-use PhpOffice\PhpSpreadsheet\Helper\Sample;
-use PhpOffice\PhpSpreadsheet\Reader\IReader;
 class Accounting{
     public $twig;
     public $route;
@@ -49,13 +31,6 @@ class Accounting{
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
             echo $this->twig->render($this->route . 'purchase_invoice.html', compact('first_date'));
-        }
-    }
-    public function supplier_payments() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-           
-            $first_date = date('Y-01-01');
-            echo $this->twig->render($this->route . 'supplier_payments.html', compact('first_date'));
         }
     }
     public function InvoiceConceptModal(){
@@ -217,71 +192,6 @@ class Accounting{
         }
     }
 
-    public function payments_table() {
-        set_time_limit(280);
-        header('Content-Type: application/json');
-        $fromDate = $_POST['fromDate'];
-        $untilDate = $_POST['untilDate'];
-
-        // Preparar los datos para enviar a la API externa
-        $postData = [
-            'fromDate' => $fromDate,
-            'untilDate' => $untilDate
-        ];
-        $ch = curl_init('http://192.168.0.3:388/api/pagos/get_pagos');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $apiData = json_decode($response, true);
-        if (count($apiData) > 0) {
-            foreach ($apiData as $row) {
-                $data[] = array(
-                    'num_doc'           => $row['num_doc'],
-                    'clave'             => $row['clave'],
-                    'id_prov'           => $row['id_prov'],
-                    'nom1'              => $row['nom1'],
-                    'cuenta'            => $row['cuenta'],
-                    'banco'             => $row['banco'],
-                    'Ref_num'           => $row['Ref_num'],
-                    'ref_ben'           => $row['ref_ben'],
-                    'fecha'             => $row['fecha'],
-                    'monto'             => $row['monto'],
-                    'cargo'             => $row['cargo'],
-                    'folio'             => $row['folio'],
-                    'fec_doc'           => $row['fec_doc'],
-                    'importe'           => $row['importe'],
-                    'imptos'            => $row['imptos'],
-                    'total'             => $row['total'],
-                    'aplicado'          => $row['aplicado'],
-                    'ptg_apl'           => $row['ptg_apl'],
-                    'uuid_i'            => $row['uuid_i'],
-                    'control'           => $row['control'],
-                    'Fecha_control'     => $row['Fecha_control'],
-                    'Fecha_vencimiento'=> $row['Fecha_vencimiento'],
-                    'can'               => $row['can'],
-                    'pre'               => $row['pre'],
-                    'mto'               => $row['mto'],
-                    'mtoiva'            => $row['mtoiva'],
-                    'total_control'            => $row['total_control'],
-                    'codgas'            => $row['codgas'],
-                    'codprd'            => $row['codprd'],
-                    'mtoori'            => $row['mtoori'],
-                    'producto'          => $row['producto'],
-                    'estacion'          => $row['estacion'],
-                );
-            }
-            $data = array("data" => $data);
-            echo json_encode($data);
-        } else {
-            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
-        }
-    }
-
     function volumetrics() {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             // La fecha inicial sera el primer dia del mes anterior
@@ -296,11 +206,14 @@ class Accounting{
         $data = [];
         $from = date('Y-m-01', strtotime('-1 month'));
         $until = date('Y-m-t', strtotime('-1 month'));
-
+    
         $stations = $this->estacionesModel->get_actives_stations();
         foreach ($stations as $key => $station) {
             $volumetrics_data = $this->estacionesModel->get_volumetrics($station['PermisoCRE'], $from, $until);
-
+            
+            // // Ejecutar script PSEXEC
+            // $psexec_result = $this->execute_volumetrics_script($station['Ip']);
+    
             $actions = '
             <div class="btn-group" role="group" aria-label="Basic mixed styles example">
                 <button type="button" class="btn btn-success" onclick="executeScript(\'' . $station['Ip'] . '\')">Generar</button>
@@ -308,13 +221,13 @@ class Accounting{
                     <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
                     <button type="input" class="btn btn-primary">Descargar</button>
                 </form>
-                <form method="post" action="/accounting/excel_volumetrics/'. $from .'/'. $until .'">
+                <form method="post" action="/accounting/delete_volumetrics/'. $from .'/'. $until .'">
                     <input type="hidden" name="permisoCre" value="'. $station['PermisoCRE'] .'">
-                    <button type="input" class="btn btn-info" '. (($volumetrics_data['Total_D'] == 0) ? 'disabled' : '') .' onClick="load_table();">Excel</button>
+                    <button type="input" class="btn btn-danger">Eliminar</button>
                 </form>
             </div>
             ';
-
+    
             $data[] = array(
                 "name" => $station['Nombre'],
                 "permission_cre" => $station['PermisoCRE'],
@@ -325,7 +238,7 @@ class Accounting{
                 "actions" => $actions
             );
         }
-
+    
         json_output(array("data" => $data));
     }
 
@@ -388,72 +301,26 @@ class Accounting{
 
             // Ruta completa al ejecutable C# compilado
             $exePath = 'C:\\Software\\Scripts\\ExecSGCV\\bin\\Release\\net9.0\\win-x64\\ExecSGCV.exe';
-
+            
             // Construir el comando usando escapeshellarg para cada parte
             $cmd = escapeshellarg($exePath) . ' ' . escapeshellarg($remoteIP) . ' ' . escapeshellarg($user) . ' ' . escapeshellarg($password) . ' 2>&1';
-
+            
             // Ejecuta el comando y captura la salida en un array y el código de retorno
             $output = [];
             $returnVar = 0;
             exec($cmd, $output, $returnVar);
-
+            
             echo "<pre>";
             echo "Comando ejecutado: " . $cmd . "\n\n";
             echo "Código de retorno: " . $returnVar . "\n\n";
             echo "Salida:\n" . implode("\n", $output);
             echo "</pre>";
-
+            
             return $output;
         } else {
             echo "No se ha recibido ningún POST.";
         }
     }
-    function excel_volumetrics($from, $until) {
-        ini_set('memory_limit', '512M'); // puedes subir a 1024M si hace falta
-        set_time_limit(0);
-        ini_set('max_execution_time', 0);
+    
 
-        $permisoCre = $_POST['permisoCre'] ?? null;
-        if (!$permisoCre) {
-            http_response_code(400);
-            echo "Falta el permiso CRE";
-            return;
-        }
-    
-        try {
-            $spreadsheet = $this->estacionesModel->sp_obtener_entregas_volumetricas_por_rango(
-                $permisoCre, $from, $until, 'D'
-            );
-
-            if (!$spreadsheet instanceof Spreadsheet) {
-                throw new Exception("The function sp_obtener_entregas_volumetricas_por_rango did not return a valid Spreadsheet object.");
-            }
-    
-            $writer = new Xlsx($spreadsheet);
-            $fileName = "entregas_" . date('Ymd_His') . ".xlsx";
-            $filePath = __DIR__ . "/../../../tmp_excel/" . $fileName;
-    
-            // Asegúrate de que exista la carpeta tmp_excel y tenga permisos
-            if (!is_dir(dirname($filePath))) {
-                mkdir(dirname($filePath), 0777, true);
-            }
-    
-            // Guardar archivo en disco primero
-            $writer->save($filePath);
-    
-            // Enviar archivo al navegador
-            header("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-            header("Content-Disposition: attachment; filename=\"$fileName\"");
-            header("Content-Length: " . filesize($filePath));
-    
-            readfile($filePath);
-            unlink($filePath); // opcional: eliminar archivo después de descargar
-            exit;
-    
-        } catch (Exception $e) {
-            http_response_code(500);
-            echo "Error generando Excel: " . $e->getMessage();
-        }
-    }
-    
-}    
+}

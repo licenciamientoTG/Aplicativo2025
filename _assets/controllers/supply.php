@@ -610,7 +610,7 @@ class Supply{
         // Arreglo común para renderizar la vista
         $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
 
-        if (!empty($_GET['company'])) {
+        if (!empty($companyRfc)) {
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
             $twigVars['codgas_string'] = $codgas_string;
