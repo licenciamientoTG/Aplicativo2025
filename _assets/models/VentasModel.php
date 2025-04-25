@@ -1030,8 +1030,8 @@ class VentasModel extends Model{
     }
     function getSalesMonthTotal($from, $until, $zona, $turn, $total) {
      
-        $fromstring = date('Y-m-d', strtotime($from));
-        $untilstring = date('Y-m-d', strtotime($until));
+        $fromstring = date('Y-d-m', strtotime($from));
+        $untilstring = date('Y-d-m', strtotime($until));
     
         $zona_query = "";
         if (!empty($zona) && $zona != 0) {
@@ -1075,7 +1075,7 @@ class VentasModel extends Model{
         if ($total == 1) {
             $group_total = ' GROUPING SETS (
                 (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal), v.nrotur, T3.den, isd.codgas, g.abr, v.codprd),
-                (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal), isd.codgas, g.abr)
+                (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal),v.nrotur, isd.codgas, g.abr)
             )';
         }
        
@@ -1126,11 +1126,10 @@ class VentasModel extends Model{
                 FOR Fecha IN ($pivotColumns)
             ) AS PivotTable
              ) AS FinalResult
-            ORDER BY  CodGasolinera,Producto,codprd
+            ORDER BY  CodGasolinera,codprd desc
 
         ";
 
-       
         return $this->sql->select($query, []);
 
     }
@@ -1479,7 +1478,7 @@ class VentasModel extends Model{
                     SELECT 
                         Zona,
                         CASE 
-							WHEN GROUPING(Estacion) = 1 THEN 'Total ' + Zona
+							WHEN GROUPING(Estacion) = 1 THEN 'Total'
 							ELSE Estacion 
 						END as Estacion,
                         CodGasolinera,
@@ -1506,8 +1505,6 @@ class VentasModel extends Model{
                 ) AS ptv
                 ORDER BY Zona,Estacion asc;
             ";
-          
-
         return $this->sql->select($query, []);
     }
 
@@ -1559,9 +1556,18 @@ class VentasModel extends Model{
 						when T3.den ='   T-Super Premium' then 'T-Super Premium'
 						when T3.den =' Gasolina Premium Mayor o Igual a 91 Octanos' then 'T-Super Premium'
 						when T3.den ='   Diesel Automotriz' then 'Diesel Automotriz'
-						else 'diferente'
+						else 'Total Turno'
 						end
 						as 'product',
+                          case
+						when v.codprd =179 then 179
+						when v.codprd =192 then 179
+						when v.codprd =193 then 180
+						when v.codprd =180 then 180
+						when v.codprd =181 then 181
+						else 000
+						end
+						as 'codprd',
                         LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                         sum(canven) AS VentasReales,
                         fch
@@ -1574,11 +1580,17 @@ class VentasModel extends Model{
                         AND {$producto}
                         AND {$shift}
                     GROUP BY
-                        fch,
+                        GROUPING SETS (
+					(fch,
                         isd.codgas,
                         T3.den,
                         nrotur,
-                        codprd
+                        v.codprd),
+					(fch,
+                        isd.codgas,
+                        nrotur
+                        )
+					)
                 )
                 SELECT 
                     fch,
@@ -1586,20 +1598,108 @@ class VentasModel extends Model{
                     mounth,
                     day1,
                     turn,
+                    codprd,
                     [product],
                      {$columnsList}
                 FROM 
-                    (SELECT fch,Fecha, [year], day1,mounth, turn, [product], CodGasolinera, VentasReales
+                    (SELECT fch,Fecha, [year], day1,mounth, turn, [product], CodGasolinera, VentasReales,[codprd]
                     FROM SalesData) AS SourceTable
                 PIVOT
                 (
                     SUM(VentasReales)
                     FOR CodGasolinera IN ( {$columnsList})
                 ) AS PivotTable
-                ORDER BY fch desc, turn, [product];";
+                ORDER BY fch desc, turn, codprd desc";
+            
 
         return $this->sql->select($query, []);
 
+    }
+
+    function GetSalesGlobalTotal($from, $until,$zona){
+        $fromInt = dateToInt($from);
+        $untilInt = dateToInt($until);
+
+        $query = "WITH ValuesTable AS (
+                        SELECT  
+                            CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103) AS Fecha,
+                            DATEPART(ISO_WEEK, CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103)) AS Semana,
+                            CASE 
+                                WHEN DATEPART(ISO_WEEK, CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103)) = 1
+                                AND DATEPART(MONTH,   CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103)) = 12
+                                THEN DATEPART(YEAR,    CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103)) + 1
+                                ELSE DATEPART(YEAR,    CONVERT(date, CONVERT(smalldatetime, fch - 1, 103), 103))
+                            END AS año,
+                            CASE
+                                WHEN T3.den IN (
+                                '   T-Maxima Regular',
+                                ' Gasolina Regular Menor a 91 Octanos'
+                                ) THEN 'T-Maxima Regular'
+                                WHEN T3.den IN (
+                                '   T-Super Premium',
+                                ' Gasolina Premium Mayor o Igual a 91 Octanos'
+                                ) THEN 'T-Super Premium'
+                                WHEN T3.den = '   Diesel Automotriz' THEN 'Diesel Automotriz'
+                                ELSE 'Total Turno'
+                            END AS product,
+                            SUM(v.canven) AS VentasReales
+                        FROM [SG12].[dbo].[Ventas] v
+                        INNER JOIN ISLAS   isd ON v.codisl = isd.cod 
+                        INNER JOIN Productos T3 ON v.codprd = T3.cod
+                        WHERE fch BETWEEN $fromInt AND $untilInt
+                        AND codprd IN (179,180,181,2,3,1,192,193)
+                        GROUP BY
+                        T3.den, fch
+                    ),
+                    PivotData AS (
+                        SELECT año, Semana,
+                            [T-Maxima Regular],
+                            [T-Super Premium],
+                            [Diesel Automotriz]
+                        FROM (
+                        SELECT año, Semana, product, VentasReales
+                        FROM ValuesTable
+                        ) src
+                        PIVOT (
+                        SUM(VentasReales)
+                        FOR product IN (
+                            [T-Maxima Regular],
+                            [T-Super Premium],
+                            [Diesel Automotriz]
+                        )
+                        ) AS pvt
+                    ),
+                    WeekRange AS (
+                        SELECT
+                        año,
+                        Semana,
+                        MIN(Fecha) AS FechaInicio,
+                        MAX(Fecha) AS FechaFin
+                        FROM ValuesTable
+                        GROUP BY año, Semana
+                    )
+                    -- 3) Unimos ambos resultados y concatenamos la cadena “dd/mm/yyyy – dd/mm/yyyy”
+                    SELECT
+                    p.año,
+                    p.Semana,
+                    CONVERT(varchar(10), w.FechaInicio, 103)
+                        + ' – '
+                        + CONVERT(varchar(10), w.FechaFin,    103)
+                        AS RangoSemana,
+                    ISNULL(p.[T-Maxima Regular],  0) AS [Regular],
+                    ISNULL(p.[T-Super Premium],   0) AS [Super],
+                    ISNULL(p.[Diesel Automotriz], 0) AS [Diesel],
+                    -- la suma total de las tres
+                    ISNULL(p.[T-Maxima Regular],0)
+                    + ISNULL(p.[T-Super Premium],0)
+                    + ISNULL(p.[Diesel Automotriz],0) AS TotalVentas
+                    FROM PivotData p
+                    JOIN WeekRange w
+                    ON p.año   = w.año
+                    AND p.Semana = w.Semana
+                    ORDER BY p.año, p.Semana;
+                    ";
+        return $this->sql->select($query, []);
     }
 
     function get_sales_day_trn($from, $until,$id_shift,$id_producto,$estaciones){
@@ -1657,18 +1757,19 @@ class VentasModel extends Model{
                         AND {$producto}
                         AND {$shift}
                     GROUP BY
-                        fch,
-                        isd.codgas,
-                        T3.den,
-                        nrotur,
-                        codprd
+                         GROUPING SETS (
+					( fch,isd.codgas,T3.den,nrotur),
+					(fch,isd.codgas,T3.den))
                 )
                 SELECT 
                     fch,
                     [year],
                     mounth,
                     day1,
-                    turn,
+                    case
+					when turn is not null then turn
+					else 'Total'
+					end as turn,
                      {$columnsList}
                 FROM 
                     (SELECT fch,Fecha, [year], day1,mounth, turn,  CodGasolinera, VentasReales
@@ -1679,7 +1780,7 @@ class VentasModel extends Model{
                     FOR CodGasolinera IN ( {$columnsList})
                 ) AS PivotTable
                 ORDER BY fch desc, turn;";
-              
+
         return $this->sql->select($query, []);
     }
 }

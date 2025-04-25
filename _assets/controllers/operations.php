@@ -422,19 +422,26 @@ class Operations{
             $grupos[$codisl][] = $resultado;
             return $grupos;
         }, []);
-
-
+        
         if ($readings = $this->getInitialReadingsByIslands($codigoestacion, dateToInt($fechatabular), $turno, $islands)) {
+            // if ($_SESSION['tg_user']['Id'] == "6296") {
+            //     echo '<pre>';
+            //     var_dump($readings);
+            //     die();
+            // }
 
             $lecturasPorIsla = array_reduce($readings, function($grupos, $resultado) {
                 $codisl = $resultado['codisl'];
                 $grupos[$codisl][] = $resultado;
                 return $grupos;
             }, []);
+           
+
             $json = [
                 'html'  => $this->twig->render($this->route . 'salesTab.html', compact('tabId', 'codigoestacion', 'status', 'fechatabular', 'valoresPorIsla', 'lecturasPorIsla', 'LimiteFajilla', 'Total', 'turno', 'exchange_now', 'TotalPending', 'DBString', 'islands'))
             ];
         }
+       
         json_output($json);
 
     }
@@ -2015,6 +2022,7 @@ class Operations{
                     'day'     => $row['day1'],
                     'turn'    => $row['turn'],
                     'product' => $row['product'],
+                    'codprd'  => $row['codprd'],
                 ];
                 foreach ($estaciones as $estacion) {
                     $cod = $estacion['codigo'];

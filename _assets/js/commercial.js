@@ -90,10 +90,7 @@ function generateDateColumnsMystery(fromDate, untilDate) {
     // Iterar por semanas dentro del rango
     while (currentWeekStart <= endDate) {
         let year = currentWeekStart.getFullYear();
-        // let weekNumber = getISOWeekNumber(currentWeekStart);
         const { weekYear, weekNumber } = getISOWeekYearAndNumber(currentWeekStart);
-
-        // weekNumber= weekNumber.toString().padStart(2, '0');
 
         let weekStart = new Date(currentWeekStart);
         let weekEnd = new Date(currentWeekStart);
@@ -1485,6 +1482,12 @@ async function sale_week_zone_table(){
         destroy: true, 
         // rowId: 'id_grupo',
         createdRow: function (row, data, dataIndex) {
+            if (data['Estacion']=='Total') {
+                $('td:eq(0)', row).addClass('total_bg');
+                $('td:eq(1)', row).addClass('total_bg');
+
+                $('td:gt(1)', row).addClass('total_bg2');
+            }
         },
         initComplete: function () {
             // $('.dt-buttons').addClass('d-none');
@@ -1533,7 +1536,7 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         columns.push({
             data: data_monto,
             title: `Sem ${weekNumber} Monto`,
-            render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+            render: $.fn.dataTable.render.number(',', '.', 2),
             className: 'text-end text-nowrap '
         });
 
@@ -2770,4 +2773,140 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         .catch(error => console.error('Error:', error));
     
      }
+
+
+     async function sales_global_table(){
+        let chartAlreadyDrawn = false;
+
+        if ($.fn.DataTable.isDataTable('#sales_global_table')) {
+            $('#sales_global_table').DataTable().destroy();
+            $('#sales_global_table thead .filter').remove();
+        }
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
+        var zona = document.getElementById('zona').value;
     
+        $('#sales_global_table thead').prepend($('#sales_global_table thead tr').clone().addClass('filter'));
+        $('#sales_global_table thead tr.filter th').each(function (index) {
+            col = $('#sales_global_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#sales_global_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#sales_global_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let sales_global_table =$('#sales_global_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 50,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                    'zona':zona
+                },
+                url: '/commercial/sales_global_table',
+                error: function() {
+                    $('#sales_global_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+    
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+    
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                {'data': 'RangoSemana'},
+                {'data': 'Regular'},
+                {'data': 'Super'},
+                {'data': 'Diesel'},
+                {'data': 'Total'},
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+               
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+    
+            },
+            footerCallback: function (row, data, start, end, display) {
+            }
+        }).on('xhr.dt', function(e, settings, json){
+            if (json && json.data && !chartAlreadyDrawn) {
+              drawSalesGlobalChart(json.data);
+              chartAlreadyDrawn = true;
+            }
+        });
+
+    }
+    function drawSalesGlobalChart(data) {
+        // 1) Extraer etiquetas y series
+        const labels  = data.map(row => row.RangoSemana);
+        const regular = data.map(row => toNumber(row.Regular));
+        const premium = data.map(row => toNumber(row.Super));
+        const diesel  = data.map(row => toNumber(row.Diesel));
+      
+        // 2) Destruir chart previo si existía (v2.x)
+        if (window.salesGlobalChart && typeof window.salesGlobalChart.destroy === 'function') {
+          window.salesGlobalChart.destroy();
+        }
+      
+        // 3) Crear nuevo Chart.js
+        const ctx = document.getElementById('salesGlobalLineChart').getContext('2d');
+        window.salesGlobalChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              { label: 'Regular', data: regular, fill: false, tension: 0.2, borderWidth: 2, borderColor : '#009559', backgroundColor : '#009559'},
+              { label: 'Premium', data: premium, fill: false, tension: 0.2, borderWidth: 2, borderColor : '#92c5fc', backgroundColor : '#92c5fc'},
+              { label: 'Diesel',  data: diesel,  fill: false, tension: 0.2, borderWidth: 2, borderColor : '#000000', backgroundColor : '#000000'    }
+            ]
+          },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+              xAxes: [{ scaleLabel: { display: true, labelString: 'Semana' } }],
+              yAxes: [{ scaleLabel: { display: true, labelString: 'Litros'  }, ticks: { beginAtZero: true } }]
+            },
+            legend: { position: 'bottom' }
+          }
+        });
+      }
+      function toNumber(str) {
+        return parseFloat(
+          (str || '')
+            .toString()
+            .replace(/[^0-9\.\-]+/g, '')
+        ) || 0;
+      }
+      

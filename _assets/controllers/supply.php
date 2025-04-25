@@ -64,6 +64,7 @@ class Supply{
 
     function inventory_table($station_id) : void {
 
+
         $station_id = empty($station_id) ? 0 : $station_id;
         $data = [];
         if ($station_id == 0) {
@@ -71,7 +72,6 @@ class Supply{
         } else {
             $inventories = $this->tanquesModel->get_inventory_by_codgas($station_id);
         }
-
 
         if ($inventories) {
             foreach ($inventories as $inventory) {
@@ -644,11 +644,11 @@ class Supply{
                         );
                     }
                 }
-    
+
                 // Obtiene los productos actualizados
                 $products = $this->xsdEstacionServicioVolumenVendidoInventariosModel->getProductsByStations($codgas_string, $reportId);
                 $groupedData = [];
-    
+
                 // Agrupa los productos por estación y agrega la información de compras
                 foreach ($products as $item) {
                     $controlGasStationId = $item['controlGasStationId'];

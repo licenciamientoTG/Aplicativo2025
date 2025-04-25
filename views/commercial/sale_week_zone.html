@@ -3,13 +3,41 @@
 {% block mycss %}{% endblock %}
 {% block menutitle %}Venta Semana Zona{% endblock %}
 {% block content %}
+
+<style>
+    .total_bg{
+        background-color: #48A1C7 !important;
+        color: white !important;
+    }
+    .total_bg2{
+        background-color:#48A1C7 !important;
+        color: white !important;
+
+    }
+    .border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+</style>
+
 <div class="card">
     <div class="card-body">
 
             <div class="row">
                 <div class="col-2 ">
                     <label class="col-form-label-sm" for="">Desde: </label>
-                    <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date('Y-m-d') }}" required>
+                    <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                 </div>
                 <div class="col-2 ">
                     <label class="col-form-label-sm" for="">Hasta: </label>
@@ -35,7 +63,7 @@
                 </div>
             </div>
         </div>
-        <h5 class="card-title">Venta por semana</h5>
+        <h5 class="card-title">Venta por semana (Lts)</h5>
     </div>
 
     <div class="card-body table-responsive" >

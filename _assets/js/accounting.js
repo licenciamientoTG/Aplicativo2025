@@ -411,10 +411,11 @@ async function payments_table(){
         order: [0, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
+        // scrollY: '700px',
+        // scrollX: true,
+        // scrollCollapse: true,
+        paging: true,
+        pageLength: 100,
         // processing: true,  // Agregar esta línea
         // serverSide: true,  // Agregar esta línea
         buttons: [
@@ -462,6 +463,7 @@ async function payments_table(){
             { data: 'fecha', className: 'text-nowrap' },                 // Fecha del pago
             { data: 'monto', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
             { data: 'folio' },                                           // t8.id_doc
+            { data: 'folio_dr' },                                           // t8.id_doc
             { data: 'fec_doc' },
             { data: 'cargo', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
             { data: 'importe', render: $.fn.dataTable.render.number(',', '.', 2) },
@@ -470,7 +472,8 @@ async function payments_table(){
             { data: 'aplicado', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'ptg_apl', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'uuid_i', className: 'text-nowrap' },
-            { data: 'control' },                                         // Valor constante 'Control'
+            { data: 'control' },
+            { data: 'Factura' },
             { data: 'Fecha_control' },
             { data: 'Fecha_vencimiento' },
             { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },
@@ -486,9 +489,6 @@ async function payments_table(){
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
             if (parseInt(data['total']) !== parseInt(data['total_control'])) {
-                console.log(data['uuid_i']);
-                console.log(parseInt(data['total']));
-                console.log(parseInt(data['total_control']));
                 $('td:eq(19)', row).addClass('bg-danger');
             }
         },

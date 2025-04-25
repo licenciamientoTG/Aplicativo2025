@@ -57,6 +57,9 @@ class Commercial{
     public function sale_week_zone(){
         echo $this->twig->render($this->route . 'sale_week_zone.html');
     }
+    public function sales_global_total(){
+        echo $this->twig->render($this->route . 'sales_global_total.html');
+    }
     public function sales_indicators(){
         echo $this->twig->render($this->route . 'sales_indicators.html');
     }
@@ -81,6 +84,25 @@ class Commercial{
             $data[] = $entry;
         }
         echo json_encode(array("data" => $data));
+    }
+
+    public function sales_global_table() { 
+        if ($rows = $this->ventas->GetSalesGlobalTotal($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'])) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Semana'         => $row['Semana'],
+                    'RangoSemana'         => $row['RangoSemana'],
+                    'Regular'       => number_format($row['Regular'], 2),
+                    'Super'         => number_format($row['Super'], 2),
+                    'Diesel'        => number_format($row['Diesel'], 2),
+                    'Total'         => number_format($row['TotalVentas'], 2),
+                );
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
     }
     public function sale_month_turn_base_table() {
         if ($rows = $this->ventas->GetSalesMonthBase($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'])) {

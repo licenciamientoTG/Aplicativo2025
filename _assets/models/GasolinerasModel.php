@@ -129,7 +129,7 @@ class GasolinerasModel extends Model{
     function capture_prices($codprd, $fch, $hour, $pre, $iva, $codgas) : void {
         $this->sql->executeStoredProcedure('[TG].[dbo].[sp_capture_prices]', [$codprd, $fch, $hour, $pre, $iva, $codgas, $this->databases[$codgas]]);
     }
-    
+
     function get_estations_servidor() : array|false{
         $query = 'SELECT
                     t1.cod as codigo,

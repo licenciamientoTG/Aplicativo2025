@@ -288,6 +288,13 @@ class CotizacionesModel extends Model{
                 SELECT TOP (1) [codmda], [codgas], [fch], [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew] FROM [CG_15071].[dbo].[Cotizaciones]
                 WHERE codgas = 37 ORDER BY lognew DESC
             ')
+             UNION ALL
+            
+            SELECT TOP (1) [codmda], [codgas], [fch], CONCAT(RIGHT('00' + CAST(FLOOR(hra / 100) AS VARCHAR(2)), 2), ':', RIGHT('00' + CAST(hra % 100 AS VARCHAR(2)), 2)) AS hra_format, [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew], N'Praxedis' AS station_name, N'10702' AS no_station, N'Foranea' AS description
+            FROM OPENQUERY([192.168.40.101], '
+                SELECT TOP (1) [codmda], [codgas], [fch], [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew] FROM [E10702].[dbo].[Cotizaciones]
+                WHERE codgas = 40 ORDER BY lognew DESC
+            ')
           ) AS inner_cte
         )
         SELECT * FROM cte;

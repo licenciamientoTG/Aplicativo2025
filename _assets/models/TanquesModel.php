@@ -44,7 +44,9 @@ class TanquesModel extends Model{
     function get_inventory_by_codgas($station_id) : array | false {
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
+
         $query = "SELECT * FROM OPENQUERY({$this->linked_server[$station_id]}, 'SELECT * FROM {$this->short_databases[$station_id]}.[vw_tank_info]')";
+
         return $this->sql->select($query);
     }
 

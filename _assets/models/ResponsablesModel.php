@@ -143,6 +143,8 @@ class ResponsablesModel extends Model{
             UPDATE [192.168.37.101].[CG_15071].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
             -- Jesus Maria
             UPDATE [192.168.38.101].[CG_15901].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
+             -- Praxedis
+            UPDATE [192.168.40.101].[E10702].[dbo].[Responsables] SET [hab] = @hab WHERE [cod] = @cod;
         ";
         return (bool)$this->sql->update($query,[$cod]);
     }

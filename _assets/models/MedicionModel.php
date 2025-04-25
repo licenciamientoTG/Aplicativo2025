@@ -183,10 +183,26 @@ class MedicionModel extends Model{
                         t1.codprd,
                         ROUND(t1.canacu, 3) initialElectronicReading,
                         ROUND(t1.mtoacu, 2) amount,
-                        t2.volume finalElectronicReading,
-                        t2.amount finalAmount,
-                        ROUND(t1.canacu - t2.volume, 3) difference,
-                        ROUND(t1.mtoacu - t2.amount, 2) amountDifference,
+                       case 
+							WHEN t1.mtoacu  <1  THEN 0
+							else  t2.volume
+						END AS finalElectronicReading,
+						--t2.volume finalElectronicReading,
+						case 
+							WHEN t1.mtoacu <1 THEN 0
+							else  t2.amount
+						END AS finalAmount,
+						--t2.amount finalAmount,
+						case 
+							WHEN t1.mtoacu  <1  THEN 0
+							else   ROUND(t1.canacu - t2.volume, 3)
+						END AS [difference],
+						--ROUND(t1.canacu - t2.volume, 3) difference,
+						case 
+							WHEN t1.mtoacu  <1  THEN 0
+							else   ROUND(t1.mtoacu - t2.amount, 2) 
+						END AS [amountDifference],
+						--ROUND(t1.mtoacu - t2.amount, 2) amountDifference,
                         t2.codisl
                     FROM
                         {$this->short_databases[$CodigoEstacion]}.[Medicion] t1
@@ -201,7 +217,7 @@ class MedicionModel extends Model{
                             GROUP BY nrobom, codprd, codisl
                         ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
                     WHERE
-                        t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND t1.codisl IN($Islands)
+                        t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND  t1.codisl IN($Islands)  
                 
                     UNION ALL
                 
@@ -215,6 +231,10 @@ class MedicionModel extends Model{
                     WHERE t1.fchcor = {$next_date} AND t1.nrotur = {$next_shift} AND t1.codisl IN ({$Islands}) AND t1.codprd NOT IN (0,179,180,181,192,193)
                 ')
             ";
+            // echo '<pre>';
+            // var_dump($query);
+            // die();
+
         return ($this->sql->select($query, [])) ?: false ;
     }
 

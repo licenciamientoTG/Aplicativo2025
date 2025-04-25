@@ -2133,9 +2133,6 @@ async function sales_day_table(dynamicColumns){
         fixedColumns: {
             leftColumns: 5
         },
-        rowGroup: {
-            dataSrc: 'day' // Aquí defines la columna por la que se agruparán las filas (usa el nombre de tu data)
-        },
         buttons: [
             {
                 extend: 'excel',
@@ -2164,11 +2161,9 @@ async function sales_day_table(dynamicColumns){
 
             },
             beforeSend: function() {
-                console.log('Cargando tabla');
                 $('.table-responsive').addClass('loading');
             },
             complete: function (xhr, status) {
-                console.log('Ajax request completed with status:', status);
 
                 $('.table-responsive').removeClass('loading');
             }
@@ -2178,13 +2173,21 @@ async function sales_day_table(dynamicColumns){
         destroy: true, 
         rowId: 'year',
         createdRow: function (row, data, dataIndex) {
+            if (data['codprd']=='0') {
+                $('td:eq(0)', row).addClass('total_bg');
+                $('td:eq(1)', row).addClass('total_bg');
+
+                // Aplicar la clase 'total_bg2' al resto de las columnas
+                $('td:gt(1)', row).addClass('total_bg2');
+            }
 
         },
         initComplete: function (settings, json) {
             console.log('DataTable initialization complete');
-
             // $('.dt-buttons').addClass('d-none');
+
             $('.table-responsive').removeClass('loading');
+            
         },
         footerCallback: function (row, data, start, end, display) {
 
@@ -2337,27 +2340,13 @@ async function sales_day_table_shif(dynamicColumns){
         destroy: true, 
         rowId: 'year',
         createdRow: function (row, data, dataIndex) {
-            // if (dataIndex > 0) {
-                
-            //     console.log(dataIndex);
-            //     var previousRow = sales_day_table_shif.row(dataIndex - 1).data();
-    
-            //     var year = data.year;
-            //     var yearpre = previousRow.year;
-            //     console.log('year:', year);
-            //     console.log('previousRow:', previousRow.year);
-    
-            //     console.log('previousRow:', previousRow);
-            //     // console.log('previousRow:', previousRow[0]);
-            //     if (previousRow && year == yearpre) {
-            //         $('td:eq(0)', row).html('');
-            //     }
-            // }
-            // for (var i = 0; i < 4; i++) { // Aplicar a las primeras 4 columnas
-            //     if (previousRow && data[i] === previousRow[i]) {
-            //         $('td:eq(' + i + ')', row).html('');
-            //     }
-            // }
+            if (data['turn']=='Total') {
+                $('td:eq(0)', row).addClass('total_bg');
+                $('td:eq(1)', row).addClass('total_bg');
+
+                // Aplicar la clase 'total_bg2' al resto de las columnas
+                $('td:gt(1)', row).addClass('total_bg2');
+            }
         },
         initComplete: function (settings, json) {
             console.log('DataTable initialization complete');
