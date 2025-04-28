@@ -525,24 +525,27 @@ class Supply{
                 foreach ($codgas_products as $item) {
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
-                    $fechaReferencia = new DateTime('2025-04-02');
-                    $fechaActual = new DateTime(); // O usa la fecha que estés evaluando, por ejemplo: new DateTime($item['fecha'])
-                    if ($fechaActual > $fechaReferencia) {
-                        if (!is_null($item['controlGasProductId'])) {
-                            if ($recepcion = $this->movimientosTanModel->sp_obtener_recepciones_combustible($from, $item['codgas'], $item['controlGasProductId'])) {
-                                # Aqui vamos a almacenar las recepciones de combustibles
-                                $this->xsdEstacionServicioVolumenCompradoModel->insertOrUpdateVolumenComprado(
-                                    $reportId,
-                                    $estacionServicioVolumen['id'],
-                                    $item['codgas'],
-                                    $item['controlGasProductId'],
-                                    $recepcion[0]['VolumenRecibido'],
-                                    $recepcion[0]['nrotrn']
-                                );
-                            }
+                    if (!is_null($item['controlGasProductId'])) {
+                        if ($recepcion = $this->movimientosTanModel->sp_obtener_recepciones_combustible($from, $item['codgas'], $item['controlGasProductId'])) {
+                            $satdat = $recepcion[0]['satdat'];
+
+                            preg_match('/@t:([^@]*)/', $satdat, $matches);
+
+                            $transportistaCRE = isset($matches[1]) ? $matches[1] : '-------PENDIENTE-------';
+                            # Aqui vamos a almacenar las recepciones de combustibles
+                            $this->xsdEstacionServicioVolumenCompradoModel->insertOrUpdateVolumenComprado(
+                                $reportId,
+                                $estacionServicioVolumen['id'],
+                                $item['codgas'],
+                                $item['controlGasProductId'],
+                                $recepcion[0]['VolumenFacturado'],
+                                $recepcion[0]['nrotrn'],
+                                $transportistaCRE,
+                                $recepcion[0]['ProveedorCRE'],
+                                $recepcion[0]['pre']
+                            );
                         }
                     }
-
                     // Si no existe el registro en la tabla de inventarios vendidos, lo inserta o actualiza
                     if (!$this->xsdEstacionServicioVolumenVendidoInventariosModel->exists($reportId, $item['controlGasStationId'], $item['controlGasProductId'])) {
                         $this->xsdEstacionServicioVolumenVendidoInventariosModel->insertOrUpdateRow(
@@ -563,6 +566,11 @@ class Supply{
 
                 // Obtiene los productos actualizados
                 $products = $this->xsdEstacionServicioVolumenVendidoInventariosModel->getProductsByStations($codgas_string, $reportId);
+                if ($_SESSION['tg_user']['Id'] == 6177) {
+                echo '<pre>';
+                var_dump($products);
+                die();
+                }
                 $groupedData = [];
 
                 // Agrupa los productos por estación y agrega la información de compras

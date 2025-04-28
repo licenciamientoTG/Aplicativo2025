@@ -218,9 +218,8 @@ class MedicionModel extends Model{
                         ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
                     WHERE
                         t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND  t1.codisl IN($Islands)  
-                
+
                     UNION ALL
-                
                     SELECT
                         t1.nrobom, t5.den Producto, t1.codprd, 0 AS initialElectronicReading, t1.mto AS amount, 0 AS finalElectronicReading, t1.mto finalAmount, 0 AS difference, 0 AS amountDifference, t1.codisl
                     FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1

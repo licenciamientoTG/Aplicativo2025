@@ -45,13 +45,13 @@
                 <table class="table table-sm">
                     <thead>
                         <tr>
-                            <th class="w-35">Producto</th>
+                            <th class="w-15">Producto</th>
                             <th>Inventario inicial</th>
                             <th>Volumen vendido</th>
                             <th>Inventario final</th>
                             <th>Mermas</th>
                             <th>Compras</th>
-                            {# <th class="w-10">Acciones</th> #}
+                            <th class="w-10">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -84,12 +84,12 @@
 
                                     {# <p class="p-0 m-0">Total recibido: {{ product.TotalVolumenComprado }}</p></p> #}
                                 </td>
-                                {# <td>
+                                <td>
                                     <div class="btn-group" role="group" aria-label="Basic example">
                                         <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal" data-saldoinicial="{{ product.SaldoInicial }}" data-ventas="{{ product.Ventas }}" data-saldofinal="{{ product.SaldoFinal }}" data-codgas="{{ product.controlGasStationId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" data-merma="{{ product.merma }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
-                                        <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="{{ product.id }}" data-codgas="{{ product.controlGasStationId }}" data-controlGasProductId="{{ product.controlGasProductId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button>
+                                        {# <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="{{ product.id }}" data-codgas="{{ product.controlGasStationId }}" data-controlGasProductId="{{ product.controlGasProductId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button> #}
                                     </div>
-                                </td> #}
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>

@@ -152,7 +152,13 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
 
     function getPurchaseByProduct2($xsdReportesVolumenesId, $xsdEstacionServicioVolumenId, $controlGasProductId) {
         $purchase = "";
-        $query = "SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] WHERE xsdReportesVolumenesId = {$xsdReportesVolumenesId} AND xsdEstacionServicioVolumenId = {$xsdEstacionServicioVolumenId} AND controlGasProductId = {$controlGasProductId};";
+        $query = "SELECT
+                        t1.*, t2.den ProveedorCRE
+                    FROM
+                        [devTotalGas].[dbo].[xsdEstacionServicioVolumenComprado] t1
+	                    LEFT JOIN [SG12].[dbo].[Proveedores] t2 ON t1.permisoProveedorCRE = t2.nropcc
+                    WHERE
+                        t1.xsdReportesVolumenesId = {$xsdReportesVolumenesId} AND t1.xsdEstacionServicioVolumenId = {$xsdEstacionServicioVolumenId} AND t1.controlGasProductId = {$controlGasProductId};";
         $rs = $this->sql->select($query);
         if ($rs) {
             // Con este código se agrega la función de eliminar compra
@@ -164,7 +170,7 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
 
             // Con esta función eliminas la opcion de eliminar compra
             foreach ($rs as $row) {
-                $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['permisoProveedorCRE'] .')</a></p>';
+                $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['ProveedorCRE'] .')</a></p>';
             }
             return $purchase;
         } else {
@@ -189,7 +195,7 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
         return (bool)$this->sql->delete($query, [$id]);
     }
 
-    function insertOrUpdateVolumenComprado($reportId, $estacionServicioVolumenId, $codgas, $codprd, $VolumenRecibido, $controlGasNrotrn) {
+    function insertOrUpdateVolumenComprado($reportId, $estacionServicioVolumenId, $codgas, $codprd, $VolumenRecibido, $controlGasNrotrn,$transportistaCRE,$ProveedorCRE,$precio) {
         // Obtener el producto relacionado
         $product = $this->sql->select("SELECT * FROM [devTotalGas].[dbo].[creProductsByStations] WHERE [controlGasStationId] = ? AND [controlGasProductId] = ?;", [$codgas, $codprd]);
 
@@ -209,10 +215,12 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                     subProductoId = ?,
                     subproductoMarcaId = ?,
                     tipoCompra = 0,
+                    permisoProveedorCRE = ?,
                     volumenComprado = ?,
+                    precioCompraSinDescuento = ?,
                     recibioDescuento = 0,
                     pagoServicioFlete = 0,
-                    permisoTransportistaCRE = '-------PENDIENTE-------'
+                    permisoTransportistaCRE = ?
                 WHERE
                     controlGasNrotrn = ? AND controlGasStationId = ?;
             ";
@@ -222,7 +230,10 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                 $product[0]['creProductId'],
                 $product[0]['creSubProductId'],
                 $product[0]['creSubProductBrandId'],
+                $ProveedorCRE,
                 round($VolumenRecibido),
+                $precio,
+                $transportistaCRE,
                 $controlGasNrotrn,
                 $codgas
             ];
@@ -241,13 +252,15 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                 subProductoId,
                 subproductoMarcaId,
                 tipoCompra,
+                permisoProveedorCRE,
                 volumenComprado,
+                precioCompraSinDescuento,
                 recibioDescuento,
                 pagoServicioFlete,
                 permisoTransportistaCRE,
                 controlGasNrotrn
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, '-------PENDIENTE-------', ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 0, ?, ?);
         ";
 
         $params = [
@@ -258,7 +271,10 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
             $product[0]['creProductId'],
             $product[0]['creSubProductId'],
             $product[0]['creSubProductBrandId'],
+            $ProveedorCRE,
             round($VolumenRecibido),
+            $precio,
+            $transportistaCRE,
             $controlGasNrotrn
         ];
 
