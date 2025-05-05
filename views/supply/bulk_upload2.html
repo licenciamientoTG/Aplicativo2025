@@ -28,6 +28,16 @@
                 <div class="col">
                     <button id="submitButton" class="btn btn-primary btn-sm btn-block mt-4">Generar tablero</button>
                     <a href="/supply/bulkUpload2" class="btn btn-info btn-sm mt-4">Limpiar tablero</a>
+                    {% if(groupedData is defined) %}
+                        <!-- Botón para cargar XML -->
+                        <button type="button" class="btn btn-secondary btn-sm mt-4" data-bs-toggle="modal" data-bs-target="#uploadXmlModal" title="Cargar XML">
+                            <i class="bi bi-file-earmark-code"></i> XML ({{ xmlloaded }}) <!-- Icono de archivo de código -->
+                        </button>
+                        <!-- Botón para cargar PDF -->
+                        <button type="button" class="btn btn-secondary btn-sm mt-4" data-bs-toggle="modal" data-bs-target="#uploadPdfModal" title="Cargar PDF">
+                            <i class="bi bi-file-earmark-pdf"></i> ACUSE ({{ pdfloaded }})<!-- Icono de archivo PDF -->
+                        </button>
+                    {% endif %}
                 </div>
             </div>
         </form>
@@ -86,7 +96,7 @@
                                 </td>
                                 <td>
                                     <div class="btn-group" role="group" aria-label="Basic example">
-                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal" data-saldoinicial="{{ product.SaldoInicial }}" data-ventas="{{ product.Ventas }}" data-saldofinal="{{ product.SaldoFinal }}" data-codgas="{{ product.controlGasStationId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" data-merma="{{ product.merma }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
+                                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#editModal" data-saldoinicial="{{ product.SaldoInicial }}" data-ventas="{{ product.Ventas }}" data-saldofinal="{{ product.SaldoFinal }}" data-codgas="{{ product.controlGasStationId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" data-totalvolumencomprado="{{ product.TotalVolumenComprado }}" data-controlGasProductId="{{ product.controlGasProductId }}" data-merma="{{ product.merma }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></button>
                                         {# <button class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="{{ product.id }}" data-codgas="{{ product.controlGasStationId }}" data-controlGasProductId="{{ product.controlGasProductId }}" data-creProductId="{{ product.creProductId }}" data-creSubProductId="{{ product.creSubProductId }}" data-creSubProductBrandId="{{ product.creSubProductBrandId }}" type="button"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-plus align-middle"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></button> #}
                                     </div>
                                 </td>
@@ -123,24 +133,30 @@
                 <h1 class="modal-title fs-5" id="editModalLabel">Modificar inventario</h1>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form id="updateForm" method="post" action="/supply/updateForm">
+            <form id="updateForm" method="post" action="/supply/updateForm2">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="InventarioInicial" class="form-label">Inventario Inicial: </label>
                         <input type="number" step="1" min="0" max="200000" class="form-control" id="InventarioInicial" name="InventarioInicial">
+                        <small class="text-warning">La modificación de este valor impacta los registros de ControlGas. Proceda con responsabilidad.</small>
                     </div>
                     <div class="mb-3">
                         <label for="VolumenVendido" class="form-label">Ventas: </label>
-                        <input type="number" step="1" min="0" max="200000" class="form-control" id="VolumenVendido" name="VolumenVendido">
+                        <input type="number" step="1" min="0" max="200000" class="form-control" id="VolumenVendido" name="VolumenVendido" disabled>
+                    </div>
+                    <div class="mb-3">
+                        <label for="TotalVolumenComprado" class="form-label">Total Compras: </label>
+                        <input type="number" step="1" min="0" max="200000" class="form-control" id="TotalVolumenComprado" name="TotalVolumenComprado" disabled>
                     </div>
                     <div class="mb-3">
                         <label for="InventarioFinal" class="form-label">Inventario Final: </label>
                         <input type="number" step="1" min="0" max="200000" class="form-control" id="InventarioFinal" name="InventarioFinal">
+                        <small class="text-warning">La modificación de este valor impacta los registros de ControlGas. Proceda con responsabilidad.</small>
                     </div>
                     <div class="mb-3">
                         <label for="Merma" class="form-label">Merma: </label>
-                        <input type="number" step="1" max="200000" class="form-control" id="Merma" name="Merma">
-                        <small class="text-primary">Este dato no es relevante para la CRE</small>
+                        <input type="number" step="1" max="200000" class="form-control" id="Merma" name="Merma" disabled>
+                        <small class="text-primary">Este dato no es relevante para la CRE. Se calcula automáticamente a partir de la suma de las operaciones de inventario inicial, compras, ventas e inventario final.</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -149,6 +165,7 @@
                     <input type="hidden" name="creProductId" value="">
                     <input type="hidden" name="creSubProductId" value="">
                     <input type="hidden" name="creSubProductBrandId" value="">
+                    <input type="hidden" name="controlGasProductId" value="">
                     <button type="submit" class="btn btn-primary">Guardar cambios</button>
                     <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
                 </div>
@@ -192,36 +209,108 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="uploadXmlModal" tabindex="-1" aria-labelledby="uploadXmlModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/supply/uploadXml" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadXmlModalLabel">Subir archivo XML</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="xmlFile" class="form-label">Seleccionar archivo XML</label>
+                        <input class="form-control" type="file" id="xmlFile" name="xmlFile" accept=".xml" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="from" value="{{ from }}">
+                    <input type="hidden" name="companyDenominacion" value="{{ companyRfc }}">
+                    <button type="submit" class="btn btn-primary">Subir XML</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="uploadPdfModal" tabindex="-1" aria-labelledby="uploadPdfModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form action="/supply/uploadPdf" method="post" enctype="multipart/form-data">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadPdfModalLabel">Subir archivo PDF</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="pdfFile" class="form-label">Seleccionar archivo PDF</label>
+                        <input class="form-control" type="file" id="pdfFile" name="pdfFile" accept=".pdf" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <input type="hidden" name="from" value="{{ from }}">
+                    <input type="hidden" name="companyDenominacion" value="{{ companyRfc }}">
+                    <button type="submit" class="btn btn-primary">Subir PDF</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
 <script>
 
+    // Función para recalcular la Merma
+    function recalcularMerma() {
+        const inventarioInicial = parseFloat($('#InventarioInicial').val()) || 0;
+        const volumenVendido = parseFloat($('#VolumenVendido').val()) || 0;
+        const totalVolumenComprado = parseFloat($('#TotalVolumenComprado').val()) || 0;
+        const inventarioFinal = parseFloat($('#InventarioFinal').val()) || 0;
+        const mermaCalculada = (inventarioInicial - volumenVendido + totalVolumenComprado) - inventarioFinal;
+        $('#Merma').val(Math.round(mermaCalculada));
+    }
+
     // Cuando se abra el modal #editModal
     $('#editModal').on('show.bs.modal', function (event) {
-        // Obtener el botón que desencadenó el evento
         const button = $(event.relatedTarget);
-        // Extraer los datos de los atributos data-*
-        const saldoInicial = button.data('saldoinicial');
-        const ventas = button.data('ventas');
-        const saldoFinal = button.data('saldofinal');
-        const merma = button.data('merma');
+
+        const saldoInicial = button.data('saldoinicial') ?? 0;
+        const ventas = button.data('ventas') ?? 0;
+        const saldoFinal = button.data('saldofinal') ?? 0;
+        const totalvolumencomprado = button.data('totalvolumencomprado') ?? 0;
+
         const codgas = button.data('codgas');
         const creProductId = button.data('creproductid');
         const creSubProductId = button.data('cresubproductid');
         const creSubProductBrandId = button.data('cresubproductbrandid');
 
-        // Actualizar el contenido del modal
+        const controlgasproductid = button.data('controlgasproductid');
+
         const modal = $(this);
+
         modal.find('.modal-body input#InventarioInicial').val(Math.round(saldoInicial));
         modal.find('.modal-body input#VolumenVendido').val(Math.round(ventas));
+        modal.find('.modal-body input#TotalVolumenComprado').val(Math.round(totalvolumencomprado));
         modal.find('.modal-body input#InventarioFinal').val(Math.round(saldoFinal));
-        modal.find('.modal-body input#Merma').val(Math.round(merma));
-        // Vamos a agregar los valores de los atributos data-* al formulario
+
+        recalcularMerma(); // Calcular merma al abrir
+
         modal.find('.modal-footer input[name="codgas"]').val(codgas);
         modal.find('.modal-footer input[name="creProductId"]').val(creProductId);
         modal.find('.modal-footer input[name="creSubProductId"]').val(creSubProductId);
         modal.find('.modal-footer input[name="creSubProductBrandId"]').val(creSubProductBrandId);
+        modal.find('.modal-footer input[name="controlGasProductId"]').val(controlgasproductid);
+
+    });
+
+    // Detectar cambios en Inventario Inicial y Final
+    $('#InventarioInicial, #InventarioFinal').on('input', function () {
+        recalcularMerma();
     });
 
     // Cuando se abra el modal #addPurchaseModal
@@ -354,13 +443,19 @@
             contentType: false,
             success: function(response) {
                 if (response.status == 'success') {
-                    toastr.success(response.message, '¡Éxito!', { timeOut: 5000 });
+                    toastr.success(response.message, '¡Éxito!', { timeOut: 3000 });
                     $('#editModal').modal('hide');
                     // Ahora vamos a buscar el tr# con el id response.data.id y vamos a actualizar los valores de sus td
                     $(`tr#${response.data.id}`).find('td').eq(1).text(response.data.inventarioInicial);
                     $(`tr#${response.data.id}`).find('td').eq(2).text(response.data.volumenVendido);
                     $(`tr#${response.data.id}`).find('td').eq(3).text(response.data.inventarioFinal);
                     $(`tr#${response.data.id}`).find('td').eq(4).text(response.data.merma);
+                    // Ahora vamos a refrescar la pagina
+                    setTimeout(function() {
+                        location.reload();
+                        toastr.info('¡Recargando información!', 'Por favor espere...', { timeOut: 5000 });
+                        $('body').addClass('loading');
+                    }, 1000);
                 } else {
                     toastr.error()
                 }
@@ -384,7 +479,7 @@
             contentType: false,
             success: function(response) {
                 console.log(response);
-                if (response.status === 'success') {load
+                if (response.status === 'success') {
                     // Vamos a mostrar un mensaje de alerta
                     toastr.success(response.message, '¡Éxito!', { timeOut: 5000 });
                     // Vamos a cerrar el modal
@@ -392,7 +487,7 @@
                     // Aqui hacemos un reload
                     setTimeout(function() {
                         location.reload();
-                        $('body').addClass('loading');
+                        $('table').addClass('loading');
                     }, 1000);
                 } else {
                     // Vamos a mostrar un mensaje de alerta
@@ -480,6 +575,8 @@
         alertify.confirm('Eliminar compra', 'Está a punto de eliminar el registro de compra ¿Esta segur@?',
             function(){
                 // Vamos a redirigir la página a otra donde se hara el borrado
+                $('table').addClass('loading');
+                toastr.info('Eliminando compra...', 'Por favor espere...', { timeOut: 5000 });
                 window.location.href = `/supply/deletePurchase/${id}`;
             },
             function(){
@@ -495,6 +592,22 @@
 
     $(document).ready(function() {
         $('#PermisoProveedorCRE').selectpicker({ liveSearch: true });
+    });
+
+    // Cuando se abra el modal #uploadPdfModal vamos a limpiar el formulario
+    $('#uploadPdfModal').on('show.bs.modal', function (event) {
+        // Obtener el botón que desencadenó el evento
+        const button = $(event.relatedTarget);
+        // Limpiar el formulario
+        $('#uploadPdfModal form')[0].reset();
+    });
+
+    // Cuando se abra el modal #uploadXmlModal vamos a limpiar el formulario
+    $('#uploadXmlModal').on('show.bs.modal', function (event) {
+        // Obtener el botón que desencadenó el evento
+        const button = $(event.relatedTarget);
+        // Limpiar el formulario
+        $('#uploadXmlModal form')[0].reset();
     });
 </script>
 {% endblock %}

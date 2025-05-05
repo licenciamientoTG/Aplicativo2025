@@ -15,7 +15,7 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
     public $createdAt;
 
 
-    function insertOrUpdateRow($reportId,$xsdEstacionServicioVolumenId,$controlGasStationId,$controlGasProductId,$productoId,$subProductoId,$subproductoMarcaId,$inventarioInicial,$volumenVendido,$inventarioFinal, $merma) : array | false {
+    function insertOrUpdateRow($reportId,$xsdEstacionServicioVolumenId,$controlGasStationId,$controlGasProductId,$productoId,$subProductoId,$subproductoMarcaId,$inventarioInicial,$volumenVendido,$inventarioFinal, $merma) {
 
         // Vamos a verificar que $controlGasStationId no venga nulo o vacio, si viene nulo o vacio retornamos un false
         if (empty($controlGasStationId)) {
@@ -71,6 +71,32 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
         }
     }
 
+    function update_inventory_product2($id, $inventarioInicial, $inventarioFinal, $codgas, $codprd,$fchInt) : array | false {
+        $query = "UPDATE [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] SET inventarioInicial = ?, inventarioFinal = ? WHERE id = ?;";
+        $update = $this->sql->update($query, [$inventarioInicial, $inventarioFinal, $id]);
+        if ($update) {
+            // Aqui vamos a modificar el inventario inicial de la base de datos de corporativo
+            $query = "UPDATE [SG12].[dbo].[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
+            if ($this->sql->update($query, [$inventarioInicial, $codgas, $codprd, ($fchInt - 1)])) {
+                // Ahora si vamos a modificar el inventario de la estación
+                $query = "UPDATE {$this->databases[$codgas]}.[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
+                $this->sql->update($query, [$inventarioInicial, $codgas, $codprd, ($fchInt - 1)]);
+            }
+            
+            
+            // Aqui vamos a modificar el inventario final de la base de datos de corporativo
+            $query = "UPDATE [SG12].[dbo].[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
+            if ($this->sql->update($query, [$inventarioFinal, $codgas, $codprd, $fchInt])) {
+                // Ahora si vamos a modificar el inventario de la estación
+                $query = "UPDATE {$this->databases[$codgas]}.[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
+                $this->sql->update($query, [$inventarioFinal, $codgas, $codprd, $fchInt]);
+            }
+            return ($rs = $this->sql->select("SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] WHERE id = ?", [$id])) ? $rs[0] : false ;
+        } else {
+            return false;
+        }
+    }
+
     function getProductsByStations($codgas, $reportId) : array | false {
         $query = "
         SELECT
@@ -92,7 +118,7 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
             LTRIM(t7.den) AS controlGasProduct,
             t4.nombre AS subProduct,
             t5.nombre AS subProductBrand,
-            t8.TotalVolumenComprado
+            ISNULL(t8.TotalVolumenComprado, 0) AS TotalVolumenComprado
         FROM
             [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] t1
             LEFT JOIN [devTotalGas].[dbo].[creProductsByStations] t2 ON t1.controlGasStationId = t2.controlGasStationId AND t1.controlGasProductId = t2.controlGasProductId

@@ -1287,9 +1287,9 @@ class Operations{
     function sales() : void {
         $today_sales = $this->despachosModel->get_today_sales($this->todayInt);
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            $from = isset($_GET['from']) ? $_GET['from'] : date('Y-m-d');
-            $until = isset($_GET['until']) ? $_GET['until'] : date('Y-m-d');
-            echo $this->twig->render($this->route . 'sales.html', compact('today_sales', 'from', 'until'));
+            $from_date = isset($_GET['from']) ? $_GET['from'] : date('Y-m-d');
+            $until_date = isset($_GET['until']) ? $_GET['until'] : date('Y-m-d');
+            echo $this->twig->render($this->route . 'sales.html', compact('today_sales', 'from_date', 'until_date'));
         } else {
             $from        = dateToInt($_POST['from']);
             $until       = dateToInt($_POST['until']);
@@ -1404,8 +1404,10 @@ class Operations{
         $until  = $_GET['until'];
 
         $sales  = [];
+
         for ($i=$from; $i <= $until; $i++) {
             $response = $this->ventasModel->get_sales($i);
+
             $response[0]['Producto'] = 'Diesel Automotriz';
             $response[1]['Producto'] = 'T-Maxima Regular';
             $response[2]['Producto'] = 'T-Super Premium';

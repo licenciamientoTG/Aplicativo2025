@@ -241,6 +241,14 @@ class Accounting{
       
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
+                $total        = intval(floatval($row['total']));         // e.g. 123.99 → 123
+                $totalControl = intval(floatval($row['total_control'])); // e.g. 123.01 → 123
+            
+                // 2) Definimos el sufijo SI/NO
+                $status = ($total === $totalControl) ? 'SI' : 'NO';
+            
+                // 3) Concatenamos al control original
+                $controlText = $row['control'] . ' ' . $status;
                 $data[] = array(
                     'num_doc'           => $row['num_doc'],
                     'clave'             => $row['clave'],
@@ -262,7 +270,8 @@ class Accounting{
                     'ptg_apl'           => $row['ptg_apl'],
                     'uuid_i'            => $row['uuid_i'],
                     'folio_dr'            => $row['folio_dr'],
-                    'control'           => $row['control'],
+                    'control'           => $controlText,
+                    'control_estado'    => $status,
                     'Fecha_control'     => $row['Fecha_control'],
                     'Fecha_vencimiento'=> $row['Fecha_vencimiento'],
                     'can'               => $row['can'],
@@ -276,6 +285,7 @@ class Accounting{
                     'producto'          => $row['producto'],
                     'estacion'          => $row['estacion'],
                     'Factura'          => $row['Factura'],
+                    'documento'          => $row['documento'],
                 );
             }
             $data = array("data" => $data);

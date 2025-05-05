@@ -483,14 +483,16 @@ async function payments_table(){
             { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'total_control', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'producto' },                                        // t9.den
-            { data: 'estacion' }                                         // t9.abr
+            { data: 'estacion' },
+            { data: 'documento' }// t9.abr
         ],
         deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
-            if (parseInt(data['total']) !== parseInt(data['total_control'])) {
-                $('td:eq(19)', row).addClass('bg-danger');
-            }
+            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+            $('td:eq(19)', row)
+              .addClass(cls)
+              .text(data.control); // muestra “12345 SI” o “12345 NO”
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');

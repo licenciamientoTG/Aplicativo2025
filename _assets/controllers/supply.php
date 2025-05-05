@@ -491,6 +491,7 @@ class Supply{
 
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
+
         // Fechas
         $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
         $fiveDaysAgo = (new DateTime('-5 days'))->format('Y-m-d');
@@ -513,9 +514,31 @@ class Supply{
         $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
 
         if (!empty($_GET['company'])) {
+            // Vamos a verificar si existe un archivo en el servidor con el nombre $companyRfc_$from.xml
+            $fileName = $_GET['company'] . '_' . $_GET['from'] . '.xml';
+            $filePath = __DIR__ . '/../../_assets/uploads/creXMLs/' . $fileName;
+            if (file_exists($filePath)) {
+                $xmlloaded = 1;
+            } else {
+                $xmlloaded = 0;
+            }
+
+            // Ahora con un PDF
+            $fileName = $_GET['company'] . '_' . $_GET['from'] . '.pdf';
+            $filePath = __DIR__ . '/../../_assets/uploads/creAcuses/' . $fileName;
+            if (file_exists($filePath)) {
+                $pdfloaded = 1;
+            } else {
+                $pdfloaded = 0;
+            }
+            $twigVars['xmlloaded'] = $xmlloaded;
+            $twigVars['pdfloaded'] = $pdfloaded;
+
+
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
             $twigVars['codgas_string'] = $codgas_string;
+
             // Obtiene los productos asociados a las estaciones para la fecha indicada
             $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
             // Obtiene el reporte de volumen una sola vez
@@ -566,11 +589,6 @@ class Supply{
 
                 // Obtiene los productos actualizados
                 $products = $this->xsdEstacionServicioVolumenVendidoInventariosModel->getProductsByStations($codgas_string, $reportId);
-                if ($_SESSION['tg_user']['Id'] == 6177) {
-                echo '<pre>';
-                var_dump($products);
-                die();
-                }
                 $groupedData = [];
 
                 // Agrupa los productos por estación y agrega la información de compras
@@ -587,6 +605,8 @@ class Supply{
         } else {
             $twigVars['codgas_string'] = '';
         }
+
+
 
         // Renderiza la vista con todas las variables
         echo $this->twig->render($this->route . 'bulk_upload2.html', $twigVars);
@@ -735,10 +755,26 @@ class Supply{
         }
     }
 
+    function updateForm2() {
+        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+            $creProductId = $_POST['creProductId'];
+            $creSubProductId = $_POST['creSubProductId'];
+            $controlGasProductId = $_POST['controlGasProductId'];
+
+            $cabecera = $this->xsdReportesVolumenesModel->get_cabecera($_POST['from']);
+            $station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $_POST['codgas']);
+
+            $fchInt = dateToInt($_POST['from']);
+            if ($station_inventory = $this->xsdEstacionServicioVolumenVendidoInventariosModel->get_inventory_product($station['id'], $creProductId, $creSubProductId)) {
+                $data = $this->xsdEstacionServicioVolumenVendidoInventariosModel->update_inventory_product2($station_inventory['id'], $_POST['InventarioInicial'], $_POST['InventarioFinal'], $_POST['codgas'], $controlGasProductId,$fchInt);
+                json_output(['status' => 'success', 'message' => 'Datos actualizados correctamente', 'data' => $data]);
+            }
+        }
+    }
+
     function frmCapturaProveedor() {
         // Verifica si la petición es de tipo POST
         if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
-           
             // Recibe los datos del formulario (productos, proveedor, precios, etc.)
             $controlGasStationId      = $_POST['codgas'];
             $ProductoId               = $_POST['creProductId'];
@@ -993,11 +1029,106 @@ class Supply{
         $from = $_POST['from'];
 
         if ($reception = $this->xsdEstacionServicioVolumenCompradoModel->get_purchase($rowid)) {
+
             $suppliers = $this->creSuppliersModel->getRows();
             $html = $this->twig->render($this->route . 'modals/frmCapturaCompra.html', compact('codgas','creProductId','creSubProductId','creSubProductBrandId','rowid','controlGasProductId','suppliers','reception','carriers','from'));
             return json_output(['success' => true, 'html' => $html]);
         } else {
             return json_output(['success' => false,'message' => 'No se encontró la compra']);
+        }
+    }
+
+    function uploadXml() {
+        $uploadDir = __DIR__ . '/../../_assets/uploads/creXMLs/';
+
+        // Asegurarse que el directorio exista
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        // Validar que llegue el archivo y las variables necesarias
+        if (isset($_FILES['xmlFile']) && $_FILES['xmlFile']['error'] === UPLOAD_ERR_OK
+            && isset($_POST['companyDenominacion']) && isset($_POST['from'])) {
+
+            $fileTmpPath = $_FILES['xmlFile']['tmp_name'];
+            $fileExtension = strtolower(pathinfo($_FILES['xmlFile']['name'], PATHINFO_EXTENSION));
+
+            // Validar la extensión
+            if ($fileExtension !== 'xml') {
+                die('Error: Solo se permiten archivos XML.');
+            }
+
+            // Tomar las variables y formar el nombre
+            $companyDenominacion = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['companyDenominacion']); // Solo letras y números
+            $from = preg_replace('/[^0-9\-]/', '', $_POST['from']); // Solo números y guiones
+
+            $newFileName = "{$companyDenominacion}_{$from}.xml";
+
+            $destPath = $uploadDir . $newFileName;
+
+            if (file_exists($destPath)) {
+                die('Error: Ya existe un archivo con ese nombre.');
+            }
+
+            if (move_uploaded_file($fileTmpPath, $destPath)) {
+                setFlashMessage('success', 'El archivo XML se subió correctamente.');
+                redirect();
+            } else {
+                echo "Error al mover el archivo XML.";
+            }
+        } else {
+            echo "Error: Datos incompletos o problema en la subida.";
+        }
+    }
+
+    function uploadPdf() {
+        $uploadDir = __DIR__ . '/../../_assets/uploads/creAcuses/';
+
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        if (isset($_FILES['pdfFile']) && $_FILES['pdfFile']['error'] === UPLOAD_ERR_OK
+            && isset($_POST['companyDenominacion']) && isset($_POST['from'])) {
+            // Validar que llegue el archivo y las variables necesarias
+            $fileTmpPath = $_FILES['pdfFile']['tmp_name'];
+            $fileExtension = strtolower(pathinfo($_FILES['pdfFile']['name'], PATHINFO_EXTENSION));
+            // Validar la extensión
+            if ($fileExtension !== 'pdf') {
+                die('Error: Solo se permiten archivos PDF.');
+            }
+            // Tomar las variables y formar el nombre
+            $companyDenominacion = preg_replace('/[^a-zA-Z0-9]/', '', $_POST['companyDenominacion']);
+            $from = preg_replace('/[^0-9\-]/', '', $_POST['from']);
+
+            $newFileName = "{$companyDenominacion}_{$from}.pdf";
+
+            $destPath = $uploadDir . $newFileName;
+
+            if (file_exists($destPath)) {
+                die('Error: Ya existe un archivo con ese nombre.');
+            }
+
+            if (move_uploaded_file($fileTmpPath, $destPath)) {
+                setFlashMessage('success', 'El archivo PDF se subió correctamente.');
+                redirect();
+            } else {
+                echo "Error al mover el archivo PDF.";
+            }
+        } else {
+            echo "Error: Faltan los siguientes datos o hay un problema en la subida.";
+            if (!isset($_FILES['pdfFile'])) {
+                echo " - Archivo PDF";
+            }
+            if (!isset($_POST['companyDenominacion'])) {
+                echo " - Denominación de la empresa";
+            }
+            if (!isset($_POST['from'])) {
+                echo " - Fecha";
+            }
+            if (isset($_FILES['pdfFile']) && $_FILES['pdfFile']['error'] !== UPLOAD_ERR_OK) {
+                echo " - Error en la subida del archivo PDF: " . $_FILES['pdfFile']['error'];
+            }
         }
     }
 }

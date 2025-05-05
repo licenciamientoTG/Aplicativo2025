@@ -162,16 +162,16 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
         $rs = $this->sql->select($query);
         if ($rs) {
             // Con este código se agrega la función de eliminar compra
-            // foreach ($rs as $row) {
-            //     $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#purchaseDataModal" data-id="'. $row['id'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['permisoProveedorCRE'] .')</a>
-            //     <a href="javascript:void(0);" class="text-danger ml-2" onclick="confirm_delete('. $row['id'] .');"><i data-feather="trash-2"></i></a>
-            //     </p>';
-            // }
+            foreach ($rs as $row) {
+                $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['ProveedorCRE'] .')</a>
+                <a href="javascript:void(0);" class="text-danger ml-2" onclick="confirm_delete('. $row['id'] .');"><i data-feather="trash-2"></i></a>
+                </p>';
+            }
 
             // Con esta función eliminas la opcion de eliminar compra
-            foreach ($rs as $row) {
-                $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['ProveedorCRE'] .')</a></p>';
-            }
+            // foreach ($rs as $row) {
+            //     $purchase .= '<p class="text-nowrap m-0 p-0"><a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#addPurchaseModal" data-rowid="'. $row['id'] .'" data-codgas="'. $row['controlGasStationId'] .'" data-controlGasProductId="'. $row['controlGasProductId'] .'" data-creProductId="'. $row['productoId'] .'" data-creSubProductId="'. $row['subProductoId'] .'" data-creSubProductBrandId="'. $row['subproductoMarcaId'] .'">'. number_format($row['volumenComprado'], 0, '.',',') .' lts ('. $row['ProveedorCRE'] .')</a></p>';
+            // }
             return $purchase;
         } else {
             return false;
@@ -217,7 +217,6 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                     tipoCompra = 0,
                     permisoProveedorCRE = ?,
                     volumenComprado = ?,
-                    precioCompraSinDescuento = ?,
                     recibioDescuento = 0,
                     pagoServicioFlete = 0,
                     permisoTransportistaCRE = ?
@@ -232,7 +231,6 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
                 $product[0]['creSubProductBrandId'],
                 $ProveedorCRE,
                 round($VolumenRecibido),
-                $precio,
                 $transportistaCRE,
                 $controlGasNrotrn,
                 $codgas
@@ -277,6 +275,11 @@ class XsdEstacionServicioVolumenCompradoModel extends Model{
             $transportistaCRE,
             $controlGasNrotrn
         ];
+
+        // echo '<pre>';
+        // var_dump($query);
+        // var_dump($params);
+        // die();
 
         return $this->sql->insert($query, $params);
     }

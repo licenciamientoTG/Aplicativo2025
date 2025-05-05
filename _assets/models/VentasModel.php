@@ -12,6 +12,12 @@ class VentasModel extends Model{
     public $fchsyn;
 
     function get_sales($fch) : array|false {
+            // echo '<pre>';
+            // var_dump($fch);
+            // $fch = dateToInt($fch);
+            // var_dump($fch);
+
+            // die();
         $query = "
             SELECT
                 Fecha,
