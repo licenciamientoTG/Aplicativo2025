@@ -2371,7 +2371,7 @@ class DespachosModel extends Model{
             ";
         }
         $final_query = implode(" UNION ALL ", $union_queries);
-       
+    
 
         return ($this->sql->select($final_query)) ?: false ;
     }

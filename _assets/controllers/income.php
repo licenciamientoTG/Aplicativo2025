@@ -52,6 +52,34 @@ class Income{
             echo $this->twig->render($this->route . 'duplicate_dispatches.html', compact('from', 'until', 'interval', 'codgas', 'clientName', 'stations'));
         }
     }
+    function cash_sales(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $stations = $this->gasolinerasModel->get_active_stations();
+            echo $this->twig->render($this->route . 'cash_sales.html', compact('stations'));
+        }
+    }
+    public function cash_sales_table() {
+        $data = [];
+        $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)
+        $until = dateToInt($_POST['untilDate']);
+        if ($ventas = $this->ingresosModel->get_cash_sales($from, $until, $_POST['codgas'])) {
+            foreach ($ventas as $venta) {
+                $data[] = array(
+                    'Fecha'              => $venta['Fecha'],
+                    'Gasolinera'           => $venta['Gasolinera'],
+                    'Turno'              => $venta['Turno'],
+                    'Mn'                 => round($venta['Mn'], 2),
+                    'Dolares'            => round($venta['Dolares'], 2),
+                    'Dolares2'            => round($venta['Dolares2'], 2),
+                    'Morralla'           => round($venta['Morralla'], 2),
+                    'Cheques'             => round($venta['Cheques'], 2),
+                    'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
+                );
+            }
+        }
+    
+        json_output(array("data" => $data));
+    }
    
 
     /**
@@ -589,19 +617,40 @@ class Income{
     }
 
     function datatables_dispatches_est() : void {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0); // sin límite
         $data = [];
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
-        $estations= $this->gasolinerasModel->get_estations_servidor();
-        if ($codgas != 0) {
-            // Filtrar estaciones para quedarse solo con la que coincide con el codgas
-            $estations = array_filter($estations, function($station) use ($codgas) {
-                return $station['codigo'] == $codgas;
-            });
-        }
-        if ($dispatches = $this->despachosModel->control_dispatches_est(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed,$estations)) {
-            foreach ($dispatches as $dispatch) {
+        $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
+       
+
+        $postData = [
+            'from' => dateToInt($_POST['from']),
+            'until' => dateToInt($_POST['until']),
+            'codgas' => $codgas,
+            'uuid' => $_POST['uuid'],
+            'tipo_cliente' => $tipo_cliente,
+            'billed' => $billed,
+            'estation' => $estation,
+        ];
+        $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera máxima de 5 minutos
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexión
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);   
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        // $apiData = json_decode($response, true);
+        if ($apiData = json_decode($response, true)) {
+            
+            foreach ($apiData['data'] as $dispatch) {
                 $data[] = array(
                    'fecha'                    => $dispatch['fecha'],
                     'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
@@ -612,7 +661,7 @@ class Income{
                     'empresa'                 => $dispatch['empresa'],
                     'cliente_des'             => $dispatch['cliente_des'],
                     'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'FechaFactura'                => $dispatch['FechaFactura'],
+                    'FechaFactura'            => $dispatch['FechaFactura'],
                     'cantidad'                => $dispatch['cantidad'],
                     'importe'                 => $dispatch['importe'],
                     'precio'                  => $dispatch['precio'],
@@ -636,6 +685,58 @@ class Income{
         }
         json_output(array("data" => $data));
     }
+
+    // function datatables_dispatches_est() : void {
+    //     ini_set('max_execution_time', 5000);
+    //     ini_set('memory_limit', '1024M');
+    //     set_time_limit(0); // sin límite
+    //     $data = [];
+    //     $codgas = $_POST['codgas'];
+    //     $billed = $_POST['billed'];
+    //     $tipo_cliente=0;
+    //     $estations= $this->gasolinerasModel->get_estations_servidor();
+    //     if ($codgas != 0) {
+    //         // Filtrar estaciones para quedarse solo con la que coincide con el codgas
+    //         $estations = array_filter($estations, function($station) use ($codgas) {
+    //             return $station['codigo'] == $codgas;
+    //         });
+    //     }
+    //     if ($dispatches = $this->despachosModel->control_dispatches_est(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed,$estations)) {
+    //         foreach ($dispatches as $dispatch) {
+    //             $data[] = array(
+    //                'fecha'                    => $dispatch['fecha'],
+    //                 'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
+    //                 'turno'                   => $dispatch['turno'],
+    //                 'despacho'                => $dispatch['despacho'],
+    //                 'producto'                => $dispatch['producto'],
+    //                 'estacion'                => $dispatch['estacion'],
+    //                 'empresa'                 => $dispatch['empresa'],
+    //                 'cliente_des'             => $dispatch['cliente_des'],
+    //                 'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
+    //                 'FechaFactura'                => $dispatch['FechaFactura'],
+    //                 'cantidad'                => $dispatch['cantidad'],
+    //                 'importe'                 => $dispatch['importe'],
+    //                 'precio'                  => $dispatch['precio'],
+    //                 'despachador'             => $dispatch['despachador'],
+    //                 'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
+    //                 'UUID'                    => $dispatch['UUID']??".",
+    //                 'rut'                     => $dispatch['rut'],
+    //                 'rut'                     => $dispatch['rut'],
+    //                 'txtref'                  => $dispatch['txtref'],
+    //                 'denominacion'            => $dispatch['denominacion'],
+    //                 'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
+    //                 'codval'                  => $dispatch['codval'],
+    //                 'tipo_cliente'            => $dispatch['tipo_cliente'],
+    //                 'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
+    //                 'vehiculo'                => $dispatch['vehiculo'],
+    //                 'placas'                  => $dispatch['placas'],
+    //                 'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
+    //                 'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
+    //             );
+    //         }
+    //     }
+    //     json_output(array("data" => $data));
+    // }
 
     function pivot_daily_dispatches_table() : void {
         $data = [];

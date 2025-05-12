@@ -537,3 +537,99 @@ async function payments_table(){
         }
     });
 }
+
+async function  SearchResults(){
+
+    if ($.fn.DataTable.isDataTable('#income_statement_table')) {
+        $('#income_statement_table').DataTable().destroy();
+        $('#income_statement_table thead .filter').remove();
+    }
+    var year = document.getElementById('year').value;
+
+    $('#income_statement_table thead').prepend($('#income_statement_table thead tr').clone().addClass('filter'));
+    $('#income_statement_table thead tr.filter th').each(function (index) {
+        col = $('#income_statement_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#income_statement_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#income_statement_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let income_statement_table =$('#income_statement_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'year':year
+            },
+            url: '/accounting/income_statement_table',
+            timeout: 600000,
+            error: function() {
+                $('#income_statement_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'Empresa',  title: 'Empresa' , className: 'text-nowrap' },
+            { data: 'Nom Cen Cto', title: 'Centro de Costo' , className: 'text-nowrap' },
+            { data: 'Cat Cen Cto', title: 'Estado de Resultados' , className: 'text-nowrap' },
+            { data: 'num cta', title: 'No. Cuenta' , className: 'text-nowrap' },
+            { data: 'categoria', title: 'Rubro' , className: 'text-nowrap' },
+            { data: 'nom cta', title: 'Concepto' , className: 'text-nowrap' },
+            { data: 'mes1', title: 'Enero',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes2', title: 'Febrero',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes3', title: 'Marzo',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes4', title: 'Abril',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes5', title: 'Mayo',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes6', title: 'Junio',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes7', title: 'Julio',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes8', title: 'Agosto',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes9', title: 'Septiembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes10', title: 'Octubre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes11', title: 'Noviembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'mes12', title: 'Diciembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+          
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+}

@@ -1,0 +1,150 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Ventas Contado{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Ventas Contado{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="invoice_purchase-tab" data-bs-toggle="tab" data-bs-target="#invoice_purchase" type="button" role="tab" aria-controls="invoice_purchase" aria-selected="true">Ventas Contado</button>
+    </li>
+</ul>
+
+
+<div class="tab-content">
+    <div class="tab-pane active" id="invoice_purchase" role="tabpanel" aria-labelledby="invoice_purchase-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  'now'|date('Y-m-d')}}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{  'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2">
+                        <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
+                        <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estación" required>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}" {{ codgas == false ? '' : (codgas == station.cod ? 'selected' : '' ) }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_cash_sales_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Pagos Proveedores </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="cash_sales_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Estacion</th>
+                            <th>Turno</th>
+                            <th>Dolares (MN)</th>
+                            <th>Dolares2</th>
+                            <th>MN</th>
+                            <th>Morralla</th>
+                            <th>Cheque</th>
+                            <th>INTERL - Efectivo</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Estacion</th>
+                            <th>Turno</th>
+                            <th>Dolares (MN)</th>
+                            <th>Dolares2</th>
+                            <th>MN</th>
+                            <th>Morralla</th>
+                            <th>Cheque</th>
+                            <th>INTERL - Efectivo</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}income.js"></script>
+<script>
+$('#seach_cash_sales_table').on('click', function() {
+    cash_sales_table();
+});
+
+
+
+</script>
+
+</script>
+{% endblock %}

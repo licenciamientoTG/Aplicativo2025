@@ -1733,3 +1733,107 @@ async function relation_credit_table(){
         $('#relation_credit_table').waitMe('hide');
     });
 }
+
+
+
+async function cash_sales_table(){
+    if ($.fn.DataTable.isDataTable('#cash_sales_table')) {
+        $('#cash_sales_table').DataTable().destroy();
+        $('#cash_sales_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('codgas').value;
+
+    if (codgas == '') {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Favor de seleccionar una estación.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('#cash_sales_table thead').prepend($('#cash_sales_table thead tr').clone().addClass('filter'));
+    $('#cash_sales_table thead tr.filter th').each(function (index) {
+        col = $('#cash_sales_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#cash_sales_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#cash_sales_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let cash_sales_table =$('#cash_sales_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas
+            },
+            url: '/income/cash_sales_table',
+            timeout: 600000, 
+            error: function() {
+                $('#cash_sales_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'Fecha' },
+            { data: 'Gasolinera' },
+            { data: 'Turno' },
+            { data: 'Dolares' },
+            { data: 'Dolares2' },
+            { data: 'Mn' },
+            { data: 'Morralla' },
+            { data: 'Cheques' },
+            { data: 'INTERL - Efectivo' },
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+}

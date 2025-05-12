@@ -217,6 +217,75 @@ class Accounting{
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
+    public function income_statement_table(){
+        set_time_limit(280);
+        header('Content-Type: application/json');
+        $postData = [
+            'year' => $_POST['year']
+        ];
+        $ch = curl_init('http://192.168.0.3:388/api/estado_resultados/concentrado_resultados');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        if (count($apiData) > 0) {
+            foreach ($apiData as $row) {
+                $data[] = [
+                    'Empresa' => $row['Empresa'],
+                    'Nom Cen Cto' => $row['Nom Cen Cto'],
+                    'Cat Cen Cto' => $row['Cat Cen Cto'],
+                    'num cta' => $row['num cta'],
+                    'categoria' => $row['categoria'],
+                    'nom cta' => $row['nom cta'],
+                    'mes1' => $row['mes1'],
+                    'A1' => $row['A1'],
+                    'B1' => $row['B1'],
+                    'mes2' => $row['mes2'],
+                    'A2' => $row['A2'],
+                    'B2' => $row['B2'],
+                    'mes3' => $row['mes3'],
+                    'A3' => $row['A3'],
+                    'B3' => $row['B3'],
+                    'mes4' => $row['mes4'],
+                    'A4' => $row['A4'],
+                    'B4' => $row['B4'],
+                    'mes5' => $row['mes5'],
+                    'A5' => $row['A5'],
+                    'B5' => $row['B5'],
+                    'mes6' => $row['mes6'],
+                    'A6' => $row['A6'],
+                    'B6' => $row['B6'],
+                    'mes7' => $row['mes7'],
+                    'A7' => $row['A7'],
+                    'B7' => $row['B7'],
+                    'mes8' => $row['mes8'],
+                    'A8' => $row['A8'],
+                    'B8' => $row['B8'],
+                    'mes9' => $row['mes9'],
+                    'A9' => $row['A9'],
+                    'B9' => $row['B9'],
+                    'mes10' => $row['mes10'],
+                    'A10' => $row['A10'],
+                    'B10' => $row['B10'],
+                    'mes11' => $row['mes11'],
+                    'A11' => $row['A11'],
+                    'B11' => $row['B11'],
+                    'mes12' => $row['mes12'],
+                    'A12' => $row['A12'],
+                    'B12' => $row['B12'],
+                ];
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
+
+    }
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -404,26 +473,27 @@ class Accounting{
 
             // Ruta completa al ejecutable C# compilado
             $exePath = 'C:\\Software\\Scripts\\ExecSGCV\\bin\\Release\\net9.0\\win-x64\\ExecSGCV.exe';
-            
+
             // Construir el comando usando escapeshellarg para cada parte
             $cmd = escapeshellarg($exePath) . ' ' . escapeshellarg($remoteIP) . ' ' . escapeshellarg($user) . ' ' . escapeshellarg($password) . ' 2>&1';
-            
+
             // Ejecuta el comando y captura la salida en un array y el código de retorno
             $output = [];
             $returnVar = 0;
             exec($cmd, $output, $returnVar);
-            
+
             echo "<pre>";
             echo "Comando ejecutado: " . $cmd . "\n\n";
             echo "Código de retorno: " . $returnVar . "\n\n";
             echo "Salida:\n" . implode("\n", $output);
             echo "</pre>";
-            
+
             return $output;
         } else {
             echo "No se ha recibido ningún POST.";
         }
     }
+
     function excel_volumetrics($from, $until) {
         ini_set('memory_limit', '512M'); // puedes subir a 1024M si hace falta
         set_time_limit(0);
@@ -435,7 +505,7 @@ class Accounting{
             echo "Falta el permiso CRE";
             return;
         }
-    
+
         try {
             $spreadsheet = $this->estacionesModel->sp_obtener_entregas_volumetricas_por_rango(
                 $permisoCre, $from, $until, 'D'
@@ -444,33 +514,31 @@ class Accounting{
             if (!$spreadsheet instanceof Spreadsheet) {
                 throw new Exception("The function sp_obtener_entregas_volumetricas_por_rango did not return a valid Spreadsheet object.");
             }
-    
+
             $writer = new Xlsx($spreadsheet);
             $fileName = "entregas_" . date('Ymd_His') . ".xlsx";
             $filePath = __DIR__ . "/../../../tmp_excel/" . $fileName;
-    
+
             // Asegúrate de que exista la carpeta tmp_excel y tenga permisos
             if (!is_dir(dirname($filePath))) {
                 mkdir(dirname($filePath), 0777, true);
             }
-    
+
             // Guardar archivo en disco primero
             $writer->save($filePath);
-    
+
             // Enviar archivo al navegador
             header("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             header("Content-Disposition: attachment; filename=\"$fileName\"");
             header("Content-Length: " . filesize($filePath));
-    
+
             readfile($filePath);
             unlink($filePath); // opcional: eliminar archivo después de descargar
             exit;
-    
+
         } catch (Exception $e) {
             http_response_code(500);
             echo "Error generando Excel: " . $e->getMessage();
         }
     }
-    
-
 }

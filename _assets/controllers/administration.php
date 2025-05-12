@@ -1577,4 +1577,8 @@ class Administration{
 
         echo $this->twig->render($this->route . 'agent_report.html', compact('data', 'from', 'until', 'date_range', 'tickets_labels', 'tickets_values'));
     }
+
+    function doc_agujita() {
+        echo $this->twig->render($this->route . 'doc_agujita.html');
+    }
 }
