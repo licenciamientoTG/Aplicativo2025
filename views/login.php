@@ -30,7 +30,7 @@
 						<div class="text-center mt-4">
 							<h1 class="h2">¡Bienvenid@!</h1>
 							<p class="lead">
-								Ingresa tus credenciales para poder continuar 
+								Ingresa tus credenciales para poder continuar
 							</p>
 						</div>
 
