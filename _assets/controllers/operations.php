@@ -255,13 +255,13 @@ class Operations{
                     $total = $this->tabulatorDatailsModel->getPendingWads($tabId, $_POST['currency']);
 
                     // Verificamos si existe un depósito pendiente de cerrar o mas bien activo
-                    if ($total['TieneRecolectas'] == 1) {
+                    if ($total == 1) {
                         setFlashMessage('warning', 'Actualmente existe un depósito pendiente de cerrar');
                         redirect();
                     }
 
                     // Verificamos si existen fajillas pendientes en el tabulador
-                    if ($total['TotalMonto'] == 0) {
+                    if ($total == 0) {
                         setFlashMessage('error', 'No existen fajillas pendientes en el tabulador');
                         redirect();
                     }

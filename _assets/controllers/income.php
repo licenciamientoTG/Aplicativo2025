@@ -170,14 +170,14 @@ class Income{
         }
     }
     function relation_invoice_advance_table(){
+         ini_set('memory_limit', '512M');
+        set_time_limit(300);
         $data = [];
         $from = dateToInt($_POST['from']);
         $until = dateToInt($_POST['until']);
     
         if ($facturas = $this->documentosModel->relation_invoice_advance($from, $until)) {
-            // echo '<pre>';
-            // var_dump($facturas);
-            // die();
+
             foreach ($facturas as $factura) {
                 $data[] = array(
                     'fecha'             => $factura['fecha'],

@@ -218,7 +218,9 @@ class Accounting{
         }
     }
     public function income_statement_table(){
-        set_time_limit(280);
+       ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
         header('Content-Type: application/json');
         $postData = [
             'year' => $_POST['year']
@@ -232,6 +234,9 @@ class Accounting{
         $response = curl_exec($ch);
         curl_close($ch);
         $apiData = json_decode($response, true);
+        echo '<pre>';
+        var_dump($apiData);
+        die();
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
                 $data[] = [

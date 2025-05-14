@@ -510,14 +510,13 @@ class DocumentosModel extends Model{
                                 t1.txtref,
                                 t1.satuid,
                                 t3.den as concepto
-                                
                                 from DocumentosC t1
                                 LEFT JOIN Documentos t2 on t1.nro= t2.nro and t2.nroitm != (-1) and t2.codgas = 0
                                 left join Productos t3 on t2.codprd = t3.cod
                                 where t1.codgas = 0
                                 --t1.nro =1200205972
                                 ) t4 on t3.nroapl = t4.nro
-                    where 
+                    where
                     t1.tip=3----para credito
                     and t1.codgas= 0
                     and t1.fch BETWEEN  ? and ?

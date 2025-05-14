@@ -63,8 +63,6 @@ class Supply{
     }
 
     function inventory_table($station_id) : void {
-
-
         $station_id = empty($station_id) ? 0 : $station_id;
         $data = [];
         if ($station_id == 0) {
