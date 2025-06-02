@@ -539,12 +539,12 @@ async function payments_table(){
 }
 
 async function  SearchResults(){
+    const year = document.getElementById('year').value;
 
     if ($.fn.DataTable.isDataTable('#income_statement_table')) {
         $('#income_statement_table').DataTable().destroy();
         $('#income_statement_table thead .filter').remove();
     }
-    var year = document.getElementById('year').value;
 
     $('#income_statement_table thead').prepend($('#income_statement_table thead tr').clone().addClass('filter'));
     $('#income_statement_table thead tr.filter th').each(function (index) {
@@ -567,7 +567,7 @@ async function  SearchResults(){
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         paging: true,
-        pageLength: 100,
+        pageLength: 50,
         buttons: [
             {
                 extend: 'excel',
@@ -602,28 +602,28 @@ async function  SearchResults(){
         },
         columns: [
             { data: 'Empresa',  title: 'Empresa' , className: 'text-nowrap' },
-            { data: 'Nom Cen Cto', title: 'Centro de Costo' , className: 'text-nowrap' },
-            { data: 'Cat Cen Cto', title: 'Estado de Resultados' , className: 'text-nowrap' },
-            { data: 'num cta', title: 'No. Cuenta' , className: 'text-nowrap' },
-            { data: 'categoria', title: 'Rubro' , className: 'text-nowrap' },
-            { data: 'nom cta', title: 'Concepto' , className: 'text-nowrap' },
-            { data: 'mes1', title: 'Enero',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes2', title: 'Febrero',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes3', title: 'Marzo',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes4', title: 'Abril',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes5', title: 'Mayo',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes6', title: 'Junio',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes7', title: 'Julio',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes8', title: 'Agosto',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes9', title: 'Septiembre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes10', title: 'Octubre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes11', title: 'Noviembre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mes12', title: 'Diciembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'CentroCosto', title: 'Centro de Costo' , className: 'text-nowrap' },
+            { data: 'CatCentroCosto', title: 'Estado de Resultados' , className: 'text-nowrap' },
+            { data: 'NoCuenta', title: 'No. Cuenta' , className: 'text-nowrap' },
+            { data: 'Rubro', title: 'Rubro' , className: 'text-nowrap' },
+            { data: 'Concepto', title: 'Concepto' , className: 'text-nowrap' },
+            { data: 'Enero', title: 'Enero',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Febrero', title: 'Febrero',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Marzo', title: 'Marzo',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Abril', title: 'Abril',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Mayo', title: 'Mayo',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Junio', title: 'Junio',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Julio', title: 'Julio',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Agosto', title: 'Agosto',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Septiembre', title: 'Septiembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Octubre', title: 'Octubre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Noviembre', title: 'Noviembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'Diciembre', title: 'Diciembre',render: $.fn.dataTable.render.number(',', '.', 2) },
         ],
         deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
-          
+
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
@@ -632,4 +632,31 @@ async function  SearchResults(){
         footerCallback: function (row, data, start, end, display) {
         }
     });
+    
+}
+// console.log(localStorage);
+
+
+
+async function drawAnnualTable() {
+  const year = document.getElementById('year').value;
+    try {
+        const response = await fetch('/accounting/annual_table', {      
+            method: 'POST',
+            headers: {
+                'Accept': 'text/html,application/json,*/*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+            body: `year=${year}`
+        });
+        console.log(response);
+
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const html = await response.text();
+        document.getElementById('annual_table_container').innerHTML = html;
+    } catch (error) {
+        console.error('Error cargando tabla:', error);
+        alert('Ocurrió un error al cargar la tabla anual.');
+    }
 }

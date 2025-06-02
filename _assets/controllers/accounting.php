@@ -218,14 +218,63 @@ class Accounting{
         }
     }
     public function income_statement_table(){
-       ini_set('max_execution_time', 5000);
+        ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/estado_resultados/concentrado_resultados');
+        $ch = curl_init('http://192.168.0.109:82/api/concentrado-resultados/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+
+        if (count($apiData) > 0) {
+            foreach ($apiData as $row) {
+                $data[] = [
+                    'Empresa'        => $row['Empresa'],
+                    'CentroCosto'    => $row['CentroCosto'],
+                    'CatCentroCosto' => $row['CatCentroCosto'],
+                    'NoCuenta'       => $row['NoCuenta'],
+                    'Rubro'          => $row['Rubro'],
+                    'Concepto'       => $row['Concepto'],
+                    'Enero'          => $row['Enero'],
+                    'Febrero'        => $row['Febrero'],
+                    'Marzo'          => $row['Marzo'],
+                    'Abril'          => $row['Abril'],
+                    'Mayo'           => $row['Mayo'],
+                    'Junio'          => $row['Junio'],
+                    'Julio'          => $row['Julio'],
+                    'Agosto'         => $row['Agosto'],
+                    'Septiembre'     => $row['Septiembre'],
+                    'Octubre'        => $row['Octubre'],
+                    'Noviembre'      => $row['Noviembre'],
+                    'Diciembre'      => $row['Diciembre'],
+                ];
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
+
+    }
+    public function annual_table(){
+
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'year' => $_POST['year']
+        ];
+        $ch = curl_init('http://192.168.0.3:388/api/estado_resultados/concentrado_resultados_anual');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_POST, true);
@@ -237,58 +286,8 @@ class Accounting{
         echo '<pre>';
         var_dump($apiData);
         die();
-        if (count($apiData) > 0) {
-            foreach ($apiData as $row) {
-                $data[] = [
-                    'Empresa' => $row['Empresa'],
-                    'Nom Cen Cto' => $row['Nom Cen Cto'],
-                    'Cat Cen Cto' => $row['Cat Cen Cto'],
-                    'num cta' => $row['num cta'],
-                    'categoria' => $row['categoria'],
-                    'nom cta' => $row['nom cta'],
-                    'mes1' => $row['mes1'],
-                    'A1' => $row['A1'],
-                    'B1' => $row['B1'],
-                    'mes2' => $row['mes2'],
-                    'A2' => $row['A2'],
-                    'B2' => $row['B2'],
-                    'mes3' => $row['mes3'],
-                    'A3' => $row['A3'],
-                    'B3' => $row['B3'],
-                    'mes4' => $row['mes4'],
-                    'A4' => $row['A4'],
-                    'B4' => $row['B4'],
-                    'mes5' => $row['mes5'],
-                    'A5' => $row['A5'],
-                    'B5' => $row['B5'],
-                    'mes6' => $row['mes6'],
-                    'A6' => $row['A6'],
-                    'B6' => $row['B6'],
-                    'mes7' => $row['mes7'],
-                    'A7' => $row['A7'],
-                    'B7' => $row['B7'],
-                    'mes8' => $row['mes8'],
-                    'A8' => $row['A8'],
-                    'B8' => $row['B8'],
-                    'mes9' => $row['mes9'],
-                    'A9' => $row['A9'],
-                    'B9' => $row['B9'],
-                    'mes10' => $row['mes10'],
-                    'A10' => $row['A10'],
-                    'B10' => $row['B10'],
-                    'mes11' => $row['mes11'],
-                    'A11' => $row['A11'],
-                    'B11' => $row['B11'],
-                    'mes12' => $row['mes12'],
-                    'A12' => $row['A12'],
-                    'B12' => $row['B12'],
-                ];
-            }
-            $data = array("data" => $data);
-            echo json_encode($data);
-        } else {
-            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
-        }
+        echo json_encode($apiData);
+        // return $apiData;
 
     }
     public function payments_table() {

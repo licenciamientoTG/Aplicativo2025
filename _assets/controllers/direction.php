@@ -887,41 +887,52 @@ class Direction{
                 $fecha_precio = (string) $fecha_precio; // Si no es una fecha válida, convierte el valor a string
             }
 
+            $highestRow = (int) $sheet->getHighestRow();
+            $maxRow     = min($highestRow, 400);
 
             // Filas específicas a procesar
-            $filas = [
-                    4,  14, 15, 16, 17, 18, 19, 20, 21, 22,23,
-                    42, 43, 44, 45, 46, 47, 48, 49, 51,
-                    61, 62, 63, 64, 65, 66, 67, 68, 69, 71,
-                    81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 92,
-                    100, 101, 102, 104,
-                    114, 115, 116, 117, 118, 119, 120, 121, 123,
-                    132, 133, 134, 137,
-                    147, 148, 152,
-                    159, 160, 161, 164,
-                    174, 175, 176, 177, 178, 180,
-                    188, 189, 190, 191, 192, 195,
-                    202, 203, 204, 205, 207,
-                    214, 215, 216,217, 218,220,
-                    226, 227,228, 229,231
-                ];
+            // $filas = [
+            //         4,  14, 15, 16, 17, 18, 19, 20, 21, 22,23,
+            //         42, 43, 44, 45, 46, 47, 48, 49, 51,
+            //         61, 62, 63, 64, 65, 66, 67, 68, 69, 71,
+            //         81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 92,
+            //         100, 101, 102, 104,
+            //         114, 115, 116, 117, 118, 119, 120, 121, 123,
+            //         132, 133, 134, 137,
+            //         147, 148, 152,
+            //         159, 160, 161, 164,
+            //         174, 175, 176, 177, 178, 180,
+            //         188, 189, 190, 191, 192, 195,
+            //         202, 203, 204, 205, 207,
+            //         214, 215, 216,217, 218,220,
+            //         226, 227,228, 229,231
+            //     ];
 
             $data = [];
-            foreach ($filas as $row_num) {
-                $id_grupo = $sheet->getCell("B$row_num")->getValue();
-                $Id_plaza = $sheet->getCell("C$row_num")->getValue();
+            for ($row = 4; $row <= $maxRow; $row++) {
+                // $id_grupo = $sheet->getCell("B$row_num")->getValue();
+                // $Id_plaza = $sheet->getCell("C$row_num")->getValue();
+                // $precios = [
+                //     $sheet->getCell("E$row_num")->getValue(),
+                //     $sheet->getCell("F$row_num")->getValue(),
+                //     $sheet->getCell("G$row_num")->getValue()
+                // ];
+                $idGrupo = trim((string) $sheet->getCell("B{$row}")->getValue());
+                if ($idGrupo === '') {
+                    continue;
+                }
+                $idPlaza = $sheet->getCell("C{$row}")->getValue();
                 $precios = [
-                    $sheet->getCell("E$row_num")->getValue(),
-                    $sheet->getCell("F$row_num")->getValue(),
-                    $sheet->getCell("G$row_num")->getValue()
+                    $sheet->getCell("E{$row}")->getValue(),
+                    $sheet->getCell("F{$row}")->getValue(),
+                    $sheet->getCell("G{$row}")->getValue(),
                 ];
-    
                 foreach ($precios as $index => $precio) {
                     if ($precio != NULL) {
                         $data[] = [
                             'fecha' => $fecha_precio,
-                            'id_grupo' => $id_grupo,
-                            'Id_plaza' => $Id_plaza,
+                            'id_grupo' => $idGrupo,
+                            'Id_plaza' => $idPlaza,
                             'precios' => round($precio, 2),
                             'id_productos' => $index + 1,
                         ];

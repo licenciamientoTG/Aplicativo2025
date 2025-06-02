@@ -2,7 +2,7 @@
 {% block title %}Contabilidad{% endblock %}
 {% block mycss %}
 {% endblock %}
-{% block menutitle %}Estado resultados{% endblock %}
+{% block menutitle %}Estado resultados {% endblock %}
 {% block content %}
 
 <style>
@@ -56,6 +56,18 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     border: 0.5px solid #0c202091 !important;
     background-color: #6d7277e8;
 }
+
+#content_edo_result {
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+
 </style>
 
 
@@ -63,13 +75,17 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 <ul class="nav nav-tabs" id="myTab" role="tablist">
 
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="invoice_purchase-tab" data-bs-toggle="tab" data-bs-target="#invoice_purchase" type="button" role="tab" aria-controls="invoice_purchase" aria-selected="true">Concentrado</button>
+        <button class="nav-link " id="concentrating_results-tab" data-bs-toggle="tab" data-bs-target="#concentrating_results" type="button" role="tab" aria-controls="concentrating_results" aria-selected="true">Concentrado</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
     </li>
 </ul>
 
 
-<div class="tab-content">
-    <div class="tab-pane active" id="invoice_purchase" role="tabpanel" aria-labelledby="invoice_purchase-tab">
+<div class="tab-content" id="content_edo_result">
+    
+    <div class="tab-pane " id="concentrating_results" role="tabpanel" aria-labelledby="concentrating_results-tab">
         <div class="card  col-4"  >
             <div class="card-body">
                 <div class="row">
@@ -101,41 +117,41 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>No. Cuenta</th>
                             <th>Rubro</th>
                             <th>Concepto</th>
-                            <th >Enero</th>
-                            <th >Febrero</th>
-                            <th >Marzo</th>
-                            <th >Abril</th>
-                            <th >Mayo</th>
-                            <th >Junio</th>
-                            <th >Julio</th>
-                            <th >Agosto</th>
-                            <th >Septiembre</th>
-                            <th >Octubre</th>
-                            <th >Noviembre</th>
-                            <th >Diciembre</th>
+                            <th>Enero</th>
+                            <th>Febrero</th>
+                            <th>Marzo</th>
+                            <th>Abril</th>
+                            <th>Mayo</th>
+                            <th>Junio</th>
+                            <th>Julio</th>
+                            <th>Agosto</th>
+                            <th>Septiembre</th>
+                            <th>Octubre</th>
+                            <th>Noviembre</th>
+                            <th>Diciembre</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th >Empresa</th>
-                            <th >Centro de Costo</th>
-                            <th >Estado de Resultados</th>
-                            <th >No. Cuenta</th>
-                            <th >Rubro</th>
-                            <th >Concepto</th>
-                            <th >Enero</th>
-                            <th >Febrero</th>
-                            <th >Marzo</th>
-                            <th >Abril</th>
-                            <th >Mayo</th>
-                            <th >Junio</th>
-                            <th >Julio</th>
-                            <th >Agosto</th>
-                            <th >Septiembre</th>
-                            <th >Octubre</th>
-                            <th >Noviembre</th>
-                            <th >Diciembre</th>
+                            <th>Empresa</th>
+                            <th>Centro de Costo</th>
+                            <th>Estado de Resultados</th>
+                            <th>No. Cuenta</th>
+                            <th>Rubro</th>
+                            <th>Concepto</th>
+                            <th>Enero</th>
+                            <th>Febrero</th>
+                            <th>Marzo</th>
+                            <th>Abril</th>
+                            <th>Mayo</th>
+                            <th>Junio</th>
+                            <th>Julio</th>
+                            <th>Agosto</th>
+                            <th>Septiembre</th>
+                            <th>Octubre</th>
+                            <th>Noviembre</th>
+                            <th>Diciembre</th>
                         </tr>
                     </tfoot>
                 </table>
@@ -143,6 +159,76 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
 
     </div>
+    <div class="tab-pane active" id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
+          <div class="card">
+            <button class="btn btn-primary btn-sm" onclick="drawAnnualTable()" id="btn_exportar">estado anual</button>
+            <div class="card-body" id="annual_table_container" >
+<table id="estadoResultadosTable" class="table table-bordered table-sm table-hover text-center align-middle">
+  <thead>
+    <tr class="table-primary align-middle">
+      <th rowspan="2">CONCEPTO</th>
+      <!-- Encabezados por mes -->
+      <th colspan="7">ENERO</th>
+      <th colspan="7">FEBRERO</th>
+      <th colspan="7">MARZO</th>
+      <th colspan="7">ABRIL</th>
+    </tr>
+    <tr class="table-secondary">
+      <!-- Subencabezados por cada mes -->
+      <!-- Se repite por cada mes -->
+      <!-- 2023, % Part, 2024, % Part, Ptto 2024, % Part, Var vs AA%, Var vs Ptto % -->
+      <!-- ENERO -->
+      <th>2023</th>
+      <th>% Part</th>
+      <th>2024</th>
+      <th>% Part</th>
+      <th>Ptto 2024</th>
+      <th>% Part</th>
+      <th>Var AA%</th>
+      <th>Var Ppto%</th>
+
+      <!-- FEBRERO -->
+      <th>2023</th>
+      <th>% Part</th>
+      <th>2024</th>
+      <th>% Part</th>
+      <th>Ptto 2024</th>
+      <th>% Part</th>
+      <th>Var AA%</th>
+      <th>Var Ppto%</th>
+
+      <!-- MARZO -->
+      <th>2023</th>
+      <th>% Part</th>
+      <th>2024</th>
+      <th>% Part</th>
+      <th>Ptto 2024</th>
+      <th>% Part</th>
+      <th>Var AA%</th>
+      <th>Var Ppto%</th>
+
+      <!-- ABRIL -->
+      <th>2023</th>
+      <th>% Part</th>
+      <th>2024</th>
+      <th>% Part</th>
+      <th>Ptto 2024</th>
+      <th>% Part</th>
+      <th>Var AA%</th>
+      <th>Var Ppto%</th>
+    </tr>
+  </thead>
+  <tbody id="bodyEstadoResultados">
+    <!-- Aquí se inyectarán dinámicamente las filas -->
+  </tbody>
+</table>
+
+            </div>
+        </div>
+   
+
+    
+
 </div>
 
 
@@ -152,8 +238,10 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 <script>
 
     $('#seach_statement_table').on('click', function() {
-                         SearchResults();
+        SearchResults();
     });
+
+       
 </script>
 
 

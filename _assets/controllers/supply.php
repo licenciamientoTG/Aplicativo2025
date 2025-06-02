@@ -492,7 +492,7 @@ class Supply{
 
         // Fechas
         $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
-        $fiveDaysAgo = (new DateTime('-5 days'))->format('Y-m-d');
+        $tenDaysAgo = (new DateTime('-10 days'))->format('Y-m-d');
 
         // Datos iniciales
         $companies = $this->estacionesModel->getCompanies();
@@ -509,7 +509,7 @@ class Supply{
         $stations = array_values($dataFiltered);
 
         // Arreglo común para renderizar la vista
-        $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
+        $twigVars = compact('from', 'yesterday', 'tenDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
 
         if (!empty($_GET['company'])) {
             // Vamos a verificar si existe un archivo en el servidor con el nombre $companyRfc_$from.xml
@@ -617,7 +617,7 @@ class Supply{
 
         // Fechas
         $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
-        $fiveDaysAgo = (new DateTime('-5 days'))->format('Y-m-d');
+        $tenDaysAgo = (new DateTime('-10 days'))->format('Y-m-d');
 
         // Datos iniciales
         $companies = $this->estacionesModel->getCompanies();
@@ -634,7 +634,7 @@ class Supply{
         $stations = array_values($dataFiltered);
 
         // Arreglo común para renderizar la vista
-        $twigVars = compact('from', 'yesterday', 'fiveDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
+        $twigVars = compact('from', 'yesterday', 'tenDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
 
         if (!empty($companyRfc)) {
             // Obtiene las estaciones asociadas a la compañía

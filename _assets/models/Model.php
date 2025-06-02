@@ -47,6 +47,7 @@ class Model{
             36 => "[192.168.36.101].[CG_14946].[dbo]",                   // SAN RAFAEL
             37 => "[192.168.37.101].[CG_15071].[dbo]",                   // PUERTECITO
             38 => "[192.168.38.101].[CG_15901].[dbo]",                   // JESUS MARIA
+            39 => "[192.168.39.101].[CG_12442].[dbo]",                   // Gabriela Mistral
             40 => "[192.168.40.101].[E10702].[dbo]",                   // Praxedis
         );
 
@@ -88,6 +89,7 @@ class Model{
             36 => "[192.168.36.101]",                   // San rafael
             37 => "[192.168.37.101]",                   // Puertecito
             38 => "[192.168.38.101]",                   // JESUS MARIA
+            39 => "[192.168.39.101]",                   // Gabriela Mistral
             40 => "[192.168.40.101]",                   // Praxedis
         );
 
@@ -129,6 +131,7 @@ class Model{
             36 => "[CG_14946].[dbo]",                   // San rafael
             37 => "[CG_15071].[dbo]",                   // Puertecito
             38 => "[CG_15901].[dbo]",                   // JESUS MARIA
+            39 => "[CG_12442].[dbo]",                   // Gabriela Mistral
             40 => "[E10702].[dbo]",                   // Praxedis
         );
     }
