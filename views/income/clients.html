@@ -1,0 +1,139 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Control Despachos{% endblock %}
+{% block mycss %}
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+{% endblock %}
+{% block menutitle %}Control Despachos{% endblock %}
+{% block content %}
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="debit_clients-tab" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button" role="tab" aria-controls="debit_clients" aria-selected="true">Debito</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="credit_clients-tab" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button" role="tab" aria-controls="credit_clients" aria-selected="true">Credito</button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane active" id="debit_clients" role="tabpanel" aria-labelledby="debit_clients-tab">
+         <div class="card">
+            <div class="card-body">
+                <div class="row">
+
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Estatus </label>
+                        <select class="form-control form-control-sm" name="status" id="status" required>
+                            <option value="0">Todos</option>
+                            <option value="1">Suspendido</option>
+                            <option value="2">Activos</option>
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_clients_debit" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Clientes Debito </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="clients_debit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Codigo</th>
+                            <th>Nombre</th>
+                            <th>Saldo</th>
+                            <th>Estatus</th>
+                            <th>Domicilio</th>
+                            <th>RFC</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Codigo</th>
+                            <th>Nombre</th>
+                            <th>Saldo</th>
+                            <th>Estatus</th>
+                            <th>Domicilio</th>
+                            <th>RFC</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane " id="credit_clients" role="tabpanel" aria-labelledby="credit_clients-tab">
+       
+    </div>
+
+</div>
+
+{% endblock %}
+{% block myjs %}
+
+<!-- <script src="{{ JS }}income.js"></script> -->
+<script src="{{ JS }}income.js"></script>
+<script>
+$('#seach_clients_debit').on('click', function() {
+    clients_debit_table();
+});
+
+</script>
+
+
+{% endblock %}

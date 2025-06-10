@@ -472,10 +472,7 @@ class Marketing{
         $pdf->Output();
     }
 
-    /**
-     * @return void
-     * @throws Exception
-     */
+
     function stickerModal() : void {
         $months = array(
             1 => 'enero',

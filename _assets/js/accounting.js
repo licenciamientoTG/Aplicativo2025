@@ -636,27 +636,498 @@ async function  SearchResults(){
 }
 // console.log(localStorage);
 
-
-
 async function drawAnnualTable() {
-  const year = document.getElementById('year').value;
-    try {
-        const response = await fetch('/accounting/annual_table', {      
-            method: 'POST',
-            headers: {
-                'Accept': 'text/html,application/json,*/*',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            credentials: 'include',
-            body: `year=${year}`
-        });
-        console.log(response);
+  const container = document.getElementById('Edo_anual');
+  container.classList.add('loading');
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const html = await response.text();
-        document.getElementById('annual_table_container').innerHTML = html;
-    } catch (error) {
-        console.error('Error cargando tabla:', error);
-        alert('Ocurrió un error al cargar la tabla anual.');
+  const year = parseInt(document.getElementById('input_year').value, 10);
+  const prevYear = year - 1;
+
+  try {
+    const response = await fetch('/accounting/drawAnnualTable', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/javascript, */*',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      credentials: 'include',
+      body: `year=${year}`
+    });
+
+    const api = await response.json();
+    console.log('API response:', api);
+    const ingresosData = api.ingresos;         // Lista de objetos { concepto: 'MAXIMA', 'Enero': 123, ... }
+    const costosData   = api.costo_venta;       // Lista de objetos { concepto: 'DIESEL', 'Enero': 456, ... }
+
+    const meses = [
+      'Enero', 'Febrero', 'Marzo', 'Abril',
+      'Mayo', 'Junio', 'Julio', 'Agosto',
+      'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    const table = document.getElementById('estadoResultadosTable');
+    const thead = table.querySelector('thead');
+    const tbody = document.getElementById('bodyEstadoResultados');
+
+    // Limpia el thead y tbody antes de dibujar
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    
+
+    // —————Construye el encabezado con los 12 meses—————
+
+    // Fila 1: nombres de mes
+    const headerMeses = document.createElement('tr');
+    // headerMeses.className = 'table-primary border align-middle';
+    headerMeses.innerHTML = `<th rowspan="2">CONCEPTO</th>`;
+    meses.forEach(m => {
+      headerMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
+    });
+    thead.appendChild(headerMeses);
+
+    // Fila 2: subcolumnas año anterior / año actual / ppto / variaciones…
+    const headerSub = document.createElement('tr');
+    headerSub.className = 'table-Info';
+    meses.forEach(() => {
+      headerSub.innerHTML += `
+        <th>${prevYear}</th>
+        <th>% Part</th>
+        <th>${year}</th>
+        <th>% Part</th>
+        <th>Ptto ${year}</th>
+        <th>% Part</th>
+        <th>Var AA%</th>
+        <th>Var Ppto%</th>
+      `;
+    });
+    thead.appendChild(headerSub);
+
+
+
+    const dividerIngresos = document.createElement('tr');
+    dividerIngresos.classList.add('table-primary','text-white','text-start','fw-bold','divider');
+    // en lugar de listener, inline:
+    dividerIngresos.setAttribute(
+    'onclick',
+    'toggleSection(this)'
+    );
+    dividerIngresos.innerHTML = `
+    <td colspan="${1 + meses.length * 8}">
+        <i class="fas fa-chevron-down pe-2"></i>
+        INGRESOS
+    </td>
+    `;
+    tbody.appendChild(dividerIngresos);
+    // —————Dibuja la sección A - INGRESOS—————
+
+    // Título de sección
+    const sumIngresos = api.sumas_por_rubro_mes['A - INGRESOS'] || {};
+    const trTituloIngresos = document.createElement('tr');
+    trTituloIngresos.classList.add('table-light', 'fw-bold');
+    trTituloIngresos.setAttribute('onclick','toggleGroup(this)');
+
+    trTituloIngresos.innerHTML = `
+    <td>
+        <i class="fas fa-chevron-down pe-2"></i>
+        A - INGRESOS
+    </td>
+    ${meses.map(mes => `
+        <td>-</td><td>-</td>
+        <td>${formatea(sumIngresos[mes]||0)}</td>
+        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    `).join('')}
+    `;
+    tbody.appendChild(trTituloIngresos);
+
+    // Cada objeto de ingresosData ya trae “concepto” en mayúsculas (por ejemplo 'MAXIMA', 'SUPER', etc.)
+    ingresosData.forEach(fila => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fila.concepto}</td>`;
+
+      meses.forEach(mes => {
+        // Extrae el valor numérico para este mes; si no existe, será null o 0
+        const val = fila[mes] ?? null;
+        const monto = formatea(val);
+
+        // De momento dejamos vacíos el año anterior (%Part, Ptto, Variaciones)
+        tr.innerHTML += `
+          <td>-</td>   <!-- ${prevYear} -->
+          <td>-</td>   <!-- % Part ${prevYear} -->
+          <td>${monto}</td>  <!-- ${year} -->
+          <td>-</td>   <!-- % Part ${year} -->
+          <td>-</td>   <!-- Ptto ${year} -->
+          <td>-</td>   <!-- % Part Ptto -->
+          <td>-</td>   <!-- Var AA% -->
+          <td>-</td>   <!-- Var Ppto% -->
+        `;
+      });
+
+      tbody.appendChild(tr);
+    });
+
+        // —————Dibuja la sección B - COSTO DE VENTA—————
+
+        // B - COSTO DE VENTA
+        const sumCostos = api.sumas_por_rubro_mes['B - COSTO DE VENTA'] || {};
+        const trCostos = document.createElement('tr');
+        trCostos.classList.add('table-light','fw-bold','divider');
+        trCostos.setAttribute('onclick','toggleGroup(this)');
+        trCostos.innerHTML = `
+        <td>
+            <i class="fas fa-chevron-down pe-2"></i>
+            B - COSTO DE VENTA
+        </td>
+        ${meses.map(mes => `
+            <td>-</td><td>-</td>
+            <td>${formatea(sumCostos[mes]||0)}</td>
+            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+        `).join('')}
+        `;
+        tbody.appendChild(trCostos);
+
+        costosData.forEach(fila => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fila.concepto}</td>`;
+
+        meses.forEach(mes => {
+            const val = fila[mes] ?? null;
+            const monto = formatea(val);
+
+            tr.innerHTML += `
+            <td>-</td>
+            <td>-</td>
+            <td>${monto}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            `;
+        });
+
+        tbody.appendChild(tr);
+        });
+        
+        const margenData = api.margen_de_utilidad;  // [{ concepto: 'REGULAR', Enero: 123, Febrero: ... }, …]
+        const trTituloMargen = document.createElement('tr');
+        trTituloMargen.classList.add('table-light', 'fw-bold');
+        trTituloMargen.innerHTML = `<td>MARGEN DE UTILIDAD</td>`;
+        // por cada mes, ocho celdas vacías (o puedes usar sumas si las tuvieras)
+        meses.forEach(() => {
+        trTituloMargen.innerHTML += `<td colspan="8">-</td>`;
+        });
+        tbody.appendChild(trTituloMargen);
+
+        // 2.2 – Filas por cada concepto de margen
+        margenData.forEach(fila => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fila.concepto}</td>`;
+        meses.forEach(mes => {
+            const val = fila[mes] ?? 0;
+            const fx = formatea(val);
+            tr.innerHTML += `
+            <td>-</td>   <!-- año anterior -->
+            <td>-</td>   <!-- % Part AA -->
+            <td>${fx}</td> <!-- año actual -->
+            <td>-</td>   <!-- % Part A -->
+            <td>-</td>   <!-- Ptto -->
+            <td>-</td>   <!-- % Ptto -->
+            <td>-</td>   <!-- Var AA% -->
+            <td>-</td>   <!-- Var Ptto% -->
+            `;
+        });
+        tbody.appendChild(tr);
+        });
+
+
+
+
+       const dividerGastosEst = document.createElement('tr');
+        dividerGastosEst.classList.add(
+        'table-primary',
+        'text-white',   
+        'text-start',
+        'fw-bold',
+        'divider'
+        );
+        // engancha el toggle inline
+        dividerGastosEst.setAttribute('onclick', 'toggleSection(this)');
+        // crea la celda que abarca todas las columnas
+        dividerGastosEst.innerHTML = `
+        <td colspan="${1 + meses.length * 8}">
+            <i class="fas fa-chevron-down pe-2"></i>
+            GASTOS ESTACIONES
+        </td>
+        `;
+        tbody.appendChild(dividerGastosEst);
+
+
+        const gastosData = api.gastos_operacion;  // ahora trae [{ concepto: 'Agua para consumo', Enero: ..., ... }, …]
+        // 1) Título de sección
+        const sumGastosOp  = api.sumas_por_rubro_mes['E - GASTOS DE OPERACION'] || {};
+
+        const trGastosOp = document.createElement('tr');
+        trGastosOp.classList.add('table-light','fw-bold','divider');
+        trGastosOp.setAttribute('onclick','toggleGroup(this)');
+        trGastosOp.innerHTML = `
+        <td>
+            <i class="fas fa-chevron-down pe-2"></i>
+            E - GASTOS DE OPERACION
+        </td>
+        ${meses.map(mes => `
+            <td>-</td><td>-</td>
+            <td>${formatea(sumGastosOp[mes]||0)}</td>
+            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+        `).join('')}
+        `;
+        tbody.appendChild(trGastosOp);
+        // 3) Luego siguen las filas individuales de cada concepto
+        gastosData.forEach(fila => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fila.concepto}</td>`;
+        meses.forEach(mes => {
+            const val = fila[mes] ?? 0;
+            const fx  = formatea(val);
+            tr.innerHTML += `
+            <td>-</td>
+            <td>-</td>
+            <td>${fx}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            `;
+        });
+        tbody.appendChild(tr);
+        });
+
+        ///////////////////////nominas
+        const nominasData = api.nominas;  // ahora trae [{ concepto: 'Sueldos', Enero: ..., ... }, …]
+        // 1) Título de sección
+        const sumNom = api.sumas_por_rubro_mes['C - NOMINA'] || {};
+        const trNom = document.createElement('tr');
+        trNom.classList.add('table-light','fw-bold','divider');
+        trNom.setAttribute('onclick','toggleGroup(this)');
+        trNom.innerHTML = `
+        <td>
+            <i class="fas fa-chevron-down pe-2"></i>
+            C - NOMINA
+        </td>
+        ${meses.map(mes => `
+            <td>-</td><td>-</td>
+            <td>${formatea(sumNom[mes]||0)}</td>
+            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+        `).join('')}
+        `;
+        tbody.appendChild(trNom);
+
+        // 3) Luego siguen las filas individuales de cada concepto
+        nominasData.forEach(fila => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${fila.concepto}</td>`;
+        meses.forEach(mes => {
+            const val = fila[mes] ?? 0;
+            const fx  = formatea(val);
+            tr.innerHTML += `
+            <td>-</td>
+            <td>-</td>
+            <td>${fx}</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            `;
+        });
+        tbody.appendChild(tr);
+        });
+
+
+    const costoSocialData = api.costo_social;
+    const sumCS = api.sumas_por_rubro_mes['D - COSTO SOCIAL'] || {};
+    const trCS = document.createElement('tr');
+    trCS.classList.add('table-light','fw-bold','divider');
+    trCS.setAttribute('onclick','toggleGroup(this)');
+    trCS.innerHTML = `
+    <td>
+        <i class="fas fa-chevron-down pe-2"></i>
+        D - COSTO SOCIAL
+    </td>
+    ${meses.map(mes => `
+        <td>-</td><td>-</td>
+        <td>${formatea(sumCS[mes]||0)}</td>
+        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    `).join('')}
+    `;
+    tbody.appendChild(trCS);
+
+    costoSocialData.forEach(fila => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fila.concepto}</td>`;
+      meses.forEach(mes => {
+        const val = fila[mes] ?? 0;
+        tr.innerHTML += `
+          <td>-</td>
+          <td>-</td>
+          <td>${formatea(val)}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        `;
+      });
+      tbody.appendChild(tr);
+    });
+
+
+    /////////////////////// MANTENIMIENTO
+    const mantenimientoData = api.mantenimiento;  
+    const sumMant = api.sumas_por_rubro_mes['F - MANTENIMIENTO'] || {};
+    const trMant = document.createElement('tr');
+    trMant.classList.add('table-light','fw-bold','divider');
+    trMant.setAttribute('onclick','toggleGroup(this)');
+    trMant.innerHTML = `
+    <td>
+        <i class="fas fa-chevron-down pe-2"></i>
+        F - MANTENIMIENTO
+    </td>
+    ${meses.map(mes => `
+        <td>-</td><td>-</td>
+        <td>${formatea(sumMant[mes]||0)}</td>
+        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    `).join('')}
+    `;
+    tbody.appendChild(trMant);
+
+    mantenimientoData.forEach(fila => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fila.concepto}</td>`;
+      meses.forEach(mes => {
+        const val = fila[mes] ?? 0;
+        tr.innerHTML += `
+          <td>-</td>
+          <td>-</td>
+          <td>${formatea(val)}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        `;
+      });
+      tbody.appendChild(tr);
+    });
+
+    
+    /////////////////////// GastoFijo
+    const gastosFijosData = api.gastos_fijos;  
+    const sumGastosFijos = api.sumas_por_rubro_mes['H - GASTOS FIJOS'] || {};
+    const trGastosFijos = document.createElement('tr');
+    trGastosFijos.classList.add('table-light','fw-bold','divider');
+    trGastosFijos.setAttribute('onclick','toggleGroup(this)');
+    trGastosFijos.innerHTML = `
+    <td>
+        <i class="fas fa-chevron-down pe-2"></i>
+        H - GASTOS FIJOS
+    </td>
+    ${meses.map(mes => `
+        <td>-</td><td>-</td>
+        <td>${formatea(sumGastosFijos[mes]||0)}</td>
+        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    `).join('')}
+    `;
+    tbody.appendChild(trGastosFijos);
+
+    gastosFijosData.forEach(fila => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fila.concepto}</td>`;
+      meses.forEach(mes => {
+        const val = fila[mes] ?? 0;
+        tr.innerHTML += `
+          <td>-</td>
+          <td>-</td>
+          <td>${formatea(val)}</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        `;
+      });
+      tbody.appendChild(tr);
+    });
+
+    container.classList.remove('loading');
+
+  } catch (error) {
+    console.error('Error al dibujar tabla anual:', error);
+  }
+}
+
+// Formatea números con separador de miles (sin decimales)
+function formatea(valor) {
+  if (typeof valor === 'number') {
+    return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
+  }
+  return valor || '-';
+}
+
+
+document.querySelectorAll('tr.divider').forEach(div => {
+  div.style.cursor = 'pointer';
+  div.addEventListener('click', () => {
+    console.log('Div clicked:', div);
+    // alternamos el estilo de fondo
+    const icon = div.querySelector('i');
+    // alternamos el ícono
+    icon.classList.toggle('fa-chevron-down');
+    icon.classList.toggle('fa-chevron-right');
+
+    // ocultar/mostrar hasta el siguiente .divider
+    let next = div.nextElementSibling;
+    while (next && !next.classList.contains('divider')) {
+      next.style.display = next.style.display === 'none' ? '' : 'none';
+      next = next.nextElementSibling;
     }
+  });
+});
+
+
+
+function toggleSection(div) {
+  console.log('Toggle section:', div);
+
+  // alterna el icono
+  const icon = div.querySelector('i');
+  icon.classList.toggle('fa-chevron-down');
+  icon.classList.toggle('fa-chevron-right');
+
+  // oculta/muestra hasta el siguiente .divider
+  let next = div.nextElementSibling;
+  while (next && !next.classList.contains('divider')) {
+    next.style.display = next.style.display === 'none' ? '' : 'none';
+    next = next.nextElementSibling;
+  }
+}
+
+function toggleGroup(tr) {
+  console.log('Toggle group:', tr);
+  const icon = tr.querySelector('i');
+  icon.classList.toggle('fa-chevron-down');
+  icon.classList.toggle('fa-chevron-right');
+
+  // oculta/enseña hasta el siguiente header (.fw-bold)
+  let next = tr.nextElementSibling;
+  while (next && !next.classList.contains('fw-bold')) {
+    next.style.display = next.style.display === 'none' ? '' : 'none';
+    next = next.nextElementSibling;
+  }
+}
+
+
+function annual_budgetTable(){
+    
 }

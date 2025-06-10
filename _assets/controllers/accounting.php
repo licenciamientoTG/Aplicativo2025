@@ -265,7 +265,8 @@ class Accounting{
         }
 
     }
-    public function annual_table(){
+
+    public function drawAnnualTable(){
 
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
@@ -274,7 +275,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/estado_resultados/concentrado_resultados_anual');
+        $ch = curl_init('http://192.168.0.109:82/api/concentrado-anual/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_POST, true);
@@ -283,12 +284,8 @@ class Accounting{
         $response = curl_exec($ch);
         curl_close($ch);
         $apiData = json_decode($response, true);
-        echo '<pre>';
-        var_dump($apiData);
-        die();
-        echo json_encode($apiData);
-        // return $apiData;
 
+        echo json_encode($apiData);
     }
     public function payments_table() {
         set_time_limit(280);
@@ -546,3 +543,4 @@ class Accounting{
         }
     }
 }
+

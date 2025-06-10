@@ -99,6 +99,36 @@ class ClientesModel extends Model{
         return $this->sql->select($query) ?: false ;
     }
 
+    public function get_clients_debit($status) : array|false {
+
+        $query_status = '';
+        if ($status== 0){
+            $query_status = ' ';
+        } elseif ($status == 1) {
+            $query_status = ' AND t1.codest = 1';
+        } elseif ($status == 2) {
+            $query_status = ' AND t1.codest =  0';
+        } else {
+            return false;
+        }
+        $query = 'SELECT
+                    t1.cod,
+                    t1.den,
+                    t1.tipval,
+                    case 
+                        When t1.codest = 1  then \'suspendido\'
+                        When t1.codest =  0 then \'Activo\'
+                        else \'NA\'
+                        end as [status],
+                    t1.dom,
+                    t1.rfc, t1.debsdo
+                    FROM [SG12].[dbo].[Clientes] t1
+                    where 
+                    tipval = 4 '. $query_status;
+        $params = [];
+        return $this->sql->select($query, $params) ?: false ;
+    }
+
     /**
      * @param $codcli
      * @param $tar

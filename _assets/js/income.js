@@ -1837,3 +1837,93 @@ async function cash_sales_table(){
         }
     });
 }
+
+async function clients_debit_table(){
+    if ($.fn.DataTable.isDataTable('#clients_debit_table')) {
+        $('#clients_debit_table').DataTable().destroy();
+        $('#clients_debit_table thead .filter').remove();
+
+    }
+    var status = document.getElementById('status').value;
+
+    $('#clients_debit_table thead').prepend($('#clients_debit_table thead tr').clone().addClass('filter'));
+    $('#clients_debit_table thead tr.filter th').each(function (index) {
+        col = $('#clients_debit_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#clients_debit_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#clients_debit_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let clients_debit_table =$('#clients_debit_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'status':status
+            },
+            url: '/income/clients_debit_table',
+            timeout: 600000, 
+            error: function() {
+                $('#clients_debit_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            {'data': 'cod'},
+            {'data': 'den',className:'text-nowrap'},
+            {'data': 'debsdo', render: $.fn.dataTable.render.number( ',', '.', 2, '$'), className:'text-nowrap text-end'},
+            {'data': 'status', className:'text-nowrap text-center'},
+            {'data': 'dom'},
+            {'data': 'rfc'},
+
+
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+           
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+        }
+    });
+}

@@ -12,7 +12,7 @@ class Income{
     public GasolinerasModel $gasolinerasModel;
     public EstacionesModel $estacionesModel;
     public ClientesVehiculosModel $vehiclesModel;
-
+    public ClientesModel $clientesModel;
     public InterlogicPaymentsModel $kioskos;
     public IngresosModel $ingresosModel;
     public ValesRModel $valesR;
@@ -30,6 +30,7 @@ class Income{
         $this->ingresosModel    = new IngresosModel;
         $this->valesR           = new ValesRModel;
         $this->documentosModel  = new DocumentosModel;
+        $this->clientesModel    = new ClientesModel;
 
         $this->twig             = $twig;
         $this->route            = 'views/income/';
@@ -58,6 +59,11 @@ class Income{
             echo $this->twig->render($this->route . 'cash_sales.html', compact('stations'));
         }
     }
+    public function clients(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'clients.html');
+        }
+    }
     public function cash_sales_table() {
         $data = [];
         $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)
@@ -74,6 +80,26 @@ class Income{
                     'Morralla'           => round($venta['Morralla'], 2),
                     'Cheques'             => round($venta['Cheques'], 2),
                     'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
+                );
+            }
+        }
+    
+        json_output(array("data" => $data));
+    }
+
+    public function clients_debit_table() {
+        $data = [];
+        if ($clients = $this->clientesModel->get_clients_debit($_POST['status'])) {
+            foreach ($clients as $client) {
+                $data[] = array(
+                    'cod'    => $client['cod'],
+                    'den'    => $client['den'],
+                    'status' => $client['status'],
+                    'status' => $client['status'],
+                    'dom'    => $client['dom'],
+                    'rfc'    => $client['rfc'],
+                    'debsdo'    => $client['debsdo'],
+                   
                 );
             }
         }
