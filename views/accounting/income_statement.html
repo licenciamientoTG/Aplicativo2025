@@ -92,11 +92,11 @@ table {
         <button class="nav-link " id="concentrating_results-tab" data-bs-toggle="tab" data-bs-target="#concentrating_results" type="button" role="tab" aria-controls="concentrating_results" aria-selected="true">Concentrado</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
+        <button class="nav-link active" id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
     </li>
 
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="annual_budget-tab" data-bs-toggle="tab" data-bs-target="#annual_budget" type="button" role="tab" aria-controls="annual_budget" aria-selected="true">Presupuesto Anual</button>
+        <button class="nav-link " id="annual_budget-tab" data-bs-toggle="tab" data-bs-target="#annual_budget" type="button" role="tab" aria-controls="annual_budget" aria-selected="true">Presupuesto Anual</button>
     </li>
 </ul>
 
@@ -110,8 +110,7 @@ table {
                     <div class="col-6">
                         <label for="from" class="col-form-label col-form-label-sm">Año: </label>
                         <!-- <input type="year" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required> -->
-                        <input type="number" placeholder="YYYY" min="1999" max="2020" class="form-control" value="2024"  name="year" id="year">
-        
+                        <input type="number" placeholder="YYYY" min="1999"  class="form-control" value="2024"  name="year" id="year">
                     </div>
                     <div class="col d-flex flex-column justify-content-between">
                         <div></div>
@@ -177,12 +176,12 @@ table {
         </div>
 
     </div>
-    <div class="tab-pane " id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
+    <div class="tab-pane active" id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
         <div class="card">
            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Estado de Resultados Anual</h5>
                 <div class="d-flex gap-2">
-                    <input type="number" id="input_year" class="form-control form-control-sm" placeholder="Año" min="2000" max="2099" value="2024" style="width: 100px;">
+                    <input type="number" id="input_year" class="form-control form-control-sm" placeholder="Año" min="2000" max="2099" value="2025" style="width: 100px;">
                     <button class="btn btn-primary btn-sm" onclick="drawAnnualTable()" id="btn_exportar">Generar</button>
                 </div>
             </div>
@@ -201,12 +200,12 @@ table {
             </div>
         </div>
     </div>
-    <div class="tab-pane active" id="annual_budget" role="tabpanel" aria-labelledby="annual_budget-tab">
+    <div class="tab-pane " id="annual_budget" role="tabpanel" aria-labelledby="annual_budget-tab">
         <div class="card">
            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Presupuesto Anual</h5>
                 <div class="d-flex gap-2">
-                    <input type="number" id="input_year" class="form-control form-control-sm" placeholder="Año" min="2000" max="2099" value="2024" style="width: 100px;">
+                    <input type="number" id="input_year" class="form-control form-control-sm" placeholder="Año" min="2000" max="2099" value="2025" style="width: 100px;">
                     <button class="btn btn-primary btn-sm" onclick="annual_budgetTable()" id="btn_exportar">Generar</button>
                 </div>
             </div>
@@ -216,7 +215,7 @@ table {
                     <thead class="table-info">
 
                     </thead>
-                    <tbody id="bodyannual_budget">
+                    <tbody id="body_annual_budget">
                         <!-- Aquí se inyectarán dinámicamente las filas -->
                     </tbody>
                     </table>

@@ -636,436 +636,455 @@ async function  SearchResults(){
 }
 // console.log(localStorage);
 
-async function drawAnnualTable() {
-  const container = document.getElementById('Edo_anual');
-  container.classList.add('loading');
+// async function drawAnnualTable() {
+//   const container = document.getElementById('Edo_anual');
+//   container.classList.add('loading');
 
-  const year = parseInt(document.getElementById('input_year').value, 10);
-  const prevYear = year - 1;
+//   const year = parseInt(document.getElementById('input_year').value, 10);
+//   const prevYear = year - 1;
 
-  try {
-    const response = await fetch('/accounting/drawAnnualTable', {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json, text/javascript, */*',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      credentials: 'include',
-      body: `year=${year}`
-    });
+//   try {
+//     const response = await fetch('/accounting/drawAnnualTable', {
+//       method: 'POST',
+//       headers: {
+//         'Accept': 'application/json, text/javascript, */*',
+//         'Content-Type': 'application/x-www-form-urlencoded'
+//       },
+//       credentials: 'include',
+//       body: `year=${year}`
+//     });
 
-    const api = await response.json();
-    console.log('API response:', api);
-    const ingresosData = api.ingresos;         // Lista de objetos { concepto: 'MAXIMA', 'Enero': 123, ... }
-    const costosData   = api.costo_venta;       // Lista de objetos { concepto: 'DIESEL', 'Enero': 456, ... }
+//     const api = await response.json();
+//     console.log('API response:', api);
+//     const ingresosData = api.ingresos;         // Lista de objetos { concepto: 'MAXIMA', 'Enero': 123, ... }
+//     const costosData   = api.costo_venta;       // Lista de objetos { concepto: 'DIESEL', 'Enero': 456, ... }
 
-    const meses = [
-      'Enero', 'Febrero', 'Marzo', 'Abril',
-      'Mayo', 'Junio', 'Julio', 'Agosto',
-      'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-    ];
+//     const meses = [
+//       'Enero', 'Febrero', 'Marzo', 'Abril',
+//       'Mayo', 'Junio', 'Julio', 'Agosto',
+//       'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+//     ];
 
-    const table = document.getElementById('estadoResultadosTable');
-    const thead = table.querySelector('thead');
-    const tbody = document.getElementById('bodyEstadoResultados');
+//     const table = document.getElementById('estadoResultadosTable');
+//     const thead = table.querySelector('thead');
+//     const tbody = document.getElementById('bodyEstadoResultados');
 
-    // Limpia el thead y tbody antes de dibujar
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
+//     // Limpia el thead y tbody antes de dibujar
+//     thead.innerHTML = '';
+//     tbody.innerHTML = '';
 
-    
+//     // —————Construye el encabezado con los 12 meses—————
+//     // Fila 1: nombres de mes
+//     const headerMeses = document.createElement('tr');
+//     // headerMeses.className = 'table-primary border align-middle';
+//     headerMeses.innerHTML = `<th rowspan="2">CONCEPTO</th>`;
+//     meses.forEach(m => {
+//       headerMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
+//     });
+//     thead.appendChild(headerMeses);
 
-    // —————Construye el encabezado con los 12 meses—————
-
-    // Fila 1: nombres de mes
-    const headerMeses = document.createElement('tr');
-    // headerMeses.className = 'table-primary border align-middle';
-    headerMeses.innerHTML = `<th rowspan="2">CONCEPTO</th>`;
-    meses.forEach(m => {
-      headerMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
-    });
-    thead.appendChild(headerMeses);
-
-    // Fila 2: subcolumnas año anterior / año actual / ppto / variaciones…
-    const headerSub = document.createElement('tr');
-    headerSub.className = 'table-Info';
-    meses.forEach(() => {
-      headerSub.innerHTML += `
-        <th>${prevYear}</th>
-        <th>% Part</th>
-        <th>${year}</th>
-        <th>% Part</th>
-        <th>Ptto ${year}</th>
-        <th>% Part</th>
-        <th>Var AA%</th>
-        <th>Var Ppto%</th>
-      `;
-    });
-    thead.appendChild(headerSub);
+//     // Fila 2: subcolumnas año anterior / año actual / ppto / variaciones…
+//     const headerSub = document.createElement('tr');
+//     headerSub.className = 'table-Info';
+//     meses.forEach(() => {
+//       headerSub.innerHTML += `
+//         <th>${prevYear}</th>
+//         <th>% Part</th>
+//         <th>${year}</th>
+//         <th>% Part</th>
+//         <th>Ptto ${year}</th>
+//         <th>% Part</th>
+//         <th>Var AA%</th>
+//         <th>Var Ppto%</th>
+//       `;
+//     });
+//     thead.appendChild(headerSub);
 
 
 
-    const dividerIngresos = document.createElement('tr');
-    dividerIngresos.classList.add('table-primary','text-white','text-start','fw-bold','divider');
-    // en lugar de listener, inline:
-    dividerIngresos.setAttribute(
-    'onclick',
-    'toggleSection(this)'
-    );
-    dividerIngresos.innerHTML = `
-    <td colspan="${1 + meses.length * 8}">
-        <i class="fas fa-chevron-down pe-2"></i>
-        INGRESOS
-    </td>
-    `;
-    tbody.appendChild(dividerIngresos);
-    // —————Dibuja la sección A - INGRESOS—————
+//     const dividerIngresos = document.createElement('tr');
+//     dividerIngresos.classList.add('table-primary','text-white','text-start','fw-bold','divider');
+//     // en lugar de listener, inline:
+//     dividerIngresos.setAttribute(
+//     'onclick',
+//     'toggleSection(this)'
+//     );
+//     dividerIngresos.innerHTML = `
+//     <td colspan="${1 + meses.length * 8}">
+//         <i class="fas fa-chevron-down pe-2"></i>
+//         INGRESOS
+//     </td>
+//     `;
+//     tbody.appendChild(dividerIngresos);
+//     // —————Dibuja la sección A - INGRESOS—————
 
-    // Título de sección
-    const sumIngresos = api.sumas_por_rubro_mes['A - INGRESOS'] || {};
-    const trTituloIngresos = document.createElement('tr');
-    trTituloIngresos.classList.add('table-light', 'fw-bold');
-    trTituloIngresos.setAttribute('onclick','toggleGroup(this)');
+//     // Título de sección
+//     const sumIngresos = api.sumas_por_rubro_mes['A - INGRESOS'] || {};
+//     const trTituloIngresos = document.createElement('tr');
+//     trTituloIngresos.classList.add('table-light', 'fw-bold');
+//     trTituloIngresos.setAttribute('onclick','toggleGroup(this)');
 
-    trTituloIngresos.innerHTML = `
-    <td>
-        <i class="fas fa-chevron-down pe-2"></i>
-        A - INGRESOS
-    </td>
-    ${meses.map(mes => `
-        <td>-</td><td>-</td>
-        <td>${formatea(sumIngresos[mes]||0)}</td>
-        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-    `).join('')}
-    `;
-    tbody.appendChild(trTituloIngresos);
+//     trTituloIngresos.innerHTML = `
+//     <td>
+//         <i class="fas fa-chevron-down pe-2"></i>
+//         A - INGRESOS
+//     </td>
+//     ${meses.map(mes => `
+//         <td>-</td><td>-</td>
+//         <td>${formatea(sumIngresos[mes]||0)}</td>
+//         <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//     `).join('')}
+//     `;
+//     tbody.appendChild(trTituloIngresos);
 
-    // Cada objeto de ingresosData ya trae “concepto” en mayúsculas (por ejemplo 'MAXIMA', 'SUPER', etc.)
-    ingresosData.forEach(fila => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${fila.concepto}</td>`;
+//     // Cada objeto de ingresosData ya trae “concepto” en mayúsculas (por ejemplo 'MAXIMA', 'SUPER', etc.)
+//     ingresosData.forEach(fila => {
+//       const tr = document.createElement('tr');
+//       tr.innerHTML = `<td>${fila.concepto}</td>`;
 
-      meses.forEach(mes => {
-        // Extrae el valor numérico para este mes; si no existe, será null o 0
-        const val = fila[mes] ?? null;
-        const monto = formatea(val);
+//       meses.forEach(mes => {
+//         // Extrae el valor numérico para este mes; si no existe, será null o 0
+//         const val = fila[mes]?.total ?? 0;
+//         const porcentaje = fila[mes]?.porcentaje ?? 0;
+//         const monto = formatea(val);
+//         const montoPorcentaje = formatea(porcentaje);
 
-        // De momento dejamos vacíos el año anterior (%Part, Ptto, Variaciones)
-        tr.innerHTML += `
-          <td>-</td>   <!-- ${prevYear} -->
-          <td>-</td>   <!-- % Part ${prevYear} -->
-          <td>${monto}</td>  <!-- ${year} -->
-          <td>-</td>   <!-- % Part ${year} -->
-          <td>-</td>   <!-- Ptto ${year} -->
-          <td>-</td>   <!-- % Part Ptto -->
-          <td>-</td>   <!-- Var AA% -->
-          <td>-</td>   <!-- Var Ppto% -->
-        `;
-      });
+//         // De momento dejamos vacíos el año anterior (%Part, Ptto, Variaciones)
+//         tr.innerHTML += `
+//           <td>-</td>   <!-- ${prevYear} -->
+//           <td>-</td>   <!-- % Part ${prevYear} -->
+//           <td>${monto}</td>  <!-- ${year} -->
+//           <td>${montoPorcentaje}</td>   <!-- % Part ${year} -->
+//           <td>-</td>   <!-- Ptto ${year} -->
+//           <td>-</td>   <!-- % Part Ptto -->
+//           <td>-</td>   <!-- Var AA% -->
+//           <td>-</td>   <!-- Var Ppto% -->
+//         `;
+//       });
 
-      tbody.appendChild(tr);
-    });
+//       tbody.appendChild(tr);
+//     });
 
-        // —————Dibuja la sección B - COSTO DE VENTA—————
+//         // —————Dibuja la sección B - COSTO DE VENTA—————
 
-        // B - COSTO DE VENTA
-        const sumCostos = api.sumas_por_rubro_mes['B - COSTO DE VENTA'] || {};
-        const trCostos = document.createElement('tr');
-        trCostos.classList.add('table-light','fw-bold','divider');
-        trCostos.setAttribute('onclick','toggleGroup(this)');
-        trCostos.innerHTML = `
-        <td>
-            <i class="fas fa-chevron-down pe-2"></i>
-            B - COSTO DE VENTA
-        </td>
-        ${meses.map(mes => `
-            <td>-</td><td>-</td>
-            <td>${formatea(sumCostos[mes]||0)}</td>
-            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-        `).join('')}
-        `;
-        tbody.appendChild(trCostos);
+//         // B - COSTO DE VENTA
+//         const sumCostos = api.sumas_por_rubro_mes['B - COSTO DE VENTA'] || {};
+//         const trCostos = document.createElement('tr');
+//         trCostos.classList.add('table-light','fw-bold','divider');
+//         trCostos.setAttribute('onclick','toggleGroup(this)');
+//         trCostos.innerHTML = `
+//         <td>
+//             <i class="fas fa-chevron-down pe-2"></i>
+//             B - COSTO DE VENTA
+//         </td>
+//         ${meses.map(mes => `
+//             <td>-</td><td>-</td>
+//             <td>${formatea(sumCostos[mes]||0)}</td>
+//             <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//         `).join('')}
+//         `;
+//         tbody.appendChild(trCostos);
 
-        costosData.forEach(fila => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${fila.concepto}</td>`;
+//         costosData.forEach(fila => {
+//             const tr = document.createElement('tr');
+//             tr.innerHTML = `<td>${fila.concepto}</td>`;
 
-        meses.forEach(mes => {
-            const val = fila[mes] ?? null;
-            const monto = formatea(val);
+//             meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
 
-            tr.innerHTML += `
-            <td>-</td>
-            <td>-</td>
-            <td>${monto}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            `;
-        });
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
 
-        tbody.appendChild(tr);
-        });
+//             tbody.appendChild(tr);
+//         });
         
-        const margenData = api.margen_de_utilidad;  // [{ concepto: 'REGULAR', Enero: 123, Febrero: ... }, …]
-        const trTituloMargen = document.createElement('tr');
-        trTituloMargen.classList.add('table-light', 'fw-bold');
-        trTituloMargen.innerHTML = `<td>MARGEN DE UTILIDAD</td>`;
-        // por cada mes, ocho celdas vacías (o puedes usar sumas si las tuvieras)
-        meses.forEach(() => {
-        trTituloMargen.innerHTML += `<td colspan="8">-</td>`;
-        });
-        tbody.appendChild(trTituloMargen);
+//         const margenData = api.margen_de_utilidad;  // [{ concepto: 'REGULAR', Enero: 123, Febrero: ... }, …]
+//         const trTituloMargen = document.createElement('tr');
+//         trTituloMargen.classList.add('table-light', 'fw-bold');
+//         trTituloMargen.innerHTML = `<td>MARGEN DE UTILIDAD</td>`;
+//         // por cada mes, ocho celdas vacías (o puedes usar sumas si las tuvieras)
+//         meses.forEach(() => {
+//         trTituloMargen.innerHTML += `<td colspan="8">-</td>`;
+//         });
+//         tbody.appendChild(trTituloMargen);
 
-        // 2.2 – Filas por cada concepto de margen
-        margenData.forEach(fila => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${fila.concepto}</td>`;
-        meses.forEach(mes => {
-            const val = fila[mes] ?? 0;
-            const fx = formatea(val);
-            tr.innerHTML += `
-            <td>-</td>   <!-- año anterior -->
-            <td>-</td>   <!-- % Part AA -->
-            <td>${fx}</td> <!-- año actual -->
-            <td>-</td>   <!-- % Part A -->
-            <td>-</td>   <!-- Ptto -->
-            <td>-</td>   <!-- % Ptto -->
-            <td>-</td>   <!-- Var AA% -->
-            <td>-</td>   <!-- Var Ptto% -->
-            `;
-        });
-        tbody.appendChild(tr);
-        });
-
-
+//         // 2.2 – Filas por cada concepto de margen
+//         margenData.forEach(fila => {
+//         const tr = document.createElement('tr');
+//         tr.innerHTML = `<td>${fila.concepto}</td>`;
+//         meses.forEach(mes => {
+//             const val = fila[mes] ?? 0;
+//             const fx = formatea(val);
+//             tr.innerHTML += `
+//             <td>-</td>   <!-- año anterior -->
+//             <td>-</td>   <!-- % Part AA -->
+//             <td>${fx}</td> <!-- año actual -->
+//             <td>-</td>   <!-- % Part A -->
+//             <td>-</td>   <!-- Ptto -->
+//             <td>-</td>   <!-- % Ptto -->
+//             <td>-</td>   <!-- Var AA% -->
+//             <td>-</td>   <!-- Var Ptto% -->
+//             `;
+//         });
+//         tbody.appendChild(tr);
+//         });
 
 
-       const dividerGastosEst = document.createElement('tr');
-        dividerGastosEst.classList.add(
-        'table-primary',
-        'text-white',   
-        'text-start',
-        'fw-bold',
-        'divider'
-        );
-        // engancha el toggle inline
-        dividerGastosEst.setAttribute('onclick', 'toggleSection(this)');
-        // crea la celda que abarca todas las columnas
-        dividerGastosEst.innerHTML = `
-        <td colspan="${1 + meses.length * 8}">
-            <i class="fas fa-chevron-down pe-2"></i>
-            GASTOS ESTACIONES
-        </td>
-        `;
-        tbody.appendChild(dividerGastosEst);
 
 
-        const gastosData = api.gastos_operacion;  // ahora trae [{ concepto: 'Agua para consumo', Enero: ..., ... }, …]
-        // 1) Título de sección
-        const sumGastosOp  = api.sumas_por_rubro_mes['E - GASTOS DE OPERACION'] || {};
-
-        const trGastosOp = document.createElement('tr');
-        trGastosOp.classList.add('table-light','fw-bold','divider');
-        trGastosOp.setAttribute('onclick','toggleGroup(this)');
-        trGastosOp.innerHTML = `
-        <td>
-            <i class="fas fa-chevron-down pe-2"></i>
-            E - GASTOS DE OPERACION
-        </td>
-        ${meses.map(mes => `
-            <td>-</td><td>-</td>
-            <td>${formatea(sumGastosOp[mes]||0)}</td>
-            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-        `).join('')}
-        `;
-        tbody.appendChild(trGastosOp);
-        // 3) Luego siguen las filas individuales de cada concepto
-        gastosData.forEach(fila => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${fila.concepto}</td>`;
-        meses.forEach(mes => {
-            const val = fila[mes] ?? 0;
-            const fx  = formatea(val);
-            tr.innerHTML += `
-            <td>-</td>
-            <td>-</td>
-            <td>${fx}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            `;
-        });
-        tbody.appendChild(tr);
-        });
-
-        ///////////////////////nominas
-        const nominasData = api.nominas;  // ahora trae [{ concepto: 'Sueldos', Enero: ..., ... }, …]
-        // 1) Título de sección
-        const sumNom = api.sumas_por_rubro_mes['C - NOMINA'] || {};
-        const trNom = document.createElement('tr');
-        trNom.classList.add('table-light','fw-bold','divider');
-        trNom.setAttribute('onclick','toggleGroup(this)');
-        trNom.innerHTML = `
-        <td>
-            <i class="fas fa-chevron-down pe-2"></i>
-            C - NOMINA
-        </td>
-        ${meses.map(mes => `
-            <td>-</td><td>-</td>
-            <td>${formatea(sumNom[mes]||0)}</td>
-            <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-        `).join('')}
-        `;
-        tbody.appendChild(trNom);
-
-        // 3) Luego siguen las filas individuales de cada concepto
-        nominasData.forEach(fila => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${fila.concepto}</td>`;
-        meses.forEach(mes => {
-            const val = fila[mes] ?? 0;
-            const fx  = formatea(val);
-            tr.innerHTML += `
-            <td>-</td>
-            <td>-</td>
-            <td>${fx}</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            <td>-</td>
-            `;
-        });
-        tbody.appendChild(tr);
-        });
+//        const dividerGastosEst = document.createElement('tr');
+//         dividerGastosEst.classList.add(
+//         'table-primary',
+//         'text-white',   
+//         'text-start',
+//         'fw-bold',
+//         'divider'
+//         );
+//         // engancha el toggle inline
+//         dividerGastosEst.setAttribute('onclick', 'toggleSection(this)');
+//         // crea la celda que abarca todas las columnas
+//         dividerGastosEst.innerHTML = `
+//         <td colspan="${1 + meses.length * 8}">
+//             <i class="fas fa-chevron-down pe-2"></i>
+//             GASTOS ESTACIONES
+//         </td>
+//         `;
+//         tbody.appendChild(dividerGastosEst);
 
 
-    const costoSocialData = api.costo_social;
-    const sumCS = api.sumas_por_rubro_mes['D - COSTO SOCIAL'] || {};
-    const trCS = document.createElement('tr');
-    trCS.classList.add('table-light','fw-bold','divider');
-    trCS.setAttribute('onclick','toggleGroup(this)');
-    trCS.innerHTML = `
-    <td>
-        <i class="fas fa-chevron-down pe-2"></i>
-        D - COSTO SOCIAL
-    </td>
-    ${meses.map(mes => `
-        <td>-</td><td>-</td>
-        <td>${formatea(sumCS[mes]||0)}</td>
-        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-    `).join('')}
-    `;
-    tbody.appendChild(trCS);
+//         const gastosData = api.gastos_operacion;  // ahora trae [{ concepto: 'Agua para consumo', Enero: ..., ... }, …]
+//         // 1) Título de sección
+//         const sumGastosOp  = api.sumas_por_rubro_mes['E - GASTOS DE OPERACION'] || {};
 
-    costoSocialData.forEach(fila => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${fila.concepto}</td>`;
-      meses.forEach(mes => {
-        const val = fila[mes] ?? 0;
-        tr.innerHTML += `
-          <td>-</td>
-          <td>-</td>
-          <td>${formatea(val)}</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-        `;
-      });
-      tbody.appendChild(tr);
-    });
+//         const trGastosOp = document.createElement('tr');
+//         trGastosOp.classList.add('table-light','fw-bold','divider');
+//         trGastosOp.setAttribute('onclick','toggleGroup(this)');
+//         trGastosOp.innerHTML = `
+//         <td>
+//             <i class="fas fa-chevron-down pe-2"></i>
+//             E - GASTOS DE OPERACION
+//         </td>
+//         ${meses.map(mes => `
+//             <td>-</td><td>-</td>
+//             <td>${formatea(sumGastosOp[mes]||0)}</td>
+//             <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//         `).join('')}
+//         `;
+//         tbody.appendChild(trGastosOp);
+//         // 3) Luego siguen las filas individuales de cada concepto
+//         gastosData.forEach(fila => {
+//         const tr = document.createElement('tr');
+//         tr.innerHTML = `<td>${fila.concepto}</td>`;
+//         meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
+
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
+//         tbody.appendChild(tr);
+//         });
+
+//         ///////////////////////nominas
+//         const nominasData = api.nominas;  // ahora trae [{ concepto: 'Sueldos', Enero: ..., ... }, …]
+//         // 1) Título de sección
+//         const sumNom = api.sumas_por_rubro_mes['C - NOMINA'] || {};
+//         const trNom = document.createElement('tr');
+//         trNom.classList.add('table-light','fw-bold','divider');
+//         trNom.setAttribute('onclick','toggleGroup(this)');
+//         trNom.innerHTML = `
+//         <td>
+//             <i class="fas fa-chevron-down pe-2"></i>
+//             C - NOMINA
+//         </td>
+//         ${meses.map(mes => `
+//             <td>-</td><td>-</td>
+//             <td>${formatea(sumNom[mes]||0)}</td>
+//             <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//         `).join('')}
+//         `;
+//         tbody.appendChild(trNom);
+
+//         // 3) Luego siguen las filas individuales de cada concepto
+//         nominasData.forEach(fila => {
+//         const tr = document.createElement('tr');
+//         tr.innerHTML = `<td>${fila.concepto}</td>`;
+//         meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
+
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
+//         tbody.appendChild(tr);
+//         });
 
 
-    /////////////////////// MANTENIMIENTO
-    const mantenimientoData = api.mantenimiento;  
-    const sumMant = api.sumas_por_rubro_mes['F - MANTENIMIENTO'] || {};
-    const trMant = document.createElement('tr');
-    trMant.classList.add('table-light','fw-bold','divider');
-    trMant.setAttribute('onclick','toggleGroup(this)');
-    trMant.innerHTML = `
-    <td>
-        <i class="fas fa-chevron-down pe-2"></i>
-        F - MANTENIMIENTO
-    </td>
-    ${meses.map(mes => `
-        <td>-</td><td>-</td>
-        <td>${formatea(sumMant[mes]||0)}</td>
-        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-    `).join('')}
-    `;
-    tbody.appendChild(trMant);
+//     const costoSocialData = api.costo_social;
+//     const sumCS = api.sumas_por_rubro_mes['D - COSTO SOCIAL'] || {};
+//     const trCS = document.createElement('tr');
+//     trCS.classList.add('table-light','fw-bold','divider');
+//     trCS.setAttribute('onclick','toggleGroup(this)');
+//     trCS.innerHTML = `
+//     <td>
+//         <i class="fas fa-chevron-down pe-2"></i>
+//         D - COSTO SOCIAL
+//     </td>
+//     ${meses.map(mes => `
+//         <td>-</td><td>-</td>
+//         <td>${formatea(sumCS[mes]||0)}</td>
+//         <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//     `).join('')}
+//     `;
+//     tbody.appendChild(trCS);
 
-    mantenimientoData.forEach(fila => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${fila.concepto}</td>`;
-      meses.forEach(mes => {
-        const val = fila[mes] ?? 0;
-        tr.innerHTML += `
-          <td>-</td>
-          <td>-</td>
-          <td>${formatea(val)}</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-        `;
-      });
-      tbody.appendChild(tr);
-    });
+//     costoSocialData.forEach(fila => {
+//       const tr = document.createElement('tr');
+//       tr.innerHTML = `<td>${fila.concepto}</td>`;
+//       meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
+
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
+//       tbody.appendChild(tr);
+//     });
+
+
+//     /////////////////////// MANTENIMIENTO
+//     const mantenimientoData = api.mantenimiento;  
+//     const sumMant = api.sumas_por_rubro_mes['F - MANTENIMIENTO'] || {};
+//     const trMant = document.createElement('tr');
+//     trMant.classList.add('table-light','fw-bold','divider');
+//     trMant.setAttribute('onclick','toggleGroup(this)');
+//     trMant.innerHTML = `
+//     <td>
+//         <i class="fas fa-chevron-down pe-2"></i>
+//         F - MANTENIMIENTO
+//     </td>
+//     ${meses.map(mes => `
+//         <td>-</td><td>-</td>
+//         <td>${formatea(sumMant[mes]||0)}</td>
+//         <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//     `).join('')}
+//     `;
+//     tbody.appendChild(trMant);
+
+//     mantenimientoData.forEach(fila => {
+//       const tr = document.createElement('tr');
+//       tr.innerHTML = `<td>${fila.concepto}</td>`;
+//       meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
+
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
+//       tbody.appendChild(tr);
+//     });
 
     
-    /////////////////////// GastoFijo
-    const gastosFijosData = api.gastos_fijos;  
-    const sumGastosFijos = api.sumas_por_rubro_mes['H - GASTOS FIJOS'] || {};
-    const trGastosFijos = document.createElement('tr');
-    trGastosFijos.classList.add('table-light','fw-bold','divider');
-    trGastosFijos.setAttribute('onclick','toggleGroup(this)');
-    trGastosFijos.innerHTML = `
-    <td>
-        <i class="fas fa-chevron-down pe-2"></i>
-        H - GASTOS FIJOS
-    </td>
-    ${meses.map(mes => `
-        <td>-</td><td>-</td>
-        <td>${formatea(sumGastosFijos[mes]||0)}</td>
-        <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
-    `).join('')}
-    `;
-    tbody.appendChild(trGastosFijos);
+//     /////////////////////// GastoFijo
+//     const gastosFijosData = api.gastos_fijos;  
+//     const sumGastosFijos = api.sumas_por_rubro_mes['H - GASTOS FIJOS'] || {};
+//     const trGastosFijos = document.createElement('tr');
+//     trGastosFijos.classList.add('table-light','fw-bold','divider');
+//     trGastosFijos.setAttribute('onclick','toggleGroup(this)');
+//     trGastosFijos.innerHTML = `
+//     <td>
+//         <i class="fas fa-chevron-down pe-2"></i>
+//         H - GASTOS FIJOS
+//     </td>
+//     ${meses.map(mes => `
+//         <td>-</td><td>-</td>
+//         <td>${formatea(sumGastosFijos[mes]||0)}</td>
+//         <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+//     `).join('')}
+//     `;
+//     tbody.appendChild(trGastosFijos);
 
-    gastosFijosData.forEach(fila => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${fila.concepto}</td>`;
-      meses.forEach(mes => {
-        const val = fila[mes] ?? 0;
-        tr.innerHTML += `
-          <td>-</td>
-          <td>-</td>
-          <td>${formatea(val)}</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-          <td>-</td>
-        `;
-      });
-      tbody.appendChild(tr);
-    });
+//     gastosFijosData.forEach(fila => {
+//       const tr = document.createElement('tr');
+//       tr.innerHTML = `<td>${fila.concepto}</td>`;
+//       meses.forEach(mes => {
+//                 const val = fila[mes]?.total ?? 0;
+//                 const porcentaje = fila[mes]?.porcentaje ?? 0;
+//                 const monto = formatea(val);
+//                 const montoPorcentaje = formatea(porcentaje);
 
-    container.classList.remove('loading');
+//                 tr.innerHTML += `
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>${monto}</td>
+//                 <td>${montoPorcentaje}</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 <td>-</td>
+//                 `;
+//             });
+//       tbody.appendChild(tr);
+//     });
 
-  } catch (error) {
-    console.error('Error al dibujar tabla anual:', error);
-  }
-}
+//     container.classList.remove('loading');
+
+//   } catch (error) {
+//     console.error('Error al dibujar tabla anual:', error);
+//   }
+// }
 
 // Formatea números con separador de miles (sin decimales)
 function formatea(valor) {
@@ -1076,29 +1095,10 @@ function formatea(valor) {
 }
 
 
-document.querySelectorAll('tr.divider').forEach(div => {
-  div.style.cursor = 'pointer';
-  div.addEventListener('click', () => {
-    console.log('Div clicked:', div);
-    // alternamos el estilo de fondo
-    const icon = div.querySelector('i');
-    // alternamos el ícono
-    icon.classList.toggle('fa-chevron-down');
-    icon.classList.toggle('fa-chevron-right');
-
-    // ocultar/mostrar hasta el siguiente .divider
-    let next = div.nextElementSibling;
-    while (next && !next.classList.contains('divider')) {
-      next.style.display = next.style.display === 'none' ? '' : 'none';
-      next = next.nextElementSibling;
-    }
-  });
-});
 
 
 
 function toggleSection(div) {
-  console.log('Toggle section:', div);
 
   // alterna el icono
   const icon = div.querySelector('i');
@@ -1114,7 +1114,6 @@ function toggleSection(div) {
 }
 
 function toggleGroup(tr) {
-  console.log('Toggle group:', tr);
   const icon = tr.querySelector('i');
   icon.classList.toggle('fa-chevron-down');
   icon.classList.toggle('fa-chevron-right');
@@ -1128,6 +1127,340 @@ function toggleGroup(tr) {
 }
 
 
-function annual_budgetTable(){
+async function annual_budgetTable(){
+  const container = document.getElementById('annual_budget');
+  container.classList.add('loading');
+
+  try {
+    // 1) Fetch y parseo
+    const year = parseInt(document.getElementById('input_year').value, 10);
+    const response = await fetch(`/accounting/get_er_budget?year=${year}`, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/javascript, */*',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      credentials: 'include',
+      body: `year=${year}`
+    });
+    const api = await response.json();
+
+    // 2) Defino todas las secciones con su categoría
+    const allSections = [
+      // → Estaciones
+      { label: 'A - INGRESOS',             dataKey: 'ingresos_estaciones',         category: 'estaciones' },
+      { label: 'B - COSTO DE VENTA',       dataKey: 'costoventa_estaciones',       category: 'estaciones' },
+      { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_estaciones', category: 'estaciones' },
+      { label: 'C - NOMINA',               dataKey: 'nomina_estaciones',           category: 'estaciones' },
+      { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_estaciones',     category: 'estaciones' },
+      { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_estaciones',    category: 'estaciones' },
+      { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_estaciones',     category: 'estaciones' },
+
+      // → Staff
+      { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_staff',      category: 'staff' },
+      { label: 'C - NOMINA',               dataKey: 'nomina_staff',                category: 'staff' },
+      { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_staff',          category: 'staff' },
+      { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_staff',         category: 'staff' },
+      { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_staff',          category: 'staff' },
+    ];
+
+    // 3) Preparo los mapas de resumen para cada categoría
+    const summaryMaps = {
+      estaciones: (api.rubro_estaciones || []).reduce((acc, x) => {
+        acc[x.Rubro] = x; return acc;
+      }, {}),
+      staff:      (api.rubro_staff      || []).reduce((acc, x) => {
+        acc[x.Rubro] = x; return acc;
+      }, {}),
+    };
+
+    // 4) Meses y referencias DOM
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const table = document.getElementById('annual_budgetTable');
+    const thead = table.querySelector('thead');
+    const tbody = document.getElementById('body_annual_budget');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    // 5) Encabezado de la tabla
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = `<th>CONCEPTO</th>` +
+      meses.map(m => `<th>${m.toUpperCase()}</th>`).join('');
+    thead.appendChild(headerRow);
+
+    // 6) Helpers
+    function createSummaryRow(label, sums) {
+      const tr = document.createElement('tr');
+      tr.classList.add('table-light', 'fw-bold');
+      tr.setAttribute('onclick', 'toggleGroup(this)');
+      let inner = `<td><i class="fas fa-chevron-down pe-2"></i>${label}</td>`;
+      inner += meses.map(m => `<td> ${formatea(sums[m] || 0)}</td>`).join('');
+      tr.innerHTML = inner;
+      return tr;
+    }
+    function createDetailRows(list) {
+      return list.map(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${item.Concepto}</td>` +
+          meses.map(m => `<td> ${formatea(item[m] ?? 0)}</td>`).join('');
+        return tr;
+      });
+    }
+
+    // 7) Recorro todas las secciones, eligiendo correctamente summaryMap según category
+    // Y entre medio agrego el separador “Gastos Staff”
+    let insertedStaffSeparator = false;
+    for (const sec of allSections) {
+      // Cuando empiece la primera sección de staff, inserto el separador
+      if (!insertedStaffSeparator && sec.category === 'staff') {
+        const sep = document.createElement('tr');
+        sep.classList.add('table-secondary', 'fw-bold');
+        sep.innerHTML = `<td colspan="${1 + meses.length}" class="text-start">Gastos Staff</td>`;
+        tbody.appendChild(sep);
+        insertedStaffSeparator = true;
+      }
+
+         // A) fila resumen
+        const sums    = summaryMaps[sec.category][sec.label] || {};
+        const summary = createSummaryRow(sec.label, sums);
+        tbody.appendChild(summary);
+
+
+      // B) filas detalle
+      const details = api[sec.dataKey] || [];
+      createDetailRows(details).forEach(r => tbody.appendChild(r));
+    }
+
+    container.classList.remove('loading');
+    const summaryRows = document.querySelectorAll('#body_annual_budget tr.table-light');
+    setTimeout(() => {
+        summaryRows.forEach(row => {
+            toggleGroup(row);
+        });
+    }, 0);
+}
+  catch (err) {
+    console.error('Error al dibujar tabla presupuesto:', err);
+    container.classList.remove('loading');
+  }
+}
+
+
+
+async function drawAnnualTable() {
+  const container = document.getElementById('Edo_anual');
+  container.classList.add('loading');
+
+  const year = parseInt(document.getElementById('input_year').value, 10);
+  const prevYear = year - 1;
+
+  const meses = [
+    'Enero', 'Febrero', 'Marzo', 'Abril',
+    'Mayo', 'Junio', 'Julio', 'Agosto',
+    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+  ];
+
+  try {
+    const api = await fetchData(year);
+
+    const table = document.getElementById('estadoResultadosTable');
+    const thead = table.querySelector('thead');
+    const tbody = document.getElementById('bodyEstadoResultados');
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    buildTableHeader(thead, year, prevYear, meses);
+    renderTableBody(tbody, api, meses);
+
+    console.log('API response:', api);
     
+    container.classList.remove('loading');
+
+     const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
+    setTimeout(() => {
+        summaryRows.forEach(row => {
+            toggleGroup(row);
+        });
+    }, 0);
+
+  } catch (error) {
+    console.error('Error al dibujar tabla anual:', error);
+  }
+}
+
+
+function renderTableBody(tbody, api, months) {
+
+    const {
+        budget = {},
+        secciones_estaciones: estaciones = {},
+        secciones_staff: staff = {},
+        sumas_por_rubro_mes: sumasPorRubroMes = {},
+        porcentajes_vs_ingresos: porcentajesVsIngresos = {},
+        porcentajes_vs_ingresos_staff: porcentajesVsIngresosStaff = {}
+    } = api;
+    const getSumas = (rubro, type) => sumasPorRubroMes[rubro]?.[type] || {};
+    const getPorcentajes = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresos : porcentajesVsIngresosStaff)[rubro] || {};
+    const getBudgetRubro = (rubro) => budget.rubro_estaciones?.find(r => r.Rubro === rubro) || {};
+    const getBudgetRubroStaff = (rubro) => budget.rubro_staff?.find(r => r.Rubro === rubro) || {};
+    const getBudgetConceptos = (sectionType) => budget[sectionType] || [];
+    renderDivider(tbody, 'INGRESOS', months.length);
+    renderSection(
+        tbody, 'A - INGRESOS', estaciones.ingresos_estaciones || [], getSumas('A - INGRESOS', 'ESTACIONES'), getPorcentajes('A - INGRESOS', 'ESTACIONES'),
+        getBudgetRubro('A - INGRESOS'), getBudgetConceptos('ingresos_estaciones'), months
+    );
+    renderSection(
+        tbody, 'B - COSTO DE VENTA', estaciones.costo_venta_estaciones || [],
+        getSumas('B - COSTO DE VENTA', 'ESTACIONES'), getPorcentajes('B - COSTO DE VENTA', 'ESTACIONES'),
+        getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months
+    );
+    renderDivider(tbody, 'GASTOS ESTACIONES', months.length);
+    renderSection(
+        tbody, 'E - GASTOS DE OPERACION', estaciones.gastos_operacion_estaciones || [],
+        getSumas('E - GASTOS DE OPERACION', 'ESTACIONES'), getPorcentajes('E - GASTOS DE OPERACION', 'ESTACIONES'),
+        getBudgetRubro('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_estaciones'), months
+    );
+    renderSection(
+        tbody, 'C - NOMINA', estaciones.nomina_estaciones || [],
+        getSumas('C - NOMINA', 'ESTACIONES'), getPorcentajes('C - NOMINA', 'ESTACIONES'),
+        getBudgetRubro('C - NOMINA'), getBudgetConceptos('nomina_estaciones'), months
+    );
+    renderSection(
+        tbody, 'D - COSTO SOCIAL', estaciones.costo_social_estaciones || [],
+        getSumas('D - COSTO SOCIAL', 'ESTACIONES'), getPorcentajes('D - COSTO SOCIAL', 'ESTACIONES'),
+        getBudgetRubro('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_estaciones'), months
+    );
+    renderSection(
+        tbody, 'F - MANTENIMIENTO', estaciones.mantenimiento_estaciones || [],
+        getSumas('F - MANTENIMIENTO', 'ESTACIONES'), getPorcentajes('F - MANTENIMIENTO', 'ESTACIONES'),
+        getBudgetRubro('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_estaciones'), months
+    );
+    renderSection(
+        tbody, 'H - GASTOS FIJOS', estaciones.gastos_fijos_estaciones || [],
+        getSumas('H - GASTOS FIJOS', 'ESTACIONES'), getPorcentajes('H - GASTOS FIJOS', 'ESTACIONES'),
+        getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months
+    );
+
+    renderDivider(tbody, 'GASTOS STAFF', months.length);
+    renderSection(
+        tbody, 'E - GASTOS DE OPERACION', staff.gastos_operacion_staff || [],
+        getSumas('E - GASTOS DE OPERACION', 'STAFF'), getPorcentajes('E - GASTOS DE OPERACION', 'STAFF'),
+        getBudgetRubroStaff('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_staff'), months
+    );
+    // renderSection(
+    //     tbody, 'C - NOMINA', staff.nomina_staff || [],
+    //     getSumas('C - NOMINA', 'STAFF'), getPorcentajes('C - NOMINA', 'STAFF'),
+    //     getBudgetRubroStaff('C - NOMINA'), getBudgetConceptos('nomina_staff'), months
+    // );
+    // renderSection(
+    //     tbody, 'D - COSTO SOCIAL', staff.costo_social_staff || [],
+    //     getSumas('D - COSTO SOCIAL', 'STAFF'), getPorcentajes('D - COSTO SOCIAL', 'STAFF'),
+    //     getBudgetRubroStaff('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_staff'), months
+    // );
+    // renderSection(
+    //     tbody, 'F - MANTENIMIENTO', staff.mantenimiento_staff || [],
+    //     getSumas('F - MANTENIMIENTO', 'STAFF'), getPorcentajes('F - MANTENIMIENTO', 'STAFF'),
+    //     getBudgetRubroStaff('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_staff'), months
+    // );
+    // renderSection(
+    //     tbody, 'H - GASTOS FIJOS', staff.gastos_fijos_staff || [],
+    //     getSumas('H - GASTOS FIJOS', 'STAFF'), getPorcentajes('H - GASTOS FIJOS', 'STAFF'),
+    //     getBudgetRubroStaff('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_staff'), months
+    // );
+
+}
+
+
+function buildTableHeader(thead, year, prevYear, meses) {
+  const trMeses = document.createElement('tr');
+  trMeses.innerHTML = `<th rowspan="2">CONCEPTO</th>`;
+  meses.forEach(m => {
+    trMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
+  });
+  thead.appendChild(trMeses);
+
+  const trSub = document.createElement('tr');
+  meses.forEach(() => {
+    trSub.innerHTML += `
+      <th>${prevYear}</th><th>% Part</th>
+      <th>${year}</th><th>% Part</th>
+      <th>Ptto ${year}</th><th>% Part</th>
+      <th>Var AA%</th><th>Var Ppto%</th>
+    `;
+  });
+  thead.appendChild(trSub);
+}
+
+function renderDivider(tbody, label, numMeses) {
+  const tr = document.createElement('tr');
+  tr.classList.add('table-primary', 'text-white', 'fw-bold', 'text-start', 'divider');
+  tr.setAttribute('onclick', 'toggleSection(this)');
+  tr.innerHTML = `
+    <td colspan="${1 + numMeses * 8}">
+      <i class="fas fa-chevron-down pe-2"></i> ${label}
+    </td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function renderSection(tbody, titulo, data, sumas, porcentajes, budget_rubro, budget_conceptos, meses, soloMostrarTotal = false) {
+  const trTitulo = document.createElement('tr');
+  trTitulo.classList.add('table-light', 'fw-bold');
+  if (!soloMostrarTotal) trTitulo.setAttribute('onclick', 'toggleGroup(this)');
+
+  trTitulo.innerHTML = `<td><i class="fas fa-chevron-down pe-2"></i> ${titulo}</td>`;
+  meses.forEach(mes => {
+    const total = sumas?.[mes] ?? '-';
+    const porcentaje = porcentajes?.[mes] ?? '-';
+    const presupuesto = formatea(budget_rubro?.[mes]) ?? '-';
+    trTitulo.innerHTML += `
+      <td>-</td><td>-</td>
+      <td>${formatea(total)}</td>
+      <td>${porcentaje}</td><td>${presupuesto}</td><td>-</td><td>-</td><td>-</td>
+    `;
+  });
+  tbody.appendChild(trTitulo);
+
+  data.forEach(fila => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${fila.concepto}</td>`;
+    const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
+    meses.forEach(mes => {
+      const val = fila[mes]?.total ?? 0;
+      const pct = fila[mes]?.porcentaje ?? '-';
+      const presupuesto = formatea(budget_concepto[mes]) ?? '-';
+      tr.innerHTML += `
+        <td>-</td><td>-</td>
+        <td>${formatea(val)}</td>
+        <td>${pct}</td>
+        <td>${presupuesto}</td><td>-</td><td>-</td><td>-</td>
+      `;
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function formatea(valor) {
+  if (typeof valor === 'number') {
+    return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
+  }
+  return valor || '-';
+}
+async function fetchData(year) {
+  const response = await fetch('/accounting/drawAnnualTable', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, text/javascript, */*',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    credentials: 'include',
+    body: `year=${year}`
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
 }

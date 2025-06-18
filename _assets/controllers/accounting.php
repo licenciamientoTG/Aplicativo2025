@@ -287,6 +287,28 @@ class Accounting{
 
         echo json_encode($apiData);
     }
+
+    public function get_er_budget(){
+
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'year' => $_POST['year']
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/get_er_budget/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+
+        echo json_encode($apiData);
+    }
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');

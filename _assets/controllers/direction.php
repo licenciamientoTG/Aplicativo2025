@@ -276,8 +276,8 @@ class Direction{
         $data = [];
         $columnData = $this->generate_columns_and_pivot_clause();
         $columns_name = $columnData['columns_name'];
-        $rows = $this->CreDebMensualModel->comsumption_credit_client_table( $columnData,$type);
 
+        $rows = $this->CreDebMensualModel->comsumption_credit_client_table( $columnData,$type);
         foreach ($rows as $key=> $row) {
                 $clienteAbreviado = mb_strlen($row['Cliente'], 'UTF-8') > 25 
                 ? mb_substr($row['Cliente'], 0, 25, 'UTF-8') . '...'

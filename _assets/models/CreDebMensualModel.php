@@ -283,7 +283,7 @@ class CreDebMensualModel extends Model{
             // Construir la cláusula CASE
             $caseWhen = "
                 CASE 
-                    WHEN @currentMonth <= 6 THEN
+                    WHEN  MONTH(GETDATE()) <= 6 THEN
                         (SELECT MAX(val) 
                         FROM (
                             SELECT $previousColumns
@@ -297,27 +297,8 @@ class CreDebMensualModel extends Model{
             ";
         }
         $query = "
-        DECLARE @currentYear INT = YEAR(GETDATE());
-        DECLARE @currentMonth INT = MONTH(GETDATE());
-
-        -- Determinar el semestre actual
-        DECLARE @startMonth INT;
-        DECLARE @endMonth INT;
-        DECLARE @yearToCompare INT;
-
-        IF @currentMonth <= 6
-        BEGIN
-            SET @startMonth = 7;
-            SET @endMonth = 12;
-            SET @yearToCompare = @currentYear - 1;
-        END
-        ELSE
-        BEGIN
-            SET @startMonth = 1;
-            SET @endMonth = 6;
-            SET @yearToCompare = @currentYear;
-        END
-        ;WITH PivotedData AS (
+        
+        WITH PivotedData AS (
             SELECT 
                rfc,
                   {$columnData['columns']}
@@ -359,6 +340,8 @@ class CreDebMensualModel extends Model{
         order by rfc
         ";
         $params = [];
+    
+
         return ($this->sql->select($query, $params)) ?: false;
 
     }
