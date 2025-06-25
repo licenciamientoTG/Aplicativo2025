@@ -415,10 +415,11 @@ class MojoTicketsModel extends Model{
     }
 
     function get_tickets_by_form_and_week($from, $until, $form_id) : array | false {
+
         $query = "
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial Nuevo
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
-        
+
         -- Crear una tabla temporal para las semanas entre la fecha inicial y la fecha final
         WITH WeeksInRange AS (
             SELECT DATEADD(WEEK, DATEDIFF(WEEK, 0, @StartDate), 0) AS first_day_of_week
@@ -429,20 +430,20 @@ class MojoTicketsModel extends Model{
         ),
         -- Crear combinaciones de estados y semanas
         StatusWeeks AS (
-            SELECT 
+            SELECT
                 ts.id_mojo,
                 ts.name,
                 YEAR(wr.first_day_of_week) AS year,
                 DATEPART(ISO_WEEK, wr.first_day_of_week) AS week_number,
                 wr.first_day_of_week AS initial_date,
                 DATEADD(DAY, 6, wr.first_day_of_week) AS final_date
-            FROM 
+            FROM
                 [TG].[dbo].[mojo_ticket_status] ts
-            CROSS JOIN 
+            CROSS JOIN
                 WeeksInRange wr
         )
         -- Seleccionar y unir con el conteo de tickets
-        SELECT 
+        SELECT
             sw.id_mojo,
             sw.name,
             sw.year,
@@ -450,28 +451,28 @@ class MojoTicketsModel extends Model{
             sw.initial_date,
             sw.final_date,
             ISNULL(t.ticket_count, 0) AS ticket_count
-        FROM 
+        FROM
             StatusWeeks sw
         LEFT JOIN (
-            SELECT 
+            SELECT
                 status_id,
                 YEAR(created_on) AS year,
                 DATEPART(ISO_WEEK, created_on) AS week_number,
                 COUNT(*) AS ticket_count
-            FROM 
+            FROM
                 [TG].[dbo].[mojo_tickets]
-            WHERE 
+            WHERE
                 ticket_form_id = {$form_id}
                 AND created_on >= @StartDate -- Fecha inicial
                 AND created_on < DATEADD(WEEK, 1, @EndDate) -- Fecha final (sin incluir el primer día de la semana siguiente)
-            GROUP BY 
+            GROUP BY
                 status_id,
                 YEAR(created_on),
                 DATEPART(ISO_WEEK, created_on)
         ) t ON sw.id_mojo = t.status_id AND sw.year = t.year AND sw.week_number = t.week_number
-        ORDER BY 
-            sw.year, 
-            sw.week_number, 
+        ORDER BY
+            sw.year,
+            sw.week_number,
             sw.id_mojo;
         ";
 
@@ -482,7 +483,7 @@ class MojoTicketsModel extends Model{
         $query = "
             DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
-            
+
             -- Crear una tabla temporal para los años entre la fecha inicial y la fecha final
             WITH YearsInRange AS (
               SELECT DATEADD(YEAR, DATEDIFF(YEAR, 0, @StartDate), 0) AS first_day_of_year
@@ -493,40 +494,40 @@ class MojoTicketsModel extends Model{
             ),
             -- Crear combinaciones de estados y años
             StatusYears AS (
-                SELECT 
+                SELECT
                     ts.id_mojo,
                     ts.name,
                     YEAR(yr.first_day_of_year) AS year
-                FROM 
+                FROM
                     [TG].[dbo].[mojo_ticket_status] ts
-                CROSS JOIN 
+                CROSS JOIN
                     YearsInRange yr
             )
             -- Seleccionar y unir con el conteo de tickets
-            SELECT 
+            SELECT
                 sy.id_mojo,
                 sy.name,
                 sy.year,
                 ISNULL(t.ticket_count, 0) AS ticket_count
-            FROM 
+            FROM
                 StatusYears sy
             LEFT JOIN (
-                SELECT 
+                SELECT
                     status_id,
                     YEAR(created_on) AS year,
                     COUNT(*) AS ticket_count
-                FROM 
+                FROM
                     [TG].[dbo].[mojo_tickets]
-                WHERE 
+                WHERE
                     ticket_form_id = {$form_id}
                     AND created_on >= @StartDate -- Fecha inicial
                     AND created_on <= DATEADD(YEAR, 1, @EndDate) -- Fecha final (excluyendo el 1 de enero de 2025)
-                GROUP BY 
+                GROUP BY
                     status_id,
                     YEAR(created_on)
             ) t ON sy.id_mojo = t.status_id AND sy.year = t.year
-            ORDER BY 
-                sy.year, 
+            ORDER BY
+                sy.year,
                 sy.id_mojo;
         ";
         return $this->sql->select($query);
@@ -538,46 +539,46 @@ class MojoTicketsModel extends Model{
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
         
         ;WITH WeekData AS (
-            SELECT 
+            SELECT
                 DATEPART(ISOWK, created_on) AS week_number,
                 COUNT(*) AS tickets_qty,
                 SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                 AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                priority_id IN (10,20) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (10,20) AND
                 ticket_form_id = {$ticket_form}
-            GROUP BY 
+            GROUP BY
                 DATEPART(ISOWK, created_on)
         ),
         WeekDates AS (
-            SELECT 
+            SELECT
                 DISTINCT DATEPART(ISOWK, created_on) AS week_number,
                 MIN(DATEADD(DAY, 1 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_start_date,
                 MAX(DATEADD(DAY, 7 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_end_date
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                priority_id IN (30,40,50,60) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (30,40,50,60) AND
                 ticket_form_id = {$ticket_form}
         )
-        SELECT 
+        SELECT
             w.week_number,
             w.tickets_qty,
             w.total_hours_elapsed,
             w.avg_hours_elapsed,
             d.week_start_date,
             d.week_end_date
-        FROM 
+        FROM
             WeekData w
-        JOIN 
+        JOIN
             WeekDates d ON w.week_number = d.week_number
-        ORDER BY 
+        ORDER BY
             w.week_number;
         ";
 
@@ -590,38 +591,38 @@ class MojoTicketsModel extends Model{
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
             ;WITH MonthData AS (
-                SELECT 
+                SELECT
                     DATEPART(YEAR, created_on) AS year,
                     DATEPART(MONTH, created_on) AS month,
                     COUNT(*) AS tickets_qty,
                     SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                     AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (10,20) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10,20) AND
                     ticket_form_id = {$ticket_form}
-                GROUP BY 
+                GROUP BY
                     DATEPART(YEAR, created_on),
                     DATEPART(MONTH, created_on)
             ),
             MonthDates AS (
-                SELECT 
+                SELECT
                     DISTINCT DATEPART(YEAR, created_on) AS year,
                     DATEPART(MONTH, created_on) AS month,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1) AS month_start_date,
                     EOMONTH(DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1)) AS month_end_date
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40,50,60) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40,50,60) AND
                     ticket_form_id = {$ticket_form}
             )
-            SELECT 
+            SELECT
                 m.year,
                 m.month,
                 FORMAT(DATEFROMPARTS(m.year, m.month, 1), 'MMMM', 'es-ES') AS month_name, -- Nombre del mes
@@ -630,11 +631,11 @@ class MojoTicketsModel extends Model{
                 m.avg_hours_elapsed,
                 d.month_start_date,
                 d.month_end_date
-            FROM 
+            FROM
                 MonthData m
-            JOIN 
+            JOIN
                 MonthDates d ON m.year = d.year AND m.month = d.month
-            ORDER BY 
+            ORDER BY
                 m.year, m.month;
         ";
         return $this->sql->select($query);
@@ -645,48 +646,47 @@ class MojoTicketsModel extends Model{
             DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
-            
             ;WITH YearData AS (
-                SELECT 
+                SELECT
                     DATEPART(YEAR, created_on) AS year,
                     COUNT(*) AS tickets_qty,
                     SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                     AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (10,20) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10,20) AND
                     ticket_form_id = 51598
-                GROUP BY 
+                GROUP BY
                     DATEPART(YEAR, created_on)
             ),
             YearDates AS (
-                SELECT 
+                SELECT
                     DISTINCT DATEPART(YEAR, created_on) AS year,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 1, 1) AS year_start_date,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 12, 31) AS year_end_date
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40,50,60) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40,50,60) AND
                     ticket_form_id = 51598
             )
-            SELECT 
+            SELECT
                 y.year,
                 y.tickets_qty,
                 y.total_hours_elapsed,
                 y.avg_hours_elapsed,
                 d.year_start_date,
                 d.year_end_date
-            FROM 
+            FROM
                 YearData y
-            JOIN 
+            JOIN
                 YearDates d ON y.year = d.year
-            ORDER BY 
+            ORDER BY
                 y.year;
         ";
         return $this->sql->select($query);
@@ -696,48 +696,48 @@ class MojoTicketsModel extends Model{
         $query = "
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
-        
+
         ;WITH WeekData AS (
-            SELECT 
+            SELECT
                 DATEPART(ISOWK, created_on) AS week_number,
                 COUNT(*) AS tickets_qty,
                 SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                 AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                priority_id IN (30, 40) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (30, 40) AND
                 ticket_form_id = {$ticket_form}
-            GROUP BY 
+            GROUP BY
                 DATEPART(ISOWK, created_on)
         ),
         WeekDates AS (
-            SELECT 
+            SELECT
                 DISTINCT DATEPART(ISOWK, created_on) AS week_number,
                 MIN(DATEADD(DAY, 1 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_start_date,
                 MAX(DATEADD(DAY, 7 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_end_date
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                priority_id IN (30,40) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (30,40) AND
                 ticket_form_id = {$ticket_form}
         )
-        SELECT 
+        SELECT
             w.week_number,
             w.tickets_qty,
             w.total_hours_elapsed,
             w.avg_hours_elapsed,
             d.week_start_date,
             d.week_end_date
-        FROM 
+        FROM
             WeekData w
-        JOIN 
+        JOIN
             WeekDates d ON w.week_number = d.week_number
-        ORDER BY 
+        ORDER BY
             w.week_number;
         ";
         return $this->sql->select($query);
@@ -749,38 +749,38 @@ class MojoTicketsModel extends Model{
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
             ;WITH MonthData AS (
-                SELECT 
+                SELECT
                     DATEPART(YEAR, created_on) AS year,
                     DATEPART(MONTH, created_on) AS month,
                     COUNT(*) AS tickets_qty,
                     SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                     AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40) AND
                     ticket_form_id = {$ticket_form}
-                GROUP BY 
+                GROUP BY
                     DATEPART(YEAR, created_on),
                     DATEPART(MONTH, created_on)
             ),
             MonthDates AS (
-                SELECT 
+                SELECT
                     DISTINCT DATEPART(YEAR, created_on) AS year,
                     DATEPART(MONTH, created_on) AS month,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1) AS month_start_date,
                     EOMONTH(DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1)) AS month_end_date
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40) AND
                     ticket_form_id = {$ticket_form}
             )
-            SELECT 
+            SELECT
                 m.year,
                 m.month,
                 FORMAT(DATEFROMPARTS(m.year, m.month, 1), 'MMMM', 'es-ES') AS month_name, -- Nombre del mes
@@ -789,11 +789,11 @@ class MojoTicketsModel extends Model{
                 m.avg_hours_elapsed,
                 d.month_start_date,
                 d.month_end_date
-            FROM 
+            FROM
                 MonthData m
-            JOIN 
+            JOIN
                 MonthDates d ON m.year = d.year AND m.month = d.month
-            ORDER BY 
+            ORDER BY
                 m.year, m.month;
         ";
         return $this->sql->select($query);
@@ -804,48 +804,47 @@ class MojoTicketsModel extends Model{
             DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
-            
             ;WITH YearData AS (
-                SELECT 
+                SELECT
                     DATEPART(YEAR, created_on) AS year,
                     COUNT(*) AS tickets_qty,
                     SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                     AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40) AND
                     ticket_form_id = {$ticket_form}
-                GROUP BY 
+                GROUP BY
                     DATEPART(YEAR, created_on)
             ),
             YearDates AS (
-                SELECT 
+                SELECT
                     DISTINCT DATEPART(YEAR, created_on) AS year,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 1, 1) AS year_start_date,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 12, 31) AS year_end_date
-                FROM 
-                    [TG].[dbo].[mojo_tickets] 
-                WHERE 
-                    created_on >= @StartDate AND 
-                    created_on <= @EndDate AND 
-                    priority_id IN (30,40) AND 
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (30,40) AND
                     ticket_form_id = {$ticket_form}
             )
-            SELECT 
+            SELECT
                 y.year,
                 y.tickets_qty,
                 y.total_hours_elapsed,
                 y.avg_hours_elapsed,
                 d.year_start_date,
                 d.year_end_date
-            FROM 
+            FROM
                 YearData y
-            JOIN 
+            JOIN
                 YearDates d ON y.year = d.year
-            ORDER BY 
+            ORDER BY
                 y.year;
         ";
 
@@ -856,48 +855,48 @@ class MojoTicketsModel extends Model{
         $query = "
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
-        
+
        ;WITH WeekData AS (
-            SELECT 
+            SELECT
                 DATEPART(ISOWK, created_on) AS week_number,
                 COUNT(*) AS tickets_qty,
                 SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                 AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                status_id  IN (10,20,30,40) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                status_id  IN (10,20,30,40) AND
                  ticket_form_id = {$ticket_form}
-            GROUP BY 
+            GROUP BY
                 DATEPART(ISOWK, created_on)
         ),
         WeekDates AS (
-            SELECT 
+            SELECT
                 DISTINCT DATEPART(ISOWK, created_on) AS week_number,
                 MIN(DATEADD(DAY, 1 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_start_date,
                 MAX(DATEADD(DAY, 7 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_end_date
-            FROM 
-                [TG].[dbo].[mojo_tickets] 
-            WHERE 
-                created_on >= @StartDate AND 
-                created_on <= @EndDate AND 
-                status_id  IN (10,20,30,40) AND 
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                status_id  IN (10,20,30,40) AND
                  ticket_form_id = {$ticket_form}
         )
-        SELECT 
+        SELECT
             w.week_number,
             w.tickets_qty,
             w.total_hours_elapsed,
             w.avg_hours_elapsed,
             d.week_start_date,
             d.week_end_date
-        FROM 
+        FROM
             WeekData w
-        JOIN 
+        JOIN
             WeekDates d ON w.week_number = d.week_number
-        ORDER BY 
+        ORDER BY
             w.week_number
         ";
 
@@ -1573,5 +1572,27 @@ class MojoTicketsModel extends Model{
         $query = "UPDATE [TG].[dbo].[mojo_tickets] SET [assigned_to_id] = ? WHERE [id_mojo] = ?;";
         $params = [4351669, $ticket_id];
         return $this->sql->query($query, $params);
+    }
+
+    function get_binnacle($from, $until, $codgas) : array | false {
+        $query = "SELECT
+                    t1.*, t2.Nombre AS Estacion, t3.den Producto
+                FROM
+                    [TG].[dbo].[AuditoriaActualizacionDespachos] t1
+                    LEFT JOIN [TG].[dbo].[Estaciones] t2 ON t1.codgas = t2.Codigo
+                    LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
+                WHERE t1.fchcor BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?)";
+        return ($rs = $this->sql->select($query, [$from, $until, $codgas, $codgas])) ? $rs : false ;
+    }
+
+    function get_tabla_tickets($from, $until, $codgas) : array | false {
+        $query = "SELECT
+                    t1.*, t2.Nombre AS Estacion, t3.den Producto
+                FROM
+                    [TG].[dbo].[TicketsDespachosVSReportes] t1
+                    LEFT JOIN [TG].[dbo].[Estaciones] t2 ON t1.codgas = t2.Codigo
+                    LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.producto = t3.cod
+                WHERE t1.fch BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?)";
+        return ($rs = $this->sql->select($query, [$from, $until, $codgas, $codgas])) ? $rs : false ;
     }
 }

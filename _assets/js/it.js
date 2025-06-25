@@ -333,7 +333,7 @@ let datatables_stations = $('#datatables_stations').DataTable({
         {'data': 'CRE'},
         {'data': 'DENOMINACIÓN'},
         {'data': 'ZONA'},
-        {'data': 'BLOQUEARSINRECEPCION'},
+        {'data': 'RFC'},
         {'data': 'STATUS'},
         {'data': 'CONEXION'},
     ],
@@ -358,7 +358,7 @@ $('#filtro-datatables_stations input').on('keyup change clear', function () {
         .column(6).search($('#CRE').val().trim())
         .column(7).search($('#DENOMINACIÓN').val().trim())
         .column(8).search($('#ZONA').val().trim())
-        .column(9).search($('#BLOQUEARSINRECEPCION').val().trim())
+        .column(9).search($('#RFC').val().trim())
         .column(10).search($('#STATUS').val().trim())
         .draw();
   });

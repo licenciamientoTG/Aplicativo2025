@@ -53,8 +53,6 @@ class Administration{
     }
 
     function stats_tickets() : void {
-        
-
         $date_range = $_GET['date_range'] ?? null;
         $ticket_form = $_GET['ticket_form'] ?? null;
         $tickets_forms = $this->mojoTicketsModel->get_tickets_forms();
@@ -88,12 +86,11 @@ class Administration{
         $groupedResults = [];
         $monthNames = [1 => 'Enero', 2 => 'Febrero', 3 => 'Marzo', 4 => 'Abril', 5 => 'Mayo', 6 => 'Junio', 7 => 'Julio', 8 => 'Agosto', 9 => 'Septiembre', 10 => 'Octubre', 11 => 'Noviembre', 12 => 'Diciembre'];
         if (!is_null($ticket_form)) {
-
             switch ($date_range) {
                 case 'semanal':
                     $from = $this->getMondayFromWeek($_GET['from']);
                     $until = $this->getSundayFromWeek($_GET['until']);
-
+                    
                     $results = $this->mojoTicketsModel->get_tickets_by_form_and_week($from . ' 00:00:00',$until . ' 23:59:59',$ticket_form);
                     $groupedResults = [];
                     foreach ($results as $result) {
@@ -1580,5 +1577,58 @@ class Administration{
 
     function doc_agujita() {
         echo $this->twig->render($this->route . 'doc_agujita.html');
+    }
+
+    function binnacle_adjustments() {
+        $from = (isset($_GET['from'])) ? $_GET['from'] : date('Y-m-d', strtotime('-3 months')) ;
+        $until = (isset($_GET['until'])) ? $_GET['until'] : date('Y-m-d') ;
+        $station_selected = (isset($_GET['station_selected'])) ? $_GET['station_selected'] : 0 ;
+        $stations = $this->estacionesModel->get_actives_stations();
+
+        echo $this->twig->render($this->route . 'binnacle_adjustments.html', compact('from','until','stations','station_selected'));
+    }
+
+    function tablaAuditoria($from, $until, $codgas) {
+        $from_int = dateToInt($from);
+        $until_int = dateToInt($until);
+
+        $data = [];
+        if ($rows = $this->mojoTicketsModel->get_binnacle($from_int, $until_int, $codgas)) {
+            foreach ($rows as $key => $row) {
+                $data[] = array(
+                    'Fecha'        => intToDate($row['fchcor']),
+                    'Usuario'      => $row['usuario'],
+                    'Estación'     => $row['Estacion'],
+                    'Producto'     => $row['Producto'],
+                    'Turno'        => $row['nrotur'],
+                    'Can anterior' => $row['can_anterior'],
+                    'Can nueva'    => $row['can_nuevo'],
+                    'Mto anterior' => $row['mto_anterior'],
+                    'Mto nuevo'    => $row['mto_nuevo'],
+                    'Can agregada' => $row['can_agregado'],
+                );
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+    function tablaTickets($from, $until, $codgas) {
+        $from_int = dateToInt($from);
+        $until_int = dateToInt($until);
+
+        $data = [];
+        if ($rows = $this->mojoTicketsModel->get_tabla_tickets($from_int, $until_int, $codgas)) {
+            foreach ($rows as $key => $row) {
+                $data[] = array(
+                    'Fecha' => intToDate($row['fch']),
+                    'Estación' => $row['Estacion'],
+                    'Producto' => $row['Producto'],
+                    'Turno' => $row['turno'],
+                    'Diferencia' => $row['diferencia'],
+                    'Ticket ID' => '<a href="https://totalgas.mojohelpdesk.com/mc/tickets/'. $row['ticket_id'] .'" target="_blank">'. $row['ticket_id'] .'</a>',
+                );
+            }
+        }
+        json_output(array("data" => $data));
     }
 }

@@ -46,7 +46,6 @@
             <li class="sidebar-item"><a class="sidebar-link" href="/commercial/mystery_shopper">9. Mystery Shopper</a></li>
           </ul>
         </li>
-       
       {% endif %}
 
 
@@ -80,6 +79,11 @@
         </ul>
         <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
+        </ul>
+        {% endif %}
+        {% if authorized(65) %}
+        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
         </ul>
         {% endif %}
 
@@ -319,9 +323,11 @@
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/mqg_cards">Tarjetas MasQueGas</a>
             </li>
-          </ul>
 
-          
+            <li class="sidebar-item">
+              <a class="sidebar-link" href="/marketing/print_sticker/station/1/2/">Etiquetas inventarios</a>
+            </li>
+          </ul>
           {% endif %}
         </li>
         {% endif %}

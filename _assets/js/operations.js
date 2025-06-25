@@ -1080,6 +1080,8 @@ $('#sales_table').DataTable({
         {'data': '34 SAN RAFAEL', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
         {'data': '35 PUERTECITO', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
         {'data': '36 JESUS MARIA', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+        {'data': '37 GABRIELA MIS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+        {'data': '38 PRAXEDIS', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
         {'data': 'Total', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
     ],
     createdRow: function (row, data, dataIndex) {
@@ -1098,7 +1100,7 @@ $('#sales_table').DataTable({
         var api = this.api();
 
         // Calcula los totales de las columnas
-        api.columns([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33])
+        api.columns([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35])
             .every(function () {
                 var columnData = this.data();
                 var columnTotal = columnData.reduce(function (acc, val) {

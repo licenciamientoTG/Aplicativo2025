@@ -379,18 +379,18 @@ class It{
         if ($stations = $this->estacionesModel->get_stations()) {
             $data = array_map(function ($station) {
                 return [
-                    'ID'                   => $station['Codigo'],
-                    'NOMBRE'               => preg_replace('/^[0-9]+/', '', $station['Nombre']),
-                    'DOMICILIO'            => $station['Domicilio'],
-                    'ESTACIÓN'             => $station['Estacion'],
-                    'SERVIDOR'             => $station['Servidor'],
-                    'BD'                   => $station['BaseDatos'],
-                    'CRE'                  => $station['PermisoCRE'],
-                    'DENOMINACIÓN'         => $station['Denominacion'],
-                    'ZONA'                 => $station['Zona'],
-                    'BLOQUEARSINRECEPCION' => ($station['bloquearSinRecepcion'] == 1 ? '<span class="badge bg-warning">Sí</span>' : '<span class="badge bg-primary">No</span>'),
-                    'STATUS'               => ( $station['activa'] == 1 ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-primary">Inactiva</span>' ),
-                    'CONEXION'             => ((@fsockopen($station['Servidor'], 1433, $errno, $errstr, 2)) ? "✅" : "❌")
+                    'ID'           => $station['Codigo'],
+                    'NOMBRE'       => preg_replace('/^[0-9]+/', '', $station['Nombre']),
+                    'DOMICILIO'    => $station['Domicilio'],
+                    'ESTACIÓN'     => $station['Estacion'],
+                    'SERVIDOR'     => $station['Servidor'],
+                    'BD'           => $station['BaseDatos'],
+                    'CRE'          => $station['PermisoCRE'],
+                    'DENOMINACIÓN' => $station['Denominacion'],
+                    'ZONA'         => $station['Zona'],
+                    'RFC'          => $station['RFC'],
+                    'STATUS'       => ( $station['activa'] == 1 ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-primary">Inactiva</span>' ),
+                    'CONEXION'     => ((@fsockopen($station['Servidor'], 1433, $errno, $errstr, 2)) ? "✅" : "❌")
                 ];
             }, $stations);
         }

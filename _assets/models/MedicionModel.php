@@ -217,8 +217,7 @@ class MedicionModel extends Model{
                             GROUP BY nrobom, codprd, codisl
                         ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
                     WHERE
-                        t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND  t1.codisl IN($Islands)  
-
+                        t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND  t1.codisl IN($Islands)
                     UNION ALL
                     SELECT
                         t1.nrobom, t5.den Producto, t1.codprd, 0 AS initialElectronicReading, t1.mto AS amount, 0 AS finalElectronicReading, t1.mto finalAmount, 0 AS difference, 0 AS amountDifference, t1.codisl
@@ -230,9 +229,6 @@ class MedicionModel extends Model{
                     WHERE t1.fchcor = {$next_date} AND t1.nrotur = {$next_shift} AND t1.codisl IN ({$Islands}) AND t1.codprd NOT IN (0,179,180,181,192,193)
                 ')
             ";
-            // echo '<pre>';
-            // var_dump($query);
-            // die();
 
         return ($this->sql->select($query, [])) ?: false ;
     }

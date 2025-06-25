@@ -12,12 +12,6 @@ class VentasModel extends Model{
     public $fchsyn;
 
     function get_sales($fch) : array|false {
-            // echo '<pre>';
-            // var_dump($fch);
-            // $fch = dateToInt($fch);
-            // var_dump($fch);
-
-            // die();
         $query = "
             SELECT
                 Fecha,
@@ -55,7 +49,9 @@ class VentasModel extends Model{
                 ISNULL([33 VENTANAS], 0) '33 Ventanas',
                 ISNULL([34 SAN RAFAEL], 0) '34 SAN RAFAEL',
                 ISNULL([35 PUERTECITO], 0) '35 PUERTECITO',
-                ISNULL([36 JESUS MARIA], 0) '36 JESUS MARIA'
+                ISNULL([36 JESUS MARIA], 0) '36 JESUS MARIA',
+                ISNULL([37 GABRIELA MIS], 0) '37 GABRIELA MIS',
+                ISNULL([38 PRAXEDIS], 0) '38 PRAXEDIS'
             FROM
                 (SELECT
                     DATEADD(DAY, -1, CAST(t1.fch AS DATETIME)) AS Fecha,
@@ -87,7 +83,7 @@ class VentasModel extends Model{
                 [12 PTO DE PALOS], [13 MIGUEL D MAD], [14 PERMUTA], [15 ELECTROLUX], [16 AERONAUTICA],
                 [17 CUSTODIA], [18 ANAPRA], [19 INDEPENDENCI], [20 TECNOLOGICO], [21 EJERCITO NAL],
                 [22 SATELITE], [23 LAS FUENTES], [24 CLARA], [25 SOLIS], [26 SANTIAGO TRO],
-                [27 JARUDO], [28 HERMANOS ESC], [29 VILLA AHUMAD], [30 EL CASTAÑO], [31 TRAVEL CENTE], [32 Picachos], [33 Ventanas], [34 SAN RAFAEL], [35 PUERTECITO], [36 JESUS MARIA])
+                [27 JARUDO], [28 HERMANOS ESC], [29 VILLA AHUMAD], [30 EL CASTAÑO], [31 TRAVEL CENTE], [32 Picachos], [33 Ventanas], [34 SAN RAFAEL], [35 PUERTECITO], [36 JESUS MARIA],[37 GABRIELA MIS], [38 PRAXEDIS])
             ) AS PivotTable
             ORDER BY Fecha;";
 

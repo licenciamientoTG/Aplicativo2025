@@ -1,0 +1,209 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Bitácora de movimientos{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Bitácora de movimientos actual{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header p-0">
+                <ul class="nav nav-tabs" id="custom-tabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="tickets-tab" data-bs-toggle="tab" href="#tickets" role="tab" aria-controls="tickets" aria-selected="true">Bitácora de Ajustes</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="auditoria-tab" data-bs-toggle="tab" href="#auditoria" role="tab" aria-controls="auditoria" aria-selected="false">Tickets generados</a>
+                </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="custom-tabs-content">
+
+                    <!-- TAB 1: Tickets -->
+                    <div class="tab-pane fade show active" id="tickets" role="tabpanel" aria-labelledby="tickets-tab">
+                        <!-- Filtros -->
+                        <form id="filtroAuditoria" class="mb-3 row g-3">
+                            <div class="col-md-3">
+                                <label for="from" class="form-label">Fecha inicio</label>
+                                <input type="date" class="form-control" id="from" name="from" value="{{ from }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="until" class="form-label">Fecha fin</label>
+                                <input type="date" class="form-control" id="until" name="until" value="{{ until }}">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="station_selected" class="form-label">Estación</label>
+                                <select class="selectpicker form-control" id="station_selected" name="station_selected" data-live-search="true" title="Selecciona una estación">
+                                    <option value="0" {{ 0 == station_selected ? 'selected' : '' }}>Todas</option>
+                                    {% for stations in stations %}
+                                    <option value="{{ stations.Codigo }}" {{ stations.Codigo == station_selected ? 'selected' : '' }}>{{ stations.Nombre }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2 align-self-end">
+                                <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+                            </div>
+                        </form>
+
+                        <table id="tablaAuditoria" class="table table-bordered table-hover w-100">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Usuario</th>
+                                <th>Estación</th>
+                                <th>Producto</th>
+                                <th>Turno</th>
+                                <th>Can anterior</th>
+                                <th>Can nuevo</th>
+                                <th>Mto anterior</th>
+                                <th>Mto nuevo</th>
+                                <th>Can agregada</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rellenar con datos desde servidor -->
+                        </tbody>
+                        </table>
+                    </div>
+
+                    <!-- TAB 2: Auditoria de ajustes -->
+                    <div class="tab-pane fade" id="auditoria" role="tabpanel" aria-labelledby="auditoria-tab">
+                        <table id="tablaTickets" class="table table-bordered table-striped w-100">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Estación</th>
+                                <th>Producto</th>
+                                <th>Turno</th>
+                                <th>Diferencia</th>
+                                <th>Ticket ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rellenar con datos desde servidor -->
+                        </tbody>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+<script>
+  $(function () {
+    // Table de Despachos de Crédito y Débito
+    let tablaAuditoria = $('#tablaAuditoria').DataTable({
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+            },
+        ],
+        ajax: {
+            url: '/administration/tablaAuditoria/{{ from }}/{{ until }}/{{ station_selected }}',
+            error: function() {
+                $('#tablaAuditoria').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: [
+            {'data': 'Fecha'},
+            {'data': 'Usuario'},
+            {'data': 'Estación'},
+            {'data': 'Producto'},
+            {'data': 'Turno'},
+            {'data': 'Can anterior', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Can nueva', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Mto anterior', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Mto nuevo', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Can agregada', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )}
+        ],
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+            $('.table-responsive').removeClass('loading');
+        }
+    });
+
+    // Agregar un evento clic de refresh
+    $('.refresh_tablaAuditoria').on('click', function () {
+        tablaAuditoria.clear().draw();
+        tablaAuditoria.ajax.reload();
+        $('#tablaAuditoria').waitMe('hide');
+    });
+
+
+
+    // Table de Despachos de Crédito y Débito
+    let tablaTickets = $('#tablaTickets').DataTable({
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+            },
+        ],
+        ajax: {
+            url: '/administration/tablaTickets/{{ from }}/{{ until }}/{{ station_selected }}',
+            error: function() {
+                $('#tablaTickets').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: [
+
+            {'data': 'Fecha'},
+            {'data': 'Estación'},
+            {'data': 'Producto'},
+            {'data': 'Turno'},
+            {'data': 'Diferencia', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Ticket ID'}
+        ],
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+            $('.table-responsive').removeClass('loading');
+        }
+    });
+
+    // Agregar un evento clic de refresh
+    $('.refresh_tablaTickets').on('click', function () {
+        tablaTickets.clear().draw();
+        tablaTickets.ajax.reload();
+        $('#tablaTickets').waitMe('hide');
+    });
+
+
+  });
+</script>
+{% endblock %}

@@ -57,6 +57,8 @@ class ValesRModel extends Model
             t1.fch = $fch
             AND t3.tipval IN (3,4)
             AND t1.codgas = $codgas
+            AND t1.mto > 0
+	        AND t1.can > 0
         ORDER BY t1.fch DESC;
         ";
         $params = [];

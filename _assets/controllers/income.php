@@ -1111,7 +1111,8 @@ class Income{
 
         // Verificamos que el despacho exista
         if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
-            if (($dispatch[0]['tipval'] == 'Débito' && $dispatch[0]['tipval'] == 3) || ($dispatch[0]['tipval'] == 'Crédito' && $dispatch[0]['tipval'] == 4)) {
+
+            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
                 json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por este medio."));
             }
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
