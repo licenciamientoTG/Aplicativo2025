@@ -76,6 +76,75 @@ $(document).ready(function() {
         $('#stimulus_table').waitMe('hide');
     });
 });
+function download_format_sales_petrotal(){
+    fetch('/accounting/download_format_sales_petrotal')
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error en la descarga del archivo');
+        }
+        return response.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(new Blob([blob]));
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = 'FormatoVentasPetrotal.xlsx'; // Nombre del archivo a descargar
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(error => console.error('Error:', error));
+
+}
+
+
+    async function upload_file_sales_petrotal() {
+        const fileInput = document.getElementById('file_to_upload');
+        const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+        if (!file) {
+            toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
+            return;
+        }
+        $('.mistery_heather').addClass('loading');
+        const formData = new FormData();
+        formData.append('file_to_upload', file);
+        try {
+            const response = await fetch('/accounting/import_file_sales_petrotal', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            console.log(data);
+    
+            if (data['success'] == false) {
+                toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+                $('.mistery_heather').removeClass('loading');
+                fileInput.value = '';
+                return;
+            }
+    
+            if (data['success'] == true) {
+                toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+                $('.mistery_heather').removeClass('loading');
+                fileInput.value = '';
+                // mistery_shopper_table();
+                // setTimeout(() => {
+                //     window.location.reload();
+                // }, 2000);
+            } 
+        } catch (error) {
+            console.error('Error al subir el archivo:', error);
+            // $('.mistery_heather').removeClass('loading');
+            // $('.mistery_heather').removeClass('loading');
+    
+            toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+        }
+        $('.mistery_heather').removeClass('loading');
+    
+    }
+
 
 
 
@@ -1269,11 +1338,11 @@ async function drawAnnualTable() {
     const tbody = document.getElementById('bodyEstadoResultados');
     thead.innerHTML = '';
     tbody.innerHTML = '';
+    console.log('API response:', api);
 
     buildTableHeader(thead, year, prevYear, meses);
     renderTableBody(tbody, api, meses);
 
-    console.log('API response:', api);
     
     container.classList.remove('loading');
 
@@ -1288,7 +1357,7 @@ async function drawAnnualTable() {
     console.error('Error al dibujar tabla anual:', error);
   }
 }
-
+// let totalingresos;
 
 function renderTableBody(tbody, api, months) {
 
@@ -1300,6 +1369,7 @@ function renderTableBody(tbody, api, months) {
         porcentajes_vs_ingresos: porcentajesVsIngresos = {},
         porcentajes_vs_ingresos_staff: porcentajesVsIngresosStaff = {}
     } = api;
+    BudgetTotalIngresos = api.budget.rubro_estaciones.find(r => r.Rubro === 'A - INGRESOS') || {};
     const getSumas = (rubro, type) => sumasPorRubroMes[rubro]?.[type] || {};
     const getPorcentajes = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresos : porcentajesVsIngresosStaff)[rubro] || {};
     const getBudgetRubro = (rubro) => budget.rubro_estaciones?.find(r => r.Rubro === rubro) || {};
@@ -1308,66 +1378,66 @@ function renderTableBody(tbody, api, months) {
     renderDivider(tbody, 'INGRESOS', months.length);
     renderSection(
         tbody, 'A - INGRESOS', estaciones.ingresos_estaciones || [], getSumas('A - INGRESOS', 'ESTACIONES'), getPorcentajes('A - INGRESOS', 'ESTACIONES'),
-        getBudgetRubro('A - INGRESOS'), getBudgetConceptos('ingresos_estaciones'), months
+        getBudgetRubro('A - INGRESOS'), getBudgetConceptos('ingresos_estaciones'), months,BudgetTotalIngresos
     );
     renderSection(
         tbody, 'B - COSTO DE VENTA', estaciones.costo_venta_estaciones || [],
         getSumas('B - COSTO DE VENTA', 'ESTACIONES'), getPorcentajes('B - COSTO DE VENTA', 'ESTACIONES'),
-        getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months
+        getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months,BudgetTotalIngresos
     );
     renderDivider(tbody, 'GASTOS ESTACIONES', months.length);
     renderSection(
         tbody, 'E - GASTOS DE OPERACION', estaciones.gastos_operacion_estaciones || [],
         getSumas('E - GASTOS DE OPERACION', 'ESTACIONES'), getPorcentajes('E - GASTOS DE OPERACION', 'ESTACIONES'),
-        getBudgetRubro('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_estaciones'), months
+        getBudgetRubro('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_estaciones'), months,BudgetTotalIngresos
     );
     renderSection(
         tbody, 'C - NOMINA', estaciones.nomina_estaciones || [],
         getSumas('C - NOMINA', 'ESTACIONES'), getPorcentajes('C - NOMINA', 'ESTACIONES'),
-        getBudgetRubro('C - NOMINA'), getBudgetConceptos('nomina_estaciones'), months
+        getBudgetRubro('C - NOMINA'), getBudgetConceptos('nomina_estaciones'), months,BudgetTotalIngresos
     );
     renderSection(
         tbody, 'D - COSTO SOCIAL', estaciones.costo_social_estaciones || [],
         getSumas('D - COSTO SOCIAL', 'ESTACIONES'), getPorcentajes('D - COSTO SOCIAL', 'ESTACIONES'),
-        getBudgetRubro('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_estaciones'), months
+        getBudgetRubro('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_estaciones'), months,BudgetTotalIngresos
     );
     renderSection(
         tbody, 'F - MANTENIMIENTO', estaciones.mantenimiento_estaciones || [],
         getSumas('F - MANTENIMIENTO', 'ESTACIONES'), getPorcentajes('F - MANTENIMIENTO', 'ESTACIONES'),
-        getBudgetRubro('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_estaciones'), months
+        getBudgetRubro('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_estaciones'), months,BudgetTotalIngresos
     );
     renderSection(
         tbody, 'H - GASTOS FIJOS', estaciones.gastos_fijos_estaciones || [],
         getSumas('H - GASTOS FIJOS', 'ESTACIONES'), getPorcentajes('H - GASTOS FIJOS', 'ESTACIONES'),
-        getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months
+        getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months,BudgetTotalIngresos
     );
 
     renderDivider(tbody, 'GASTOS STAFF', months.length);
     renderSection(
         tbody, 'E - GASTOS DE OPERACION', staff.gastos_operacion_staff || [],
         getSumas('E - GASTOS DE OPERACION', 'STAFF'), getPorcentajes('E - GASTOS DE OPERACION', 'STAFF'),
-        getBudgetRubroStaff('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_staff'), months
+        getBudgetRubroStaff('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_staff'), months,BudgetTotalIngresos
     );
-    // renderSection(
-    //     tbody, 'C - NOMINA', staff.nomina_staff || [],
-    //     getSumas('C - NOMINA', 'STAFF'), getPorcentajes('C - NOMINA', 'STAFF'),
-    //     getBudgetRubroStaff('C - NOMINA'), getBudgetConceptos('nomina_staff'), months
-    // );
-    // renderSection(
-    //     tbody, 'D - COSTO SOCIAL', staff.costo_social_staff || [],
-    //     getSumas('D - COSTO SOCIAL', 'STAFF'), getPorcentajes('D - COSTO SOCIAL', 'STAFF'),
-    //     getBudgetRubroStaff('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_staff'), months
-    // );
-    // renderSection(
-    //     tbody, 'F - MANTENIMIENTO', staff.mantenimiento_staff || [],
-    //     getSumas('F - MANTENIMIENTO', 'STAFF'), getPorcentajes('F - MANTENIMIENTO', 'STAFF'),
-    //     getBudgetRubroStaff('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_staff'), months
-    // );
-    // renderSection(
-    //     tbody, 'H - GASTOS FIJOS', staff.gastos_fijos_staff || [],
-    //     getSumas('H - GASTOS FIJOS', 'STAFF'), getPorcentajes('H - GASTOS FIJOS', 'STAFF'),
-    //     getBudgetRubroStaff('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_staff'), months
-    // );
+    renderSection(
+        tbody, 'C - NOMINA', staff.nomina_staff || [],
+        getSumas('C - NOMINA', 'STAFF'), getPorcentajes('C - NOMINA', 'STAFF'),
+        getBudgetRubroStaff('C - NOMINA'), getBudgetConceptos('nomina_staff'), months,BudgetTotalIngresos
+    );
+    renderSection(
+        tbody, 'D - COSTO SOCIAL', staff.costo_social_staff || [],
+        getSumas('D - COSTO SOCIAL', 'STAFF'), getPorcentajes('D - COSTO SOCIAL', 'STAFF'),
+        getBudgetRubroStaff('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_staff'), months,BudgetTotalIngresos
+    );
+    renderSection(
+        tbody, 'F - MANTENIMIENTO', staff.mantenimiento_staff || [],
+        getSumas('F - MANTENIMIENTO', 'STAFF'), getPorcentajes('F - MANTENIMIENTO', 'STAFF'),
+        getBudgetRubroStaff('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_staff'), months,BudgetTotalIngresos
+    );
+    renderSection(
+        tbody, 'H - GASTOS FIJOS', staff.gastos_fijos_staff || [],
+        getSumas('H - GASTOS FIJOS', 'STAFF'), getPorcentajes('H - GASTOS FIJOS', 'STAFF'),
+        getBudgetRubroStaff('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_staff'), months,BudgetTotalIngresos
+    );
 
 }
 
@@ -1404,7 +1474,7 @@ function renderDivider(tbody, label, numMeses) {
   tbody.appendChild(tr);
 }
 
-function renderSection(tbody, titulo, data, sumas, porcentajes, budget_rubro, budget_conceptos, meses, soloMostrarTotal = false) {
+function renderSection(tbody, titulo, data, sumas, porcentajes, budget_rubro, budget_conceptos, meses,BudgetTotalIngresos, soloMostrarTotal = false) {
   const trTitulo = document.createElement('tr');
   trTitulo.classList.add('table-light', 'fw-bold');
   if (!soloMostrarTotal) trTitulo.setAttribute('onclick', 'toggleGroup(this)');
@@ -1423,18 +1493,30 @@ function renderSection(tbody, titulo, data, sumas, porcentajes, budget_rubro, bu
   tbody.appendChild(trTitulo);
 
   data.forEach(fila => {
+    const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${fila.concepto}</td>`;
-    const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
     meses.forEach(mes => {
       const val = fila[mes]?.total ?? 0;
       const pct = fila[mes]?.porcentaje ?? '-';
       const presupuesto = formatea(budget_concepto[mes]) ?? '-';
+      ingreso_presupuesto = BudgetTotalIngresos[mes] || 0;
+      var porcen_presupuesto =  (budget_concepto[mes]/ingreso_presupuesto) * 100 || 0;
+        porcen_presupuesto = porcen_presupuesto.toFixed(1);
+      let variacion = budget_concepto[mes] ? ((val / budget_concepto[mes]) - 1) *100: 0;
+        variacion = Number(variacion.toFixed(1)); // Para comparación numérica
+          const variacionClass = variacion < 5 ? 'variacion-negativa' : '';
+
+
       tr.innerHTML += `
         <td>-</td><td>-</td>
         <td>${formatea(val)}</td>
         <td>${pct}</td>
-        <td>${presupuesto}</td><td>-</td><td>-</td><td>-</td>
+        <td>${presupuesto}</td>
+        <td>${(porcen_presupuesto)} %</td>
+           <td class="${variacionClass}">${variacion} %</td>
+
+        <td>-</td>
       `;
     });
     tbody.appendChild(tr);
@@ -1463,4 +1545,219 @@ async function fetchData(year) {
   }
 
   return response.json();
+}
+
+
+async function sales_petrotal_table(){
+    if ($.fn.DataTable.isDataTable('#sales_petrotal_table')) {
+        $('#sales_petrotal_table').DataTable().destroy();
+        $('#sales_petrotal_table thead .filter').remove();
+        // $('#sales_petrotal_table').DataTable().destroy();  // Destruye la tabla existente
+        // $('#sales_petrotal_table thead').empty(); // Limpia el encabezado
+        // $('#sales_petrotal_table tbody').empty(); // Limpia el cuerpo
+        // $('#sales_petrotal_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+
+    $('#sales_petrotal_table thead').prepend($('#sales_petrotal_table thead tr').clone().addClass('filter'));
+    $('#sales_petrotal_table thead tr.filter th').each(function (index) {
+        col = $('#sales_petrotal_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#sales_petrotal_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#sales_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let sales_petrotal_table =$('#sales_petrotal_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate
+            },
+            url: '/accounting/sales_petrotal_table',
+            timeout: 600000, 
+            error: function() {
+                $('#sales_petrotal_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+       columns: [
+            { data: 'anio' },
+            { data: 'mes_deuda' },
+            { data: 'fecha', className: 'text-nowrap' },
+            { data: 'factura' },
+            { data: 'num_estacion' },
+            { data: 'razon_social' },
+            { data: 'estacion' },
+            { data: 'cre_estacion' },
+            { data: 'fecha_descarga', className: 'text-nowrap' },
+            { data: 'proveedor' },
+            { data: 'codigo_proveedor' },
+            { data: 'cre_proveedor' },
+            { data: 'combustible' },
+            { data: 'factor_ieps', render: $.fn.dataTable.render.number(',', '.', 6) },
+            { data: 'litros', render: $.fn.dataTable.render.number(',', '.', 3) },
+            { data: 'precio', render: $.fn.dataTable.render.number(',', '.', 8) },
+            { data: 'precio_litro', render: $.fn.dataTable.render.number(',', '.', 8) },
+            { data: 'subtotal_con_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'subtotal_sin_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'costo', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'factura_compra' },
+            { data: 'utilidad_perdida', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'monto_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'iva_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'fecha_pago', className: 'text-nowrap' },
+            { data: 'uuid' },
+            { data: 'tasa_iva' },
+            { data: 'indicador_1' }
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+    });
+}
+
+
+async function er_petrotal_table(){
+    if ($.fn.DataTable.isDataTable('#er_petrotal_table')) {
+        $('#er_petrotal_table').DataTable().destroy();
+        $('#er_petrotal_table thead .filter').remove();
+        // $('#er_petrotal_table').DataTable().destroy();  // Destruye la tabla existente
+        // $('#er_petrotal_table thead').empty(); // Limpia el encabezado
+        // $('#er_petrotal_table tbody').empty(); // Limpia el cuerpo
+        // $('#er_petrotal_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+    }
+    var fromDate = document.getElementById('from2').value;
+    var untilDate = document.getElementById('until2').value;
+
+    $('#er_petrotal_table thead').prepend($('#er_petrotal_table thead tr').clone().addClass('filter'));
+    $('#er_petrotal_table thead tr.filter th').each(function (index) {
+        col = $('#er_petrotal_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#er_petrotal_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#er_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let er_petrotal_table =$('#er_petrotal_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate
+            },
+            url: '/accounting/er_petrotal_table',
+            timeout: 600000, 
+            error: function() {
+                $('#er_petrotal_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+       columns: [
+            { data:'estacion' },
+            { data:'Etiqueta'},
+            { data:'Diesel'},
+            { data:'PREMIUM'},
+            { data:'REGULAR'},
+            { data:'Diesel %'},
+            { data:'Premium %'},
+            { data:'Magna %'},
+            { data:'Diesel utilidad'},
+            { data:'Premium utilidad'},
+            { data:'Regular utilidad'},
+            { data:'Total'}
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+    });
 }

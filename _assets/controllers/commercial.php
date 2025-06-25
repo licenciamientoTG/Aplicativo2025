@@ -418,7 +418,7 @@ class Commercial{
             ];
         }
     }
-    private function getFileErrorMessage($errorCode)
+    public function getFileErrorMessage($errorCode)
     {
         switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
@@ -467,7 +467,6 @@ class Commercial{
                 'message' => 'Error al importar los datos.'
             ]);
         }
-       
     }
     function import_data_budget(){
         try {

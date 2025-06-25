@@ -6,6 +6,13 @@
 {% block content %}
 
 <style>
+
+
+.variacion-negativa {
+  color: red;
+  font-weight: bold;
+}
+
     tr.group,
 tr.group:hover {
     background-color: rgba(0, 0, 0, 0.1) !important;
@@ -92,11 +99,17 @@ table {
         <button class="nav-link " id="concentrating_results-tab" data-bs-toggle="tab" data-bs-target="#concentrating_results" type="button" role="tab" aria-controls="concentrating_results" aria-selected="true">Concentrado</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
+        <button class="nav-link " id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
     </li>
 
     <li class="nav-item" role="presentation">
         <button class="nav-link " id="annual_budget-tab" data-bs-toggle="tab" data-bs-target="#annual_budget" type="button" role="tab" aria-controls="annual_budget" aria-selected="true">Presupuesto Anual</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="er_petrotal-tab" data-bs-toggle="tab" data-bs-target="#er_petrotal" type="button" role="tab" aria-controls="er_petrotal" aria-selected="true">Ventas Petrotal</button>
+    </li>
+     <li class="nav-item" role="presentation">
+        <button class="nav-link " id="sales_petrotal-tab" data-bs-toggle="tab" data-bs-target="#sales_petrotal" type="button" role="tab" aria-controls="sales_petrotal" aria-selected="true">Ventas Petrotal</button>
     </li>
 </ul>
 
@@ -108,8 +121,7 @@ table {
             <div class="card-body">
                 <div class="row">
                     <div class="col-6">
-                        <label for="from" class="col-form-label col-form-label-sm">Año: </label>
-                        <!-- <input type="year" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required> -->
+                        <label for="year" class="col-form-label col-form-label-sm">Año: </label>
                         <input type="number" placeholder="YYYY" min="1999"  class="form-control" value="2024"  name="year" id="year">
                     </div>
                     <div class="col d-flex flex-column justify-content-between">
@@ -176,7 +188,7 @@ table {
         </div>
 
     </div>
-    <div class="tab-pane active" id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
+    <div class="tab-pane " id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
         <div class="card">
            <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Estado de Resultados Anual</h5>
@@ -224,6 +236,206 @@ table {
             </div>
         </div>
     </div>
+     <div class="tab-pane active" id="er_petrotal" role="tabpanel" aria-labelledby="er_petrotal-tab">
+       <div class=" row g-2 justify-content-between er_petrotal_heather">
+            <!-- Bloque de fecha -->
+            <div class="col-12 col-md-6 card p-3">
+                <div class="row g-2">
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="from2">Desde:</label>
+                        <input type="date" class="form-control form-control-sm" id="from2" name="from2" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="until2">Hasta:</label>
+                        <input type="date" class="form-control form-control-sm" id="until2" name="until2" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-auto align-self-end">
+                        <button type="submit" id="seach_er_petrotal" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+
+            {% if authorized(63) %}
+            <!-- Bloque de carga de archivo -->
+            <div class="col-12 col-md-5 card p-3">
+                <div class="row g-2 align-items-end">
+                    <div class="col-auto">
+                        <button type="button" onclick="download_format_sales_petrotal()" class="btn btn-success btn-sm">Descargar Formato</button>
+                    </div>
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="file_to_upload">Archivo</label>
+                        <input type="file" class="form-control form-control-sm" id="file_to_upload" name="file_to_upload" accept=".xls,.xlsx" required>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" onclick="upload_file_sales_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Ventas Petrotal </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="er_petrotal_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Estación</th>
+                            <th>Etiqueta</th>
+                            <th>Diesel</th>
+                            <th>PREMIUM</th>
+                            <th>REGULAR</th>
+                            <th>Diesel %</th>
+                            <th>Premium %</th>
+                            <th>Magna %</th>
+                            <th>Diesel utilidad</th>
+                            <th>Premium utilidad</th>
+                            <th>Regular utilidad</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                           <th>Estación</th>
+                            <th>Etiqueta</th>
+                            <th>Diesel</th>
+                            <th>PREMIUM</th>
+                            <th>REGULAR</th>
+                            <th>Diesel %</th>
+                            <th>Premium %</th>
+                            <th>Magna %</th>
+                            <th>Diesel utilidad</th>
+                            <th>Premium utilidad</th>
+                            <th>Regular utilidad</th>
+                            <th>Total</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+     <div class="tab-pane" id="sales_petrotal" role="tabpanel" aria-labelledby="sales_petrotal-tab">
+       <div class=" row g-2 justify-content-between mistery_heather">
+            <!-- Bloque de fecha -->
+            <div class="col-12 col-md-6 card p-3">
+                <div class="row g-2">
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="from">Desde:</label>
+                        <input type="date" class="form-control form-control-sm" id="from" name="from" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="until">Hasta:</label>
+                        <input type="date" class="form-control form-control-sm" id="until" name="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-auto align-self-end">
+                        <button type="submit" id="seach_sales_petrotal" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+
+            {% if authorized(63) %}
+            <!-- Bloque de carga de archivo -->
+            <div class="col-12 col-md-5 card p-3">
+                <div class="row g-2 align-items-end">
+                    <div class="col-auto">
+                        <button type="button" onclick="download_format_sales_petrotal()" class="btn btn-success btn-sm">Descargar Formato</button>
+                    </div>
+                    <div class="col">
+                        <label class="form-label form-label-sm" for="file_to_upload">Archivo</label>
+                        <input type="file" class="form-control form-control-sm" id="file_to_upload" name="file_to_upload" accept=".xls,.xlsx" required>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" onclick="upload_file_sales_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Ventas Petrotal </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="sales_petrotal_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Año</th>
+                            <th>Mes de deuda</th>
+                            <th>Fecha</th>
+                            <th>Factura</th>
+                            <th>No. Estación</th>
+                            <th>Razón Social</th>
+                            <th>Estación</th>
+                            <th>CRE / Estación</th>
+                            <th>Fecha Descarga</th>
+                            <th>Proveedor</th>
+                            <th>Código Proveedor</th>
+                            <th>CRE / Proveedor</th>
+                            <th>Combustible</th>
+                            <th>Factor IEPS</th>
+                            <th>Litros</th>
+                            <th>Precio</th>
+                            <th>Precio (Lt)</th>
+                            <th>Sub-total (con IEPS)</th>
+                            <th>IEPS</th>
+                            <th>Sub-total sin IEPS</th>
+                            <th>IVA</th>
+                            <th>Total</th>
+                            <th>Costo</th>
+                            <th>Factura Compra</th>
+                            <th>Utilidad y/o Pérdida</th>
+                            <th>Monto pagado</th>
+                            <th>IVA Pagado</th>
+                            <th>Fecha de pago</th>
+                            <th>UUID</th>
+                            <th>Tasa IVA</th>
+                            <th>Indicador</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Año</th>
+                            <th>Mes de deuda</th>
+                            <th>Fecha</th>
+                            <th>Factura</th>
+                            <th>No. Estación</th>
+                            <th>Razón Social</th>
+                            <th>Estación</th>
+                            <th>CRE / Estación</th>
+                            <th>Fecha Descarga</th>
+                            <th>Proveedor</th>
+                            <th>Código Proveedor</th>
+                            <th>CRE / Proveedor</th>
+                            <th>Combustible</th>
+                            <th>Factor IEPS</th>
+                            <th>Litros</th>
+                            <th>Precio</th>
+                            <th>Precio (Lt)</th>
+                            <th>Sub-total (con IEPS)</th>
+                            <th>IEPS</th>
+                            <th>Sub-total sin IEPS</th>
+                            <th>IVA</th>
+                            <th>Total</th>
+                            <th>Costo</th>
+                            <th>Factura Compra</th>
+                            <th>Utilidad y/o Pérdida</th>
+                            <th>Monto pagado</th>
+                            <th>IVA Pagado</th>
+                            <th>Fecha de pago</th>
+                            <th>UUID</th>
+                            <th>Tasa IVA</th>
+                            <th>Indicador</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
    
 
     
@@ -236,8 +448,12 @@ table {
 <script src="{{ JS }}accounting.js"></script>
 <script>
 
-    $('#seach_statement_table').on('click', function() {
-        SearchResults();
+    $('#seach_sales_petrotal').on('click', function() {
+        sales_petrotal_table();
+    });
+
+      $('#seach_er_petrotal').on('click', function() {
+        er_petrotal_table();
     });
 
 

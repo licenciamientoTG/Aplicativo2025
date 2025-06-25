@@ -2213,7 +2213,7 @@ class DespachosModel extends Model{
                     t1.tiptrn  not in (65,74) and
                     t1.fchtrn BETWEEN  ? and  ? {$where}
                         )
-            SELECT * 
+            SELECT *
             FROM CTE
             WHERE rn = 1
             ORDER BY fecha, hora_formateada;
