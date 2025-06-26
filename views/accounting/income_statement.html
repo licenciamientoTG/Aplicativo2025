@@ -106,7 +106,7 @@ table {
         <button class="nav-link " id="annual_budget-tab" data-bs-toggle="tab" data-bs-target="#annual_budget" type="button" role="tab" aria-controls="annual_budget" aria-selected="true">Presupuesto Anual</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="er_petrotal-tab" data-bs-toggle="tab" data-bs-target="#er_petrotal" type="button" role="tab" aria-controls="er_petrotal" aria-selected="true">Ventas Petrotal</button>
+        <button class="nav-link active" id="er_petrotal-tab" data-bs-toggle="tab" data-bs-target="#er_petrotal" type="button" role="tab" aria-controls="er_petrotal" aria-selected="true">Utilidad Petrotal</button>
     </li>
      <li class="nav-item" role="presentation">
         <button class="nav-link " id="sales_petrotal-tab" data-bs-toggle="tab" data-bs-target="#sales_petrotal" type="button" role="tab" aria-controls="sales_petrotal" aria-selected="true">Ventas Petrotal</button>
@@ -257,7 +257,7 @@ table {
 
             {% if authorized(63) %}
             <!-- Bloque de carga de archivo -->
-            <div class="col-12 col-md-5 card p-3">
+            <!-- <div class="col-12 col-md-5 card p-3">
                 <div class="row g-2 align-items-end">
                     <div class="col-auto">
                         <button type="button" onclick="download_format_sales_petrotal()" class="btn btn-success btn-sm">Descargar Formato</button>
@@ -270,12 +270,12 @@ table {
                         <button type="button" onclick="upload_file_sales_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
                     </div>
                 </div>
-            </div>
+            </div> -->
             {% endif %}
         </div>
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title">Ventas Petrotal </h5>
+                <h5 class="card-title">Utilidad Petrotal </h5>
             </div>
             <div class="card-body table-responsive" >
                 <table id="er_petrotal_table" class="table table-hover table-sm w-100">

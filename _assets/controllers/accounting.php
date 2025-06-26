@@ -792,31 +792,46 @@ class Accounting{
         }
     } 
     public function er_petrotal_table() {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $date = '2025-04-01'; // Fecha de ejemplo, puedes cambiarla según tus necesidades
+        $postData = [
+            'date' => $date
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
 
-        $from = $_POST['fromDate'] ?? null;
-        $until = $_POST['untilDate'] ?? null;
-        if ($rows = $this->comprasPetrotalModel->get_compras_by_fecha($from, $until)) {
-            foreach ($rows as $row) {
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+
+        if (count($apiData) > 0) {
+            foreach ($apiData as $row) {
                 $data[] = [
-                    'estacion'=> $row['estacion'],
-                    'etiqueta'=> $row['etiqueta'],
-                    'diesel'=> $row['diesel'],
-                    'premium'=> $row['premium'],
-                    'regular'=> $row['regular'],
-                    'diesel_porcent'=> $row['diesel_percent'],
-                    'premium_porcent'=> $row['premium_percent'],
-                    'regular_porcent'=> $row['regular_percent'],
-                    'diesel_utilidad'=> $row['diesel_utilidad'],
-                    'premium_utilidad'=> $row['premium_utilidad'],
-                    'regular_utilidad'=> $row['regular_utilidad'],
-                    'total'=> $row['total'],
+                    'estacion'           => $row['estacion'],
+                    'etiqueta'           => $row['Etiquetas de fila'], // Ajusta al nombre exacto
+                    'diesel'             => $row['DIESEL'],
+                    'premium'            => $row['PREMIUM'],
+                    'regular'            => $row['REGULAR'],
+                    'premium_porcent'    => (round($row['premium_porcentaje'],2)).' %',
+                    'regular_porcent'    => (round($row['regular_porcentaje'],2)).' %',
+                    'diesel_porcent'    => (round($row['diesel_porcentaje'],2)).' %',
+                    'diesel_utilidad'    => $row['diesel_utilidad'],
+                    'premium_utilidad'   => $row['premium_utilidad'],
+                    'regular_utilidad'   => $row['regular_utilidad'],
+                    'total'              => ($row['diesel_utilidad'] +$row['premium_utilidad'] +$row['regular_utilidad']),
+    
                 ];
             }
-            $data = array("data" => $data);
-            echo json_encode($data);
-        } else {
-            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
+        $data = array("data" => $data);
+        echo json_encode($data);
+
     } 
 
 }

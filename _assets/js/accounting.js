@@ -1736,19 +1736,19 @@ async function er_petrotal_table(){
                 $('.table-responsive').addClass('loading');
             }
         },
-       columns: [
-            { data:'estacion' },
-            { data:'Etiqueta'},
-            { data:'Diesel'},
-            { data:'PREMIUM'},
-            { data:'REGULAR'},
-            { data:'Diesel %'},
-            { data:'Premium %'},
-            { data:'Magna %'},
-            { data:'Diesel utilidad'},
-            { data:'Premium utilidad'},
-            { data:'Regular utilidad'},
-            { data:'Total'}
+        columns: [
+            { data: 'estacion', className: 'text-nowrap' },
+            { data: 'etiqueta' },
+            { data: 'diesel', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'premium', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'regular', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'diesel_porcent', className:'text-end'  },  // si llega como decimal
+            { data: 'premium_porcent', className:'text-end'  }, // si llega como decimal
+            { data: 'regular_porcent', className:'text-end'  },   // si llega como decimal
+            { data: 'diesel_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'premium_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'regular_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+            { data: 'total', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) }
         ],
         deferRender: true,
         // destroy: true, 
