@@ -5,7 +5,62 @@
 {% block content %}
 
 {% if authorized(6) %}
+<style>
+.estaciones-cards {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 20px;
+    margin: 24px auto;
+    max-width: 100vw;
+}
 
+.card-estacion {
+    border: 1px solid #aaa;
+    border-radius: 14px;
+    box-shadow: 0 3px 6px #0001;
+    padding: 12px 10px 10px 10px;
+    min-width: 0;
+    background: #fcfcfc;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.card-estacion h3 {
+    margin-top: 0;
+    margin-bottom: 6px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.resumen-fechas {
+    margin-top: 6px;
+    width: 100%;
+}
+
+.fecha-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+    font-size: 0.97rem;
+}
+
+.porciento-verde {
+    color: #13af25;
+    font-weight: bold;
+}
+.porciento-rojo {
+    color: #d52c2c;
+    font-weight: bold;
+}
+.actualizacion-info {
+    font-style: italic;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+</style>
 <div class="row">
     <div class="col-sm-4">
         <div class="card">
@@ -68,6 +123,15 @@
 </div>
 {% endif %}
 
+{% if authorized(6) %}
+
+<!-- <div class="estaciones-cards" id="cards_estaciones"></div> -->
+<div class="actualizacion-info" id="fecha_actualizacion"></div>
+<div class="estaciones-cards" id="cards_estaciones"></div>
+
+{% endif %}
+
+
 {# <div class="row">
     <div class="col-8">
         <div class="card flex-fill w-100">
@@ -100,31 +164,7 @@
   </script> #}
 
 <script>
-    // Obtener la dirección IP local utilizando la API WebRTC
-    function getLocalIP() {
-        const RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
-        const pc = new RTCPeerConnection();
+    print_station_info();
 
-        pc.createDataChannel("");
-
-        pc.createOffer()
-            .then(offer => pc.setLocalDescription(offer))
-            .catch(error => console.error(error));
-
-        pc.onicecandidate = function (e) {
-            if (e.candidate) {
-                const ipRegex = /\d+\.\d+\.\d+\.\d+/;
-                const ipAddress = ipRegex.exec(e.candidate.candidate);
-
-                if (ipAddress && ipAddress.length > 0) {
-                    console.log("La dirección IP local es: " + ipAddress[0]);
-                } else {
-                    console.error("No se pudo obtener la dirección IP local");
-                }
-            }
-        };
-    }
-
-    getLocalIP();
 </script>
 {% endblock %}

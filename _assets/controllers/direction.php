@@ -122,8 +122,11 @@ class Direction{
         $months = array_reverse($months); // Si también necesitas invertir los meses
         echo $this->twig->render($this->route . 'tg6/tg6.html', compact('months', 'currentYear', 'months_resumen', 'meta_venta'));
     }
-    function tg6_product() {
+    function consult_consumption() {
         
+        echo $this->twig->render($this->route . 'tg6/consult_consumption.html');
+    }
+    function tg6_product() {
         echo $this->twig->render($this->route . 'tg6/tg6_product.html');
     }
 
@@ -291,8 +294,8 @@ class Direction{
                     'Cliente'       => $row['Cliente'],
                     'Cliente2'      => $clienteAbreviado,
                     'lognew'        => $lognew,
-                    'nombre_asesor' => $row['nombre_asesor'],
-                    'nombre_zona'   => $row['nombre_zona'],
+                    'nombre_asesor' => "",
+                    'nombre_zona'   => '',
                     'MaxValue'      => round($row['MaxValue'],3)  ?? 0,
                     'prediction'      => round($prediction,3)  ?? 0,
                     'pro_vs_max'      => round($pro_vs_max)  ?? 0,

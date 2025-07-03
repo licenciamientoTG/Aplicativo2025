@@ -202,10 +202,17 @@ async function initConsumptionCreditClientTable(CreditClientColumns) {
         paging: false,
         ordering: false,
         colReorder: false,
-        dom: '<"top"f>rt<"bottom"lip>',
+        dom: '<"top"Bf>rt<"bottom"lip>',
         fixedColumns: {
             leftColumns: 2
         },
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
 
         ajax: {
             method: 'POST',

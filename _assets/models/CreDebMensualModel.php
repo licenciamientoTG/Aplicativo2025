@@ -247,9 +247,7 @@ class CreDebMensualModel extends Model{
         $selectColumns = implode(",\n            ", array_merge(
             [
                 "tc.nombre as Cliente",
-			    "tp.rfc",
-			    "tc.nombre_asesor",
-			    "tc.nombre_zona",
+			    "tp.rfc"
 
             ],
             $columnData['columns2']
@@ -308,9 +306,7 @@ class CreDebMensualModel extends Model{
                     CONCAT(t1.año, '-', t1.mes) AS AñoMes,  -- Combina año y mes en una única columna
                     sum(t1.litros) as litros
                 FROM [TGV2].[dbo].[ConsumoCreditoDebitoMensual] t1
-                LEFT JOIN [TGV2].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
-				LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
-				LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
+                LEFT JOIN [SG12].[dbo].[Clientes] t2 on t1.cliente_id = t2.cod
                 WHERE
                     (t1.año = ".$columnData['currentYear']."  OR t1.año = ".$columnData['previousYear'].")  -- Incluye el año actual y el anterior
                     AND t1.tipo_id = ".$type."
@@ -328,20 +324,13 @@ class CreDebMensualModel extends Model{
        JOIN (
         SELECT
 			max(t2.den) as nombre,
-			t2.rfc,
-			max(t3.nombre_asesor) as nombre_asesor,
-			max(t4.nombre_zona) as nombre_zona
+			t2.rfc
 			FROM [TGV2].[dbo].[Clientes] t2
-			LEFT JOIN [TGV2].[dbo].[Asesores] t3 on t2.asesor_id = t3.asesor_id
-			LEFT JOIN [TGV2].[dbo].[Zonas] t4 on t2.[zona_id] = t4.[zona_id]
-			Where nombre_asesor  is not null Or nombre_zona is not null
-			Group by t2.rfc,t3.nombre_asesor,t4.nombre_zona
+			Group by t2.rfc
         ) tc on tp.rfc = tc.rfc
         order by rfc
         ";
         $params = [];
-    
-
         return ($this->sql->select($query, $params)) ?: false;
 
     }

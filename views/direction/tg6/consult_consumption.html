@@ -1,72 +1,20 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Direccion - Ventas Credito/Debito Producto{% endblock %}
-{% block mycss %}
-<style>
-#card_canva_vta {
-    background: linear-gradient(135deg, #2c3e50, #4b79a1); /* Degradado oscuro */
-    border: 1px solid #1a252f; /* Borde oscuro */
-    padding: 10px;
-    border-radius: 15px; /* Bordes redondeados */
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5); /* Sombra */
-    color: white; /* Texto en blanco */
-}
-
-#vta_vs_meta_canva {
-    background-color: rgba(0, 0, 0, 0.2); /* Fondo semi-transparente para la gráfica */
-    border-radius: 10px; /* Bordes redondeados */
-}
-
-    .border_end {
-        border-right: 1px solid #00000078 !important;
-        border-left: 1px solid #00000078 !important;
-    }
-    .table th, .table td {
-        white-space: nowrap;
-        padding: 0.25rem 0.5rem;
-    }
-    .td_num {
-        text-align: right;
-    }
-    .bg-yellow { background-color: #ffff00 !important;  }
-    .bg-lightgreen { background-color: #90ee90 !important;   }
-    .bg-lightblue { background-color: #add8e6;   }
-    .bg-orange { background-color: #ffa500 !important;   }
-    .margin-row { height: 20px; }
-    .bg-brown {background-color: #8040009a;  }
-
-
-     .table-orange {
-     
-
-    --bs-table-color: #000;
-    --bs-table-bg: orange;
-    --bs-table-border-color: orange;
-    --bs-table-striped-bg: orange;
-    --bs-table-striped-color: #000;
-    --bs-table-active-bg: #orange;
-    --bs-table-active-color: #000;
-    --bs-table-hover-bg: orange;
-    --bs-table-hover-color: #000
-    }
-
-</style>
-{% endblock %}
-{% block menutitle %}Ventas Credito/Debito Producto{% endblock %}
-
+{% block title %}Direccion - Consumo Cliente{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}TG6{% endblock %}
 {% block content %}
 
 
 
  <ul class="nav nav-tabs" id="myTab" role="tablist">
-  
     <li class="nav-item" role="presentation">
       <button class="nav-link " id="SalesProduct-tab" data-bs-toggle="tab" data-bs-target="#SalesProduct" type="button" role="tab" aria-controls="SalesProduct" aria-selected="true">Ventas Credito/Debito Producto</button>
     </li>
-   
+ 
   </ul>
 
   <div class="tab-content">
-    
+
     <div class="tab-pane active" id="SalesProduct" role="tabpanel" aria-labelledby="SalesProduct-tab">
        <div class="card">
             <div class="card-body">
@@ -96,7 +44,7 @@
         </div>
        <div class="card">
            <div class="card-header">
-             <h5 class="card-title mb-0">Ventas Credito/Debito Producto LTS</h5>
+             <h5 class="card-title mb-0">Consumo Credito/Debito  LTS</h5>
            </div>
            <div class="card-body" id="card_table">
                 <div class="table-responsive d-none">

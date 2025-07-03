@@ -95,7 +95,6 @@ function download_format_sales_petrotal(){
         window.URL.revokeObjectURL(url);
     })
     .catch(error => console.error('Error:', error));
-
 }
 
 
@@ -146,7 +145,53 @@ function download_format_sales_petrotal(){
     }
 
 
+async function upload_file_concept_petrotal() {
+    const fileInput = document.getElementById('file_to_upload2');
+    date = $('#month_to_upload').val();
+    const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+    if (!file) {
+        toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
+        return;
+    }
+    $('.er_petrotal_heather').addClass('loading');
+    const formData = new FormData();
+    formData.append('file_to_upload', file);
+    formData.append('date', date); // Agrega la fecha al FormData
+    try {
+        const response = await fetch('/accounting/import_file_concept_petrotal', {
+            method: 'POST',
+            body: formData
+        });
 
+        const data = await response.json();
+        console.log(data);
+
+        if (data['success'] == false) {
+            toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+            $('.er_petrotal_heather').removeClass('loading');
+            fileInput.value = '';
+            return;
+        }
+
+        if (data['success'] == true) {
+            toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+            $('.mistery_heather').removeClass('loading');
+            fileInput.value = '';
+            // mistery_shopper_table();
+            // setTimeout(() => {
+            //     window.location.reload();
+            // }, 2000);
+        } 
+    } catch (error) {
+        console.error('Error al subir el archivo:', error);
+        // $('.mistery_heather').removeClass('loading');
+        // $('.mistery_heather').removeClass('loading');
+
+        toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+    }
+    $('.mistery_heather').removeClass('loading');
+
+}
 
 function actualizarDataTableInvoce() {
     var from = $('#from').val();
@@ -1664,19 +1709,57 @@ async function sales_petrotal_table(){
     });
 }
 
+async function generateReport() {
+    er_petrotal_table();
+    console.log('Generando reporte de Petrotal...');
+    er_petrotal_concept();
+
+    // Aquí puedes agregar más lógica si es necesario
+}
+
+async function er_petrotal_concept() {
+    var fromDate = document.getElementById('from2').value;
+    fromDate = fromDate + '-01';
+
+    // Llamada AJAX clásica, puedes usar fetch
+    const response = await fetch('/accounting/er_petrotal_concept', {
+        method: 'POST',
+        headers: {
+        'Accept': 'application/json, text/javascript, */*',
+        'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        credentials: 'include',
+            body: `date=${fromDate}`
+        });
+    const data = await response.json();
+    console.log('Datos recibidos:', data);
+
+    // Llena la tabla manualmente
+    const tbody = document.querySelector('#er_petrotal_concept_table tbody');
+    tbody.innerHTML = ''; // Limpia tabla
+
+    data.forEach(row => {
+        const tr = document.createElement('tr');
+        // Ajusta los nombres de columna según tu JSON
+        tr.innerHTML = `
+            <td>${row.rubro}</td>
+            <td>${row.cuenta}</td>
+            <td>${row.valor}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+
 
 async function er_petrotal_table(){
     if ($.fn.DataTable.isDataTable('#er_petrotal_table')) {
         $('#er_petrotal_table').DataTable().destroy();
         $('#er_petrotal_table thead .filter').remove();
-        // $('#er_petrotal_table').DataTable().destroy();  // Destruye la tabla existente
-        // $('#er_petrotal_table thead').empty(); // Limpia el encabezado
-        // $('#er_petrotal_table tbody').empty(); // Limpia el cuerpo
-        // $('#er_petrotal_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+
     }
     var fromDate = document.getElementById('from2').value;
-    var untilDate = document.getElementById('until2').value;
-
+    fromDate = fromDate + '-01';
     $('#er_petrotal_table thead').prepend($('#er_petrotal_table thead tr').clone().addClass('filter'));
     $('#er_petrotal_table thead tr.filter th').each(function (index) {
         col = $('#er_petrotal_table thead th').length/2;
@@ -1713,8 +1796,7 @@ async function er_petrotal_table(){
         ajax: {
             method: 'POST',
             data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate
+                'fromDate':fromDate
             },
             url: '/accounting/er_petrotal_table',
             timeout: 600000, 
@@ -1760,4 +1842,25 @@ async function er_petrotal_table(){
 
         },
     });
+}
+
+function download_format_concept_petrotal(){
+    fetch('/accounting/download_format_concept_petrotal')
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Error en la descarga del archivo');
+        }
+        return response.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(new Blob([blob]));
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = 'FormatoConceptosPetrotal.xlsx'; // Nombre del archivo a descargar
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(error => console.error('Error:', error));
 }

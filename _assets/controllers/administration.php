@@ -1631,4 +1631,23 @@ class Administration{
         }
         json_output(array("data" => $data));
     }
+
+    function porcent_estacion_info(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_porcentaje/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        echo json_encode($apiData);
+    }
 }

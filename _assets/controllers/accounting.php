@@ -721,6 +721,71 @@ class Accounting{
             ]);
         }
     }
+
+    function import_file_concept_petrotal(){
+        try {
+            ini_set('memory_limit', '512M');
+            ini_set('max_execution_time', 300);
+
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['file_to_upload']['tmp_name'])) {
+                throw new Exception('No se ha subido ningún archivo.');
+            }
+
+            $file = $_FILES['file_to_upload'];
+            if ($file['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('Error al subir el archivo: ' . $this->getFileErrorMessage($file['error']));
+            }
+
+
+            $reader = IOFactory::createReaderForFile($file['tmp_name']);
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+            $spreadsheet = $reader->load($file['tmp_name']);
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) <= 1) {
+                throw new Exception('El archivo no contiene datos válidos.');
+            }
+
+            $data = [];
+            foreach ($rows as $i => $r) {
+
+                $fecha= $_POST['date']->format('Y-m-d');
+                $data[] = [
+                    'rubro'  => (int)$r[0],
+                    'cuenta' => $r[1],
+                    'valor'  => $r[3],
+                    'fecha'  => $fecha,
+                ];
+            }
+            echo '<pre>';
+            var_dump($data);
+            die();
+
+            // Enviar a tu modelo (ComprasPetrotalModel)
+            $result = $this->comprasPetrotalModel->insertCompras($data);
+            // echo '<pre>';
+            // var_dump($result);
+            // die();
+            if (!$result['success']) {
+                throw new Exception($result['message']);
+            }
+
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Importación exitosa.'
+            ]);
+            return;
+
+        } catch (\Exception $e) {
+           echo json_encode([
+                'success' => false,
+                'message' => 'Error al importar los datos.'
+            ]);
+        }
+    }
+    
     
 
     public function getFileErrorMessage($errorCode)
@@ -798,7 +863,7 @@ class Accounting{
         header('Content-Type: application/json');
         $date = '2025-04-01'; // Fecha de ejemplo, puedes cambiarla según tus necesidades
         $postData = [
-            'date' => $date
+            'date' => $_POST['fromDate'] ?? $date, // Usar la fecha del POST o una por defecto
         ];
         $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -833,6 +898,48 @@ class Accounting{
         echo json_encode($data);
 
     } 
+
+    public function er_petrotal_concept(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'date' => $_POST['date'] // Usar la fecha del POST o una por defecto
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal_concept/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        echo json_encode($apiData);
+
+    }
+     public function download_format_concept_petrotal(){
+        $file = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents/FormatoConceptosPetrotal.xlsx';
+
+        if (file_exists($file)) {
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment; filename=' . basename($file));
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file));
+            ob_clean();
+            flush();
+            readfile($file);
+            exit;
+        } else {
+
+            http_response_code(404);
+            echo 'El archivo no fue encontrado.';
+        }
+    }
 
 }
 

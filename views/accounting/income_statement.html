@@ -87,7 +87,17 @@ table {
   #estadoResultadosTable td, #estadoResultadosTable th {
     padding: 0.25rem 0.5rem;
   } */
+   .btn{
+    border-radius: 10%;
+    white-space: nowrap;
 
+   }
+.card_form{
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 1rem !important;
+}
 
 </style>
 
@@ -115,7 +125,6 @@ table {
 
 
 <div class="tab-content" id="content_edo_result">
-    
     <div class="tab-pane " id="concentrating_results" role="tabpanel" aria-labelledby="concentrating_results-tab">
         <div class="card  col-4"  >
             <div class="card-body">
@@ -236,84 +245,109 @@ table {
             </div>
         </div>
     </div>
-     <div class="tab-pane active" id="er_petrotal" role="tabpanel" aria-labelledby="er_petrotal-tab">
-       <div class=" row g-2 justify-content-between er_petrotal_heather">
+    <div class="tab-pane active" id="er_petrotal" role="tabpanel" aria-labelledby="er_petrotal-tab">
+        <div class="card card_form  er_petrotal_heather">
             <!-- Bloque de fecha -->
-            <div class="col-12 col-md-6 card p-3">
+            <div class="col-5 ">
                 <div class="row g-2">
                     <div class="col">
-                        <label class="form-label form-label-sm" for="from2">Desde:</label>
-                        <input type="date" class="form-control form-control-sm" id="from2" name="from2" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col">
-                        <label class="form-label form-label-sm" for="until2">Hasta:</label>
-                        <input type="date" class="form-control form-control-sm" id="until2" name="until2" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                        <label class="form-label form-label-sm" for="from2">Mes:</label>
+                        <input type="month" class="form-control form-control-sm" id="from2" name="from2" value="{{ 'now'|date('Y-m') }}" required>
                     </div>
                     <div class="col-auto align-self-end">
-                        <button type="submit" id="seach_er_petrotal" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
+                        <button type="button" onclick="generateReport()" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
                     </div>
                 </div>
             </div>
 
             {% if authorized(63) %}
             <!-- Bloque de carga de archivo -->
-            <!-- <div class="col-12 col-md-5 card p-3">
-                <div class="row g-2 align-items-end">
-                    <div class="col-auto">
-                        <button type="button" onclick="download_format_sales_petrotal()" class="btn btn-success btn-sm">Descargar Formato</button>
-                    </div>
-                    <div class="col">
-                        <label class="form-label form-label-sm" for="file_to_upload">Archivo</label>
-                        <input type="file" class="form-control form-control-sm" id="file_to_upload" name="file_to_upload" accept=".xls,.xlsx" required>
-                    </div>
-                    <div class="col-auto">
-                        <button type="button" onclick="upload_file_sales_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
-                    </div>
+            <div class="col-6 row  align-items-end">
+                <div class="col-2">
+                    <button type="button" onclick="download_format_concept_petrotal()" class="btn btn-success btn-sm">Formato</button>
                 </div>
-            </div> -->
+                <div class="col-3">
+                    <input type="month" class="form-control form-control-sm" id="month_to_upload" name="month_to_upload" value="{{ 'now'|date('Y-m') }}" required>
+                </div>
+                <div class="col-5">
+                    <label class="form-label form-label-sm" for="file_to_upload2">Archivo</label>
+                    <input type="file" class="form-control form-control-sm" id="file_to_upload2" name="file_to_upload2" accept=".xls,.xlsx" required>
+                </div>
+                <div class="col-2">
+                    <button type="button" onclick="upload_file_concept_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
+                </div>
+            </div>
             {% endif %}
         </div>
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Utilidad Petrotal </h5>
+        <div class="row  justify-content-between">
+
+            <div class="card" style="width: 70%;">
+                <div class="card-header">
+                    <h5 class="card-title">Utilidad Petrotal </h5>
+                </div>
+                <div class="card-body table-responsive" >
+                    <table id="er_petrotal_table" class="table table-hover table-sm w-100">
+                        <thead>
+                            <tr>
+                                <th>Estación</th>
+                                <th>Etiqueta</th>
+                                <th>Diesel</th>
+                                <th>Premium</th>
+                                <th>Regular</th>
+                                <th class="text-nowrap">Diesel %</th>
+                                <th class="text-nowrap">Premium %</th>
+                                <th class="text-nowrap">Magna %</th>
+                                <th>Diesel utilidad</th>
+                                <th>Premium utilidad</th>
+                                <th>Regular utilidad</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                               <th>Estación</th>
+                                <th>Etiqueta</th>
+                                <th>Diesel</th>
+                                <th>PREMIUM</th>
+                                <th>REGULAR</th>
+                                <th>Diesel %</th>
+                                <th>Premium %</th>
+                                <th>Magna %</th>
+                                <th>Diesel utilidad</th>
+                                <th>Premium utilidad</th>
+                                <th>Regular utilidad</th>
+                                <th>Total</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
-            <div class="card-body table-responsive" >
-                <table id="er_petrotal_table" class="table table-hover table-sm w-100">
-                    <thead>
-                        <tr>
-                            <th>Estación</th>
-                            <th>Etiqueta</th>
-                            <th>Diesel</th>
-                            <th>PREMIUM</th>
-                            <th>REGULAR</th>
-                            <th>Diesel %</th>
-                            <th>Premium %</th>
-                            <th>Magna %</th>
-                            <th>Diesel utilidad</th>
-                            <th>Premium utilidad</th>
-                            <th>Regular utilidad</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                           <th>Estación</th>
-                            <th>Etiqueta</th>
-                            <th>Diesel</th>
-                            <th>PREMIUM</th>
-                            <th>REGULAR</th>
-                            <th>Diesel %</th>
-                            <th>Premium %</th>
-                            <th>Magna %</th>
-                            <th>Diesel utilidad</th>
-                            <th>Premium utilidad</th>
-                            <th>Regular utilidad</th>
-                            <th>Total</th>
-                        </tr>
-                    </tfoot>
-                </table>
+            <div class="card " style="width: 28%;">
+                <div class="card-header">
+                    <h5 class="card-title">Conceptos petrotal</h5>
+                </div>
+                <div class=" table-responsive">
+                    <table id="er_petrotal_concept_table" class="table table-hover table-sm w-100 table-bordered">
+                        <thead>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Cuenta</th>
+                                <th>Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th>Rubro</th>
+                                <th>Cuenta</th>
+                                <th>Valor</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -447,14 +481,17 @@ table {
 {% block myjs %}
 <script src="{{ JS }}accounting.js"></script>
 <script>
+$('#seach_statement_table').on('click', function() {
+        SearchResults();
+    });
 
     $('#seach_sales_petrotal').on('click', function() {
         sales_petrotal_table();
     });
 
-      $('#seach_er_petrotal').on('click', function() {
-        er_petrotal_table();
-    });
+    //   $('#seach_er_petrotal').on('click', function() {
+    //     er_petrotal_table();
+    // });
 
 
 </script>
