@@ -56,7 +56,6 @@ class Accounting{
     }
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-           
             $first_date = date('Y-01-01');
             echo $this->twig->render($this->route . 'supplier_payments.html', compact('first_date'));
         }
@@ -75,13 +74,7 @@ class Accounting{
         }
     }
 
-   
-
     public function tax_stimulus() : void {
-        // $pending_volumetrics = $this->xmlCreModel->get_pendings();
-        // foreach ($pending_volumetrics as $item) {
-        //     $this->getXmlFromPath($item['RutaVolumetricos'], str_replace('/', '_', $item['PermisoCRE']), date('Ymd', strtotime($item['Fecha'])));
-        // }
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'tax_stimulus.html');
         } else {
@@ -119,23 +112,28 @@ class Accounting{
     function stimulus_table() : void  {
         $data = [];
         if ($estimulus = $this->xmlCreModel->get_estimulus(str_replace('-', '', $_GET['inicial']), str_replace('-', '', $_GET['final']), $_GET['est87'], $_GET['est91'])) {
+
             foreach ($estimulus as $est) {
+
+                $dt = DateTime::createFromFormat('d/m/Y', $est['Fecha']);
+                $tax_date = $dt ? $dt->format('Y-m-d') : null;
+
                 $data[] = array(
-                    'cveest' => $est['cveest'],
-                    'station' => trim($est['Estacion']),
-                    'tax_date' => date("Y-m-d", strtotime($est['Fecha'])),
-                    'nropcc' => $est['PermisoCRE'],
-                    'product' => trim($est['Producto']),
-                    'Cve_Producto' => $est['CveProducto'],
-                    'less150' => number_format($est['Menores'], 3),
-                    'more150' => number_format($est['Mayores'], 3),
-                    'consumes' => number_format($est['Internos'], 3),
-                    'calibration' => number_format($est['Jarreos'], 3),
-                    'dues' => number_format($est['IEPS'], 2),
-                    'volume' => $est['Volumen'],
+                    'cveest'            => $est['cveest'],
+                    'station'           => trim($est['Estacion']),
+                    'tax_date'          => $tax_date,
+                    'nropcc'            => $est['PermisoCRE'],
+                    'product'           => trim($est['Producto']),
+                    'Cve_Producto'      => $est['CveProducto'],
+                    'less150'           => number_format($est['Menores'], 2),
+                    'more150'           => number_format($est['Mayores'], 2),
+                    'consumes'          => number_format($est['Internos'], 3),
+                    'calibration'       => number_format($est['Jarreos'], 3),
+                    'dues'              => number_format($est['IEPS'], 2),
+                    'volume'            => $est['Volumen'],
                     'volume_controlgas' => (is_null($est['VolumenVolumetrico']) ? 0 : $est['VolumenVolumetrico']),
-                    'difference' => $est['Variacion'],
-                    'amount' => ($est['IEPS'] * $est['Menores']),
+                    'difference'        => $est['Variacion'],
+                    'amount'            => ($est['IEPS'] * $est['Menores']),
                 );
             }
         }
@@ -724,6 +722,9 @@ class Accounting{
 
     function import_file_concept_petrotal(){
         try {
+            echo '<pre>';
+            var_dump($_POST);
+            die();
             ini_set('memory_limit', '512M');
             ini_set('max_execution_time', 300);
 

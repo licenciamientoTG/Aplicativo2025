@@ -136,6 +136,7 @@ toastr.options = {
 
 // Función para pintar las cards
 function renderEstacionesCards(payload) {
+  console.log('Renderizando cards con payload:', payload);
     // Actualiza solo la fecha
     const fechaDiv = document.getElementById('fecha_actualizacion');
     if (payload.ultimaActualizacion) {
@@ -157,7 +158,7 @@ function renderEstacionesCards(payload) {
         card.classList.add('card-estacion');
         let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
                      <div class="resumen-fechas">`;
-        let fechas = (estacion.Resultados || []).slice(0, 5).map(r => {
+        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
             let clase = (r.Porcentaje === 100 || r.Porcentaje === 100.0) ? 'porciento-verde' : 'porciento-rojo';
             if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
             return `
@@ -172,25 +173,13 @@ function renderEstacionesCards(payload) {
     });
 }
 
-async function print_station_info() {
-
-      const localData = localStorage.getItem('porcent_estaciones');
-      if (localData) {
-          try {
-              const parsed = JSON.parse(localData);
-              renderEstacionesCards(parsed);
-          } catch (e) { /* Si hay error, ignora */ }
-      }
-      // Siempre trata de actualizar del backend al cargar
-     setTimeout(() => {
-        porcent_estacion_info();
-    }, 15000);
-}
 
 async function porcent_estacion_info() {
     const ahora = new Date();
     const timestamp = ahora.toLocaleString();
     console.log(`[${timestamp}] Llamada a la API`);
+    const despachos_relation = document.getElementById('despachos_relation');
+     despachos_relation.classList.add('loading');
     try {
         const response = await fetch('/administration/porcent_estacion_info', {
             method: 'POST',
@@ -215,5 +204,232 @@ async function porcent_estacion_info() {
         console.log(`[${final}] Datos actualizados y cards renderizadas.`);
     } catch (err) {
       console.error('Error en la petición:', err);
+    } finally {
+        despachos_relation.classList.remove('loading');
     }
+}
+
+
+
+
+async function porcent_estacion_facturados_info() {
+    const ahora = new Date();
+    const timestamp = ahora.toLocaleString();
+    console.log(`[${timestamp}] Llamada a la API`);
+    const despachos_facturados = document.getElementById('despachos_facturados');
+    despachos_facturados.classList.add('loading');
+    try {
+        const response = await fetch('/administration/porcent_estacion_facturados_info', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+        });
+        const data = await response.json();
+        const fechaActualizacion = new Date().toLocaleString();
+
+        console.log(`[${timestamp}] Datos recibidos:`, data);
+        const payload = {
+            datos: data,
+            ultimaActualizacion: fechaActualizacion
+        };
+
+        localStorage.setItem('porcent_estaciones', JSON.stringify(payload));
+        renderEstacionesFacturadasCards(payload);
+        const final = new Date().toLocaleString();
+        console.log(`[${final}] Datos actualizados y cards renderizadas.`);
+    } catch (err) {
+      console.error('Error en la petición:', err);
+    } finally {
+        despachos_facturados.classList.remove('loading');
+    }
+}
+
+function renderEstacionesFacturadasCards(payload) {
+  console.log('Renderizando cards con payload:', payload);
+    // Actualiza solo la fecha
+    const fechaDiv = document.getElementById('fecha_actualizacion_facturados');
+    if (payload.ultimaActualizacion) {
+        fechaDiv.innerHTML = `Última actualización: ${payload.ultimaActualizacion}`;
+        fechaDiv.style.marginBottom = '10px';
+        fechaDiv.style.fontSize = '0.9em';
+        fechaDiv.style.color = '#666';
+        fechaDiv.style.fontStyle = 'italic';
+        fechaDiv.style.textAlign = 'center';
+    } else {
+        fechaDiv.innerHTML = '';
+    }
+
+    // Renderiza las cards normalmente
+    const contenedor = document.getElementById('cards_estaciones_facturados');
+    contenedor.innerHTML = '';
+    (payload.datos || []).forEach(estacion => {
+        let card = document.createElement('div');
+        card.classList.add('card-estacion');
+        let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
+                     <div class="resumen-fechas">`;
+        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
+            let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
+            if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
+            return `
+                <div class="fecha-row">
+                    <span>${r.Fecha}</span>
+                    <span class="${clase}">${r.Porcentaje != null ? r.Porcentaje + '%' : 'N/A'}</span>
+                </div>`;
+        }).join('');
+        title += fechas + "</div>";
+        card.innerHTML = title;
+        contenedor.appendChild(card);
+    });
+}
+
+
+
+async function porcent_estacion_facturados_info() {
+    const ahora = new Date();
+    const timestamp = ahora.toLocaleString();
+    console.log(`[${timestamp}] Llamada a la API`);
+    const despachos_facturados = document.getElementById('despachos_facturados');
+    despachos_facturados.classList.add('loading');
+    try {
+        const response = await fetch('/administration/porcent_estacion_facturados_info', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+        });
+        const data = await response.json();
+        const fechaActualizacion = new Date().toLocaleString();
+
+        console.log(`[${timestamp}] Datos recibidos:`, data);
+        const payload = {
+            datos: data,
+            ultimaActualizacion: fechaActualizacion
+        };
+
+        localStorage.setItem('porcent_estaciones', JSON.stringify(payload));
+        renderEstacionesFacturadasCards(payload);
+        const final = new Date().toLocaleString();
+        console.log(`[${final}] Datos actualizados y cards renderizadas.`);
+    } catch (err) {
+      console.error('Error en la petición:', err);
+    } finally {
+        despachos_facturados.classList.remove('loading');
+    }
+}
+
+function renderEstacionesFacturadasCards(payload) {
+  console.log('Renderizando cards con payload:', payload);
+    // Actualiza solo la fecha
+    const fechaDiv = document.getElementById('fecha_actualizacion_facturados');
+    if (payload.ultimaActualizacion) {
+        fechaDiv.innerHTML = `Última actualización: ${payload.ultimaActualizacion}`;
+        fechaDiv.style.marginBottom = '10px';
+        fechaDiv.style.fontSize = '0.9em';
+        fechaDiv.style.color = '#666';
+        fechaDiv.style.fontStyle = 'italic';
+        fechaDiv.style.textAlign = 'center';
+    } else {
+        fechaDiv.innerHTML = '';
+    }
+
+    // Renderiza las cards normalmente
+    const contenedor = document.getElementById('cards_estaciones_facturados');
+    contenedor.innerHTML = '';
+    (payload.datos || []).forEach(estacion => {
+        let card = document.createElement('div');
+        card.classList.add('card-estacion');
+        let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
+                     <div class="resumen-fechas">`;
+        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
+            let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
+            if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
+            return `
+                <div class="fecha-row">
+                    <span>${r.Fecha}</span>
+                    <span class="${clase}">${r.Porcentaje != null ? r.Porcentaje + '%' : 'N/A'}</span>
+                </div>`;
+        }).join('');
+        title += fechas + "</div>";
+        card.innerHTML = title;
+        contenedor.appendChild(card);
+    });
+}
+
+
+async function porcent_facturas_info() {
+    const ahora = new Date();
+    const timestamp = ahora.toLocaleString();
+    console.log(`[${timestamp}] Llamada a la API`);
+    const facturas = document.getElementById('facturas');
+    facturas.classList.add('loading');
+    try {
+        const response = await fetch('/administration/porcent_facturas_info', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+        });
+        const data = await response.json();
+        const fechaActualizacion = new Date().toLocaleString();
+
+        console.log(`[${timestamp}] Datos recibidos:`, data);
+        const payload = {
+            datos: data,
+            ultimaActualizacion: fechaActualizacion
+        };
+
+        localStorage.setItem('porcent_estaciones', JSON.stringify(payload));
+        renderEstacionesFacturadasCards(payload);
+        const final = new Date().toLocaleString();
+        console.log(`[${final}] Datos actualizados y cards renderizadas.`);
+    } catch (err) {
+      console.error('Error en la petición:', err);
+    } finally {
+        facturas.classList.remove('loading');
+    }
+}
+
+function renderEstacionesFacturadasCards(payload) {
+  console.log('Renderizando cards con payload:', payload);
+    // Actualiza solo la fecha
+    const fechaDiv = document.getElementById('fecha_actualizacion_facturas');
+    if (payload.ultimaActualizacion) {
+        fechaDiv.innerHTML = `Última actualización: ${payload.ultimaActualizacion}`;
+        fechaDiv.style.marginBottom = '10px';
+        fechaDiv.style.fontSize = '0.9em';
+        fechaDiv.style.color = '#666';
+        fechaDiv.style.fontStyle = 'italic';
+        fechaDiv.style.textAlign = 'center';
+    } else {
+        fechaDiv.innerHTML = '';
+    }
+
+    // Renderiza las cards normalmente
+    const contenedor = document.getElementById('cards_facturas');
+    contenedor.innerHTML = '';
+    (payload.datos || []).forEach(estacion => {
+        let card = document.createElement('div');
+        card.classList.add('card-estacion');
+        let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
+                     <div class="resumen-fechas">`;
+        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
+            let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
+            if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
+            return `
+                <div class="fecha-row">
+                    <span>${r.Fecha}</span>
+                    <span class="${clase}">${r.Porcentaje != null ? r.Porcentaje + '%' : 'N/A'}</span>
+                </div>`;
+        }).join('');
+        title += fechas + "</div>";
+        card.innerHTML = title;
+        contenedor.appendChild(card);
+    });
 }

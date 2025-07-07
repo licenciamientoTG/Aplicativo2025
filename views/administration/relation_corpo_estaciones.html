@@ -1,0 +1,156 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Administracion{% endblock %}
+{% block mycss %}
+{% endblock %}
+{% block menutitle %}Relacion Corporativo Estaciones {% endblock %}
+{% block content %}
+
+<style>
+.estaciones-cards {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 20px;
+    margin: 24px auto;
+    max-width: 100vw;
+}
+
+.card-estacion {
+    border: 1px solid #aaa;
+    border-radius: 14px;
+    box-shadow: 0 3px 6px #0001;
+    padding: 12px 10px 10px 10px;
+    min-width: 0;
+    background: #fcfcfc;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.card-estacion h3 {
+    margin-top: 0;
+    margin-bottom: 6px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.resumen-fechas {
+    margin-top: 6px;
+    width: 100%;
+}
+
+.fecha-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+    font-size: 0.97rem;
+}
+
+.porciento-verde {
+    color: #13af25;
+    font-weight: bold;
+}
+.porciento-rojo {
+    color: #d52c2c;
+    font-weight: bold;
+}
+.actualizacion-info {
+    font-style: italic;
+    text-align: center;
+    margin-bottom: 8px;
+}
+.div_btn_report {
+    text-align: left;
+    margin: 20px 0;
+}
+.btn_report {
+    background-color: #007bff;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+}
+.btn_report:hover {
+    background-color: #0056b3;
+}
+
+
+#loader_estaciones .spinner {
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #333;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin {
+  100% { transform: rotate(360deg); }
+}
+
+</style>
+
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active " id="despachos_relation-tab" data-bs-toggle="tab" data-bs-target="#despachos_relation" type="button" role="tab" aria-controls="despachos_relation" aria-selected="true">Despachos</button>
+    </li>
+   
+     <li class="nav-item" role="presentation">
+        <button class="nav-link " id="despachos_facturados-tab" data-bs-toggle="tab" data-bs-target="#despachos_facturados" type="button" role="tab" aria-controls="despachos_facturados" aria-selected="true">Despachos Facturados</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="facturas-tab" data-bs-toggle="tab" data-bs-target="#facturas" type="button" role="tab" aria-controls="facturas" aria-selected="true">Facturas</button>
+    </li>
+</ul>
+
+
+<div class="tab-content" >
+    <div class="tab-pane active" id="despachos_relation" role="tabpanel" aria-labelledby="despachos_relation-tab">
+        <div class="div_btn_report">
+            <h1>Despachos</h1>
+            <button class="btn_report" onclick="porcent_estacion_info()">Reporte</button>
+        </div>
+
+        <div class="actualizacion-info" id="fecha_actualizacion"></div>
+        <div class="estaciones-cards" id="cards_estaciones"></div>
+
+    </div>
+    <div class="tab-pane " id="despachos_facturados" role="tabpanel" aria-labelledby="despachos_facturados-tab">
+        <div class="div_btn_report">
+            <h1>Despachos Facturados</h1>
+            <button class="btn_report" onclick="porcent_estacion_facturados_info()">Reporte</button>
+        </div>
+
+
+        <div class="actualizacion-info" id="fecha_actualizacion_facturados"></div>
+        <div class="estaciones-cards" id="cards_estaciones_facturados"></div>
+
+    </div>
+
+    <div class="tab-pane " id="facturas" role="tabpanel" aria-labelledby="facturas-tab">
+        <div class="div_btn_report">
+            <h1>Facturas</h1>
+            <button class="btn_report" onclick="porcent_facturas_info()">Reporte</button>
+        </div>
+
+        <div class="actualizacion-info" id="fecha_actualizacion_facturas"></div>
+        <div class="estaciones-cards" id="cards_facturas"></div>
+
+    </div>
+</div>
+
+
+
+{% endblock %}
+{% block myjs %}
+<!-- <script src="{{ JS }}accounting.js"></script> -->
+<script>
+
+    // print_station_info();
+
+</script>
+
+
+{% endblock %}
