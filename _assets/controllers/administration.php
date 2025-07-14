@@ -1639,8 +1639,7 @@ class Administration{
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [
-        ];
+        $postData = [];
         $ch = curl_init('http://192.168.0.109:82/api/estacion_porcentaje/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
@@ -1659,8 +1658,7 @@ class Administration{
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [
-        ];
+        $postData = [];
         $ch = curl_init('http://192.168.0.109:82/api/porcent_estacion_facturados_info/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
@@ -1678,8 +1676,7 @@ class Administration{
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [
-        ];
+        $postData = [];
         $ch = curl_init('http://192.168.0.109:82/api/porcent_facturas_info/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));

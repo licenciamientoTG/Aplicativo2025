@@ -153,11 +153,12 @@ async function upload_file_concept_petrotal() {
         toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
         return;
     }
-    $('.er_petrotal_heather').addClass('loading');
+    // $('.er_petrotal_heather').addClass('loading');
     const formData = new FormData();
     formData.append('file_to_upload', file);
     formData.append('date', date); // Agrega la fecha al FormData
     try {
+        $('.er_petrotal_heather').addClass('loading');
         const response = await fetch('/accounting/import_file_concept_petrotal', {
             method: 'POST',
             body: formData
@@ -175,7 +176,7 @@ async function upload_file_concept_petrotal() {
 
         if (data['success'] == true) {
             toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
-            $('.mistery_heather').removeClass('loading');
+            $('.er_petrotal_heather').removeClass('loading');
             fileInput.value = '';
             // mistery_shopper_table();
             // setTimeout(() => {
@@ -189,7 +190,7 @@ async function upload_file_concept_petrotal() {
 
         toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
     }
-    $('.mistery_heather').removeClass('loading');
+    $('.er_petrotal_heather').removeClass('loading');
 
 }
 
@@ -1370,8 +1371,7 @@ async function drawAnnualTable() {
   const prevYear = year - 1;
 
   const meses = [
-    'Enero', 'Febrero', 'Marzo', 'Abril',
-    'Mayo', 'Junio', 'Julio', 'Agosto',
+    'Enero', 'Febrero', 'Marzo', 'Abril','Mayo', 'Junio', 'Julio', 'Agosto',
     'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ];
 
@@ -1388,7 +1388,6 @@ async function drawAnnualTable() {
     buildTableHeader(thead, year, prevYear, meses);
     renderTableBody(tbody, api, meses);
 
-    
     container.classList.remove('loading');
 
      const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
@@ -1402,8 +1401,29 @@ async function drawAnnualTable() {
     console.error('Error al dibujar tabla anual:', error);
   }
 }
-// let totalingresos;
 
+///////////contrulle el header de la tabla
+function buildTableHeader(thead, year, prevYear, meses) {
+  const trMeses = document.createElement('tr');
+  trMeses.innerHTML = `<th class="header_concepto" rowspan="2">CONCEPTO</th>`;
+  meses.forEach(m => {
+    trMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
+  });
+  thead.appendChild(trMeses);
+
+  const trSub = document.createElement('tr');
+  meses.forEach(() => {
+    trSub.innerHTML += `
+      <th>${prevYear}</th><th>% Part</th>
+      <th>${year}</th><th>% Part</th>
+      <th>Ptto ${year}</th><th>% Part</th>
+      <th>Var AA%</th><th>Var Ppto%</th>
+    `;
+  });
+  thead.appendChild(trSub);
+}
+
+/////////////////////contrulle el cuerpo de la tabla
 function renderTableBody(tbody, api, months) {
 
     const {
@@ -1487,25 +1507,6 @@ function renderTableBody(tbody, api, months) {
 }
 
 
-function buildTableHeader(thead, year, prevYear, meses) {
-  const trMeses = document.createElement('tr');
-  trMeses.innerHTML = `<th rowspan="2">CONCEPTO</th>`;
-  meses.forEach(m => {
-    trMeses.innerHTML += `<th colspan="8">${m.toUpperCase()}</th>`;
-  });
-  thead.appendChild(trMeses);
-
-  const trSub = document.createElement('tr');
-  meses.forEach(() => {
-    trSub.innerHTML += `
-      <th>${prevYear}</th><th>% Part</th>
-      <th>${year}</th><th>% Part</th>
-      <th>Ptto ${year}</th><th>% Part</th>
-      <th>Var AA%</th><th>Var Ppto%</th>
-    `;
-  });
-  thead.appendChild(trSub);
-}
 
 function renderDivider(tbody, label, numMeses) {
   const tr = document.createElement('tr');
@@ -1540,7 +1541,7 @@ function renderSection(tbody, titulo, data, sumas, porcentajes, budget_rubro, bu
   data.forEach(fila => {
     const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${fila.concepto}</td>`;
+    tr.innerHTML = `<td class='concept_td' >${fila.concepto}</td>`;
     meses.forEach(mes => {
       const val = fila[mes]?.total ?? 0;
       const pct = fila[mes]?.porcentaje ?? '-';
@@ -1708,13 +1709,49 @@ async function sales_petrotal_table(){
         },
     });
 }
+async function save_spend_petrotal(){
+    var fecha =  document.getElementById('date_spent');
+    var gasto =  document.getElementById('gasto');
+    const formData = new FormData();
+    formData.append('fecha', fecha.value); // Agrega la fecha al FormData
+    formData.append('gasto', gasto.value); // Agrega el gasto al FormData
+    try {
+        $('.er_petrotal_heather').addClass('loading');
+        const response = await fetch('/accounting/save_spend_petrotal', {
+            method: 'POST',
+            body: formData
+        });
 
+        const data = await response.json();
+        console.log(data);
+
+        if (data['success'] == false) {
+            toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+            $('.er_petrotal_heather').removeClass('loading');
+            gasto.value = '';
+            fecha.value = '';
+            return;
+        }
+
+        if (data['success'] == true) {
+            toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
+            $('.er_petrotal_heather').removeClass('loading');
+            gasto.value = '';
+            spend_real();
+        }
+    } catch (error) {
+        console.error('Error al subir el archivo:', error);
+        $('.er_petrotal_heather').removeClass('loading');
+        toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+    }
+    $('.er_petrotal_heather').removeClass('loading');
+
+}
 async function generateReport() {
     er_petrotal_table();
     console.log('Generando reporte de Petrotal...');
     er_petrotal_concept();
 
-    // Aquí puedes agregar más lógica si es necesario
 }
 
 async function er_petrotal_concept() {
@@ -1732,11 +1769,22 @@ async function er_petrotal_concept() {
             body: `date=${fromDate}`
         });
     const data = await response.json();
-    console.log('Datos recibidos:', data);
+    // console.log('Datos recibidos:', data);
 
     // Llena la tabla manualmente
     const tbody = document.querySelector('#er_petrotal_concept_table tbody');
     tbody.innerHTML = ''; // Limpia tabla
+    if(data.error){
+        alertify.error(
+            `<div class="text-light text-center ">
+                <h4 class=" text-danger">¡Error!</h4>
+            </div>
+            <div class="text-light">
+                <p class="text-center">${data.error}</p>
+            </div>`
+        );
+        return;
+    }
 
     data.forEach(row => {
         const tr = document.createElement('tr');
@@ -1863,4 +1911,33 @@ function download_format_concept_petrotal(){
         window.URL.revokeObjectURL(url);
     })
     .catch(error => console.error('Error:', error));
+}
+
+async function spend_real(){
+    const spend_real = document.getElementById('spend_real');
+    var fecha =  document.getElementById('date_spent').value;
+    const formData = new FormData();
+    formData.append('fecha', fecha); // Agrega la fecha al FormData
+    try {
+        const response = await fetch('/accounting/spend_real', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+        console.log(data);
+
+        if (data['success'] == true) {
+           spend_real.value = data['spend'];
+        }
+
+        // if (data['success'] == true) {
+        //     toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
+        //     $('.er_petrotal_heather').removeClass('loading');
+        //     gasto.value = '';
+        //     fecha.value = '';
+        // }
+    } catch (error) {
+        console.error('eror al consultar gasto real:', error);
+    }
 }

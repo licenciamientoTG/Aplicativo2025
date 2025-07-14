@@ -6,7 +6,20 @@
 {% block content %}
 
 <style>
+/* Hacer la primera columna sticky */
+.header_concepto,
+#estadoResultadosTable td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    border-right: 2px solid #010102;
+    opacity: 1;
+    word-wrap: break-word;
+}
+.concept_td{
+   background-color: #add5e6 !important;
 
+}
 
 .variacion-negativa {
   color: red;
@@ -92,12 +105,31 @@ table {
     white-space: nowrap;
 
    }
-.card_form{
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    padding: 1rem !important;
-}
+    .card_form{
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 1rem !important;
+        margin-bottom: 5px;
+        border-left: #24a513 2px solid !important;
+    }
+    .er_petrotal_heather{
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+        padding: .1rem .1rem !important;
+    }
+    .card_search{
+        margin-top: 2px;
+        width: 100%;
+        align-items: flex-start;
+        display: flex;
+        flex-direction: row;
+        padding : 1rem !important;
+        margin-bottom: 5px;
+        
+
+    }
 
 </style>
 
@@ -109,14 +141,14 @@ table {
         <button class="nav-link " id="concentrating_results-tab" data-bs-toggle="tab" data-bs-target="#concentrating_results" type="button" role="tab" aria-controls="concentrating_results" aria-selected="true">Concentrado</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
+        <button class="nav-link active" id="Edo_anual-tab" data-bs-toggle="tab" data-bs-target="#Edo_anual" type="button" role="tab" aria-controls="Edo_anual" aria-selected="true">Edo Result Anual</button>
     </li>
 
     <li class="nav-item" role="presentation">
         <button class="nav-link " id="annual_budget-tab" data-bs-toggle="tab" data-bs-target="#annual_budget" type="button" role="tab" aria-controls="annual_budget" aria-selected="true">Presupuesto Anual</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="er_petrotal-tab" data-bs-toggle="tab" data-bs-target="#er_petrotal" type="button" role="tab" aria-controls="er_petrotal" aria-selected="true">Utilidad Petrotal</button>
+        <button class="nav-link " id="er_petrotal-tab" data-bs-toggle="tab" data-bs-target="#er_petrotal" type="button" role="tab" aria-controls="er_petrotal" aria-selected="true">Utilidad Petrotal</button>
     </li>
      <li class="nav-item" role="presentation">
         <button class="nav-link " id="sales_petrotal-tab" data-bs-toggle="tab" data-bs-target="#sales_petrotal" type="button" role="tab" aria-controls="sales_petrotal" aria-selected="true">Ventas Petrotal</button>
@@ -197,15 +229,15 @@ table {
         </div>
 
     </div>
-    <div class="tab-pane " id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
+    <div class="tab-pane active" id="Edo_anual" role="tabpanel" aria-labelledby="Edo_anual-tab">
         <div class="card">
-           <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Estado de Resultados Anual</h5>
+            <div class="card-header " style="display: flex; flex-direction: column;">
+               <h5 class="card-title mb-3">Estado de Resultados Anual</h5>
                 <div class="d-flex gap-2">
                     <input type="number" id="input_year" class="form-control form-control-sm" placeholder="Año" min="2000" max="2099" value="2025" style="width: 100px;">
                     <button class="btn btn-primary btn-sm" onclick="drawAnnualTable()" id="btn_exportar">Generar</button>
                 </div>
-            </div>
+            </div> 
             <div class="card-body" id="annual_table_container" >
                 <div style="overflow-x: auto; max-width: 100%;">
                     <table id="estadoResultadosTable" class="table table-bordered table-sm table-hover text-center align-middle">
@@ -245,24 +277,11 @@ table {
             </div>
         </div>
     </div>
-    <div class="tab-pane active" id="er_petrotal" role="tabpanel" aria-labelledby="er_petrotal-tab">
-        <div class="card card_form  er_petrotal_heather">
-            <!-- Bloque de fecha -->
-            <div class="col-5 ">
-                <div class="row g-2">
-                    <div class="col">
-                        <label class="form-label form-label-sm" for="from2">Mes:</label>
-                        <input type="month" class="form-control form-control-sm" id="from2" name="from2" value="{{ 'now'|date('Y-m') }}" required>
-                    </div>
-                    <div class="col-auto align-self-end">
-                        <button type="button" onclick="generateReport()" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
-                    </div>
-                </div>
-            </div>
+    <div class="tab-pane " id="er_petrotal" role="tabpanel" aria-labelledby="er_petrotal-tab">
+        <div class=" er_petrotal_heather">
 
-            {% if authorized(63) %}
-            <!-- Bloque de carga de archivo -->
-            <div class="col-6 row  align-items-end">
+            <div class="card card_form row " style="margin-top: 2px; width: 43%; align-items: flex-end;">
+                    <h5 class="card-title">Subir Utilidad </h5>
                 <div class="col-2">
                     <button type="button" onclick="download_format_concept_petrotal()" class="btn btn-success btn-sm">Formato</button>
                 </div>
@@ -277,11 +296,48 @@ table {
                     <button type="button" onclick="upload_file_concept_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
                 </div>
             </div>
-            {% endif %}
+
+            <div class="card card_form  row " style="margin-top: 2px; width: 57%;     align-items: flex-end;">
+                    <h5 class="card-title">Gasto </h5>
+                 <div class="col">
+                    <label class="form-label form-label-sm" for="date_spent">Fecha</label>
+                    <input type="month" class="form-control form-control-sm" id="date_spent" name="date_spent" value="{{ 'now'|date('Y-m') }}" required>
+                </div>
+                 <div class="col">
+                    <label class="form-label form-label-sm" for="gasto">Gastos</label>
+                    <input type="number" min="0" step="0.01" class="form-control form-control-sm" id="gasto" name="gasto" required>
+                </div>
+                 <div class="col">
+                    <label class="form-label form-label-sm" for="spend_real">Actual</label>
+                    <input type="number" readonly disabled class="form-control form-control-sm" id="spend_real" name="spend_real" >
+                </div>
+                <div class="col">
+                    <button type="button" onclick="save_spend_petrotal()" class="btn btn-primary btn-sm w-100">Guardar</button>
+                </div>
+            </div>
+        </div>
+        <div class=" er_petrotal_heather" >
+             <div class="card   w-100"  style="border-left: #3485a8 2px solid !important;" >
+                    <div class="card-header">
+                        <h5 class="card-title">Generar reporte </h5>
+                    </div>
+                    <div class="card_search">
+                        <div class="col-2" style="margin-right: 5px;">
+                            <input type="month" class="form-control form-control-sm" id="from2" name="from2" value="{{ 'now'|date('Y-m') }}" required>
+                        </div>
+                        <div class="col-auto ">
+                            <button type="button" onclick="generateReport()" class="btn btn-primary btn-sm w-100">Generar Reporte</button>
+                        </div>
+
+                    </div>
+
+                    
+            </div>
+
         </div>
         <div class="row  justify-content-between">
 
-            <div class="card" style="width: 70%;">
+            <div class="card" style="width: 70%; border-left: #24a513 2px solid;">
                 <div class="card-header">
                     <h5 class="card-title">Utilidad Petrotal </h5>
                 </div>
@@ -324,7 +380,7 @@ table {
                     </table>
                 </div>
             </div>
-            <div class="card " style="width: 28%;">
+            <div class="card " style="width: 28%;  border-left: #24a513 2px solid;">
                 <div class="card-header">
                     <h5 class="card-title">Conceptos petrotal</h5>
                 </div>
@@ -352,10 +408,10 @@ table {
         </div>
     </div>
      <div class="tab-pane" id="sales_petrotal" role="tabpanel" aria-labelledby="sales_petrotal-tab">
-       <div class=" row g-2 justify-content-between mistery_heather">
+       <div class=" row  justify-content-between mistery_heather">
             <!-- Bloque de fecha -->
             <div class="col-12 col-md-6 card p-3">
-                <div class="row g-2">
+                <div class="row ">
                     <div class="col">
                         <label class="form-label form-label-sm" for="from">Desde:</label>
                         <input type="date" class="form-control form-control-sm" id="from" name="from" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
@@ -373,7 +429,7 @@ table {
             {% if authorized(63) %}
             <!-- Bloque de carga de archivo -->
             <div class="col-12 col-md-5 card p-3">
-                <div class="row g-2 align-items-end">
+                <div class="row  align-items-end">
                     <div class="col-auto">
                         <button type="button" onclick="download_format_sales_petrotal()" class="btn btn-success btn-sm">Descargar Formato</button>
                     </div>
@@ -470,9 +526,6 @@ table {
             </div>
         </div>
     </div>
-   
-
-    
 
 </div>
 
@@ -481,7 +534,14 @@ table {
 {% block myjs %}
 <script src="{{ JS }}accounting.js"></script>
 <script>
-$('#seach_statement_table').on('click', function() {
+    var date_spent = document.getElementById('date_spent')
+    date_spent.addEventListener('change', function() {
+        spend_real();
+    });
+
+    spend_real();
+
+    $('#seach_statement_table').on('click', function() {
         SearchResults();
     });
 

@@ -27,6 +27,7 @@ class Accounting{
     public DocumentosModel $Documentos;
     public EstacionesModel $estacionesModel;
     public ComprasPetrotalModel $comprasPetrotalModel;
+    public PetrotalConceptosModel $petrotalConceptosModel;
     /**
      * @param $twig
      */
@@ -38,6 +39,7 @@ class Accounting{
         $this->Documentos     = new DocumentosModel();
         $this->estacionesModel = new EstacionesModel();
         $this->comprasPetrotalModel = new ComprasPetrotalModel();
+        $this->petrotalConceptosModel = new PetrotalConceptosModel();
     }
 
     /**
@@ -337,10 +339,9 @@ class Accounting{
             foreach ($apiData as $row) {
                 $total        = intval(floatval($row['total']));         // e.g. 123.99 → 123
                 $totalControl = intval(floatval($row['total_control'])); // e.g. 123.01 → 123
-            
                 // 2) Definimos el sufijo SI/NO
                 $status = ($total === $totalControl) ? 'SI' : 'NO';
-            
+
                 // 3) Concatenamos al control original
                 $controlText = $row['control'] . ' ' . $status;
                 $data[] = array(
@@ -722,9 +723,10 @@ class Accounting{
 
     function import_file_concept_petrotal(){
         try {
-            echo '<pre>';
-            var_dump($_POST);
-            die();
+
+            $fechaObj = DateTime::createFromFormat('Y-m', $_POST['date']);
+            $fechaCompleta = $fechaObj->format('Y-m-01'); // "2025-01-01"
+
             ini_set('memory_limit', '512M');
             ini_set('max_execution_time', 300);
 
@@ -751,24 +753,17 @@ class Accounting{
 
             $data = [];
             foreach ($rows as $i => $r) {
-
-                $fecha= $_POST['date']->format('Y-m-d');
+                if ($i === 0) continue; // Skip header
                 $data[] = [
-                    'rubro'  => (int)$r[0],
+                    'rubro'  => $r[0],
                     'cuenta' => $r[1],
-                    'valor'  => $r[3],
-                    'fecha'  => $fecha,
+                    'valor'  => $r[2],
+                    'fecha'  => $fechaCompleta,
                 ];
             }
-            echo '<pre>';
-            var_dump($data);
-            die();
-
             // Enviar a tu modelo (ComprasPetrotalModel)
-            $result = $this->comprasPetrotalModel->insertCompras($data);
-            // echo '<pre>';
-            // var_dump($result);
-            // die();
+            $result = $this->petrotalConceptosModel->insertPetrotal($data);
+
             if (!$result['success']) {
                 throw new Exception($result['message']);
             }
@@ -786,8 +781,41 @@ class Accounting{
             ]);
         }
     }
-    
-    
+    public function save_spend_petrotal(){
+        $fecha  = $_POST['fecha']. '-01'; // Aseguramos que la fecha tenga el formato correcto
+        $gasto  = $_POST['gasto'];
+        $spend = $this->petrotalConceptosModel->get_row($fecha);
+
+        if(!$spend) {
+            $response= $this->petrotalConceptosModel->save_spend_petrotal($fecha, $gasto);
+        }else {
+            $response = $this->petrotalConceptosModel->update_spend_petrotal($fecha, $gasto, $spend['id']);
+        }
+
+        if ($response) {
+            echo json_encode([
+                'success' => true,
+                'message' => 'Gasto guardado exitosamente.'
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al guardar el gasto.'
+            ]);
+        }
+
+    }
+    function spend_real(){
+        $fecha  = $_POST['fecha']. '-01';
+        $spend = $this->petrotalConceptosModel->get_row($fecha);
+
+        $spend =  $spend['gasto'] ?? 0; // Si no hay gasto, asignamos 0
+        echo json_encode([
+            'success' => true,
+            'spend' => $spend
+        ]);
+
+    }
 
     public function getFileErrorMessage($errorCode)
     {

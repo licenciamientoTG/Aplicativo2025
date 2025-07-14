@@ -62,6 +62,8 @@
 .div_btn_report {
     text-align: left;
     margin: 20px 0;
+    display: flex;
+    justify-content: space-between;
 }
 .btn_report {
     background-color: #007bff;
@@ -108,8 +110,8 @@
 
 <div class="tab-content" >
     <div class="tab-pane active" id="despachos_relation" role="tabpanel" aria-labelledby="despachos_relation-tab">
-        <div class="div_btn_report">
-            <h1>Despachos</h1>
+        <div class="div_btn_report" id="div_despachos_relation">
+            <h3>Despachos</h3>
             <button class="btn_report" onclick="porcent_estacion_info()">Reporte</button>
         </div>
 
@@ -118,8 +120,8 @@
 
     </div>
     <div class="tab-pane " id="despachos_facturados" role="tabpanel" aria-labelledby="despachos_facturados-tab">
-        <div class="div_btn_report">
-            <h1>Despachos Facturados</h1>
+        <div class="div_btn_report" id="div_despachos_facturados">
+            <h3>Despachos Facturados</h3>
             <button class="btn_report" onclick="porcent_estacion_facturados_info()">Reporte</button>
         </div>
 
@@ -131,7 +133,7 @@
 
     <div class="tab-pane " id="facturas" role="tabpanel" aria-labelledby="facturas-tab">
         <div class="div_btn_report">
-            <h1>Facturas</h1>
+            <h3>Facturas</h3>
             <button class="btn_report" onclick="porcent_facturas_info()">Reporte</button>
         </div>
 
