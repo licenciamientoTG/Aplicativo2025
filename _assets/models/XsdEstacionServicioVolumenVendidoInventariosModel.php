@@ -1,4 +1,8 @@
 <?php
+// Define integer min and max values for SQL (32-bit signed integer)
+if (!defined('SQL_INT_MIN')) define('SQL_INT_MIN', -2147483648);
+if (!defined('SQL_INT_MAX')) define('SQL_INT_MAX', 2147483647);
+
 class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
     public $id;
     public $xsdReportesVolumenesId;
@@ -14,13 +18,35 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
     public $exportaProducto;
     public $createdAt;
 
+    function clampInt($v) {
+        if (!is_numeric($v)) {
+            return SQL_INT_MIN;
+        }
+        // redondea al entero más cercano
+        $n = (int) round($v);
+        if ($n > SQL_INT_MAX) {
+            return SQL_INT_MAX;
+        }
+        if ($n < SQL_INT_MIN) {
+            return SQL_INT_MIN;
+        }
+        return $n;
+    }
 
     function insertOrUpdateRow($reportId,$xsdEstacionServicioVolumenId,$controlGasStationId,$controlGasProductId,$productoId,$subProductoId,$subproductoMarcaId,$inventarioInicial,$volumenVendido,$inventarioFinal, $merma) {
+        // echo '<pre>1';
+        // var_dump($reportId, $xsdEstacionServicioVolumenId, $controlGasStationId, $controlGasProductId, $productoId, $subProductoId, $subproductoMarcaId, $inventarioInicial, $volumenVendido, $inventarioFinal, $merma);
+        // die();
 
         // Vamos a verificar que $controlGasStationId no venga nulo o vacio, si viene nulo o vacio retornamos un false
         if (empty($controlGasStationId)) {
             return false;
         } else {
+            $inventarioInicial = $this->clampInt($inventarioInicial);
+            $volumenVendido = $this->clampInt($volumenVendido);
+            $inventarioFinal = $this->clampInt($inventarioFinal);
+
+            // Vamos a verificar si existe un registro con el xsdEstacionServicioVolumenId, productoId y subProductoId
             if ($row = $this->sql->select("SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] WHERE xsdEstacionServicioVolumenId = ? AND productoId = ? AND subProductoId = ?", [$xsdEstacionServicioVolumenId, $productoId, $subProductoId])) {
                 $query = "UPDATE [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] SET inventarioInicial = ?, volumenVendido = ?, inventarioFinal = ? WHERE id = ?;";
                 $update = $this->sql->update($query, [$inventarioInicial,$volumenVendido,$inventarioFinal,$row[0]['id']]);
@@ -28,6 +54,8 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
                     return ($rs = $this->sql->select("SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] WHERE id = ?", [$row[0]['id']])) ? $rs[0] : false ;
                 }
             } else {
+                $merma = 0;
+                // Si no existe el registro, entonces vamos a insertarlo
                 $query = "INSERT INTO [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios](
                          xsdReportesVolumenesId,
                          xsdEstacionServicioVolumenId,
@@ -41,7 +69,6 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
                          inventarioFinal,
                          merma,
                          exportaProducto) VALUES ({$reportId},{$xsdEstacionServicioVolumenId},{$controlGasStationId},{$controlGasProductId},{$productoId},{$subProductoId},{$subproductoMarcaId},{$inventarioInicial},{$volumenVendido},{$inventarioFinal},{$merma},?);";
-
                 $insert = $this->sql->insert($query, [0]);
 
                 if ($insert) {

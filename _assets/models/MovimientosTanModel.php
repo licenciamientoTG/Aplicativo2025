@@ -39,6 +39,10 @@ class MovimientosTanModel extends Model{
             ');
         ";
 
+        echo '<pre>';
+        var_dump($query);
+        die();
+
         // if ($_SESSION['tg_user']['Id'] == 6177) {
         //     if ($codgas = 2 AND $codprd = 179) {
         //         echo '<pre>';

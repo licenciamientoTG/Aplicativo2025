@@ -15,11 +15,11 @@
             <div class="row">
                 <div class="col">
                     <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
-                    <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}" required>
+                    <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('first day of last month' | date('Y-m-d')) : from }}" required>
                 </div>
                 <div class="col">
                     <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
-                    <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}" required>
+                    <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('last day of last month' | date('Y-m-d')) : until }}" required>
                 </div>
                 <div class="col">
                     <label for="codgas" class="col-form-label col-form-label-sm">Estímulo 87: </label>

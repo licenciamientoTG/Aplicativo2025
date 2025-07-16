@@ -105,7 +105,6 @@ class MojoTicketsModel extends Model{
         $solicitante = (isset($ticket['custom_field_solicitante']) ? $ticket['custom_field_solicitante'] : null);
         $problema = (isset($ticket['custom_field_problema']) ? $ticket['custom_field_problema'] : null);
 
-
         $ticket_forms = [
             'custom_field_area_o_departamento' => [51598, 72404, 72397, 72712, 73137],
             'custom_field_estacion' => [57328, 15139, 54072],
@@ -121,23 +120,42 @@ class MojoTicketsModel extends Model{
             }
         }
 
-        is_null($ticket['solved_on']) ? $solved_on = "NULL" : $solved_on = "'{$ticket['solved_on']}'";
-        is_null($ticket['rated_on']) ? $rated_on = "NULL" : $rated_on = "'{$ticket['rated_on']}'";
-        is_null($ticket['assigned_on']) ? $assigned_on = "NULL" : $assigned_on = "'{$ticket['assigned_on']}'";
+        // Convertir fechas de UTC a hora local de México
+        $solved_on = $this->convertUtcToLocal($ticket['solved_on']);
+        $rated_on = $this->convertUtcToLocal($ticket['rated_on']);
+        $assigned_on = $this->convertUtcToLocal($ticket['assigned_on']);
+        $created_on = $this->convertUtcToLocal($ticket['created_on']);
+        $updated_on = $this->convertUtcToLocal($ticket['updated_on']);
+        $status_changed_on = $this->convertUtcToLocal($ticket['status_changed_on']);
+        $first_assigned_on = $this->convertUtcToLocal($ticket['first_assigned_on']);
+        $due_on = $this->convertUtcToLocal($ticket['due_on']);
+        $scheduled_on = $this->convertUtcToLocal($ticket['scheduled_on']);
+        $first_commented_on = $this->convertUtcToLocal($ticket['first_commented_on']);
 
+        // Preparar valores para SQL
+        $solved_on_sql = is_null($solved_on) ? "NULL" : "'{$solved_on}'";
+        $rated_on_sql = is_null($rated_on) ? "NULL" : "'{$rated_on}'";
+        $assigned_on_sql = is_null($assigned_on) ? "NULL" : "'{$assigned_on}'";
+        $created_on_sql = is_null($created_on) ? "NULL" : "'{$created_on}'";
+        $updated_on_sql = is_null($updated_on) ? "NULL" : "'{$updated_on}'";
+        $status_changed_on_sql = is_null($status_changed_on) ? "NULL" : "'{$status_changed_on}'";
+        $first_assigned_on_sql = is_null($first_assigned_on) ? "NULL" : "'{$first_assigned_on}'";
+        $due_on_sql = is_null($due_on) ? "NULL" : "'{$due_on}'";
+        $scheduled_on_sql = is_null($scheduled_on) ? "NULL" : "'{$scheduled_on}'";
+        $first_commented_on_sql = is_null($first_commented_on) ? "NULL" : "'{$first_commented_on}'";
 
         $query = "
         DECLARE @id_mojo INT = {$ticket['id']};
-        DECLARE @created_on DATETIME = '{$ticket['created_on']}';
-        DECLARE @updated_on DATETIME = '{$ticket['updated_on']}';
-        DECLARE @status_changed_on DATETIME = '{$ticket['status_changed_on']}';
-        DECLARE @first_assigned_on DATETIME = '{$ticket['first_assigned_on']}';
-        DECLARE @due_on DATETIME = '{$ticket['due_on']}';
-        DECLARE @scheduled_on DATETIME = '{$ticket['scheduled_on']}';
-        DECLARE @first_commented_on DATETIME = '{$ticket['first_commented_on']}';
-        DECLARE @rated_on DATETIME = $rated_on;
-        DECLARE @solved_on DATETIME = $solved_on;
-        DECLARE @assigned_on DATETIME = $assigned_on;
+        DECLARE @created_on DATETIME = $created_on_sql;
+        DECLARE @updated_on DATETIME = $updated_on_sql;
+        DECLARE @status_changed_on DATETIME = $status_changed_on_sql;
+        DECLARE @first_assigned_on DATETIME = $first_assigned_on_sql;
+        DECLARE @due_on DATETIME = $due_on_sql;
+        DECLARE @scheduled_on DATETIME = $scheduled_on_sql;
+        DECLARE @first_commented_on DATETIME = $first_commented_on_sql;
+        DECLARE @rated_on DATETIME = $rated_on_sql;
+        DECLARE @solved_on DATETIME = $solved_on_sql;
+        DECLARE @assigned_on DATETIME = $assigned_on_sql;
         
         IF EXISTS (SELECT 1 FROM [TG].[dbo].[mojo_tickets] WHERE id_mojo = @id_mojo)
             BEGIN
@@ -207,11 +225,51 @@ class MojoTicketsModel extends Model{
                     applicants_name,
                     problem
                 ) VALUES (@id_mojo, '{$ticket['title']}', '{$ticket['description']}', {$ticket['user_id']}, {$ticket['company_id']}, '{$ticket['assigned_to_id']}', {$ticket['status_id']}, {$ticket['priority_id']}, {$ticket['ticket_queue_id']}, '{$ticket['rating']}', @rated_on, @created_on, @updated_on, @status_changed_on, @solved_on, @assigned_on, null, '{$ticket['ticket_type_id']}', null, null, @first_assigned_on, @due_on, @scheduled_on, 
-                '{$ticket['is_attention_required']}', {$ticket['ticket_form_id']}, 1, '{$ticket['first_commented_on']}', '{$ticket['rating_comment']}', '{$requesting_department}', '{$solicitante}', '{$problema}')
+                '{$ticket['is_attention_required']}', {$ticket['ticket_form_id']}, 1, $first_commented_on_sql, '{$ticket['rating_comment']}', '{$requesting_department}', '{$solicitante}', '{$problema}')
             END
         ";
 
         return $this->sql->query($query);
+    }
+
+    /**
+     * Convierte una fecha UTC del API de Mojo Helpdesk a hora local de México
+     * en un formato compatible con SQL Server datetime
+     */
+    private function convertUtcToLocal($fecha_utc_str) {
+        if (empty($fecha_utc_str) || $fecha_utc_str === 'None' || is_null($fecha_utc_str)) {
+            return null;
+        }
+        
+        try {
+            // Crear timezone objects
+            $utc_tz = new DateTimeZone('UTC');
+            $local_tz = new DateTimeZone('America/Mexico_City');
+            
+            // Parsear la fecha
+            if (strpos($fecha_utc_str, 'T') !== false) {
+                // Eliminar la Z y los milisegundos si existen
+                $fecha_utc_str = explode('.', $fecha_utc_str)[0];
+                $fecha_utc_str = str_replace('Z', '', $fecha_utc_str);
+                $fecha_utc = DateTime::createFromFormat('Y-m-d\TH:i:s', $fecha_utc_str, $utc_tz);
+            } else {
+                $fecha_utc = DateTime::createFromFormat('Y-m-d H:i:s', $fecha_utc_str, $utc_tz);
+            }
+            
+            if ($fecha_utc === false) {
+                throw new Exception("No se pudo parsear la fecha: $fecha_utc_str");
+            }
+            
+            // Convertir a hora local
+            $fecha_local = $fecha_utc->setTimezone($local_tz);
+            
+            // Retornar en formato ISO 8601 para SQL Server (sin información de timezone)
+            return $fecha_local->format('Y-m-d\TH:i:s');
+            
+        } catch (Exception $e) {
+            error_log("Error convirtiendo fecha $fecha_utc_str: " . $e->getMessage());
+            return null;
+        }
     }
 
     function getCustomField($field, $ticket) {
@@ -1581,7 +1639,7 @@ class MojoTicketsModel extends Model{
                     [TG].[dbo].[AuditoriaActualizacionDespachos] t1
                     LEFT JOIN [TG].[dbo].[Estaciones] t2 ON t1.codgas = t2.Codigo
                     LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
-                WHERE t1.fchcor BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?)";
+                WHERE t1.fchcor BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?) ORDER BY t1.fchcor DESC;";
         return ($rs = $this->sql->select($query, [$from, $until, $codgas, $codgas])) ? $rs : false ;
     }
 
@@ -1592,7 +1650,7 @@ class MojoTicketsModel extends Model{
                     [TG].[dbo].[TicketsDespachosVSReportes] t1
                     LEFT JOIN [TG].[dbo].[Estaciones] t2 ON t1.codgas = t2.Codigo
                     LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.producto = t3.cod
-                WHERE t1.fch BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?)";
+                WHERE t1.fch BETWEEN ? AND ? AND (? = 0 OR t1.codgas = ?) ORDER BY t1.fch DESC;";
         return ($rs = $this->sql->select($query, [$from, $until, $codgas, $codgas])) ? $rs : false ;
     }
 }

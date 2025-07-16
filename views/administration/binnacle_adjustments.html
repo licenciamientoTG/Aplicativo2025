@@ -48,11 +48,13 @@
                         <table id="tablaAuditoria" class="table table-bordered table-hover w-100">
                         <thead>
                             <tr>
+                                <th>Id</th>
                                 <th>Fecha</th>
                                 <th>Usuario</th>
                                 <th>Estación</th>
                                 <th>Producto</th>
                                 <th>Turno</th>
+                                <th>Despacho</th>
                                 <th>Can anterior</th>
                                 <th>Can nuevo</th>
                                 <th>Mto anterior</th>
@@ -107,6 +109,8 @@
                 className: 'd-none',
             },
         ],
+        // Ordenado por fecha descendente
+        order: [[0, 'desc']],
         ajax: {
             url: '/administration/tablaAuditoria/{{ from }}/{{ until }}/{{ station_selected }}',
             error: function() {
@@ -126,15 +130,17 @@
         },
         deferRender: true,
         columns: [
+            {'data': 'Id'},
             {'data': 'Fecha'},
             {'data': 'Usuario'},
             {'data': 'Estación'},
             {'data': 'Producto'},
             {'data': 'Turno'},
+            {'data': 'Despacho'},
             {'data': 'Can anterior', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
             {'data': 'Can nueva', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-            {'data': 'Mto anterior', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
-            {'data': 'Mto nuevo', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )},
+            {'data': 'Mto anterior', 'render': $.fn.dataTable.render.number( ',', '.', 2, '' )},
+            {'data': 'Mto nueva', 'render': $.fn.dataTable.render.number( ',', '.', 2, '' )},
             {'data': 'Can agregada', 'render': $.fn.dataTable.render.number( ',', '.', 3, '' )}
         ],
         initComplete: function () {
@@ -163,6 +169,8 @@
                 className: 'd-none',
             },
         ],
+        // Ordenado por fecha descendente
+        order: [[0, 'desc']],
         ajax: {
             url: '/administration/tablaTickets/{{ from }}/{{ until }}/{{ station_selected }}',
             error: function() {
@@ -182,7 +190,6 @@
         },
         deferRender: true,
         columns: [
-
             {'data': 'Fecha'},
             {'data': 'Estación'},
             {'data': 'Producto'},

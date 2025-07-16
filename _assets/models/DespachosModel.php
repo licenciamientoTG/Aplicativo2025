@@ -74,8 +74,8 @@ class DespachosModel extends Model{
      */
     function get_today_sales($todayInt) : array|false {
         $query = 'SELECT
-                    CAST(SUM(mto) AS DECIMAL(10, 2)) AS Monto,
-                    CAST(SUM(can) AS DECIMAL(10, 3)) AS Volumen,
+                    CAST(SUM(mto) AS DECIMAL(18, 2)) AS Monto,
+                    CAST(SUM(can) AS DECIMAL(18, 3)) AS Volumen,
                     CASE
                     WHEN codprd IN (179, 192) THEN \'T-Maxima Regular\'
                     WHEN codprd IN (180, 193) THEN \'T-Super Premium\'
@@ -626,10 +626,39 @@ class DespachosModel extends Model{
     }
 
     function sp_obtener_diferencias_por_valor($from, $until, $codgas) : array|false {
+
+        if ($codgas == 0) {
+            $query = "SELECT Codigo, Servidor FROM [TG].dbo.Estaciones WHERE Codigo NOT IN (0,4,20)";
+            $stations = $this->sql->select($query, []);
+            if (!$stations) {
+                return false;
+            } else {
+                $connected_stations = [];
+
+                foreach ($stations as $station) {
+                    $codigo = $station['Codigo'];
+                    $servidor = $station['Servidor'];
+
+                    // Verificar conexión al puerto 1433 (SQL Server)
+                    $connection = @fsockopen($servidor, 1433, $errno, $errstr, 5); // 5 segundos timeout
+
+                    if ($connection) {
+                        // Conexión exitosa
+                        $connected_stations[] = $codigo;
+                        fclose($connection);
+                    }
+                }
+
+                // Convertir array de códigos a string separado por comas
+                $result_string = implode(',', $connected_stations);
+            }
+        } else {
+            $result_string = $codgas;
+        }
         set_time_limit(0);
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
-        $params = [$from, $until, $codgas];
+        $params = [$from, $until, $result_string];
         return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_diferencias]', $params) ?: false;
     }
 

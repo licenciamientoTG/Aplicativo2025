@@ -1598,15 +1598,17 @@ class Administration{
         if ($rows = $this->mojoTicketsModel->get_binnacle($from_int, $until_int, $codgas)) {
             foreach ($rows as $key => $row) {
                 $data[] = array(
+                    'Id'        => $row['id'],
                     'Fecha'        => intToDate($row['fchcor']),
                     'Usuario'      => $row['usuario'],
                     'Estación'     => $row['Estacion'],
                     'Producto'     => $row['Producto'],
                     'Turno'        => $row['nrotur'],
+                    'Despacho'     => $row['nrotrn'],
                     'Can anterior' => $row['can_anterior'],
                     'Can nueva'    => $row['can_nuevo'],
                     'Mto anterior' => $row['mto_anterior'],
-                    'Mto nuevo'    => $row['mto_nuevo'],
+                    'Mto nueva'    => $row['mto_nuevo'],
                     'Can agregada' => $row['can_agregado'],
                 );
             }
