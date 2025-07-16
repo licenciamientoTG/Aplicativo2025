@@ -31,7 +31,6 @@ class Income{
         $this->valesR           = new ValesRModel;
         $this->documentosModel  = new DocumentosModel;
         $this->clientesModel    = new ClientesModel;
-
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -49,7 +48,6 @@ class Income{
             $codgas = $_GET['codgas'] ?? 0;
             $clientName = $_GET['clientName'] ?? false;
             $stations = $this->gasolinerasModel->get_stations();
-
             echo $this->twig->render($this->route . 'duplicate_dispatches.html', compact('from', 'until', 'interval', 'codgas', 'clientName', 'stations'));
         }
     }
@@ -712,57 +710,7 @@ class Income{
         json_output(array("data" => $data));
     }
 
-    // function datatables_dispatches_est() : void {
-    //     ini_set('max_execution_time', 5000);
-    //     ini_set('memory_limit', '1024M');
-    //     set_time_limit(0); // sin límite
-    //     $data = [];
-    //     $codgas = $_POST['codgas'];
-    //     $billed = $_POST['billed'];
-    //     $tipo_cliente=0;
-    //     $estations= $this->gasolinerasModel->get_estations_servidor();
-    //     if ($codgas != 0) {
-    //         // Filtrar estaciones para quedarse solo con la que coincide con el codgas
-    //         $estations = array_filter($estations, function($station) use ($codgas) {
-    //             return $station['codigo'] == $codgas;
-    //         });
-    //     }
-    //     if ($dispatches = $this->despachosModel->control_dispatches_est(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed,$estations)) {
-    //         foreach ($dispatches as $dispatch) {
-    //             $data[] = array(
-    //                'fecha'                    => $dispatch['fecha'],
-    //                 'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-    //                 'turno'                   => $dispatch['turno'],
-    //                 'despacho'                => $dispatch['despacho'],
-    //                 'producto'                => $dispatch['producto'],
-    //                 'estacion'                => $dispatch['estacion'],
-    //                 'empresa'                 => $dispatch['empresa'],
-    //                 'cliente_des'             => $dispatch['cliente_des'],
-    //                 'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-    //                 'FechaFactura'                => $dispatch['FechaFactura'],
-    //                 'cantidad'                => $dispatch['cantidad'],
-    //                 'importe'                 => $dispatch['importe'],
-    //                 'precio'                  => $dispatch['precio'],
-    //                 'despachador'             => $dispatch['despachador'],
-    //                 'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-    //                 'UUID'                    => $dispatch['UUID']??".",
-    //                 'rut'                     => $dispatch['rut'],
-    //                 'rut'                     => $dispatch['rut'],
-    //                 'txtref'                  => $dispatch['txtref'],
-    //                 'denominacion'            => $dispatch['denominacion'],
-    //                 'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-    //                 'codval'                  => $dispatch['codval'],
-    //                 'tipo_cliente'            => $dispatch['tipo_cliente'],
-    //                 'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-    //                 'vehiculo'                => $dispatch['vehiculo'],
-    //                 'placas'                  => $dispatch['placas'],
-    //                 'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-    //                 'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-    //             );
-    //         }
-    //     }
-    //     json_output(array("data" => $data));
-    // }
+   
 
     function pivot_daily_dispatches_table() : void {
         $data = [];

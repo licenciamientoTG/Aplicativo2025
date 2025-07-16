@@ -28,6 +28,7 @@ class Accounting{
     public EstacionesModel $estacionesModel;
     public ComprasPetrotalModel $comprasPetrotalModel;
     public PetrotalConceptosModel $petrotalConceptosModel;
+    public ERAjustesModel $eraJustesModel;
     /**
      * @param $twig
      */
@@ -40,6 +41,8 @@ class Accounting{
         $this->estacionesModel = new EstacionesModel();
         $this->comprasPetrotalModel = new ComprasPetrotalModel();
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
+        $this->eraJustesModel = new ERAjustesModel();
+
     }
 
     /**
@@ -69,10 +72,26 @@ class Accounting{
 
 
     }
+    public function adjustmentModal(){
+        echo $this->twig->render($this->route . 'modals/adjustmentModal.html');
+    }
 
     public function income_statement() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'income_statement.html');
+        }
+    }
+    public function form_save_adjustments(){
+        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])){
+            $data = $_POST;
+            $data['fecha'] = date('Y-m-d', strtotime($data['fecha']));
+            $data['fecha_agregado'] = date('Y-m-d H:i:s');
+            if ($id = $this->eraJustesModel->add($data)) {
+                $response = json_encode(array("status" => "success", "message" => "Ajuste agregado correctamente.", "id" => $id));
+            } else {
+                $response = json_encode(array("status" => "error", "message" => "Error al agregar el ajuste."));
+            }
+            echo $response;
         }
     }
 

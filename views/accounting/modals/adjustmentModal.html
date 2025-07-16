@@ -1,0 +1,72 @@
+<form class="form_save_adjustments">
+    <div class="modal-body">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <label for="empresa" class="col-form-label">Empresa</label>
+                <select class="form-control selectpicker" data-live-search="true" id="empresa" name="empresa" required>
+                    <option value="DIAZ GAS">DIAZ GAS</option>
+                    <option value="ESTACION CUSTODIA">ESTACION CUSTODIA</option>
+                    <option value="GASOLINERA VILLA AHUMADA">GASOLINERA VILLA AHUMADA</option>
+                    <option value="SERVICIO SYC S.A. DE C.V.">SERVICIO SYC S.A. DE C.V.</option>
+                    <option value="SERVICIOS GASOLINEROS EL CASTAÑO S.A.">SERVICIOS GASOLINEROS EL CASTAÑO S.A.</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="centro_costo" class="col-form-label">Centro de Costo</label>
+                <input type="text" class="form-control" id="centro_costo" name="centro_costo" required />
+            </div>
+            <div class="col-md-3">
+                <label for="estado_resultados" class="col-form-label">Estado de Resultados</label>
+                <select class="form-control selectpicker" data-live-search="true" id="estado_resultados" name="estado_resultados" required>
+                    <option value="STAFF">STAFF</option>
+                    <option value="estaciones">estaciones</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label for="no_cuenta" class="col-form-label">No. Cuenta</label>
+                <input type="text" class="form-control" id="no_cuenta" name="no_cuenta" required />
+            </div>
+            <div class="col-md-2">
+                <label for="rubro" class="col-form-label">Rubro</label>
+                <select class="form-control selectpicker" data-live-search="true" id="rubro" name="rubro" required>
+                    <option value="A - INGRESOS">A - INGRESOS</option>
+                    <option value="B - COSTO DE VENTA">B - COSTO DE VENTA</option>
+                    <option value="C - NOMINA">C - NOMINA</option>
+                    <option value="D - COSTO SOCIAL">D - COSTO SOCIAL</option>
+                    <option value="E - GASTOS DE OPERACION">E - GASTOS DE OPERACION</option>
+                    <option value="F - MANTENIMIENTO">F - MANTENIMIENTO</option>
+                    <option value="H - GASTOS FIJOS">H - GASTOS FIJOS</option>
+                    <option value="I - INGRESOS NO OPERATIVOS">I - INGRESOS NO OPERATIVOS</option>
+                    <option value="K - CIF">K - CIF</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="concepto" class="col-form-label">Concepto</label>
+                <input type="text" class="form-control" id="concepto" name="concepto" required />
+            </div>
+            <div class="col-md-2">
+                <label for="fecha" class="col-form-label">Fecha</label>
+                <input type="date" class="form-control" id="fecha" name="fecha" />
+            </div>
+        </div>
+        <div class="row g-2 mt-2">
+            {% for mes in
+            ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+            %}
+            <div class="col-md-2">
+                <label for="{{ mes }}" class="col-form-label">{{ mes|capitalize }}</label>
+                <input type="number" step="0.01" class="form-control" id="{{ mes }}" name="{{ mes }}" value="0" required />
+            </div>
+            {% endfor %}
+        </div>
+        <div class="row g-2 mt-2"></div>
+    </div>
+</form>
+<div class="modal-footer">
+    <button type="submit" class="btn btn-success" onclick="form_save_adjustments()">Guardar</button>
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+</div>
+
+<script>
+    $(".selectpicker").selectpicker();
+</script>
