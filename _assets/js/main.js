@@ -79,6 +79,11 @@ async function porcent_estacion_info() {
     // console.log(`[${timestamp}] Llamada a la API`);
     const despachos_relation = document.getElementById('despachos_relation');
     despachos_relation.classList.add('loading');
+
+    var from_desp = document.getElementById('from_desp').value;
+    var until_desp = document.getElementById('until_desp').value;
+    var estacion_desp = document.getElementById('estacion_desp').value;
+    
     try {
         const response = await fetch('/administration/porcent_estacion_info', {
             method: 'POST',
@@ -87,6 +92,7 @@ async function porcent_estacion_info() {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             credentials: 'include',
+            body:'from=' + from_desp + '&until=' + until_desp + '&estacion=' + estacion_desp
         });
         const data = await response.json();
         const fechaActualizacion = new Date().toLocaleString();
@@ -107,6 +113,8 @@ async function porcent_estacion_info() {
 }
 
 function renderEstacionesCards(payload) {
+    console.log('renderEstacionesCards', payload);
+    
 
     var fechaDiv = document.getElementById('fecha_actualizacion');
     if (payload.ultimaActualizacion) {
@@ -128,7 +136,7 @@ function renderEstacionesCards(payload) {
         card.classList.add('card-estacion');
         let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
                      <div class="resumen-fechas">`;
-        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
+        let fechas = (estacion.Resultados || []).map(r => {
             let clase = (r.Porcentaje === 100 || r.Porcentaje === 100.0) ? 'porciento-verde' : 'porciento-rojo';
             if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
             return `
@@ -153,6 +161,9 @@ async function porcent_estacion_facturados_info() {
     // console.log(`[${timestamp}] Llamada a la API`);
     const despachos_facturados = document.getElementById('despachos_facturados');
     despachos_facturados.classList.add('loading');
+    var from_desp = document.getElementById('from_desp2').value;
+    var until_desp = document.getElementById('until_desp2').value;
+    var estacion_desp = document.getElementById('estacion_desp2').value;
     try {
         const response = await fetch('/administration/porcent_estacion_facturados_info', {
             method: 'POST',
@@ -161,6 +172,7 @@ async function porcent_estacion_facturados_info() {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             credentials: 'include',
+             body:'from=' + from_desp + '&until=' + until_desp + '&estacion=' + estacion_desp
         });
         const data = await response.json();
         const fechaActualizacion = new Date().toLocaleString();
@@ -204,7 +216,7 @@ function renderDespachosFacturadasCards(payload) {
         card.classList.add('card-estacion');
         let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
                      <div class="resumen-fechas">`;
-        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
+        let fechas = (estacion.Resultados || []).map(r => {
             let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
             if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
             return `
@@ -226,7 +238,12 @@ async function porcent_facturas_info() {
     // console.log(`[${timestamp}] Llamada a la API`);
     const facturas = document.getElementById('facturas');
     facturas.classList.add('loading');
+    var from_desp = document.getElementById('from_desp3').value;
+    var until_desp = document.getElementById('until_desp3').value;
+    var estacion_desp = document.getElementById('estacion_desp3').value;
     try {
+        var contenedor = document.getElementById('cards_facturas');
+        contenedor.innerHTML = '';
         const response = await fetch('/administration/porcent_facturas_info', {
             method: 'POST',
             headers: {
@@ -234,8 +251,11 @@ async function porcent_facturas_info() {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             credentials: 'include',
+            body:'from=' + from_desp + '&until=' + until_desp + '&estacion=' + estacion_desp
+
         });
         const data = await response.json();
+        console.log('data', data);
         const fechaActualizacion = new Date().toLocaleString();
 
         // console.log(`[${timestamp}] Datos recibidos:`, data);
@@ -274,19 +294,33 @@ function renderEstacionesFacturadasCards(payload) {
     (payload.datos || []).forEach(estacion => {
         let card = document.createElement('div');
         card.classList.add('card-estacion');
-        let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
-                     <div class="resumen-fechas">`;
-        let fechas = (estacion.Resultados || []).slice(0, 7).map(r => {
-            let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
-            if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
+
+        let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>`;
+        
+        // Agrega encabezado de tabla con 5 columnas
+        title += `
+            <div class="resumen-fechas resumen-5columnas encabezado">
+                <span>Fecha</span>
+                <span>Serie</span>
+                <span>Corp</span>
+                <span>Remoto</span>
+                <span>Dif.</span>
+            </div>
+        `;
+        let filas = (estacion.Resultados || []).map(r => {
+            let clase = (r.Diferencia == 0 ) ? 'porciento-verde' : 'porciento-rojo';
             return `
-                <div class="fecha-row">
+                <div class="resumen-fechas resumen-5columnas">
                     <span>${r.Fecha}</span>
-                    <span class="${clase}">${r.Porcentaje != null ? r.Porcentaje + '%' : 'N/A'}</span>
-                </div>`;
+                    <span>${r.Serie}</span>
+                    <span>${r.TotalSG12}</span>
+                    <span>${r.TotalRemoto}</span>
+                    <span class="${clase}">${r.Diferencia}</span>
+                </div>
+            `;
         }).join('');
-        title += fechas + "</div>";
-        card.innerHTML = title;
+
+        card.innerHTML = title + filas;
         contenedor.appendChild(card);
     });
 }

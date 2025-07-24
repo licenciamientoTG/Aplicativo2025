@@ -640,40 +640,6 @@ async function payments_table(){
 
         },
         footerCallback: function (row, data, start, end, display) {
-            // var api = this.api();
-
-            // // Función para sumar valores en una columna
-            // var intVal = function (i) {
-            //     return typeof i === 'string' ?
-            //         i.replace(/[\$,]/g, '') * 1 :
-            //         typeof i === 'number' ? i : 0;
-            // };
-        
-            // // Lista de columnas a sumar (desde 'can' en adelante)
-            // var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
-
-            // api.columns().every(function (index) {
-            //     if (index > 8 && index < 21 ) { // Desde la tercera columna en adelante
-            //         // Sumatoria de los datos filtrados (página actual)
-            //         var filteredSum = api
-            //             .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
-            //             .data()
-            //             .reduce((a, b) => intVal(a) + intVal(b), 0);
-            
-            //         // Sumatoria de todos los datos (incluyendo no visibles)
-            //         var totalSum = api
-            //             .column(index, { page: 'all' }) // Todos los datos
-            //             .data()
-            //             .reduce((a, b) => intVal(a) + intVal(b), 0);
-            
-            //         // Actualizar el footer con ambas sumatorias
-            //         var footer = $(api.column(index).footer());
-            //         footer.html(`
-            //             <div>${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-            //             <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-            //         `);
-            //     }
-            // });
         }
     });
 }
@@ -741,6 +707,8 @@ async function  SearchResults(){
             }
         },
         columns: [
+            { data: 'origin_text', title: 'Origen'},
+
             { data: 'Empresa',  title: 'Empresa' , className: 'text-nowrap' },
             { data: 'CentroCosto', title: 'Centro de Costo' , className: 'text-nowrap' },
             { data: 'CatCentroCosto', title: 'Estado de Resultados' , className: 'text-nowrap' },
@@ -763,6 +731,12 @@ async function  SearchResults(){
         deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
+            if (data['origin'] === 'ajustes') {
+                $(row).addClass('bg-warning text-white');
+            }
+            if (data['origin'] === 'petrotal') {
+                $(row).addClass('bg_petrotal');
+            }
 
         },
         initComplete: function () {
@@ -938,42 +912,99 @@ async function annual_budgetTable(){
 
 
 async function drawAnnualTable() {
-  const container = document.getElementById('Edo_anual');
-  container.classList.add('loading');
-
-  const year = parseInt(document.getElementById('input_year').value, 10);
-  const prevYear = year - 1;
-
-  const meses = [
-    'Enero', 'Febrero', 'Marzo', 'Abril','Mayo', 'Junio', 'Julio', 'Agosto',
-    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-  ];
-
-  try {
-    const api = await fetchData(year);
-
+    const container = document.getElementById('Edo_anual');
     const table = document.getElementById('estadoResultadosTable');
     const thead = table.querySelector('thead');
     var tbody = document.getElementById('bodyEstadoResultados');
+     if ($.fn.DataTable.isDataTable('#estadoResultadosTable')) {
+        $('#estadoResultadosTable').DataTable().destroy();
+    }
+
     thead.innerHTML = '';
     tbody.innerHTML = '';
-    console.log('API response:', api);
+    container.style.display = 'none';
+    container.offsetHeight; // Trigger reflow
+    container.style.display = '';
+    
+    container.classList.add('loading');
 
+    const year = parseInt(document.getElementById('input_year').value, 10);
+    const prevYear = year - 1;
+
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril','Mayo', 'Junio', 'Julio', 'Agosto',
+    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+    try {
+    var api = await fetchData(year);
+    console.log('API response:', api);
     buildTableHeader(thead, year, prevYear, meses);
     renderTableBody(api, meses);
 
     container.classList.remove('loading');
 
-     const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
+    const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
     setTimeout(() => {
         summaryRows.forEach(row => {
             toggleGroup(row);
         });
     }, 0);
+    setTimeout(function() {
+        if ($.fn.DataTable.isDataTable('#estadoResultadosTable')) {
+            $('#estadoResultadosTable').DataTable().destroy();
+        }
 
-  } catch (error) {
+        $('#estadoResultadosTable').DataTable({
+            destroy: true,
+            dom: 'Btip',
+            buttons: [
+            {
+                extend: 'excelHtml5',
+                text: 'Exportar a Excel',
+                title: 'Estado de Resultados Anual'
+            }
+            ],
+            paging: false,
+            searching: false,
+            ordering: false,
+            info: false
+        });
+    }, 100);
+
+    } catch (error) {
     console.error('Error al dibujar tabla anual:', error);
-  }
+    }
+    
+
+}
+
+function validateTableStructure() {
+    const table = document.getElementById('estadoResultadosTable');
+    const headerCols = table.querySelectorAll('thead th').length;
+    const bodyRows = table.querySelectorAll('tbody tr');
+
+    console.log(`Header tiene ${headerCols} columnas`);
+
+    bodyRows.forEach((row, index) => {
+        const cells = row.querySelectorAll('td');
+
+        // Verificar si es una fila de divider
+        if (row.classList.contains('divider')) {
+            // Las filas de divider tienen colspan, no las procesamos
+            return;
+        }
+
+        // Para filas normales, verificar que tengan el número correcto de columnas
+        if (cells.length !== headerCols) {
+            console.warn(`Fila ${index + 1} tiene ${cells.length} columnas, esperadas ${headerCols}`);
+
+            // Agregar celdas faltantes si es necesario
+            while (cells.length < headerCols) {
+                const newCell = document.createElement('td');
+                newCell.textContent = '-';
+                row.appendChild(newCell);
+            }
+        }
+    });
 }
 
 ///////////contrulle el header de la tabla
@@ -1006,7 +1037,7 @@ function buildTableHeader(thead, year, prevYear, meses) {
 /////////////////////contrulle el cuerpo de la tabla
 function renderTableBody( api, months) {
 
-    const {
+    var {
         budget = {},
         secciones_estaciones: estaciones = {},
         secciones_estaciones_last_year: estacionesLastYear = {},
@@ -1027,8 +1058,9 @@ function renderTableBody( api, months) {
     //////lastyear
     const getSumasLastYear = (rubro, type) => sumasPorRubroMesLastYear[rubro]?.[type] || {};
     const getPorcentajesLastYear = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresosLastYear : porcentajesVsIngresosStaff)[rubro] || {};
+    const numCols = 1 + months.length * 8;
 
-    renderDivider('INGRESOS', months.length);
+    renderDivider('INGRESOS', numCols);
     renderSection(
         'A - INGRESOS', estaciones.ingresos_estaciones || [],estacionesLastYear.ingresos_estaciones || [],
         getSumas('A - INGRESOS', 'ESTACIONES'), 
@@ -1045,7 +1077,7 @@ function renderTableBody( api, months) {
         getPorcentajesLastYear('B - COSTO DE VENTA', 'ESTACIONES'),
         getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months,BudgetTotalIngresos
     );
-    renderDivider( 'GASTOS ESTACIONES', months.length);
+    renderDivider( 'GASTOS ESTACIONES',numCols);
     renderSection(
         'E - GASTOS DE OPERACION', estaciones.gastos_operacion_estaciones || [],estacionesLastYear.gastos_operacion_estaciones || [],
         getSumas('E - GASTOS DE OPERACION', 'ESTACIONES'),
@@ -1087,7 +1119,7 @@ function renderTableBody( api, months) {
         getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months,BudgetTotalIngresos
     );
 
-    renderDivider( 'GASTOS STAFF', months.length);
+    renderDivider( 'GASTOS STAFF',numCols);
     renderSection(
          'E - GASTOS DE OPERACION', staff.gastos_operacion_staff || [],staffLastYear.gastos_operacion_staff || [],
         getSumas('E - GASTOS DE OPERACION', 'STAFF'), 
@@ -1130,21 +1162,19 @@ function renderTableBody( api, months) {
     );
 
 }
-
-
-
-function renderDivider(label, numMeses) {
+function renderDivider(label, numCols) {
     var tbody = document.getElementById('bodyEstadoResultados');
     const tr = document.createElement('tr');
     tr.classList.add('table-primary', 'text-white', 'fw-bold', 'text-start', 'divider');
-    //   tr.setAttribute('onclick', 'toggleSection(this)');
-    tr.innerHTML = `
-        <td colspan="${1 + numMeses * 8}">
-        <i class="fas fa-chevron-down pe-2"></i> ${label}
-        </td>
-    `;
+
+    let inner = `<td><i class="fas fa-chevron-down pe-2"></i> ${label}</td>`;
+    for(let i = 1; i < numCols; i++) {
+        inner += '<td></td>';
+    }
+    tr.innerHTML = inner;
     tbody.appendChild(tr);
 }
+
 
 function renderSection( titulo, data,data_last_year, sumas, sumas_last_year, porcentajes, porcentajes_last_year, budget_rubro, budget_conceptos, meses,BudgetTotalIngresos, soloMostrarTotal = false) {
     var tbody = document.getElementById('bodyEstadoResultados');
@@ -1554,7 +1584,7 @@ async function form_save_adjustments(){
         .then(response => response.json())
         .then(data => {
             console.log(data);
-            
+
             // if (data == 0) {
             //     $('#EditAlertModal').modal('hide');
             //     alert_active_table.clear().draw();
@@ -1601,3 +1631,34 @@ async function spend_real(){
         console.error('eror al consultar gasto real:', error);
     }
 }
+
+// Función para validar la estructura de la tabla
+// function validateTableStructure() {
+//     const table = document.getElementById('estadoResultadosTable');
+//     const headerCols = table.querySelectorAll('thead th').length;
+//     const bodyRows = table.querySelectorAll('tbody tr');
+    
+//     console.log(`Header tiene ${headerCols} columnas`);
+    
+//     bodyRows.forEach((row, index) => {
+//         const cells = row.querySelectorAll('td');
+        
+//         // Verificar si es una fila de divider
+//         if (row.classList.contains('divider')) {
+//             // Las filas de divider tienen colspan, no las procesamos
+//             return;
+//         }
+        
+//         // Para filas normales, verificar que tengan el número correcto de columnas
+//         if (cells.length !== headerCols) {
+//             console.warn(`Fila ${index + 1} tiene ${cells.length} columnas, esperadas ${headerCols}`);
+            
+//             // Agregar celdas faltantes si es necesario
+//             while (cells.length < headerCols) {
+//                 const newCell = document.createElement('td');
+//                 newCell.textContent = '-';
+//                 row.appendChild(newCell);
+//             }
+//         }
+//     });
+// }

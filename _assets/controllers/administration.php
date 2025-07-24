@@ -15,12 +15,10 @@ class Administration{
     public CotizacionesModel $cotizacionesModel;
     public MojoTicketsModel $mojoTicketsModel;
     public EstacionesModel $estacionesModel;
-
     public BinnacleModel $binnacleModel;
-
     public DocumentosModel $documentosModel;
     public DespachosModel $despachosModel;
-
+    public GasolinerasModel $gasolineras;
     public ClientesModel $clientesModel;
 
 
@@ -28,15 +26,17 @@ class Administration{
      * @param $twig
      */
     public function __construct($twig) {
-        $this->twig             = $twig;
-        $this->route            = 'views/administration/';
-        $this->mojoTicketsModel = new MojoTicketsModel();
-        $this->cotizacionesModel            = new CotizacionesModel();
-        $this->estacionesModel = new EstacionesModel();
-        $this->binnacleModel = new BinnacleModel();
-        $this->documentosModel = new DocumentosModel();
-        $this->despachosModel = new DespachosModel();
-        $this->clientesModel = new ClientesModel();
+        $this->twig              = $twig;
+        $this->route             = 'views/administration/';
+        $this->mojoTicketsModel  = new MojoTicketsModel();
+        $this->cotizacionesModel = new CotizacionesModel();
+        $this->estacionesModel   = new EstacionesModel();
+        $this->binnacleModel     = new BinnacleModel();
+        $this->documentosModel   = new DocumentosModel();
+        $this->despachosModel    = new DespachosModel();
+        $this->clientesModel     = new ClientesModel();
+        $this->gasolineras       = new GasolinerasModel;
+
     }
 
     /**
@@ -46,7 +46,8 @@ class Administration{
         echo $this->twig->render($this->route . 'monthly_dispatches.html');
     }
     public function relation_corpo_estaciones() : void {
-        echo $this->twig->render($this->route . 'relation_corpo_estaciones.html');
+        $estations = $this->gasolineras->get_estations_servidor();
+        echo $this->twig->render($this->route . 'relation_corpo_estaciones.html', compact('estations'));
     }
     function list_tickets() : void {
         $from = $_GET['from'] ?? date('Y-m-d');
@@ -92,7 +93,6 @@ class Administration{
                 case 'semanal':
                     $from = $this->getMondayFromWeek($_GET['from']);
                     $until = $this->getSundayFromWeek($_GET['until']);
-                    
                     $results = $this->mojoTicketsModel->get_tickets_by_form_and_week($from . ' 00:00:00',$until . ' 23:59:59',$ticket_form);
                     $groupedResults = [];
                     foreach ($results as $result) {
@@ -1641,8 +1641,13 @@ class Administration{
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [];
-        $ch = curl_init('http://192.168.0.109:82/api/estacion_porcentaje/');
+        $postData = [
+            'estacion' => $_POST['estacion'],
+            'from' => $_POST['from'],
+            'until' => $_POST['until']
+        ];
+        // $ch = curl_init('http://192.168.0.109:82/api/estacion_porcentaje/');
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_despachos_porcentaje/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_POST, true);
@@ -1656,12 +1661,17 @@ class Administration{
 
 
     function porcent_estacion_facturados_info(){
+
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [];
-        $ch = curl_init('http://192.168.0.109:82/api/porcent_estacion_facturados_info/');
+        $postData = [
+            'estacion' => $_POST['estacion'],
+            'from' => $_POST['from'],
+            'until' => $_POST['until']
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_despachos_facturados_porcentaje/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_POST, true);
@@ -1678,8 +1688,12 @@ class Administration{
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $postData = [];
-        $ch = curl_init('http://192.168.0.109:82/api/porcent_facturas_info/');
+        $postData = [
+            'estacion' => $_POST['estacion'],
+            'from' => $_POST['from'],
+            'until' => $_POST['until']
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_comparacion_series/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
         curl_setopt($ch, CURLOPT_POST, true);
