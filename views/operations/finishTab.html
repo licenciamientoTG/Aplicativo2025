@@ -12,21 +12,6 @@
                                 <h5 class="card-title text-nowrap" style="color: #0095DA;">T-Máxima Regular</h5>
                             </div>
                         </div>
-                        <h4 class="mt-0 mb-1">${{ totals_sales[0].Monto | number_format(2, '.', ',') }}</h4>
-                        <div class="mb-0">
-                            <span class="text-muted">Volumen: {{ totals_sales[0].Volumen | number_format(3, '.', ',') }} lts</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col d-flex">
-                <div class="card flex-fill shadow">
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col mt-0">
-                                <h5 class="card-title text-nowrap" style="color: #A6CE39;">T-Super Premium</h5>
-                            </div>
-                        </div>
                         <h4 class="mt-0 mb-1">${{ totals_sales[1].Monto | number_format(2, '.', ',') }}</h4>
                         <div class="mb-0">
                             <span class="text-muted">Volumen: {{ totals_sales[1].Volumen | number_format(3, '.', ',') }} lts</span>
@@ -39,12 +24,27 @@
                     <div class="card-body">
                         <div class="row">
                             <div class="col mt-0">
-                                <h5 class="card-title text-nowrap" style="color: #231E20;">Diesel Automotriz</h5>
+                                <h5 class="card-title text-nowrap" style="color: #A6CE39;">T-Super Premium</h5>
                             </div>
                         </div>
                         <h4 class="mt-0 mb-1">${{ totals_sales[2].Monto | number_format(2, '.', ',') }}</h4>
                         <div class="mb-0">
                             <span class="text-muted">Volumen: {{ totals_sales[2].Volumen | number_format(3, '.', ',') }} lts</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col d-flex">
+                <div class="card flex-fill shadow">
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col mt-0">
+                                <h5 class="card-title text-nowrap" style="color: #231E20;">Diesel Automotriz</h5>
+                            </div>
+                        </div>
+                        <h4 class="mt-0 mb-1">${{ totals_sales[0].Monto | number_format(2, '.', ',') }}</h4>
+                        <div class="mb-0">
+                            <span class="text-muted">Volumen: {{ totals_sales[0].Volumen | number_format(3, '.', ',') }} lts</span>
                         </div>
                     </div>
                 </div>

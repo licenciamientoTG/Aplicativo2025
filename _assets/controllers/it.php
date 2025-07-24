@@ -117,7 +117,7 @@ class It{
      * @return json
      * @throws Exception
      */
-    public function assignPermission() : json {
+    public function assignPermission() {
         return json_output($this->permissionsUsersModel->assignPermission($_GET['user_id'], $_GET['permission_id'], $_GET['check']));
     }
 
@@ -336,7 +336,7 @@ class It{
      * @return json|int
      * @throws Exception
      */
-    function userForm() : json|int {
+    function userForm() {
         if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])){
             return json_output($this->usersModel->add(trim($_POST['name']), trim($_POST['username']), trim($_POST['password']), $_POST['profile_id'], trim(strtolower($_POST['email']))));
         }
@@ -376,7 +376,7 @@ class It{
      */
     function datatables_stations() : void {
         $data = [];
-        if ($stations = $this->estacionesModel->get_stations()) {
+        if ($stations = $this->estacionesModel->get_stations('0,4,20')) {
             $data = array_map(function ($station) {
                 return [
                     'ID'           => $station['Codigo'],

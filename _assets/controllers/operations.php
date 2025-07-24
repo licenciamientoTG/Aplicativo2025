@@ -797,6 +797,7 @@ class Operations{
      */
     function readings_table($CodigoEstacion, $FechaTabular, $Turno, $Id, $Estatus) : void {
         $data = [];
+
         // Obtenemos las lecturas del tabulador actual y poblamos la tabla de lecturas
         if ($readings = $this->lecturasModel->get_readings_by_tabulator($CodigoEstacion, str_replace('-', '', $FechaTabular), $Turno, $Id, $FechaTabular)) {
             $data = array_map(function ($reading) {

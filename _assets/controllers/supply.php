@@ -547,6 +547,9 @@ class Supply{
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
                     if (!is_null($item['controlGasProductId'])) {
+                        echo '<pre>';
+                        var_dump($item);
+                        die();
                         if ($recepcion = $this->movimientosTanModel->sp_obtener_recepciones_combustible($from, $item['codgas'], $item['controlGasProductId'])) {
                             $satdat = $recepcion[0]['satdat'];
 
@@ -603,8 +606,6 @@ class Supply{
         } else {
             $twigVars['codgas_string'] = '';
         }
-
-
 
         // Renderiza la vista con todas las variables
         echo $this->twig->render($this->route . 'bulk_upload2.html', $twigVars);

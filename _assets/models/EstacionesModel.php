@@ -39,13 +39,22 @@ class EstacionesModel extends Model{
 
 
     /**
+     * @param string|null $excluirCodigos Coma-separated list of codes to exclude, e.g. "'001','002'"
      * @return array|false
      * @throws Exception
      */
-    public function get_stations() : array|false {
-        $query = 'SELECT * FROM [TG].[dbo].[Estaciones] ORDER BY Codigo;';
-        return ($this->sql->select($query)) ?: false ;
+    public function get_stations($excluirCodigos = null): array|false {
+        $query = 'SELECT * FROM [TG].[dbo].[Estaciones]';
+
+        if (!empty($excluirCodigos)) {
+            $query .= " WHERE Codigo NOT IN ($excluirCodigos)";
+        }
+
+        $query .= ' ORDER BY Codigo;';
+
+        return ($this->sql->select($query)) ?: false;
     }
+
     public function get_all_stations() : array|false {
         $query = 'SELECT [Codigo],[Nombre] FROM [TG].[dbo].[Estaciones] ORDER BY Codigo;';
         return ($this->sql->select($query)) ?: false ;

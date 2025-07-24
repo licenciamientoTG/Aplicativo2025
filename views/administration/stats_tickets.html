@@ -103,9 +103,7 @@
             <div class="tab-pane fade show active" id="home-tab-pane" role="tabpanel" aria-labelledby="home-tab" tabindex="0">
                 <div class="row mt-3">
                     {% for year, cards in groupedResults %}
-
                         {% if date_range == 'anual' %}
-
                             {% set resolved_porcent = ( (cards[4].ticket_count + cards[5].ticket_count) * 100 / (cards[0].ticket_count + cards[1].ticket_count + cards[2].ticket_count + cards[3].ticket_count + cards[4].ticket_count + cards[5].ticket_count) ) %}
                             <div class="col-sm-6 col-xl-3">
                                 <div class="card shadow">
@@ -827,7 +825,8 @@
                                                 <th class="text-warning">Tickets Pendientes</th>
                                                 <th class="text-danger">Tickets Urgentes</th>
                                                 <th class="text-info">Tickets Normales</th>
-                                                <th class="text-info">Tiempo Total</th>
+                                                <th class="text-info">Tiempo Total Normal</th>
+                                                <th class="text-danger">Tiempo Total Urgente</th>
                                                 <th class="text-info">Tiempo Promedio</th>
                                             </tr>
                                             </thead>
@@ -837,39 +836,42 @@
                                             {% set totalPendingTickets = 0 %}
                                             {% set totalUrgentTickets = 0 %}
                                             {% set totalNormalTickets = 0 %}
-                                            {% set TotalHoursDifference = 0 %}
+                                            {% set TotalHoursNormalTickets = 0 %}
+                                            {% set TotalHoursUrgentTickets = 0 %}
                                             {% set AverageHoursDifference = 0 %}
                                             {% set count = 0 %}
 
                                             {% for result in agent %}
-                                            <tr>
-                                                <td>
-                                                    {% if date_range == 'semanal' %}
-                                                        <p class="m-0 p-0">{{ result.WeekISO }} ({{ result.StartOfWeek | date("d/m/Y") }} - {{ result.EndOfWeek | date("d/m/Y") }})</p>
-                                                    {% elseif date_range == 'mensual' %}
-                                                        <p class="m-0 p-0">{{ result.MonthName }}</p>
-                                                    {% else %}
-                                                    <p class="m-0 p-0">{{ result.Year }}</p>
-                                                    {% endif %}
-                                                </td>
-                                                <td>
-                                                    <p class="m-0 p-0">{{ result.TotalTickets }}</p>
-                                                </td>
-                                                <td>{{ result.ResolvedTickets }}</td>
-                                                <td>{{ result.PendingTickets }}</td>
-                                                <td>{{ result.UrgentTickets }}</td>
-                                                <td>{{ result.NormalTickets }}</td>
-                                                <td>{{ result.TotalHoursDifference | number_format(2, '.', ',') }}</td>
-                                                <td>{{ result.AverageHoursDifference | number_format(2, '.', ',') }}</td>
-                                            </tr>
-                                            {% set total = total + result.TotalTickets %}
-                                            {% set totalResolvedTickets = totalResolvedTickets + result.ResolvedTickets %}
-                                            {% set totalPendingTickets = totalPendingTickets + result.PendingTickets %}
-                                            {% set totalUrgentTickets = totalUrgentTickets + result.UrgentTickets %}
-                                            {% set totalNormalTickets = totalNormalTickets + result.NormalTickets %}
-                                            {% set TotalHoursDifference = TotalHoursDifference + result.TotalHoursDifference %}
-                                            {% set AverageHoursDifference = AverageHoursDifference + result.AverageHoursDifference %}
-                                            {% set count = count + 1 %}
+                                                <tr>
+                                                    <td>
+                                                        {% if date_range == 'semanal' %}
+                                                            <p class="m-0 p-0">{{ result.WeekISO }} ({{ result.StartOfWeek | date("d/m/Y") }} - {{ result.EndOfWeek | date("d/m/Y") }})</p>
+                                                        {% elseif date_range == 'mensual' %}
+                                                            <p class="m-0 p-0">{{ result.MonthName }}</p>
+                                                        {% else %}
+                                                        <p class="m-0 p-0">{{ result.Year }}</p>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        <p class="m-0 p-0">{{ result.TotalTickets }}</p>
+                                                    </td>
+                                                    <td>{{ result.ResolvedTickets }}</td>
+                                                    <td>{{ result.PendingTickets }}</td>
+                                                    <td>{{ result.UrgentTickets }}</td>
+                                                    <td>{{ result.NormalTickets }}</td>
+                                                    <td>{{ result.TotalHoursNormalTickets | number_format(3, '.', ',') }}</td>
+                                                    <td>{{ result.TotalHoursUrgentTickets | number_format(3, '.', ',') }}</td>
+                                                    <td>{{ result.AverageHoursDifference | number_format(3, '.', ',') }}</td>
+                                                </tr>
+                                                {% set total = total + result.TotalTickets %}
+                                                {% set totalResolvedTickets = totalResolvedTickets + result.ResolvedTickets %}
+                                                {% set totalPendingTickets = totalPendingTickets + result.PendingTickets %}
+                                                {% set totalUrgentTickets = totalUrgentTickets + result.UrgentTickets %}
+                                                {% set totalNormalTickets = totalNormalTickets + result.NormalTickets %}
+                                                {% set TotalHoursNormalTickets = TotalHoursNormalTickets + result.TotalHoursNormalTickets %}
+                                                {% set TotalHoursUrgentTickets = TotalHoursUrgentTickets + result.TotalHoursUrgentTickets %}
+                                                {% set AverageHoursDifference = AverageHoursDifference + result.AverageHoursDifference %}
+                                                {% set count = count + 1 %}
                                             {% endfor %}
                                             </tbody>
                                             <tfoot>
@@ -880,8 +882,20 @@
                                                 <th>{{ totalPendingTickets }}</th>
                                                 <th>{{ totalUrgentTickets }}</th>
                                                 <th>{{ totalNormalTickets }}</th>
-                                                <th>{{ (TotalHoursDifference / count) | number_format(2, '.', ',') }}</th>
-                                                <th>{{ (AverageHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                                                <th>{{ (TotalHoursNormalTickets) | number_format(3, '.', ',') }}</th>
+                                                <th>{{ (TotalHoursUrgentTickets) | number_format(3, '.', ',') }}</th>
+                                                <th>{{ (AverageHoursDifference) | number_format(3, '.', ',') }}</th>
+                                            </tr>
+                                            <tr>
+                                                <th>Promedio</th>
+                                                <th>{{ (total / count) | number_format(1,'.',',') }}</th>
+                                                <th>{{ (totalResolvedTickets / count) | number_format(1,'.',',') }}</th>
+                                                <th>{{ (totalPendingTickets / count) | number_format(1,'.',',') }}</th>
+                                                <th>{{ (totalUrgentTickets / count) | number_format(1,'.',',') }}</th>
+                                                <th>{{ (totalNormalTickets / count) | number_format(1,'.',',') }}</th>
+                                                <th>{{ (TotalHoursNormalTickets / count) | number_format(3, '.', ',') }}</th>
+                                                <th>{{ (TotalHoursUrgentTickets / count) | number_format(3, '.', ',') }}</th>
+                                                <th>{{ (AverageHoursDifference / count) | number_format(3, '.', ',') }}</th>
                                             </tr>
                                             </tfoot>
                                         </table>
