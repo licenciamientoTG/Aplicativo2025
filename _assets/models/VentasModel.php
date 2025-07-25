@@ -10,6 +10,7 @@ class VentasModel extends Model{
     public $canent;
     public $logexp;
     public $fchsyn;
+    private $conn;
 
     function get_sales($fch) : array|false {
         $query = "
@@ -630,6 +631,7 @@ class VentasModel extends Model{
                 ) ptv
                 ORDER BY Estacion, Descripcion;
             ";
+
 
         return $this->sql->select($query, []);
     }
@@ -1785,4 +1787,5 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
+    
 }

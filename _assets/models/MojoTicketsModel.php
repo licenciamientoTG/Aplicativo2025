@@ -68,41 +68,188 @@ class MojoTicketsModel extends Model{
 
     function get_tickets_report($from, $until, $ticket_form) : array|false {
 
-        $query = "SELECT
-                        t1.*,
-                        t2.name AS company,
-                        ISNULL(t3.first_name, '') + ' ' + ISNULL(t3.middle_name, '') + ' ' + ISNULL(t3.last_name, '') username,
-                        ISNULL(NULLIF(ISNULL(t4.first_name, '') + ' ' + ISNULL(t4.middle_name, '') + ' ' + ISNULL(t4.last_name, ''), '  '), 'Sin asignar') AS agent,
-                        t5.name AS status,
-                        t6.name AS priority,
-                        t7.name AS queue,
-                        ISNULL(CAST(t1.rating AS VARCHAR), 'N/A') AS rating,
-                        ISNULL(CAST(t8.name AS VARCHAR), 'N/A') AS ticket_type,
-                        t9.name AS ticket_form,
-                        LEFT(t1.description, 100) + '...' AS truncated_description,
-                        LEFT(t1.title, 50) + '...' AS truncated_title,
-                        DATEDIFF(MINUTE, t1.created_on, t1.solved_on) / 60.0 AS hours_to_resolve
-                    FROM
-                        [TG].[dbo].[mojo_tickets] t1
-                        LEFT JOIN [TG].[dbo].[mojo_companies] t2 ON t1.company_id = t2.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_users] t3 ON t1.user_id = t3.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_users] t4 ON t1.assigned_to_id = t4.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_ticket_status] t5 ON t1.status_id = t5.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_ticket_priority] t6 ON t1.priority_id = t6.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_ticket_queue] t7 ON t1.ticket_queue_id = t7.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_ticket_types] t8 ON t1.ticket_type_id = t8.id_mojo
-                        LEFT JOIN [TG].[dbo].[mojo_ticket_forms] t9 ON t1.ticket_form_id = t9.id_mojo
-                    WHERE
-                        t1.created_on BETWEEN CONVERT(datetime, '{$from}', 102) AND CONVERT(datetime, '{$until}', 102)
-                        AND t1.ticket_form_id = {$ticket_form}
-                    ORDER BY
-                        t1.created_on DESC
+        $from_sql = str_replace(' ', 'T', $from);
+        $until_sql = str_replace(' ', 'T', $until);
+        $query = "DECLARE @fechaInicio DATETIME = '{$from_sql}';
+                DECLARE @fechaFin DATETIME = '{$until_sql}';
+
+                -- Aseguramos que lunes sea 1 y domingo 7
+                SET DATEFIRST 1;
+
+                SELECT
+                    t1.*,
+                    t2.name AS company,
+                    ISNULL(t3.first_name, '') + ' ' + ISNULL(t3.middle_name, '') + ' ' + ISNULL(t3.last_name, '') AS username,
+                    ISNULL(NULLIF(ISNULL(t4.first_name, '') + ' ' + ISNULL(t4.middle_name, '') + ' ' + ISNULL(t4.last_name, ''), '  '), 'Sin asignar') AS agent,
+                    t5.name AS status,
+                    t6.name AS priority,
+                    t7.name AS queue,
+                    ISNULL(CAST(t1.rating AS VARCHAR), 'N/A') AS rating,
+                    ISNULL(CAST(t8.name AS VARCHAR), 'N/A') AS ticket_type,
+                    t9.name AS ticket_form,
+                    CASE
+                        WHEN LEN(t1.description) > 100 THEN LEFT(t1.description, 100) + '...'
+                        ELSE t1.description
+                    END AS truncated_description,
+                    CASE
+                        WHEN LEN(t1.title) > 50 THEN LEFT(t1.title, 50) + '...'
+                        ELSE t1.title
+                    END AS truncated_title,
+
+                    -- Cálculo de horas laborales
+                    (
+                        -- Horas del primer día
+                        ISNULL(
+                            CASE
+                            WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
+                                OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
+
+                            WHEN t1.solved_on IS NOT NULL
+                                AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                                AND CAST(t1.created_on AS TIME) < '08:00:00'
+                                AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
+
+                            WHEN t1.solved_on IS NOT NULL
+                                AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
+                                DATEDIFF(MINUTE,
+                                    CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                    CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                                ) / 60.0
+
+                            ELSE
+                                DATEDIFF(MINUTE,
+                                    CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                    CAST('18:00:00' AS TIME)
+                                ) / 60.0
+                        END
+                        , 0) +
+
+                        -- Horas de días intermedios completos
+                        ISNULL(
+                            CASE
+                                WHEN t1.solved_on IS NULL THEN 0
+                                ELSE (
+                                    SELECT COUNT(*) * 10.0
+                                    FROM (
+                                        SELECT DATEADD(DAY, number, CAST(t1.created_on AS DATE)) AS dia
+                                        FROM master.dbo.spt_values
+                                        WHERE type = 'P'
+                                            AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
+                                    ) AS dias
+                                    WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
+                                )
+                            END
+                        , 0) +
+
+                        -- Horas del último día
+                        ISNULL(
+                            CASE
+                                WHEN t1.solved_on IS NULL
+                                        OR DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5)
+                                        OR CAST(t1.solved_on AS TIME) <= '08:00:00'
+                                        OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                                THEN 0
+                                ELSE DATEDIFF(MINUTE,
+                                        CAST('08:00:00' AS TIME),
+                                        CASE
+                                            WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME)
+                                            ELSE CAST(t1.solved_on AS TIME)
+                                        END
+                                        ) / 60.0
+                            END,
+                        0)
+                        -----
+                    ) AS hours_to_resolve,
+                    -- Horas del primer día
+                    CASE
+                        WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
+                            OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
+
+                        WHEN t1.solved_on IS NOT NULL
+                            AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                            AND CAST(t1.created_on AS TIME) < '08:00:00'
+                            AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
+
+                        WHEN t1.solved_on IS NOT NULL
+                            AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
+                            DATEDIFF(MINUTE,
+                                CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                            ) / 60.0
+
+                        ELSE
+                            DATEDIFF(MINUTE,
+                                CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                CAST('18:00:00' AS TIME)
+                            ) / 60.0
+                    END AS first_day_hours,
+
+                    -- Horas de días intermedios completos
+                    CASE
+                        WHEN t1.solved_on IS NULL THEN 0
+                        ELSE (
+                            SELECT COUNT(*) * 10.0
+                            FROM (
+                                SELECT DATEADD(DAY, number, CAST(t1.created_on AS DATE)) AS dia
+                                FROM master.dbo.spt_values
+                                WHERE type = 'P'
+                                AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
+                            ) AS dias
+                            WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
+                        )
+                    END AS middle_full_days_hours,
+
+                    -- Horas del último día
+                    CASE
+                        WHEN DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5) OR CAST(t1.solved_on AS TIME) <= '08:00:00' OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN 0
+                        ELSE DATEDIFF(MINUTE,
+                                CAST('08:00:00' AS TIME),
+                                CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                            ) / 60.0
+                    END AS last_day_hours,
+                    -- Día de la semana de creación en español
+                CASE DATEPART(WEEKDAY, t1.created_on)
+                    WHEN 1 THEN 'Lunes'
+                    WHEN 2 THEN 'Martes'
+                    WHEN 3 THEN 'Miércoles'
+                    WHEN 4 THEN 'Jueves'
+                    WHEN 5 THEN 'Viernes'
+                    WHEN 6 THEN 'Sábado'
+                    WHEN 7 THEN 'Domingo'
+                END AS dia_semana_creacion,
+
+                -- Día de la semana de solución en español (si solved_on no es NULL)
+                CASE
+                    WHEN t1.solved_on IS NULL THEN NULL
+                    ELSE
+                        CASE DATEPART(WEEKDAY, t1.solved_on)
+                            WHEN 1 THEN 'Lunes'
+                            WHEN 2 THEN 'Martes'
+                            WHEN 3 THEN 'Miércoles'
+                            WHEN 4 THEN 'Jueves'
+                            WHEN 5 THEN 'Viernes'
+                            WHEN 6 THEN 'Sábado'
+                            WHEN 7 THEN 'Domingo'
+                        END
+                END AS dia_semana_solucion,
+                DATEPART(WEEKDAY, t1.created_on)
+
+                FROM
+                    [TG].[dbo].[mojo_tickets] t1
+                    LEFT JOIN [TG].[dbo].[mojo_companies] t2 ON t1.company_id = t2.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_users] t3 ON t1.user_id = t3.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_users] t4 ON t1.assigned_to_id = t4.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_ticket_status] t5 ON t1.status_id = t5.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_ticket_priority] t6 ON t1.priority_id = t6.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_ticket_queue] t7 ON t1.ticket_queue_id = t7.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_ticket_types] t8 ON t1.ticket_type_id = t8.id_mojo
+                    LEFT JOIN [TG].[dbo].[mojo_ticket_forms] t9 ON t1.ticket_form_id = t9.id_mojo
+                WHERE
+                    t1.created_on BETWEEN @fechaInicio AND @fechaFin
+                    AND t1.ticket_form_id = 51598
+                ORDER BY
+                    t1.created_on DESC;
                 ;";
-                if ($_SESSION['tg_user']['Id'] == 6177) {
-                echo '<pre>';
-                var_dump($query);
-                die();
-                }
         return $this->sql->select($query);
     }
 

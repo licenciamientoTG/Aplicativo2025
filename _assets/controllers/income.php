@@ -62,6 +62,11 @@ class Income{
             echo $this->twig->render($this->route . 'clients.html');
         }
     }
+    public function salesxcard(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'salesxcard.html');
+        }
+    }
     public function cash_sales_table() {
         $data = [];
         $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)

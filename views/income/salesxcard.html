@@ -1,0 +1,116 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reporte tipo de venta{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Reporte tipo de venta{% endblock %}
+{% block content %}
+
+<div class="chart-container">
+    <h2>Total por TipoVale</h2>
+    <canvas id="tipoValeChart"></canvas>
+</div>
+
+<hr>
+<br>
+<iframe src="https://view.monday.com/embed/9639786405-7fcb7f481431a1de4fb69d51be9bd45f?r=use1" width=100% height=700px style="border: 0; box-shadow: 5px 5px 56px 0px rgba(0,0,0,0.25);"></iframe>
+<hr>
+<br>
+<div class="container">
+  <h2 class="mb-4 text-center">Gestión de Tareas</h2>
+  <!-- Formulario para nueva tarea -->
+  <form id="taskForm" class="row g-2 mb-4">
+    <div class="col-md-5">
+      <input type="text" id="nombre" class="form-control" placeholder="Nombre de tarea" required>
+    </div>
+    <div class="col-md-4">
+      <input type="date" id="fecha" class="form-control" required>
+    </div>
+    <div class="col-md-3 d-grid">
+      <button type="submit" class="btn btn-primary">Agregar tarea</button>
+    </div>
+  </form>
+
+  <!-- Botones de orden -->
+  <div class="d-flex justify-content-between mb-3">
+    <div>
+      <button class="btn btn-outline-secondary btn-sm me-2" onclick="ordenarPorNombre()">Ordenar por nombre</button>
+      <button class="btn btn-outline-secondary btn-sm" onclick="ordenarPorFecha()">Ordenar por fecha</button>
+    </div>
+  </div>
+
+  <!-- Lista de tareas -->
+  <div id="listaTareas" class="row"></div>
+</div>
+{% endblock %}
+{% block myjs %}
+
+
+
+<script src="{{ JS }}income.js"></script>
+<script>
+    const ctx = document.getElementById('tipoValeChart').getContext('2d');
+
+    const tipoValeChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [
+          'SMARTBT - Bancarias',
+          'HTI - Tarjeta de Débito',
+          'Tarjetas Santander',
+          'HTI - Tarjeta de Crédito',
+          'Tarjeta TicketCar',
+          'Tarjetas Banorte',
+          'Tarjeta EfectiCard',
+          'SMARTBT - American Express',
+          'SMARTBT - EFECTIVALE',
+          'Ultra Gas'
+        ],
+        datasets: [{
+          label: 'Total',
+          data: [
+            3800000, // SMARTBT - Bancarias
+            600000,
+            500000,
+            400000,
+            300000,
+            200000,
+            150000,
+            50000,
+            25000,
+            10000
+          ],
+          backgroundColor: '#4B8EF1'
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          title: {
+            display: false
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return value >= 1000000 ? value / 1000000 + ' M' : value;
+              }
+            }
+          },
+          x: {
+            ticks: {
+              autoSkip: false,
+              maxRotation: 45,
+              minRotation: 45
+            }
+          }
+        }
+      }
+    });
+  </script>
+
+{% endblock %}

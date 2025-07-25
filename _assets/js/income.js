@@ -1927,3 +1927,57 @@ async function clients_debit_table(){
         }
     });
 }
+
+async function cargarGraficaDesdeController() {
+  const response = await fetch('chartcontroller.php');
+  const datos = await response.json();
+
+  const estaciones = [...new Set(datos.map(d => d.estacion))].sort();
+  const tipos = [...new Set(datos.map(d => d.tipo_combustible))];
+
+  const colores = {
+    Magna: 'rgba(75, 192, 192, 0.7)',
+    Premium: 'rgba(255, 99, 132, 0.7)',
+    Diesel: 'rgba(255, 206, 86, 0.7)'
+  };
+
+  const datasets = tipos.map(tipo => ({
+    label: tipo,
+    backgroundColor: colores[tipo] || 'rgba(150,150,150,0.7)',
+    data: estaciones.map(est => {
+      const entrada = datos.find(d => d.estacion === est && d.tipo_combustible === tipo);
+      return entrada ? parseFloat(entrada.total_venta) : 0;
+    })
+  }));
+
+  new Chart(document.getElementById('ventasChart'), {
+    type: 'bar',
+    data: {
+      labels: estaciones.map(e => 'Estación ' + e),
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: 'Ventas por tipo de combustible por estación'
+        },
+        legend: {
+          position: 'top'
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Monto en MXN' }
+        },
+        x: {
+          title: { display: true, text: 'Estación' }
+        }
+      }
+    }
+  });
+}
+
+cargarGraficaDesdeController();

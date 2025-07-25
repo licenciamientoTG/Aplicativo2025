@@ -33,15 +33,15 @@ class Accounting{
      * @param $twig
      */
     public function __construct($twig) {
-        $this->twig         = $twig;
-        $this->route        = 'views/accounting/';
-        $this->xmlCreModel  = new XmlCreModel();
-        $this->facturas     = new FacturasModel();
-        $this->Documentos     = new DocumentosModel();
-        $this->estacionesModel = new EstacionesModel();
-        $this->comprasPetrotalModel = new ComprasPetrotalModel();
+        $this->twig                   = $twig;
+        $this->route                  = 'views/accounting/';
+        $this->xmlCreModel            = new XmlCreModel();
+        $this->facturas               = new FacturasModel();
+        $this->Documentos             = new DocumentosModel();
+        $this->estacionesModel        = new EstacionesModel();
+        $this->comprasPetrotalModel   = new ComprasPetrotalModel();
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
-        $this->eraJustesModel = new ERAjustesModel();
+        $this->eraJustesModel         = new ERAjustesModel();
 
     }
 
