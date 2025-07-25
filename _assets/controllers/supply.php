@@ -1080,6 +1080,12 @@ class Supply{
         }
     }
 
+    function fuel_payments() {
+        $stations = $this->gasolinerasModel->get_active_stations();
+
+        echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
+    }
+
     function uploadPdf() {
         $uploadDir = __DIR__ . '/../../_assets/uploads/creAcuses/';
 

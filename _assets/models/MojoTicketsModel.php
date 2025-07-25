@@ -95,7 +95,6 @@ class MojoTicketsModel extends Model{
                         WHEN LEN(t1.title) > 50 THEN LEFT(t1.title, 50) + '...'
                         ELSE t1.title
                     END AS truncated_title,
-
                     -- Cálculo de horas laborales
                     (
                         -- Horas del primer día
@@ -103,19 +102,16 @@ class MojoTicketsModel extends Model{
                             CASE
                             WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
                                 OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
-
                             WHEN t1.solved_on IS NOT NULL
                                 AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
                                 AND CAST(t1.created_on AS TIME) < '08:00:00'
                                 AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
-
                             WHEN t1.solved_on IS NOT NULL
                                 AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
                                 DATEDIFF(MINUTE,
                                     CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
                                     CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
                                 ) / 60.0
-
                             ELSE
                                 DATEDIFF(MINUTE,
                                     CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
@@ -123,7 +119,6 @@ class MojoTicketsModel extends Model{
                                 ) / 60.0
                         END
                         , 0) +
-
                         -- Horas de días intermedios completos
                         ISNULL(
                             CASE
@@ -140,7 +135,6 @@ class MojoTicketsModel extends Model{
                                 )
                             END
                         , 0) +
-
                         -- Horas del último día
                         ISNULL(
                             CASE
@@ -164,26 +158,22 @@ class MojoTicketsModel extends Model{
                     CASE
                         WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
                             OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
-
                         WHEN t1.solved_on IS NOT NULL
                             AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
                             AND CAST(t1.created_on AS TIME) < '08:00:00'
                             AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
-
                         WHEN t1.solved_on IS NOT NULL
                             AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
                             DATEDIFF(MINUTE,
                                 CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
                                 CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
                             ) / 60.0
-
                         ELSE
                             DATEDIFF(MINUTE,
                                 CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
                                 CAST('18:00:00' AS TIME)
                             ) / 60.0
                     END AS first_day_hours,
-
                     -- Horas de días intermedios completos
                     CASE
                         WHEN t1.solved_on IS NULL THEN 0
@@ -198,7 +188,6 @@ class MojoTicketsModel extends Model{
                             WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
                         )
                     END AS middle_full_days_hours,
-
                     -- Horas del último día
                     CASE
                         WHEN DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5) OR CAST(t1.solved_on AS TIME) <= '08:00:00' OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN 0
@@ -217,7 +206,6 @@ class MojoTicketsModel extends Model{
                     WHEN 6 THEN 'Sábado'
                     WHEN 7 THEN 'Domingo'
                 END AS dia_semana_creacion,
-
                 -- Día de la semana de solución en español (si solved_on no es NULL)
                 CASE
                     WHEN t1.solved_on IS NULL THEN NULL
@@ -231,9 +219,7 @@ class MojoTicketsModel extends Model{
                             WHEN 6 THEN 'Sábado'
                             WHEN 7 THEN 'Domingo'
                         END
-                END AS dia_semana_solucion,
-                DATEPART(WEEKDAY, t1.created_on)
-
+                END AS dia_semana_solucion
                 FROM
                     [TG].[dbo].[mojo_tickets] t1
                     LEFT JOIN [TG].[dbo].[mojo_companies] t2 ON t1.company_id = t2.id_mojo
@@ -246,7 +232,7 @@ class MojoTicketsModel extends Model{
                     LEFT JOIN [TG].[dbo].[mojo_ticket_forms] t9 ON t1.ticket_form_id = t9.id_mojo
                 WHERE
                     t1.created_on BETWEEN @fechaInicio AND @fechaFin
-                    AND t1.ticket_form_id = 51598
+                    AND t1.ticket_form_id = {$ticket_form}
                 ORDER BY
                     t1.created_on DESC;
                 ;";
@@ -869,7 +855,7 @@ class MojoTicketsModel extends Model{
                 WHERE created_on >= @StartDate
                     AND created_on <= @EndDate
                     AND priority_id IN (10,20)
-                    AND ticket_form_id = 51598
+                    AND ticket_form_id = {$ticket_form}
             ),
             MonthData AS (
                 SELECT
@@ -891,7 +877,7 @@ class MojoTicketsModel extends Model{
                 WHERE created_on >= @StartDate
                     AND created_on <= @EndDate
                     AND priority_id IN (30,40,50,60)
-                    AND ticket_form_id = 51598
+                    AND ticket_form_id = {$ticket_form}
             )
             SELECT
                 m.year,
@@ -1298,7 +1284,7 @@ class MojoTicketsModel extends Model{
                     created_on >= @StartDate AND
                     created_on <= @EndDate AND
                     priority_id IN (30, 40) AND
-                    ticket_form_id = 51598
+                    ticket_form_id = {$ticket_form}
             ),
             BusinessHoursOnly AS (
                 SELECT
@@ -1374,7 +1360,7 @@ class MojoTicketsModel extends Model{
                     created_on >= @StartDate AND
                     created_on <= @EndDate AND
                     priority_id IN (30,40) AND
-                    ticket_form_id = 51598
+                    ticket_form_id = {$ticket_form}
             )
             SELECT
                 y.year,
@@ -1942,7 +1928,7 @@ class MojoTicketsModel extends Model{
             FROM [TG].[dbo].[mojo_tickets] t1
             LEFT JOIN [TG].[dbo].[mojo_users] t2 ON t1.assigned_to_id = t2.id_mojo
             WHERE t1.created_on >= @StartDate AND t1.created_on <= @EndDate
-            AND t1.ticket_form_id = 51598
+            AND t1.ticket_form_id = {$ticket_form}
         ),
         Tickets AS (
             SELECT
@@ -1973,7 +1959,6 @@ class MojoTicketsModel extends Model{
                 assigned_to_id,
                 Year
         )
-
         SELECT
             assigned_to_id,
             Year,
@@ -2000,7 +1985,6 @@ class MojoTicketsModel extends Model{
             assigned_to_id,
             Year;
         ";
-
         return $this->sql->select($query);
     }
 

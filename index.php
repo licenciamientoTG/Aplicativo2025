@@ -4,7 +4,8 @@ session_start();
 // Lista de rutas “públicas” que no requieren login
 $publicRoutes = [
     '/administration/doc_agujita',
-    '/administration/video/AGUJITA REVEAL_1.mp4'
+    '/administration/close_ticket',
+    '/administration/video/AGUJITA REVEAL_1.mp4',
 ];
 
 // Extraemos la ruta actual (sin query string ni trailing slash)

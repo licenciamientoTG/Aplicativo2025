@@ -417,7 +417,7 @@ class Administration{
         $tickets = $this->mojoTicketsModel->get_tickets_report($from . ' 00:00:00', $until  . ' 23:59:59', $ticket_form);
         $data = array_map(function ($ticket) {
             $actions = '<a href="javascript:void(0);" onclick="delete_ticket('. $ticket['id_mojo'] .');" class="btn btn-sm btn-danger"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-center feather feather-trash-2 align-middle"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></a>';
-
+            // $ticket['first_day_hours'], $ticket['middle_full_days_hours'], $ticket['last_day_hours'], $ticket['dia_semana_creacion'], $ticket['dia_semana_solucion']
             return [
                 'ID'               => "<a href='https://totalgas.mojohelpdesk.com/ma/#/tickets/search?query_string={$ticket['id_mojo']}&page=1' target='_blank'>{$ticket['id_mojo']}</a>",
                 'TIPO'             => $ticket['ticket_type'],
@@ -427,7 +427,13 @@ class Administration{
                 'DESCRIPCIÓN'      => $ticket['truncated_description'],
                 'CREADO'           => $ticket['created_on'],
                 'RESUELTO'         => $ticket['solved_on'],
-                'TIEMPO_RESPUESTA' => $ticket['hours_to_resolve'],
+                'TIEMPO_RESPUESTA' => '<a href="javascript:void(0);" onclick="mostrarDetalleHoras('. htmlspecialchars(json_encode([
+                        'first'      => number_format(((is_null($ticket['first_day_hours'])) ? 0 : $ticket['first_day_hours']), 2, '.', ',') . ' horas',
+                        'middle'     => number_format(((is_null($ticket['middle_full_days_hours'])) ? 0 : $ticket['middle_full_days_hours']), 2, '.', ',') . ' horas',
+                        'last'       => number_format(((is_null($ticket['last_day_hours'])) ? 0 : $ticket['last_day_hours']), 2, '.', ',') . ' horas',
+                        'dia_crea'   => $ticket['dia_semana_creacion'],
+                        'dia_res'    => $ticket['dia_semana_solucion']
+                    ]), ENT_QUOTES, 'UTF-8') . ')">' . $ticket['hours_to_resolve'] . '</a>',
                 'USUARIO'          => $ticket['username'],
                 'AGENTE'           => $ticket['agent'],
                 'STATUS'           => $ticket['status'],
@@ -1706,5 +1712,49 @@ class Administration{
             return $a['Estacion'] <=> $b['Estacion'];
         });
         echo json_encode($apiData);
+    }
+
+    function close_ticket($ticket_id) {
+        $access_key = 'f68cddda794b0bf9582c23b7b3099011d95c60ce'; // Reemplaza con tu clave real
+        $api_url = "https://app.mojohelpdesk.com/api/v2/tickets/{$ticket_id}?access_key={$access_key}";
+
+        // Datos a enviar (cerrar el ticket)
+        $data = json_encode([
+            "status_id" => 60
+        ]);
+
+        // Inicializar cURL
+        $ch = curl_init($api_url);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // Esta opción desactiva la verificación del certificado SSL del servidor.
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // Esta opción desactiva la verificación del nombre del host en el certificado SSL del servidor.
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Content-Length: ' . strlen($data)
+        ]);
+
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        // Si la actualización fue exitosa (HTTP 200)
+        if ($http_code == 200) {
+            // Redirigir al panel
+            $panel_url = "https://totalgas.mojohelpdesk.com/ma/#/tickets/search?query_string={$ticket_id}&page=1";
+            header("Location: {$panel_url}");
+            exit;
+        } else {
+            // Mostrar error
+            http_response_code(500);
+            echo "<h2>Error al cerrar el ticket</h2>";
+            echo "<p>Código HTTP: {$http_code}</p>";
+            echo "<p>Mensaje: " . htmlspecialchars($response ?: $error) . "</p>";
+            exit;
+        }
     }
 }

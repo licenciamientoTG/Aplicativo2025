@@ -1086,6 +1086,22 @@
     </div>
 </div>
 
+<div class="modal" tabindex="-1" id="modalHoras">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del Tiempo de Respuesta</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="modal_horas_body">
+        <p>Modal body text goes here.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
@@ -1487,6 +1503,35 @@
             }
         });
     });
+</script>
+
+<script>
+function mostrarDetalleHoras(dataJSON) {
+    const data = typeof dataJSON === 'string' ? JSON.parse(dataJSON) : dataJSON;
+
+    // Aquí llenas tu modal
+    document.getElementById('modal_horas_body').innerHTML = `
+        <ul class="list-group list-group-numbered">
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto"><div class="fw-bold">Horas primer día:</div> ${data.first}</div>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto"><div class="fw-bold">Horas intermedias:</div> ${data.middle}</div>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto"><div class="fw-bold">Horas último día:</div> ${data.last}</div>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto"><div class="fw-bold">Día de creación:</div> ${data.dia_crea}</div>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto"><div class="fw-bold">Día de resolución:</div> ${data.dia_res}</div>
+            </li>
+        </ul>
+    `;
+    // Abres el modal (usa el método correspondiente a tu framework)
+    $('#modalHoras').modal('show'); // Bootstrap 4+
+}
 </script>
 
 {% endblock %}
