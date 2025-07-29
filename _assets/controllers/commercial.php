@@ -299,6 +299,7 @@ class Commercial{
         echo json_encode(array("data" => $data));
     }
     function mistery_shopper_table(){
+
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->auditoriaMysteryModel->getMysteryShopper($_POST['fromDate'], $_POST['untilDate']);
         $data=[];
@@ -347,6 +348,7 @@ class Commercial{
             echo json_encode($data); // Devuelve el error directamente
             return;
         }
+        // Verificar si hay datos para insertar
         $insert = $this->auditoriaMysteryModel->insertMysteryShopper($data['data'],$date_report);
         if($insert){
             echo json_encode([
@@ -363,8 +365,49 @@ class Commercial{
     
     public function import_data(){
         try {
+            $estaciones = [
+                "Gem Grande" => 2,
+                "Lerdo" => 5,
+                "Lopez" => 6,
+                "Gem Chica" => 7,
+                "Municipio" => 8,
+                "Aztecas" => 9,
+                "Misiones" => 10,
+                "Pto Palos" => 11,
+                "Miguel M" => 12,
+                "Permuta" => 13,
+                "Electrolux" => 14,
+                "Aeronautica" => 15,
+                "Custodia" => 16,
+                "Anapra" => 17,
+                "Parral" => 18,
+                "Delicias" => 19,
+                "Plutarco" => 21,
+                "Tecnologico" => 22,
+                "Ejercito" => 23,
+                "Satelite" => 24,
+                "Fuentes" => 25,
+                "Clara" => 26,
+                "Colosio" => 27,
+                "Solis" => 27,
+                "Santiago" => 28,
+                "Jarudo" => 29,
+                "Hnos Escobar" => 30,
+                "V. Ahumada" => 31,
+                "Castaño" => 32,
+                "Travel Center" => 33,
+                "Picachos" => 34,
+                "Ventanas" => 35,
+                "San Rafael" => 36,
+                "Puertecito" => 37,
+                "Jesus Maria" => 38,
+                "Independencia" => 3,
+                "Colosio" => 333
+            ];
             ini_set('memory_limit', '256M');
             ini_set('max_execution_time', 300);
+            ini_set('upload_max_filesize', '10M');
+            ini_set('post_max_size', '12M');
             if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_FILES['file_to_upload'])) {
                 throw new Exception('No se ha subido ningún archivo.');
             }
@@ -375,9 +418,10 @@ class Commercial{
             }
             $inputFileType = 'Xlsx';
             $sheetname = 'PROMEDIOS';
-            $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            // $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file['tmp_name']);
 
-            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader($inputFileType);
+            // $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader($inputFileType);
             $reader->setReadDataOnly(true);
             $reader->setReadEmptyCells(false);
 
@@ -389,9 +433,20 @@ class Commercial{
             $datos = [];
             foreach ($worksheet->getRowIterator() as $row) {
                 $fila = $row->getRowIndex(); // Número de fila actual
-                $codigo = $worksheet->getCell("a{$fila}")->getValue(); // Estación
+                // $codigo = $worksheet->getCell("a{$fila}")->getValue(); // Estación
                 $estacion = $worksheet->getCell("B{$fila}")->getValue(); // Estación
                 $calificacion = $worksheet->getCell("C{$fila}")->getCalculatedValue(); // Calificación calculada
+
+                $codigo = null;
+                foreach ($estaciones as $nombre => $valor) {
+                    $nombre_normalizado = $this->normalize($nombre);
+                    $estacion_normalizada = $this->normalize($estacion);
+                    if (strpos($estacion_normalizada, $nombre_normalizado) !== false ||
+                        strpos($nombre_normalizado, $estacion_normalizada) !== false) {
+                        $codigo = $valor;
+                        break;
+                    }
+                }
                 // Solo guardar si ambas columnas tienen valores
                 if (!empty($estacion) && !empty($calificacion) && !empty($codigo)) {
                     $datos[] = [
@@ -417,6 +472,11 @@ class Commercial{
                 'message' => $e->getMessage()
             ];
         }
+    }
+    private function normalize($text) {
+        $text = strtolower(trim($text));
+        $text = iconv('UTF-8', 'ASCII//TRANSLIT', $text); // quita acentos
+        return preg_replace('/[^a-z0-9 ]/', '', $text);   // elimina caracteres especiales
     }
     public function getFileErrorMessage($errorCode)
     {

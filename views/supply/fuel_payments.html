@@ -57,15 +57,77 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 }
 </style>
 <ul class="nav nav-tabs" id="myTab" role="tablist">
-
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="invoice_purchase-tab" data-bs-toggle="tab" data-bs-target="#invoice_purchase" type="button" role="tab" aria-controls="invoice_purchase" aria-selected="true">Compras</button>
+        <button class="nav-link  active " id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
     </li>
 </ul>
 
-
-<div class="tab-content">
-    <div class="tab-pane active" id="invoice_purchase" role="tabpanel" aria-labelledby="invoice_purchase-tab">
+<div class="tab-content" id="content_edo_result">
+    <div class="tab-pane active " id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row" style="align-items: flex-end;">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="from1">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until1">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                     <div class="col-2 ">
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
+                            {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button onclick="payment_control_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Compras </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="payment_control_table" class="table table-hover table-sm w-100">
+                   <thead>
+                         <tr>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Remisión</th>
+                            <th>Fecha</th>
+                            <th>Fecha Vto</th>
+                            <th>Producto</th>
+                            <th>Proveedor</th>
+                            <th>Volumen Recibido</th>
+                            <th>Cantidad</th>
+                            <th>Precio</th>
+                            <th>Monto</th>
+                            <th>Monto IIE</th>
+                            <th>IVA 8%</th>
+                            <th>IVA Extra</th>
+                            <th>IVA Total</th>
+                            <th>Servicio</th>
+                            <th>IVA Servicio</th>
+                            <th>Total Factura</th>
+                            <th>UID SAT</th>
+                        </tr>
+                        </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane  " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row">
@@ -77,21 +139,13 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <label class="col-form-label-sm" for="">Hasta: </label>
                         <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                     <div class="col-2 ">
+                    <div class="col-2 ">
                         <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" placeholder="Seleccione una estación">
-                    {% for station in stations %}
-                        <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
-                    {% endfor %}
-                    </select>
-                    <!-- <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Producto </label>
-                        <select class="form-control form-control-sm" name="product" id="product" required>
-                            <option value="0">Todas</option>
-                            <option value="1">Maxima</option>
-                            <option value="2">Super</option>
-                            <option value="3">Disel</option>
+                        {% for station in stations %}
+                            <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                        {% endfor %}
                         </select>
-                    </div> -->
+                    </div>
                     <div class="col-2 " >
                         <button id="seach_payments_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
                     </div>
@@ -100,7 +154,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title">Compras </h5>
+                <h5 class="card-title">Resumen </h5>
             </div>
             <div class="card-body table-responsive" >
                 <table id="payments_table" class="table table-hover table-sm w-100">
@@ -193,7 +247,6 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 </table>
             </div>
         </div>
-
     </div>
 </div>
 
@@ -202,11 +255,8 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}accounting.js"></script>
+<script src="{{ JS }}supply.js"></script>
 <script>
-$('#seach_payments_table').on('click', function() {
-    payments_table();
-});
 
 
 

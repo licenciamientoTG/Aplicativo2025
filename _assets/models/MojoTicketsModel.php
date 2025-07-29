@@ -802,6 +802,11 @@ class MojoTicketsModel extends Model{
         JOIN WeekDates d ON w.week_number = d.week_number
         ORDER BY w.week_number;";
 
+        if ($_SESSION['tg_user']['Id'] == 6177) {
+            echo '<pre>';
+            var_dump($query);
+            die();
+        }
         return $this->sql->select($query);
     }
 

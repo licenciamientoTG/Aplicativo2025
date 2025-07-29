@@ -8,6 +8,7 @@ class Supply{
     public TVariasModel $tvariasModel;
     public PreciosModel $preciosModel;
     public EstacionesModel $estacionesModel;
+    public DocumentosModel $documentosModel;
 
     public BinnaclePricesModel $binnaclePricesModel;
     public CreProductsByStationsModel $creProductsByStationsModel;
@@ -34,6 +35,7 @@ class Supply{
         $this->tvariasModel                 = new TVariasModel();
         $this->preciosModel                 = new PreciosModel();
         $this->estacionesModel              = new EstacionesModel();
+        $this->documentosModel              = new DocumentosModel();
         $this->binnaclePricesModel          = new BinnaclePricesModel();
         $this->creProductsByStationsModel   = new CreProductsByStationsModel();
         $this->creProductsModel             = new CreProductsModel();
@@ -1084,6 +1086,40 @@ class Supply{
         $stations = $this->gasolinerasModel->get_active_stations();
 
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
+    }
+    public function payment_control_table(){
+
+        $from  = dateToInt($_POST['fromDate']);
+        $until = dateToInt($_POST['untilDate']);
+        $codgas = $_POST['codgas'];
+        $data = [];
+        if ($purchases =  $this->documentosModel->get_purchase_from_station($codgas, $from, $until)) {
+            foreach ($purchases as $row) {
+                $data[] = array(
+                    'nro'      => $row['nro'],
+                    'Factura'  => $row['Factura'],
+                    'Remision' => $row['Remision'],
+                    'fecha'    => $row['fecha'],
+                    'fechaVto' => $row['fechaVto'],
+                    'producto'    => $row['producto'],
+                    'proveedor'    => $row['proveedor'],
+                    'volrec'    => $row['volrec'],
+                    'can'    => $row['can'],
+                    'pre'    => $row['pre'],
+                    'mto'    => $row['mto'],
+                    'mtoiie'    => $row['mtoiie'],
+                    'iva8'    => $row['iva8'],
+                    'iva'    => $row['iva'],
+                    'iva_total'    => $row['iva_total'],
+                    'servicio'    => $row['servicio'],
+                    'iva_servicio'    => $row['iva_servicio'],
+                    'total_fac'    => $row['total_fac'],
+                    'satuid'    => $row['satuid'],
+                );
+            }
+        }
+        json_output(array("data" => $data));
+
     }
 
     function uploadPdf() {

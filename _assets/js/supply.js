@@ -322,3 +322,124 @@ $('.refresh_datatable_creProducts').on('click', function () {
     datatable_creProducts.ajax.reload();
     $('#datatable_creProducts').waitMe('hide');
 });
+
+
+async function payment_control_table(){
+    if ($.fn.DataTable.isDataTable('#payment_control_table')) {
+        $('#payment_control_table').DataTable().destroy();
+        $('#payment_control_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from1').value;
+    var untilDate = document.getElementById('until1').value;
+    var codgas = document.getElementById('station_id1').value;
+    if(!codgas){
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar una estación para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('#payment_control_table thead').prepend($('#payment_control_table thead tr').clone().addClass('filter'));
+    $('#payment_control_table thead tr.filter th').each(function (index) {
+        col = $('#payment_control_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#payment_control_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#payment_control_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let payment_control_table =$('#payment_control_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        // scrollY: '700px',
+        // scrollX: true,
+        // scrollCollapse: true,
+        paging: true,
+        pageLength: 100,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas
+            },
+            url: '/supply/payment_control_table',
+            timeout: 600000, 
+            error: function() {
+                $('#payment_control_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'nro' },                                // Folio del documento
+            { data: 'Factura' },                            // Texto extraído de @F:
+            { data: 'Remision' },                           // Texto extraído de @R:
+            { data: 'fecha' },                              // Fecha (fch - 1)
+            { data: 'fechaVto' },                           // Vencimiento (vto - 1)
+            { data: 'producto' },                           // Producto (t3.den)
+            { data: 'proveedor' },                          // Proveedor (t4.den)
+            { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
+            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
+            { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 4) },    // Precio unitario
+            { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },    // Monto
+            { data: 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto IIE
+            { data: 'iva8', render: $.fn.dataTable.render.number(',', '.', 2) },   // IVA 8%
+            { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },    // IVA Extra
+            { data: 'iva_total', render: $.fn.dataTable.render.number(',', '.', 2) }, // Total IVA
+            { data: 'servicio', render: $.fn.dataTable.render.number(',', '.', 2) },  // Servicio
+            { data: 'iva_servicio', render: $.fn.dataTable.render.number(',', '.', 2) }, // IVA Servicio
+            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
+            { data: 'satuid', className: 'text-nowrap' }   // UID SAT
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+            $('td:eq(19)', row)
+              .addClass(cls)
+              .text(data.control); // muestra “12345 SI” o “12345 NO”
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+}
