@@ -93,7 +93,7 @@ class Administration{
                 case 'semanal':
                     $from = $this->getMondayFromWeek($_GET['from']);
                     $until = $this->getSundayFromWeek($_GET['until']);
-                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_week($from . ' 00:00:00',$until . ' 23:59:59',$ticket_form);
+                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_week($from . 'T00:00:00',$until . 'T23:59:59',$ticket_form);
                     $groupedResults = [];
                     foreach ($results as $result) {
                         $year = $result['year'];
@@ -108,12 +108,12 @@ class Administration{
                     array_pop($groupedResults[$year]);
 
                     // Aqui vamos a trabajar sobre la pestaña de Atencion Urgente
-                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
                     // Preparar etiquetas y valores
                     $urgent_tickets_labels = json_encode(array_column($urgent_tickets, 'week_number'));
                     $urgent_tickets_values = json_encode(array_column($urgent_tickets, 'avg_hours_elapsed'));
 
-                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Preparar etiquetas y valores
                     $normal_tickets_labels = json_encode(array_column($normal_tickets, 'week_number'));
@@ -131,7 +131,7 @@ class Administration{
                     $from = $this->getFirstDayOfMonth($_GET['from']);
                     $until = $this->getLastDayOfMonth($_GET['until']);
 
-                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_month($from . ' 00:00:00',$until . ' 23:59:59',$ticket_form);
+                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_month($from . 'T00:00:00',$until . 'T23:59:59',$ticket_form);
                     $groupedResults = [];
                     foreach ($results as $result) {
                         $year = $result['year'];
@@ -144,13 +144,13 @@ class Administration{
                     }
 
                     // Aqui vamos a trabajar sobre la pestaña de Atencion Urgente
-                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets_months($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets_months($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Preparar etiquetas y valores
                     $urgent_tickets_labels = json_encode(array_column($urgent_tickets, 'month_name'));
                     $urgent_tickets_values = json_encode(array_column($urgent_tickets, 'avg_hours_elapsed'));
 
-                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets_month($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets_month($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Preparar etiquetas y valores
                     $normal_tickets_labels = json_encode(array_column($normal_tickets, 'month_name'));
@@ -171,7 +171,7 @@ class Administration{
                     $from = $this->getFirstDayOfYear($_GET['from']);
                     $until = $this->getLastDayOfYear($_GET['until']);
 
-                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_year($from . ' 00:00:00',$until . ' 23:59:59',$ticket_form);
+                    $results = $this->mojoTicketsModel->get_tickets_by_form_and_year($from . 'T00:00:00',$until . 'T23:59:59',$ticket_form);
                     $groupedResults = [];
                     foreach ($results as $result) {
                         $year = $result['year'];
@@ -182,14 +182,14 @@ class Administration{
                     }
 
                     // Aqui vamos a trabajar sobre la pestaña de Atencion Urgente
-                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets_years($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $urgent_tickets = $this->mojoTicketsModel->get_urgent_tickets_years($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Preparar etiquetas y valores
                     $urgent_tickets_labels = json_encode(array_column($urgent_tickets, 'year'));
                     $urgent_tickets_values = json_encode(array_column($urgent_tickets, 'avg_hours_elapsed'));
 
 
-                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets_years($from . ' 00:00:00',$until . ' 23:59:59', $ticket_form);
+                    $normal_tickets = $this->mojoTicketsModel->get_normal_tickets_years($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Preparar etiquetas y valores
                     $normal_tickets_labels = json_encode(array_column($normal_tickets, 'year'));

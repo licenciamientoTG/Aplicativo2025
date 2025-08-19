@@ -653,8 +653,8 @@ class MojoTicketsModel extends Model{
     function get_tickets_by_form_and_week($from, $until, $form_id) : array | false {
 
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial Nuevo
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial Nuevo
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         -- Crear una tabla temporal para las semanas entre la fecha inicial y la fecha final
         WITH WeeksInRange AS (
@@ -717,8 +717,8 @@ class MojoTicketsModel extends Model{
 
     function get_tickets_by_form_and_year($from, $until, $form_id) : array | false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             -- Crear una tabla temporal para los años entre la fecha inicial y la fecha final
             WITH YearsInRange AS (
@@ -771,8 +771,8 @@ class MojoTicketsModel extends Model{
 
     function get_urgent_tickets($from, $until, $ticket_form) : array|false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         ;WITH WeekData AS (
             SELECT
@@ -824,8 +824,8 @@ class MojoTicketsModel extends Model{
 
     function get_urgent_tickets_months($from, $until, $ticket_form) : array|false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             ;WITH MonthData AS (
                 SELECT
@@ -880,8 +880,8 @@ class MojoTicketsModel extends Model{
 
     function get_urgent_tickets_years($from, $until, $ticket_form) : array|false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             ;WITH YearData AS (
                 SELECT
@@ -932,8 +932,8 @@ class MojoTicketsModel extends Model{
 
     function get_normal_tickets($from, $until, $ticket_form) : array|false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         ;WITH BusinessHoursCalculation AS (
             SELECT
@@ -1057,8 +1057,8 @@ class MojoTicketsModel extends Model{
 
     function get_normal_tickets_month($from, $until, $ticket_form) : array|false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             ;WITH BusinessHoursCalculation AS (
                 SELECT
@@ -1186,8 +1186,8 @@ class MojoTicketsModel extends Model{
 
     function get_normal_tickets_years($from, $until, $ticket_form) : array|false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             ;WITH BusinessHoursCalculation AS (
                 SELECT
@@ -1311,8 +1311,8 @@ class MojoTicketsModel extends Model{
 
     function get_status_open_tickets($from, $until, $ticket_form) : array|false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
        ;WITH WeekData AS (
             SELECT
@@ -1362,8 +1362,8 @@ class MojoTicketsModel extends Model{
     }
     function get_status_open_months($from, $until, $ticket_form) : array|false {
         $query = "
-            DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-            DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+            DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+            DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
             ;WITH MonthData AS (
                 SELECT 
@@ -1804,8 +1804,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_total_year($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         ;WITH BusinessHoursCalc AS (
             SELECT
@@ -1948,8 +1948,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_solved($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         WITH Tickets AS (
             SELECT
@@ -1987,8 +1987,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_solved_month($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         ;WITH Tickets AS (
             SELECT
@@ -2027,8 +2027,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_pending($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         WITH Tickets AS (
           SELECT
@@ -2066,8 +2066,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_pending_month($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         ;WITH Tickets AS (
             SELECT
@@ -2106,8 +2106,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_urgent($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         WITH Tickets AS (
           SELECT
@@ -2147,8 +2147,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_urgent_month($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         WITH Tickets AS (
             SELECT
@@ -2189,8 +2189,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_normal($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         WITH Tickets AS (
           SELECT
@@ -2230,8 +2230,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_normal_month($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
         ;WITH Tickets AS (
             SELECT

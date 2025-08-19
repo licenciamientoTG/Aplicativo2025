@@ -64,5 +64,39 @@ class IngresosModel extends Model{
         $params = [$from, $until];
         return $this->sql->select($query,$params) ?: false;
     }
+
+    function get_dolar_sales_table($from, $until) : array|false {
+        $query = "
+        SELECT
+            t3.abr,
+            Ingresos.codgas,
+            Valores.tip,
+            Valores.codbco,
+            Valores.den,
+            Ingresos.codval,
+            Valores.prp,
+            SUM(Ingresos.can) AS SumOfcan,
+            SUM(Ingresos.mto) AS SumOfmto,
+            ROUND(
+                CASE
+                    WHEN SUM(Ingresos.can) <> 0 THEN SUM(Ingresos.mto) / SUM(Ingresos.can)
+                    ELSE 0
+                END, 2
+            ) AS TipoCambio
+        FROM Valores
+        INNER JOIN Ingresos ON Valores.cod = Ingresos.codval
+        LEFT JOIN Gasolineras t3 ON Ingresos.codgas = t3.cod
+        WHERE Ingresos.fch BETWEEN ? AND ?
+        AND Valores.cod = -1128
+        GROUP BY
+            Ingresos.codgas, Valores.tip, Valores.codbco,
+            Valores.den, Ingresos.codval, Valores.prp, t3.abr
+        ORDER BY
+            Valores.tip, Valores.prp, Valores.codbco,
+            Valores.den, Ingresos.codval, Ingresos.codgas, t3.abr
+        ";
+        $params = [$from, $until];
+        return $this->sql->select($query, $params) ?: false;
+    }
 }
 

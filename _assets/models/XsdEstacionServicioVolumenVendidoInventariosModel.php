@@ -109,8 +109,6 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
                 $query = "UPDATE {$this->databases[$codgas]}.[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
                 $this->sql->update($query, [$inventarioInicial, $codgas, $codprd, ($fchInt - 1)]);
             }
-            
-            
             // Aqui vamos a modificar el inventario final de la base de datos de corporativo
             $query = "UPDATE [SG12].[dbo].[StockReal] SET can = ? WHERE codgas = ? AND codprd = ? AND fch = ? AND nrotur = 40;";
             if ($this->sql->update($query, [$inventarioFinal, $codgas, $codprd, $fchInt])) {
