@@ -24,30 +24,34 @@ class Supply{
     public CreCarriersModel $creCarriersModel;
     public XsdEstacionServicioVolumenCompradoModel $xsdEstacionServicioVolumenCompradoModel;
     public MovimientosTanModel $movimientosTanModel;
+    public PaymentRequestsModel $paymentRequestsModel;
+    public PaymentRequestInvoicesModel $paymentRequestInvoicesModel;
     /**
      * @param $twig
      */
     public function __construct($twig) {
-        $this->twig                         = $twig;
-        $this->route                        = 'views/supply/';
-        $this->gasolinerasModel             = new GasolinerasModel;
-        $this->tanquesModel                 = new TanquesModel();
-        $this->tvariasModel                 = new TVariasModel();
-        $this->preciosModel                 = new PreciosModel();
-        $this->estacionesModel              = new EstacionesModel();
-        $this->documentosModel              = new DocumentosModel();
-        $this->binnaclePricesModel          = new BinnaclePricesModel();
-        $this->creProductsByStationsModel   = new CreProductsByStationsModel();
-        $this->creProductsModel             = new CreProductsModel();
-        $this->creSubProductosModel         = new CreSubProductosModel();
-        $this->creSubProductosMarcaModel    = new CreSubProductosMarcaModel();
-        $this->xsdReportesVolumenesModel    = new XsdReportesVolumenesModel();
-        $this->xsdEstacionServicioVolumenModel = new XsdEstacionServicioVolumenModel();
+        $this->twig                                              = $twig;
+        $this->route                                             = 'views/supply/';
+        $this->gasolinerasModel                                  = new GasolinerasModel;
+        $this->tanquesModel                                      = new TanquesModel();
+        $this->tvariasModel                                      = new TVariasModel();
+        $this->preciosModel                                      = new PreciosModel();
+        $this->estacionesModel                                   = new EstacionesModel();
+        $this->documentosModel                                   = new DocumentosModel();
+        $this->binnaclePricesModel                               = new BinnaclePricesModel();
+        $this->creProductsByStationsModel                        = new CreProductsByStationsModel();
+        $this->creProductsModel                                  = new CreProductsModel();
+        $this->creSubProductosModel                              = new CreSubProductosModel();
+        $this->creSubProductosMarcaModel                         = new CreSubProductosMarcaModel();
+        $this->xsdReportesVolumenesModel                         = new XsdReportesVolumenesModel();
+        $this->xsdEstacionServicioVolumenModel                   = new XsdEstacionServicioVolumenModel();
         $this->xsdEstacionServicioVolumenVendidoInventariosModel = new XsdEstacionServicioVolumenVendidoInventariosModel();
-        $this->creSuppliersModel            = new CreSuppliersModel();
-        $this->creCarriersModel             = new CreCarriersModel();
-        $this->xsdEstacionServicioVolumenCompradoModel = new XsdEstacionServicioVolumenCompradoModel();
-        $this->movimientosTanModel            = new MovimientosTanModel();
+        $this->creSuppliersModel                                 = new CreSuppliersModel();
+        $this->creCarriersModel                                  = new CreCarriersModel();
+        $this->xsdEstacionServicioVolumenCompradoModel           = new XsdEstacionServicioVolumenCompradoModel();
+        $this->movimientosTanModel                               = new MovimientosTanModel();
+        $this->paymentRequestsModel                               = new PaymentRequestsModel();
+        $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
     }
 
     /**
@@ -1087,39 +1091,104 @@ class Supply{
 
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
     }
-    public function payment_control_table(){
+    function providers() {
 
-        $from  = dateToInt($_POST['fromDate']);
-        $until = dateToInt($_POST['untilDate']);
-        $codgas = $_POST['codgas'];
+        echo $this->twig->render($this->route . 'providers.html');
+    }
+
+    function add_payment(){
+        $stations = $this->gasolinerasModel->get_active_stations();
+
+        echo $this->twig->render($this->route . 'add_payment.html', compact('stations'));
+
+    }
+    public function payment_control_table(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'from' => dateToInt($_POST['fromDate']),
+            'until' => dateToInt($_POST['untilDate']),
+            'codgas' => $_POST['codgas'] ? $_POST['codgas'] : '0',
+        ];
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
         $data = [];
-        if ($purchases =  $this->documentosModel->get_purchase_from_station($codgas, $from, $until)) {
-            foreach ($purchases as $row) {
+
+        if (isset($apiData) && is_array($apiData)) {
+            foreach ($apiData as $row) {
+                if (empty($row['satuid'])) {
+                    continue; // Skip rows with empty 'nro'
+                }
                 $data[] = array(
-                    'nro'      => $row['nro'],
-                    'Factura'  => $row['Factura'],
-                    'Remision' => $row['Remision'],
-                    'fecha'    => $row['fecha'],
-                    'fechaVto' => $row['fechaVto'],
-                    'producto'    => $row['producto'],
+                    'nro'          => $row['nro'],
+                    'Factura'      => $row['Factura'],
+                    'Remision'     => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
+                    'fecha'        => $row['fecha'],
+                    'fechaVto'     => $row['fechaVto'],
+                    'producto'     => $row['producto'],
                     'proveedor'    => $row['proveedor'],
-                    'volrec'    => $row['volrec'],
-                    'can'    => $row['can'],
-                    'pre'    => $row['pre'],
-                    'mto'    => $row['mto'],
-                    'mtoiie'    => $row['mtoiie'],
-                    'iva8'    => $row['iva8'],
-                    'iva'    => $row['iva'],
+                    'volrec'       => $row['volrec'],
+                    'can'          => $row['can'],
+                    'pre'          => $row['pre'],
+                    'mto'          => $row['mto'],
+                    'mtoiie'       => $row['mtoiie'],
+                    'iva8'         => $row['iva8'],
+                    'iva'          => $row['iva'],
                     'iva_total'    => $row['iva_total'],
-                    'servicio'    => $row['servicio'],
-                    'iva_servicio'    => $row['iva_servicio'],
+                    'servicio'     => $row['servicio'],
+                    'iva_servicio' => $row['iva_servicio'],
                     'total_fac'    => $row['total_fac'],
-                    'satuid'    => $row['satuid'],
+                    'satuid'       => $row['satuid'],
+                    'gasolinera'       => $row['gasolinera'],
+                    'codgas'       => $row['codgas']
                 );
             }
         }
         json_output(array("data" => $data));
+    }
 
+    function generate_payment(){
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        $payment = $data['total_amount'] ?? null;
+        $documents = $data['documentos'] ?? null;
+        $user = $_SESSION['tg_user']['Id'] ?? null;
+
+        $request_date = date('Y-d-m H:i:s');
+        $status = 1;
+        $comment = 'comentario de prueba'; // Puedes cambiar esto por un comentario real
+        $payment_id = $this->paymentRequestsModel->insert_request($request_date, $user,$comment,$status);
+
+        if($payment_id) {
+            
+            $documents_inserted = $this->paymentRequestInvoicesModel->insertInvoicesBulk($documents, $payment_id);
+            
+        } else {
+            // Error al insertar el pago
+        }
+
+
+        echo '<pre>';
+        var_dump($payment_id);
+        var_dump($payment);
+        var_dump($data);
+        // var_dump($documents);
+        die();
+        if ($data === null) {
+            // Error de formato
+            http_response_code(400);
+            echo json_encode(['detail' => 'JSON inválido']);
+            exit;
+        }
     }
 
     function uploadPdf() {

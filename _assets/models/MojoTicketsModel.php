@@ -95,32 +95,109 @@ class MojoTicketsModel extends Model{
                         WHEN LEN(t1.title) > 50 THEN LEFT(t1.title, 50) + '...'
                         ELSE t1.title
                     END AS truncated_title,
-                    -- Cálculo de horas laborales
-                    (
-                        -- Horas del primer día
-                        ISNULL(
+
+                    -- CÁLCULO MIXTO DE HORAS SEGÚN PRIORIDAD
+                    CASE
+                        -- TICKETS URGENTES (10, 20): Horas naturales (24/7)
+                        WHEN t1.priority_id IN (10, 20) THEN
                             CASE
-                            WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
-                                OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
-                            WHEN t1.solved_on IS NOT NULL
-                                AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
-                                AND CAST(t1.created_on AS TIME) < '08:00:00'
-                                AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
-                            WHEN t1.solved_on IS NOT NULL
-                                AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
-                                DATEDIFF(MINUTE,
-                                    CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
-                                    CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
-                                ) / 60.0
-                            ELSE
-                                DATEDIFF(MINUTE,
-                                    CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
-                                    CAST('18:00:00' AS TIME)
-                                ) / 60.0
-                        END
-                        , 0) +
-                        -- Horas de días intermedios completos
-                        ISNULL(
+                                WHEN t1.solved_on IS NOT NULL THEN
+                                    DATEDIFF(HOUR, t1.created_on, t1.solved_on) +
+                                    (DATEDIFF(MINUTE, t1.created_on, t1.solved_on) % 60) / 60.0
+                                ELSE 0
+                            END
+
+                        -- TICKETS NORMALES (30, 40): Horas laborales (L-V 8:00-18:00)
+                        WHEN t1.priority_id IN (30, 40) THEN
+                            (
+                                -- Horas del primer día
+                                ISNULL(
+                                    CASE
+                                    WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
+                                        OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
+                                    WHEN t1.solved_on IS NOT NULL
+                                        AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                                        AND CAST(t1.created_on AS TIME) < '08:00:00'
+                                        AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
+                                    WHEN t1.solved_on IS NOT NULL
+                                        AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
+                                        DATEDIFF(MINUTE,
+                                            CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                            CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                                        ) / 60.0
+                                    ELSE
+                                        DATEDIFF(MINUTE,
+                                            CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                            CAST('18:00:00' AS TIME)
+                                        ) / 60.0
+                                END
+                                , 0) +
+                                -- Horas de días intermedios completos
+                                ISNULL(
+                                    CASE
+                                        WHEN t1.solved_on IS NULL THEN 0
+                                        ELSE (
+                                            SELECT COUNT(*) * 10.0
+                                            FROM (
+                                                SELECT DATEADD(DAY, number, CAST(t1.created_on AS DATE)) AS dia
+                                                FROM master.dbo.spt_values
+                                                WHERE type = 'P'
+                                                    AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
+                                            ) AS dias
+                                            WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
+                                        )
+                                    END
+                                , 0) +
+                                -- Horas del último día
+                                ISNULL(
+                                    CASE
+                                        WHEN t1.solved_on IS NULL
+                                                OR DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5)
+                                                OR CAST(t1.solved_on AS TIME) <= '08:00:00'
+                                                OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                                        THEN 0
+                                        ELSE DATEDIFF(MINUTE,
+                                                CAST('08:00:00' AS TIME),
+                                                CASE
+                                                    WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME)
+                                                    ELSE CAST(t1.solved_on AS TIME)
+                                                END
+                                                ) / 60.0
+                                    END,
+                                0)
+                            )
+                        ELSE 0
+                    END AS hours_to_resolve,
+
+                    -- DESGLOSE PARA TICKETS NORMALES (solo para referencia)
+                    CASE
+                        WHEN t1.priority_id IN (30, 40) THEN
+                            -- Horas del primer día
+                            CASE
+                                WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
+                                    OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
+                                WHEN t1.solved_on IS NOT NULL
+                                    AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
+                                    AND CAST(t1.created_on AS TIME) < '08:00:00'
+                                    AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
+                                WHEN t1.solved_on IS NOT NULL
+                                    AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
+                                    DATEDIFF(MINUTE,
+                                        CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                        CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                                    ) / 60.0
+                                ELSE
+                                    DATEDIFF(MINUTE,
+                                        CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
+                                        CAST('18:00:00' AS TIME)
+                                    ) / 60.0
+                            END
+                        ELSE NULL -- No aplica para tickets urgentes
+                    END AS first_day_hours,
+
+                    CASE
+                        WHEN t1.priority_id IN (30, 40) THEN
+                            -- Horas de días intermedios completos
                             CASE
                                 WHEN t1.solved_on IS NULL THEN 0
                                 ELSE (
@@ -129,97 +206,59 @@ class MojoTicketsModel extends Model{
                                         SELECT DATEADD(DAY, number, CAST(t1.created_on AS DATE)) AS dia
                                         FROM master.dbo.spt_values
                                         WHERE type = 'P'
-                                            AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
+                                        AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
                                     ) AS dias
                                     WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
                                 )
                             END
-                        , 0) +
-                        -- Horas del último día
-                        ISNULL(
+                        ELSE NULL -- No aplica para tickets urgentes
+                    END AS middle_full_days_hours,
+
+                    CASE
+                        WHEN t1.priority_id IN (30, 40) THEN
+                            -- Horas del último día
                             CASE
-                                WHEN t1.solved_on IS NULL
-                                        OR DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5)
-                                        OR CAST(t1.solved_on AS TIME) <= '08:00:00'
-                                        OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
-                                THEN 0
+                                WHEN DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5) OR CAST(t1.solved_on AS TIME) <= '08:00:00' OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN 0
                                 ELSE DATEDIFF(MINUTE,
                                         CAST('08:00:00' AS TIME),
-                                        CASE
-                                            WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME)
-                                            ELSE CAST(t1.solved_on AS TIME)
-                                        END
-                                        ) / 60.0
-                            END,
-                        0)
-                        -----
-                    ) AS hours_to_resolve,
-                    -- Horas del primer día
-                    CASE
-                        WHEN DATEPART(WEEKDAY, t1.created_on) NOT IN (1, 2, 3, 4, 5)
-                            OR CAST(t1.created_on AS TIME) >= '18:00:00' THEN 0
-                        WHEN t1.solved_on IS NOT NULL
-                            AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE)
-                            AND CAST(t1.created_on AS TIME) < '08:00:00'
-                            AND CAST(t1.solved_on AS TIME) < '08:00:00' THEN 0
-                        WHEN t1.solved_on IS NOT NULL
-                            AND CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN
-                            DATEDIFF(MINUTE,
-                                CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
-                                CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
-                            ) / 60.0
-                        ELSE
-                            DATEDIFF(MINUTE,
-                                CASE WHEN CAST(t1.created_on AS TIME) < '08:00:00' THEN CAST('08:00:00' AS TIME) ELSE CAST(t1.created_on AS TIME) END,
-                                CAST('18:00:00' AS TIME)
-                            ) / 60.0
-                    END AS first_day_hours,
-                    -- Horas de días intermedios completos
-                    CASE
-                        WHEN t1.solved_on IS NULL THEN 0
-                        ELSE (
-                            SELECT COUNT(*) * 10.0
-                            FROM (
-                                SELECT DATEADD(DAY, number, CAST(t1.created_on AS DATE)) AS dia
-                                FROM master.dbo.spt_values
-                                WHERE type = 'P'
-                                AND number BETWEEN 1 AND DATEDIFF(DAY, CAST(t1.created_on AS DATE), CAST(t1.solved_on AS DATE)) - 1
-                            ) AS dias
-                            WHERE DATEPART(WEEKDAY, dia) BETWEEN 1 AND 5
-                        )
-                    END AS middle_full_days_hours,
-                    -- Horas del último día
-                    CASE
-                        WHEN DATEPART(WEEKDAY, t1.solved_on) NOT IN (1, 2, 3, 4, 5) OR CAST(t1.solved_on AS TIME) <= '08:00:00' OR CAST(t1.created_on AS DATE) = CAST(t1.solved_on AS DATE) THEN 0
-                        ELSE DATEDIFF(MINUTE,
-                                CAST('08:00:00' AS TIME),
-                                CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
-                            ) / 60.0
+                                        CASE WHEN CAST(t1.solved_on AS TIME) > '18:00:00' THEN CAST('18:00:00' AS TIME) ELSE CAST(t1.solved_on AS TIME) END
+                                    ) / 60.0
+                            END
+                        ELSE NULL -- No aplica para tickets urgentes
                     END AS last_day_hours,
+
+                    -- INDICADOR DEL TIPO DE CÁLCULO USADO
+                    CASE
+                        WHEN t1.priority_id IN (10, 20) THEN 'Horas Naturales (24/7)'
+                        WHEN t1.priority_id IN (30, 40) THEN 'Horas Laborales (L-V 8-18)'
+                        ELSE 'Sin Cálculo'
+                    END AS calculation_type,
+
                     -- Día de la semana de creación en español
-                CASE DATEPART(WEEKDAY, t1.created_on)
-                    WHEN 1 THEN 'Lunes'
-                    WHEN 2 THEN 'Martes'
-                    WHEN 3 THEN 'Miércoles'
-                    WHEN 4 THEN 'Jueves'
-                    WHEN 5 THEN 'Viernes'
-                    WHEN 6 THEN 'Sábado'
-                    WHEN 7 THEN 'Domingo'
-                END AS dia_semana_creacion,
-                -- Día de la semana de solución en español (si solved_on no es NULL)
-                CASE
-                    WHEN t1.solved_on IS NULL THEN NULL
-                    ELSE
-                        CASE DATEPART(WEEKDAY, t1.solved_on)
-                            WHEN 1 THEN 'Lunes'
-                            WHEN 2 THEN 'Martes'
-                            WHEN 3 THEN 'Miércoles'
-                            WHEN 4 THEN 'Jueves'
-                            WHEN 5 THEN 'Viernes'
-                            WHEN 6 THEN 'Sábado'
-                            WHEN 7 THEN 'Domingo'
-                        END
-                END AS dia_semana_solucion
+                    CASE DATEPART(WEEKDAY, t1.created_on)
+                        WHEN 1 THEN 'Lunes'
+                        WHEN 2 THEN 'Martes'
+                        WHEN 3 THEN 'Miércoles'
+                        WHEN 4 THEN 'Jueves'
+                        WHEN 5 THEN 'Viernes'
+                        WHEN 6 THEN 'Sábado'
+                        WHEN 7 THEN 'Domingo'
+                    END AS dia_semana_creacion,
+
+                    -- Día de la semana de solución en español (si solved_on no es NULL)
+                    CASE
+                        WHEN t1.solved_on IS NULL THEN NULL
+                        ELSE
+                            CASE DATEPART(WEEKDAY, t1.solved_on)
+                                WHEN 1 THEN 'Lunes'
+                                WHEN 2 THEN 'Martes'
+                                WHEN 3 THEN 'Miércoles'
+                                WHEN 4 THEN 'Jueves'
+                                WHEN 5 THEN 'Viernes'
+                                WHEN 6 THEN 'Sábado'
+                                WHEN 7 THEN 'Domingo'
+                            END
+                    END AS dia_semana_solucion
                 FROM
                     [TG].[dbo].[mojo_tickets] t1
                     LEFT JOIN [TG].[dbo].[mojo_companies] t2 ON t1.company_id = t2.id_mojo
@@ -236,6 +275,7 @@ class MojoTicketsModel extends Model{
                 ORDER BY
                     t1.created_on DESC;
                 ;";
+
         return $this->sql->select($query);
     }
 
@@ -734,79 +774,51 @@ class MojoTicketsModel extends Model{
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
-        ;WITH BusinessHoursCalculation AS (
+        ;WITH WeekData AS (
             SELECT
                 DATEPART(ISOWK, created_on) AS week_number,
-                -- Cálculo inline de horas laborales
-                CASE
-                    -- Mismo día
-                    WHEN CAST(created_on AS DATE) = CAST(ISNULL(solved_on, @EndDate) AS DATE) THEN
-                        CASE
-                            -- Es día laboral (lunes a viernes)
-                            WHEN DATEPART(WEEKDAY, created_on) BETWEEN 1 AND 5 THEN
-                                CASE
-                                    WHEN CAST(created_on AS TIME) >= '18:00:00' OR CAST(ISNULL(solved_on, @EndDate) AS TIME) <= '08:00:00' THEN 0
-                                    ELSE DATEDIFF(MINUTE,
-                                        CASE WHEN CAST(created_on AS TIME) < '08:00:00' THEN '08:00:00'
-                                            WHEN CAST(created_on AS TIME) > '18:00:00' THEN '18:00:00'
-                                            ELSE CAST(created_on AS TIME) END,
-                                        CASE WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) > '18:00:00' THEN '18:00:00'
-                                            WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) < '08:00:00' THEN '08:00:00'
-                                            ELSE CAST(ISNULL(solved_on, @EndDate) AS TIME) END
-                                    ) / 60.0
-                                END
-                            ELSE 0 -- Fin de semana
-                        END
-                    -- Múltiples días - cálculo aproximado
-                    ELSE
-                        -- Días laborales completos * 10 horas + ajustes de primer y último día
-                        (DATEDIFF(DAY, created_on, ISNULL(solved_on, @EndDate)) -
-                        DATEDIFF(WEEK, created_on, ISNULL(solved_on, @EndDate)) * 2) * 10.0
-                END AS business_hours_elapsed
-            FROM [TG].[dbo].[mojo_tickets]
-            WHERE created_on >= @StartDate
-                AND created_on <= @EndDate
-                AND priority_id IN (10,20)
-                AND ticket_form_id = {$ticket_form}
-        ),
-        WeekData AS (
-            SELECT
-                week_number,
                 COUNT(*) AS tickets_qty,
-                SUM(business_hours_elapsed) AS total_hours_elapsed,
-                AVG(business_hours_elapsed) AS avg_hours_elapsed
-            FROM BusinessHoursCalculation
-            GROUP BY week_number
+                SUM(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS total_hours_elapsed,
+                AVG(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS avg_hours_elapsed
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (10,20) AND
+                ticket_form_id = {$ticket_form}
+            GROUP BY
+                DATEPART(ISOWK, created_on)
         ),
         WeekDates AS (
-            SELECT DISTINCT
-                DATEPART(ISOWK, created_on) AS week_number,
-                MIN(DATEADD(DAY, 1 - DATEPART(WEEKDAY, created_on), created_on))
-                    OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_start_date,
-                MAX(DATEADD(DAY, 7 - DATEPART(WEEKDAY, created_on), created_on))
-                    OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_end_date
-            FROM [TG].[dbo].[mojo_tickets]
-            WHERE created_on >= @StartDate
-                AND created_on <= @EndDate
-                AND priority_id IN (30,40,50,60)
-                AND ticket_form_id = {$ticket_form}
+            SELECT
+                DISTINCT DATEPART(ISOWK, created_on) AS week_number,
+                MIN(DATEADD(DAY, 1 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_start_date,
+                MAX(DATEADD(DAY, 7 - DATEPART(WEEKDAY, created_on), created_on)) OVER (PARTITION BY DATEPART(ISOWK, created_on)) AS week_end_date
+            FROM
+                [TG].[dbo].[mojo_tickets]
+            WHERE
+                created_on >= @StartDate AND
+                created_on <= @EndDate AND
+                priority_id IN (10,20) AND
+                ticket_form_id = {$ticket_form}
         )
         SELECT
             w.week_number,
             w.tickets_qty,
-            ROUND(w.total_hours_elapsed, 2) AS total_hours_elapsed,
-            ROUND(w.avg_hours_elapsed, 2) AS avg_hours_elapsed,
+            w.total_hours_elapsed,
+            w.avg_hours_elapsed,
             d.week_start_date,
             d.week_end_date
-        FROM WeekData w
-        JOIN WeekDates d ON w.week_number = d.week_number
-        ORDER BY w.week_number;";
+        FROM
+            WeekData w
+        JOIN
+            WeekDates d ON w.week_number = d.week_number
+        ORDER BY
+            w.week_number;
+        ";
 
-        if ($_SESSION['tg_user']['Id'] == 6177) {
-            echo '<pre>';
-            var_dump($query);
-            die();
-        }
+
         return $this->sql->select($query);
     }
 
@@ -815,62 +827,23 @@ class MojoTicketsModel extends Model{
             DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
-            ;WITH BusinessHoursCalculation AS (
+            ;WITH MonthData AS (
                 SELECT
                     DATEPART(YEAR, created_on) AS year,
                     DATEPART(MONTH, created_on) AS month,
-                    -- Cálculo inline de horas laborales
-                    CASE
-                        -- Mismo día
-                        WHEN CAST(created_on AS DATE) = CAST(ISNULL(solved_on, @EndDate) AS DATE) THEN
-                            CASE
-                                -- Es día laboral (lunes a viernes)
-                                WHEN DATEPART(WEEKDAY, created_on) BETWEEN 1 AND 5 THEN
-                                    CASE
-                                        WHEN CAST(created_on AS TIME) >= '18:00:00' OR CAST(ISNULL(solved_on, @EndDate) AS TIME) <= '08:00:00' THEN 0
-                                        ELSE DATEDIFF(MINUTE,
-                                            CASE WHEN CAST(created_on AS TIME) < '08:00:00' THEN '08:00:00'
-                                                WHEN CAST(created_on AS TIME) > '18:00:00' THEN '18:00:00'
-                                                ELSE CAST(created_on AS TIME) END,
-                                            CASE WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) > '18:00:00' THEN '18:00:00'
-                                                WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) < '08:00:00' THEN '08:00:00'
-                                                ELSE CAST(ISNULL(solved_on, @EndDate) AS TIME) END
-                                        ) / 60.0
-                                    END
-                                ELSE 0 -- Fin de semana
-                            END
-                        -- Múltiples días - cálculo mejorado
-                        ELSE
-                            -- Aproximación: días totales menos fines de semana * 10 horas por día laboral
-                            CASE
-                                WHEN DATEDIFF(DAY, created_on, ISNULL(solved_on, @EndDate)) > 0 THEN
-                                    -- Días laborales completos estimados
-                                    (DATEDIFF(DAY, created_on, ISNULL(solved_on, @EndDate)) -
-                                    (DATEDIFF(WEEK, created_on, ISNULL(solved_on, @EndDate)) * 2) -
-                                    -- Ajuste por días de inicio y fin si son fines de semana
-                                    CASE WHEN DATEPART(WEEKDAY, created_on) = 1 THEN 1 ELSE 0 END -
-                                    CASE WHEN DATEPART(WEEKDAY, created_on) = 7 THEN 1 ELSE 0 END -
-                                    CASE WHEN DATEPART(WEEKDAY, ISNULL(solved_on, @EndDate)) = 1 THEN 1 ELSE 0 END -
-                                    CASE WHEN DATEPART(WEEKDAY, ISNULL(solved_on, @EndDate)) = 7 THEN 1 ELSE 0 END
-                                    ) * 10.0
-                                ELSE 0
-                            END
-                    END AS business_hours_elapsed
-                FROM [TG].[dbo].[mojo_tickets]
-                WHERE created_on >= @StartDate
-                    AND created_on <= @EndDate
-                    AND priority_id IN (10,20)
-                    AND ticket_form_id = {$ticket_form}
-            ),
-            MonthData AS (
-                SELECT
-                    year,
-                    month,
                     COUNT(*) AS tickets_qty,
-                    SUM(business_hours_elapsed) AS total_hours_elapsed,
-                    AVG(business_hours_elapsed) AS avg_hours_elapsed
-                FROM BusinessHoursCalculation
-                GROUP BY year, month
+                    SUM(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS total_hours_elapsed,
+                    AVG(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS avg_hours_elapsed
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10,20) AND
+                    ticket_form_id = {$ticket_form}
+                GROUP BY
+                    DATEPART(YEAR, created_on),
+                    DATEPART(MONTH, created_on)
             ),
             MonthDates AS (
                 SELECT
@@ -878,24 +851,29 @@ class MojoTicketsModel extends Model{
                     DATEPART(MONTH, created_on) AS month,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1) AS month_start_date,
                     EOMONTH(DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1)) AS month_end_date
-                FROM [TG].[dbo].[mojo_tickets]
-                WHERE created_on >= @StartDate
-                    AND created_on <= @EndDate
-                    AND priority_id IN (30,40,50,60)
-                    AND ticket_form_id = {$ticket_form}
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10, 20) AND
+                    ticket_form_id = {$ticket_form}
             )
             SELECT
                 m.year,
                 m.month,
-                FORMAT(DATEFROMPARTS(m.year, m.month, 1), 'MMMM', 'es-ES') AS month_name,
+                FORMAT(DATEFROMPARTS(m.year, m.month, 1), 'MMMM', 'es-ES') AS month_name, -- Nombre del mes
                 m.tickets_qty,
-                ROUND(m.total_hours_elapsed, 2) AS total_hours_elapsed,
-                ROUND(m.avg_hours_elapsed, 2) AS avg_hours_elapsed,
+                m.total_hours_elapsed,
+                m.avg_hours_elapsed,
                 d.month_start_date,
                 d.month_end_date
-            FROM MonthData m
-            JOIN MonthDates d ON m.year = d.year AND m.month = d.month
-            ORDER BY m.year, m.month;
+            FROM
+                MonthData m
+            JOIN
+                MonthDates d ON m.year = d.year AND m.month = d.month
+            ORDER BY
+                m.year, m.month;
         ";
         return $this->sql->select($query);
     }
@@ -905,99 +883,48 @@ class MojoTicketsModel extends Model{
             DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
             DECLARE @EndDate DATE = '{$until}'; -- Fecha final
 
-            ;WITH BusinessHoursCalculation AS (
+            ;WITH YearData AS (
                 SELECT
                     DATEPART(YEAR, created_on) AS year,
-                    created_on,
-                    ISNULL(solved_on, @EndDate) AS end_date,
-                    -- Ajustar fechas al horario laboral
-                    CASE
-                        WHEN CAST(created_on AS TIME) < '08:00:00' THEN
-                            DATEADD(HOUR, 8, CAST(CAST(created_on AS DATE) AS DATETIME))
-                        WHEN CAST(created_on AS TIME) >= '18:00:00' THEN
-                            DATEADD(HOUR, 8, CAST(DATEADD(DAY, 1, CAST(created_on AS DATE)) AS DATETIME))
-                        ELSE created_on
-                    END AS start_adjusted,
-
-                    CASE
-                        WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) <= '08:00:00' THEN
-                            DATEADD(HOUR, 18, CAST(DATEADD(DAY, -1, CAST(ISNULL(solved_on, @EndDate) AS DATE)) AS DATETIME))
-                        WHEN CAST(ISNULL(solved_on, @EndDate) AS TIME) > '18:00:00' THEN
-                            DATEADD(HOUR, 18, CAST(CAST(ISNULL(solved_on, @EndDate) AS DATE) AS DATETIME))
-                        ELSE ISNULL(solved_on, @EndDate)
-                    END AS end_adjusted
-                FROM [TG].[dbo].[mojo_tickets]
-                WHERE created_on >= @StartDate
-                    AND created_on <= @EndDate
-                    AND priority_id IN (10,20)
-                    AND ticket_form_id = {$ticket_form}
-                    AND solved_on IS NOT NULL
-            ),
-            HoursCalculated AS (
-                SELECT
-                    year,
-                    CASE
-                        WHEN start_adjusted >= end_adjusted THEN 0
-                        WHEN CAST(start_adjusted AS DATE) = CAST(end_adjusted AS DATE) THEN
-                            -- Mismo día
-                            CASE
-                                WHEN DATEPART(WEEKDAY, start_adjusted) IN (6, 7) THEN 0
-                                ELSE DATEDIFF(MINUTE, start_adjusted, end_adjusted) / 60.0
-                            END
-                        ELSE
-                            -- Días diferentes
-                            CASE
-                                WHEN DATEDIFF(DAY, start_adjusted, end_adjusted) <= 0 THEN 0
-                                ELSE
-                                    -- Días laborales completos (aproximación: excluir ~28% por fines de semana)
-                                    (DATEDIFF(DAY, start_adjusted, end_adjusted) - 1) * 10.0 * 0.71 +
-                                    -- Horas del primer día (desde hora ajustada hasta 18:00)
-                                    CASE
-                                        WHEN DATEPART(WEEKDAY, start_adjusted) IN (6, 7) THEN 0
-                                        ELSE DATEDIFF(MINUTE, start_adjusted,
-                                            DATEADD(HOUR, 18, CAST(CAST(start_adjusted AS DATE) AS DATETIME))) / 60.0
-                                    END +
-                                    -- Horas del último día (desde 08:00 hasta hora ajustada)
-                                    CASE
-                                        WHEN DATEPART(WEEKDAY, end_adjusted) IN (6, 7) THEN 0
-                                        ELSE DATEDIFF(MINUTE,
-                                            DATEADD(HOUR, 8, CAST(CAST(end_adjusted AS DATE) AS DATETIME)),
-                                            end_adjusted) / 60.0
-                                    END
-                            END
-                    END AS business_hours
-                FROM BusinessHoursCalculation
-            ),
-            YearData AS (
-                SELECT
-                    year,
                     COUNT(*) AS tickets_qty,
-                    SUM(CASE WHEN business_hours >= 0 THEN business_hours ELSE 0 END) AS total_hours_elapsed,
-                    AVG(CASE WHEN business_hours >= 0 THEN business_hours ELSE 0 END) AS avg_hours_elapsed
-                FROM HoursCalculated
-                GROUP BY year
+                    SUM(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS total_hours_elapsed,
+                    AVG(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS avg_hours_elapsed
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10,20) AND
+                    ticket_form_id = {$ticket_form}
+                GROUP BY
+                    DATEPART(YEAR, created_on)
             ),
             YearDates AS (
-                SELECT DISTINCT
-                    DATEPART(YEAR, created_on) AS year,
+                SELECT
+                    DISTINCT DATEPART(YEAR, created_on) AS year,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 1, 1) AS year_start_date,
                     DATEFROMPARTS(DATEPART(YEAR, created_on), 12, 31) AS year_end_date
-                FROM [TG].[dbo].[mojo_tickets]
-                WHERE created_on >= @StartDate
-                    AND created_on <= @EndDate
-                    AND priority_id IN (10,20)
-                    AND ticket_form_id = {$ticket_form}
+                FROM
+                    [TG].[dbo].[mojo_tickets]
+                WHERE
+                    created_on >= @StartDate AND
+                    created_on <= @EndDate AND
+                    priority_id IN (10, 20) AND
+                    ticket_form_id = {$ticket_form}
             )
             SELECT
                 y.year,
                 y.tickets_qty,
-                ROUND(y.total_hours_elapsed, 2) AS total_hours_elapsed,
-                ROUND(y.avg_hours_elapsed, 2) AS avg_hours_elapsed,
+                y.total_hours_elapsed,
+                y.avg_hours_elapsed,
                 d.year_start_date,
                 d.year_end_date
-            FROM YearData y
-            JOIN YearDates d ON y.year = d.year
-            ORDER BY y.year;
+            FROM
+                YearData y
+            JOIN
+                YearDates d ON y.year = d.year
+            ORDER BY
+                y.year;
         ";
 
         return $this->sql->select($query);
@@ -1583,6 +1510,7 @@ class MojoTicketsModel extends Model{
         $query = "
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+
         ;WITH BusinessHoursCalc AS (
             SELECT
                 t1.assigned_to_id,
@@ -1591,9 +1519,16 @@ class MojoTicketsModel extends Model{
                 t1.created_on,
                 COALESCE(t1.solved_on, @EndDate) AS end_date,
                 DATEPART(ISOWK, t1.created_on) AS week_iso,
-                -- Calcular horas laborales para cada ticket individual
+
+                -- Calcular horas según la prioridad del ticket
                 CASE
-                    WHEN COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
+                    -- TICKETS URGENTES (10, 20): Horas naturales (24/7)
+                    WHEN t1.priority_id IN (10, 20) THEN
+                        DATEDIFF(HOUR, t1.created_on, COALESCE(t1.solved_on, @EndDate)) +
+                        (DATEDIFF(MINUTE, t1.created_on, COALESCE(t1.solved_on, @EndDate)) % 60) / 60.0
+
+                    -- TICKETS NORMALES (30, 40): Horas laborales (L-V 8:00-18:00)
+                    WHEN t1.priority_id IN (30, 40) AND COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
                         -- Días completos entre fechas (excluyendo primer y último día)
                         (
                             SELECT COUNT(*) * 10.0
@@ -1648,6 +1583,7 @@ class MojoTicketsModel extends Model{
                         END
                     ELSE 0
                 END AS business_hours,
+
                 t2.first_name,
                 t2.last_name
             FROM [TG].[dbo].[mojo_tickets] t1
@@ -1665,13 +1601,13 @@ class MojoTicketsModel extends Model{
                 SUM(CASE WHEN priority_id IN (10, 20) THEN 1 ELSE 0 END) AS UrgentTickets,
                 SUM(CASE WHEN priority_id IN (30, 40) THEN 1 ELSE 0 END) AS NormalTickets,
 
-                -- Total horas laborales para tickets urgentes
+                -- Total horas para tickets urgentes (HORAS NATURALES 24/7)
                 SUM(CASE WHEN priority_id IN (10, 20) THEN business_hours ELSE 0 END) AS TotalHoursUrgentTickets,
 
-                -- Total horas laborales para tickets normales
+                -- Total horas para tickets normales (HORAS LABORALES L-V 8-18)
                 SUM(CASE WHEN priority_id IN (30, 40) THEN business_hours ELSE 0 END) AS TotalHoursNormalTickets,
 
-                -- Total horas laborales para todos los tickets
+                -- Total horas para todos los tickets (mixto según prioridad)
                 SUM(business_hours) AS TotalHoursDifference,
 
                 CONCAT(
@@ -1690,16 +1626,16 @@ class MojoTicketsModel extends Model{
             TotalTickets,
             ResolvedTickets, -- Tickets resueltos
             PendingTickets, -- Tickets pendientes
-            UrgentTickets, -- Tickets urgentes
-            NormalTickets, -- Tickets normales
-            TotalHoursUrgentTickets, -- Sumatoria de diferencias en horas laborales
-            TotalHoursNormalTickets, -- Sumatoria de diferencias en horas laborales
-            TotalHoursDifference, -- Sumatoria de diferencias en horas laborales
+            UrgentTickets, -- Tickets urgentes (HORAS NATURALES)
+            NormalTickets, -- Tickets normales (HORAS LABORALES)
+            TotalHoursUrgentTickets, -- Horas naturales tickets urgentes
+            TotalHoursNormalTickets, -- Horas laborales tickets normales
+            TotalHoursDifference, -- Total mixto según prioridad
             CASE
                 WHEN TotalTickets > 0
                 THEN TotalHoursDifference / TotalTickets
                 ELSE 0
-            END AS AverageHoursDifference, -- Promedio de tiempo en horas laborales
+            END AS AverageHoursDifference, -- Promedio mixto según prioridad
             AssignedUserName,
             StartOfWeek,
             EndOfWeek
@@ -1714,6 +1650,7 @@ class MojoTicketsModel extends Model{
         $query = "
         DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
         DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+
         ;WITH BusinessHoursCalc AS (
             SELECT
                 COALESCE(t1.assigned_to_id, 0) AS assigned_to_id,
@@ -1724,9 +1661,16 @@ class MojoTicketsModel extends Model{
                 YEAR(t1.created_on) AS Year,
                 MONTH(t1.created_on) AS Month,
                 CONCAT(YEAR(t1.created_on), '-', RIGHT('0' + CAST(MONTH(t1.created_on) AS VARCHAR(2)), 2)) AS MonthName,
-                -- Calcular horas laborales para cada ticket individual
+
+                -- Calcular horas según la prioridad del ticket
                 CASE
-                    WHEN COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
+                    -- TICKETS URGENTES (10, 20): Horas naturales (24/7)
+                    WHEN t1.priority_id IN (10, 20) THEN
+                        DATEDIFF(HOUR, t1.created_on, COALESCE(t1.solved_on, @EndDate)) +
+                        (DATEDIFF(MINUTE, t1.created_on, COALESCE(t1.solved_on, @EndDate)) % 60) / 60.0
+
+                    -- TICKETS NORMALES (30, 40): Horas laborales (L-V 8:00-18:00)
+                    WHEN t1.priority_id IN (30, 40) AND COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
                         -- Días completos entre fechas (excluyendo primer y último día)
                         (
                             SELECT COUNT(*) * 10.0
@@ -1781,6 +1725,7 @@ class MojoTicketsModel extends Model{
                         END
                     ELSE 0
                 END AS business_hours,
+
                 t2.first_name,
                 t2.last_name,
                 DATEFROMPARTS(YEAR(t1.created_on), MONTH(t1.created_on), 1) AS StartOfMonth,
@@ -1802,13 +1747,13 @@ class MojoTicketsModel extends Model{
                 SUM(CASE WHEN priority_id IN (10, 20) THEN 1 ELSE 0 END) AS UrgentTickets, -- Tickets urgentes
                 SUM(CASE WHEN priority_id IN (30, 40) THEN 1 ELSE 0 END) AS NormalTickets, -- Tickets normales
 
-                -- Total horas laborales para tickets urgentes
+                -- Total horas para tickets urgentes (HORAS NATURALES 24/7)
                 SUM(CASE WHEN priority_id IN (10, 20) THEN business_hours ELSE 0 END) AS TotalHoursUrgentTickets,
 
-                -- Total horas laborales para tickets normales
+                -- Total horas para tickets normales (HORAS LABORALES L-V 8-18)
                 SUM(CASE WHEN priority_id IN (30, 40) THEN business_hours ELSE 0 END) AS TotalHoursNormalTickets,
 
-                -- Total horas laborales para todos los tickets
+                -- Total horas para todos los tickets (mixto según prioridad)
                 SUM(business_hours) AS TotalHoursDifference,
 
                 CONCAT(
@@ -1832,16 +1777,16 @@ class MojoTicketsModel extends Model{
             SUM(TotalTickets) AS TotalTickets,
             SUM(ResolvedTickets) AS ResolvedTickets, -- Tickets resueltos
             SUM(PendingTickets) AS PendingTickets, -- Tickets pendientes
-            SUM(UrgentTickets) AS UrgentTickets, -- Tickets urgentes
-            SUM(NormalTickets) AS NormalTickets, -- Tickets normales
-            SUM(TotalHoursUrgentTickets) AS TotalHoursUrgentTickets, -- Sumatoria de diferencias en horas laborales
-            SUM(TotalHoursNormalTickets) AS TotalHoursNormalTickets, -- Sumatoria de diferencias en horas laborales
-            SUM(TotalHoursDifference) AS TotalHoursDifference, -- Sumatoria de diferencias en horas laborales
+            SUM(UrgentTickets) AS UrgentTickets, -- Tickets urgentes (HORAS NATURALES)
+            SUM(NormalTickets) AS NormalTickets, -- Tickets normales (HORAS LABORALES)
+            SUM(TotalHoursUrgentTickets) AS TotalHoursUrgentTickets, -- Horas naturales tickets urgentes
+            SUM(TotalHoursNormalTickets) AS TotalHoursNormalTickets, -- Horas laborales tickets normales
+            SUM(TotalHoursDifference) AS TotalHoursDifference, -- Total mixto según prioridad
             CASE
                 WHEN SUM(TotalTickets) > 0
                 THEN SUM(TotalHoursDifference) / SUM(TotalTickets)
                 ELSE 0
-            END AS AverageHoursDifference, -- Promedio de tiempo en horas laborales
+            END AS AverageHoursDifference, -- Promedio mixto según prioridad
             AssignedUserName,
             MIN(StartOfMonth) AS StartOfMonth,
             MAX(EndOfMonth) AS EndOfMonth
@@ -1854,7 +1799,6 @@ class MojoTicketsModel extends Model{
             assigned_to_id,
             MonthName;
         ";
-
         return $this->sql->select($query);
     }
 
@@ -1871,9 +1815,16 @@ class MojoTicketsModel extends Model{
                 t1.created_on,
                 COALESCE(t1.solved_on, @EndDate) AS end_date,
                 YEAR(t1.created_on) AS Year,
-                -- Calcular horas laborales para cada ticket individual
+                
+                -- Calcular horas según la prioridad del ticket
                 CASE
-                    WHEN COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
+                    -- TICKETS URGENTES (10, 20): Horas naturales (24/7)
+                    WHEN t1.priority_id IN (10, 20) THEN
+                        DATEDIFF(HOUR, t1.created_on, COALESCE(t1.solved_on, @EndDate)) + 
+                        (DATEDIFF(MINUTE, t1.created_on, COALESCE(t1.solved_on, @EndDate)) % 60) / 60.0
+                    
+                    -- TICKETS NORMALES (30, 40): Horas laborales (L-V 8:00-18:00)
+                    WHEN t1.priority_id IN (30, 40) AND COALESCE(t1.solved_on, @EndDate) IS NOT NULL THEN
                         -- Días completos entre fechas (excluyendo primer y último día)
                         (
                             SELECT COUNT(*) * 10.0
@@ -1928,12 +1879,13 @@ class MojoTicketsModel extends Model{
                         END
                     ELSE 0
                 END AS business_hours,
+                
                 t2.first_name,
                 t2.last_name
             FROM [TG].[dbo].[mojo_tickets] t1
             LEFT JOIN [TG].[dbo].[mojo_users] t2 ON t1.assigned_to_id = t2.id_mojo
             WHERE t1.created_on >= @StartDate AND t1.created_on <= @EndDate
-            AND t1.ticket_form_id = {$ticket_form}
+            AND t1.ticket_form_id = 51598
         ),
         Tickets AS (
             SELECT
@@ -1945,13 +1897,13 @@ class MojoTicketsModel extends Model{
                 SUM(CASE WHEN priority_id IN (10, 20) THEN 1 ELSE 0 END) AS UrgentTickets, -- Tickets urgentes
                 SUM(CASE WHEN priority_id IN (30, 40) THEN 1 ELSE 0 END) AS NormalTickets, -- Tickets normales
 
-                -- Total horas laborales para tickets urgentes
+                -- Total horas para tickets urgentes (HORAS NATURALES 24/7)
                 SUM(CASE WHEN priority_id IN (10, 20) THEN business_hours ELSE 0 END) AS TotalHoursUrgentTickets,
 
-                -- Total horas laborales para tickets normales
+                -- Total horas para tickets normales (HORAS LABORALES L-V 8-18)
                 SUM(CASE WHEN priority_id IN (30, 40) THEN business_hours ELSE 0 END) AS TotalHoursNormalTickets,
 
-                -- Total horas laborales para todos los tickets
+                -- Total horas para todos los tickets (mixto según prioridad)
                 SUM(business_hours) AS TotalHoursDifference,
 
                 CONCAT(
@@ -1970,16 +1922,16 @@ class MojoTicketsModel extends Model{
             SUM(TotalTickets) AS TotalTickets,
             SUM(ResolvedTickets) AS ResolvedTickets, -- Tickets resueltos
             SUM(PendingTickets) AS PendingTickets, -- Tickets pendientes
-            SUM(UrgentTickets) AS UrgentTickets, -- Tickets urgentes
-            SUM(NormalTickets) AS NormalTickets, -- Tickets normales
-            SUM(TotalHoursUrgentTickets) AS TotalHoursUrgentTickets, -- Sumatoria de diferencias en horas laborales
-            SUM(TotalHoursNormalTickets) AS TotalHoursNormalTickets, -- Sumatoria de diferencias en horas laborales
-            SUM(TotalHoursDifference) AS TotalHoursDifference, -- Sumatoria de diferencias en horas laborales
+            SUM(UrgentTickets) AS UrgentTickets, -- Tickets urgentes (HORAS NATURALES)
+            SUM(NormalTickets) AS NormalTickets, -- Tickets normales (HORAS LABORALES)
+            SUM(TotalHoursUrgentTickets) AS TotalHoursUrgentTickets, -- Horas naturales tickets urgentes
+            SUM(TotalHoursNormalTickets) AS TotalHoursNormalTickets, -- Horas laborales tickets normales
+            SUM(TotalHoursDifference) AS TotalHoursDifference, -- Total mixto según prioridad
             CASE
                 WHEN SUM(TotalTickets) > 0
                 THEN SUM(TotalHoursDifference) / SUM(TotalTickets)
                 ELSE 0
-            END AS AverageHoursDifference, -- Promedio de tiempo en horas laborales
+            END AS AverageHoursDifference, -- Promedio mixto según prioridad
             AssignedUserName
         FROM Tickets
         GROUP BY
@@ -1990,6 +1942,7 @@ class MojoTicketsModel extends Model{
             assigned_to_id,
             Year;
         ";
+
         return $this->sql->select($query);
     }
 

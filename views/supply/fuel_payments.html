@@ -56,17 +56,72 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     background-color: #6d7277e8;
 }
 </style>
+
 <ul class="nav nav-tabs" id="myTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link  active " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
+    </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link  active " id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
+        <button class="nav-link   " id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
     </li>
 </ul>
 
-<div class="tab-content" id="content_edo_result">
-    <div class="tab-pane active " id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
+<div class="tab-content" >
+    <div class="tab-pane active " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row" style="align-items: flex-end;">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="from1">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until1">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                     <div class="col-2 ">
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
+                            <option value="0" {% if not station_id or station_id == 0 %}selected{% endif %}>Todas las estaciones</option>
+                            {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button onclick="payment_list()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Compras </h5>
+            </div>
+            <div>
+                <button id="add_payment" class="btn btn-sm btn-primary" onclick="add_payment()" style="padding: 10px 10px ; margin-left: 15px; margin-top: 10px; border-radius: 15px;">Agregar Pago</button>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="payment_list_table" class="table table-hover table-sm w-100">
+                   <thead>
+                         <tr>
+                            <th>id</th>
+                            <th>Fecha</th>
+                            <th>Estatus</th>
+                            <th>Cantidad</th>
+                            <th>Comentario</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane  " id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
@@ -99,6 +154,8 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 <table id="payment_control_table" class="table table-hover table-sm w-100">
                    <thead>
                          <tr>
+                            <th></th>
+                            <th>Estacion</th>
                             <th>Folio</th>
                             <th>Factura</th>
                             <th>Remisión</th>

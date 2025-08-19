@@ -57,6 +57,11 @@ class Income{
             echo $this->twig->render($this->route . 'cash_sales.html', compact('stations'));
         }
     }
+
+    function dolar_sales() {
+        echo $this->twig->render($this->route . 'dolar_sales.html');
+    }
+
     public function clients(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'clients.html');
@@ -220,7 +225,12 @@ class Income{
                     'uid_anticipo'      => $factura['uid_anticipo'],
                     'monto_original'    => round($factura['monto_original'],2),
                     'txt_anticipo'      => $factura['txt_anticipo'],
-                    'concepto_anticipo' => $factura['concepto_anticipo'],
+                    'monto'              => round($factura['monto'],2),
+                    'mtoiva'             => round($factura['mtoiva'],2),
+                    'mto_fact_e'          => round($factura['mto_fact_e'],2),
+                    'mto_iva_e'          => round($factura['mto_iva_e'],2),
+                    'mto_total_e'          => round($factura['mto_total_e'],2),
+                    // 'concepto_anticipo' => $factura['concepto_anticipo'],
                 );
             }
         }
@@ -251,7 +261,8 @@ class Income{
                     'monto_original'    => round(floatval($factura['monto_original']),2),
                     'txt_anticipo'      => $factura['txt_anticipo'],
                     'txt_note_credit' => $factura['txt_note_credit'],
-                   
+                    'monto_iva' => $factura['monto_iva'],
+                    'monto_sub' => $factura['monto_sub'],
                 );
             }
         }

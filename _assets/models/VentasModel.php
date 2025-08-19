@@ -578,15 +578,12 @@ class VentasModel extends Model{
 
         }
 
-    
-    
-
         $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
 
                 WITH ValuesTable AS (
-                    SELECT 
+                    SELECT
                         v.cod AS CodFormaPago,
                         E.Codigo AS CodGas,
                         CONVERT(DATE, DATEADD(DAY, -1, i.fch)) AS Fecha,
@@ -602,12 +599,12 @@ class VentasModel extends Model{
                     INNER JOIN SG12.dbo.Gasolineras g ON i.codgas = g.cod
                     INNER JOIN SG12.dbo.Empresas emp ON g.codemp = emp.cod
                     WHERE i.fch BETWEEN @fecha_inicial_int AND @fecha_fin_int $zona_query
-                    GROUP BY 
-                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)), 
+                    GROUP BY
+                        CONVERT(DATE, DATEADD(DAY, -1, i.fch)),
                         v.cod, E.Codigo, E.Nombre, v.den, E.estructura, emp.den
                 )
 
-                SELECT 
+                SELECT
                     Empresa,
                     Zona,
                     Estacion,
@@ -615,7 +612,7 @@ class VentasModel extends Model{
                     ($totalSum) AS Total,
                     $pivotColumns_final
                 FROM (
-                    SELECT 
+                    SELECT
                         Empresa,
                         Zona,
                         Estacion,
@@ -623,7 +620,7 @@ class VentasModel extends Model{
                         SUM(Monto) AS sum_monto,
                         CONCAT(YEAR(Fecha), '_', MONTH(Fecha)) AS AñoMes
                     FROM ValuesTable
-                  GROUP BY  $group_total
+                    GROUP BY  $group_total
                 ) AS src
                 PIVOT (
                     SUM(sum_monto)

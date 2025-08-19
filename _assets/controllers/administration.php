@@ -1544,6 +1544,9 @@ class Administration{
                 foreach ($agents_total_tickets as $ticket) {
                     if ($ticket['assigned_to_id'] == $agent) {
                         $data[] = $ticket;
+                    } else {
+                        // Si el ticket no corresponde al agente lo ingnoramos
+                        continue;
                     }
                 }
                 // Ahora vamos a tomar los datos de los tickets para hacer un graficas
@@ -1745,7 +1748,7 @@ class Administration{
         // Si la actualización fue exitosa (HTTP 200)
         if ($http_code == 200) {
             // Redirigir al panel
-            $panel_url = "https://totalgas.mojohelpdesk.com/ma/#/tickets/search?query_string={$ticket_id}&page=1";
+            $panel_url = "https://totalgas.mojohelpdesk.com/mc/up/my-tickets/{$ticket_id}";
             header("Location: {$panel_url}");
             exit;
         } else {

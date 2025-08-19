@@ -361,7 +361,7 @@ async function payment_control_table(){
             .draw(); // Redibuja la tabla
     });
     let payment_control_table =$('#payment_control_table').DataTable({
-        order: [0, "asc"],
+        order: [[1, "asc"], [2, "desc"]],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         // scrollY: '700px',
@@ -406,6 +406,8 @@ async function payment_control_table(){
             }
         },
         columns: [
+            { data: 'check_box' },                                // Folio del documento
+            { data: 'gasolinera' },                                // Folio del documento
             { data: 'nro' },                                // Folio del documento
             { data: 'Factura' },                            // Texto extraído de @F:
             { data: 'Remision' },                           // Texto extraído de @R:
@@ -430,12 +432,238 @@ async function payment_control_table(){
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
             var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-            $('td:eq(19)', row)
-              .addClass(cls)
-              .text(data.control); // muestra “12345 SI” o “12345 NO”
+            // $('td:eq(19)', row)
+            //   .addClass(cls)
+            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+}
+
+async function payment_list_table(){
+    if ($.fn.DataTable.isDataTable('#payment_list_table')) {
+        $('#payment_list_table').DataTable().destroy();
+        $('#payment_list_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from1').value;
+    var untilDate = document.getElementById('until1').value;
+    var codgas = document.getElementById('station_id1').value;
+    if(!codgas){
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar una estación para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('#payment_list_table thead').prepend($('#payment_list_table thead tr').clone().addClass('filter'));
+    $('#payment_list_table thead tr.filter th').each(function (index) {
+        col = $('#payment_list_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#payment_list_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#payment_list_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let payment_list_table =$('#payment_list_table').DataTable({
+        order: [[1, "asc"], [2, "desc"]],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        // scrollY: '700px',
+        // scrollX: true,
+        // scrollCollapse: true,
+        paging: true,
+        pageLength: 100,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas
+            },
+            url: '/supply/payment_list_table',
+            timeout: 600000, 
+            error: function() {
+                $('#payment_list_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'check_box' },                                // Folio del documento
+            { data: 'gasolinera' },                                // Folio del documento
+            { data: 'nro' },                                // Folio del documento
+            { data: 'Factura' },                            // Texto extraído de @F:
+            { data: 'Remision' },                           // Texto extraído de @R:
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+            // $('td:eq(19)', row)
+            //   .addClass(cls)
+            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+}
+
+function add_payment() {
+    // Redirigir a la página de agregar pago
+    window.location.href = '/supply/add_payment';
+}
+
+async function payment_create_table(){
+    if ($.fn.DataTable.isDataTable('#payment_create_table')) {
+        $('#payment_create_table').DataTable().destroy();
+        $('#payment_create_table thead .filter').remove();
+    }
+    var fromDate = document.getElementById('from1').value;
+    var untilDate = document.getElementById('until1').value;
+    var codgas = document.getElementById('station_id1').value;
+    if(!codgas){
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar una estación para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    $('#payment_create_table thead').prepend($('#payment_create_table thead tr').clone().addClass('filter'));
+    $('#payment_create_table thead tr.filter th').each(function (index) {
+        col = $('#payment_create_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#payment_create_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#payment_create_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let payment_create_table =$('#payment_create_table').DataTable({
+        order: [[0, "asc"], [1, "desc"]],
+        colReorder: true,
+        dom: '<"top"f>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas
+            },
+            url: '/supply/payment_control_table',
+            timeout: 600000, 
+            error: function() {
+                $('#payment_create_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'gasolinera', className: 'text-nowrap' },                                // Folio del documento
+            { data: 'nro', className: 'text-nowrap' },                                // Folio del documento
+            { data: 'Factura', className: 'text-nowrap' },                            // Texto extraído de @F:
+            { data: 'Remision', className: 'text-nowrap' },                           // Texto extraído de @R:
+            { data: 'fecha', className: 'text-nowrap' },                              // Fecha (fch - 1)
+            { data: 'fechaVto', className: 'text-nowrap' },                           // Vencimiento (vto - 1)
+            { data: 'producto', className: 'text-nowrap' },                           // Producto (t3.den)
+            { data: 'proveedor', className: 'text-nowrap' },                          // Proveedor (t4.den)
+            { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
+            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
+            // { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 4) },    // Precio unitario
+            // { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },    // Monto
+            // { data: 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto IIE
+            // { data: 'iva8', render: $.fn.dataTable.render.number(',', '.', 2) },   // IVA 8%
+            // { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },    // IVA Extra
+            // { data: 'iva_total', render: $.fn.dataTable.render.number(',', '.', 2) }, // Total IVA
+            // { data: 'servicio', render: $.fn.dataTable.render.number(',', '.', 2) },  // Servicio
+            // { data: 'iva_servicio', render: $.fn.dataTable.render.number(',', '.', 2) }, // IVA Servicio
+            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
+            // { data: 'satuid', className: 'text-nowrap' }   // UID SAT
+        ],
+         columnDefs: [
+                    { orderable: false, targets: 0 }
+                ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+            $(row).addClass('draggable-row');
+            $(row).attr('draggable', 'true');
+            $(row).data('rowData', data);
+            $(row).find('td:first').prepend('<i class="fas fa-grip-vertical drag-handle me-2" style="color: #6c757d; cursor: move;"></i>');
+
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            setupDragAndDrop();
+
             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
 
         },

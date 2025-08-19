@@ -548,7 +548,7 @@ async function payments_table(){
             .draw(); // Redibuja la tabla
     });
     let payments_table =$('#payments_table').DataTable({
-        order: [0, "asc"],
+        order: [1, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         // scrollY: '700px',
@@ -629,10 +629,10 @@ async function payments_table(){
         deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
-            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-            $('td:eq(19)', row)
-              .addClass(cls)
-              .text(data.control); // muestra “12345 SI” o “12345 NO”
+            // var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+            // $('td:eq(19)', row)
+            //   .addClass(cls)
+            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');

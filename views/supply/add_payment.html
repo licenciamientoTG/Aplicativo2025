@@ -1,0 +1,482 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Pagos Proveedores{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Pagos Proveedores{% endblock %}
+{% block content %}
+
+<style>
+tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+#payment_search_card{
+    /* color: white !important; */
+    border-left: 5px solid #389235 !important;
+}
+/* Estilos para el drag and drop */
+.draggable-row {
+    cursor: move;
+    transition: all 0.2s ease;
+}
+
+.draggable-row:hover {
+    background-color: #e3f2fd !important;
+    transform: scale(1.01);
+}
+
+.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+    background-color: #bbdefb !important;
+}
+
+.drag-handle {
+    color: #6c757d;
+    cursor: move;
+    transition: color 0.2s ease;
+}
+
+.drag-handle:hover {
+    color: #007bff;
+}
+
+/* Área de drop */
+#payment-basket {
+    min-height: 400px;
+    height: 100%;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+#payment-basket.dragover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+    border-style: solid;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+}
+
+/* Elementos del pago */
+.payment-item {
+    background: linear-gradient(45deg, #28a745, #20c997) !important;
+    color: white !important;
+    border: none !important;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Resumen del pago */
+.payment-summary {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    color: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+/* Estados de botones */
+#generar-pago:disabled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+/* Mensaje vacío */
+.empty-basket-message {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 50px 20px;
+    border: none !important;
+    background: transparent !important;
+}
+</style>
+
+<div class="row">
+    
+    <div class="col-8">
+        <div class="card " id="payment_search_card">
+            <div class="card-body">
+                <div class="row" style="align-items: flex-end;">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="from1">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until1">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                        <div class="col-2 ">
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
+                            <option value="0" {% if not station_id or station_id == 0 %}selected{% endif %}>Todas las estaciones</option>
+                            {% for station in stations %}
+                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body table-responsive" >
+                <table id="payment_create_table" class="table table-hover table-sm table-bordered table-striped w-100">
+                    <thead>
+                        <tr>
+                            <th>Estacion</th>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Remisión</th>
+                            <th>Fecha</th>
+                            <th>Fecha Vto</th>
+                            <th>Producto</th>
+                            <th>Proveedor</th>
+                            <th>Volumen Recibido</th>
+                            <th>Cantidad</th>
+                            <!-- <th>Precio</th>
+                            <th>Monto</th>
+                            <th>Monto IIE</th>
+                            <th>IVA 8%</th>
+                            <th>IVA Extra</th>
+                            <th>IVA Total</th>
+                            <th>Servicio</th>
+                            <th>IVA Servicio</th> -->
+                            <th>Total Factura</th>
+                            <!-- <th>UID SAT</th> -->
+                        </tr>
+                        </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    
+    </div>
+    <div class="col-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="text-white mb-0">Armando Pago</h5>
+                <span id="item-count" class="badge bg-light text-dark">0 documentos</span>
+            </div>
+            <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+                <div style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
+
+                    <button id="generar-pago" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " disabled> <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
+                    <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;" class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i class="fas fa-trash me-2"></i>Limpiar Todo </button>
+                </div>
+                 <div id="payment-summary" class="payment-summary" style="display: none;">
+                    <h6 class="mb-3 text-white">Resumen del Pago</h6>
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border-end">
+                                <small class="d-block">Total Documentos</small>
+                                <h5 id="total-docs" class="mb-0 text-white">0</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <small class="d-block">Monto Total</small>
+                            <h5 id="total-amount" class="mb-0 text-white">$0.00</h5>
+                        </div>
+                    </div>
+                </div>
+                <ul id="payment-basket" class="list-group">
+                    <li class="empty-basket-message">
+                        <i class="fas fa-hand-point-right fa-2x mb-3"></i>
+                        <p>Arrastra aquí los documentos desde la tabla</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+
+let paymentItems = [];
+
+function setupDragAndDrop() {
+    // Eventos de drag para las filas de la tabla
+    $('#payment_create_table tbody').off('dragstart dragend'); // Limpiar eventos previos
+    
+    $('#payment_create_table tbody').on('dragstart', 'tr', function(e) {
+        $(this).addClass('dragging');
+        const rowData = $('#payment_create_table').DataTable().row(this).data();
+        e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(rowData));
+    });
+
+    $('#payment_create_table tbody').on('dragend', 'tr', function(e) {
+        $(this).removeClass('dragging');
+    });
+
+    // Configurar área de drop si no está configurada
+    const basket = document.getElementById('payment-basket');
+    if (basket && !basket.hasAttribute('data-drop-configured')) {
+        basket.setAttribute('data-drop-configured', 'true');
+
+        basket.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            $(this).addClass('dragover');
+        });
+
+        basket.addEventListener('dragleave', function(e) {
+            if (!basket.contains(e.relatedTarget)) {
+                $(this).removeClass('dragover');
+            }
+        });
+
+        basket.addEventListener('drop', function(e) {
+            e.preventDefault();
+            $(this).removeClass('dragover');
+
+            try {
+                const rowData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                addToPayment(rowData);
+            } catch (error) {
+                console.error('Error al procesar el elemento:', error);
+            }
+        });
+    }
+}
+
+// Añadir elemento al pago
+function addToPayment(rowData) {
+    // Verificar si ya existe (usando el número de folio)
+    const exists = paymentItems.some(item => item.nro === rowData.nro);
+    if (exists) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Este documento ya está en el pago.</p>
+            </div>`
+        );
+        return;
+    }
+
+    paymentItems.push(rowData);
+    renderPaymentItems();
+    updatePaymentSummary();
+}
+
+// Renderizar elementos del pago
+function renderPaymentItems() {
+    const basket = $('#payment-basket');
+    
+    if (paymentItems.length === 0) {
+        basket.html(`
+            <li class="list-group-item text-center text-muted" style="border: none; background: transparent;">
+                <i class="fas fa-hand-point-right fa-2x mb-3"></i>
+                <p>Arrastra aquí los documentos desde la tabla</p>
+            </li>
+        `);
+        return;
+    }
+
+    let html = '';
+    paymentItems.forEach((item, index) => {
+        const totalFac = parseFloat(item.total_fac) || 0;
+        html += `
+            <li class="list-group-item payment-item d-flex justify-content-between align-items-center">
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <strong>Folio: ${item.nro}</strong>
+                        <span class="badge bg-light text-dark">$${totalFac.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                    </div>
+                    <small class="d-block">Factura: ${item.Factura || 'N/A'} | Remisión: ${item.Remision || 'N/A'}</small>
+                    <small class="d-block">Proveedor: ${item.proveedor}</small>
+                    <small class="d-block text-light">Fecha: ${item.fecha}</small>
+                </div>
+                <button type="button" class="btn btn-sm ms-2" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; border-radius: 50%; width: 30px; height: 30px;" onclick="removeFromPayment(${index})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </li>
+        `;
+    });
+
+    basket.html(html);
+}
+
+// Remover elemento del pago
+function removeFromPayment(index) {
+    paymentItems.splice(index, 1);
+    renderPaymentItems();
+    updatePaymentSummary();
+}
+
+// Actualizar resumen del pago
+function updatePaymentSummary() {
+    const totalDocs = paymentItems.length;
+    let totalAmount = 0;
+
+    paymentItems.forEach(item => {
+        const amount = parseFloat(item.total_fac) || 0;
+        totalAmount += amount;
+    });
+
+    // Actualizar contador en el header
+    $('#item-count').text(`${totalDocs} documento${totalDocs !== 1 ? 's' : ''}`);
+    
+    // Actualizar resumen
+    $('#total-docs').text(totalDocs);
+    $('#total-amount').text(`$${totalAmount.toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
+    
+    // Mostrar/ocultar elementos según si hay documentos
+    if (totalDocs > 0) {
+        $('#payment-summary').show();
+        $('#generar-pago').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
+        $('#clear-basket').show();
+    } else {
+        $('#payment-summary').hide();
+        $('#generar-pago').prop('disabled', true).removeClass('btn-success').addClass('btn-secondary');
+        $('#clear-basket').hide();
+    }
+}
+
+// Limpiar todo el pago
+function clearAllPayments() {
+    if (paymentItems.length === 0) return;
+    
+    alertify.confirm(
+        '¿Estás seguro?',
+        '¿Quieres limpiar todos los documentos del pago?',
+        function() {
+            paymentItems = [];
+            renderPaymentItems();
+            updatePaymentSummary();
+            alertify.success('Pago limpiado correctamente');
+        },
+        function() {
+            // Cancelado
+        }
+    );
+}
+
+// Generar pago
+async function generatePayment() {
+    if (paymentItems.length === 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No hay documentos en el pago.</p>
+            </div>`
+        );
+        return;
+    }
+
+    // Preparar datos para enviar al servidorz
+    const paymentData = {
+        documentos: paymentItems,
+        total_documentos: paymentItems.length,
+        total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
+        fecha_pago: new Date().toISOString().split('T')[0]
+    };
+
+    // console.log('Datos del pago a generar:', paymentData);
+    try {
+        const response = await fetch('/supply/generate_payment', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(paymentData)
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            alertify.success('Pago generado exitosamente');
+            paymentItems = [];
+            renderPaymentItems();
+            updatePaymentSummary();
+        } else {
+            alertify.error('Error al generar el pago: ' + (data.detail || 'Error desconocido'));
+        }
+    } catch (error) {
+        alertify.error('Error de conexión');
+        console.error(error);
+    }
+}
+
+// Inicializar sistema al cargar la página
+$(document).ready(function() {
+    // Configurar eventos de botones
+    $('#generar-pago').on('click', generatePayment);
+    $('#clear-basket').on('click', clearAllPayments);
+    
+    // Inicializar estado
+    updatePaymentSummary();
+}); 
+
+</script>
+
+</script>
+{% endblock %}

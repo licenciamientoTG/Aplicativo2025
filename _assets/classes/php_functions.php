@@ -20,6 +20,7 @@ function connect_bd() {
 }
 
 function json_output($json) {
+    ini_set('memory_limit', '256M');
     header('Access-Control-Allow-Origin: *');
     header('Content-Type: application/json;charset=utf-8');
 

@@ -943,14 +943,14 @@ class DespachosModel extends Model{
                         LEFT JOIN [SG12].[dbo].[ClientesVehiculos] t11 on t1.codcli = t11.codcli  and t1.nroveh = t11.nroveh
                         /* LEFT JOIN [SG12].[dbo].MovimientosTar t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas and t12.mto != 0 and t12.tipmov != 97 and t12.tipmov != 86 */
                         LEFT JOIN(Select nrotrn,sum(mto) as mto, codbco, codgas from [SG12].[dbo].MovimientosTar Where tipmov != 86 and tipmov !=97  and mto != 0   group by nrotrn, codgas,codbco) t12 on t1.nrotrn=t12.nrotrn and t1.codgas = t12.codgas
-                        LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod 
+                        LEFT JOIN [SG12].[dbo].Valores t13 on t12.codbco = t13.cod
                         LEFT JOIN [SG12].[dbo].[EfectosC] t14 on t3.tip = t14.tipope and t3.subope =t14.subope
-                            Where 
+                            Where
                             t1.mto != 0 and
                             t1.tiptrn  not in (65,74) and
                             t1.fchtrn BETWEEN  $from and  $until  {$where}
                             )
-                SELECT * 
+                SELECT *
                     FROM CTE WITH (NOLOCK)
                     WHERE rn = 1
                     ORDER BY fecha, hora_formateada;";
@@ -961,7 +961,7 @@ class DespachosModel extends Model{
                     } catch (Exception $e) {
                         echo "Error al ejecutar la consulta: " . $e->getMessage();
                         return false;
-                    }       
+                    }
                  }
 
     function pivot_dispatches($from, $until, $codgas){

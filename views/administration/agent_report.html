@@ -21,10 +21,12 @@
                             <th class="text-primary">Tickets Total</th>
                             <th class="text-success">Tickets Resueltos</th>
                             <th class="text-warning">Tickets Pendientes</th>
-                            <th class="text-danger">Tickets Urgentes</th>
                             <th class="text-info">Tickets Normales</th>
-                            <th class="text-info">Tiempo Total</th>
-                            <th class="text-info">Tiempo Promedio</th>
+                            <th class="text-info">Tiempo Total Normal</th>
+                            <th class="text-info">Tiempo Promedio Normal</th>
+                            <th class="text-danger">Tickets Urgentes</th>
+                            <th class="text-danger">Tiempo Total Urgente</th>
+                            <th class="text-danger">Tiempo Promedio Urgente</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -36,6 +38,8 @@
                         {% set TotalHoursDifference = 0 %}
                         {% set AverageHoursDifference = 0 %}
                         {% set count = 0 %}
+                        {% set totalNormal = 0 %}
+                        {% set totalUrgent = 0 %}
                         {% for result in data %}
                         <tr>
                             <td>
@@ -52,10 +56,26 @@
                             </td>
                             <td>{{ result.ResolvedTickets }}</td>
                             <td>{{ result.PendingTickets }}</td>
-                            <td>{{ result.UrgentTickets }}</td>
                             <td>{{ result.NormalTickets }}</td>
-                            <td>{{ result.TotalHoursDifference | number_format(2, '.', ',') }}</td>
-                            <td>{{ result.AverageHoursDifference | number_format(2, '.', ',') }}</td>
+                            <td>{{ result.TotalHoursNormalTickets | number_format(3, '.', ',') }}</td>
+                            <td>
+                                {% if result.TotalHoursNormalTickets > 0 %}
+                                    {{ ( result.TotalHoursNormalTickets / result.NormalTickets) | number_format(3, '.', ',') }}
+                                    {% set totalNormal = totalNormal + (result.TotalHoursNormalTickets / result.NormalTickets) %}
+                                {% else %}
+                                    0.000
+                                {% endif %}
+                            </td>
+                            <td>{{ result.UrgentTickets }}</td>
+                            <td>{{ result.TotalHoursUrgentTickets | number_format(3, '.', ',') }}</td>
+                            <td>
+                                {% if result.TotalHoursUrgentTickets > 0 %}
+                                    {{ (result.TotalHoursUrgentTickets / result.UrgentTickets) | number_format(3, '.', ',') }}
+                                    {% set totalUrgent = totalUrgent + (result.TotalHoursUrgentTickets / result.UrgentTickets) %}
+                                {% else %}
+                                    0.000
+                                {% endif %}
+                            </td>
                         </tr>
                         {% set total = total + result.TotalTickets %}
                         {% set totalResolvedTickets = totalResolvedTickets + result.ResolvedTickets %}
@@ -73,10 +93,12 @@
                             <th>{{ total }}</th>
                             <th>{{ totalResolvedTickets }}</th>
                             <th>{{ totalPendingTickets }}</th>
-                            <th>{{ totalUrgentTickets }}</th>
                             <th>{{ totalNormalTickets }}</th>
-                            <th>{{ (TotalHoursDifference / count) | number_format(2, '.', ',') }}</th>
-                            <th>{{ (AverageHoursDifference / count) | number_format(2, '.', ',') }}</th>
+                            <th>{{ (TotalHoursDifference / count) | number_format(3, '.', ',') }}</th>
+                            <th>{{ (totalNormal) | number_format(3, '.', ',') }}</th>
+                            <th>{{ totalUrgentTickets }}</th>
+                            <th>{{ totalUrgentTickets }}</th>
+                            <th>{{ (totalUrgent) | number_format(3, '.', ',') }}</th>
                         </tr>
                         </tfoot>
                     </table>

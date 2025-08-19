@@ -492,10 +492,13 @@ class DocumentosModel extends Model{
                     t2.tipval,
                     t1.satuid AS 'UUID',
                     t4.satuid AS 'uid_anticipo',
-                    t4.mto_ori AS 'monto_original',
-                    t4.txtref as txt_anticipo,
-                    t4.flgcon as flg_anticipo,
-                    t4.concepto AS concepto_anticipo
+                    t4.mto AS [monto],
+                    t4.mtoiva as [mtoiva],
+                    (t4.mto+t4.mtoiva) AS [monto_original],
+                    t4.txtref as [txt_anticipo],
+                    t6.mto as [mto_fact_e],
+					t6.mtoiva as [mto_iva_e],
+					t6.mto  + t6.mtoiva as [mto_total_e]
                     --'t1',
                     --t1.*,
                     --'t3',
@@ -503,19 +506,25 @@ class DocumentosModel extends Model{
                     from DocumentosC t1
                     LEFT JOIN Clientes t2 on t1.codopr = t2.cod
                     LEFT JOIN DocumentosA t3 on t1.nro = t3.nro and t3.codgas =0
-                    LEFT JOIN (select 
-                                ( t2.mto + t2.mtoiva)/100 as mto_ori,
+                    LEFT JOIN (select
+                                --( t2.mto + t2.mtoiva)/100 as mto_ori,
+                                sum(mto)/100 as mto,
+                                sum(mtoiva)/100 as mtoiva,
                                 t1.nro,
-                                t1.flgcon,
-                                t1.txtref,
-                                t1.satuid,
-                                t3.den as concepto
+                                STRING_AGG(CAST(t1.txtref AS NVARCHAR(MAX)), ' | ') AS txtref,
+                                t1.satuid
                                 from DocumentosC t1
                                 LEFT JOIN Documentos t2 on t1.nro= t2.nro and t2.nroitm != (-1) and t2.codgas = 0
                                 left join Productos t3 on t2.codprd = t3.cod
-                                where t1.codgas = 0
+                                where
+                                t1.codgas = 0
+                                and t2.tip  = 3
+                                and t2.nroitm >0
                                 --t1.nro =1200205972
+                                group by t1.nro,t1.satuid
                                 ) t4 on t3.nroapl = t4.nro
+                   	LEFT JOIN DocumentosC t5 on t3.nroapl = t5.nro and t5.codgas =0
+    				LEFT JOIN(select sum(mto)/100 as mto, sum(mtoiva)/100 as mtoiva, nro from Documentos where nroitm > 0  and nrocta = 202050000 and tip = 3 and codgas = 0 group by nro ) t6 on t1.nro = t6.nro
                     where
                     t1.tip=3----para credito
                     and t1.codgas= 0
@@ -526,6 +535,7 @@ class DocumentosModel extends Model{
                     --and t3.tip = 3
                     --and t3.gasapl !=0
                     --and t4.flgcon !=129
+                    and t5.flgcon != 141 -- cancelada 
                     order by t1.fch desc";
         $params = [
             $from,
@@ -537,7 +547,7 @@ class DocumentosModel extends Model{
     }
     function relation_credit_table($from,$until){
 
-        $query ="select 
+        $query ="select
                     t1.fch,
                     t1.fchcor,
                     t1.vto,
@@ -573,6 +583,8 @@ class DocumentosModel extends Model{
                     t1.satuid AS 'UUID',
                     t4.satuid AS 'uid_anticipo',
                     t4.mto_ori AS 'monto_original',
+                    t4.mto AS 'monto_sub',
+                    t4.mto_iva AS 'monto_iva',
                     t4.txtref as txt_anticipo,
                     t1.txtref AS txt_note_credit,
                     t4.flgcon as flg_anticipo,
@@ -587,6 +599,8 @@ class DocumentosModel extends Model{
                         d.codopr,
                         d.nro,
                         SUM((d.mto + d.mtoiva) / 100) AS mto_ori,
+                        SUM((d.mto) / 100) AS mto,
+                        SUM((d.mtoiva) / 100) AS mto_iva,
                         dc.flgcon,
                         dc.satuid,
                         CAST(dc.txtref AS NVARCHAR(MAX)) AS txtref -- Conversión aquí
