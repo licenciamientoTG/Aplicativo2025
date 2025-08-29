@@ -330,7 +330,6 @@ function actualizarDataTableInvoce() {
 
 
 async function InvoiceConceptModal(uuid){
-        console.log(uuid)
         try {
             $('#InvoiceConceptModal').modal('show'); // Abre el modal
             const response = await fetch('/accounting/InvoiceConceptModal', {

@@ -565,6 +565,8 @@ async function payment_create_table(){
     var fromDate = document.getElementById('from1').value;
     var untilDate = document.getElementById('until1').value;
     var codgas = document.getElementById('station_id1').value;
+    var company = document.getElementById('company').value;
+    var proveedor = document.getElementById('proveedor_id').value;
     if(!codgas){
         alertify.myAlert(
             `<div class="container text-center text-danger">
@@ -604,7 +606,9 @@ async function payment_create_table(){
             data: {
                 'fromDate':fromDate,
                 'untilDate':untilDate,
-                'codgas':codgas
+                'codgas':codgas,
+                'company':company,
+                'proveedor':proveedor
             },
             url: '/supply/payment_control_table',
             timeout: 600000, 
@@ -627,14 +631,16 @@ async function payment_create_table(){
             }
         },
         columns: [
-            { data: 'gasolinera', className: 'text-nowrap' },                                // Folio del documento
-            { data: 'nro', className: 'text-nowrap' },                                // Folio del documento
-            { data: 'Factura', className: 'text-nowrap' },                            // Texto extraído de @F:
-            { data: 'Remision', className: 'text-nowrap' },                           // Texto extraído de @R:
-            { data: 'fecha', className: 'text-nowrap' },                              // Fecha (fch - 1)
-            { data: 'fechaVto', className: 'text-nowrap' },                           // Vencimiento (vto - 1)
-            { data: 'producto', className: 'text-nowrap' },                           // Producto (t3.den)
-            { data: 'proveedor', className: 'text-nowrap' },                          // Proveedor (t4.den)
+            
+            // { data: 'check_box' },                                // Folio del documento
+            { data: 'gasolinera' },                                // Folio del documento
+            { data: 'nro' },                                // Folio del documento
+            { data: 'Factura' },                            // Texto extraído de @F:
+            { data: 'Remision' },                           // Texto extraído de @R:
+            { data: 'fecha' },                              // Fecha (fch - 1)
+            { data: 'fechaVto' },                           // Vencimiento (vto - 1)
+            { data: 'producto' },                           // Producto (t3.den)
+            { data: 'proveedor' },                          // Proveedor (t4.den)
             { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
             { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
             // { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 4) },    // Precio unitario
@@ -671,3 +677,157 @@ async function payment_create_table(){
         }
     });
 }
+
+
+async function providers_table(){
+    if ($.fn.DataTable.isDataTable('#providers_table')) {
+        $('#providers_table').DataTable().destroy();
+        $('#providers_table thead .filter').remove();
+    }
+
+
+    $('#providers_table thead').prepend($('#providers_table thead tr').clone().addClass('filter'));
+    $('#providers_table thead tr.filter th').each(function (index) {
+        col = $('#providers_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#providers_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#providers_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let providers_table =$('#providers_table').DataTable({
+        order: [[1, "asc"], [2, "desc"]],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        // scrollY: '700px',
+        // scrollX: true,
+        // scrollCollapse: true,
+        paging: true,
+        pageLength: 100,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            url: '/supply/providers_table',
+            timeout: 600000, 
+            error: function() {
+                $('#providers_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { data: 'id_control_gas', className: 'text-nowrap' },                                // Folio del documento
+            { data: 'proveedor', className: 'text-nowrap' },                          // Proveedor (t4.den)
+            { data: 'dias_credito', className: 'text-nowrap' },                       // Días Crédito
+            { data: 'total_facturado', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap text-end' },// Total total_facturado
+            { data: 'limite_credito', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap' },                     // Límite Crédito
+            { data: 'condiciones_pago', className: 'text-nowrap' },                   // Condiciones Pago
+            { data: 'observaciones', className: 'text-nowrap' },                      // Observaciones
+            { data: 'activo', className: 'text-nowrap' },
+        ],
+        deferRender: true,
+        createdRow: function (row, data, dataIndex) {
+            if (parseFloat(data['total_facturado']) >= parseFloat(data['limite_credito'])) {
+                $(row).addClass('bg-warning');
+            }
+
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+        }
+    });
+    
+}
+
+function filtrarEstacionesPorEmpresa() {
+    const empresaSel = $('#company').val();
+    const $station = $('#station_id1');
+
+    // Si no se ha seleccionado empresa, mantener estaciones deshabilitadas
+    if (empresaSel === null || empresaSel === '') {
+        $station.prop('disabled', true);
+        $station.selectpicker('refresh');
+        return;
+    }
+
+    // Habilitar el select de estaciones
+    $station.prop('disabled', false);
+
+    // Destruir selectpicker para reconstruir opciones
+    $station.selectpicker('destroy');
+
+    // Limpiar todas las opciones
+    $station.empty();
+
+    // Agregar opción placeholder
+    $station.append('<option disabled>Seleccione una estación</option>');
+    
+    // Agregar opción "Todas las estaciones"
+    if (empresaSel === '0') {
+        $station.append('<option value="0">Todas las estaciones</option>');
+    } else {
+        $station.append('<option value="0">Todas las estaciones de esta empresa</option>');
+    }
+
+    // Obtener y filtrar estaciones desde los datos originales
+    const $tempDiv = $('<div>').html(window.originalStationOptions || $('#station_id1').data('original-options'));
+    
+    $tempDiv.find('option[data-emp]').each(function() {
+        const emp = $(this).attr('data-emp');
+        
+        if (empresaSel === '0' || emp === empresaSel) {
+            $station.append($(this).clone());
+        }
+    });
+
+    // Seleccionar "Todas las estaciones"
+    $station.val('0');
+
+    // Reinicializar selectpicker
+    $station.selectpicker({
+        liveSearch: true
+    });
+}
+
+// Función para guardar opciones originales (llamar después de cargar la página)
+function saveOriginalStationOptions() {
+    console.log('Guardando opciones originales de estaciones');
+    if (!window.originalStationOptions) {
+        window.originalStationOptions = $('#station_id1').html();
+    }
+}
+
+
+
+

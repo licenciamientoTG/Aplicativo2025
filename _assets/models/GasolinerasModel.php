@@ -75,7 +75,12 @@ class GasolinerasModel extends Model{
      * @throws Exception
      */
     public function get_stations() : array|false {
-        $query = 'SELECT cod, abr, den, dom, col FROM [SG12].[dbo].[Gasolineras] ORDER BY abr;';
+        $query = 'SELECT 
+                    t1.cod, t1.abr, t1.den, t1.dom, t1.col, t1.codemp, t2.den
+                    FROM [SG12].[dbo].[Gasolineras] t1 
+                    LEFT JOIN SG12.dbo.Empresas t2 on t1.codemp = t2.cod
+                    WHERE t1.datvar = 0 
+                    ORDER BY abr;';
         return ($this->sql->select($query)) ?: false ;
     }
 

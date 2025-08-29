@@ -71,7 +71,7 @@ class Commercial{
     function sale_month_turn_table(){
         $dinamicColumns = $_POST['dinamicColumns'];
         $rows = $this->ventas->getSalesMonthTotal($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'],$_POST['turn'],$_POST['total']);
-        
+
         $data=[];
         foreach ($rows as $key => $row) {
             $entry=[];
@@ -105,6 +105,7 @@ class Commercial{
         }
     }
     public function sale_month_turn_base_table() {
+
         if ($rows = $this->ventas->GetSalesMonthBase($_POST['fromDate'], $_POST['untilDate'], $_POST['zona'])) {
             foreach ($rows as $row) {
                 $data[] = array(

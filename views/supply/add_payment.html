@@ -163,11 +163,33 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <label class="col-form-label-sm" for="until1">Hasta: </label>
                         <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                        <div class="col-2 ">
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
-                            <option value="0" {% if not station_id or station_id == 0 %}selected{% endif %}>Todas las estaciones</option>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Razon social </label>
+                        <select class="selectpicker w-100" data-live-search="true" name="company" id="company" required>
+                            <option disabled selected> Seleccione</option>
+                            <option value="0">Todas</option>
+                            {% for company in companys %}
+                            <option value="{{ company.codemp }}">{{ company.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until1">Estacion: </label>
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación" disabled>
+                            <option disabled selected>Seleccione empresa primero</option>
+                            <option value="0" style="display:none;">Todas las estaciones</option>
                             {% for station in stations %}
-                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                                <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="until1">Proveedor: </label>
+                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
+                            <option value="0" >Todos los proveedores</option>
+                            {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -191,16 +213,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Proveedor</th>
                             <th>Volumen Recibido</th>
                             <th>Cantidad</th>
-                            <!-- <th>Precio</th>
-                            <th>Monto</th>
-                            <th>Monto IIE</th>
-                            <th>IVA 8%</th>
-                            <th>IVA Extra</th>
-                            <th>IVA Total</th>
-                            <th>Servicio</th>
-                            <th>IVA Servicio</th> -->
                             <th>Total Factura</th>
-                            <!-- <th>UID SAT</th> -->
                         </tr>
                         </thead>
                     <tbody></tbody>
@@ -468,6 +481,12 @@ async function generatePayment() {
 
 // Inicializar sistema al cargar la página
 $(document).ready(function() {
+    window.originalStationOptions = $('#station_id1').html();
+    var company = document.getElementById('company');
+    company.addEventListener('change', function() {
+        filtrarEstacionesPorEmpresa();
+    });
+
     // Configurar eventos de botones
     $('#generar-pago').on('click', generatePayment);
     $('#clear-basket').on('click', clearAllPayments);

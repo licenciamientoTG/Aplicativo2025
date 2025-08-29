@@ -1,0 +1,113 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Proveedores{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Proveedores{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+
+<!-- <ul class="nav nav-tabs" id="myTab" role="tablist">
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link   active" id="providers-tab" data-bs-toggle="tab" data-bs-target="#providers" type="button" role="tab" aria-controls="providers" aria-selected="true">Proveedores</button>
+    </li>
+
+</ul>
+
+<div class="tab-content" > -->
+
+    <div class="tab-pane active " id="providers" role="tabpanel" aria-labelledby="providers-tab">
+
+        <div class="card">
+            <!-- <div class="card-header">
+                <h5 class="card-title">Proveedores </h5>
+            </div> -->
+            <div class="card-body table-responsive" >
+                <table id="providers_table" class="table table-hover table-sm w-100">
+                   <thead>
+                         <tr>
+                            <th>Id</th>
+                            <th>Proveedor</th>
+                            <th>Días Crédito</th>
+                            <th>Total Facturado</th>
+                            <th>Límite Crédito</th>
+                            <th>Condiciones Pago</th>
+                            <th>Observaciones</th>
+                            <th>Activo</th>
+                        </tr>
+                        </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+<!-- </div> -->
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+
+providers_table();
+
+</script>
+
+</script>
+{% endblock %}

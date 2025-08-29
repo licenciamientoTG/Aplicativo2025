@@ -530,8 +530,8 @@ class VentasModel extends Model{
     }
 
     function getSalesTypePayment($from, $until, $zona,$total) {
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
 
         $zona_query = "";
         if (isset($zona) && $zona != 0) {
@@ -634,8 +634,8 @@ class VentasModel extends Model{
     }
     function getSalesTypePaymentTotal($from, $until, $zona) {
 
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
 
         $zona_query = "";
         if (isset($zona) && $zona != 0) {
@@ -730,8 +730,8 @@ class VentasModel extends Model{
 
 
     function getMounthGruopPayment($from, $until, $grupo, $total) {
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
 
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
@@ -839,8 +839,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
     function getMounthCompanyPayment($from, $until, $company, $total) {
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
 
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
@@ -936,8 +936,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
     function getMounthEstationPayment($from, $until, $estation, $total) {
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
 
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
@@ -1027,13 +1027,14 @@ class VentasModel extends Model{
                 ORDER BY Estacion, Descripcion;
             ";
 
+
         return $this->sql->select($query, []);
     }
     function getSalesMonthTotal($from, $until, $zona, $turn, $total) {
      
-        $fromstring = date('Y-d-m', strtotime($from));
-        $untilstring = date('Y-d-m', strtotime($until));
-    
+        $fromstring = date('Y-m-d', strtotime($from));
+        $untilstring = date('Y-m-d', strtotime($until));
+
         $zona_query = "";
         if (!empty($zona) && $zona != 0) {
             $zona_query = "AND E.estructura = '{$zona}'";
@@ -1136,14 +1137,15 @@ class VentasModel extends Model{
     }
     
 
-    function GetSalesMonthBase($from, $until, $zona,){
+    function GetSalesMonthBase($from, $until, $zona){
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
+
         $query = "
                    WITH ValuesTable AS (
                     SELECT
-                        DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Año,
-                        DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as Mes,
+                         Year(CAST(DATEADD(DAY, v.fch -1, '19000101') AS date)) as [Año],
+                         datename(month, CAST(DATEADD(DAY, v.fch -1, '19000101') AS date)) as [Mes],
                         SUBSTRING(CAST(v.nrotur AS VARCHAR(3)), 1, 1)  as [Turno],
                          T3.den as Producto,
                         isd.codgas AS CodGasolinera,
@@ -1164,8 +1166,8 @@ class VentasModel extends Model{
                         fch BETWEEN $fromint AND $untilint
                         AND codprd IN(179, 180, 181, 2, 3, 1, 192, 193) 
                     GROUP BY
-                        DATEPART(Year, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
-                        DATEPART(MONTH, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)),
+                        Year(CAST(DATEADD(DAY, v.fch -1, '19000101') AS date)),
+                        datename(month, CAST(DATEADD(DAY, v.fch -1, '19000101') AS date)),
                         nrotur,
                         T3.den,
                         isd.codgas,
@@ -1176,9 +1178,10 @@ class VentasModel extends Model{
 						E.estructura
                 )
                 select * from ValuesTable";
+ 
         return $this->sql->select($query, []);
     }
-    function GetSalesDayTurnBase($from, $until, $zona,){
+    function GetSalesDayTurnBase($from, $until, $zona){
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
         $query = "
@@ -1515,8 +1518,8 @@ class VentasModel extends Model{
 
         $columns = array_map(fn($estacion) => "[{$estacion['codigo']}]", $estaciones);
         $columnsList = implode(',', $columns);
-        $from = date('Y-d-m', strtotime($from));
-        $until = date('Y-d-m', strtotime($until));
+        $from = date('Y-m-d', strtotime($from));
+        $until = date('Y-m-d', strtotime($until));
 
         $shiftOptions = [
             0 => "nrotur IN (11, 21, 31, 41)",
@@ -1546,10 +1549,10 @@ class VentasModel extends Model{
 
                 WITH SalesData AS (
                     SELECT  
-                        CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
-                        datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
+                        CONVERT(VARCHAR, DATEADD(dd, fch - 1, 0), 103) AS 'Fecha',
+        YEAR(DATEADD(dd, fch - 1, 0)) as 'year',
+        DATENAME(month, DATEADD(dd, fch - 1, 0)) as 'mounth',
+        DATENAME(day, DATEADD(dd, fch - 1, 0)) as 'day1',
                         isd.codgas AS CodGasolinera,
                         case
 						when T3.den ='   T-Maxima Regular' then 'T-Maxima Regular'
@@ -1611,7 +1614,7 @@ class VentasModel extends Model{
                     FOR CodGasolinera IN ( {$columnsList})
                 ) AS PivotTable
                 ORDER BY fch desc, turn, codprd desc";
-            
+
 
         return $this->sql->select($query, []);
 
@@ -1711,8 +1714,8 @@ class VentasModel extends Model{
         // }
         $columns = array_map(fn($estacion) => "[{$estacion['codigo']}]", $estaciones);
         $columnsList = implode(',', $columns);
-        $from = date('Y-d-m', strtotime($from));
-        $until = date('Y-d-m', strtotime($until));
+        $from = date('Y-m-d', strtotime($from));
+        $until = date('Y-m-d', strtotime($until));
         $shiftOptions = [
             0 => "nrotur IN (11, 21, 31, 41)",
             11 => "nrotur = 11",
@@ -1725,7 +1728,7 @@ class VentasModel extends Model{
 
 
         if ($id_producto == 0) {
-           $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
+           $producto  = "codprd IN (179, 18 0, 181, 2, 3, 1, 192, 193)";
         }if ($id_producto == 1) {
             $producto  = "codprd IN (179, 192)";
         }elseif ($id_producto == 2) {

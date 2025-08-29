@@ -26,6 +26,7 @@ class Supply{
     public MovimientosTanModel $movimientosTanModel;
     public PaymentRequestsModel $paymentRequestsModel;
     public PaymentRequestInvoicesModel $paymentRequestInvoicesModel;
+    public ProveedoresModel $proveedores;
     /**
      * @param $twig
      */
@@ -52,6 +53,7 @@ class Supply{
         $this->movimientosTanModel                               = new MovimientosTanModel();
         $this->paymentRequestsModel                               = new PaymentRequestsModel();
         $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
+        $this->proveedores                                       = new ProveedoresModel();
     }
 
     /**
@@ -1097,9 +1099,10 @@ class Supply{
     }
 
     function add_payment(){
-        $stations = $this->gasolinerasModel->get_active_stations();
-
-        echo $this->twig->render($this->route . 'add_payment.html', compact('stations'));
+        $stations = $this->gasolinerasModel->get_stations();
+        $companys = $this->gasolinerasModel->get_company();
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'add_payment.html', compact('stations', 'companys', 'proveedores'));
 
     }
     public function payment_control_table(){
@@ -1111,7 +1114,10 @@ class Supply{
             'from' => dateToInt($_POST['fromDate']),
             'until' => dateToInt($_POST['untilDate']),
             'codgas' => $_POST['codgas'] ? $_POST['codgas'] : '0',
+            'proveedor' => $_POST['proveedor'] ? $_POST['proveedor'] : '0',
+            'company' => $_POST['company'] ? $_POST['company'] : '0'
         ];
+
         $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
@@ -1122,6 +1128,7 @@ class Supply{
         curl_close($ch);
         $apiData = json_decode($response, true);
         $data = [];
+
 
         if (isset($apiData) && is_array($apiData)) {
             foreach ($apiData as $row) {
@@ -1241,4 +1248,29 @@ class Supply{
             }
         }
     }
+
+
+    public function providers_table(){
+        $data = [];
+        if ( $providers = $this->proveedores->get_rows()) {
+
+            foreach ($providers as $row) {
+                $data[] = array(
+                    'id'               => $row['id'],
+                    'id_control_gas'               => $row['id_control_gas'],
+                    'proveedor'        => $row['den'],
+                    'dias_credito'     => $row['dias_credito'],
+                    'limite_credito'   => is_null($row['limite_credito']) ? 0 : $row['limite_credito'],
+                    'condiciones_pago' => $row['condiciones_pago'],
+                    'total_facturado'  => is_null($row['total_facturado']) ? 0 : $row['total_facturado'],
+                    'observaciones'    => $row['observaciones'],
+                    'activo'           => $row['activo'],
+                );
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+    
+
 }
