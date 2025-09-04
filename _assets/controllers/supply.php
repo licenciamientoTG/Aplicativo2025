@@ -620,7 +620,6 @@ class Supply{
     }
 
     function bulkUpload() {
-
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
 
@@ -652,6 +651,17 @@ class Supply{
 
             // Obtiene los productos asociados a las estaciones para la fecha indicada
             $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
+            $codgas_products = array_values(array_filter(
+                $codgas_products,
+                function ($row) {
+                    // Soporta array u objeto
+                    $val = is_array($row) ? ($row['codgas'] ?? null) : ($row->codgas ?? null);
+                    return (int)$val !== 18;
+                }
+            ));
+            // echo '<pre>';
+            // var_dump($codgas_products);
+            // die();
 
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
@@ -661,7 +671,7 @@ class Supply{
                 foreach ($codgas_products as $item) {
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
-    
+
                     // Si no existe el registro en la tabla de inventarios vendidos, lo inserta o actualiza
                     if (!$this->xsdEstacionServicioVolumenVendidoInventariosModel->exists($reportId, $item['controlGasStationId'], $item['controlGasProductId'])) {
                         $this->xsdEstacionServicioVolumenVendidoInventariosModel->insertOrUpdateRow(
@@ -746,7 +756,6 @@ class Supply{
     }
 
     function updateForm() {
-
         if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
             $creProductId = $_POST['creProductId'];
             $creSubProductId = $_POST['creSubProductId'];
@@ -1099,13 +1108,20 @@ class Supply{
     }
 
     function add_payment(){
-        $stations = $this->gasolinerasModel->get_stations();
+       $all_stations = $this->gasolinerasModel->get_stations();
+    
+        // Filtrar estaciones para quitar la que tiene cod = 0
+        $stations = array_filter($all_stations, function($station) {
+            return $station['cod'] != 0; // o !== '0' si cod es string
+        });
+
         $companys = $this->gasolinerasModel->get_company();
         $proveedores = $this->proveedores->get_actives();
         echo $this->twig->render($this->route . 'add_payment.html', compact('stations', 'companys', 'proveedores'));
 
     }
     public function payment_control_table(){
+
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
@@ -1127,6 +1143,7 @@ class Supply{
         $response = curl_exec($ch);
         curl_close($ch);
         $apiData = json_decode($response, true);
+
         $data = [];
 
 
@@ -1271,6 +1288,6 @@ class Supply{
         json_output(array("data" => $data));
     }
 
-    
+
 
 }

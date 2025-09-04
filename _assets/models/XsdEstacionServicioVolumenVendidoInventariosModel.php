@@ -33,7 +33,7 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
         return $n;
     }
 
-    function insertOrUpdateRow($reportId,$xsdEstacionServicioVolumenId,$controlGasStationId,$controlGasProductId,$productoId,$subProductoId,$subproductoMarcaId,$inventarioInicial,$volumenVendido,$inventarioFinal, $merma) {
+    function    insertOrUpdateRow($reportId,$xsdEstacionServicioVolumenId,$controlGasStationId,$controlGasProductId,$productoId,$subProductoId,$subproductoMarcaId,$inventarioInicial,$volumenVendido,$inventarioFinal, $merma) {
         // echo '<pre>1';
         // var_dump($reportId, $xsdEstacionServicioVolumenId, $controlGasStationId, $controlGasProductId, $productoId, $subProductoId, $subproductoMarcaId, $inventarioInicial, $volumenVendido, $inventarioFinal, $merma);
         // die();

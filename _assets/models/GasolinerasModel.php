@@ -92,6 +92,7 @@ class GasolinerasModel extends Model{
         $query = 'SELECT t1.codemp, t2.den
                     FROM [SG12].[dbo].[Gasolineras] t1
                     left join SG12.dbo.Empresas t2 on t1.codemp = t2.cod
+                    WHERE t1.datvar = 0 
                     group by t1.codemp,t2.den';
         $params = [];
         return ($this->sql->select($query)) ?: false ;

@@ -453,7 +453,6 @@ async function payment_list_table(){
     }
     var fromDate = document.getElementById('from1').value;
     var untilDate = document.getElementById('until1').value;
-    var codgas = document.getElementById('station_id1').value;
     if(!codgas){
         alertify.myAlert(
             `<div class="container text-center text-danger">
@@ -567,7 +566,8 @@ async function payment_create_table(){
     var codgas = document.getElementById('station_id1').value;
     var company = document.getElementById('company').value;
     var proveedor = document.getElementById('proveedor_id').value;
-    if(!codgas){
+
+    if(!codgas || !company || !proveedor){
         alertify.myAlert(
             `<div class="container text-center text-danger">
                 <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -643,16 +643,7 @@ async function payment_create_table(){
             { data: 'proveedor' },                          // Proveedor (t4.den)
             { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
             { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
-            // { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 4) },    // Precio unitario
-            // { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },    // Monto
-            // { data: 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto IIE
-            // { data: 'iva8', render: $.fn.dataTable.render.number(',', '.', 2) },   // IVA 8%
-            // { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },    // IVA Extra
-            // { data: 'iva_total', render: $.fn.dataTable.render.number(',', '.', 2) }, // Total IVA
-            // { data: 'servicio', render: $.fn.dataTable.render.number(',', '.', 2) },  // Servicio
-            // { data: 'iva_servicio', render: $.fn.dataTable.render.number(',', '.', 2) }, // IVA Servicio
             { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
-            // { data: 'satuid', className: 'text-nowrap' }   // UID SAT
         ],
          columnDefs: [
                     { orderable: false, targets: 0 }
@@ -669,9 +660,7 @@ async function payment_create_table(){
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
             setupDragAndDrop();
-
             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
         footerCallback: function (row, data, start, end, display) {
         }
@@ -747,7 +736,7 @@ async function providers_table(){
             { data: 'proveedor', className: 'text-nowrap' },                          // Proveedor (t4.den)
             { data: 'dias_credito', className: 'text-nowrap' },                       // Días Crédito
             { data: 'total_facturado', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap text-end' },// Total total_facturado
-            { data: 'limite_credito', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap' },                     // Límite Crédito
+            { data: 'limite_credito', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap text-end' },                     // Límite Crédito
             { data: 'condiciones_pago', className: 'text-nowrap' },                   // Condiciones Pago
             { data: 'observaciones', className: 'text-nowrap' },                      // Observaciones
             { data: 'activo', className: 'text-nowrap' },
@@ -790,9 +779,9 @@ function filtrarEstacionesPorEmpresa() {
     // Limpiar todas las opciones
     $station.empty();
 
-    // Agregar opción placeholder
-    $station.append('<option disabled>Seleccione una estación</option>');
-    
+    // Agregar opción placeholder (NO seleccionada por defecto)
+    $station.append('<option value="" disabled selected >Seleccione una estación</option>');
+
     // Agregar opción "Todas las estaciones"
     if (empresaSel === '0') {
         $station.append('<option value="0">Todas las estaciones</option>');
@@ -800,31 +789,42 @@ function filtrarEstacionesPorEmpresa() {
         $station.append('<option value="0">Todas las estaciones de esta empresa</option>');
     }
 
-    // Obtener y filtrar estaciones desde los datos originales
-    const $tempDiv = $('<div>').html(window.originalStationOptions || $('#station_id1').data('original-options'));
     
-    $tempDiv.find('option[data-emp]').each(function() {
-        const emp = $(this).attr('data-emp');
+    // Obtener y filtrar estaciones desde los datos originales
+    if (window.originalStationOptions) {
+        const $tempDiv = $('<div>').html(window.originalStationOptions);
         
-        if (empresaSel === '0' || emp === empresaSel) {
-            $station.append($(this).clone());
-        }
-    });
+        $tempDiv.find('option[data-emp]').each(function() {
+            const emp = $(this).attr('data-emp');
+            const stationValue = $(this).attr('value');
+            const stationText = $(this).text();
+            if (empresaSel === '0' || emp === empresaSel) {
+                $station.append('<option value="' + stationValue + '" data-emp="' + emp + '">' + stationText + '</option>');
+            }
+        });
+    } else {
+        console.error('No se encontraron opciones originales');
+    }
 
-    // Seleccionar "Todas las estaciones"
+    // Seleccionar "Todas las estaciones" por defecto
     $station.val('0');
 
     // Reinicializar selectpicker
     $station.selectpicker({
-        liveSearch: true
+        liveSearch: true,
+        title: 'Seleccione una estación'
     });
+    
+    // $station.find('option').each(function() {
+    //     console.log('Opción:', $(this).text(), 'Valor:', $(this).val());
+    // });
 }
 
 // Función para guardar opciones originales (llamar después de cargar la página)
 function saveOriginalStationOptions() {
     console.log('Guardando opciones originales de estaciones');
     if (!window.originalStationOptions) {
-        window.originalStationOptions = $('#station_id1').html();
+        window.originalStationOptions = $('#station_id').html();
     }
 }
 

@@ -127,6 +127,8 @@ class EstacionesModel extends Model{
                                                 WHEN RFC = 'GVA9709154V2' THEN 'GASOLINERA VILLA AHUMADA'
                                                 WHEN RFC = 'SGC1304129H9' THEN 'SERVICIOS GASOLINEROS EL CASTAÑO'
                                                 WHEN RFC = 'GOG181220973' THEN 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO'
+                                                WHEN RFC = 'FGA110722PR7' THEN 'FORMULAGAS'
+                                                WHEN RFC = 'FIHH7303026K7' THEN 'HECTOR ARMANDINO FIERRO HOLGUIN'
                                                 ELSE RFC
                                             END AS denominacion
                                         FROM
@@ -147,6 +149,8 @@ class EstacionesModel extends Model{
                                                 WHEN RFC = 'GVA9709154V2' THEN 'GASOLINERA VILLA AHUMADA'
                                                 WHEN RFC = 'SGC1304129H9' THEN 'SERVICIOS GASOLINEROS EL CASTAÑO'
                                                 WHEN RFC = 'GOG181220973' THEN 'GRUPO OPERADOR GASOLINERO TSA DEL CENTRO'
+                                                WHEN RFC = 'FGA110722PR7' THEN 'FORMULAGAS'
+                                                WHEN RFC = 'FIHH7303026K7' THEN 'HECTOR ARMANDINO FIERRO HOLGUIN'
                                                 ELSE RFC
                                             END
                                            ORDER BY denominacion");
