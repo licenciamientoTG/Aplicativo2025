@@ -5,7 +5,6 @@
     $MySqlHandler = MySqlPdoHandler::getInstance();
     $MySqlHandler->connect('TG');
     // Suponiendo que tienes una conexión válida en $this->_connection
-
     if ($info_usuario = $MySqlHandler->executeStoredProcedure("sp_usuario_login", array('Usuario'   => $_POST['username'], 'Password'  => $_POST['password']))) {
         // if ($info_usuario[0]['remote'] != "1" ) {
 
@@ -16,7 +15,8 @@
         //         die();
         //     }
         // }
-        // Ahora vamos a recolectar los permisos del usuario logueado
+        // Ahora vamos a recolectar los permisos del usuario logu
+
         $permissions = $MySqlHandler->select("SELECT permission_id FROM [TG].[dbo].[tg_permissions_users] WHERE user_id = ?;", [$info_usuario[0]['Id']]);
 
         // Extraer los valores de la columna permission_id y eliminar los espacios en blanco
@@ -38,6 +38,7 @@
         // Aqui vamos a hacer una consulta para obtener los permisos de cada usuario
         session_start();
         $_SESSION['tg_user'] = $info_usuario[0];
+
 
         if (in_array('41', explode(',', $_SESSION['tg_user']['permissions']))) {
             binnacle_register($_SESSION['tg_user']['Id'], 'Login', 'Inicio de sesión', $_POST['ip'], 'Login', 'Login');

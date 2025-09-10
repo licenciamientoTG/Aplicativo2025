@@ -59,6 +59,11 @@ class Accounting{
             echo $this->twig->render($this->route . 'purchase_invoice.html', compact('first_date'));
         }
     }
+    public function movement_analysis() : void {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'movement_analysis.html');
+        }
+    }
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
@@ -996,6 +1001,34 @@ class Accounting{
 
             http_response_code(404);
             echo 'El archivo no fue encontrado.';
+        }
+    }
+
+
+    public function movement_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $from = dateToInt($_POST['fromDate']);
+        $until = dateToInt($_POST['untilDate']);
+        if ($rows = $this->Documentos->movement_analysis_table($from,$until)) {
+
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'fecha'   => $row['fecha'],
+                    'factura' => $row['factura'],
+                    'mtoapl'  => $row['mtoapl'],
+                    'den'     => $row['den'],
+                    'abr'     => $row['abr'],
+                    'nro'     => $row['nro'],
+                    'satuid'  => $row['satuid'],
+                    'txtref'  => $row['txtref'],
+                );
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
 

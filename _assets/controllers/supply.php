@@ -651,14 +651,14 @@ class Supply{
 
             // Obtiene los productos asociados a las estaciones para la fecha indicada
             $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
-            $codgas_products = array_values(array_filter(
-                $codgas_products,
-                function ($row) {
-                    // Soporta array u objeto
-                    $val = is_array($row) ? ($row['codgas'] ?? null) : ($row->codgas ?? null);
-                    return (int)$val !== 18;
-                }
-            ));
+            // $codgas_products = array_values(array_filter(
+            //     $codgas_products,
+            //     function ($row) {
+            //         // Soporta array u objeto
+            //         $val = is_array($row) ? ($row['codgas'] ?? null) : ($row->codgas ?? null);
+            //         return (int)$val !== 18;
+            //     }
+            // ));
             // echo '<pre>';
             // var_dump($codgas_products);
             // die();
