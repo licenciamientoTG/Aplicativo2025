@@ -120,7 +120,7 @@ class Administration{
                     $normal_tickets_values = json_encode(array_column($normal_tickets, 'avg_hours_elapsed'));
 
                     // Ahora los datos de los agentes
-                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total($from, $until, $ticket_form);
+                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
                     // Vamos a agrupar por el valor de la columna `AssignedUserName`
                     $agents_total_tickets = array_reduce($agents_total_tickets, function ($carry, $item) {
                         $carry[$item['AssignedUserName']][] = $item;
@@ -157,7 +157,7 @@ class Administration{
                     $normal_tickets_values = json_encode(array_column($normal_tickets, 'avg_hours_elapsed'));
 
                     // Ahora los datos de los agentes
-                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_month($from, $until, $ticket_form);
+                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_month($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Vamos a agrupar por el valor de la columna `AssignedUserName`
                     $agents_total_tickets = array_reduce($agents_total_tickets, function ($carry, $item) {
@@ -196,7 +196,7 @@ class Administration{
                     $normal_tickets_values = json_encode(array_column($normal_tickets, 'avg_hours_elapsed'));
 
                     // Ahora los datos de los agentes
-                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_year($from, $until, $ticket_form);
+                    $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_year($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
                     // Vamos a agrupar por el valor de la columna `AssignedUserName`
                     $agents_total_tickets = array_reduce($agents_total_tickets, function ($carry, $item) {
@@ -208,14 +208,14 @@ class Administration{
             }
 
             // Aqui vamos a trabajar la parte de Tipos Soporte
-            $supportTypes = $this->mojoTicketsModel->get_support_types($from, $until, $ticket_form);
+            $supportTypes = $this->mojoTicketsModel->get_support_types($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
             // Preparar etiquetas y valores
             $supportTypes_labels = json_encode(array_column($supportTypes, 'problem'));
             $supportTypes_values = json_encode(array_column($supportTypes, 'total'));
 
 
             // Aqui vamos a trabajar la parte de Clientes
-            $ticket_users = $this->mojoTicketsModel->get_ticket_users($from, $until, $ticket_form);
+            $ticket_users = $this->mojoTicketsModel->get_ticket_users($from . 'T00:00:00',$until . 'T23:59:59', $ticket_form);
 
             // Preparar etiquetas y valores
             $ticket_users_labels = json_encode(array_column($ticket_users, 'full_name'));
@@ -1539,7 +1539,7 @@ class Administration{
     function get_agent_report($agent, $from, $until, $date_range, $ticket_form) {
         switch ($date_range) {
             case 'semanal':
-                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total($from, $until, $ticket_form);
+                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total($from . 'T00:00:00', $until . 'T23:59:59', $ticket_form);
                 $data = [];
                 foreach ($agents_total_tickets as $ticket) {
                     if ($ticket['assigned_to_id'] == $agent) {
@@ -1555,7 +1555,7 @@ class Administration{
                 break;
             case 'mensual':
                 // Ahora los datos de los agentes
-                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_month($from, $until, $ticket_form);
+                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_month($from . 'T00:00:00', $until . 'T23:59:59', $ticket_form);
                 $data = [];
                 foreach ($agents_total_tickets as $ticket) {
                     if ($ticket['assigned_to_id'] == $agent) {
@@ -1569,7 +1569,7 @@ class Administration{
                 break;
             case 'anual':
                 // Ahora los datos de los agentes
-                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_year($from, $until, $ticket_form);
+                $agents_total_tickets = $this->mojoTicketsModel->get_agents_tickets_total_year($from . 'T00:00:00', $until . 'T23:59:59', $ticket_form);
                 $data = [];
                 foreach ($agents_total_tickets as $ticket) {
                     if ($ticket['assigned_to_id'] == $agent) {
