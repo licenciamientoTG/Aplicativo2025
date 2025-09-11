@@ -1,0 +1,389 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Lista de tickets{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Administración{% endblock %}
+{% block content %}
+
+<!-- Content Header -->
+<div class="content-header">
+    <div class="container-fluid">
+        <div class="row mb-2">
+            <div class="col-sm-6">
+                <h1 class="m-0">
+                    <i class="fas fa-chart-line text-primary"></i>
+                    Reporte ECV - Estadísticas de Tickets
+                </h1>
+            </div>
+            <div class="col-sm-6">
+                <ol class="breadcrumb float-sm-right">
+                    <li class="breadcrumb-item"><a href="#">Inicio</a></li>
+                    <li class="breadcrumb-item"><a href="#">Reportes</a></li>
+                    <li class="breadcrumb-item active">ECV Tickets</li>
+                </ol>
+            </div>
+        </div>
+        
+        <!-- Período Info -->
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info alert-dismissible">
+                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+                    <h5><i class="icon fas fa-calendar-alt"></i> Información del Período</h5>
+                    <strong>Período:</strong> Septiembre 2025 | 
+                    <strong>Fecha de consulta:</strong> 11 de Septiembre, 2025
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<section class="content">
+    <div class="container-fluid">
+        
+        <!-- Filtros -->
+        <div class="card card-primary card-outline">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-filter"></i>
+                    Filtros de Consulta
+                </h3>
+                <div class="card-tools">
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <form>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="department">
+                                    <i class="fas fa-building text-primary"></i>
+                                    Departamento
+                                </label>
+                                <select class="form-control select2" id="department">
+                                    <option value="">Todos los departamentos</option>
+                                    <option value="soporte" selected>Soporte</option>
+                                    <option value="infraestructura">Infraestructura y Mantenimiento</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="period">
+                                    <i class="fas fa-calendar text-success"></i>
+                                    Período
+                                </label>
+                                <select class="form-control select2" id="period">
+                                    <option value="septiembre-2025" selected>Septiembre 2025</option>
+                                    <option value="agosto-2025">Agosto 2025</option>
+                                    <option value="julio-2025">Julio 2025</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label for="agent">
+                                    <i class="fas fa-user text-warning"></i>
+                                    Agente
+                                </label>
+                                <select class="form-control select2" id="agent">
+                                    <option value="">Todos los agentes</option>
+                                    <option value="aldo-ochoa">Aldo Ochoa</option>
+                                    <option value="maria-lopez">María López</option>
+                                    <option value="carlos-ruiz">Carlos Ruiz</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn btn-primary btn-block">
+                                    <i class="fas fa-search"></i>
+                                    Generar Reporte
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="row">
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-info">
+                    <div class="inner">
+                        <h3>47</h3>
+                        <p>Total Tickets</p>
+                    </div>
+                    <div class="icon">
+                        <i class="fas fa-ticket-alt"></i>
+                    </div>
+                    <a href="#" class="small-box-footer">
+                        En el período
+                        <i class="fas fa-arrow-circle-right"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-danger">
+                    <div class="inner">
+                        <h3>15</h3>
+                        <p>Tickets Abiertos</p>
+                    </div>
+                    <div class="icon">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <a href="#" class="small-box-footer">
+                        Pendientes
+                        <i class="fas fa-arrow-circle-right"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-success">
+                    <div class="inner">
+                        <h3>32</h3>
+                        <p>Tickets Cerrados</p>
+                    </div>
+                    <div class="icon">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <a href="#" class="small-box-footer">
+                        Resueltos
+                        <i class="fas fa-arrow-circle-right"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-6">
+                <div class="small-box bg-warning">
+                    <div class="inner">
+                        <h3>18.5h</h3>
+                        <p>ECV Promedio</p>
+                    </div>
+                    <div class="icon">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <a href="#" class="small-box-footer">
+                        Tiempo de vida
+                        <i class="fas fa-arrow-circle-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agentes Section -->
+        <div class="card card-success card-outline">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-users"></i>
+                    Detalle por Agente
+                </h3>
+                <div class="card-tools">
+                    <button type="button" class="btn btn-tool" data-card-widget="maximize">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    
+                    <!-- Agente 1: Aldo Ochoa -->
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card card-widget widget-user">
+                            <div class="widget-user-header bg-info">
+                                <h3 class="widget-user-username">Aldo Ochoa</h3>
+                                <h5 class="widget-user-desc">Soporte Técnico</h5>
+                            </div>
+                            <div class="widget-user-image">
+                                <img class="img-circle elevation-2" 
+                                        src="https://via.placeholder.com/90/007bff/FFFFFF?text=AO" 
+                                        alt="User Avatar">
+                            </div>
+                            <div class="card-footer">
+                                <div class="row">
+                                    <div class="col-sm-6 border-right">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-danger">5</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-exclamation-triangle text-danger"></i>
+                                                ABIERTOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-success">8</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-check-circle text-success"></i>
+                                                CERRADOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- ECV Summary -->
+                                <div class="mt-3">
+                                    <div class="info-box bg-gradient-primary">
+                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
+                                        <div class="info-box-content">
+                                            <span class="info-box-text">ECV Promedio</span>
+                                            <span class="info-box-number">22.3 horas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Time Breakdown -->
+                                <div class="mt-3">
+                                    <div class="callout callout-info">
+                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Creados en Septiembre:</strong> 3 abiertos + 8 cerrados</li>
+                                            <li><strong>Creados en Junio (abiertos):</strong> 2 tickets</li>
+                                            <li><strong>Tiempo total acumulado:</strong> 290.5 horas</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Agente 2: María López -->
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card card-widget widget-user">
+                            <div class="widget-user-header bg-success">
+                                <h3 class="widget-user-username">María López</h3>
+                                <h5 class="widget-user-desc">Infraestructura</h5>
+                            </div>
+                            <div class="widget-user-image">
+                                <img class="img-circle elevation-2" 
+                                        src="https://via.placeholder.com/90/28a745/FFFFFF?text=ML" 
+                                        alt="User Avatar">
+                            </div>
+                            <div class="card-footer">
+                                <div class="row">
+                                    <div class="col-sm-6 border-right">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-danger">3</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-exclamation-triangle text-danger"></i>
+                                                ABIERTOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-success">12</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-check-circle text-success"></i>
+                                                CERRADOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- ECV Summary -->
+                                <div class="mt-3">
+                                    <div class="info-box bg-gradient-success">
+                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
+                                        <div class="info-box-content">
+                                            <span class="info-box-text">ECV Promedio</span>
+                                            <span class="info-box-number">16.7 horas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Time Breakdown -->
+                                <div class="mt-3">
+                                    <div class="callout callout-success">
+                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Creados en Septiembre:</strong> 2 abiertos + 12 cerrados</li>
+                                            <li><strong>Creados en Agosto (abiertos):</strong> 1 ticket</li>
+                                            <li><strong>Tiempo total acumulado:</strong> 250.5 horas</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Agente 3: Carlos Ruiz -->
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card card-widget widget-user">
+                            <div class="widget-user-header bg-warning">
+                                <h3 class="widget-user-username">Carlos Ruiz</h3>
+                                <h5 class="widget-user-desc">Soporte Técnico</h5>
+                            </div>
+                            <div class="widget-user-image">
+                                <img class="img-circle elevation-2" 
+                                        src="https://via.placeholder.com/90/ffc107/000000?text=CR" 
+                                        alt="User Avatar">
+                            </div>
+                            <div class="card-footer">
+                                <div class="row">
+                                    <div class="col-sm-6 border-right">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-danger">7</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-exclamation-triangle text-danger"></i>
+                                                ABIERTOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="description-block">
+                                            <h5 class="description-header text-success">12</h5>
+                                            <span class="description-text">
+                                                <i class="fas fa-check-circle text-success"></i>
+                                                CERRADOS
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- ECV Summary -->
+                                <div class="mt-3">
+                                    <div class="info-box bg-gradient-warning">
+                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
+                                        <div class="info-box-content">
+                                            <span class="info-box-text">ECV Promedio</span>
+                                            <span class="info-box-number">19.8 horas</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Time Breakdown -->
+                                <div class="mt-3">
+                                    <div class="callout callout-warning">
+                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Creados en Septiembre:</strong> 5 abiertos + 12 cerrados</li>
+                                            <li><strong>Creados anteriormente (abiertos):</strong> 2 tickets</li>
+                                            <li><strong>Tiempo total acumulado:</strong> 376.2 horas</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+{% endblock %}

@@ -586,9 +586,10 @@ class MojoTicketsModel extends Model{
 
     function get_tickets_by_form_and_month($from, $until,$form_id) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
         
+        SET DATEFIRST 1;
         -- Ajustar la fecha final para ser el último día del mes anterior
         SET @EndDate = DATEADD(DAY, -DAY(@EndDate), @EndDate);
         
@@ -610,7 +611,7 @@ class MojoTicketsModel extends Model{
                 CONVERT(DATE, mr.first_day_of_month) AS start_of_month,
                 EOMONTH(mr.first_day_of_month) AS end_of_month
             FROM 
-                [TG].[dbo].[mojo_ticket_status] ts
+                [TG].[dbo].[mojo_ticket_status] ts WITH (NOLOCK)
             CROSS JOIN 
                 MonthsInRange mr
         )
@@ -624,7 +625,7 @@ class MojoTicketsModel extends Model{
             sm.end_of_month,
             ISNULL(t.ticket_count, 0) AS ticket_count
         FROM 
-            StatusMonths sm
+            StatusMonths sm WITH (NOLOCK)
         LEFT JOIN (
             SELECT 
                 status_id,
@@ -632,7 +633,7 @@ class MojoTicketsModel extends Model{
                 MONTH(created_on) AS month,
                 COUNT(*) AS ticket_count
             FROM 
-                [TG].[dbo].[mojo_tickets]
+                [TG].[dbo].[mojo_tickets] WITH (NOLOCK)
             WHERE 
                 ticket_form_id = {$form_id}
                 AND created_on >= @StartDate -- Fecha inicial
@@ -657,6 +658,7 @@ class MojoTicketsModel extends Model{
         DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial Nuevo
         DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
+        SET DATEFIRST 1;
         -- Crear una tabla temporal para las semanas entre la fecha inicial y la fecha final
         WITH WeeksInRange AS (
             SELECT DATEADD(WEEK, DATEDIFF(WEEK, 0, @StartDate), 0) AS first_day_of_week
@@ -782,7 +784,7 @@ class MojoTicketsModel extends Model{
                 SUM(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS total_hours_elapsed,
                 AVG(DATEDIFF(MINUTE, created_on, COALESCE(solved_on, @EndDate)) / 60.0) AS avg_hours_elapsed
             FROM
-                [TG].[dbo].[mojo_tickets]
+                [TG].[dbo].[mojo_tickets] WITH (NOLOCK)
             WHERE
                 created_on >= @StartDate AND
                 created_on <= @EndDate AND
@@ -1380,7 +1382,7 @@ class MojoTicketsModel extends Model{
                     SUM(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS total_hours_elapsed,
                     AVG(DATEDIFF(MINUTE, created_on, solved_on) / 60.0) AS avg_hours_elapsed
                 FROM 
-                    [TG].[dbo].[mojo_tickets] 
+                    [TG].[dbo].[mojo_tickets] WITH (NOLOCK)
                 WHERE 
                     created_on >= @StartDate AND 
                     created_on <= @EndDate AND 
@@ -1397,7 +1399,7 @@ class MojoTicketsModel extends Model{
                     DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1) AS month_start_date,
                     EOMONTH(DATEFROMPARTS(DATEPART(YEAR, created_on), DATEPART(MONTH, created_on), 1)) AS month_end_date
                 FROM 
-                    [TG].[dbo].[mojo_tickets] 
+                    [TG].[dbo].[mojo_tickets] WITH (NOLOCK)
                 WHERE 
                     created_on >= @StartDate AND 
                     created_on <= @EndDate AND 
@@ -1429,7 +1431,7 @@ class MojoTicketsModel extends Model{
             SELECT
                 problem, COUNT(*) total
             FROM
-                [TG].[dbo].[mojo_tickets]
+                [TG].[dbo].[mojo_tickets] WITH (NOLOCK)
             WHERE
                 created_on >= @StartDate AND created_on <= @EndDate AND
                 ticket_form_id = {$ticket_form}
@@ -1450,7 +1452,7 @@ class MojoTicketsModel extends Model{
                 (ISNULL(t2.first_name, '') + ' ' + ISNULL(t2.last_name, '')) AS full_name, 
                 COUNT(*) AS total
             FROM
-                [TG].[dbo].[mojo_tickets] t1
+                [TG].[dbo].[mojo_tickets] t1 WITH (NOLOCK)
                 LEFT JOIN [TG].[dbo].[mojo_users] t2 ON t1.user_id = t2.id_mojo
             WHERE
                 t1.created_on >= @StartDate AND t1.created_on <= @EndDate AND
@@ -1655,8 +1657,8 @@ class MojoTicketsModel extends Model{
 
     function get_agents_tickets_total_month($from, $until, $ticket_form) : array | false {
         $query = "
-        DECLARE @StartDate DATE = '{$from}'; -- Fecha inicial
-        DECLARE @EndDate DATE = '{$until}'; -- Fecha final
+        DECLARE @StartDate DATETIME = '{$from}'; -- Fecha inicial
+        DECLARE @EndDate DATETIME = '{$until}'; -- Fecha final
 
         -- Aseguramos que lunes sea 1 y domingo 7
         SET DATEFIRST 1;

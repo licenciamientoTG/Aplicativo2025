@@ -254,6 +254,13 @@ class Administration{
         echo $this->twig->render($this->route . 'stats_tickets.html', compact('date_range', 'from', 'input_from', 'until', 'input_until', 'tickets_forms', 'ticket_form', 'groupedResults', 'supportTypes', 'supportTypes_labels', 'supportTypes_values', 'ticket_users', 'ticket_users_labels', 'ticket_users_values', 'normal_tickets', 'normal_tickets_labels','normal_tickets_values', 'urgent_tickets', 'urgent_tickets_labels','urgent_tickets_values','agents_total_tickets', 'agents_solved_tickets','agents_pending_tickets', 'agents_urgent_tickets','agents_normal_tickets','groupedResultsMonths', 'ticket_groups', 'ticket_groups_labels', 'ticket_groups_values', 'ticket_departments', 'ticket_departments_values', 'ticket_departments_labels'));
     }
 
+    function ecv_calc() {
+        if ($_SESSION['tg_user']['Id'] == 6177) {
+            echo $this->twig->render($this->route . 'ecv_calc.html');
+        }
+        
+    }
+
 
     function getMondayFromWeek($weekString) {
         // Parse the year and week from the input string
