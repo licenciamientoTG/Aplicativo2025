@@ -966,6 +966,60 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
         {'data': 'ACCIONES'},
     ],
     rowId: 'Id',
+    footerCallback: function (row, data, start, end, display) {
+        var api = this.api();
+        var columnIndex = 8; // Índice de la columna TIEMPO_RESPUESTA
+        
+        // Función para convertir valores a números (maneja diferentes formatos)
+        var intVal = function (i) {
+            // Si es string, remover caracteres no numéricos excepto puntos y comas decimales
+            if (typeof i === 'string') {
+                // Reemplazar comas por puntos para decimales
+                i = i.replace(',', '.');
+                // Extraer solo números y puntos decimales
+                i = i.replace(/[^\d.-]/g, '');
+            }
+            return typeof i === 'string' && i !== '' ? parseFloat(i) : 
+                   typeof i === 'number' ? i : 0;
+        };
+
+        // Obtener todos los datos de la columna que están actualmente filtrados
+        var filteredData = api
+            .column(columnIndex, { search: 'applied' })
+            .data()
+            .toArray();
+
+        // Convertir a números válidos
+        var validValues = filteredData
+            .map(function(val) { return intVal(val); })
+            .filter(function(val) { return !isNaN(val) && val !== null; });
+
+        var count = validValues.length;
+        var sum = validValues.reduce(function(a, b) { return a + b; }, 0);
+        var average = count > 0 ? (sum / count) : 0;
+
+        // Formatear números con 3 decimales
+        var formatNumber = function(num) {
+            return num.toLocaleString('es-MX', {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3
+            });
+        };
+
+        // Actualizar el footer de la columna TIEMPO_RESPUESTA
+        $(api.column(columnIndex).footer()).html(
+            '<div style="font-size: 11px; line-height: 1.2;">' +
+            '<div><strong>Registros:</strong> ' + count + '</div>' +
+            '<div><strong>Suma:</strong> ' + formatNumber(sum) + '</div>' +
+            '<div><strong>Promedio:</strong> ' + formatNumber(average) + '</div>' +
+            '</div>'
+        );
+
+        // Actualizar los badges arriba de la tabla
+        $('#badge-registros').text(count.toLocaleString('es-MX'));
+        $('#badge-suma').text(formatNumber(sum));
+        $('#badge-promedio').text(formatNumber(average));
+    },
     createdRow: function (row, data, dataIndex) {
     },
     initComplete: function () {
