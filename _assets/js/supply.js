@@ -692,7 +692,7 @@ async function providers_table(){
             .draw(); // Redibuja la tabla
     });
     let providers_table =$('#providers_table').DataTable({
-        order: [[1, "asc"], [2, "desc"]],
+        order: [[3, "desc"]],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         // scrollY: '700px',
@@ -733,7 +733,7 @@ async function providers_table(){
         },
         columns: [
             { data: 'id_control_gas', className: 'text-nowrap' },                                // Folio del documento
-            { data: 'proveedor', className: 'text-nowrap' },                          // Proveedor (t4.den)
+            { data: 'proveedor'},                          // Proveedor (t4.den)
             { data: 'dias_credito', className: 'text-nowrap' },                       // Días Crédito
             { data: 'total_facturado', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap text-end' },// Total total_facturado
             { data: 'limite_credito', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-nowrap text-end' },                     // Límite Crédito
@@ -744,7 +744,7 @@ async function providers_table(){
         deferRender: true,
         createdRow: function (row, data, dataIndex) {
             if (parseFloat(data['total_facturado']) >= parseFloat(data['limite_credito'])) {
-                $(row).addClass('bg-warning');
+                // $(row).addClass('bg-warning');
             }
 
         },

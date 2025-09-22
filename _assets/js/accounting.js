@@ -224,7 +224,7 @@ function actualizarDataTableInvoce() {
     var until = $('#until').val();
     var rfc = $('#rfc').val();
    
-    var timestamp = new Date().getTime();
+    // var timestamp = new Date().getTime();
 
     if (!rfc || rfc === "") {
         alertify.myAlert(

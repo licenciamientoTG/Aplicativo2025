@@ -1272,17 +1272,20 @@ class Supply{
         if ( $providers = $this->proveedores->get_rows()) {
 
             foreach ($providers as $row) {
-                $data[] = array(
-                    'id'               => $row['id'],
-                    'id_control_gas'               => $row['id_control_gas'],
-                    'proveedor'        => $row['den'],
-                    'dias_credito'     => $row['dias_credito'],
-                    'limite_credito'   => is_null($row['limite_credito']) ? 0 : $row['limite_credito'],
-                    'condiciones_pago' => $row['condiciones_pago'],
-                    'total_facturado'  => is_null($row['total_facturado']) ? 0 : $row['total_facturado'],
-                    'observaciones'    => $row['observaciones'],
-                    'activo'           => $row['activo'],
-                );
+                if($row['total_facturado'] != 0){
+                    
+                    $data[] = array(
+                        'id'               => $row['id'],
+                        'id_control_gas'               => $row['id_control_gas'],
+                        'proveedor'        => $row['den'],
+                        'dias_credito'     => $row['dias_credito'],
+                        'limite_credito'   => is_null($row['limite_credito']) ? 0 : $row['limite_credito'],
+                        'condiciones_pago' => $row['condiciones_pago'],
+                        'total_facturado'  => is_null($row['total_facturado']) ? 0 : $row['total_facturado'],
+                        'observaciones'    => $row['observaciones'],
+                        'activo'           => $row['activo'],
+                    );
+                }
             }
         }
         json_output(array("data" => $data));
