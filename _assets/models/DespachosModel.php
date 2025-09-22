@@ -2502,6 +2502,35 @@ class DespachosModel extends Model{
     
         return $this->sql->select($query, []);
     }
+
+/**
+ *
+ * @param int|string $from   Fecha inicial (inclusive) para t1.fchtrn
+ * @param int|string $until  Fecha final (inclusive) para t1.fchtrn
+ *
+ * @return array
+ */
+function cash_invoices_advance($from, $until)
+{
+    $query = "
+        SELECT
+            t1.codcli,
+            t2.den,
+            SUM(t1.mto) AS monto
+        FROM SG12.dbo.Despachos t1
+        LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+        WHERE
+            t1.fchtrn BETWEEN ? AND ?
+            AND t2.tipval NOT IN (3, 4)
+        GROUP BY t1.codcli, t2.den
+        ORDER BY SUM(t1.mto) DESC
+    ";
+
+    $params = [$from, $until];
+
+    return $this->sql->select($query, $params);
+}
+
     
     
 }   

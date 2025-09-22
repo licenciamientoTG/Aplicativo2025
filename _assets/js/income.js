@@ -1935,6 +1935,79 @@ async function clients_debit_table(){
     });
 }
 
+////////////////////////
+
+let cashTable = null;
+
+$(function () {
+  cashTable = $('#cash_invoices_table').DataTable({
+    responsive: true,
+    destroy: true,
+    columns: [
+      { data: 'codcli' },
+      { data: 'cliente' },
+      {
+        data: 'monto',
+        render: d => Number(d).toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        })
+      }
+    ]
+  });
+});
+
+function setLoading(isLoading) {
+  const $btn = $('#search_cash_invoices_table');
+  $btn.prop('disabled', isLoading);
+  $btn.text(isLoading ? 'Cargando…' : 'Generar Reporte');
+}
+
+window.cash_invoices_table = async function () {
+  const from  = $('#from').val();
+  const until = $('#until').val();
+
+  setLoading(true);
+  try {
+    const res = await $.ajax({
+      url: '/income/cash_invoices_table',
+      method: 'POST',
+      dataType: 'json',
+      data: {
+        from,
+        until,
+      }
+    });
+
+
+    if (!res || typeof res !== 'object' || !Array.isArray(res.data)) {
+      console.error('Respuesta inesperada:', res);
+      alert('Respuesta inesperada del servidor. Revisa la consola.');
+      return;
+    }
+
+    cashTable.clear().rows.add(res.data).draw();
+  } catch (jqXHR) {
+    console.group('cash_invoices_table AJAX error');
+    console.error('status:', jqXHR.status);
+    console.error('statusText:', jqXHR.statusText);
+    console.error('responseText:', jqXHR.responseText);
+    console.error('responseJSON:', jqXHR.responseJSON);
+    console.groupEnd();
+
+    let msg = 'No se pudo generar el reporte.';
+    if (jqXHR.responseJSON?.error) msg += ` ${jqXHR.responseJSON.error}`;
+    alert(msg);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+
+///////////////////
+
 async function cargarGraficaDesdeController() {
   const response = await fetch('chartcontroller.php');
   const datos = await response.json();
