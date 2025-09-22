@@ -1935,6 +1935,167 @@ async function clients_debit_table(){
     });
 }
 
+////////////////////////
+
+// let cashTable = null;
+
+// $(function () {
+//   cashTable = $('#cash_invoices_table').DataTable({
+//     responsive: true,
+//     destroy: true,
+//     columns: [
+//       { data: 'codcli' },
+//       { data: 'cliente' },
+//       {
+//         data: 'monto',
+//         render: d => Number(d).toLocaleString(undefined, {
+//           minimumFractionDigits: 2,
+//           maximumFractionDigits: 2
+//         })
+//       }
+//     ]
+//   });
+// });
+
+// function setLoading(isLoading) {
+//   const $btn = $('#search_cash_invoices_table');
+//   $btn.prop('disabled', isLoading);
+//   $btn.text(isLoading ? 'Cargando…' : 'Generar Reporte');
+// }
+
+// window.cash_invoices_table = async function () {
+//   const from  = $('#from').val();
+//   const until = $('#until').val();
+
+//   setLoading(true);
+//   try {
+//     const res = await $.ajax({
+//       url: '/income/cash_invoices_table',
+//       method: 'POST',
+//       dataType: 'json',
+//       data: {
+//         from,
+//         until,
+//       }
+//     });
+
+
+//     if (!res || typeof res !== 'object' || !Array.isArray(res.data)) {
+//       console.error('Respuesta inesperada:', res);
+//       alert('Respuesta inesperada del servidor. Revisa la consola.');
+//       return;
+//     }
+
+//     cashTable.clear().rows.add(res.data).draw();
+//   } catch (jqXHR) {
+//     console.group('cash_invoices_table AJAX error');
+//     console.error('status:', jqXHR.status);
+//     console.error('statusText:', jqXHR.statusText);
+//     console.error('responseText:', jqXHR.responseText);
+//     console.error('responseJSON:', jqXHR.responseJSON);
+//     console.groupEnd();
+
+//     let msg = 'No se pudo generar el reporte.';
+//     if (jqXHR.responseJSON?.error) msg += ` ${jqXHR.responseJSON.error}`;
+//     alert(msg);
+//   } finally {
+//     setLoading(false);
+//   }
+// };
+
+async function cash_invoices_table(){
+    if ($.fn.DataTable.isDataTable('#cash_invoices_table')) {
+        $('#cash_invoices_table').DataTable().destroy();
+        $('#cash_invoices_table thead .filter').remove();
+      
+    }
+    const from  = $('#from').val();
+    const until = $('#until').val();
+
+    $('#cash_invoices_table thead').prepend($('#cash_invoices_table thead tr').clone().addClass('filter'));
+    $('#cash_invoices_table thead tr.filter th').each(function (index) {
+        col = $('#cash_invoices_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#cash_invoices_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#cash_invoices_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let cash_invoices_table =$('#cash_invoices_table').DataTable({
+        order: [2, "desc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'from':from,
+                'until':until
+            },
+            url: '/income/cash_invoices_table',
+            timeout: 600000, 
+            error: function() {
+                $('#cash_invoices_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            {'data': 'codcli',className:'text-nowrap'},
+            {'data': 'cliente'},
+            {'data': 'monto', render: $.fn.dataTable.render.number(',','.',2) },
+
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+           
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+        }
+    });
+}
+
+
+///////////////////
+
 async function cargarGraficaDesdeController() {
   const response = await fetch('chartcontroller.php');
   const datos = await response.json();
@@ -1987,4 +2148,4 @@ async function cargarGraficaDesdeController() {
   });
 }
 
-cargarGraficaDesdeController();
+// cargarGraficaDesdeController();

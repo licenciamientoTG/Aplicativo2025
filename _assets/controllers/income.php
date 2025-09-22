@@ -237,6 +237,34 @@ class Income{
         json_output(array("data" => $data));
     }
 
+    function cash_invoices(){
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'cash_invoices.html');
+        }
+    }
+
+    function cash_invoices_table(){
+
+        
+         ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        $data = [];
+        $from = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
+    
+        if ($despachos = $this->despachosModel->cash_invoices_advance($from, $until)) {
+
+            foreach ($despachos as $despachos) {
+                 $data[] = array(
+                     'codcli'             => $despachos["codcli"],
+                     'cliente'          => $despachos["den"],
+                     'monto'       => $despachos["monto"],
+                 );
+            }
+        }
+       json_output(array("data" => $data));
+    }
+
 
     function relation_credit_table(){
         $data = [];
@@ -244,9 +272,9 @@ class Income{
         $until = dateToInt($_POST['until']);
     
         if ($facturas = $this->documentosModel->relation_credit_table($from, $until)) {
-            // echo '<pre>';
-            // var_dump($facturas);
-            // die();
+             echo '<pre>';
+             var_dump($facturas);
+            die();
             foreach ($facturas as $factura) {
                 $data[] = array(
                     'fecha'             => $factura['fecha'],
