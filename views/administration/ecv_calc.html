@@ -1,389 +1,576 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Lista de tickets{% endblock %}
-{% block mycss %}{% endblock %}
-{% block menutitle %}Administración{% endblock %}
+{% block title %}Reporte ECV - Estadísticas de Tickets{% endblock %}
+{% block mycss %}
+<style>
+/* Ajustes finos para aspecto profesional */
+.card.card-primary.card-outline {
+  border-radius: .75rem;
+}
+
+.card-header .card-title {
+  font-size: 1.1rem;
+  letter-spacing: .2px;
+}
+
+.input-group-text {
+  background: #f8f9fa;
+}
+
+.form-control, .input-group-text, select.form-control {
+  border-radius: .5rem !important;
+}
+
+.kpi-agent-card {
+  border-radius: .75rem;
+  transition: transform .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+.kpi-agent-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 .75rem 1.25rem rgba(0,0,0,.12);
+  background-color: #f6f6f6;
+}
+
+
+/* Info-box neutral y sobrio */
+.kpi-ecv-box {
+  border-radius: .65rem;
+  background: #f8f9fa;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5);
+}
+.kpi-ecv-box .info-box-icon {
+  border-radius: .5rem;
+  background: #e9ecef;
+  color: #495057;
+}
+.kpi-ecv-box .info-box-text { font-size: .85rem; color: #6c757d; }
+.kpi-ecv-box .info-box-number { font-weight: 700; }
+
+/* Ajustes del widget-user (AdminLTE) */
+.widget-user .widget-user-header {
+  border-top-left-radius: .75rem;
+  border-top-right-radius: .75rem;
+}
+.widget-user .card-footer {
+  border-bottom-left-radius: .75rem;
+  border-bottom-right-radius: .75rem;
+}
+.description-block .description-header { font-weight: 700; }
+
+.kpi-value {
+  font-weight: 700;
+}
+.card {
+  border-radius: .75rem;
+  transition: transform .15s ease-in-out, box-shadow .15s ease-in-out;
+}
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0.75rem 1.25rem rgba(0,0,0,.15);
+}
+
+i{
+  margin-right: 10px;
+}
+
+#titulo{
+  margin-bottom: 60px;
+}
+
+
+@media (min-width: 992px) {
+  /* Asegura columnas limpias en escritorio */
+  .card-body .row > [class*="col-lg-4"] {
+    padding-right: .5rem;
+    padding-left: .5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .filters .form-group { min-width: 220px; }
+}
+
+
+@media print {
+  .no-print { display: none !important; }
+}
+
+
+/* Evita cortes raros dentro de cards y tablas */
+#reporte-ecv, #reporte-ecv * {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+/* Forzar saltos de página donde lo necesites */
+.page-break { break-after: page; }
+
+#btnExportPdf{
+  height: 35px !important;
+  margin-bottom: 30px;
+  margin-left: 3px;
+}
+
+</style>
+{% endblock %}
+{% block menutitle %}Reporte ECV - Estadísticas de Tickets{% endblock %}
 {% block content %}
 
 <!-- Content Header -->
-<div class="content-header">
-    <div class="container-fluid">
-        <div class="row mb-2">
-            <div class="col-sm-6">
-                <h1 class="m-0">
-                    <i class="fas fa-chart-line text-primary"></i>
-                    Reporte ECV - Estadísticas de Tickets
-                </h1>
-            </div>
-            <div class="col-sm-6">
-                <ol class="breadcrumb float-sm-right">
-                    <li class="breadcrumb-item"><a href="#">Inicio</a></li>
-                    <li class="breadcrumb-item"><a href="#">Reportes</a></li>
-                    <li class="breadcrumb-item active">ECV Tickets</li>
-                </ol>
-            </div>
+
+<!--Filtros-->
+<div class="card">
+  <div class="card-body">
+    <form method="get" action="" class="filters">
+      <input type="hidden" name="submitted" value="1">
+
+      <div class="row">
+        <!-- Período -->
+        <div class="col-md-3 mb-3">
+          <label for="period" class="text-muted small d-block mb-2">
+            <i class="fa-solid fa-calendar-days text-success mr-1"></i> Período
+          </label>
+          <input type="month" class="form-control" id="period" lang="es" name="period"
+            value="{{ period|default('now'|date('Y-m')) }}" max="{{ 'now'|date('Y-m') }}" required>
         </div>
-        
-        <!-- Período Info -->
-        <div class="row">
-            <div class="col-12">
-                <div class="alert alert-info alert-dismissible">
-                    <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
-                    <h5><i class="icon fas fa-calendar-alt"></i> Información del Período</h5>
-                    <strong>Período:</strong> Septiembre 2025 | 
-                    <strong>Fecha de consulta:</strong> 11 de Septiembre, 2025
-                </div>
-            </div>
+
+        <!-- Formulario -->
+        <div class="col-md-3 mb-3">
+          <label for="ticket_form_id" class="text-muted small d-block mb-2">
+            <i class="fa-solid fa-list text-success mr-1"></i> Formulario
+          </label>
+          <select class="form-control" id="ticket_form_id" name="ticket_form_id" required>
+            <option value="51598" {{ ticket_form_id == 51598 ? 'selected' : '' }}>Tickets Sistemas</option>
+            <option value="57328" {{ ticket_form_id == 57328 ? 'selected' : '' }}>Tickets Mantenimiento</option>
+          </select>
         </div>
-    </div>
+
+        <!-- Agente -->
+        <div class="col-md-3 mb-3">
+          <label for="assigned_to_id" class="text-muted small d-block mb-2">
+            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agente
+          </label>
+          <select id="assigned_to_id" name="assigned_to_id" class="form-control">
+            {% for id, label in lista_agentes %}
+ 
+            <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
+              {{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Botón -->
+        <div class="col-md-3 mb-3 d-flex align-items-end">
+          <button type="submit" class="btn btn-primary w-100">
+            <i class="fa-solid fa-magnifying-glass mr-1"></i> Consultar
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
-<!-- Main Content -->
-<section class="content">
-    <div class="container-fluid">
+  {% if consulted %}
+  <!--Boton PDF-->
+ <button id="btnExportPdf" type="button" class="btn btn-sm btn-danger w-20 no-print">
+        <i class="fa-solid fa-file-pdf mr-1"></i> Exportar a PDF
+      </button>
+  {%endif%}
+
+   <div id="reporte-ecv" class="card card-primary card-outline shadow-sm rounded-lg">
+
+
+  {% if consulted %}
+  <div class="card-body pt-4">
+  <div class="row">
+    <!-- Sales -->
+          {# ---- Título resumido del reporte ---- #}
+      {% set departamento = ticket_form_id == 51598 ? 'Tickets Sistemas'
+                          : (ticket_form_id == 57328 ? 'Tickets Mantenimiento' : '—') %}
+
+      {% set agente_nombre = (assigned_to_id is defined and assigned_to_id != 0)
+          ? (lista_agentes[assigned_to_id] ?? ('Agente #' ~ assigned_to_id))
+          : 'Todos' %}
+
+      <div class="mb-4 text-center">
+        <h3 id="titulo" class="font-weight-bold">
+          Reporte de tickets {{ period|default('now'|date('Y-m')) }},
+          Formulario: {{ departamento }},
+          Agente: {{ agente_nombre }}
+        </h3>
+      </div>
+      {# ---- fin título ---- #}
+    <div class="col-12 col-sm-6 col-lg-3 mb-3">
+      <div class="card shadow-sm h-100 border-0">
         
-        <!-- Filtros -->
-        <div class="card card-primary card-outline">
-            <div class="card-header">
-                <h3 class="card-title">
-                    <i class="fas fa-filter"></i>
-                    Filtros de Consulta
-                </h3>
-                <div class="card-tools">
-                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col mt-0">
+              <h5 class="card-title">Total Tickets</h5>
             </div>
-            <div class="card-body">
-                <form>
-                    <div class="row">
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label for="department">
-                                    <i class="fas fa-building text-primary"></i>
-                                    Departamento
-                                </label>
-                                <select class="form-control select2" id="department">
-                                    <option value="">Todos los departamentos</option>
-                                    <option value="soporte" selected>Soporte</option>
-                                    <option value="infraestructura">Infraestructura y Mantenimiento</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label for="period">
-                                    <i class="fas fa-calendar text-success"></i>
-                                    Período
-                                </label>
-                                <select class="form-control select2" id="period">
-                                    <option value="septiembre-2025" selected>Septiembre 2025</option>
-                                    <option value="agosto-2025">Agosto 2025</option>
-                                    <option value="julio-2025">Julio 2025</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label for="agent">
-                                    <i class="fas fa-user text-warning"></i>
-                                    Agente
-                                </label>
-                                <select class="form-control select2" id="agent">
-                                    <option value="">Todos los agentes</option>
-                                    <option value="aldo-ochoa">Aldo Ochoa</option>
-                                    <option value="maria-lopez">María López</option>
-                                    <option value="carlos-ruiz">Carlos Ruiz</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label>&nbsp;</label>
-                                <button type="button" class="btn btn-primary btn-block">
-                                    <i class="fas fa-search"></i>
-                                    Generar Reporte
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </form>
+            <div class="col-auto">
+              <div class="stat text-primary">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.0.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/>
+                  <rect x="1" y="3" width="15" height="13"></rect>
+                  <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                  <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                  <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                </svg>
+              </div>
             </div>
+          </div>
+          <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
+<div class="mb-0">
+  <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+    <span class="text-muted">Ver lista de tickets</span>
+        <i class="fas fa-arrow-right me-2"></i>
+  </a>
+</div>
+
         </div>
-
-        <!-- Summary Cards -->
-        <div class="row">
-            <div class="col-lg-3 col-6">
-                <div class="small-box bg-info">
-                    <div class="inner">
-                        <h3>47</h3>
-                        <p>Total Tickets</p>
-                    </div>
-                    <div class="icon">
-                        <i class="fas fa-ticket-alt"></i>
-                    </div>
-                    <a href="#" class="small-box-footer">
-                        En el período
-                        <i class="fas fa-arrow-circle-right"></i>
-                    </a>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-6">
-                <div class="small-box bg-danger">
-                    <div class="inner">
-                        <h3>15</h3>
-                        <p>Tickets Abiertos</p>
-                    </div>
-                    <div class="icon">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <a href="#" class="small-box-footer">
-                        Pendientes
-                        <i class="fas fa-arrow-circle-right"></i>
-                    </a>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-6">
-                <div class="small-box bg-success">
-                    <div class="inner">
-                        <h3>32</h3>
-                        <p>Tickets Cerrados</p>
-                    </div>
-                    <div class="icon">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <a href="#" class="small-box-footer">
-                        Resueltos
-                        <i class="fas fa-arrow-circle-right"></i>
-                    </a>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-6">
-                <div class="small-box bg-warning">
-                    <div class="inner">
-                        <h3>18.5h</h3>
-                        <p>ECV Promedio</p>
-                    </div>
-                    <div class="icon">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <a href="#" class="small-box-footer">
-                        Tiempo de vida
-                        <i class="fas fa-arrow-circle-right"></i>
-                    </a>
-                </div>
-            </div>
-        </div>
-
-        <!-- Agentes Section -->
-        <div class="card card-success card-outline">
-            <div class="card-header">
-                <h3 class="card-title">
-                    <i class="fas fa-users"></i>
-                    Detalle por Agente
-                </h3>
-                <div class="card-tools">
-                    <button type="button" class="btn btn-tool" data-card-widget="maximize">
-                        <i class="fas fa-expand"></i>
-                    </button>
-                    <button type="button" class="btn btn-tool" data-card-widget="collapse">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    
-                    <!-- Agente 1: Aldo Ochoa -->
-                    <div class="col-md-6 col-lg-4">
-                        <div class="card card-widget widget-user">
-                            <div class="widget-user-header bg-info">
-                                <h3 class="widget-user-username">Aldo Ochoa</h3>
-                                <h5 class="widget-user-desc">Soporte Técnico</h5>
-                            </div>
-                            <div class="widget-user-image">
-                                <img class="img-circle elevation-2" 
-                                        src="https://via.placeholder.com/90/007bff/FFFFFF?text=AO" 
-                                        alt="User Avatar">
-                            </div>
-                            <div class="card-footer">
-                                <div class="row">
-                                    <div class="col-sm-6 border-right">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-danger">5</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-exclamation-triangle text-danger"></i>
-                                                ABIERTOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-success">8</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-check-circle text-success"></i>
-                                                CERRADOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- ECV Summary -->
-                                <div class="mt-3">
-                                    <div class="info-box bg-gradient-primary">
-                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
-                                        <div class="info-box-content">
-                                            <span class="info-box-text">ECV Promedio</span>
-                                            <span class="info-box-number">22.3 horas</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Time Breakdown -->
-                                <div class="mt-3">
-                                    <div class="callout callout-info">
-                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
-                                        <ul class="list-unstyled">
-                                            <li><strong>Creados en Septiembre:</strong> 3 abiertos + 8 cerrados</li>
-                                            <li><strong>Creados en Junio (abiertos):</strong> 2 tickets</li>
-                                            <li><strong>Tiempo total acumulado:</strong> 290.5 horas</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Agente 2: María López -->
-                    <div class="col-md-6 col-lg-4">
-                        <div class="card card-widget widget-user">
-                            <div class="widget-user-header bg-success">
-                                <h3 class="widget-user-username">María López</h3>
-                                <h5 class="widget-user-desc">Infraestructura</h5>
-                            </div>
-                            <div class="widget-user-image">
-                                <img class="img-circle elevation-2" 
-                                        src="https://via.placeholder.com/90/28a745/FFFFFF?text=ML" 
-                                        alt="User Avatar">
-                            </div>
-                            <div class="card-footer">
-                                <div class="row">
-                                    <div class="col-sm-6 border-right">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-danger">3</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-exclamation-triangle text-danger"></i>
-                                                ABIERTOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-success">12</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-check-circle text-success"></i>
-                                                CERRADOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- ECV Summary -->
-                                <div class="mt-3">
-                                    <div class="info-box bg-gradient-success">
-                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
-                                        <div class="info-box-content">
-                                            <span class="info-box-text">ECV Promedio</span>
-                                            <span class="info-box-number">16.7 horas</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Time Breakdown -->
-                                <div class="mt-3">
-                                    <div class="callout callout-success">
-                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
-                                        <ul class="list-unstyled">
-                                            <li><strong>Creados en Septiembre:</strong> 2 abiertos + 12 cerrados</li>
-                                            <li><strong>Creados en Agosto (abiertos):</strong> 1 ticket</li>
-                                            <li><strong>Tiempo total acumulado:</strong> 250.5 horas</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Agente 3: Carlos Ruiz -->
-                    <div class="col-md-6 col-lg-4">
-                        <div class="card card-widget widget-user">
-                            <div class="widget-user-header bg-warning">
-                                <h3 class="widget-user-username">Carlos Ruiz</h3>
-                                <h5 class="widget-user-desc">Soporte Técnico</h5>
-                            </div>
-                            <div class="widget-user-image">
-                                <img class="img-circle elevation-2" 
-                                        src="https://via.placeholder.com/90/ffc107/000000?text=CR" 
-                                        alt="User Avatar">
-                            </div>
-                            <div class="card-footer">
-                                <div class="row">
-                                    <div class="col-sm-6 border-right">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-danger">7</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-exclamation-triangle text-danger"></i>
-                                                ABIERTOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div class="col-sm-6">
-                                        <div class="description-block">
-                                            <h5 class="description-header text-success">12</h5>
-                                            <span class="description-text">
-                                                <i class="fas fa-check-circle text-success"></i>
-                                                CERRADOS
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- ECV Summary -->
-                                <div class="mt-3">
-                                    <div class="info-box bg-gradient-warning">
-                                        <span class="info-box-icon"><i class="fas fa-stopwatch"></i></span>
-                                        <div class="info-box-content">
-                                            <span class="info-box-text">ECV Promedio</span>
-                                            <span class="info-box-number">19.8 horas</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Time Breakdown -->
-                                <div class="mt-3">
-                                    <div class="callout callout-warning">
-                                        <h5><i class="fas fa-chart-bar"></i> Desglose de Tiempos</h5>
-                                        <ul class="list-unstyled">
-                                            <li><strong>Creados en Septiembre:</strong> 5 abiertos + 12 cerrados</li>
-                                            <li><strong>Creados anteriormente (abiertos):</strong> 2 tickets</li>
-                                            <li><strong>Tiempo total acumulado:</strong> 376.2 horas</li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
+      </div>
     </div>
+
+    <!-- Open Tickets -->
+    <div class="col-12 col-sm-6 col-lg-3 mb-3">
+      <div class="card shadow-sm h-100 border-0">
+        <div class="card-body">
+          <div class="row">
+            <div class="col mt-0">
+              <h5 class="card-title">Tickets Abiertos</h5>
+            </div>
+            <div class="col-auto">
+              <div class="stat text-danger">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12" y2="16"></line>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
+  <div class="mb-0 text-end">
+  <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+
+    <span class="text-muted">Ver lista de tickets</span>
+        <i class="fas fa-arrow-right me-2"></i>
+  </a>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Closed Tickets -->
+    <div class="col-12 col-sm-6 col-lg-3 mb-3">
+      <div class="card shadow-sm h-100 border-0">
+        <div class="card-body">
+          <div class="row">
+            <div class="col mt-0">
+              <h5 class="card-title">Tickets Cerrados</h5>
+            </div>
+            <div class="col-auto">
+              <div class="stat text-success">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M9 11l3 3L22 4"></path>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
+  <div class="mb-0 text-end">
+<a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
+
+
+    <span class="text-muted">Ver lista de tickets</span>
+        <i class="fas fa-arrow-right me-2"></i>
+  </a>
+</div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Average Time -->
+    <div class="col-12 col-sm-6 col-lg-3 mb-3">
+      <div class="card shadow-sm h-100 border-0">
+        <div class="card-body">
+          <div class="row">
+            <div class="col mt-0">
+              <h5 class="card-title">Tiempo Promedio</h5>
+            </div>
+            <div class="col-auto">
+              <div class="stat text-warning">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock align-middle">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="6" x2="12" y2="12"></line>
+                  <line x1="12" y1="12" x2="16" y2="12"></line>
+                </svg>
+              </div>
+            </div>
+          </div>
+          <h1 class="mt-1 mb-3">{{ promedio|default('0.00') }}<small>h</small></h1>
+
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+{% endif %}
+
+
+    <!-- Agentes Section -->
+{% if consulted and agentes is defined and agentes|length > 0 %}
+    
+      <div class="card-header py-3 position-relative d-flex align-items-center justify-content-center">
+        <h3 class="card-title m-0 text-center font-weight-bold">
+          <i class="fa-solid fa-users mr-2"></i> Detalle por Agente
+        </h3>
+      </div>
+
+      <div class="card-body pt-4">
+        <div class="row">
+
+          {# Paleta de colores para headers de cada card (cíclica) #}
+          {% set palette = [
+        'bg-gradient-primary',
+        'bg-gradient-success',
+        'bg-gradient-warning',
+        'bg-gradient-info',
+        'bg-gradient-danger',
+        'bg-gradient-indigo',
+        'bg-gradient-teal'
+      ] %}
+
+
+          {% for id, data in agentes %}
+          {% set id_value = data.id is defined ? data.id : id %}
+
+          {% set name   = data.name is defined ? data.name : (lista_agentes[id_value] ?? ('Agente #' ~ id_value)) %}
+          {% set abiertos = data.total_abiertos|default(0) %}
+          {% set cerrados = data.total_cerrados|default(0) %}
+          {% set total    = abiertos + cerrados %}
+          {% set tiempo   = data.tiempo_total|default(0) %}
+          {% set ecv      = total > 0 ? (tiempo / total) : 0 %}
+
+          {# Iniciales #}
+          {% set parts = name|split(' ') %}
+          {% set initials = (parts|first|slice(0,1) ~ (parts|last|slice(0,1)))|upper %}
+
+          {# Color del header según posición #}
+          {% set colorClass = palette[loop.index0 % palette|length] %}
+
+          <div class="col-12 col-md-6 col-lg-4 mb-3">
+  <div class="card kpi-agent-card shadow-sm h-100 border-1 rounded-lg">
+    {# Acento superior con color cíclico #}
+    <div class="kpi-accent {{ colorClass }}"></div>
+
+    <div class="card-body text-center p-4 d-flex flex-column align-items-center">
+      <!-- Nombre e ID dinámicos -->
+      <h5 class="mb-1 font-weight-bold">{{ data.short_name }}</h5>
+
+      {# Métricas por agente (dinámicas) #}
+      <div class="d-flex justify-content-between align-items-center w-100 px-4 my-3">
+        <div class="text-center">
+          <h6 class="mb-0 text-danger font-weight-bold">
+            {{ abiertos|default(0)|number_format(0, '.', ',') }}
+          </h6>
+          <small class="text-muted d-inline-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation text-danger mr-1"></i> Abiertos
+          </small>
+        </div>
+
+        <div class="text-center">
+          <h6 class="mb-0 text-success font-weight-bold">
+            {{ cerrados|default(0)|number_format(0, '.', ',') }}
+          </h6>
+          <small class="text-muted d-inline-flex align-items-center">
+            <i class="fa-solid fa-circle-check text-success mr-1"></i> Cerrados
+          </small>
+        </div>
+      </div>
+
+      {% set ecv_value = ecv|default(0) %}
+
+      <div class="w-100 mt-2 p-2 bg-light rounded">
+        <div class="mb-1 text-center">
+          <span class="d-block mb-1">
+            <i class="fa-solid fa-stopwatch mr-1"></i> Tiempo x Ticket Promedio
+          </span>
+          <strong class="d-block h5 mb-0">
+            {{ ecv_value|number_format(1, '.', ',') }} <small>h</small>
+          </strong>
+        </div>
+        <small class="d-block text-muted mt-2">
+          <i class="fa-regular fa-clock mr-1"></i> Total: {{ tiempo|number_format(1, '.', ',') }} h
+        </small>
+      </div>
+    </div>
+
+    <!-- Enlace con la flecha y texto alineado a la derecha con padding -->
+    <div class="card-footer d-flex justify-content-end p-3">
+      <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
+        <span>Ver lista de tickets</span>
+        <i class="fas fa-arrow-right ms-2"></i>
+      </a>
+    </div>
+  </div>
+</div>
+
+
+          {% endfor %}
+        </div>
+      </div>
+
+    {% endif %}
+
+
+  </div>
 </section>
 
 {% endblock %}
+
+
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
+
+<!-- Auto-submit  -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var form     = document.querySelector('.filters');
+  if (!form) return;
+
+  var period   = document.getElementById('period');
+  var formSel  = document.getElementById('ticket_form_id');
+  var agentSel = document.getElementById('assigned_to_id');
+
+  function submitAndResetAgent() {
+    if (agentSel) agentSel.value = 0;              // reset agente
+    var submitted = form.querySelector('input[name="submitted"]');
+    if (submitted) submitted.disabled = true;      // evita reenviar "submitted"
+    form.submit();
+  }
+
+  if (period)  period.addEventListener('change', submitAndResetAgent);
+  if (formSel) formSel.addEventListener('change', submitAndResetAgent);
+});
+</script>
+
+<!-- Librería html2pdf (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('btnExportPdf');
+  if (!btn) return;
+
+  // Encuentra todos los ancestros desplazables del elemento
+  function getScrollableAncestors(el) {
+    const nodes = [];
+    let n = el.parentElement;
+    while (n) {
+      const cs = getComputedStyle(n);
+      const oy = cs.overflowY;
+      if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && n.scrollHeight > n.clientHeight) {
+        nodes.push(n);
+      }
+      n = n.parentElement;
+    }
+    nodes.push(document.scrollingElement || document.documentElement); // window scroll
+    return nodes;
+  }
+
+  // Pone en top=0 todos los scrollers relevantes y asegura el elemento arriba
+  async function snapScrollToTop(el) {
+    // Evita smooth-scroll que retrasaría el frame
+    const root = document.documentElement;
+    const prev = root.style.scrollBehavior;
+    root.style.scrollBehavior = 'auto';
+
+    // Quita el foco para evitar auto-scroll por focus
+    if (document.activeElement) document.activeElement.blur();
+
+    const scrollers = getScrollableAncestors(el);
+    scrollers.forEach(s => { try { s.scrollTop = 0; } catch(e){} });
+    window.scrollTo(0, 0);
+
+    // Asegura que el card quede anclado al inicio de su contenedor
+    el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+
+    // Espera 2 frames para asegurar reflow/repaint completos
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    root.style.scrollBehavior = prev || '';
+  }
+
+  // Opcional: desactiva transiciones/sombras durante la captura
+  function temporarilyTweakForPdf(root) {
+    const prev = { transition: root.style.transition, boxShadow: root.style.boxShadow };
+    root.style.transition = 'none';
+    root.style.boxShadow = 'none';
+
+    root.querySelectorAll('.card, .kpi-agent-card').forEach(el => {
+      el.style.transition = 'none';
+      el.style.boxShadow = 'none';
+      el.classList.remove('shadow-sm');
+      el.classList.remove('shadow');
+    });
+
+    return function cleanup() {
+      root.style.transition = prev.transition;
+      root.style.boxShadow = prev.boxShadow;
+    };
+  }
+
+  function toggleNoPrint(hide) {
+    document.querySelectorAll('.no-print').forEach(el => {
+      el.style.visibility = hide ? 'hidden' : '';
+    });
+  }
+
+  btn.addEventListener('click', async function () {
+    const card = document.getElementById('reporte-ecv');
+    if (!card) return;
+
+    // 🔝 Sube todo a tope y estabiliza layout
+    await snapScrollToTop(card);
+
+    const cleanup = temporarilyTweakForPdf(card);
+
+    const period   = "{{ period|default('now'|date('Y-m')) }}";
+    const formId   = "{{ ticket_form_id }}";
+    const agentId  = "{{ assigned_to_id|default(0) }}";
+    const filename = `Reporte-ECV_${period}_F${formId}_A${agentId}.pdf`;
+
+    const opt = {
+      margin: 0,
+      filename: filename,
+      image: { type: 'jpeg', quality: 1 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        // 👇 Fuerza origen de captura en (0,0) por si algún contenedor quedó desplazado
+        scrollX: 0,
+        scrollY: 0
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    toggleNoPrint(true);
+    try {
+      await html2pdf().set(opt).from(card).save();
+    } finally {
+      toggleNoPrint(false);
+      cleanup();
+    }
+  });
+});
+</script>
+
+
+
 {% endblock %}
