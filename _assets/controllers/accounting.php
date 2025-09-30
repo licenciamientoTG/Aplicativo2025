@@ -178,6 +178,7 @@ class Accounting{
                 $data[] = array(
                     'Fecha'                     => date('Y-m-d H:I:s', strtotime($invoice['Fecha'])  ),
                     'Folio'                     => $invoice['Folio'],
+                    'Serie'                     => $invoice['Serie'],
                     'EmisorRfc'                 => $invoice['EmisorRfc'],
                     'ReceptorNombre'            => $invoice['ReceptorNombre'],
                     'ReceptorRfc'               => $invoice['ReceptorRfc'],

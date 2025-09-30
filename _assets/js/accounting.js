@@ -291,6 +291,7 @@ function actualizarDataTableInvoce() {
            columns: [
                {'data': 'Fecha'},
                {'data': 'Folio'},
+                {'data': 'Serie'},
                {'data': 'EmisorRfc'},
                {'data': 'ReceptorNombre'},
                {'data': 'ReceptorRfc'},
