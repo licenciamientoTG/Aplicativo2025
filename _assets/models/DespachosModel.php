@@ -2408,13 +2408,14 @@ class DespachosModel extends Model{
     }
 
     function get_credit_dispatches($from, $until){
-       $query = 'Declare @fini int
-                Declare @ffin int
-                Declare @Inicial date;
-                Declare @Final date;
 
-                set @Inicial = Cast(\''. $from .'\' As Datetime)-- Establecer la fecha inicial en formato DD/MM/AAAA
-                set @Final = Cast(\''.$until .'\' As Datetime)  -- Establecer la fecha final en formato DD/MM/AAAA
+        $from  = date('Y-m-d', strtotime(str_replace('/','-', $from)));
+        $until = date('Y-m-d', strtotime(str_replace('/','-', $until)));
+       $query = "
+                DECLARE @Inicial date = '{$from}';
+                DECLARE @Final   date = '{$until}';
+                DECLARE @fini int  = DATEDIFF(day,0,@Inicial);
+                DECLARE @ffin int  = DATEDIFF(day,0,DATEADD(day,1,@Final));
 
                 SELECT @fini = DATEDIFF(dd, 0, @Inicial)+1
                 SELECT @ffin = DATEDIFF(dd, 0, @Final)+1
@@ -2424,7 +2425,7 @@ class DespachosModel extends Model{
                 t2.abr as station,
                 t3.codext as cod_client,
                 t3.den as client, 
-                Case t3.tipval when 3 then \'Credito\' when 4 then \'Debito\' END as Tipo,
+                Case t3.tipval when 3 then 'Credito' when 4 then 'Debito' END as Tipo,
                 Case t1.nrotur when 11 then 1 when 21 then 2 when 31 then 3 when 41 then 4 else t1.nrotur END as Turno,
                 t4.den as [product],
                 t1.can as Cantidad,
@@ -2440,7 +2441,7 @@ class DespachosModel extends Model{
                 Left join Despachos t5 ON ABS(t1.sec)=t5.nrotrn and t1.codgas=t5.codgas
                 where t1.fch>=@fini and t1.fch<=@ffin and t3.tipval=3
                 order by t1.fch,t3.tipval
-                ';
+                ";
         return ($this->sql->select($query)) ?: false ;
 
     }
