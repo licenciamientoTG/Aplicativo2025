@@ -254,12 +254,282 @@ class Administration{
         echo $this->twig->render($this->route . 'stats_tickets.html', compact('date_range', 'from', 'input_from', 'until', 'input_until', 'tickets_forms', 'ticket_form', 'groupedResults', 'supportTypes', 'supportTypes_labels', 'supportTypes_values', 'ticket_users', 'ticket_users_labels', 'ticket_users_values', 'normal_tickets', 'normal_tickets_labels','normal_tickets_values', 'urgent_tickets', 'urgent_tickets_labels','urgent_tickets_values','agents_total_tickets', 'agents_solved_tickets','agents_pending_tickets', 'agents_urgent_tickets','agents_normal_tickets','groupedResultsMonths', 'ticket_groups', 'ticket_groups_labels', 'ticket_groups_values', 'ticket_departments', 'ticket_departments_values', 'ticket_departments_labels'));
     }
 
-    function ecv_calc() {
-        if ($_SESSION['tg_user']['Id'] == 6177) {
-            echo $this->twig->render($this->route . 'ecv_calc.html');
+function ecv_calc() {
+
+    $consulted = isset($_GET['submitted']);
+    
+    $ticket_form_id  = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
+    $assigned_to_id  = isset($_GET['assigned_to_id']) ? (int)$_GET['assigned_to_id'] : 0;
+    
+    $period = $_GET['period'] ?? date('Y-m');
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+        $period = date('Y-m');
+    }
+    
+    $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
+    $fecha_ini = $dt->format('Y-m-01');
+    $fecha_fin = $dt->format('Y-m-t');
+    
+    $startBound = $fecha_ini . ' 00:00:00';
+    $endBound   = $fecha_fin . ' 23:59:59';
+    
+    // Defaults de primera carga
+    $rows = [];
+    $total_tickets = 0;
+    $total_tickets_abiertos = 0;
+    $total_tickets_cerrados = 0;
+    $tiempo_total = 0.0;
+    $promedio = '0.00';
+    $agentes = [];
+    $lista_agentes = [0 => 'Todos'];
+    
+    // Helper: primer nombre + primer apellido (incluye conectores tipo "de", "del", "de la")
+    $shortName = function (?string $full): string {
+
+        $full = trim(preg_replace('/\s+/', ' ', (string)$full));
+        if ($full === '') return '';
+        
+        // Quitar títulos comunes al inicio (opcional)
+        $titles = ['sr','sra','srta','ing','lic','dra','dr','mtro','mtra','arq','cp','c','c.','--'];
+        $parts  = preg_split('/\s+/', $full);
+        while ($parts && in_array(mb_strtolower(rtrim($parts[0], '.'), 'UTF-8'), $titles, true)) {
+            array_shift($parts);
+        }
+        if (!$parts) return '';
+
+        $firstName = $parts[0];
+
+        // Armar primer apellido (con conectores si los hay)
+        $surname = '';
+        $connectors = ['de','del','la','las','los','da','das','do','dos','di','van','von','y','e','della','dalla','du','le','san','santa','mac','mc'];
+        if (isset($parts[1])) {
+            $i = 1; $s = [];
+            while ($i < count($parts) && in_array(mb_strtolower($parts[$i], 'UTF-8'), $connectors, true)) {
+                $s[] = $parts[$i]; $i++;
+            }
+            if (!empty($s) && isset($parts[$i])) {
+                $s[] = $parts[$i];            // ej: "de la Rosa"
+                $surname = implode(' ', $s);
+            } else {
+                $surname = $parts[1];         // ej: "Martínez"
+            }
         }
         
+        return trim($firstName . ' ' . $surname);
+    };
+
+    if ($consulted) {
+        // ===== Consulta completa (métricas + agentes) =====
+        $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
+
+        // Para armar el combo de agentes (cuando se filtró por uno, hay que traer todos)
+        $rows_combo = ($assigned_to_id === 0)
+            ? $rows
+            : ($this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: []);
+
+        $total_tickets = count($rows);
+
+        foreach ($rows as $ticket) {
+            $id   = (int)($ticket['assigned_to_id'] ?? 0);
+            $name = $ticket['assigned_to_name'] ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
+
+            // Inicializar estructura del agente si no existe
+            if (!isset($agentes[$id])) {
+                $agentes[$id] = [
+                    'id'                   => $id,
+                    'name'                 => $name,
+                    'short_name'           => ($id === 0 ? 'Sin asignar' : $shortName($name)),
+                    // existentes
+                    'total_cerrados'       => 0,
+                    'total_abiertos'       => 0,
+                    'tiempo_total'         => 0.0,
+                    // nuevos
+                    'total_tickets'        => 0,
+                    'tickets_normal'       => 0,
+                    'tiempo_total_normal'  => 0.0,
+                    'promedio_normal'      => 0.0,
+                    'tickets_urgente'      => 0,
+                    'tiempo_total_urgente' => 0.0,
+                    'promedio_urgente'     => 0.0,
+                ];
+            }
+
+            // Contador total por agente
+            $agentes[$id]['total_tickets']++;
+
+            // Abiertos / Cerrados (tu misma lógica + ventanas)
+            $estatus    = $ticket['estatus'] ?? '';
+            $created_on = $ticket['created_on'] ?? null;
+            $solved_on  = $ticket['solved_on'] ?? null;
+
+            if ($estatus === 'Cerrado' && $solved_on >= $startBound && $solved_on <= $endBound) {
+                $agentes[$id]['total_cerrados']++;
+                $total_tickets_cerrados++;
+            }
+
+            if (
+                ($estatus === 'Abierto' && $created_on <= $endBound) ||
+                ($created_on <= $endBound && $solved_on >= $endBound) ||
+                ($created_on <= $endBound && $solved_on == null)
+            ) {
+                $agentes[$id]['total_abiertos']++;
+                $total_tickets_abiertos++;
+            }
+
+            // Tiempos totales (global y por agente)
+            $hora_tot = (float)($ticket['hora_tot'] ?? 0.0);
+            $agentes[$id]['tiempo_total'] += $hora_tot;
+            $tiempo_total += $hora_tot;
+
+            // Clasificación por prioridad
+            $priority_id = isset($ticket['priority_id']) ? (int)$ticket['priority_id'] : null;
+
+            // Urgente: 10 y 20
+            if ($priority_id === 10 || $priority_id === 20) {
+                $agentes[$id]['tickets_urgente']++;
+                $agentes[$id]['tiempo_total_urgente'] += $hora_tot;
+            }
+
+            // Normal: 30 y 40
+            if ($priority_id === 30 || $priority_id === 40) {
+                $agentes[$id]['tickets_normal']++;
+                $agentes[$id]['tiempo_total_normal'] += $hora_tot;
+            }
+        }
+
+        // Calcular promedios por agente
+        foreach ($agentes as $aid => $data) {
+            $agentes[$aid]['promedio_normal'] = ($data['tickets_normal'] > 0)
+                ? round($data['tiempo_total_normal'] / $data['tickets_normal'], 2)
+                : 0.0;
+
+            $agentes[$aid]['promedio_urgente'] = ($data['tickets_urgente'] > 0)
+                ? round($data['tiempo_total_urgente'] / $data['tickets_urgente'], 2)
+                : 0.0;
+        }
+
+        // Combo de agentes
+        foreach ($rows_combo as $t) {
+            $id = (int)($t['assigned_to_id'] ?? 0);
+            $label =
+                ($t['assigned_to_name'] ?? null)
+                ?? ($t['agent'] ?? null)
+                ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
+            if (!isset($lista_agentes[$id])) {
+                $lista_agentes[$id] = $label;
+            }
+        }
+
+        if (count($lista_agentes) > 1) {
+            $todos = $lista_agentes[0]; unset($lista_agentes[0]);
+            asort($lista_agentes, SORT_NATURAL | SORT_FLAG_CASE);
+            $lista_agentes = [0 => $todos] + $lista_agentes;
+        }
+
+        // Promedio global (sobre todos los tickets del set consultado)
+        $promedio = $total_tickets > 0 ? number_format($tiempo_total / $total_tickets, 2, '.', ',') : '0.00';
+
+    } else {
+        // ===== Primera carga o autosubmit (solo para refrescar agentes) =====
+        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+
+        foreach ($rows_combo as $t) {
+            $id = (int)($t['assigned_to_id'] ?? 0);
+            $label =
+                ($t['assigned_to_name'] ?? null)
+                ?? ($t['agent'] ?? null)
+                ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
+            if (!isset($lista_agentes[$id])) {
+                $lista_agentes[$id] = $label;
+            }
+        }
+
+        if (count($lista_agentes) > 1) {
+            $todos = $lista_agentes[0];
+            unset($lista_agentes[0]);
+            asort($lista_agentes, SORT_NATURAL | SORT_FLAG_CASE);
+            $lista_agentes = [0 => $todos] + $lista_agentes;
+        }
     }
+
+    echo $this->twig->render($this->route . 'ecv_calc.html', compact(
+        'consulted',
+        'total_tickets','total_tickets_abiertos','total_tickets_cerrados','promedio',
+        'agentes','period','fecha_ini','fecha_fin','ticket_form_id','assigned_to_id','lista_agentes'
+    ));
+}
+
+
+
+
+function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+        $period = date('Y-m');
+    }
+
+    $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
+    $fecha_ini = $dt->format('Y-m-01');
+    $fecha_fin = $dt->format('Y-m-t');
+
+    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $agent_id) ?: [];
+
+    // Ventanas (inclusive) para comparar solved_on
+    $startBound = $fecha_ini . ' 00:00:00';
+    $endBound   = $fecha_fin . ' 23:59:59';
+
+    // Helper para normalizar un ticket
+    $normalize = static function(array $ticket): array {
+        if (isset($ticket['solicitante'])) {
+            $ticket['solicitante'] = ucwords(strtolower(trim($ticket['solicitante'], '-')));
+        }
+        foreach (['created_on', 'solved_on'] as $field) {
+            if (!empty($ticket[$field])) {
+                // Quita el sufijo .000 si viene de SQL Server
+                if (substr($ticket[$field], -4) === '.000') {
+                    $ticket[$field] = substr($ticket[$field], 0, -4);
+                }
+            }
+        }
+        return $ticket;
+    };
+
+    switch ($action) {
+        case 'total_tickets':
+            $result = [];
+            foreach ($rows as $key => $ticket) {
+                $result[$key] = $normalize($ticket);
+            }
+            echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
+            break;
+
+        case 'open_tickets':
+            $result = [];
+            foreach ($rows as $key => $ticket) {
+              if ((($ticket['estatus'] ?? '') === 'Abierto' && $ticket['created_on'] <=$endBound) || ($ticket['created_on'] <= $endBound && $ticket['solved_on'] >= $endBound) || ($ticket['created_on'] <= $endBound && $ticket['solved_on'] == null)) {
+                    $result[$key] = $normalize($ticket);
+                }
+            }
+            echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
+            break;
+
+        case 'closed_tickets':
+            $result = [];
+            foreach ($rows as $key => $ticket) {
+                $solved = $ticket['solved_on'] ?? '';
+                if (($ticket['estatus'] ?? '') === 'Cerrado' && $solved >= $startBound && $solved <= $endBound) {
+                    $result[$key] = $normalize($ticket);
+                }
+            }
+            echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
+            break;
+
+        default:
+            var_dump("Revisar");
+            break;
+    }
+}
+
+
 
 
     function getMondayFromWeek($weekString) {
