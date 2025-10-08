@@ -2094,6 +2094,124 @@ async function cash_invoices_table(){
 }
 
 
+
+
+async function invoice_client_desp(){
+    if ($.fn.DataTable.isDataTable('#invoice_client_desp')) {
+        $('#invoice_client_desp').DataTable().destroy();
+        $('#invoice_client_desp thead .filter').remove();
+      
+    }
+    var from  = $('#from2').val();
+    var until = $('#until2').val();
+
+    $('#invoice_client_desp thead').prepend($('#invoice_client_desp thead tr').clone().addClass('filter'));
+    $('#invoice_client_desp thead tr.filter th').each(function (index) {
+        col = $('#invoice_client_desp thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#invoice_client_desp thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#invoice_client_desp').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let invoice_client_desp =$('#invoice_client_desp').DataTable({
+        order: [2, "desc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+         pageLength: 100,
+        // scrollY: '700px',
+        // scrollX: true,
+        // scrollCollapse: true,
+        // paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'from':from,
+                'until':until
+            },
+            url: '/income/invoice_client_desp',
+            timeout: 600000, 
+            dataSrc: function(json) {
+                // *** AQUÍ GENERAMOS LOS CARDS CON LOS DATOS ***
+                if (json.data && json.data.length > 0) {
+                    generateClientStatsCards(json.data);
+                }
+                return json.data;
+            },
+            error: function() {
+                $('#invoice_client_desp').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                $('#client-stats-cards').html(`
+                    <div class="col-12 text-center text-muted">
+                        <p>No hay datos para mostrar estadísticas</p>
+                    </div>
+                `);
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                 $('.table-responsive').addClass('loading');
+                // Mostrar mensaje de carga en los cards
+                $('#client-stats-cards').html(`
+                    <div class="col-12 text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p class="mt-2">Procesando estadísticas...</p>
+                    </div>
+                `);
+            }
+        },
+        columns: [
+            {'data': 'fecha',className:'text-nowrap'},
+            {'data': 'codcli',className:'text-nowrap'},
+            {'data': 'cliente'},
+            {'data': 'monto', render: $.fn.dataTable.render.number(',','.',2) },
+            {'data': 'estacion'},
+            {'data': 'factura'},
+
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+           
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+        }
+    });
+}
+
 ///////////////////
 
 async function cargarGraficaDesdeController() {
