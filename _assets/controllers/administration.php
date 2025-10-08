@@ -322,6 +322,7 @@ function ecv_calc() {
         // ===== Consulta completa (métricas + agentes) =====
         $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
 
+        // Para armar el combo de agentes (cuando se filtró por uno, hay que traer todos)
         $rows_combo = ($assigned_to_id === 0)
             ? $rows
             : ($this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: []);
@@ -330,31 +331,81 @@ function ecv_calc() {
 
         foreach ($rows as $ticket) {
             $id   = (int)($ticket['assigned_to_id'] ?? 0);
-            $name = $ticket['assigned_to_name'] ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id); // Borrar
+            $name = $ticket['assigned_to_name'] ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
 
-          if (!isset($agentes[$id])) {
-    $agentes[$id] = [
-        'id'             => $id,
-        'name'           => $name,
-        'short_name'     => ($id === 0 ? 'Sin asignar' : $shortName($name)),
-        'total_cerrados' => 0,
-        'total_abiertos' => 0,
-        'tiempo_total'   => 0.0
-    ];
-}
+            // Inicializar estructura del agente si no existe
+            if (!isset($agentes[$id])) {
+                $agentes[$id] = [
+                    'id'                   => $id,
+                    'name'                 => $name,
+                    'short_name'           => ($id === 0 ? 'Sin asignar' : $shortName($name)),
+                    // existentes
+                    'total_cerrados'       => 0,
+                    'total_abiertos'       => 0,
+                    'tiempo_total'         => 0.0,
+                    // nuevos
+                    'total_tickets'        => 0,
+                    'tickets_normal'       => 0,
+                    'tiempo_total_normal'  => 0.0,
+                    'promedio_normal'      => 0.0,
+                    'tickets_urgente'      => 0,
+                    'tiempo_total_urgente' => 0.0,
+                    'promedio_urgente'     => 0.0,
+                ];
+            }
 
-            if (($ticket['estatus'] ?? '') === 'Cerrado' && $ticket['solved_on'] >= $startBound && $ticket['solved_on'] <= $endBound ) {
+            // Contador total por agente
+            $agentes[$id]['total_tickets']++;
+
+            // Abiertos / Cerrados (tu misma lógica + ventanas)
+            $estatus    = $ticket['estatus'] ?? '';
+            $created_on = $ticket['created_on'] ?? null;
+            $solved_on  = $ticket['solved_on'] ?? null;
+
+            if ($estatus === 'Cerrado' && $solved_on >= $startBound && $solved_on <= $endBound) {
                 $agentes[$id]['total_cerrados']++;
                 $total_tickets_cerrados++;
             }
 
-            if ((($ticket['estatus'] ?? '') === 'Abierto' && $ticket['created_on'] <=$endBound) || ($ticket['created_on'] <= $endBound && $ticket['solved_on'] >= $endBound) or ($ticket['created_on'] <= $endBound and $ticket['solved_on'] == null)  ) {
+            if (
+                ($estatus === 'Abierto' && $created_on <= $endBound) ||
+                ($created_on <= $endBound && $solved_on >= $endBound) ||
+                ($created_on <= $endBound && $solved_on == null)
+            ) {
                 $agentes[$id]['total_abiertos']++;
                 $total_tickets_abiertos++;
             }
 
-            $agentes[$id]['tiempo_total'] += (float)$ticket['hora_tot'];
-            $tiempo_total += (float)$ticket['hora_tot'];
+            // Tiempos totales (global y por agente)
+            $hora_tot = (float)($ticket['hora_tot'] ?? 0.0);
+            $agentes[$id]['tiempo_total'] += $hora_tot;
+            $tiempo_total += $hora_tot;
+
+            // Clasificación por prioridad
+            $priority_id = isset($ticket['priority_id']) ? (int)$ticket['priority_id'] : null;
+
+            // Urgente: 10 y 20
+            if ($priority_id === 10 || $priority_id === 20) {
+                $agentes[$id]['tickets_urgente']++;
+                $agentes[$id]['tiempo_total_urgente'] += $hora_tot;
+            }
+
+            // Normal: 30 y 40
+            if ($priority_id === 30 || $priority_id === 40) {
+                $agentes[$id]['tickets_normal']++;
+                $agentes[$id]['tiempo_total_normal'] += $hora_tot;
+            }
+        }
+
+        // Calcular promedios por agente
+        foreach ($agentes as $aid => $data) {
+            $agentes[$aid]['promedio_normal'] = ($data['tickets_normal'] > 0)
+                ? round($data['tiempo_total_normal'] / $data['tickets_normal'], 2)
+                : 0.0;
+
+            $agentes[$aid]['promedio_urgente'] = ($data['tickets_urgente'] > 0)
+                ? round($data['tiempo_total_urgente'] / $data['tickets_urgente'], 2)
+                : 0.0;
         }
 
         // Combo de agentes
@@ -375,6 +426,7 @@ function ecv_calc() {
             $lista_agentes = [0 => $todos] + $lista_agentes;
         }
 
+        // Promedio global (sobre todos los tickets del set consultado)
         $promedio = $total_tickets > 0 ? number_format($tiempo_total / $total_tickets, 2, '.', ',') : '0.00';
 
     } else {
