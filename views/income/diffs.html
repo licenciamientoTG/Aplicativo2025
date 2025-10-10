@@ -27,11 +27,11 @@
                 <div class="row">
                     <div class="col">
                         <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
-                        <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('now' | date('Y-m-d')) : from }}">
+                        <input type="date" class="form-control" name="from" id="from" value="{{ from == false ? ('yesterday' | date('Y-m-d')) : from }}" max="{{ 'yesterday'|date('Y-m-d') }}">
                     </div>
                     <div class="col">
                         <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
-                        <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('now' | date('Y-m-d')) : until }}">
+                        <input type="date" class="form-control" name="until" id="until" value="{{ until == false ? ('yesterday' | date('Y-m-d')) : until }}" max="{{ 'yesterday'|date('Y-m-d') }}">
                     </div>
                     <div class="col">
                         <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
