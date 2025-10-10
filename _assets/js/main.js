@@ -215,7 +215,13 @@ function renderDespachosFacturadasCards(payload) {
         let card = document.createElement('div');
         card.classList.add('card-estacion');
         let title = `<h3>${estacion.Nombre || 'Estación ' + estacion.Estacion}</h3>
-                     <div class="resumen-fechas">`;
+                     <div class="resumen-fechas">
+                     <div class="fecha-row">
+                    <span>Fecha</span>
+                    <span class="">Remoto 100</span>
+                    <span class="">Corpo 100</span>
+
+                </div>`;
         let fechas = (estacion.Resultados || []).map(r => {
             let clase = (r.Porcentaje >= 100 ) ? 'porciento-verde' : 'porciento-rojo';
             if (r.Porcentaje === null || r.Porcentaje === undefined) clase = '';
@@ -223,6 +229,8 @@ function renderDespachosFacturadasCards(payload) {
                 <div class="fecha-row">
                     <span>${r.Fecha}</span>
                     <span class="${clase}">${r.Porcentaje != null ? r.Porcentaje + '%' : 'N/A'}</span>
+                    <span class="${clase}">${r.Porcentaje_corpo_base != null ? r.Porcentaje_corpo_base + '%' : 'N/A'}</span>
+
                 </div>`;
         }).join('');
         title += fechas + "</div>";

@@ -471,7 +471,20 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
     $fecha_ini = $dt->format('Y-m-01');
     $fecha_fin = $dt->format('Y-m-t');
 
+    // Normaliza agent_id proveniente de la vista (0, '0', null, '')
+    $isUnassignedRequested = ($agent_id === 0 || $agent_id === '0' || $agent_id === null || $agent_id === '');
+
+    // Trae filas desde el modelo (no cambiamos la firma del método)
     $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $agent_id) ?: [];
+
+    // Si pidieron "sin asignar", filtra para dejar sólo assigned_to_id nulo o 0
+    if ($isUnassignedRequested) {
+        $rows = array_values(array_filter($rows, static function(array $t) {
+            $v = $t['assigned_to_id'] ?? null;
+            // Acepta null, 0 (int), '0' (string) o '' (string vacía)
+            return $v === null || $v === 0 || $v === '0' || $v === '';
+        }));
+    }
 
     // Ventanas (inclusive) para comparar solved_on
     $startBound = $fecha_ini . ' 00:00:00';
@@ -484,7 +497,6 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         }
         foreach (['created_on', 'solved_on'] as $field) {
             if (!empty($ticket[$field])) {
-                // Quita el sufijo .000 si viene de SQL Server
                 if (substr($ticket[$field], -4) === '.000') {
                     $ticket[$field] = substr($ticket[$field], 0, -4);
                 }
@@ -505,7 +517,11 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         case 'open_tickets':
             $result = [];
             foreach ($rows as $key => $ticket) {
-              if ((($ticket['estatus'] ?? '') === 'Abierto' && $ticket['created_on'] <=$endBound) || ($ticket['created_on'] <= $endBound && $ticket['solved_on'] >= $endBound) || ($ticket['created_on'] <= $endBound && $ticket['solved_on'] == null)) {
+                if (
+                    (($ticket['estatus'] ?? '') === 'Abierto' && ($ticket['created_on'] ?? '') <= $endBound)
+                    || (($ticket['created_on'] ?? '') <= $endBound && ($ticket['solved_on'] ?? '') >= $endBound)
+                    || (($ticket['created_on'] ?? '') <= $endBound && ($ticket['solved_on'] ?? null) === null)
+                ) {
                     $result[$key] = $normalize($ticket);
                 }
             }
@@ -528,7 +544,6 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
             break;
     }
 }
-
 
 
 

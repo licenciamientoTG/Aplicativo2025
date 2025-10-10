@@ -264,6 +264,29 @@ class Income{
         }
        json_output(array("data" => $data));
     }
+    function invoice_client_desp(){
+
+        
+         ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        $data = [];
+        $from = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
+    
+        if ($despachos = $this->despachosModel->invoice_client_desp($from, $until)) {
+            foreach ($despachos as $despachos) {
+                 $data[] = array(
+                    'fecha'    => $despachos["fecha"],
+                    'codcli'   => $despachos["codcli"],
+                    'cliente'  => $despachos["den"],
+                    'monto'      => $despachos["monto"],
+                    'estacion' => $despachos["abr"],
+                    'factura'   => $despachos["factura"],
+                 );
+            }
+        }
+       json_output(array("data" => $data));
+    }
 
 
     function relation_credit_table(){

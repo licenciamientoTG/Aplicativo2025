@@ -138,7 +138,9 @@ class Accounting{
     function stimulus_table() : void  {
         $data = [];
         if ($estimulus = $this->xmlCreModel->get_estimulus(str_replace('-', '', $_GET['inicial']), str_replace('-', '', $_GET['final']), $_GET['est87'], $_GET['est91'])) {
+
             foreach ($estimulus as $est) {
+
                 $dt = DateTime::createFromFormat('d/m/Y', $est['Fecha']);
                 $tax_date = $dt ? $dt->format('Y-m-d') : null;
 
