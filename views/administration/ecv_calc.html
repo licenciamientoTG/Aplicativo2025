@@ -1,109 +1,10 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Reporte ECV - Estadísticas de Tickets{% endblock %}
+
 {% block mycss %}
 <style>
-/* Ajustes finos para aspecto profesional */
-.card.card-primary.card-outline {
-  border-radius: .75rem;
-}
 
-.card-header .card-title {
-  font-size: 1.1rem;
-  letter-spacing: .2px;
-}
-
-.input-group-text {
-  background: #f8f9fa;
-}
-
-.form-control, .input-group-text, select.form-control {
-  border-radius: .5rem !important;
-}
-
-.kpi-agent-card {
-  border-radius: .75rem;
-  transition: transform .15s ease-in-out, box-shadow .15s ease-in-out;
-}
-.kpi-agent-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 .75rem 1.25rem rgba(0,0,0,.12);
-  background-color: #f6f6f6;
-}
-
-
-/* Info-box neutral y sobrio */
-.kpi-ecv-box {
-  border-radius: .65rem;
-  background: #f8f9fa;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.5);
-}
-.kpi-ecv-box .info-box-icon {
-  border-radius: .5rem;
-  background: #e9ecef;
-  color: #495057;
-}
-.kpi-ecv-box .info-box-text { font-size: .85rem; color: #6c757d; }
-.kpi-ecv-box .info-box-number { font-weight: 700; }
-
-/* Ajustes del widget-user (AdminLTE) */
-.widget-user .widget-user-header {
-  border-top-left-radius: .75rem;
-  border-top-right-radius: .75rem;
-}
-.widget-user .card-footer {
-  border-bottom-left-radius: .75rem;
-  border-bottom-right-radius: .75rem;
-}
-.description-block .description-header { font-weight: 700; }
-
-.kpi-value {
-  font-weight: 700;
-}
-.card {
-  border-radius: .75rem;
-  transition: transform .15s ease-in-out, box-shadow .15s ease-in-out;
-}
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 0.75rem 1.25rem rgba(0,0,0,.15);
-}
-
-i{
-  margin-right: 10px;
-}
-
-#titulo{
-  margin-bottom: 60px;
-}
-
-
-@media (min-width: 992px) {
-  /* Asegura columnas limpias en escritorio */
-  .card-body .row > [class*="col-lg-4"] {
-    padding-right: .5rem;
-    padding-left: .5rem;
-  }
-}
-
-@media (min-width: 768px) {
-  .filters .form-group { min-width: 220px; }
-}
-
-
-@media print {
-  .no-print { display: none !important; }
-}
-
-
-/* Evita cortes raros dentro de cards y tablas */
-#reporte-ecv, #reporte-ecv * {
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
-
-/* Forzar saltos de página donde lo necesites */
-.page-break { break-after: page; }
-
+  
 #btnExportPdff{
   height: 35px !important;
   margin-bottom: 30px;
@@ -113,15 +14,55 @@ i{
   justify-content: center;
   align-items: center;
 }
+/* Ajustes finos para aspecto profesional */
+.card.card-primary.card-outline { border-radius: .75rem; }
+.card-header .card-title { font-size: 1.1rem; letter-spacing: .2px; }
+.input-group-text { background: #f8f9fa; }
+.form-control, .input-group-text, select.form-control { border-radius: .5rem !important; }
 
+.kpi-agent-card { border-radius: .75rem; transition: transform .15s ease-in-out, box-shadow .15s ease-in-out; }
+.kpi-agent-card:hover { transform: translateY(-3px); box-shadow: 0 .75rem 1.25rem rgba(0,0,0,.12); background-color: #f6f6f6; }
+
+/* Info-box neutral y sobrio */
+.kpi-ecv-box { border-radius: .65rem; background: #f8f9fa; box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+.kpi-ecv-box .info-box-icon { border-radius: .5rem; background: #e9ecef; color: #495057; }
+.kpi-ecv-box .info-box-text { font-size: .85rem; color: #6c757d; }
+.kpi-ecv-box .info-box-number { font-weight: 700; }
+
+.widget-user .widget-user-header { border-top-left-radius: .75rem; border-top-right-radius: .75rem; }
+.widget-user .card-footer { border-bottom-left-radius: .75rem; border-bottom-right-radius: .75rem; }
+.description-block .description-header { font-weight: 700; }
+
+.kpi-value { font-weight: 700; }
+.card { border-radius: .75rem; transition: transform .15s ease-in-out, box-shadow .15s ease-in-out; }
+.card:hover { transform: translateY(-4px); box-shadow: 0 0.75rem 1.25rem rgba(0,0,0,.15); }
+
+i { margin-right: 10px; }
+#titulo { margin-bottom: 60px; }
+
+/* Evita cortes raros dentro de cards y tablas */
+#reporte-ecv, #reporte-ecv * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+/* Forzar saltos de página donde lo necesites */
+.page-break { break-after: page; }
+
+#btnExportPdf{
+  height: 35px !important;
+  margin-bottom: 30px;
+  margin-left: 3px;
+  display: flex;
+  font-size: 16px;
+  justify-content: center;
+  align-items: center;
+}
 </style>
 {% endblock %}
+
 {% block menutitle %}Reporte ECV - Estadísticas de Tickets{% endblock %}
+
 {% block content %}
 
-<!-- Content Header -->
-
-<!--Filtros-->
+<!-- Filtros -->
 <div class="card">
   <div class="card-body">
     <form method="get" action="" class="filters">
@@ -133,23 +74,15 @@ i{
           <label for="period" class="text-muted small d-block mb-2">
             <i class="fa-solid fa-calendar-days text-success mr-1"></i> Período
           </label>
-          <input type="month" class="form-control" id="period" lang="es" name="period"
-            value="{{ period|default('now'|date('Y-m')) }}" max="{{ 'now'|date('Y-m') }}" required>
-
-<!--Filtros-->
-<div class="card">
-  <div class="card-body">
-    <form method="get" action="" class="filters">
-      <input type="hidden" name="submitted" value="1">
-
-      <div class="row">
-        <!-- Período -->
-        <div class="col-md-3 mb-3">
-          <label for="period" class="text-muted small d-block mb-2">
-            <i class="fa-solid fa-calendar-days text-success mr-1"></i> Período
-          </label>
-          <input type="month" class="form-control" id="period" lang="es" name="period"
-            value="{{ period|default('now'|date('Y-m')) }}" max="{{ 'now'|date('Y-m') }}" required>
+          <input
+            type="month"
+            class="form-control"
+            id="period"
+            lang="es"
+            name="period"
+            value="{{ period|default('now'|date('Y-m')) }}"
+            max="{{ 'now'|date('Y-m') }}"
+            required>
         </div>
 
         <!-- Formulario -->
@@ -170,10 +103,9 @@ i{
           </label>
           <select id="assigned_to_id" name="assigned_to_id" class="form-control">
             {% for id, label in lista_agentes %}
- 
-            <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
-              {{ label }}
-            </option>
+              <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
+                {{ label }}
+              </option>
             {% endfor %}
           </select>
         </div>
@@ -189,42 +121,6 @@ i{
   </div>
 </div>
 
-        <!-- Formulario -->
-        <div class="col-md-3 mb-3">
-          <label for="ticket_form_id" class="text-muted small d-block mb-2">
-            <i class="fa-solid fa-list text-success mr-1"></i> Formulario
-          </label>
-          <select class="form-control" id="ticket_form_id" name="ticket_form_id" required>
-            <option value="51598" {{ ticket_form_id == 51598 ? 'selected' : '' }}>Tickets Sistemas</option>
-            <option value="57328" {{ ticket_form_id == 57328 ? 'selected' : '' }}>Tickets Mantenimiento</option>
-          </select>
-        </div>
-
-        <!-- Agente -->
-        <div class="col-md-3 mb-3">
-          <label for="assigned_to_id" class="text-muted small d-block mb-2">
-            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agente
-          </label>
-          <select id="assigned_to_id" name="assigned_to_id" class="form-control">
-            {% for id, label in lista_agentes %}
- 
-            <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
-              {{ label }}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <!-- Botón -->
-        <div class="col-md-3 mb-3 d-flex align-items-end">
-          <button type="submit" class="btn btn-primary w-100">
-            <i class="fa-solid fa-magnifying-glass mr-1"></i> Consultar
-          </button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
 
 {% if consulted %}
   <a id="btnExportPdff"
@@ -235,383 +131,273 @@ i{
   </a>
 {% endif %}
 
-
-   <div id="reporte-ecv" class="card card-primary card-outline shadow-sm rounded-lg">
-
-
+<div id="reporte-ecv" class="card card-primary card-outline shadow-sm rounded-lg">
   {% if consulted %}
-  <div class="card-body pt-4">
-  <div class="row">
-    <!-- Sales -->
-          {# ---- Título resumido del reporte ---- #}
-      {% set departamento = ticket_form_id == 51598 ? 'Tickets Sistemas'
-                          : (ticket_form_id == 57328 ? 'Tickets Mantenimiento' : '—') %}
+    <div class="card-body pt-4">
+      <div class="row">
+        {# ---- Título resumido del reporte ---- #}
+        {% set departamento = ticket_form_id == 51598 ? 'Tickets Sistemas'
+                            : (ticket_form_id == 57328 ? 'Tickets Mantenimiento' : '—') %}
+        {% set agente_nombre = (assigned_to_id is defined and assigned_to_id != 0)
+            ? (lista_agentes[assigned_to_id] ?? ('Agente #' ~ assigned_to_id))
+            : 'Todos' %}
 
-      {% set agente_nombre = (assigned_to_id is defined and assigned_to_id != 0)
-          ? (lista_agentes[assigned_to_id] ?? ('Agente #' ~ assigned_to_id))
-          : 'Todos' %}
+        <div class="mb-4 text-center col-12">
+          <h3 id="titulo" class="font-weight-bold">
+            Reporte de tickets {{ period|default('now'|date('Y-m')) }},
+            Formulario: {{ departamento }},
+            Agente: {{ agente_nombre }}
+          </h3>
+        </div>
+        {# ---- fin título ---- #}
 
-      <div class="mb-4 text-center">
-        <h3 id="titulo" class="font-weight-bold">
-          Reporte de tickets {{ period|default('now'|date('Y-m')) }},
-          Formulario: {{ departamento }},
-          Agente: {{ agente_nombre }}
-        </h3>
-      </div>
-      {# ---- fin título ---- #}
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Total Tickets</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-primary">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.0.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/>
-                  <rect x="1" y="3" width="15" height="13"></rect>
-                  <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-                  <circle cx="5.5" cy="18.5" r="2.5"></circle>
-                  <circle cx="18.5" cy="18.5" r="2.5"></circle>
-                </svg>
+        <!-- Total Tickets -->
+        <div class="col-12 col-sm-6 col-lg-3 mb-3">
+          <div class="card shadow-sm h-100 border-0">
+            <div class="card-body">
+              <div class="row">
+                <div class="col mt-0">
+                  <h5 class="card-title">Total Tickets</h5>
+                </div>
+                <div class="col-auto">
+                  <div class="stat text-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640">
+                      <path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/>
+                    </svg>
+                  </div>
+                </div>
               </div>
-            <div class="col-auto">
-              <div class="stat text-primary">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><!--!Font Awesome Free v7.0.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/>
-                  <rect x="1" y="3" width="15" height="13"></rect>
-                  <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-                  <circle cx="5.5" cy="18.5" r="2.5"></circle>
-                  <circle cx="18.5" cy="18.5" r="2.5"></circle>
-                </svg>
+              <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
+              <div class="mb-0">
+                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                  <span class="text-muted">Ver lista de tickets</span>
+                  <i class="fas fa-arrow-right me-2"></i>
+                </a>
               </div>
             </div>
           </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
-<div class="mb-0">
-  <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
-
         </div>
+
+        <!-- Tickets Abiertos -->
+        <div class="col-12 col-sm-6 col-lg-3 mb-3">
+          <div class="card shadow-sm h-100 border-0">
+            <div class="card-body">
+              <div class="row">
+                <div class="col mt-0">
+                  <h5 class="card-title">Tickets Abiertos</h5>
+                </div>
+                <div class="col-auto">
+                  <div class="stat text-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12" y2="16"></line>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
+              <div class="mb-0 text-end">
+                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                  <span class="text-muted">Ver lista de tickets</span>
+                  <i class="fas fa-arrow-right me-2"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tickets Cerrados -->
+        <div class="col-12 col-sm-6 col-lg-3 mb-3">
+          <div class="card shadow-sm h-100 border-0">
+            <div class="card-body">
+              <div class="row">
+                <div class="col mt-0">
+                  <h5 class="card-title">Tickets Cerrados</h5>
+                </div>
+                <div class="col-auto">
+                  <div class="stat text-success">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M9 11l3 3L22 4"></path>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
+              <div class="mb-0 text-end">
+                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
+                  <span class="text-muted">Ver lista de tickets</span>
+                  <i class="fas fa-arrow-right me-2"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tiempo Promedio -->
+        <div class="col-12 col-sm-6 col-lg-3 mb-3">
+          <div class="card shadow-sm h-100 border-0">
+            <div class="card-body">
+              <div class="row">
+                <div class="col mt-0">
+                  <h5 class="card-title">Tiempo Promedio</h5>
+                </div>
+                <div class="col-auto">
+                  <div class="stat text-warning">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock align-middle">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="6" x2="12" y2="12"></line>
+                      <line x1="12" y1="12" x2="16" y2="12"></line>
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              <h1 class="mt-1 mb-3">{{ promedio|default('0.00') }}<small>h</small></h1>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
-<div class="mb-0">
-  <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
+  {% endif %}
 
-        </div>
-      </div>
+  <!-- Agentes Section -->
+  {% if consulted and agentes is defined and agentes|length > 0 %}
+    <div class="card-header py-3 position-relative d-flex align-items-center justify-content-center">
+      <h3 class="card-title m-0 text-center font-weight-bold">
+        <i class="fa-solid fa-users mr-2"></i> Detalle por Agente
+      </h3>
     </div>
 
-    <!-- Open Tickets -->
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Tickets Abiertos</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-danger">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                  <line x1="12" y1="16" x2="12" y2="16"></line>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
-  <div class="mb-0 text-end">
-  <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+    <div class="card-body pt-4">
+      <div class="row">
+        {% set palette = [
+          'bg-gradient-primary',
+          'bg-gradient-success',
+          'bg-gradient-warning',
+          'bg-gradient-info',
+          'bg-gradient-danger',
+          'bg-gradient-indigo',
+          'bg-gradient-teal'
+        ] %}
 
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
+        {% for id, data in agentes %}
+          {% set id_value = data.id is defined ? data.id : id %}
+          {% set name   = data.name is defined ? data.name : (lista_agentes[id_value] ?? ('Agente #' ~ id_value)) %}
+          {% set abiertos = data.total_abiertos|default(0) %}
+          {% set cerrados = data.total_cerrados|default(0) %}
+          {% set total_agente = data.total_tickets|default(abiertos + cerrados) %}
+          {% set tiempo   = data.tiempo_total|default(0) %}
+          {% set ecv      = total_agente > 0 ? (tiempo / total_agente) : 0 %}
+          {% set normal_count = data.tickets_normal|default(0) %}
+          {% set normal_time  = data.tiempo_total_normal|default(0) %}
+          {% set normal_avg   = data.promedio_normal|default(0) %}
+          {% set urg_count = data.tickets_urgente|default(0) %}
+          {% set urg_time  = data.tiempo_total_urgente|default(0) %}
+          {% set urg_avg   = data.promedio_urgente|default(0) %}
+          {% set colorClass = palette[loop.index0 % palette|length] %}
 
-        </div>
-      </div>
-    </div>
+          <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="card kpi-agent-card shadow-sm h-100 border-1 rounded-lg">
+              <div class="kpi-accent {{ colorClass }}"></div>
+              <div class="card-body text-center p-4 d-flex flex-column align-items-center">
+                <h5 class="mb-1 font-weight-bold">{{ data.short_name }}</h5>
 
-    <!-- Closed Tickets -->
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Tickets Cerrados</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-success">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M9 11l3 3L22 4"></path>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
-  <div class="mb-0 text-end">
-<a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
-
-
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
-    <!-- Open Tickets -->
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Tickets Abiertos</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-danger">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                  <line x1="12" y1="16" x2="12" y2="16"></line>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
-  <div class="mb-0 text-end">
-  <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
-
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
-
-        </div>
-      </div>
-    </div>
-
-    <!-- Closed Tickets -->
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Tickets Cerrados</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-success">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <path d="M9 11l3 3L22 4"></path>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
-  <div class="mb-0 text-end">
-<a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
-
-
-    <span class="text-muted">Ver lista de tickets</span>
-        <i class="fas fa-arrow-right me-2"></i>
-  </a>
-</div>
-
-        </div>
-      </div>
-    </div>
-
-    <!-- Average Time -->
-    <div class="col-12 col-sm-6 col-lg-3 mb-3">
-      <div class="card shadow-sm h-100 border-0">
-        <div class="card-body">
-          <div class="row">
-            <div class="col mt-0">
-              <h5 class="card-title">Tiempo Promedio</h5>
-            </div>
-            <div class="col-auto">
-              <div class="stat text-warning">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock align-middle">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="6" x2="12" y2="12"></line>
-                  <line x1="12" y1="12" x2="16" y2="12"></line>
-                </svg>
-              </div>
-            </div>
-          </div>
-          <h1 class="mt-1 mb-3">{{ promedio|default('0.00') }}<small>h</small></h1>
-
-
-        </div>
-      </div>
-    </div>
-
-  </div>
-{% endif %}
-
-
-<!-- Agentes Section -->
-{% if consulted and agentes is defined and agentes|length > 0 %}
-  <div class="card-header py-3 position-relative d-flex align-items-center justify-content-center">
-    <h3 class="card-title m-0 text-center font-weight-bold">
-      <i class="fa-solid fa-users mr-2"></i> Detalle por Agente
-    </h3>
-  </div>
-
-  <div class="card-body pt-4">
-    <div class="row">
-      {% set palette = [
-        'bg-gradient-primary',
-        'bg-gradient-success',
-        'bg-gradient-warning',
-        'bg-gradient-info',
-        'bg-gradient-danger',
-        'bg-gradient-indigo',
-        'bg-gradient-teal'
-      ] %}
-
-      {% for id, data in agentes %}
-        {% set id_value = data.id is defined ? data.id : id %}
-        {% set name   = data.name is defined ? data.name : (lista_agentes[id_value] ?? ('Agente #' ~ id_value)) %}
-        {% set abiertos = data.total_abiertos|default(0) %}
-        {% set cerrados = data.total_cerrados|default(0) %}
-        {% set total_agente = data.total_tickets|default(abiertos + cerrados) %}
-        {% set tiempo   = data.tiempo_total|default(0) %}
-        {% set ecv      = total_agente > 0 ? (tiempo / total_agente) : 0 %}
-        {% set normal_count = data.tickets_normal|default(0) %}
-        {% set normal_time  = data.tiempo_total_normal|default(0) %}
-        {% set normal_avg   = data.promedio_normal|default(0) %}
-        {% set urg_count = data.tickets_urgente|default(0) %}
-        {% set urg_time  = data.tiempo_total_urgente|default(0) %}
-        {% set urg_avg   = data.promedio_urgente|default(0) %}
-        {% set parts = name|split(' ') %}
-        {% set initials = (parts|first|slice(0,1) ~ (parts|last|slice(0,1)))|upper %}
-        {% set colorClass = palette[loop.index0 % palette|length] %}
-
-        <div class="col-12 col-md-6 col-lg-4 mb-3">
-          <div class="card kpi-agent-card shadow-sm h-100 border-1 rounded-lg">
-            <div class="kpi-accent {{ colorClass }}"></div>
-            <div class="card-body text-center p-4 d-flex flex-column align-items-center">
-              <h5 class="mb-1 font-weight-bold">{{ data.short_name }}</h5>
-
-              <div class="w-100 mt-3">
-                <div class="d-flex justify-content-between text-center w-100 px-2">
-                  <div class="flex-fill">
-                    <div class="small text-muted">Total</div>
-                    <div class="h5 mb-0 font-weight-bold">
-                      {{ total_agente|number_format(0, '.', ',') }}
+                <div class="w-100 mt-3">
+                  <div class="d-flex justify-content-between text-center w-100 px-2">
+                    <div class="flex-fill">
+                      <div class="small text-muted">Total</div>
+                      <div class="h5 mb-0 font-weight-bold">{{ total_agente|number_format(0, '.', ',') }}</div>
+                    </div>
+                    <div class="flex-fill">
+                      <div class="small text-muted">Abiertos</div>
+                      <div class="h5 mb-0 text-danger font-weight-bold">{{ abiertos|number_format(0, '.', ',') }}</div>
+                    </div>
+                    <div class="flex-fill">
+                      <div class="small text-muted">Cerrados</div>
+                      <div class="h5 mb-0 text-success font-weight-bold">{{ cerrados|number_format(0, '.', ',') }}</div>
                     </div>
                   </div>
-                  <div class="flex-fill">
-                    <div class="small text-muted">Abiertos</div>
-                    <div class="h5 mb-0 text-danger font-weight-bold">
-                      {{ abiertos|number_format(0, '.', ',') }}
-                    </div>
+                </div>
+
+                <div class="w-100 mt-3 p-2 bg-light rounded">
+                  <div class="mb-1 text-center">
+                    <span class="d-block mb-1">
+                      <i class="fa-solid fa-stopwatch mr-1"></i> Tiempo x Ticket Promedio (global)
+                    </span>
+                    <strong class="d-block h5 mb-0">{{ ecv|number_format(2, '.', ',') }} <small>h</small></strong>
                   </div>
-                  <div class="flex-fill">
-                    <div class="small text-muted">Cerrados</div>
-                    <div class="h5 mb-0 text-success font-weight-bold">
-                      {{ cerrados|number_format(0, '.', ',') }}
+                  <small class="d-block text-muted mt-2">
+                    <i class="fa-regular fa-clock mr-1"></i> Tiempo total: {{ tiempo|number_format(2, '.', ',') }} h
+                  </small>
+                </div>
+
+                <div class="w-100 mt-3">
+                  <div class="row no-gutters">
+                    <div class="col-6 pr-1">
+                      <div class="border rounded p-2 h-100">
+                        <div class="small d-flex align-items-center justify-content-center mb-1">
+                          <i class="fa-solid fa-circle mr-1"></i> Normal
+                        </div>
+                        <div class="mb-1">
+                          <div class="small text-muted">Tickets</div>
+                          <div class="h6 mb-0">{{ normal_count|number_format(0, '.', ',') }}</div>
+                        </div>
+                        <div class="mb-1">
+                          <div class="small text-muted">Tiempo total</div>
+                          <div class="h6 mb-0">{{ normal_time|number_format(2, '.', ',') }} h</div>
+                        </div>
+                        <div>
+                          <div class="small text-muted">Promedio</div>
+                          <div class="h6 mb-0">{{ normal_avg|number_format(2, '.', ',') }} h</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="col-6 pl-1">
+                      <div class="border rounded p-2 h-100">
+                        <div class="small d-flex align-items-center justify-content-center mb-1">
+                          <i class="fa-solid fa-bolt mr-1"></i> Urgente
+                        </div>
+                        <div class="mb-1">
+                          <div class="small text-muted">Tickets</div>
+                          <div class="h6 mb-0">{{ urg_count|number_format(0, '.', ',') }}</div>
+                        </div>
+                        <div class="mb-1">
+                          <div class="small text-muted">Tiempo total</div>
+                          <div class="h6 mb-0">{{ urg_time|number_format(2, '.', ',') }} h</div>
+                        </div>
+                        <div>
+                          <div class="small text-muted">Promedio</div>
+                          <div class="h6 mb-0">{{ urg_avg|number_format(2, '.', ',') }} h</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div class="w-100 mt-3 p-2 bg-light rounded">
-                <div class="mb-1 text-center">
-                  <span class="d-block mb-1">
-                    <i class="fa-solid fa-stopwatch mr-1"></i> Tiempo x Ticket Promedio (global)
-                  </span>
-                  <strong class="d-block h5 mb-0">
-                    {{ ecv|number_format(2, '.', ',') }} <small>h</small>
-                  </strong>
-                </div>
-                <small class="d-block text-muted mt-2">
-                  <i class="fa-regular fa-clock mr-1"></i> Tiempo total: {{ tiempo|number_format(2, '.', ',') }} h
-                </small>
+              <div class="card-footer d-flex justify-content-end p-3">
+                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
+                  <span>Ver lista de tickets</span>
+                  <i class="fas fa-arrow-right ms-2"></i>
+                </a>
               </div>
-
-              <div class="w-100 mt-3">
-                <div class="row no-gutters">
-                  <div class="col-6 pr-1">
-                    <div class="border rounded p-2 h-100">
-                      <div class="small d-flex align-items-center justify-content-center mb-1">
-                        <i class="fa-solid fa-circle mr-1"></i> Normal
-                      </div>
-                      <div class="mb-1">
-                        <div class="small text-muted">Tickets</div>
-                        <div class="h6 mb-0">{{ normal_count|number_format(0, '.', ',') }}</div>
-                      </div>
-                      <div class="mb-1">
-                        <div class="small text-muted">Tiempo total</div>
-                        <div class="h6 mb-0">{{ normal_time|number_format(2, '.', ',') }} h</div>
-                      </div>
-                      <div>
-                        <div class="small text-muted">Promedio</div>
-                        <div class="h6 mb-0">{{ normal_avg|number_format(2, '.', ',') }} h</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="col-6 pl-1">
-                    <div class="border rounded p-2 h-100">
-                      <div class="small d-flex align-items-center justify-content-center mb-1">
-                        <i class="fa-solid fa-bolt mr-1"></i> Urgente
-                      </div>
-                      <div class="mb-1">
-                        <div class="small text-muted">Tickets</div>
-                        <div class="h6 mb-0">{{ urg_count|number_format(0, '.', ',') }}</div>
-                      </div>
-                      <div class="mb-1">
-                        <div class="small text-muted">Tiempo total</div>
-                        <div class="h6 mb-0">{{ urg_time|number_format(2, '.', ',') }} h</div>
-                      </div>
-                      <div>
-                        <div class="small text-muted">Promedio</div>
-                        <div class="h6 mb-0">{{ urg_avg|number_format(2, '.', ',') }} h</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="card-footer d-flex justify-content-end p-3">
-              <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
-                <span>Ver lista de tickets</span>
-                <i class="fas fa-arrow-right ms-2"></i>
-              </a>
             </div>
           </div>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     </div>
-  </div>
-{% endif %}
-
-
-  </div>
-  </div>
-</section>
+  {% endif %}
+</div>
 
 {% endblock %}
-
-
-
 
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
 
-<!-- Auto-submit  -->
+<!-- Auto-submit -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var form     = document.querySelector('.filters');
@@ -636,12 +422,12 @@ document.addEventListener('DOMContentLoaded', function () {
 <!-- Librería html2pdf (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 
+<!-- Exportar solo el card principal -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const btn = document.getElementById('btnExportPdf');
   if (!btn) return;
 
-  // Encuentra todos los ancestros desplazables del elemento
   function getScrollableAncestors(el) {
     const nodes = [];
     let n = el.parentElement;
@@ -653,46 +439,34 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       n = n.parentElement;
     }
-    nodes.push(document.scrollingElement || document.documentElement); // window scroll
+    nodes.push(document.scrollingElement || document.documentElement);
     return nodes;
   }
 
-  // Pone en top=0 todos los scrollers relevantes y asegura el elemento arriba
   async function snapScrollToTop(el) {
-    // Evita smooth-scroll que retrasaría el frame
     const root = document.documentElement;
     const prev = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
-
-    // Quita el foco para evitar auto-scroll por focus
     if (document.activeElement) document.activeElement.blur();
 
     const scrollers = getScrollableAncestors(el);
     scrollers.forEach(s => { try { s.scrollTop = 0; } catch(e){} });
     window.scrollTo(0, 0);
-
-    // Asegura que el card quede anclado al inicio de su contenedor
     el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
-
-    // Espera 2 frames para asegurar reflow/repaint completos
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
     root.style.scrollBehavior = prev || '';
   }
 
-  // Opcional: desactiva transiciones/sombras durante la captura
   function temporarilyTweakForPdf(root) {
     const prev = { transition: root.style.transition, boxShadow: root.style.boxShadow };
     root.style.transition = 'none';
     root.style.boxShadow = 'none';
-
     root.querySelectorAll('.card, .kpi-agent-card').forEach(el => {
       el.style.transition = 'none';
       el.style.boxShadow = 'none';
       el.classList.remove('shadow-sm');
       el.classList.remove('shadow');
     });
-
     return function cleanup() {
       root.style.transition = prev.transition;
       root.style.boxShadow = prev.boxShadow;
@@ -705,13 +479,14 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  btn.addEventListener('click', async function () {
+  btn.addEventListener('click', async function (e) {
+    // Si prefieres descargar el PDF sin visitar el PHP, cancela el href:
+    // e.preventDefault();
+
     const card = document.getElementById('reporte-ecv');
     if (!card) return;
 
-    // 🔝 Sube todo a tope y estabiliza layout
     await snapScrollToTop(card);
-
     const cleanup = temporarilyTweakForPdf(card);
 
     const period   = "{{ period|default('now'|date('Y-m')) }}";
@@ -723,14 +498,7 @@ document.addEventListener('DOMContentLoaded', function () {
       margin: 0,
       filename: filename,
       image: { type: 'jpeg', quality: 1 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        // 👇 Fuerza origen de captura en (0,0) por si algún contenedor quedó desplazado
-        scrollX: 0,
-        scrollY: 0
-      },
+      html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
@@ -744,144 +512,4 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
-
-
-
-
-<!-- Auto-submit  -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  var form     = document.querySelector('.filters');
-  if (!form) return;
-
-  var period   = document.getElementById('period');
-  var formSel  = document.getElementById('ticket_form_id');
-  var agentSel = document.getElementById('assigned_to_id');
-
-  function submitAndResetAgent() {
-    if (agentSel) agentSel.value = 0;              // reset agente
-    var submitted = form.querySelector('input[name="submitted"]');
-    if (submitted) submitted.disabled = true;      // evita reenviar "submitted"
-    form.submit();
-  }
-
-  if (period)  period.addEventListener('change', submitAndResetAgent);
-  if (formSel) formSel.addEventListener('change', submitAndResetAgent);
-});
-</script>
-
-<!-- Librería html2pdf (CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const btn = document.getElementById('btnExportPdf');
-  if (!btn) return;
-
-  // Encuentra todos los ancestros desplazables del elemento
-  function getScrollableAncestors(el) {
-    const nodes = [];
-    let n = el.parentElement;
-    while (n) {
-      const cs = getComputedStyle(n);
-      const oy = cs.overflowY;
-      if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && n.scrollHeight > n.clientHeight) {
-        nodes.push(n);
-      }
-      n = n.parentElement;
-    }
-    nodes.push(document.scrollingElement || document.documentElement); // window scroll
-    return nodes;
-  }
-
-  // Pone en top=0 todos los scrollers relevantes y asegura el elemento arriba
-  async function snapScrollToTop(el) {
-    // Evita smooth-scroll que retrasaría el frame
-    const root = document.documentElement;
-    const prev = root.style.scrollBehavior;
-    root.style.scrollBehavior = 'auto';
-
-    // Quita el foco para evitar auto-scroll por focus
-    if (document.activeElement) document.activeElement.blur();
-
-    const scrollers = getScrollableAncestors(el);
-    scrollers.forEach(s => { try { s.scrollTop = 0; } catch(e){} });
-    window.scrollTo(0, 0);
-
-    // Asegura que el card quede anclado al inicio de su contenedor
-    el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
-
-    // Espera 2 frames para asegurar reflow/repaint completos
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    root.style.scrollBehavior = prev || '';
-  }
-
-  // Opcional: desactiva transiciones/sombras durante la captura
-  function temporarilyTweakForPdf(root) {
-    const prev = { transition: root.style.transition, boxShadow: root.style.boxShadow };
-    root.style.transition = 'none';
-    root.style.boxShadow = 'none';
-
-    root.querySelectorAll('.card, .kpi-agent-card').forEach(el => {
-      el.style.transition = 'none';
-      el.style.boxShadow = 'none';
-      el.classList.remove('shadow-sm');
-      el.classList.remove('shadow');
-    });
-
-    return function cleanup() {
-      root.style.transition = prev.transition;
-      root.style.boxShadow = prev.boxShadow;
-    };
-  }
-
-  function toggleNoPrint(hide) {
-    document.querySelectorAll('.no-print').forEach(el => {
-      el.style.visibility = hide ? 'hidden' : '';
-    });
-  }
-
-  btn.addEventListener('click', async function () {
-    const card = document.getElementById('reporte-ecv');
-    if (!card) return;
-
-    // 🔝 Sube todo a tope y estabiliza layout
-    await snapScrollToTop(card);
-
-    const cleanup = temporarilyTweakForPdf(card);
-
-    const period   = "{{ period|default('now'|date('Y-m')) }}";
-    const formId   = "{{ ticket_form_id }}";
-    const agentId  = "{{ assigned_to_id|default(0) }}";
-    const filename = `Reporte-ECV_${period}_F${formId}_A${agentId}.pdf`;
-
-    const opt = {
-      margin: 0,
-      filename: filename,
-      image: { type: 'jpeg', quality: 1 },
-      html2canvas: {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        // 👇 Fuerza origen de captura en (0,0) por si algún contenedor quedó desplazado
-        scrollX: 0,
-        scrollY: 0
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    toggleNoPrint(true);
-    try {
-      await html2pdf().set(opt).from(card).save();
-    } finally {
-      toggleNoPrint(false);
-      cleanup();
-    }
-  });
-});
-</script>
-
-
-
 {% endblock %}
