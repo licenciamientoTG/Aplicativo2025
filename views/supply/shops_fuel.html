@@ -1,0 +1,194 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Compras Combustible{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Compras Combustible{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+
+
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  first_date }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+                    <div class="col-2 ">
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" placeholder="Seleccione una estación">
+                        {% for station in stations %}
+                            <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                        {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2 " >
+                        <button id="seach_shop_fuel_table" onclick="shop_fuel_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Compras Combustible </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="shop_fuel_table" class="table table-hover table-sm w-100">
+                   <thead>
+                        <tr>
+                            <th>FECHA DE DESCARGA</th>
+                            <th>NUMERO DE ESTACION</th>
+                            <th>PROVEEDOR ORIGINAL</th>
+                            <th>PRODUCTO</th>
+                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
+                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
+                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
+                            <th>MONTO FACTURA</th>
+                            <th>SALDO FACTURA</th>
+                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
+                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
+                            <th>DIFERENCIA</th>
+                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
+                            <th>PRECIO VENTA EN ESTACION</th>
+                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
+                            <th>% IVA FACTURADO</th>
+                            <th>COSTO ALMACENAMIENTO</th>
+                            <th>UTILIDAD POR LITRO</th>
+                            <th>UTILIDAD LITRO FACTURA</th>
+                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
+                            <th>PRECIO PEMEX AL 16 %</th>
+                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
+                            <th>NUMERO DE FACTURA PETROTAL</th>
+                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
+                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
+                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
+                            <th>BOL NUMBER O NO. EMBARQUE</th>
+                            <th>RAZON SOCIAL FACTURADA</th>
+                            <th>IEPS</th>
+                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
+                            <th>Menos IEPS</th>
+                            <th>Precio sin IVA 16%</th>
+                            <th>Por IVA ,08</th>
+                            <th>Precio C/IVA 8% Y C/IEPS</th>
+                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
+                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
+                            <th>UTILIDAD PETROTAL</th>
+                            <th>OBSERVACIONES</th>
+                        </tr>
+                        </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>FECHA DE DESCARGA</th>
+                            <th>NUMERO DE ESTACION</th>
+                            <th>PROVEEDOR ORIGINAL</th>
+                            <th>PRODUCTO</th>
+                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
+                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
+                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
+                            <th>MONTO FACTURA</th>
+                            <th>SALDO FACTURA</th>
+                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
+                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
+                            <th>DIFERENCIA</th>
+                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
+                            <th>PRECIO VENTA EN ESTACION</th>
+                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
+                            <th>% IVA FACTURADO</th>
+                            <th>COSTO ALMACENAMIENTO</th>
+                            <th>UTILIDAD POR LITRO</th>
+                            <th>UTILIDAD LITRO FACTURA</th>
+                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
+                            <th>PRECIO PEMEX AL 16 %</th>
+                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
+                            <th>NUMERO DE FACTURA PETROTAL</th>
+                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
+                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
+                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
+                            <th>BOL NUMBER O NO. EMBARQUE</th>
+                            <th>RAZON SOCIAL FACTURADA</th>
+                            <th>IEPS</th>
+                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
+                            <th>Menos IEPS</th>
+                            <th>Precio sin IVA 16%</th>
+                            <th>Por IVA ,08</th>
+                            <th>Precio C/IVA 8% Y C/IEPS</th>
+                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
+                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
+                            <th>UTILIDAD PETROTAL</th>
+                            <th>OBSERVACIONES</th>
+
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+
+
+
+</script>
+
+</script>
+{% endblock %}

@@ -1102,6 +1102,11 @@ class Supply{
 
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
     }
+     function shops_fuel() {
+        $stations = $this->gasolinerasModel->get_active_stations();
+
+        echo $this->twig->render($this->route . 'shops_fuel.html', compact('stations'));
+    }
     function providers() {
 
         echo $this->twig->render($this->route . 'providers.html');

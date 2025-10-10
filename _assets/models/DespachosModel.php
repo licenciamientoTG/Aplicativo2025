@@ -2523,8 +2523,46 @@ function cash_invoices_advance($from, $until)
         WHERE
             t1.fchtrn BETWEEN ? AND ?
             AND t2.tipval NOT IN (3, 4)
+            and t1.codcli !=21701354
         GROUP BY t1.codcli, t2.den
         ORDER BY SUM(t1.mto) DESC
+    ";
+
+    $params = [$from, $until];
+
+    return $this->sql->select($query, $params);
+}
+ 
+
+function invoice_client_desp($from, $until)
+{
+    $query = "
+          SELECT
+            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
+                t1.codcli,
+                t2.den,
+                --t1.mto,
+                t1.codgas,
+                t3.abr,
+                CASE 
+                WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                ELSE CAST(t1.nrofac AS VARCHAR(10)) 
+            END AS 'factura',
+                SUM(t1.mto) AS monto
+            FROM SG12.dbo.Despachos t1
+            LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+            LEFT JOIN SG12.dbo.Gasolineras t3 on t1.codgas = t3.cod
+            WHERE
+                t1.fchtrn BETWEEN ? AND ?
+                AND t2.tipval NOT IN (3, 4)
+                and t1.codcli !=21701354
+            GROUP BY t1.codgas,t3.abr,t1.codcli, t2.den, t1.nrofac,CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23)
+                order by t1.codcli
     ";
 
     $params = [$from, $until];
