@@ -3,8 +3,7 @@
 
 {% block mycss %}
 <style>
-
-  
+/* Botón Exportar PDF */
 #btnExportPdff{
   height: 35px !important;
   margin-bottom: 30px;
@@ -14,47 +13,70 @@
   justify-content: center;
   align-items: center;
 }
-/* Ajustes finos para aspecto profesional */
+
+/* Ajustes finos */
 .card.card-primary.card-outline { border-radius: .75rem; }
 .card-header .card-title { font-size: 1.1rem; letter-spacing: .2px; }
 .input-group-text { background: #f8f9fa; }
 .form-control, .input-group-text, select.form-control { border-radius: .5rem !important; }
 
-.kpi-agent-card { border-radius: .75rem; transition: transform .15s ease-in-out, box-shadow .15s ease-in-out; }
+.kpi-agent-card { border-radius: .75rem; transition: transform .15s, box-shadow .15s; }
 .kpi-agent-card:hover { transform: translateY(-3px); box-shadow: 0 .75rem 1.25rem rgba(0,0,0,.12); background-color: #f6f6f6; }
 
-/* Info-box neutral y sobrio */
-.kpi-ecv-box { border-radius: .65rem; background: #f8f9fa; box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
-.kpi-ecv-box .info-box-icon { border-radius: .5rem; background: #e9ecef; color: #495057; }
-.kpi-ecv-box .info-box-text { font-size: .85rem; color: #6c757d; }
-.kpi-ecv-box .info-box-number { font-weight: 700; }
-
+.kpi-ecv-box { border-radius: .65rem; background: #f8f9fa; }
 .widget-user .widget-user-header { border-top-left-radius: .75rem; border-top-right-radius: .75rem; }
 .widget-user .card-footer { border-bottom-left-radius: .75rem; border-bottom-right-radius: .75rem; }
-.description-block .description-header { font-weight: 700; }
-
 .kpi-value { font-weight: 700; }
-.card { border-radius: .75rem; transition: transform .15s ease-in-out, box-shadow .15s ease-in-out; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 0.75rem 1.25rem rgba(0,0,0,.15); }
 
 i { margin-right: 10px; }
 #titulo { margin-bottom: 60px; }
 
-/* Evita cortes raros dentro de cards y tablas */
+/* Evita cortes raros en impresión */
 #reporte-ecv, #reporte-ecv * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-/* Forzar saltos de página donde lo necesites */
 .page-break { break-after: page; }
 
-#btnExportPdf{
-  height: 35px !important;
-  margin-bottom: 30px;
-  margin-left: 3px;
-  display: flex;
-  font-size: 16px;
-  justify-content: center;
-  align-items: center;
+/* ============ Dropdown multi ============ */
+.multi-dd { position: relative; z-index: 1; }
+.multi-dd__btn {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; cursor: pointer;
 }
+.multi-dd__menu {
+  position: absolute; z-index: 100000; top: calc(100% + 4px); left: 0;
+  width: 100%; max-height: 320px; overflow: auto;
+  background: #fff; border: 1px solid #dee2e6; border-radius: .5rem;
+  box-shadow: 0 .5rem 1rem rgba(0,0,0,.15);
+  padding: .25rem 0; display: none;
+}
+.multi-dd.open .multi-dd__menu { display: block; }
+.multi-dd__item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .75rem; cursor: pointer; user-select: none;
+}
+.multi-dd__item:hover { background: #f8f9fa; }
+.multi-dd__item input { margin: 0; }
+.multi-dd__search {
+  position: sticky; top: 0; background: #fff; padding: .5rem;
+  border-bottom: 1px solid #eee;
+}
+.multi-dd__actions {
+  position: sticky; top: 48px; background: #fff; padding: .5rem .5rem .25rem .5rem;
+  border-bottom: 1px solid #f1f1f1; display: flex; gap: .5rem; flex-wrap: wrap;
+}
+.multi-dd__actions .btn-xs {
+  border: 1px solid #dee2e6; background: #f8f9fa; border-radius: .375rem;
+  padding: .2rem .5rem; font-size: .8rem; cursor: pointer;
+}
+.multi-dd__actions .btn-xs:hover { background: #eef1f4; }
+.multi-dd__empty { padding: .75rem; color: #6c757d; font-size: .9rem; }
+
+/* Cuando el dropdown está abierto, subimos la card al frente y evitamos el hover-transform */
+.card.dd-open { z-index: 3000; overflow: visible; }
+.card.dd-open:hover { transform: none; }
+
+/* En layouts muy agresivos, asegurar que contenedores no recorten */
+.row, .card-body { overflow: visible; }
 </style>
 {% endblock %}
 
@@ -65,7 +87,7 @@ i { margin-right: 10px; }
 <!-- Filtros -->
 <div class="card">
   <div class="card-body">
-    <form method="get" action="" class="filters">
+    <form method="get" action="" class="filters" id="ecv-filters">
       <input type="hidden" name="submitted" value="1">
 
       <div class="row">
@@ -96,18 +118,64 @@ i { margin-right: 10px; }
           </select>
         </div>
 
-        <!-- Agente -->
+        <!-- Agentes (Dropdown multi) -->
         <div class="col-md-3 mb-3">
-          <label for="assigned_to_id" class="text-muted small d-block mb-2">
-            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agente
+          <label class="text-muted small d-block mb-2">
+            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agentes
           </label>
-          <select id="assigned_to_id" name="assigned_to_id" class="form-control">
-            {% for id, label in lista_agentes %}
-              <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
-                {{ label }}
-              </option>
-            {% endfor %}
-          </select>
+
+          <!-- Botón/resumen -->
+          <div class="multi-dd" id="agents-dd" data-name="assigned_to_id[]" data-agents='{{ lista_agentes|json_encode|raw }}'>
+            <button type="button" class="form-control multi-dd__btn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="multi-dd__label">
+                {# Resumen del botón: Todos si 0 o todo seleccionado #}
+                {% set total_agentes = lista_agentes|length %}
+                {% set seleccionados = assigned_to_ids is defined ? (assigned_to_ids|length) : 0 %}
+                {% if seleccionados == 0 or seleccionados == total_agentes %}
+                  Todos
+                {% elseif seleccionados == 1 %}
+                  {{ lista_agentes[assigned_to_ids[0]] ?? ('Agente #' ~ assigned_to_ids[0]) }}
+                {% else %}
+                  Varios ({{ seleccionados }})
+                {% endif %}
+              </span>
+              <span><i class="fa-solid fa-chevron-down"></i></span>
+            </button>
+
+            <!-- Menú -->
+            <div class="multi-dd__menu" role="listbox" aria-multiselectable="true">
+              <div class="multi-dd__search">
+                <input type="text" class="form-control form-control-sm" placeholder="Buscar agente..." id="agents-search">
+              </div>
+
+              <!-- Acciones (ahora: seleccionar todos + quitar selección) -->
+              <div class="multi-dd__actions">
+                <button type="button" class="btn-xs" id="agents-select-all">
+                  <i class="fa-regular fa-square-check"></i> Seleccionar todos
+                </button>
+                <!-- NUEVO: quitar selección -->
+                <button type="button" class="btn-xs" id="agents-clear-all">
+                  <i class="fa-regular fa-square"></i> Quitar selección
+                </button>
+              </div>
+
+              <!-- Items: Agentes (incluye -1 => Sin asignar) -->
+              {% for id, label in lista_agentes %}
+                <div class="multi-dd__item"
+                     data-value="{{ id }}" role="option"
+                     aria-selected="{% if assigned_to_ids is defined and (id in assigned_to_ids) %}true{% else %}false{% endif %}">
+                  <input type="checkbox"
+                         {% if assigned_to_ids is defined and (id in assigned_to_ids) %}checked{% endif %}>
+                  <span>{{ label }}</span>
+                </div>
+              {% endfor %}
+
+              <div class="multi-dd__empty" style="display:none;">Sin resultados…</div>
+            </div>
+          </div>
+
+          <!-- Contenedor donde se inyectan los inputs ocultos assigned_to_id[] -->
+          <div id="agents-hidden-inputs"></div>
         </div>
 
         <!-- Botón -->
@@ -121,11 +189,10 @@ i { margin-right: 10px; }
   </div>
 </div>
 
-
 {% if consulted %}
   <a id="btnExportPdff"
      class="btn btn-sm btn-danger w-20 no-print"
-     href="/_assets/classes/pdf.class.php?action=ecv_agents_pdf&period={{ period|default('now'|date('Y-m')) }}&ticket_form_id={{ ticket_form_id }}&assigned_to_id={{ assigned_to_id|default(0) }}"
+     href="/_assets/classes/pdf.class.php?action=ecv_agents_pdf&period={{ period|default('now'|date('Y-m')) }}&ticket_form_id={{ ticket_form_id }}&assigned_to_id={{ assigned_to_csv|default('0') }}"
      target="_blank">
     <i class="fa-solid fa-file-pdf mr-1"></i> Exportar a PDF
   </a>
@@ -138,9 +205,18 @@ i { margin-right: 10px; }
         {# ---- Título resumido del reporte ---- #}
         {% set departamento = ticket_form_id == 51598 ? 'Tickets Sistemas'
                             : (ticket_form_id == 57328 ? 'Tickets Mantenimiento' : '—') %}
-        {% set agente_nombre = (assigned_to_id is defined and assigned_to_id != 0)
-            ? (lista_agentes[assigned_to_id] ?? ('Agente #' ~ assigned_to_id))
-            : 'Todos' %}
+
+        {% set seleccionados = assigned_to_ids is defined ? (assigned_to_ids|length) : 0 %}
+        {% set total_agentes = lista_agentes|length %}
+        {% set agente_nombre =
+          (seleccionados == 0 or seleccionados == total_agentes)
+            ? 'Todos'
+            : (
+                (seleccionados == 1)
+                  ? (lista_agentes[assigned_to_ids[0]] ?? ('Agente #' ~ assigned_to_ids[0]))
+                  : 'Varios (' ~ seleccionados ~ ')'
+              )
+        %}
 
         <div class="mb-4 text-center col-12">
           <h3 id="titulo" class="font-weight-bold">
@@ -151,25 +227,19 @@ i { margin-right: 10px; }
         </div>
         {# ---- fin título ---- #}
 
-        <!-- Total Tickets -->
+        <!-- KPIs -->
         <div class="col-12 col-sm-6 col-lg-3 mb-3">
           <div class="card shadow-sm h-100 border-0">
             <div class="card-body">
               <div class="row">
-                <div class="col mt-0">
-                  <h5 class="card-title">Total Tickets</h5>
-                </div>
-                <div class="col-auto">
-                  <div class="stat text-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640">
-                      <path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/>
-                    </svg>
-                  </div>
-                </div>
+                <div class="col mt-0"><h5 class="card-title">Total Tickets</h5></div>
+                <div class="col-auto"><div class="stat text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path d="M304 112L192 112C183.2 112 176 119.2 176 128L176 512C176 520.8 183.2 528 192 528L448 528C456.8 528 464 520.8 464 512L464 272L376 272C336.2 272 304 239.8 304 200L304 112zM444.1 224L352 131.9L352 200C352 213.3 362.7 224 376 224L444.1 224zM128 128C128 92.7 156.7 64 192 64L325.5 64C342.5 64 358.8 70.7 370.8 82.7L493.3 205.3C505.3 217.3 512 233.6 512 250.6L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 128z"/></svg>
+                </div></div>
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
               <div class="mb-0">
-                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -178,27 +248,18 @@ i { margin-right: 10px; }
           </div>
         </div>
 
-        <!-- Tickets Abiertos -->
         <div class="col-12 col-sm-6 col-lg-3 mb-3">
           <div class="card shadow-sm h-100 border-0">
             <div class="card-body">
               <div class="row">
-                <div class="col mt-0">
-                  <h5 class="card-title">Tickets Abiertos</h5>
-                </div>
-                <div class="col-auto">
-                  <div class="stat text-danger">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="8" x2="12" y2="12"></line>
-                      <line x1="12" y1="16" x2="12" y2="16"></line>
-                    </svg>
-                  </div>
-                </div>
+                <div class="col mt-0"><h5 class="card-title">Tickets Abiertos</h5></div>
+                <div class="col-auto"><div class="stat text-danger">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-alert-circle align-middle"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12" y2="16"></line></svg>
+                </div></div>
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -207,26 +268,18 @@ i { margin-right: 10px; }
           </div>
         </div>
 
-        <!-- Tickets Cerrados -->
         <div class="col-12 col-sm-6 col-lg-3 mb-3">
           <div class="card shadow-sm h-100 border-0">
             <div class="card-body">
               <div class="row">
-                <div class="col mt-0">
-                  <h5 class="card-title">Tickets Cerrados</h5>
-                </div>
-                <div class="col-auto">
-                  <div class="stat text-success">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <path d="M9 11l3 3L22 4"></path>
-                    </svg>
-                  </div>
-                </div>
+                <div class="col mt-0"><h5 class="card-title">Tickets Cerrados</h5></div>
+                <div class="col-auto"><div class="stat text-success">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-check-circle align-middle"><circle cx="12" cy="12" r="10"></circle><path d="M9 11l3 3L22 4"></path></svg>
+                </div></div>
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
+                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -235,23 +288,14 @@ i { margin-right: 10px; }
           </div>
         </div>
 
-        <!-- Tiempo Promedio -->
         <div class="col-12 col-sm-6 col-lg-3 mb-3">
           <div class="card shadow-sm h-100 border-0">
             <div class="card-body">
               <div class="row">
-                <div class="col mt-0">
-                  <h5 class="card-title">Tiempo Promedio</h5>
-                </div>
-                <div class="col-auto">
-                  <div class="stat text-warning">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock align-middle">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="6" x2="12" y2="12"></line>
-                      <line x1="12" y1="12" x2="16" y2="12"></line>
-                    </svg>
-                  </div>
-                </div>
+                <div class="col mt-0"><h5 class="card-title">Tiempo Promedio</h5></div>
+                <div class="col-auto"><div class="stat text-warning">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-clock align-middle"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="6" x2="12" y2="12"></line><line x1="12" y1="12" x2="16" y2="12"></line></svg>
+                </div></div>
               </div>
               <h1 class="mt-1 mb-3">{{ promedio|default('0.00') }}<small>h</small></h1>
             </div>
@@ -273,13 +317,8 @@ i { margin-right: 10px; }
     <div class="card-body pt-4">
       <div class="row">
         {% set palette = [
-          'bg-gradient-primary',
-          'bg-gradient-success',
-          'bg-gradient-warning',
-          'bg-gradient-info',
-          'bg-gradient-danger',
-          'bg-gradient-indigo',
-          'bg-gradient-teal'
+          'bg-gradient-primary','bg-gradient-success','bg-gradient-warning',
+          'bg-gradient-info','bg-gradient-danger','bg-gradient-indigo','bg-gradient-teal'
         ] %}
 
         {% for id, data in agentes %}
@@ -323,9 +362,7 @@ i { margin-right: 10px; }
 
                 <div class="w-100 mt-3 p-2 bg-light rounded">
                   <div class="mb-1 text-center">
-                    <span class="d-block mb-1">
-                      <i class="fa-solid fa-stopwatch mr-1"></i> Tiempo x Ticket Promedio (global)
-                    </span>
+                    <span class="d-block mb-1"><i class="fa-solid fa-stopwatch mr-1"></i> Tiempo x Ticket Promedio (global)</span>
                     <strong class="d-block h5 mb-0">{{ ecv|number_format(2, '.', ',') }} <small>h</small></strong>
                   </div>
                   <small class="d-block text-muted mt-2">
@@ -340,44 +377,26 @@ i { margin-right: 10px; }
                         <div class="small d-flex align-items-center justify-content-center mb-1">
                           <i class="fa-solid fa-circle mr-1"></i> Normal
                         </div>
-                        <div class="mb-1">
-                          <div class="small text-muted">Tickets</div>
-                          <div class="h6 mb-0">{{ normal_count|number_format(0, '.', ',') }}</div>
-                        </div>
-                        <div class="mb-1">
-                          <div class="small text-muted">Tiempo total</div>
-                          <div class="h6 mb-0">{{ normal_time|number_format(2, '.', ',') }} h</div>
-                        </div>
-                        <div>
-                          <div class="small text-muted">Promedio</div>
-                          <div class="h6 mb-0">{{ normal_avg|number_format(2, '.', ',') }} h</div>
-                        </div>
+                        <div class="mb-1"><div class="small text-muted">Tickets</div><div class="h6 mb-0">{{ normal_count|number_format(0, '.', ',') }}</div></div>
+                        <div class="mb-1"><div class="small text-muted">Tiempo total</div><div class="h6 mb-0">{{ normal_time|number_format(2, '.', ',') }} h</div></div>
+                        <div><div class="small text-muted">Promedio</div><div class="h6 mb-0">{{ normal_avg|number_format(2, '.', ',') }} h</div></div>
                       </div>
                     </div>
-
                     <div class="col-6 pl-1">
                       <div class="border rounded p-2 h-100">
                         <div class="small d-flex align-items-center justify-content-center mb-1">
                           <i class="fa-solid fa-bolt mr-1"></i> Urgente
                         </div>
-                        <div class="mb-1">
-                          <div class="small text-muted">Tickets</div>
-                          <div class="h6 mb-0">{{ urg_count|number_format(0, '.', ',') }}</div>
-                        </div>
-                        <div class="mb-1">
-                          <div class="small text-muted">Tiempo total</div>
-                          <div class="h6 mb-0">{{ urg_time|number_format(2, '.', ',') }} h</div>
-                        </div>
-                        <div>
-                          <div class="small text-muted">Promedio</div>
-                          <div class="h6 mb-0">{{ urg_avg|number_format(2, '.', ',') }} h</div>
-                        </div>
+                        <div class="mb-1"><div class="small text-muted">Tickets</div><div class="h6 mb-0">{{ urg_count|number_format(0, '.', ',') }}</div></div>
+                        <div class="mb-1"><div class="small text-muted">Tiempo total</div><div class="h6 mb-0">{{ urg_time|number_format(2, '.', ',') }} h</div></div>
+                        <div><div class="small text-muted">Promedio</div><div class="h6 mb-0">{{ urg_avg|number_format(2, '.', ',') }} h</div></div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
 
+              <!-- Importante: el detalle por agente mantiene el id propio -->
               <div class="card-footer d-flex justify-content-end p-3">
                 <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
                   <span>Ver lista de tickets</span>
@@ -397,119 +416,186 @@ i { margin-right: 10px; }
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
 
-<!-- Auto-submit -->
 <script>
+// =======================
+//  Dropdown multi-agentes
+// =======================
 document.addEventListener('DOMContentLoaded', function () {
-  var form     = document.querySelector('.filters');
-  if (!form) return;
+  'use strict';
 
-  var period   = document.getElementById('period');
-  var formSel  = document.getElementById('ticket_form_id');
-  var agentSel = document.getElementById('assigned_to_id');
+  const form       = document.getElementById('ecv-filters');
+  const period     = document.getElementById('period');
+  const formSel    = document.getElementById('ticket_form_id');
 
-  function submitAndResetAgent() {
-    if (agentSel) agentSel.value = 0;              // reset agente
-    var submitted = form.querySelector('input[name="submitted"]');
-    if (submitted) submitted.disabled = true;      // evita reenviar "submitted"
-    form.submit();
+  const dd         = document.getElementById('agents-dd');               // contenedor del dropdown
+  const btn        = dd ? dd.querySelector('.multi-dd__btn') : null;     // botón que abre/cierra
+  const items      = dd ? Array.from(dd.querySelectorAll('.multi-dd__item')) : [];
+  const label      = dd ? dd.querySelector('.multi-dd__label') : null;   // resumen en el botón
+  const hiddenBox  = document.getElementById('agents-hidden-inputs');    // donde se inyectan inputs hidden
+  const search     = document.getElementById('agents-search');           // buscador
+
+  const hostCard   = dd ? dd.closest('.card') : null;
+
+  // Botones de acción
+  const btnSelectAll = document.getElementById('agents-select-all');
+  const btnClearAll  = document.getElementById('agents-clear-all'); // NUEVO
+
+  // Nombres de agentes desde data-atributo
+  const listaAgentes = (() => {
+    try { return dd && dd.dataset.agents ? JSON.parse(dd.dataset.agents) : {}; }
+    catch (e) { console.error('JSON inválido en data-agents:', e); return {}; }
+  })();
+
+  // -------- Utilidades --------
+  function currentSelection() {
+    return items
+      .filter(it => it.querySelector('input').checked)
+      .map(it => parseInt(it.dataset.value, 10));
   }
 
-  if (period)  period.addEventListener('change', submitAndResetAgent);
-  if (formSel) formSel.addEventListener('change', submitAndResetAgent);
-});
-</script>
+  function setSelection(values) {
+    const set = new Set(values.map(v => parseInt(v, 10)));
+    items.forEach(it => {
+      const val = parseInt(it.dataset.value, 10);
+      const checked = set.has(val);
+      it.querySelector('input').checked = checked;
+      it.setAttribute('aria-selected', checked ? 'true' : 'false');
+    });
+    reflectSummary();
+    syncHiddenInputs();
+  }
 
-<!-- Librería html2pdf (CDN) -->
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-
-<!-- Exportar solo el card principal -->
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const btn = document.getElementById('btnExportPdf');
-  if (!btn) return;
-
-  function getScrollableAncestors(el) {
-    const nodes = [];
-    let n = el.parentElement;
-    while (n) {
-      const cs = getComputedStyle(n);
-      const oy = cs.overflowY;
-      if ((oy === 'auto' || oy === 'scroll' || oy === 'overlay') && n.scrollHeight > n.clientHeight) {
-        nodes.push(n);
-      }
-      n = n.parentElement;
+  function reflectSummary() {
+    if (!label) return;
+    const total = items.length;
+    const vals = currentSelection();
+    const n = vals.length;
+    if (n === 0 || n === total) {
+      label.textContent = 'Todos';
+      return;
     }
-    nodes.push(document.scrollingElement || document.documentElement);
-    return nodes;
+    if (n === 1) {
+      const id = vals[0];
+      label.textContent = (listaAgentes[id] || ('Agente #' + id));
+      return;
+    }
+    label.textContent = 'Varios (' + n + ')';
   }
 
-  async function snapScrollToTop(el) {
-    const root = document.documentElement;
-    const prev = root.style.scrollBehavior;
-    root.style.scrollBehavior = 'auto';
-    if (document.activeElement) document.activeElement.blur();
-
-    const scrollers = getScrollableAncestors(el);
-    scrollers.forEach(s => { try { s.scrollTop = 0; } catch(e){} });
-    window.scrollTo(0, 0);
-    el.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    root.style.scrollBehavior = prev || '';
-  }
-
-  function temporarilyTweakForPdf(root) {
-    const prev = { transition: root.style.transition, boxShadow: root.style.boxShadow };
-    root.style.transition = 'none';
-    root.style.boxShadow = 'none';
-    root.querySelectorAll('.card, .kpi-agent-card').forEach(el => {
-      el.style.transition = 'none';
-      el.style.boxShadow = 'none';
-      el.classList.remove('shadow-sm');
-      el.classList.remove('shadow');
-    });
-    return function cleanup() {
-      root.style.transition = prev.transition;
-      root.style.boxShadow = prev.boxShadow;
-    };
-  }
-
-  function toggleNoPrint(hide) {
-    document.querySelectorAll('.no-print').forEach(el => {
-      el.style.visibility = hide ? 'hidden' : '';
+  function syncHiddenInputs() {
+    if (!hiddenBox) return;
+    hiddenBox.innerHTML = '';
+    const vals = currentSelection();
+    // Si no hay seleccion, no mandamos nada => backend lo interpreta como "todos"
+    vals.forEach(v => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = dd.dataset.name; // "assigned_to_id[]"
+      input.value = String(v);
+      hiddenBox.appendChild(input);
     });
   }
 
-  btn.addEventListener('click', async function (e) {
-    // Si prefieres descargar el PDF sin visitar el PHP, cancela el href:
-    // e.preventDefault();
+  // -------- Inicialización desde el servidor --------
+  (function initFromServer() {
+    if (!dd) return;
+    reflectSummary();
+    syncHiddenInputs();
+  })();
 
-    const card = document.getElementById('reporte-ecv');
-    if (!card) return;
+  // -------- Acción: seleccionar todos --------
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener('click', function (e) {
+      e.preventDefault();
+      // Selecciona TODOS los agentes (incluye -1 = "Sin asignar")
+      const allIds = items.map(it => parseInt(it.dataset.value, 10));
+      setSelection(allIds);
+    });
+  }
 
-    await snapScrollToTop(card);
-    const cleanup = temporarilyTweakForPdf(card);
+  // -------- Acción: quitar selección (nuevo) --------
+  if (btnClearAll) {
+    btnClearAll.addEventListener('click', function (e) {
+      e.preventDefault();
+      // Quita todas las selecciones => backend lo toma como "Todos"
+      setSelection([]);
+    });
+  }
 
-    const period   = "{{ period|default('now'|date('Y-m')) }}";
-    const formId   = "{{ ticket_form_id }}";
-    const agentId  = "{{ assigned_to_id|default(0) }}";
-    const filename = `Reporte-ECV_${period}_F${formId}_A${agentId}.pdf`;
+  // -------- Abrir/cerrar dropdown (con fix de z-index) --------
+  if (btn) {
+    btn.addEventListener('click', function () {
+      dd.classList.toggle('open');
+      const isOpen = dd.classList.contains('open');
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 
-    const opt = {
-      margin: 0,
-      filename: filename,
-      image: { type: 'jpeg', quality: 1 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
+      if (hostCard) {
+        if (isOpen) hostCard.classList.add('dd-open');
+        else hostCard.classList.remove('dd-open');
+      }
 
-    toggleNoPrint(true);
-    try {
-      await html2pdf().set(opt).from(card).save();
-    } finally {
-      toggleNoPrint(false);
-      cleanup();
+      if (isOpen && search) {
+        search.focus();
+        search.select();
+      }
+    });
+  }
+
+  document.addEventListener('click', function (e) {
+    if (dd && !dd.contains(e.target)) {
+      dd.classList.remove('open');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+      if (hostCard) hostCard.classList.remove('dd-open');
     }
   });
+
+  // -------- Interacción con items --------
+  items.forEach(it => {
+    // Clic en el item (no en el checkbox)
+    it.addEventListener('click', function (e) {
+      if (e.target.tagName === 'INPUT') return;
+      const cb = it.querySelector('input');
+      cb.checked = !cb.checked;
+      it.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
+      reflectSummary();
+      syncHiddenInputs();
+    });
+
+    // Cambio directo del checkbox
+    const cb = it.querySelector('input');
+    cb.addEventListener('change', function () {
+      it.setAttribute('aria-selected', this.checked ? 'true' : 'false');
+      reflectSummary();
+      syncHiddenInputs();
+    });
+  });
+
+  // -------- Búsqueda en el menú --------
+  if (search) {
+    search.addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      let visibleCount = 0;
+      items.forEach(it => {
+        const text = it.querySelector('span').textContent.toLowerCase();
+        const show = text.indexOf(q) !== -1;
+        it.style.display = show ? '' : 'none';
+        if (show) visibleCount++;
+      });
+      const emptyEl = dd.querySelector('.multi-dd__empty');
+      if (emptyEl) emptyEl.style.display = (visibleCount === 0) ? '' : 'none';
+    });
+  }
+
+  // -------- Auto-submit al cambiar período o formulario --------
+  function submitAndResetAgent() {
+    // Dejar sin selección => backend = "todos"
+    setSelection([]);
+    const submitted = form ? form.querySelector('input[name="submitted"]') : null;
+    if (submitted) submitted.disabled = true;
+    if (form) form.submit();
+  }
+  if (period)  period.addEventListener('change', submitAndResetAgent);
+  if (formSel) formSel.addEventListener('change', submitAndResetAgent);
 });
 </script>
 {% endblock %}

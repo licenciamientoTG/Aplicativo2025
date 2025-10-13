@@ -247,42 +247,132 @@ function draw_agents_table(PDF $pdf, array $agentes) {
 // ================== ACTION ==================
 if (isset($_GET['action'])) {
     switch ($_GET['action']) {
-        case 'ecv_agents_pdf':
-            $period         = isset($_GET['period']) ? $_GET['period'] : date('Y-m');
-            $ticket_form_id = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
-            $assigned_to_id = isset($_GET['assigned_to_id']) ? (int)$_GET['assigned_to_id'] : 0;
+case 'ecv_agents_pdf':
+    $period         = isset($_GET['period']) ? $_GET['period'] : date('Y-m');
+    $ticket_form_id = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
 
-            if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) $period = date('Y-m');
+    // Puede venir CSV: "12,34,-1" | "0" | "-1" | ""
+    $assigned_to_raw = isset($_GET['assigned_to_id']) ? trim((string)$_GET['assigned_to_id']) : '0';
 
-            $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
-            $fecha_ini = $dt->format('Y-m-01');
-            $fecha_fin = $dt->format('Y-m-t');
+    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+        $period = date('Y-m');
+    }
 
-            // Traer datos del modelo
-            $model = new MojoTicketsModel(); // ajusta si tu clase tiene otro nombre
-            $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
+    $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
+    $fecha_ini = $dt->format('Y-m-01');
+    $fecha_fin = $dt->format('Y-m-t');
 
-            $agentes = build_agents_metrics($rows, $fecha_ini, $fecha_fin);
+    // --- Normalización de IDs (soporta -1 = sin asignar, 0 = todos, >0 = agentes) ---
+    $ids = [];
+    if ($assigned_to_raw === '' || $assigned_to_raw === '0') {
+        // Todos
+        $ids = [0];
+    } else {
+        $parts = array_filter(array_map('trim', explode(',', $assigned_to_raw)), 'strlen');
+        foreach ($parts as $p) { $ids[(int)$p] = true; }
+        $ids = array_keys($ids);
+        if (empty($ids)) { $ids = [0]; } // fallback todos
+    }
 
-            // === Render PDF ===
-            $pdf = new PDF();
-            $pdf->AliasNbPages();
-            $pdf->SetAutoPageBreak(true, 15);
-            $pdf->SetMargins(10, 12, 10);
+    $has_all        = in_array(0, $ids, true);
+    $has_unassigned = in_array(-1, $ids, true);
+    $positive_ids   = array_values(array_filter($ids, static fn($v) => $v > 0));
 
-            // Títulos ANTES del AddPage (los usa Header)
-            $dept = ($ticket_form_id == 51598) ? 'Tickets Sistemas' : (($ticket_form_id == 57328) ? 'Tickets Mantenimiento' : 'Formulario #'.$ticket_form_id);
-            $agentLabel = ($assigned_to_id === 0) ? 'Todos' : 'Agente #'.$assigned_to_id;
-            $pdf->title    = utf8_decode('Reporte por agente');
-            $pdf->subtitle = utf8_decode("Formulario: $dept | Agente: $agentLabel");
-            $pdf->period   = $period . " ($fecha_ini a $fecha_fin)";
+    // --- Obtención desde el modelo ---
+    $model = new MojoTicketsModel(); // ajusta nombre si aplica
+    $rows  = [];
 
-            $pdf->AddPage('L','A4'); // Header auto
-            draw_agents_table($pdf, $agentes);
+    if ($has_all) {
+        // TODOS
+        $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+    } elseif ($has_unassigned && empty($positive_ids)) {
+        // SOLO SIN ASIGNAR: traemos todos y filtramos
+        $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        $rows = array_values(array_filter($rowsAll, static function($t){
+            $v = $t['assigned_to_id'] ?? null;
+            return $v === null || $v === '' || (int)$v === 0;
+        }));
+    } elseif ($has_unassigned && !empty($positive_ids)) {
+        // SIN ASIGNAR + IDs positivos: traemos todos y filtramos unión
+        $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        $allow   = array_flip($positive_ids);
+        $rows = array_values(array_filter($rowsAll, static function($t) use ($allow){
+            $v = $t['assigned_to_id'] ?? null;
+            $is_unassigned = ($v === null || $v === '' || (int)$v === 0);
+            $is_specific   = isset($allow[(int)$v]);
+            return $is_unassigned || $is_specific;
+        }));
+    } else {
+        // SOLO IDs positivos
+        if (method_exists($model, 'danny_multi')) {
+            // Si tienes un danny_multi real, úsalo. Si no, quita este branch.
+            $agent_csv = implode(',', $positive_ids);
+            $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, $agent_csv) ?: [];
+        } else {
+            // Fallback: trae todos y filtra en PHP
+            $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+            $allow   = array_flip($positive_ids);
+            $rows    = array_values(array_filter($rowsAll, static function($t) use ($allow){
+                return isset($allow[(int)($t['assigned_to_id'] ?? 0)]);
+            }));
+        }
+    }
 
-            $filename = sprintf('agentes_%s_form_%s_%s.pdf', $period, (int)$ticket_form_id, date('Ymd_His'));
-            $pdf->Output('D', $filename);
-            exit;
+    // --- Métricas por agente ---
+    $agentes = build_agents_metrics($rows, $fecha_ini, $fecha_fin);
+
+    // ===== Títulos del PDF =====
+    $dept = ($ticket_form_id == 51598)
+        ? 'Tickets Sistemas'
+        : (($ticket_form_id == 57328) ? 'Tickets Mantenimiento' : 'Formulario #'.$ticket_form_id);
+
+    // Etiqueta para "Agente(s)" según selección
+    if ($has_all) {
+        $agentLabel = 'Todos';
+    } elseif ($has_unassigned && empty($positive_ids)) {
+        $agentLabel = 'Sin asignar';
+    } elseif ($has_unassigned && !empty($positive_ids)) {
+        $agentLabel = 'Sin asignar + '.count($positive_ids);
+    } else {
+        if (count($positive_ids) === 1) {
+            // Busca nombre de ese agente en las métricas si está
+            $pid = $positive_ids[0];
+            $name = null;
+            foreach ($agentes as $a) {
+                if ((int)($a['id'] ?? -999) === $pid) { $name = $a['short_name'] ?? $a['name'] ?? null; break; }
+            }
+            $agentLabel = $name ?: ('Agente #'.$pid);
+        } else {
+            $agentLabel = 'Varios ('.count($positive_ids).')';
+        }
+    }
+
+    // === Render PDF ===
+    $pdf = new PDF();
+    $pdf->AliasNbPages();
+    $pdf->SetAutoPageBreak(true, 15);
+    $pdf->SetMargins(10, 12, 10);
+
+    $pdf->title    = utf8_decode('Reporte por agente');
+    $pdf->subtitle = utf8_decode("Formulario: $dept | Agente(s): $agentLabel");
+    $pdf->period   = $period . " ($fecha_ini a $fecha_fin)";
+
+    $pdf->AddPage('L', 'A4'); // Landscape
+    draw_agents_table($pdf, $agentes);
+
+    // Nombre de archivo: reemplaza -1 por 'unassigned' y 0 por 'all'
+    $safe = $ids;
+    sort($safe);
+    $safe = array_map(static function($v){
+        if ($v === 0)  return 'all';
+        if ($v === -1) return 'unassigned';
+        return (string)$v;
+    }, $safe);
+    $safeAgents = implode('-', $safe);
+
+    $filename = sprintf('agentes_%s_form_%s_%s.pdf', $period, (int)$ticket_form_id, $safeAgents);
+    $pdf->Output('D', $filename);
+    exit;
 
         default:
             http_response_code(400);
