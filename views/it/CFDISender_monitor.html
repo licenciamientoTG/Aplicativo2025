@@ -1,82 +1,234 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Sistemas{% endblock %}
+{% block title %}Monitor CFDI{% endblock %}
 {% block mycss %}
-<!-- FullCalendar CSS -->
-<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js'></script>
+<style>
+    .status-badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .status-match {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .status-missing {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    .status-pending {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    /* Estilos para cards de resumen */
+    .summary-card {
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+    .summary-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .summary-icon {
+        font-size: 2rem;
+        margin-bottom: 8px;
+    }
+    .summary-value {
+        font-size: 1.8rem;
+        font-weight: bold;
+        margin: 5px 0;
+    }
+    .summary-label {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        opacity: 0.8;
+    }
+    
+    table.dataTable thead th {
+        background-color: #3485a8 !important;
+        color: #ffffff !important;
+        padding: 10px 18px;
+        border-bottom: 1px solid #dee2e6;
+    }
+    
+    .uuid-cell {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .uuid-cell:hover {
+        overflow: visible;
+        white-space: normal;
+        background-color: #f8f9fa;
+    }
+</style>
 {% endblock %}
-{% block menutitle %}Monitor de envios de CFDI de corporativo a estaciones{% endblock %}
+{% block menutitle %}Monitor de envios de CFDI - Corporativo vs Estaciones{% endblock %}
 {% block content %}
 
+<!-- Filtros -->
 <div class="card">
     <div class="card-body">
-        <form class="row g-3" action="#" method="get">
-            <div class="col-2">
-                <label for="from" class="visually-hidden">Fecha</label>
-                <input type="date" class="form-control" id="from" name="from" value="{{ from }}">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="col-form-label-sm" for="from">Desde:</label>
+                <input type="date" class="form-control form-control-sm" id="from" name="from" value="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}" required>
+
             </div>
-            <div class="col-2">
-                <label for="codgas" class="visually-hidden">Gasolinera</label>
-                <select id="codgas"
-                        name="codgas"
-                        class="form-control selectpicker"
-                        data-live-search="true"
-                        title="Selecciona una opción" required>
-                        {% for item in active_stations %}
-                            <option value="{{ item.Codigo }}" {{ item.Codigo == codgas ? 'selected' : '' }}>{{ item.Nombre }}</option>
-                        {% endfor %}
+            <div class="col-md-2">
+                <label class="col-form-label-sm" for="until">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" id="until" name="until" value="{{ 'now'|date_modify('-1 day')|date('Y-m-d') }}" required>
+
+            </div>
+            <div class="col-md-3">
+                <label class="col-form-label-sm" for="codgas">Estación:</label>
+                <select id="codgas" name="codgas" class="form-control form-control-sm " data-live-search="true" title="Seleccionar estación" required>
+                    <!-- <option value="all">TODAS LAS ESTACIONES</option> -->
+                    {% for item in active_stations %}
+                        <option value="{{ item.Codigo }}">{{ item.Nombre }}</option>
+                    {% endfor %}
                 </select>
             </div>
-            <div class="col-auto">
-                <button type="submit" class="btn btn-primary mb-3">Buscar</button>
+            <div class="col-md-2">
+                <label class="col-form-label-sm" for="status_filter">Estado:</label>
+                <select id="status_filter" class="form-control form-control-sm">
+                    <option value="all">TODOS</option>
+                    <option value="Coincide">COINCIDEN</option>
+                    <option value="Faltante">FALTANTES EN ESTACIÓN</option>
+                    <option value="Pendientes">PENDIENTES</option>
+                    <option value="Diferente">DIFERENTE</option>
+                </select>
             </div>
-        </form>
+            <div class="col-md-2">
+                <button id="search_cfdi_comparison" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 23px;">
+                    <i class="fas fa-search"></i> Generar Reporte
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
+<!-- Cards de Resumen -->
+<div class="row mt-3" id="summary-cards">
+    <div class="col-md-3 mb-3">
+        <div class="card summary-card bg-primary text-white">
+            <div class="card-body text-center">
+                <div class="summary-icon">📊</div>
+                <div class="summary-value" id="total-facturas">0</div>
+                <div class="summary-label">Total Facturas</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card summary-card bg-success text-white">
+            <div class="card-body text-center">
+                <div class="summary-icon">✅</div>
+                <div class="summary-value" id="total-match">0</div>
+                <div class="summary-label">Coincidencias</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card summary-card bg-danger text-white">
+            <div class="card-body text-center">
+                <div class="summary-icon">❌</div>
+                <div class="summary-value" id="total-missing">0</div>
+                <div class="summary-label">Faltantes</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card summary-card bg-warning text-white">
+            <div class="card-body text-center">
+                <div class="summary-icon">⏳</div>
+                <div class="summary-value" id="total-pending">0</div>
+                <div class="summary-label">Pendientes</div>
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Tabla Principal -->
 <div class="card">
+    <div class="card-header">
+        <h5 class="card-title">Comparación CFDI Corporativo vs Estaciones</h5>
+    </div>
     <div class="card-body table-responsive">
-        <table id="cfdis_sender_table" class="table table-hover table-sm w-100">
+        <table id="cfdis_sender_table" class="table table-striped table-hover table-sm w-100">
             <thead>
                 <tr>
-                    <th>Fecha</th>
                     <th>Estación</th>
+                    <th>Fecha Fac</th>
+                    <th>Despacho</th>
+                    <th>Factura Corp</th>
+                    <th>Serie</th>
                     <th>Cliente</th>
-                    <th>Tipo</th>
-                    <th>Nro Factura</th>
-                    <th>CFDI</th>
-                    <th>Estatus</th>
+                    <th>RFC</th>
+                    <th>UUID Corp</th>
+                    <th>Despacho Est</th>
+                    <th>Factura Est</th>
+                    <th>UUID Est</th>
+                    <th>Estado</th>
                 </tr>
             </thead>
             <tbody>
             </tbody>
+            <tfoot>
+                <tr>
+                    <th>Estación</th>
+                    <th>Fecha Fac</th>
+                    <th>Despacho</th>
+                    <th>Factura Corp</th>
+                    <th>Serie</th>
+                    <th>Cliente</th>
+                    <th>RFC</th>
+                    <th>UUID Corp</th>
+                    <th>Despacho Est</th>
+                    <th>Factura Est</th>
+                    <th>UUID Est</th>
+                    <th>Estado</th>
+                </tr>
+            </tfoot>
         </table>
     </div>
-</div> 
+</div>
 
 {% endblock %}
 {% block myjs %}
-<script>
-    $(document).ready(function() {
-        $('#cfdis_sender_table').DataTable({
-            "ajax": {
-                "url": "/it/CFDISender_monitor_data/{{ from }}/{{ codgas }}",
-                "dataSrc": ""
-            },
-            "columns": [
-                { "data": "Fecha" },
-                { "data": "Estacion" },
-                { "data": "Cliente" },
-                { "data": "Tipo" },
-                { "data": "NroFactura" },
-                { "data": "CFDI" },
-                { "data": "Estatus" }
-            ]
-        });
-    });
-</script>
 <script src="{{ JS }}it.js"></script>
 <script>
+$('#search_cfdi_comparison').on('click', async function() {
+    cfdi_comparison_table();
+});
 
+// Filtro por estado
+$('#status_filter').on('change', function() {
+    const table = $('#cfdis_sender_table').DataTable();
+    const filterValue = $(this).val();
+    
+    if (filterValue === 'all') {
+        table.column(11).search('').draw();
+    } else {
+        table.column(11).search(filterValue).draw();
+    }
+});
+
+
+$(document).ready(function() {
+    // Limpiar filtro de estado al cargar
+    $('#status_filter').val('all');
+    
+    // Si existe selectpicker, inicializarlo
+    if ($.fn.selectpicker) {
+        $('#codgas').selectpicker({
+            liveSearch: true,
+            size: 10
+        });
+    }
+});
 </script>
 {% endblock %}

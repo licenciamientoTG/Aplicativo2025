@@ -257,23 +257,45 @@ class Administration{
 function ecv_calc() {
 
     $consulted = isset($_GET['submitted']);
-    
-    $ticket_form_id  = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
-    $assigned_to_id  = isset($_GET['assigned_to_id']) ? (int)$_GET['assigned_to_id'] : 0;
-    
+
+    // 1) Parámetros
+    $ticket_form_id = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
+
+    // assigned_to_id puede venir como array (select multiple), CSV o valor único
+    $assigned_param = $_GET['assigned_to_id'] ?? [0];
+
+    if (is_string($assigned_param)) {
+        // soporta CSV en URLs
+        $assigned_param = array_filter(array_map('trim', explode(',', $assigned_param)), 'strlen');
+    }
+    if (!is_array($assigned_param)) {
+        $assigned_param = [$assigned_param];
+    }
+
+    $assigned_to_ids = array_values(array_unique(array_map('intval', $assigned_param)));
+    $assigned_to_csv = (empty($assigned_to_ids) || in_array(0, $assigned_to_ids, true))
+        ? '0'
+        : implode(',', $assigned_to_ids);
+
+    // 2) Período y fechas (siempre válidos)
     $period = $_GET['period'] ?? date('Y-m');
-    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+    if (!is_string($period) || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
         $period = date('Y-m');
     }
-    
+
     $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
+    if (!$dt) {
+        $dt = new DateTime('first day of this month');
+        $period = $dt->format('Y-m');
+    }
+
     $fecha_ini = $dt->format('Y-m-01');
     $fecha_fin = $dt->format('Y-m-t');
-    
+
     $startBound = $fecha_ini . ' 00:00:00';
     $endBound   = $fecha_fin . ' 23:59:59';
-    
-    // Defaults de primera carga
+
+    // 3) Defaults y estructuras
     $rows = [];
     $total_tickets = 0;
     $total_tickets_abiertos = 0;
@@ -282,24 +304,18 @@ function ecv_calc() {
     $promedio = '0.00';
     $agentes = [];
     $lista_agentes = [0 => 'Todos'];
-    
-    // Helper: primer nombre + primer apellido (incluye conectores tipo "de", "del", "de la")
-    $shortName = function (?string $full): string {
 
+    // Helper para nombre corto
+    $shortName = function (?string $full): string {
         $full = trim(preg_replace('/\s+/', ' ', (string)$full));
         if ($full === '') return '';
-        
-        // Quitar títulos comunes al inicio (opcional)
         $titles = ['sr','sra','srta','ing','lic','dra','dr','mtro','mtra','arq','cp','c','c.','--'];
         $parts  = preg_split('/\s+/', $full);
         while ($parts && in_array(mb_strtolower(rtrim($parts[0], '.'), 'UTF-8'), $titles, true)) {
             array_shift($parts);
         }
         if (!$parts) return '';
-
         $firstName = $parts[0];
-
-        // Armar primer apellido (con conectores si los hay)
         $surname = '';
         $connectors = ['de','del','la','las','los','da','das','do','dos','di','van','von','y','e','della','dalla','du','le','san','santa','mac','mc'];
         if (isset($parts[1])) {
@@ -308,24 +324,25 @@ function ecv_calc() {
                 $s[] = $parts[$i]; $i++;
             }
             if (!empty($s) && isset($parts[$i])) {
-                $s[] = $parts[$i];            // ej: "de la Rosa"
+                $s[] = $parts[$i];
                 $surname = implode(' ', $s);
             } else {
-                $surname = $parts[1];         // ej: "Martínez"
+                $surname = $parts[1];
             }
         }
-        
         return trim($firstName . ' ' . $surname);
     };
 
+    // 4) Consulta y agregaciones
     if ($consulted) {
-        // ===== Consulta completa (métricas + agentes) =====
-        $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
+        // Filtro para el modelo: [0] => todos, o lista de ids seleccionados
+        $filter_ids = ($assigned_to_csv === '0') ? [0] : $assigned_to_ids;
 
-        // Para armar el combo de agentes (cuando se filtró por uno, hay que traer todos)
-        $rows_combo = ($assigned_to_id === 0)
-            ? $rows
-            : ($this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: []);
+        // Datos según selección
+        $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $filter_ids) ?: [];
+
+        // Para el combo, siempre trae todos los agentes del período
+        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
 
         $total_tickets = count($rows);
 
@@ -333,17 +350,14 @@ function ecv_calc() {
             $id   = (int)($ticket['assigned_to_id'] ?? 0);
             $name = $ticket['assigned_to_name'] ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
 
-            // Inicializar estructura del agente si no existe
             if (!isset($agentes[$id])) {
                 $agentes[$id] = [
                     'id'                   => $id,
                     'name'                 => $name,
                     'short_name'           => ($id === 0 ? 'Sin asignar' : $shortName($name)),
-                    // existentes
                     'total_cerrados'       => 0,
                     'total_abiertos'       => 0,
                     'tiempo_total'         => 0.0,
-                    // nuevos
                     'total_tickets'        => 0,
                     'tickets_normal'       => 0,
                     'tiempo_total_normal'  => 0.0,
@@ -354,10 +368,8 @@ function ecv_calc() {
                 ];
             }
 
-            // Contador total por agente
             $agentes[$id]['total_tickets']++;
 
-            // Abiertos / Cerrados (tu misma lógica + ventanas)
             $estatus    = $ticket['estatus'] ?? '';
             $created_on = $ticket['created_on'] ?? null;
             $solved_on  = $ticket['solved_on'] ?? null;
@@ -376,39 +388,32 @@ function ecv_calc() {
                 $total_tickets_abiertos++;
             }
 
-            // Tiempos totales (global y por agente)
             $hora_tot = (float)($ticket['hora_tot'] ?? 0.0);
             $agentes[$id]['tiempo_total'] += $hora_tot;
             $tiempo_total += $hora_tot;
 
-            // Clasificación por prioridad
             $priority_id = isset($ticket['priority_id']) ? (int)$ticket['priority_id'] : null;
 
-            // Urgente: 10 y 20
             if ($priority_id === 10 || $priority_id === 20) {
                 $agentes[$id]['tickets_urgente']++;
                 $agentes[$id]['tiempo_total_urgente'] += $hora_tot;
             }
-
-            // Normal: 30 y 40
             if ($priority_id === 30 || $priority_id === 40) {
                 $agentes[$id]['tickets_normal']++;
                 $agentes[$id]['tiempo_total_normal'] += $hora_tot;
             }
         }
 
-        // Calcular promedios por agente
         foreach ($agentes as $aid => $data) {
             $agentes[$aid]['promedio_normal'] = ($data['tickets_normal'] > 0)
                 ? round($data['tiempo_total_normal'] / $data['tickets_normal'], 2)
                 : 0.0;
-
             $agentes[$aid]['promedio_urgente'] = ($data['tickets_urgente'] > 0)
                 ? round($data['tiempo_total_urgente'] / $data['tickets_urgente'], 2)
                 : 0.0;
         }
 
-        // Combo de agentes
+        // Combo de agentes (siempre todos)
         foreach ($rows_combo as $t) {
             $id = (int)($t['assigned_to_id'] ?? 0);
             $label =
@@ -426,12 +431,11 @@ function ecv_calc() {
             $lista_agentes = [0 => $todos] + $lista_agentes;
         }
 
-        // Promedio global (sobre todos los tickets del set consultado)
         $promedio = $total_tickets > 0 ? number_format($tiempo_total / $total_tickets, 2, '.', ',') : '0.00';
 
     } else {
-        // ===== Primera carga o autosubmit (solo para refrescar agentes) =====
-        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        // Primera carga: combo de agentes de todo el período
+        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
 
         foreach ($rows_combo as $t) {
             $id = (int)($t['assigned_to_id'] ?? 0);
@@ -452,12 +456,16 @@ function ecv_calc() {
         }
     }
 
+    // 5) Render
     echo $this->twig->render($this->route . 'ecv_calc.html', compact(
         'consulted',
         'total_tickets','total_tickets_abiertos','total_tickets_cerrados','promedio',
-        'agentes','period','fecha_ini','fecha_fin','ticket_form_id','assigned_to_id','lista_agentes'
+        'agentes','period','fecha_ini','fecha_fin','ticket_form_id',
+        'assigned_to_ids','assigned_to_csv','lista_agentes'
     ));
 }
+
+
 
 
 

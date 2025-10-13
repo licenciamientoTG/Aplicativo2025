@@ -3,9 +3,8 @@
 
 {% block mycss %}
 <style>
-
-  
-#btnExportPdff{
+/* Botón Exportar PDF */
+#btnExportPdf{
   height: 35px !important;
   margin-bottom: 30px;
   margin-left: 3px;
@@ -14,6 +13,7 @@
   justify-content: center;
   align-items: center;
 }
+
 /* Ajustes finos para aspecto profesional */
 .card.card-primary.card-outline { border-radius: .75rem; }
 .card-header .card-title { font-size: 1.1rem; letter-spacing: .2px; }
@@ -45,16 +45,6 @@ i { margin-right: 10px; }
 
 /* Forzar saltos de página donde lo necesites */
 .page-break { break-after: page; }
-
-#btnExportPdf{
-  height: 35px !important;
-  margin-bottom: 30px;
-  margin-left: 3px;
-  display: flex;
-  font-size: 16px;
-  justify-content: center;
-  align-items: center;
-}
 </style>
 {% endblock %}
 
@@ -96,18 +86,32 @@ i { margin-right: 10px; }
           </select>
         </div>
 
-        <!-- Agente -->
+        <!-- Agentes (multi) -->
         <div class="col-md-3 mb-3">
           <label for="assigned_to_id" class="text-muted small d-block mb-2">
-            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agente
+            <i class="fa-solid fa-user-check text-primary mr-1"></i> Agentes
           </label>
-          <select id="assigned_to_id" name="assigned_to_id" class="form-control">
+          <select id="assigned_to_id"
+                  name="assigned_to_id[]"
+                  class="form-control"
+                  multiple
+                  size="8">
+            <!-- Opción 0 = Todos -->
+            <option value="0"
+              {% if assigned_to_ids is not defined or (0 in assigned_to_ids) %}selected{% endif %}>
+              Todos
+            </option>
+
             {% for id, label in lista_agentes %}
-              <option value="{{ id }}" {{ id == assigned_to_id ? 'selected' : '' }}>
-                {{ label }}
-              </option>
+              {% if id != 0 %}
+                <option value="{{ id }}"
+                  {% if assigned_to_ids is defined and (id in assigned_to_ids) and not (0 in assigned_to_ids) %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endif %}
             {% endfor %}
           </select>
+          <small class="text-muted d-block mt-1">Tip: Ctrl/Cmd + click para seleccionar varios</small>
         </div>
 
         <!-- Botón -->
@@ -121,11 +125,10 @@ i { margin-right: 10px; }
   </div>
 </div>
 
-
 {% if consulted %}
-  <a id="btnExportPdff"
+  <a id="btnExportPdf"
      class="btn btn-sm btn-danger w-20 no-print"
-     href="/_assets/classes/pdf.class.php?action=ecv_agents_pdf&period={{ period|default('now'|date('Y-m')) }}&ticket_form_id={{ ticket_form_id }}&assigned_to_id={{ assigned_to_id|default(0) }}"
+     href="/_assets/classes/pdf.class.php?action=ecv_agents_pdf&period={{ period|default('now'|date('Y-m')) }}&ticket_form_id={{ ticket_form_id }}&assigned_to_id={{ assigned_to_csv|default('0') }}"
      target="_blank">
     <i class="fa-solid fa-file-pdf mr-1"></i> Exportar a PDF
   </a>
@@ -138,9 +141,16 @@ i { margin-right: 10px; }
         {# ---- Título resumido del reporte ---- #}
         {% set departamento = ticket_form_id == 51598 ? 'Tickets Sistemas'
                             : (ticket_form_id == 57328 ? 'Tickets Mantenimiento' : '—') %}
-        {% set agente_nombre = (assigned_to_id is defined and assigned_to_id != 0)
-            ? (lista_agentes[assigned_to_id] ?? ('Agente #' ~ assigned_to_id))
-            : 'Todos' %}
+
+        {% set agente_nombre =
+          (assigned_to_csv == '0')
+            ? 'Todos'
+            : (
+                (assigned_to_ids|length == 1)
+                  ? (lista_agentes[assigned_to_ids[0]] ?? ('Agente #' ~ assigned_to_ids[0]))
+                  : 'Varios (' ~ assigned_to_ids|length ~ ')'
+              )
+        %}
 
         <div class="mb-4 text-center col-12">
           <h3 id="titulo" class="font-weight-bold">
@@ -169,7 +179,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets|default(0) }}</h1>
               <div class="mb-0">
-                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -198,7 +208,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_abiertos|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id }}">
+                <a href="/administration/filtered_statistics/open_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -226,7 +236,7 @@ i { margin-right: 10px; }
               </div>
               <h1 class="mt-1 mb-3">{{ total_tickets_cerrados|default(0) }}</h1>
               <div class="mb-0 text-end">
-                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_id is not empty ? assigned_to_id : -1 }}">
+                <a href="/administration/filtered_statistics/closed_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ assigned_to_csv|default('0') }}">
                   <span class="text-muted">Ver lista de tickets</span>
                   <i class="fas fa-arrow-right me-2"></i>
                 </a>
@@ -378,6 +388,7 @@ i { margin-right: 10px; }
                 </div>
               </div>
 
+              <!-- Importante: el detalle por agente mantiene el id propio -->
               <div class="card-footer d-flex justify-content-end p-3">
                 <a href="/administration/filtered_statistics/total_tickets/{{ period|default('now'|date('Y-m')) }}/{{ ticket_form_id }}/{{ id_value }}" class="text-muted d-flex align-items-center">
                   <span>Ver lista de tickets</span>
@@ -397,7 +408,7 @@ i { margin-right: 10px; }
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
 
-<!-- Auto-submit -->
+<!-- Auto-submit y regla de selección -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var form     = document.querySelector('.filters');
@@ -407,10 +418,33 @@ document.addEventListener('DOMContentLoaded', function () {
   var formSel  = document.getElementById('ticket_form_id');
   var agentSel = document.getElementById('assigned_to_id');
 
+  // Exclusividad de "Todos" (0): si seleccionas 0 deselecciona otros; si seleccionas otros, deselecciona 0.
+  function enforceAgentsRule() {
+    if (!agentSel) return;
+    var opts = Array.from(agentSel.options);
+    var selectedValues = opts.filter(o => o.selected).map(o => parseInt(o.value, 10));
+
+    var hasAll = selectedValues.includes(0);
+    if (hasAll && selectedValues.length > 1) {
+      opts.forEach(o => o.selected = (parseInt(o.value,10) === 0));
+    } else if (!hasAll && selectedValues.length === 0) {
+      // nada seleccionado => vuelve a Todos
+      opts.forEach(o => o.selected = (parseInt(o.value,10) === 0));
+    }
+  }
+
+  if (agentSel) {
+    agentSel.addEventListener('change', enforceAgentsRule);
+    enforceAgentsRule(); // normaliza al cargar
+  }
+
   function submitAndResetAgent() {
-    if (agentSel) agentSel.value = 0;              // reset agente
+    if (agentSel) {
+      // al cambiar período o formulario, fuerza “Todos”
+      Array.from(agentSel.options).forEach(o => o.selected = (parseInt(o.value,10) === 0));
+    }
     var submitted = form.querySelector('input[name="submitted"]');
-    if (submitted) submitted.disabled = true;      // evita reenviar "submitted"
+    if (submitted) submitted.disabled = true; // evita reenviar "submitted"
     form.submit();
   }
 
@@ -491,8 +525,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const period   = "{{ period|default('now'|date('Y-m')) }}";
     const formId   = "{{ ticket_form_id }}";
-    const agentId  = "{{ assigned_to_id|default(0) }}";
-    const filename = `Reporte-ECV_${period}_F${formId}_A${agentId}.pdf`;
+    const agents   = "{{ assigned_to_csv|default('0') }}"; // puede ser CSV
+    const filename = `Reporte-ECV_${period}_F${formId}_A${agents}.pdf`;
 
     const opt = {
       margin: 0,

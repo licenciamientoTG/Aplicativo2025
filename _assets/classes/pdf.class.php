@@ -260,7 +260,7 @@ if (isset($_GET['action'])) {
 
             // Traer datos del modelo
             $model = new MojoTicketsModel(); // ajusta si tu clase tiene otro nombre
-            $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
+            $rows = $model->ecv_model($fecha_ini, $fecha_fin, $ticket_form_id, $assigned_to_id) ?: [];
 
             $agentes = build_agents_metrics($rows, $fecha_ini, $fecha_fin);
 

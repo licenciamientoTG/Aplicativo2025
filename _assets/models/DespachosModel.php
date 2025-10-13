@@ -2612,6 +2612,71 @@ function getCFDIs($from, $codgas) {
     return $this->sql->select($query, []) ?: false;
 }
 
+function cfdi_comparison_advance($from, $until, $codgas = null, $bd, $server)
+{
+    $query = "
+        SELECT
+            G.den AS Estacion,
+            D.nrotrn AS Despacho,
+            Docc.satuid AS UUIDCorp,
+            D.nrofac AS FacturaCorp,
+            Docc.fch AS FechaFactura,
+            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, Docc.fch, 100) - 1, 103) AS FechaFac,
+            Docc.logfch AS FechaLogFactura,
+            dbo.fnNoFactura('', Docc.nro) AS Serie,
+            COALESCE(C.densat, C.den) AS Cliente,
+            ISNULL(C.rfc, D.satrfc) AS RFC,
+            C.codext,
+            DR.nrotrn AS [despacho_estacion],
+            DR.nrofac AS FacturaEstacion,
+            DR.satuid AS UUIDEstacion,
+            D.codgas,
+            -- Determinar el estado
+            CASE 
+                WHEN DR.satuid IS NOT NULL AND DR.satuid <> '' AND DR.satuid = Docc.satuid THEN 'match'
+                WHEN DR.nrofac IS NULL OR DR.satuid IS NULL OR DR.satuid = '' THEN 'missing'
+                WHEN DR.satuid <> Docc.satuid THEN 'mismatch'
+                ELSE 'pending'
+            END AS Estado
+        FROM SG12.dbo.Despachos D
+            INNER JOIN SG12.dbo.DocumentosC Docc ON Docc.nro = D.nrofac
+                AND Docc.tip = 3
+                AND Docc.codgas = D.gasfac
+                AND Docc.satuid IS NOT NULL
+                AND Docc.satuid <> ''
+                AND Docc.fch BETWEEN ? AND ?
+            INNER JOIN SG12.dbo.Documentos Doc ON Doc.nro = Docc.nro
+                AND Doc.tip = Docc.tip
+                AND Doc.codgas = Docc.codgas
+                AND Doc.nroitm > 0
+                AND Doc.codprd = D.codprd
+                AND D.nrotrn = CASE 
+                    WHEN CHARINDEX('@d:', Doc.satdat) > 0 
+                        THEN [dbo].[GetRef](Doc.satdat, 'D')
+                    ELSE D.nrotrn
+                END
+            INNER JOIN SG12.dbo.Gasolineras G ON G.cod = D.codgas
+            INNER JOIN SG12.dbo.Clientes C ON C.cod = Docc.codopr 
+                AND C.tipval IN (3, 4)
+            -- Comparación con linked server
+            LEFT JOIN [{$server}].[{$bd}].dbo.[Despachos] DR 
+                ON DR.codgas = D.codgas 
+                AND DR.nrotrn = D.nrotrn
+    ";
+
+    $params = [$from, $until];
+    
+    // Filtro opcional por estación
+    if ($codgas !== null && $codgas !== 'all') {
+        $query .= " WHERE D.codgas = ?";
+        $params[] = $codgas;
+    }
+    
+    $query .= " ORDER BY Docc.fch DESC, G.den, D.nrotrn";
+
+    return $this->sql->select($query, $params);
+}
+
     
     
 }   

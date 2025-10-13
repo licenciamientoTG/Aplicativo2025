@@ -2317,161 +2317,198 @@ class MojoTicketsModel extends Model{
 
     
 
-  function danny($from, $until, $ticket_form_id, $assigned_to_id = 0) : array|false {
+// Antes: function danny($from, $until, $ticket_form_id, $assigned_to_id = 0)
+/**
+ * Trae tickets (urgentes y normales) dentro de un rango, filtrando por formulario
+ * y por uno o varios agentes (o todos).
+ *
+ * @param string            $from           'YYYY-MM-DD'
+ * @param string            $until          'YYYY-MM-DD'
+ * @param int               $ticket_form_id id del formulario (0 = todos)
+ * @param array|string|int  $assigned_to    [0]=todos, o lista/CSV/int de agentes
+ * @return array|false
+ */
+function danny($from, $until, $ticket_form_id, array|string|int $assigned_to = 0) : array|false
+{
+    // Normaliza $assigned_to a arreglo de enteros únicos
+    if (!is_array($assigned_to)) {
+        // Soporta CSV "12,34"
+        if (is_string($assigned_to) && strpos($assigned_to, ',') !== false) {
+            $assigned_to = array_filter(array_map('trim', explode(',', $assigned_to)), 'strlen');
+        } else {
+            $assigned_to = [$assigned_to];
+        }
+    }
+    $assigned_to = array_values(array_unique(array_map('intval', $assigned_to)));
+
+    // Si incluye 0 o viene vacío => "Todos" (SQL recibe NULL)
+    $agent_csv = (empty($assigned_to) || in_array(0, $assigned_to, true))
+        ? null
+        : implode(',', $assigned_to);
+
     $query = "SET DATEFIRST 1;
 
-        DECLARE @ini date = ?;
-        DECLARE @fin date = ?;
+        DECLARE @ini date  = ?;
+        DECLARE @fin date  = ?;
         DECLARE @fin_excl datetime2(0) = DATEADD(DAY, 1, CAST(@fin AS datetime2(0)));
 
+        -- CSV de agentes (NULL o '' => todos)
+        DECLARE @agent_csv NVARCHAR(MAX) = ?;
+
         ;WITH forms AS (
-        SELECT f.id_mojo, f.name AS formulario
-        FROM [TG].[dbo].[mojo_ticket_forms] f WITH (NOLOCK)
-        WHERE (? = 0 OR f.id_mojo = ?)   -- 0 = todos, o filtra por id
+            SELECT f.id_mojo, f.name AS formulario
+            FROM [TG].[dbo].[mojo_ticket_forms] f WITH (NOLOCK)
+            WHERE (? = 0 OR f.id_mojo = ?)
         ),
-
+        agent_ids AS (
+            -- Splitter XML (compatible con versiones sin STRING_SPLIT)
+            -- Cuando @agent_csv es NULL o '', esta CTE queda vacía y NO filtra
+            SELECT DISTINCT TRY_CAST(T.C.value('.', 'int') AS int) AS id
+            FROM (
+                SELECT TRY_CAST('<x><i>' + REPLACE(@agent_csv, ',', '</i><i>') + '</i></x>' AS XML) AS xml_data
+            ) X
+            CROSS APPLY X.xml_data.nodes('/x/i') AS T(C)
+            WHERE @agent_csv IS NOT NULL
+              AND LTRIM(RTRIM(@agent_csv)) <> ''
+        ),
         urgentes AS (
-        SELECT
-            t.id_mojo, t.assigned_to_id, t.created_on, t.solved_on,
-            t.ticket_form_id, t.priority_id, t.title, t.problem,
-            t.requesting_department, t.applicants_name,
-            f.formulario,
-            -- >>> Nombre del agente
-            assigned_to_name =
-                LTRIM(RTRIM(COALESCE(u.first_name, ''))) +
-                CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END,
-            prioridad = CASE WHEN t.priority_id IN (10,20) THEN 'Urgente'
-                            WHEN t.priority_id IN (30,40) THEN 'Normal'
-                            ELSE 'Otro' END,
-            estatus   = CASE WHEN t.status_id IN (10,20,30,40) THEN 'Abierto'
-                            WHEN t.status_id IN (50,60)       THEN 'Cerrado'
-                            ELSE 'Desconocido' END,
-            hora_tot = CAST(ROUND(DATEDIFF(SECOND, t.created_on, ISNULL(t.solved_on, GETDATE())) / 3600.0, 1) AS DECIMAL(10,1))
-        FROM [TG].[dbo].[mojo_tickets] t WITH (NOLOCK)
-        INNER JOIN forms f ON f.id_mojo = t.ticket_form_id
-        LEFT  JOIN [TG].[dbo].[mojo_users] u WITH (NOLOCK) ON u.id_mojo = t.assigned_to_id
-        WHERE t.priority_id IN (10, 20)
-            AND ( ? = 0 OR t.assigned_to_id = ? )                 -- <<< filtro opcional por agente
-            AND (
-                (t.solved_on >= @ini AND t.solved_on < @fin_excl)
-                OR ( (t.solved_on IS NULL OR t.solved_on >= @ini)
-                    AND t.created_on < @fin_excl )
-                )
+            SELECT
+                t.id_mojo, t.assigned_to_id, t.created_on, t.solved_on,
+                t.ticket_form_id, t.priority_id, t.title, t.problem,
+                t.requesting_department, t.applicants_name,
+                f.formulario,
+                assigned_to_name =
+                    LTRIM(RTRIM(COALESCE(u.first_name, ''))) +
+                    CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END,
+                prioridad = CASE WHEN t.priority_id IN (10,20) THEN 'Urgente'
+                                 WHEN t.priority_id IN (30,40) THEN 'Normal'
+                                 ELSE 'Otro' END,
+                estatus   = CASE WHEN t.status_id IN (10,20,30,40) THEN 'Abierto'
+                                 WHEN t.status_id IN (50,60)       THEN 'Cerrado'
+                                 ELSE 'Desconocido' END,
+                hora_tot = CAST(ROUND(DATEDIFF(SECOND, t.created_on, ISNULL(t.solved_on, GETDATE())) / 3600.0, 1) AS DECIMAL(10,1))
+            FROM [TG].[dbo].[mojo_tickets] t WITH (NOLOCK)
+            INNER JOIN forms f ON f.id_mojo = t.ticket_form_id
+            LEFT  JOIN [TG].[dbo].[mojo_users] u WITH (NOLOCK) ON u.id_mojo = t.assigned_to_id
+            WHERE t.priority_id IN (10, 20)
+              AND (
+                    @agent_csv IS NULL
+                 OR LTRIM(RTRIM(@agent_csv)) = ''
+                 OR t.assigned_to_id IN (SELECT id FROM agent_ids)
+              )
+              AND (
+                    (t.solved_on >= @ini AND t.solved_on < @fin_excl)
+                 OR ((t.solved_on IS NULL OR t.solved_on >= @ini) AND t.created_on < @fin_excl)
+              )
         ),
-
         base_norm AS (
-        SELECT
-            t.id_mojo, t.assigned_to_id, t.created_on, t.solved_on,
-            t.ticket_form_id, t.priority_id, t.title, t.problem,
-            t.requesting_department, t.applicants_name,
-            f.formulario,
-            -- >>> Nombre del agente
-            assigned_to_name =
-                LTRIM(RTRIM(COALESCE(u.first_name, ''))) +
-                CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END,
-            prioridad = CASE WHEN t.priority_id IN (10,20) THEN 'Urgente'
-                            WHEN t.priority_id IN (30,40) THEN 'Normal'
-                            ELSE 'Otro' END,
-            estatus   = CASE WHEN t.status_id IN (10,20,30,40) THEN 'Abierto'
-                            WHEN t.status_id IN (50,60)       THEN 'Cerrado'
-                            ELSE 'Desconocido' END,
-            end_ts = COALESCE(t.solved_on, GETDATE())
-        FROM [TG].[dbo].[mojo_tickets] t WITH (NOLOCK)
-        INNER JOIN forms f ON f.id_mojo = t.ticket_form_id
-        LEFT  JOIN [TG].[dbo].[mojo_users] u WITH (NOLOCK) ON u.id_mojo = t.assigned_to_id
-        WHERE t.priority_id IN (30,40)
-            AND ( ? = 0 OR t.assigned_to_id = ? )                 -- <<< mismo filtro aquí
-            AND (
-                (t.solved_on >= @ini AND t.solved_on < @fin_excl)
-                OR ( (t.solved_on IS NULL OR t.solved_on >= @ini)
-                    AND t.created_on < @fin_excl )
-                )
+            SELECT
+                t.id_mojo, t.assigned_to_id, t.created_on, t.solved_on,
+                t.ticket_form_id, t.priority_id, t.title, t.problem,
+                t.requesting_department, t.applicants_name,
+                f.formulario,
+                assigned_to_name =
+                    LTRIM(RTRIM(COALESCE(u.first_name, ''))) +
+                    CASE WHEN COALESCE(u.last_name, '') = '' THEN '' ELSE ' ' + u.last_name END,
+                prioridad = CASE WHEN t.priority_id IN (10,20) THEN 'Urgente'
+                                 WHEN t.priority_id IN (30,40) THEN 'Normal'
+                                 ELSE 'Otro' END,
+                estatus   = CASE WHEN t.status_id IN (10,20,30,40) THEN 'Abierto'
+                                 WHEN t.status_id IN (50,60)       THEN 'Cerrado'
+                                 ELSE 'Desconocido' END,
+                end_ts = COALESCE(t.solved_on, GETDATE())
+            FROM [TG].[dbo].[mojo_tickets] t WITH (NOLOCK)
+            INNER JOIN forms f ON f.id_mojo = t.ticket_form_id
+            LEFT  JOIN [TG].[dbo].[mojo_users] u WITH (NOLOCK) ON u.id_mojo = t.assigned_to_id
+            WHERE t.priority_id IN (30,40)
+              AND (
+                    @agent_csv IS NULL
+                 OR LTRIM(RTRIM(@agent_csv)) = ''
+                 OR t.assigned_to_id IN (SELECT id FROM agent_ids)
+              )
+              AND (
+                    (t.solved_on >= @ini AND t.solved_on < @fin_excl)
+                 OR ((t.solved_on IS NULL OR t.solved_on >= @ini) AND t.created_on < @fin_excl)
+              )
         ),
-
         rango AS (
-        SELECT id_mojo, d = CAST(created_on AS date), start_ts = created_on, end_ts
-        FROM base_norm
-        UNION ALL
-        SELECT r.id_mojo, DATEADD(DAY, 1, r.d), r.start_ts, r.end_ts
-        FROM rango r
-        WHERE DATEADD(DAY, 1, r.d) <= CAST(r.end_ts AS date)
+            SELECT id_mojo, d = CAST(created_on AS date), start_ts = created_on, end_ts
+            FROM base_norm
+            UNION ALL
+            SELECT r.id_mojo, DATEADD(DAY, 1, r.d), r.start_ts, r.end_ts
+            FROM rango r
+            WHERE DATEADD(DAY, 1, r.d) <= CAST(r.end_ts AS date)
         ),
-
         horas_norm AS (
-        SELECT r.id_mojo,
-                hora_tot = CAST(SUM(
-                CASE WHEN DATEPART(WEEKDAY, r.d) IN (6,7) THEN 0
-                        ELSE
-                        CASE
-                            WHEN (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END) >= DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
-                            OR (CASE WHEN r.d = CAST(r.end_ts AS date)   THEN r.end_ts   ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END) <= DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
-                            THEN 0
-                            ELSE DATEDIFF(
-                                MINUTE,
-                                CASE WHEN (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END) < DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
-                                        THEN DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
-                                        ELSE (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END)
-                                END,
-                                CASE WHEN (CASE WHEN r.d = CAST(r.end_ts AS date) THEN r.end_ts ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END) > DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
-                                        THEN DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
-                                        ELSE (CASE WHEN r.d = CAST(r.end_ts AS date) THEN r.end_ts ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END)
+            SELECT r.id_mojo,
+                   hora_tot = CAST(SUM(
+                       CASE WHEN DATEPART(WEEKDAY, r.d) IN (6,7) THEN 0
+                            ELSE
+                                CASE
+                                    WHEN (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END) >= DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
+                                      OR (CASE WHEN r.d = CAST(r.end_ts AS date)   THEN r.end_ts   ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END) <= DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
+                                    THEN 0
+                                    ELSE DATEDIFF(
+                                        MINUTE,
+                                        CASE WHEN (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END) < DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
+                                             THEN DATEADD(HOUR, 8, CAST(r.d AS datetime2(0)))
+                                             ELSE (CASE WHEN r.d = CAST(r.start_ts AS date) THEN r.start_ts ELSE CAST(r.d AS datetime2(0)) END)
+                                        END,
+                                        CASE WHEN (CASE WHEN r.d = CAST(r.end_ts AS date) THEN r.end_ts ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END) > DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
+                                             THEN DATEADD(HOUR, 18, CAST(r.d AS datetime2(0)))
+                                             ELSE (CASE WHEN r.d = CAST(r.end_ts AS date) THEN r.end_ts ELSE DATEADD(DAY, 1, CAST(r.d AS datetime2(0))) END)
+                                        END
+                                    )
                                 END
-                                )
-                        END
-                END
-                ) / 60.0 AS DECIMAL(10,1))
-        FROM rango r
-        GROUP BY r.id_mojo
+                       END
+                   ) / 60.0 AS DECIMAL(10,1))
+            FROM rango r
+            GROUP BY r.id_mojo
         ),
-
         normales AS (
-        SELECT b.id_mojo, b.assigned_to_id, b.created_on, b.solved_on,
-                b.ticket_form_id, b.priority_id, b.title, b.problem,
-                b.requesting_department, b.applicants_name,
-                b.formulario, b.prioridad, b.estatus, h.hora_tot,
-                -- >>> mantiene el nombre del agente
-                b.assigned_to_name
-        FROM base_norm b
-        LEFT JOIN horas_norm h ON h.id_mojo = b.id_mojo
+            SELECT b.id_mojo, b.assigned_to_id, b.created_on, b.solved_on,
+                   b.ticket_form_id, b.priority_id, b.title, b.problem,
+                   b.requesting_department, b.applicants_name,
+                   b.formulario, b.prioridad, b.estatus, h.hora_tot,
+                   b.assigned_to_name
+            FROM base_norm b
+            LEFT JOIN horas_norm h ON h.id_mojo = b.id_mojo
         )
-
         SELECT
             X.id_mojo, X.assigned_to_id, X.created_on, X.solved_on,
             X.ticket_form_id, X.priority_id, X.titulo, X.problema,
             X.departamento, X.solicitante, X.formulario,
-            X.prioridad, X.estatus, X.hora_tot,
-            -- >>> expone el nombre del agente a la salida final
-            X.assigned_to_name
+            X.prioridad, X.estatus, X.hora_tot, X.assigned_to_name
         FROM (
-        SELECT u.id_mojo, u.assigned_to_id, u.created_on, u.solved_on,
-                u.ticket_form_id, u.priority_id,
-                u.title AS titulo, u.problem AS problema,
-                u.requesting_department AS departamento, u.applicants_name AS solicitante,
-                u.formulario, u.prioridad, u.estatus, u.hora_tot,
-                u.assigned_to_name
-        FROM urgentes u
-        UNION ALL
-        SELECT n.id_mojo, n.assigned_to_id, n.created_on, n.solved_on,
-                n.ticket_form_id, n.priority_id,
-                n.title AS titulo, n.problem AS problema,
-                n.requesting_department AS departamento, n.applicants_name AS solicitante,
-                n.formulario, n.prioridad, n.estatus, n.hora_tot,
-                n.assigned_to_name
-        FROM normales n
+            SELECT u.id_mojo, u.assigned_to_id, u.created_on, u.solved_on,
+                   u.ticket_form_id, u.priority_id,
+                   u.title AS titulo, u.problem AS problema,
+                   u.requesting_department AS departamento, u.applicants_name AS solicitante,
+                   u.formulario, u.prioridad, u.estatus, u.hora_tot,
+                   u.assigned_to_name
+            FROM urgentes u
+            UNION ALL
+            SELECT n.id_mojo, n.assigned_to_id, n.created_on, n.solved_on,
+                   n.ticket_form_id, n.priority_id,
+                   n.title AS titulo, n.problem AS problema,
+                   n.requesting_department AS departamento, n.applicants_name AS solicitante,
+                   n.formulario, n.prioridad, n.estatus, n.hora_tot,
+                   n.assigned_to_name
+            FROM normales n
         ) X
         CROSS APPLY (SELECT ROW_NUMBER() OVER (PARTITION BY X.id_mojo ORDER BY X.created_on DESC) AS rn) R
         WHERE R.rn = 1
         ORDER BY assigned_to_id DESC
-        OPTION (MAXRECURSION 0);
-    ";
-    // Orden de parámetros: @ini, @fin, (forms) ?=0, id, (urgentes) ?=0, id, (base_norm) ?=0, id
+        OPTION (MAXRECURSION 0);";
+
+    // Orden de parámetros posicionales: @ini, @fin, @agent_csv, (forms) ?=0, id
     $params = [
-        $from, $until,
-        (int)$ticket_form_id, (int)$ticket_form_id,
-        (int)$assigned_to_id, (int)$assigned_to_id,
-        (int)$assigned_to_id, (int)$assigned_to_id
+        $from,
+        $until,
+        $agent_csv,                 // NULL => todos, "12,34" => solo esos
+        (int)$ticket_form_id,
+        (int)$ticket_form_id,
     ];
-    
 
     return ($rs = $this->sql->select($query, $params)) ? $rs : false;
 }
