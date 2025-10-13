@@ -258,44 +258,26 @@ function ecv_calc() {
 
     $consulted = isset($_GET['submitted']);
 
-    // 1) Parámetros
+    // 1) Parámetros base
     $ticket_form_id = isset($_GET['ticket_form_id']) ? (int)$_GET['ticket_form_id'] : 51598;
-
-    // assigned_to_id puede venir como array (select multiple), CSV o valor único
-    $assigned_param = $_GET['assigned_to_id'] ?? [0];
-
-    if (is_string($assigned_param)) {
-        // soporta CSV en URLs
-        $assigned_param = array_filter(array_map('trim', explode(',', $assigned_param)), 'strlen');
-    }
-    if (!is_array($assigned_param)) {
-        $assigned_param = [$assigned_param];
-    }
-
-    $assigned_to_ids = array_values(array_unique(array_map('intval', $assigned_param)));
-    $assigned_to_csv = (empty($assigned_to_ids) || in_array(0, $assigned_to_ids, true))
-        ? '0'
-        : implode(',', $assigned_to_ids);
 
     // 2) Período y fechas (siempre válidos)
     $period = $_GET['period'] ?? date('Y-m');
     if (!is_string($period) || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
         $period = date('Y-m');
     }
-
     $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
     if (!$dt) {
         $dt = new DateTime('first day of this month');
         $period = $dt->format('Y-m');
     }
-
     $fecha_ini = $dt->format('Y-m-01');
     $fecha_fin = $dt->format('Y-m-t');
 
     $startBound = $fecha_ini . ' 00:00:00';
     $endBound   = $fecha_fin . ' 23:59:59';
 
-    // 3) Defaults y estructuras
+    // 3) Estructuras
     $rows = [];
     $total_tickets = 0;
     $total_tickets_abiertos = 0;
@@ -303,9 +285,9 @@ function ecv_calc() {
     $tiempo_total = 0.0;
     $promedio = '0.00';
     $agentes = [];
-    $lista_agentes = [0 => 'Todos'];
+    $lista_agentes = []; // UI: -1 = "Sin asignar" (no existe "Todos" aquí)
 
-    // Helper para nombre corto
+    // Helper: nombre corto
     $shortName = function (?string $full): string {
         $full = trim(preg_replace('/\s+/', ' ', (string)$full));
         if ($full === '') return '';
@@ -323,38 +305,115 @@ function ecv_calc() {
             while ($i < count($parts) && in_array(mb_strtolower($parts[$i], 'UTF-8'), $connectors, true)) {
                 $s[] = $parts[$i]; $i++;
             }
-            if (!empty($s) && isset($parts[$i])) {
-                $s[] = $parts[$i];
-                $surname = implode(' ', $s);
-            } else {
-                $surname = $parts[1];
-            }
+            if (!empty($s) && isset($parts[$i])) { $s[] = $parts[$i]; $surname = implode(' ', $s); }
+            else { $surname = $parts[1]; }
         }
         return trim($firstName . ' ' . $surname);
     };
 
-    // 4) Consulta y agregaciones
+    // 4) Construir SIEMPRE el listado del combo (incluye -1 = "Sin asignar")
+    //    Usamos [0] para que el modelo devuelva todo el período; de ahí armamos el combo.
+    $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+    $visto_ids = [];
+    foreach ($rows_combo as $t) {
+        $raw = $t['assigned_to_id'] ?? 0;
+        $id  = (int)$raw;
+        // Mapear 0/null del modelo a -1 (UI)
+        $id_ui = ($id === 0) ? -1 : $id;
+
+        if (!isset($lista_agentes[$id_ui])) {
+            $label =
+                ($t['assigned_to_name'] ?? null)
+                ?? ($t['agent'] ?? null)
+                ?? ($id_ui === -1 ? 'Sin asignar' : 'Agente #'.$id_ui);
+
+            // Si es -1, aseguramos el texto exacto
+            if ($id_ui === -1) $label = 'Sin asignar';
+
+            $lista_agentes[$id_ui] = $label;
+        }
+        $visto_ids[$id_ui] = true;
+    }
+    // Asegurar que "Sin asignar" exista aunque no haya en los datos
+    if (!isset($lista_agentes[-1])) {
+        $lista_agentes[-1] = 'Sin asignar';
+    }
+    if (!empty($lista_agentes)) {
+        asort($lista_agentes, SORT_NATURAL | SORT_FLAG_CASE);
+    }
+
+    // 5) Leer selección del request (UI usa -1 para "Sin asignar")
+    $assigned_param = $_GET['assigned_to_id'] ?? null;
+    if (is_string($assigned_param)) {
+        $assigned_param = array_filter(array_map('trim', explode(',', $assigned_param)), 'strlen');
+    }
+    if ($assigned_param !== null && !is_array($assigned_param)) {
+        $assigned_param = [$assigned_param];
+    }
+    $selected_ids = ($assigned_param === null)
+        ? []  // sin selección => “Todos”
+        : array_values(array_unique(array_map('intval', $assigned_param)));
+
+    // Conjunto completo disponible (UI IDs, incluye -1)
+    $all_ids = array_map('intval', array_keys($lista_agentes));
+    sort($all_ids);
+
+    $selected_sorted = $selected_ids;
+    sort($selected_sorted);
+
+    // ¿Es “todos”? (sin selección o selección == todos los ítems del combo)
+    $is_all = (empty($selected_sorted) || $selected_sorted === $all_ids);
+
+    // Para UI/URLs (PDF): mantenemos '0' cuando es “todos”; si no, CSV de selección (puede incluir -1)
+    $assigned_to_ids = $is_all ? $all_ids : $selected_sorted;
+    $assigned_to_csv = $is_all ? '0' : implode(',', $assigned_to_ids);
+
+    // 6) Consulta de datos
     if ($consulted) {
-        // Filtro para el modelo: [0] => todos, o lista de ids seleccionados
-        $filter_ids = ($assigned_to_csv === '0') ? [0] : $assigned_to_ids;
 
-        // Datos según selección
-        $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $filter_ids) ?: [];
+        $incluye_sin_asignar = in_array(-1, $assigned_to_ids, true);
+        $ids_reales = array_values(array_filter($assigned_to_ids, fn($x) => $x !== -1));
 
-        // Para el combo, siempre trae todos los agentes del período
-        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+        if ($is_all) {
+            // TODOS: que el modelo traiga todo
+            $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+        } else {
+            if ($incluye_sin_asignar) {
+                // Caso mixto (con “Sin asignar”): obtener TODO y filtrar en PHP
+                // (si quieres optimizar, podrías hacer dos llamadas y unir, pero esta es la más robusta)
+                $rows_all = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+                $rows = array_values(array_filter($rows_all, function($t) use ($ids_reales) {
+                    $rid = (int)($t['assigned_to_id'] ?? 0);
+                    if (in_array($rid, [0, null], true)) return true;             // sin asignar
+                    if (!empty($ids_reales) && in_array($rid, $ids_reales, true)) return true; // agentes seleccionados
+                    return false;
+                }));
+            } else {
+                // Solo agentes reales
+                if (!empty($ids_reales)) {
+                    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $ids_reales) ?: [];
+                } else {
+                    // Selección vacía, equivalente a TODOS
+                    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+                }
+            }
+        }
 
+        // Agregaciones
         $total_tickets = count($rows);
 
         foreach ($rows as $ticket) {
-            $id   = (int)($ticket['assigned_to_id'] ?? 0);
-            $name = $ticket['assigned_to_name'] ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
+            $rid_raw = $ticket['assigned_to_id'] ?? 0;
+            $rid     = (int)$rid_raw;
+            $id_ui   = ($rid === 0) ? -1 : $rid; // clave UI
 
-            if (!isset($agentes[$id])) {
-                $agentes[$id] = [
-                    'id'                   => $id,
+            $name = $ticket['assigned_to_name'] ?? ($id_ui === -1 ? 'Sin asignar' : 'Agente #'.$id_ui);
+
+            if (!isset($agentes[$id_ui])) {
+                $agentes[$id_ui] = [
+                    'id'                   => $id_ui,
                     'name'                 => $name,
-                    'short_name'           => ($id === 0 ? 'Sin asignar' : $shortName($name)),
+                    'short_name'           => ($id_ui === -1 ? 'Sin asignar' : $shortName($name)),
                     'total_cerrados'       => 0,
                     'total_abiertos'       => 0,
                     'tiempo_total'         => 0.0,
@@ -368,14 +427,14 @@ function ecv_calc() {
                 ];
             }
 
-            $agentes[$id]['total_tickets']++;
+            $agentes[$id_ui]['total_tickets']++;
 
             $estatus    = $ticket['estatus'] ?? '';
             $created_on = $ticket['created_on'] ?? null;
             $solved_on  = $ticket['solved_on'] ?? null;
 
             if ($estatus === 'Cerrado' && $solved_on >= $startBound && $solved_on <= $endBound) {
-                $agentes[$id]['total_cerrados']++;
+                $agentes[$id_ui]['total_cerrados']++;
                 $total_tickets_cerrados++;
             }
 
@@ -384,79 +443,35 @@ function ecv_calc() {
                 ($created_on <= $endBound && $solved_on >= $endBound) ||
                 ($created_on <= $endBound && $solved_on == null)
             ) {
-                $agentes[$id]['total_abiertos']++;
+                $agentes[$id_ui]['total_abiertos']++;
                 $total_tickets_abiertos++;
             }
 
             $hora_tot = (float)($ticket['hora_tot'] ?? 0.0);
-            $agentes[$id]['tiempo_total'] += $hora_tot;
+            $agentes[$id_ui]['tiempo_total'] += $hora_tot;
             $tiempo_total += $hora_tot;
 
             $priority_id = isset($ticket['priority_id']) ? (int)$ticket['priority_id'] : null;
-
             if ($priority_id === 10 || $priority_id === 20) {
-                $agentes[$id]['tickets_urgente']++;
-                $agentes[$id]['tiempo_total_urgente'] += $hora_tot;
-            }
-            if ($priority_id === 30 || $priority_id === 40) {
-                $agentes[$id]['tickets_normal']++;
-                $agentes[$id]['tiempo_total_normal'] += $hora_tot;
+                $agentes[$id_ui]['tickets_urgente']++;
+                $agentes[$id_ui]['tiempo_total_urgente'] += $hora_tot;
+            } elseif ($priority_id === 30 || $priority_id === 40) {
+                $agentes[$id_ui]['tickets_normal']++;
+                $agentes[$id_ui]['tiempo_total_normal'] += $hora_tot;
             }
         }
 
         foreach ($agentes as $aid => $data) {
             $agentes[$aid]['promedio_normal'] = ($data['tickets_normal'] > 0)
-                ? round($data['tiempo_total_normal'] / $data['tickets_normal'], 2)
-                : 0.0;
+                ? round($data['tiempo_total_normal'] / $data['tickets_normal'], 2) : 0.0;
             $agentes[$aid]['promedio_urgente'] = ($data['tickets_urgente'] > 0)
-                ? round($data['tiempo_total_urgente'] / $data['tickets_urgente'], 2)
-                : 0.0;
-        }
-
-        // Combo de agentes (siempre todos)
-        foreach ($rows_combo as $t) {
-            $id = (int)($t['assigned_to_id'] ?? 0);
-            $label =
-                ($t['assigned_to_name'] ?? null)
-                ?? ($t['agent'] ?? null)
-                ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
-            if (!isset($lista_agentes[$id])) {
-                $lista_agentes[$id] = $label;
-            }
-        }
-
-        if (count($lista_agentes) > 1) {
-            $todos = $lista_agentes[0]; unset($lista_agentes[0]);
-            asort($lista_agentes, SORT_NATURAL | SORT_FLAG_CASE);
-            $lista_agentes = [0 => $todos] + $lista_agentes;
+                ? round($data['tiempo_total_urgente'] / $data['tickets_urgente'], 2) : 0.0;
         }
 
         $promedio = $total_tickets > 0 ? number_format($tiempo_total / $total_tickets, 2, '.', ',') : '0.00';
-
-    } else {
-        // Primera carga: combo de agentes de todo el período
-        $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
-
-        foreach ($rows_combo as $t) {
-            $id = (int)($t['assigned_to_id'] ?? 0);
-            $label =
-                ($t['assigned_to_name'] ?? null)
-                ?? ($t['agent'] ?? null)
-                ?? ($id === 0 ? 'Sin asignar' : 'Agente #'.$id);
-            if (!isset($lista_agentes[$id])) {
-                $lista_agentes[$id] = $label;
-            }
-        }
-
-        if (count($lista_agentes) > 1) {
-            $todos = $lista_agentes[0];
-            unset($lista_agentes[0]);
-            asort($lista_agentes, SORT_NATURAL | SORT_FLAG_CASE);
-            $lista_agentes = [0 => $todos] + $lista_agentes;
-        }
     }
 
-    // 5) Render
+    // 7) Render
     echo $this->twig->render($this->route . 'ecv_calc.html', compact(
         'consulted',
         'total_tickets','total_tickets_abiertos','total_tickets_cerrados','promedio',
@@ -466,39 +481,98 @@ function ecv_calc() {
 }
 
 
-
-
-
-
 function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
-    if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
+    // 1) Período seguro
+    if (!is_string($period) || !preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $period)) {
         $period = date('Y-m');
     }
-
     $dt = DateTime::createFromFormat('Y-m-d', $period . '-01');
+    if (!$dt) {
+        $dt = new DateTime('first day of this month');
+        $period = $dt->format('Y-m');
+    }
     $fecha_ini = $dt->format('Y-m-01');
     $fecha_fin = $dt->format('Y-m-t');
 
-    // Normaliza agent_id proveniente de la vista (0, '0', null, '')
-    $isUnassignedRequested = ($agent_id === 0 || $agent_id === '0' || $agent_id === null || $agent_id === '');
+    // 2) Normaliza "agent_id" para aceptar: 0 (todos), -1 (sin asignar), entero, o CSV "12,34,-1"
+    $agent_param = $agent_id;
 
-    // Trae filas desde el modelo (no cambiamos la firma del método)
-    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $agent_id) ?: [];
+    // Si llega como CSV en la ruta (p.ej. '12,34' o '0' o '-1,12')
+    if (is_string($agent_param) && strpos($agent_param, ',') !== false) {
+        $ids = array_filter(array_map('trim', explode(',', $agent_param)), 'strlen');
+    } else {
+        // único valor (string o int)
+        $ids = [$agent_param];
+    }
 
-    // Si pidieron "sin asignar", filtra para dejar sólo assigned_to_id nulo o 0
-    if ($isUnassignedRequested) {
+    // Limpia a enteros únicos
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+
+    // Flags y grupos
+    $has_all         = in_array(0, $ids, true);     // 0 => TODOS (convención del modelo)
+    $has_unassigned  = in_array(-1, $ids, true);    // -1 => SIN ASIGNAR (nueva convención de UI)
+    $positive_ids    = array_values(array_filter($ids, static fn($v) => $v > 0));
+
+    // Determina cómo consultar al modelo y si hay filtrado posterior
+    // Casos:
+    // - (vacío) o incluye 0 => TODOS -> modelo [0], sin post-filtro
+    // - solo -1 => SOLO SIN ASIGNAR -> modelo [0], post-filtro unassigned
+    // - -1 + algunos ids > 0 => modelo [0], post-filtro (unassigned OR in positive_ids)
+    // - solo ids > 0 => modelo [ids], sin post-filtro
+    $need_post_filter = false;
+    $post_filter = null;
+
+    if ($has_all || empty($ids)) {
+        $filter_for_model = [0]; // TODOS
+    } else {
+        if ($has_unassigned && empty($positive_ids)) {
+            // Solo sin asignar
+            $filter_for_model = [0]; // traemos todos y luego filtramos en PHP
+            $need_post_filter = true;
+            $post_filter = static function(array $t): bool {
+                $v = $t['assigned_to_id'] ?? null;
+                return $v === null || $v === '' || (int)$v === 0;
+            };
+        } elseif ($has_unassigned && !empty($positive_ids)) {
+            // Sin asignar + algunos agentes específicos
+            $targets = array_flip($positive_ids);
+            $filter_for_model = [0]; // traemos todos y filtramos combinación
+            $need_post_filter = true;
+            $post_filter = static function(array $t) use ($targets): bool {
+                $v = $t['assigned_to_id'] ?? null;
+                $is_unassigned = ($v === null || $v === '' || (int)$v === 0);
+                $is_specific   = isset($targets[(int)$v]);
+                return $is_unassigned || $is_specific;
+            };
+        } else {
+            // Solo agentes específicos
+            $filter_for_model = $positive_ids;
+        }
+    }
+
+    // 3) Trae filas desde el modelo (el modelo ya respeta ALL / lista de IDs)
+    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, (int)$ticket_form_id, $filter_for_model) ?: [];
+
+    // Si se requiere filtrado posterior (para sin asignar y/o combinación con agentes)
+    if ($need_post_filter && $post_filter) {
+        $rows = array_values(array_filter($rows, $post_filter));
+    }
+
+    // (Opcional) Override por query param ?only_unassigned=1
+    // Se mantiene por compatibilidad, aunque ya no es necesario si usas -1.
+    $only_unassigned = isset($_GET['only_unassigned']) && (int)$_GET['only_unassigned'] === 1;
+    if ($only_unassigned) {
         $rows = array_values(array_filter($rows, static function(array $t) {
             $v = $t['assigned_to_id'] ?? null;
-            // Acepta null, 0 (int), '0' (string) o '' (string vacía)
-            return $v === null || $v === 0 || $v === '0' || $v === '';
+            return $v === null || $v === '' || (int)$v === 0;
         }));
     }
 
-    // Ventanas (inclusive) para comparar solved_on
+    // 4) Ventanas
     $startBound = $fecha_ini . ' 00:00:00';
     $endBound   = $fecha_fin . ' 23:59:59';
 
-    // Helper para normalizar un ticket
+    // 5) Normalizador
     $normalize = static function(array $ticket): array {
         if (isset($ticket['solicitante'])) {
             $ticket['solicitante'] = ucwords(strtolower(trim($ticket['solicitante'], '-')));
@@ -513,16 +587,18 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
         return $ticket;
     };
 
+    // 6) Acciones
     switch ($action) {
-        case 'total_tickets':
+        case 'total_tickets': {
             $result = [];
             foreach ($rows as $key => $ticket) {
                 $result[$key] = $normalize($ticket);
             }
             echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
             break;
+        }
 
-        case 'open_tickets':
+        case 'open_tickets': {
             $result = [];
             foreach ($rows as $key => $ticket) {
                 if (
@@ -535,8 +611,9 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
             }
             echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
             break;
+        }
 
-        case 'closed_tickets':
+        case 'closed_tickets': {
             $result = [];
             foreach ($rows as $key => $ticket) {
                 $solved = $ticket['solved_on'] ?? '';
@@ -546,12 +623,14 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
             }
             echo $this->twig->render($this->route . 'filtered_statistics.html', compact('result'));
             break;
+        }
 
         default:
             var_dump("Revisar");
             break;
     }
 }
+
 
 
 
