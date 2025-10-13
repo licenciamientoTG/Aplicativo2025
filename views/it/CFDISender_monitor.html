@@ -1,0 +1,82 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}
+<!-- FullCalendar CSS -->
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js'></script>
+{% endblock %}
+{% block menutitle %}Monitor de envios de CFDI de corporativo a estaciones{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <form class="row g-3" action="#" method="get">
+            <div class="col-2">
+                <label for="from" class="visually-hidden">Fecha</label>
+                <input type="date" class="form-control" id="from" name="from" value="{{ from }}">
+            </div>
+            <div class="col-2">
+                <label for="codgas" class="visually-hidden">Gasolinera</label>
+                <select id="codgas"
+                        name="codgas"
+                        class="form-control selectpicker"
+                        data-live-search="true"
+                        title="Selecciona una opción" required>
+                        {% for item in active_stations %}
+                            <option value="{{ item.Codigo }}" {{ item.Codigo == codgas ? 'selected' : '' }}>{{ item.Nombre }}</option>
+                        {% endfor %}
+                </select>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary mb-3">Buscar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<div class="card">
+    <div class="card-body table-responsive">
+        <table id="cfdis_sender_table" class="table table-hover table-sm w-100">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Estación</th>
+                    <th>Cliente</th>
+                    <th>Tipo</th>
+                    <th>Nro Factura</th>
+                    <th>CFDI</th>
+                    <th>Estatus</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div> 
+
+{% endblock %}
+{% block myjs %}
+<script>
+    $(document).ready(function() {
+        $('#cfdis_sender_table').DataTable({
+            "ajax": {
+                "url": "/it/CFDISender_monitor_data/{{ from }}/{{ codgas }}",
+                "dataSrc": ""
+            },
+            "columns": [
+                { "data": "Fecha" },
+                { "data": "Estacion" },
+                { "data": "Cliente" },
+                { "data": "Tipo" },
+                { "data": "NroFactura" },
+                { "data": "CFDI" },
+                { "data": "Estatus" }
+            ]
+        });
+    });
+</script>
+<script src="{{ JS }}it.js"></script>
+<script>
+
+</script>
+{% endblock %}

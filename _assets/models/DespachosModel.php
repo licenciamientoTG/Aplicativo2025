@@ -2570,6 +2570,48 @@ function invoice_client_desp($from, $until)
     return $this->sql->select($query, $params);
 }
 
+function getCFDIs($from, $codgas) {
+    $query = "
+        SELECT
+        G.den AS Estacion,
+        D.nrotrn AS Despacho,
+        Docc.satuid AS UUID,
+        D.nrofac AS Factura,
+        Docc.fch AS FechaFactura,
+        Docc.logfch AS FechaLogFactura,
+        dbo.fnNoFactura('', Docc.nro) AS serie,
+        COALESCE(C.densat, C.den) AS Cliente,
+        ISNULL(C.rfc, D.satrfc) AS RFC,
+        C.codext,
+        DR.nrofac AS [Factura Estación],
+        DR.satuid AS [UUID Estación]
+    FROM Despachos D
+        INNER JOIN DocumentosC Docc ON Docc.nro = D.nrofac
+            AND Docc.tip = 3
+            AND Docc.codgas = D.gasfac
+            AND Docc.satuid IS NOT NULL
+            AND Docc.satuid <> ''
+            AND Docc.fch = {$from}
+        INNER JOIN Documentos Doc ON Doc.nro = Docc.nro
+            AND Doc.tip = Docc.tip
+            AND Doc.codgas = Docc.codgas
+            AND Doc.nroitm > 0
+            AND Doc.codprd = D.codprd
+            AND D.nrotrn = CASE 
+                WHEN CHARINDEX('@d:', Doc.satdat) > 0 
+                    THEN [dbo].[GetRef](Doc.satdat, 'D')
+                ELSE D.nrotrn
+            END
+        INNER JOIN Gasolineras G ON G.cod = D.codgas
+        INNER JOIN Clientes C ON C.cod = Docc.codopr AND C.tipval IN (3, 4)
+
+        -- Comparación con linked server (misma clave)
+        LEFT JOIN {$this->databases[$codgas]}.[Despachos] DR ON DR.codgas = D.codgas AND DR.nrotrn = D.nrotrn
+    WHERE D.codgas = {$codgas};
+    ";
+    return $this->sql->select($query, []) ?: false;
+}
+
     
     
 }   

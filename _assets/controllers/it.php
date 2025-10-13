@@ -812,4 +812,38 @@ class It{
         $activities = $this->binnacleActivitiesModel->getActivities();
         echo $this->twig->render($this->route . 'activities_list.html', compact('activities'));
     }
+
+    function CFDISender_monitor() {
+        $from = (isset($_GET['from'])) ? $_GET['from'] : null;
+        // Si no se pasó fecha, tomamos ayer
+        if ($from === null) {
+            $from = date('Y-m-d', strtotime('-1 day'));
+        }
+
+        $codgas = (isset($_GET['codgas'])) ? $_GET['codgas'] : 0;
+
+        $active_stations = $this->gasolinerasModel->get_active_station_TG();
+
+        echo $this->twig->render($this->route . 'CFDISender_monitor.html', compact('from', 'codgas', 'active_stations'));
+    }
+
+    function CFDISender_monitor_data($from, $codgas) {
+        $data = [];
+        if ($dispatches = $this->despachosModel->getCFDIs(dateToInt($from), $codgas)) {
+            foreach ($dispatches as $dispatch) {
+                $data[] = array(
+                    'DESPACHO'   => $dispatch['nrotrn'],
+                    'FECHA'      => intToDate($dispatch['fchtrn']),
+                    'HORA'       => substr($dispatch['hortrn'], 0, 2) . ':' . substr($dispatch['hortrn'], 2, 2) . ':' . substr($dispatch['hortrn'], 4, 2),
+                    'ESTACIÓN'   => $dispatch['station'],
+                    'FACTURA'    => $dispatch['nrofac'],
+                    'RFC'        => $dispatch['satrfc'],
+                    'UUID'       => $dispatch['satuid'],
+                    'MONTO'      => number_format($dispatch['mto'], 2),
+                    'LITROS'     => number_format($dispatch['can'], 2)
+                );
+            }
+        }
+        return json_output(array("data" => $data));
+    }
 }
