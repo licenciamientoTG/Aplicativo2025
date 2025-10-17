@@ -70,19 +70,49 @@ class Income{
 
 public function balance_age()
 {
-    // Trae los datos del modelo
-    $rows = $this->clientesModel->get_movpen_preview();
+    // Catálogo de cuentas
+    $cuentas = [
+        101032000 => '101032000 - Facturas x cobrar',
+        101032001 => '101032001 - Facturas X Cobrar Administrativas',
+        101032004 => '101032004 - Facturas X Cobrar Arrendamiento',
+    ];
 
-    // Manejo simple si falla (false) => arreglo vacío
-    if ($rows === false) {
-        $rows = [];
+    // Gasolineras para el select
+    $gasolineras = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+
+    // Lee filtros SIN default (para no disparar consulta)
+    $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
+    $gas_sel = isset($_REQUEST['gas']) ? (int)$_REQUEST['gas'] : null;
+
+    // ¿El usuario ya dio "Consultar"?
+    $submitted = ($cta_sel !== null && $gas_sel !== null);
+
+    $rows = [];
+    if ($submitted) {
+        // Valida selección contra catálogos
+        $validCta = array_key_exists($cta_sel, $cuentas);
+        $validGas = in_array($gas_sel, array_map('intval', array_column($gasolineras, 'cod')), true);
+
+        if ($validCta && $validGas) {
+            $rows = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+        } else {
+            // Si hay valores inválidos, no mostramos tabla
+            $submitted = false;
+        }
     }
 
-    // Renderiza la vista y le pasa los datos
     echo $this->twig->render($this->route . 'balance_age.html', [
-        'rows' => $rows,
+        'rows'        => $rows,
+        'cuentas'     => $cuentas,
+        'gasolineras' => $gasolineras,
+        'cta_sel'     => $cta_sel,
+        'gas_sel'     => $gas_sel,
+        'submitted'   => $submitted, // <-- clave para la vista
     ]);
 }
+
+
+
 
 
     public function salesxcard(){

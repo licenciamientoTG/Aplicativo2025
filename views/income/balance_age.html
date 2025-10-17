@@ -1,50 +1,417 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Balance por Cliente y Estación{% endblock %}
+{% block title %}Balance por Cliente / Estación (filtros){% endblock %}
+
+{% block mycss %}
+<style>
+/* ---- Estilos DataTables ---- */
+table.dataTable thead th, table.dataTable thead td {
+  padding: 10px 18px;
+  border-bottom: 1px solid #dee2e6;
+  background-color: #3485a8 !important;
+  color: #ffffff !important;
+}
+table.dataTable tfoot th, table.dataTable tfoot td {
+  padding: 10px 18px;
+  border-top: 1px solid #dee2e6;
+  background-color: #3485a8 !important;
+  color: #ffffff !important;
+}
+
+/* Solo la tabla scrollea. Controles quedan fijos */
+.table-wrap{
+  max-height: 60vh;     /* ajusta a tu gusto */
+  overflow: auto;       /* scroll vertical y horizontal si se requiere */
+  border-top: 1px solid #e9ecef;
+}
+
+/* No auto-ajustar al ancho de la página */
+#balance_age_table{
+  width: auto !important;
+  table-layout: auto !important;
+  white-space: nowrap; /* evita saltos de línea */
+}
+
+/* Fondo + contraste para % de vencimiento */
+.pct-green  { background: #c6efce !important; color: #006100 !important; }
+.pct-yellow { background: #fff2cc !important; color: #7f6000 !important; }
+.pct-red    { background: #f8cbad !important; color: #9c0006 !important; }
+
+/* Opcional: suaviza bordes del cell pintado */
+td.pct-green, td.pct-yellow, td.pct-red { border-radius: 2px; }
+
+/* Asegura que los controles NO scrolleen con la tabla */
+#dt-controls-top, #dt-controls-bottom{
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+.table-wrap { overflow: auto; } /* el scroll es SOLO aquí */
+/* --- Forzar "Mostrar _MENU_ entradas" en una sola línea --- */
+#dt-controls-top .dataTables_length label,
+#dt-controls-bottom .dataTables_length label{
+  display: inline-flex;         /* texto + select en línea */
+  align-items: center;
+  gap: .5rem;                   /* espacio entre texto y select */
+  white-space: nowrap;          /* no permitir saltos de línea */
+  margin: 0;                    /* evita que el label empuje hacia abajo */
+}
+
+/* Evitar que el select crezca o haga wrap */
+#dt-controls-top .dataTables_length select,
+#dt-controls-bottom .dataTables_length select,
+.dataTables_length select{
+  width: auto !important;       /* no ocupar 100% */
+  display: inline-block;        /* mantener en línea */
+  min-width: 72px;              /* opcional: ancho mínimo cómodo */
+}
+
+/* (Opcional) si tu tema pone el label como bloque, lo anulamos */
+.dataTables_length label{
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  white-space: nowrap;
+}
+
+</style>
+{% endblock %}
+
+{% block menutitle %}Balance por Cliente / Estación{% endblock %}
 
 {% block content %}
-<div class="card card-primary card-outline">
-  <div class="card-header"><h3 class="card-title">Totales por Cliente + Estación</h3></div>
-  <div class="card-body">
-    {% if rows is empty %}
-      <div class="alert alert-info mb-0">No hay registros.</div>
-    {% else %}
-      <div style="overflow-x:auto">
-        <table class="table table-sm table-striped align-middle">
-          <thead>
-            <tr>
-              <th>Cod. Cliente</th>
-              <th>Cliente</th>
-              <th>Mto Asignado</th>
-              <th>Cond. Pago</th>
-              <th>Cod. Estación</th>
-              <th>Estación</th>
-              <th class="text-end">Total Monto</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% set gran_total = 0 %}
-            {% for r in rows %}
-              {% set gran_total = gran_total + (r.mtopenori_total ?? 0) %}
-              <tr>
-                <td>{{ r.codopr }}</td>
-                <td>{{ r.Cliente }}</td>
-                <td>{{ r.mtoasg is not null ? r.mtoasg|number_format(2, '.', ',') : '' }}</td>
-                <td>{{ r.cndpag }}</td>
-                <td>{{ r.codgas }}</td>
-                <td>{{ r.Estacion }}</td>
-                <td class="text-end">{{ r.mtopenori_total|number_format(2, '.', ',') }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th colspan="6" class="text-end">Gran Total</th>
-              <th class="text-end">{{ gran_total|number_format(2, '.', ',') }}</th>
-            </tr>
-          </tfoot>
-        </table>
+<div class="row">
+  <div class="col-12">
+    <div class="card flex-fill">
+
+      <!-- Header con filtros y acciones -->
+      <div class="card-header py-3">
+        <form method="get" class="row gy-3 gx-3 align-items-end">
+          <!-- Cuenta -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <label for="cta" class="form-label mb-1">Cuenta</label>
+            <select id="cta" name="cta" class="form-select form-select-sm" required>
+              <option value="" {{ cta_sel is null ? 'selected' : '' }} disabled>Selecciona una cuenta…</option>
+              {% for val, label in cuentas %}
+                <option value="{{ val }}" {{ val == cta_sel ? 'selected' : '' }}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Estación -->
+          <div class="col-12 col-md-6 col-lg-4">
+            <label for="gas" class="form-label mb-1">Estación</label>
+            <select id="gas" name="gas" class="form-select form-select-sm" required>
+              <option value="" {{ gas_sel is null ? 'selected' : '' }} disabled>Selecciona una estación…</option>
+              {% for g in gasolineras %}
+                <option value="{{ g.cod }}" {{ g.cod == gas_sel ? 'selected' : '' }}>{{ g.den }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Mostrar todas (switch) -->
+          <div class="col-12 col-lg-2 d-flex align-items-center">
+            <div class="form-check form-switch mt-2 mt-lg-0">
+              <input class="form-check-input" type="checkbox" id="show_all" checked>
+              <label class="form-check-label" for="show_all">Mostrar todas</label>
+            </div>
+          </div>
+
+          <!-- Botones -->
+          <div class="col-12 col-lg-2 text-lg-end">
+            <div class="d-grid d-sm-flex gap-2">
+              <button type="submit" class="btn btn-primary btn-sm">
+                <i class="fa fa-search me-1"></i> Consultar
+              </button>
+              <button id="btnExportXLS" type="button" class="btn btn-success btn-sm" {{ (submitted ?? false) ? '' : 'disabled' }}>
+                <i class="fa-solid fa-file-excel me-1"></i> Exportar a Excel
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {% if submitted %}
+        <!-- Controles superiores de DataTables (estáticos) -->
+        <div id="dt-controls-top" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3"></div>
+        {% endif %}
       </div>
-    {% endif %}
+
+      {% if submitted %}
+      <div class="card-body">
+
+        <div class="table-wrap">
+          <table id="balance_age_table" class="table table-striped table-hover table-sm">
+            <thead>
+              <tr>
+                <th>Cliente</th>       {# 0 #}
+                <th>Estación</th>      {# 1 (toggle) #}
+                <th>Ult. Déb.</th>     {# 2 (toggle) #}
+                <th>Ult. Créd.</th>    {# 3 (toggle) #}
+                <th>Crédito</th>       {# 4 #}
+                <th>Cond. Pago</th>    {# 5 #}
+                <th>Saldo actual</th>  {# 6 (sum) #}
+                <th>Por vencer</th>    {# 7 (sum) #}
+                <th>1-15</th>          {# 8 (sum) #}
+                <th>16-30</th>         {# 9 (sum) #}
+                <th>31-45</th>         {# 10 (sum) #}
+                <th>45+</th>           {# 11 (sum) #}
+                <th>Total vencido</th> {# 12 (sum) #}
+                <th>% de vencimiento</th> {# 13 (total calculado global) #}
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r.Cliente }}</td>
+                  <td>{{ r.Estacion }}</td>
+                  <td>{{ r['ult. deb.'] }}</td>
+                  <td>{{ r['ult. cred.'] }}</td>
+                  <td class="text-end">
+                    {{ r.Credito is not null ? r.Credito|number_format(2,'.',',') : '' }}
+                  </td>
+                  <td>{{ r['cond. pago'] }}</td>
+
+                  <td class="text-end">{{ r['Saldo actual']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['Por vencer']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['1-15']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['16-30']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['31-45']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['45+']|number_format(2,'.',',') }}</td>
+
+                  <td class="text-end">{{ r['Total vencido']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">
+                    {{ r['% de vencimiento'] is not null
+                        ? (r['% de vencimiento']|number_format(2,'.',',')) ~ '%'
+                        : '' }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th class="text-end">Totales</th>
+                <th class="text-end" data-colsum=""></th>
+                <th class="text-end" data-colsum=""></th>
+                <th class="text-end" data-colsum=""></th>
+                <th class="text-end" data-colsum=""></th>
+                <th class="text-end" data-colsum=""></th>
+                <th class="text-end" data-colsum="6"></th>
+                <th class="text-end" data-colsum="7"></th>
+                <th class="text-end" data-colsum="8"></th>
+                <th class="text-end" data-colsum="9"></th>
+                <th class="text-end" data-colsum="10"></th>
+                <th class="text-end" data-colsum="11"></th>
+                <th class="text-end" data-colsum="12"></th>
+
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Controles inferiores de DataTables (estáticos) -->
+        <div id="dt-controls-bottom" class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"></div>
+
+      </div>
+      {% else %}
+
+      {% endif %}
+
+    </div>
   </div>
 </div>
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ JS }}administration.js"></script>
+
+<!-- Helpers de coloreo para % de vencimiento -->
+<script>
+function parsePercentCellText(txt){
+  if (txt == null) return NaN;
+  const s = (txt+'').replace('%','').replace(/[^0-9.\-]/g,'');
+  const v = parseFloat(s);
+  return isNaN(v) ? NaN : v;
+}
+function colorizePctCells(dt){
+  const colPct = 13;
+  dt.cells(null, colPct, {page:'current'}).every(function(){
+    const td = this.node();
+    const val = parsePercentCellText(this.data());
+    td.classList.remove('pct-green','pct-yellow','pct-red');
+    if (isNaN(val)) return;
+    if (val <= 10)        td.classList.add('pct-green');
+    else if (val <= 40)   td.classList.add('pct-yellow');
+    else                  td.classList.add('pct-red');
+  });
+  // Footer
+  const $cell = $(dt.table().footer()).find('[data-colpct="13"]');
+  if ($cell.length){
+    const val = parsePercentCellText($cell.text());
+    $cell.removeClass('pct-green pct-yellow pct-red');
+    if (!isNaN(val)){
+      if (val <= 10)        $cell.addClass('pct-green');
+      else if (val <= 40)   $cell.addClass('pct-yellow');
+      else                  $cell.addClass('pct-red');
+    }
+  }
+}
+
+function sumColumn(api, colIdx) {
+  return api.column(colIdx, { page: 'current' }).data().reduce((acc, val) => {
+    const n = (val+'').replace(/[^0-9.\-]/g,'');
+    const parsed = parseFloat(n);
+    return acc + (isNaN(parsed) ? 0 : parsed);
+  }, 0);
+}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const tbl = document.getElementById('balance_age_table');
+  if (!tbl) return;
+
+  const dt = $('#balance_age_table').DataTable({
+    autoWidth: false,
+    ordering: true,
+    order: [],                 // respeta el orden del backend
+    searching: true,
+    paging: true,
+    info: true,
+    dom: 'lfrtip',
+    pageLength: 50,
+    lengthMenu: [[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
+    language: {
+      lengthMenu: 'Mostrar _MENU_ entradas',
+      info: 'Mostrando _START_ a _END_ de _TOTAL_ entradas',
+      infoEmpty: 'Mostrando 0 a 0 de 0 entradas',
+      infoFiltered: '(filtrado de _MAX_ entradas totales)',
+      search: 'Buscar:',
+      paginate: { first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
+    },
+    footerCallback: function () {
+      const api = this.api();
+      [6,7,8,9,10,11,12].forEach(idx => {
+        const total = sumColumn(api, idx);
+        $(api.table().footer()).find(`[data-colsum="${idx}"]`)
+          .text(total.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}));
+      });
+      const totalVencido = sumColumn(api, 12);
+      const totalCredito = sumColumn(api, 4);
+      const $pctCell = $(api.table().footer()).find('[data-colpct="13"]');
+      if (totalCredito > 0) {
+        const pct = (totalVencido / totalCredito) * 100;
+        $pctCell.text(pct.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}) + '%');
+      } else {
+        $pctCell.text('—');
+      }
+    }
+  });
+
+  // Colorear al primer render y en cada redraw
+  dt.on('draw', function(){ colorizePctCells(dt); });
+  colorizePctCells(dt);
+
+  // Controles fijos (mueve los nodos de DataTables fuera del área scrolleable)
+  const $wrap = $(dt.table().container());
+  $('#dt-controls-top')
+    .append($wrap.find('.dataTables_length'))
+    .append($wrap.find('.dataTables_filter'));
+  $('#dt-controls-bottom')
+    .append($wrap.find('.dataTables_info'))
+    .append($wrap.find('.dataTables_paginate'));
+
+  // Toggle columnas 1,2,3 según el switch
+  const showAll = document.getElementById('show_all');
+  const toggleCols = () => {
+    const visible = showAll.checked;              // activo => muestra todas
+    [1,2,3].forEach(i => dt.column(i).visible(visible, false)); // evita 3 redraws
+    dt.columns.adjust().draw(false);              // un solo redraw
+  };
+  if (showAll) {
+    toggleCols();                                  // estado inicial
+    showAll.addEventListener('change', toggleCols);
+  }
+
+  // Habilita Excel si existe botón
+  const btn = document.getElementById('btnExportXLS');
+  if (btn) btn.disabled = false;
+});
+</script>
+
+<!-- Exportar a Excel con estilos -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('btnExportXLS');
+  if (!btn) return;
+
+  btn.addEventListener('click', function () {
+    const table = document.getElementById('balance_age_table');
+    if (!table) return;
+
+    // Clon para evitar arrastrar estilos del DOM
+    const clone = table.cloneNode(true);
+
+    // Genera hoja
+    const ws = XLSX.utils.table_to_sheet(clone, { raw: true });
+
+    // Auto-filtro y anchos (incluye col 12 y 13)
+    const rango = ws['!ref'];
+    ws['!autofilter'] = { ref: rango };
+    ws['!cols'] = [
+      {wch:28}, {wch:24}, {wch:12}, {wch:12},  // 0-3
+      {wch:14}, {wch:12},                       // 4-5
+      {wch:16}, {wch:16},                       // 6-7
+      {wch:10}, {wch:10}, {wch:10}, {wch:10},   // 8-11
+      {wch:14}, {wch:16}                        // 12-13 (Total vencido, % de vencimiento)
+    ];
+
+    // Utilidades para localizar celdas
+    const range = XLSX.utils.decode_range(rango);
+    const COL_PCT = 13; // índice base 0 de "% de vencimiento" en la tabla
+    const headerRow = range.s.r; // fila del encabezado (0-based)
+    const firstDataRow = headerRow + 1;
+
+    // Colorear y convertir %: recorre filas de datos
+    for (let r = firstDataRow; r <= range.e.r; r++){
+      const cellAddr = XLSX.utils.encode_cell({ r, c: COL_PCT });
+      const cell = ws[cellAddr];
+      if (!cell) continue;
+
+      // Extrae número 0..100 desde string "12.34%" o "12.34"
+      const raw = (cell.v ?? '').toString();
+      const val100 = parseFloat(raw.replace('%','').replace(/[^0-9.\-]/g,''));
+      if (isNaN(val100)) continue;
+
+      // Convierte a 0..1 y aplica formato de porcentaje
+      const val01 = val100 / 100;
+      ws[cellAddr] = {
+        t: 'n',
+        v: val01,
+        z: '0.00%',
+        s: {}
+      };
+
+      // Decide color según umbral
+      let fg = 'C6EFCE', fontColor = '006100';  // verde
+      if (val100 > 40)      { fg = 'F8CBAD'; fontColor = '9C0006'; } // rojo
+      else if (val100 > 10) { fg = 'FFF2CC'; fontColor = '7F6000'; } // amarillo
+
+      // Aplica estilo (xlsx-js-style)
+      ws[cellAddr].s = {
+        fill: { patternType: "solid", fgColor: { rgb: fg } },
+        font: { color: { rgb: fontColor } }
+      };
+    }
+
+    // Crea y guarda el libro
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Balance');
+
+    const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
+    const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
+    const filename = `Balance_Age_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  });
+});
+</script>
 {% endblock %}

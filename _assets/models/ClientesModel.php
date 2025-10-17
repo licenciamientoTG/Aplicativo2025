@@ -177,32 +177,29 @@ class ClientesModel extends Model{
         return $this->sql->select($query);
     }
 
-    public function get_movpen_preview(): array|false
+// Para el reporte de antiguedad de saldos
+
+// Obtiene opciones para el <select> de estaciones
+public function get_gasolineras(): array
+{
+    $sql = "SELECT cod, den FROM [SG12].dbo.Gasolineras WHERE ISNULL(codest,0) <> -1 and cod not in (0,4,20) ORDER BY den";
+    return $this->sql->select($sql, []) ?: [];
+}
+
+// Reporte estricto: CtaDde=CtaHta y GasDde=GasHta (SIN rangos)
+public function get_balance_age(int $cta, int $gas): array|false
 {
     $sql = <<<SQL
 SET NOCOUNT ON;
 
 DROP TABLE IF EXISTS #MovPen;
-DROP TABLE IF EXISTS #Base;
 
 CREATE TABLE #MovPen (
-  codopr     INT         NULL,
-  nrocta     INT         NULL,
-  codgas     INT         NULL,
-  tipope     TINYINT     NULL,
-  nroope     INT         NULL,
-  tipmov     TINYINT     NULL,
-  tipant     TINYINT     NULL,
-  nroant     INT         NULL,
-  tipopr     TINYINT     NULL,
-  fchope     INT         NULL,
-  fchvto     INT         NULL,
-  mtoopeori  FLOAT       NULL,
-  mtoopecnv  FLOAT       NULL,
-  mtopenori  FLOAT       NULL,
-  tipref     TINYINT     NULL,
-  nroref     INT         NULL,
-  gasori     INT         NULL
+  codopr INT NULL, nrocta INT NULL, codgas INT NULL, tipope TINYINT NULL,
+  nroope INT NULL, tipmov TINYINT NULL, tipant TINYINT NULL, nroant INT NULL,
+  tipopr TINYINT NULL, fchope INT NULL, fchvto INT NULL, mtoopeori FLOAT NULL,
+  mtoopecnv FLOAT NULL, mtopenori FLOAT NULL, tipref TINYINT NULL, nroref INT NULL,
+  gasori INT NULL
 );
 
 INSERT INTO #MovPen
@@ -210,42 +207,130 @@ EXEC [SG12].dbo.sp_SelMovPen
   @Tip    = 1,
   @OprDde = 0,
   @OprHta = 2147483647,
-  @CtaDde = 101032000,
-  @CtaHta = 101032000,
-  @GasDde = 2,
-  @GasHta = 2;
+  @CtaDde = ?,
+  @CtaHta = ?,
+  @GasDde = ?,
+  @GasHta = ?;
 
-SELECT
-  M.codopr,
-  C.den        AS Cliente,
-  C.mtoasg,
-  C.cndpag,
-  M.codgas,
-  G.den        AS Estacion,
-  M.mtopenori
-INTO #Base
-FROM #MovPen AS M
-LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
-LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
-WHERE ISNULL(C.codest, 0) <> -1;
+;WITH Base AS (
+  SELECT
+    M.codopr,
+    M.codgas,
+    M.tipope,
+    M.mtopenori,
+    CONVERT(date, DATEADD(DAY, M.fchope - 1, '19000101')) AS fchope_dt,
+    CONVERT(date, DATEADD(DAY, M.fchvto - 1, '19000101')) AS fchvto_dt,
+    C.den    AS Cliente,
+    C.mtoasg AS Credito,
+    C.cndpag AS [cond. pago],
+    G.den    AS Estacion
+  FROM #MovPen AS M
+  LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
+  LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
+  WHERE C.codest <> -1
+    AND M.tipope <> 101
+),
+Ultimos AS (
+  SELECT
+    B.codopr,
+    B.codgas,
+    MAX(CASE WHEN B.tipope = 3 THEN B.fchope_dt END)     AS max_fchope_deb,
+    MAX(CASE WHEN B.tipope IN (4,6) THEN B.fchope_dt END) AS max_fchope_cred
+  FROM Base B
+  GROUP BY B.codopr, B.codgas
+),
+Resultados AS (
+  SELECT
+    B.codopr,
+    B.Cliente,
+    B.codgas,
+    B.Estacion,
+    CONVERT(varchar(10), U.max_fchope_deb , 23) AS [ult. deb.],
+    CONVERT(varchar(10), U.max_fchope_cred, 23) AS [ult. cred.],
+    MAX(B.Credito)      AS Credito,
+    MAX(B.[cond. pago]) AS [cond. pago],
 
--- SOLO la segunda tabla (B)
-SELECT
-  B.codopr,
-  B.Cliente,
-  B.mtoasg,
-  B.cndpag,
-  B.codgas,
-  B.Estacion,
-  SUM(B.mtopenori/100) AS mtopenori_total
-FROM #Base AS B
-GROUP BY B.codopr, B.Cliente, B.mtoasg, B.cndpag, B.codgas, B.Estacion
-ORDER BY B.codopr, B.codgas
+    -- Saldo actual (con positivos y negativos)
+    SUM(B.mtopenori/100.0) AS [Saldo actual],
 
-DROP TABLE IF EXISTS #Base;
+    -- Por vencer: totales con fchvto_dt >= hoy (incluye positivos y negativos tal cual)
+    SUM(CASE 
+          WHEN B.fchvto_dt >= CAST(GETDATE() AS date) THEN B.mtopenori/100.0
+          ELSE 0
+        END) AS [Por vencer],
+
+    -- Buckets vencidos: solo POSITIVOS
+    SUM(CASE WHEN B.mtopenori > 0 
+              AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
+             THEN B.mtopenori/100.0 ELSE 0 END) AS [1-15],
+
+    SUM(CASE WHEN B.mtopenori > 0 
+              AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 16 AND 30
+             THEN B.mtopenori/100.0 ELSE 0 END) AS [16-30],
+
+    SUM(CASE WHEN B.mtopenori > 0 
+              AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 31 AND 45
+             THEN B.mtopenori/100.0 ELSE 0 END) AS [31-45],
+
+    SUM(CASE WHEN B.mtopenori > 0 
+              AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
+             THEN B.mtopenori/100.0 ELSE 0 END) AS [45+],
+
+    -- Total vencido = suma de los buckets POSITIVOS
+    (
+      SUM(CASE WHEN B.mtopenori > 0 
+                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
+               THEN B.mtopenori/100.0 ELSE 0 END)
+    + SUM(CASE WHEN B.mtopenori > 0 
+                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 16 AND 30
+               THEN B.mtopenori/100.0 ELSE 0 END)
+    + SUM(CASE WHEN B.mtopenori > 0 
+                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 31 AND 45
+               THEN B.mtopenori/100.0 ELSE 0 END)
+    + SUM(CASE WHEN B.mtopenori > 0 
+                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
+               THEN B.mtopenori/100.0 ELSE 0 END)
+    ) AS [Total vencido],
+
+    -- % de vencimiento basado en Total vencido / Credito
+    CASE
+      WHEN NULLIF(MAX(B.Credito),0) IS NULL THEN NULL
+      ELSE (
+        (
+          SUM(CASE WHEN B.mtopenori > 0 
+                    AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
+                   THEN B.mtopenori/100.0 ELSE 0 END)
+        + SUM(CASE WHEN B.mtopenori > 0 
+                    AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 16 AND 30
+                   THEN B.mtopenori/100.0 ELSE 0 END)
+        + SUM(CASE WHEN B.mtopenori > 0 
+                    AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 31 AND 45
+                   THEN B.mtopenori/100.0 ELSE 0 END)
+        + SUM(CASE WHEN B.mtopenori > 0 
+                    AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
+                   THEN B.mtopenori/100.0 ELSE 0 END)
+        ) / NULLIF(MAX(B.Credito),0)
+      ) * 100.0
+    END AS [% de vencimiento]
+  FROM Base B
+  LEFT JOIN Ultimos U ON U.codopr = B.codopr AND U.codgas = B.codgas
+  GROUP BY B.codopr, B.Cliente, B.codgas, B.Estacion, U.max_fchope_deb, U.max_fchope_cred
+)
+SELECT *
+FROM Resultados
+WHERE [Saldo actual] > 0
+ORDER BY codopr, codgas;
+
 DROP TABLE IF EXISTS #MovPen;
 SQL;
 
-    return $this->sql->select($sql, []) ?: false;
+    // Orden de parámetros: CtaDde, CtaHta, GasDde, GasHta (estrictos)
+    $params = [$cta, $cta, $gas, $gas];
+    return $this->sql->select($sql, $params) ?: false;
 }
+
+
+
+
+
 }
