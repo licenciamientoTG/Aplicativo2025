@@ -1027,3 +1027,204 @@ function out() {
         console.log(data);
     });
 }
+
+
+async function cfdi_comparison_table() {
+    // Destruir tabla si existe
+    if ($.fn.DataTable.isDataTable('#cfdis_sender_table')) {
+        $('#cfdis_sender_table').DataTable().destroy();
+        $('#cfdis_sender_table thead .filter').remove();
+        $('#cfdis_sender_table tbody').empty(); // Limpiar tbody
+    }
+
+    const from = $('#from').val();
+    const until = $('#until').val();
+    const codgas = $('#codgas').val();
+
+    // Validaciones
+    if (!from || !until) {
+        alertify.error('Por favor seleccione el rango de fechas');
+        return;
+    }
+    if (!codgas) {
+        alertify.error('Por favor seleccione una estación');
+        return;
+    }
+
+    // Agregar filtros en encabezados
+    $('#cfdis_sender_table thead').prepend($('#cfdis_sender_table thead tr').clone().addClass('filter'));
+    $('#cfdis_sender_table thead tr.filter th').each(function (index) {
+        const col = $('#cfdis_sender_table thead th').length / 2;
+        if (index < col) {
+            const title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
+        }
+    });
+
+    // Event listeners para filtros
+    $('#cfdis_sender_table thead tr.filter th input').on('keyup change', function () {
+        const index = $(this).parent().index();
+        const table = $('#cfdis_sender_table').DataTable();
+        table.column(index).search(this.value).draw();
+    });
+
+    // Inicializar DataTable
+    const table = $('#cfdis_sender_table').DataTable({
+        order: [0, "desc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // paging: true,1
+        // pageLength: 50,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success btn-sm',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                title: 'Comparacion_CFDI_' + from + '_' + until,
+                // exportOptions: {
+                //     columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11]
+                // }
+            },
+            {
+                extend: 'pdf',
+                className: 'btn btn-danger btn-sm',
+                text: '<i class="fas fa-file-pdf"></i> PDF',
+                orientation: 'landscape',
+                pageSize: 'LEGAL',
+                title: 'Comparacion_CFDI_' + from + '_' + until
+            },
+            {
+                extend: 'print',
+                className: 'btn btn-info btn-sm',
+                text: '<i class="fas fa-print"></i> Imprimir'
+            }
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'from': from,
+                'until': until,
+                'codgas': codgas
+            },
+            url: '/it/cfdi_comparison_table',
+            timeout: 600000,
+            error: function (xhr, error, thrown) {
+                $('.table-responsive').removeClass('loading');
+                alertify.error('Error al cargar datos: ' + thrown);
+            },
+            beforeSend: function () {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            { 'data': 'estacion', className: 'text-nowrap' },
+            { 'data': 'fecha_fac', className: 'text-center text-nowrap' },
+            { 'data': 'despacho', className: 'text-center' },
+            { 'data': 'factura_corp', className: 'text-center' },
+            { 'data': 'serie', className: 'text-center' },
+            { 'data': 'cliente', className: 'text-nowrap' },
+            { 'data': 'rfc', className: 'text-center' },
+            { 
+                'data': 'uuid_corp', 
+                className: 'uuid-cell',
+                render: function(data) {
+                    if (data && data.length > 20) {
+                        return '<span title="' + data + '">' + data.substring(0, 20) + '...</span>';
+                    }
+                    return data;
+                }
+            },
+            { 'data': 'despacho_estacion', className: 'text-center' },
+            { 'data': 'factura_estacion', className: 'text-center' },
+            { 
+                'data': 'uuid_estacion', 
+                className: 'uuid-cell',
+                render: function(data) {
+                    if (data && data.length > 20 && !data.includes('text-muted')) {
+                        return '<span title="' + data + '">' + data.substring(0, 20) + '...</span>';
+                    }
+                    return data;
+                }
+            },
+            { 'data': 'estado', className: 'text-center' }
+        ],
+        deferRender: true,
+        createdRow: function (row, data, dataIndex) {
+            // Resaltar filas según estado
+            if (data.estado_raw === 'missing') {
+                $(row).css('background-color', '#fff5f5');
+            } else if (data.estado_raw === 'match') {
+                $(row).css('background-color', '#f0fff4');
+            } else if (data.estado_raw === 'mismatch') {
+                $(row).css('background-color', '#fff9e6');
+            }
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            updateSummaryCards(this.api());
+        },
+        drawCallback: function() {
+            updateSummaryCards(this.api());
+        }
+    });
+
+    // Función para actualizar cards de resumen
+    function updateSummaryCards(api) {
+        const data = api.rows({ search: 'applied' }).data();
+        
+        let totalMatch = 0;
+        let totalMissing = 0;
+        let totalPending = 0;
+        let totalMismatch = 0;
+
+        data.each(function(row) {
+            switch(row.estado_raw) {
+                case 'match':
+                    totalMatch++;
+                    break;
+                case 'missing':
+                    totalMissing++;
+                    break;
+                case 'mismatch':
+                    totalMismatch++;
+                    break;
+                case 'pending':
+                    totalPending++;
+                    break;
+            }
+        });
+
+        const total = data.length;
+        
+        $('#total-facturas').text(total);
+        $('#total-match').text(totalMatch);
+        $('#total-missing').text(totalMissing);
+        $('#total-pending').text(totalPending + totalMismatch);
+        
+        // Calcular porcentajes
+        if (total > 0) {
+            const matchPercent = ((totalMatch / total) * 100).toFixed(1);
+            const missingPercent = ((totalMissing / total) * 100).toFixed(1);
+            const pendingPercent = (((totalPending + totalMismatch) / total) * 100).toFixed(1);
+            
+            $('#total-match').parent().find('.summary-label').html('Coincidencias<br><small>' + matchPercent + '%</small>');
+            $('#total-missing').parent().find('.summary-label').html('Faltantes<br><small>' + missingPercent + '%</small>');
+            $('#total-pending').parent().find('.summary-label').html('Pendientes<br><small>' + pendingPercent + '%</small>');
+        } else {
+            $('#total-match').parent().find('.summary-label').html('Coincidencias');
+            $('#total-missing').parent().find('.summary-label').html('Faltantes');
+            $('#total-pending').parent().find('.summary-label').html('Pendientes');
+        }
+    }
+}
+
+// Inicializar selectpicker si está disponible
+// $(document).ready(function() {
+//     if ($.fn.selectpicker) {
+//         $('.selectpicker').selectpicker('refresh');
+//     }
+// });

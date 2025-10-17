@@ -190,7 +190,7 @@ i { margin-right: 10px; }
 </div>
 
 {% if consulted %}
-  <a id="btnExportPdff"
+  <a id="btnExportPdf"
      class="btn btn-sm btn-danger w-20 no-print"
      href="/_assets/classes/pdf.class.php?action=ecv_agents_pdf&period={{ period|default('now'|date('Y-m')) }}&ticket_form_id={{ ticket_form_id }}&assigned_to_id={{ assigned_to_csv|default('0') }}"
      target="_blank">

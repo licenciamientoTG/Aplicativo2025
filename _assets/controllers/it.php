@@ -814,17 +814,8 @@ class It{
     }
 
     function CFDISender_monitor() {
-        $from = (isset($_GET['from'])) ? $_GET['from'] : null;
-        // Si no se pasó fecha, tomamos ayer
-        if ($from === null) {
-            $from = date('Y-m-d', strtotime('-1 day'));
-        }
-
-        $codgas = (isset($_GET['codgas'])) ? $_GET['codgas'] : 0;
-
         $active_stations = $this->gasolinerasModel->get_active_station_TG();
-
-        echo $this->twig->render($this->route . 'CFDISender_monitor.html', compact('from', 'codgas', 'active_stations'));
+        echo $this->twig->render($this->route . 'CFDISender_monitor.html', compact( 'active_stations'));
     }
 
     function CFDISender_monitor_data($from, $codgas) {
@@ -845,5 +836,60 @@ class It{
             }
         }
         return json_output(array("data" => $data));
+    }
+
+
+    function cfdi_comparison_table()
+    {
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+        
+        $data = [];
+        $from = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
+        $codgas = isset($_POST['codgas']) ? $_POST['codgas'] : null;
+        $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas );
+        $bd = $estation['base_datos']; // Asumimos que todas las estaciones usan la misma base de datos
+        $ip = $estation['servidor'];
+        if ($registros = $this->despachosModel->cfdi_comparison_advance($from, $until, $codgas, $bd, $ip)) {
+            
+            foreach ($registros as $registro) {
+                // Determinar el badge de estado
+                $estado = $registro["Estado"];
+                $estadoText = '';
+                
+                switch ($estado) {
+                    case 'match':
+                        $estadoText = '<span class="status-badge status-match">✓ Coincide</span>';
+                        break;
+                    case 'missing':
+                        $estadoText = '<span class="status-badge status-missing">✗ Faltante</span>';
+                        break;
+                    case 'mismatch':
+                        $estadoText = '<span class="status-badge status-pending">⚠ Diferente</span>';
+                        break;
+                    default:
+                        $estadoText = '<span class="status-badge status-pending">⏳ Pendiente</span>';
+                }
+                
+                $data[] = array(
+                    'estacion'          => $registro["Estacion"],
+                    'fecha_fac'         => $registro["FechaFac"],
+                    'despacho'          => $registro["Despacho"],
+                    'factura_corp'      => $registro["FacturaCorp"],
+                    'serie'             => $registro["Serie"],
+                    'cliente'           => $registro["Cliente"],
+                    'rfc'               => $registro["RFC"],
+                    'uuid_corp'         => $registro["UUIDCorp"],
+                    'despacho_estacion' => $registro["despacho_estacion"] ?? '<span class="text-muted">Sin Despacho</span>',
+                    'factura_estacion'  => $registro["FacturaEstacion"] ?? '<span class="text-muted">N/A</span>',
+                    'uuid_estacion'     => $registro["UUIDEstacion"] ?? '<span class="text-muted">Sin UUID</span>',
+                    'estado'            => $estadoText,
+                    'estado_raw'        => $estado  // Para filtros
+                );
+            }
+        }
+        
+        json_output(array("data" => $data));
     }
 }
