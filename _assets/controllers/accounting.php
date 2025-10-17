@@ -1024,6 +1024,7 @@ class Accounting{
                     'nro'     => $row['nro'],
                     'satuid'  => $row['satuid'],
                     'txtref'  => $row['txtref'],
+                    'mov_n'  => $row['mov_n'],
                 );
             }
             $data = array("data" => $data);

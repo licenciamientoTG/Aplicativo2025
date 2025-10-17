@@ -1737,6 +1737,7 @@ async function movement_analysis_table(){
             {'data': 'fecha',className:'text-nowrap'},
             {'data': 'den',className:'text-nowrap'},
             {'data': 'factura',className:'text-nowrap'},
+            {'data': 'mov_n',className:'text-nowrap'},
             {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
             {'data': 'satuid',className:'text-nowrap'},
             {'data': 'txtref',className:'text-nowrap'},

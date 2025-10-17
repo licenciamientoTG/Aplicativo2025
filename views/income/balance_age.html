@@ -1,0 +1,50 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Balance por Cliente y Estación{% endblock %}
+
+{% block content %}
+<div class="card card-primary card-outline">
+  <div class="card-header"><h3 class="card-title">Totales por Cliente + Estación</h3></div>
+  <div class="card-body">
+    {% if rows is empty %}
+      <div class="alert alert-info mb-0">No hay registros.</div>
+    {% else %}
+      <div style="overflow-x:auto">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Cod. Cliente</th>
+              <th>Cliente</th>
+              <th>Mto Asignado</th>
+              <th>Cond. Pago</th>
+              <th>Cod. Estación</th>
+              <th>Estación</th>
+              <th class="text-end">Total Monto</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set gran_total = 0 %}
+            {% for r in rows %}
+              {% set gran_total = gran_total + (r.mtopenori_total ?? 0) %}
+              <tr>
+                <td>{{ r.codopr }}</td>
+                <td>{{ r.Cliente }}</td>
+                <td>{{ r.mtoasg is not null ? r.mtoasg|number_format(2, '.', ',') : '' }}</td>
+                <td>{{ r.cndpag }}</td>
+                <td>{{ r.codgas }}</td>
+                <td>{{ r.Estacion }}</td>
+                <td class="text-end">{{ r.mtopenori_total|number_format(2, '.', ',') }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="6" class="text-end">Gran Total</th>
+              <th class="text-end">{{ gran_total|number_format(2, '.', ',') }}</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

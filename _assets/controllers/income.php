@@ -67,6 +67,24 @@ class Income{
             echo $this->twig->render($this->route . 'clients.html');
         }
     }
+
+public function balance_age()
+{
+    // Trae los datos del modelo
+    $rows = $this->clientesModel->get_movpen_preview();
+
+    // Manejo simple si falla (false) => arreglo vacío
+    if ($rows === false) {
+        $rows = [];
+    }
+
+    // Renderiza la vista y le pasa los datos
+    echo $this->twig->render($this->route . 'balance_age.html', [
+        'rows' => $rows,
+    ]);
+}
+
+
     public function salesxcard(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'salesxcard.html');

@@ -99,6 +99,8 @@ class ClientesModel extends Model{
         return $this->sql->select($query) ?: false ;
     }
 
+
+
     public function get_clients_debit($status) : array|false {
 
         $query_status = '';
@@ -174,4 +176,76 @@ class ClientesModel extends Model{
         $query = "SELECT cod, den FROM [SG12].[dbo].[Clientes] WHERE tipval IN (3,4);";
         return $this->sql->select($query);
     }
+
+    public function get_movpen_preview(): array|false
+{
+    $sql = <<<SQL
+SET NOCOUNT ON;
+
+DROP TABLE IF EXISTS #MovPen;
+DROP TABLE IF EXISTS #Base;
+
+CREATE TABLE #MovPen (
+  codopr     INT         NULL,
+  nrocta     INT         NULL,
+  codgas     INT         NULL,
+  tipope     TINYINT     NULL,
+  nroope     INT         NULL,
+  tipmov     TINYINT     NULL,
+  tipant     TINYINT     NULL,
+  nroant     INT         NULL,
+  tipopr     TINYINT     NULL,
+  fchope     INT         NULL,
+  fchvto     INT         NULL,
+  mtoopeori  FLOAT       NULL,
+  mtoopecnv  FLOAT       NULL,
+  mtopenori  FLOAT       NULL,
+  tipref     TINYINT     NULL,
+  nroref     INT         NULL,
+  gasori     INT         NULL
+);
+
+INSERT INTO #MovPen
+EXEC [SG12].dbo.sp_SelMovPen
+  @Tip    = 1,
+  @OprDde = 0,
+  @OprHta = 2147483647,
+  @CtaDde = 101032000,
+  @CtaHta = 101032000,
+  @GasDde = 2,
+  @GasHta = 2;
+
+SELECT
+  M.codopr,
+  C.den        AS Cliente,
+  C.mtoasg,
+  C.cndpag,
+  M.codgas,
+  G.den        AS Estacion,
+  M.mtopenori
+INTO #Base
+FROM #MovPen AS M
+LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
+LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
+WHERE ISNULL(C.codest, 0) <> -1;
+
+-- SOLO la segunda tabla (B)
+SELECT
+  B.codopr,
+  B.Cliente,
+  B.mtoasg,
+  B.cndpag,
+  B.codgas,
+  B.Estacion,
+  SUM(B.mtopenori/100) AS mtopenori_total
+FROM #Base AS B
+GROUP BY B.codopr, B.Cliente, B.mtoasg, B.cndpag, B.codgas, B.Estacion
+ORDER BY B.codopr, B.codgas
+
+DROP TABLE IF EXISTS #Base;
+DROP TABLE IF EXISTS #MovPen;
+SQL;
+
+    return $this->sql->select($sql, []) ?: false;
+}
 }
