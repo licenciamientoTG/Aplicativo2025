@@ -435,6 +435,10 @@ class Accounting{
         }
     }
 
+    function volumetrics_comparator() {
+        echo $this->twig->render($this->route . 'volumetrics_comparator.html');
+    }
+
     function volumetrics_table() {
         $data = [];
         $from = date('Y-m-01', strtotime('-1 month'));
@@ -1024,6 +1028,7 @@ class Accounting{
                     'nro'     => $row['nro'],
                     'satuid'  => $row['satuid'],
                     'txtref'  => $row['txtref'],
+                    'mov_n'  => $row['mov_n'],
                 );
             }
             $data = array("data" => $data);
@@ -1032,6 +1037,15 @@ class Accounting{
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
+
+    function fuel_purchases() {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            $from = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
+            $until = $_GET['until'] ?? date('Y-m-d', strtotime('-1 day'));
+            echo $this->twig->render($this->route . 'movement_analysis.html', compact('from','until'));
+        }
+    }
+
 
 }
 

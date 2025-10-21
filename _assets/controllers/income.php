@@ -67,6 +67,54 @@ class Income{
             echo $this->twig->render($this->route . 'clients.html');
         }
     }
+
+public function balance_age()
+{
+    // Catálogo de cuentas
+    $cuentas = [
+        101032000 => '101032000 - Facturas x cobrar',
+        101032001 => '101032001 - Facturas X Cobrar Administrativas',
+        101032004 => '101032004 - Facturas X Cobrar Arrendamiento',
+    ];
+
+    // Gasolineras para el select
+    $gasolineras = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+
+    // Lee filtros SIN default (para no disparar consulta)
+    $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
+    $gas_sel = isset($_REQUEST['gas']) ? (int)$_REQUEST['gas'] : null;
+
+    // ¿El usuario ya dio "Consultar"?
+    $submitted = ($cta_sel !== null && $gas_sel !== null);
+
+    $rows = [];
+    if ($submitted) {
+        // Valida selección contra catálogos
+        $validCta = array_key_exists($cta_sel, $cuentas);
+        $validGas = in_array($gas_sel, array_map('intval', array_column($gasolineras, 'cod')), true);
+
+        if ($validCta && $validGas) {
+            $rows = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+        } else {
+            // Si hay valores inválidos, no mostramos tabla
+            $submitted = false;
+        }
+    }
+
+    echo $this->twig->render($this->route . 'balance_age.html', [
+        'rows'        => $rows,
+        'cuentas'     => $cuentas,
+        'gasolineras' => $gasolineras,
+        'cta_sel'     => $cta_sel,
+        'gas_sel'     => $gas_sel,
+        'submitted'   => $submitted, // <-- clave para la vista
+    ]);
+}
+
+
+
+
+
     public function salesxcard(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'salesxcard.html');
@@ -244,49 +292,52 @@ class Income{
     }
 
     function cash_invoices_table(){
+    ini_set('memory_limit', '512M');
+    set_time_limit(300);
 
-        
-         ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($despachos = $this->despachosModel->cash_invoices_advance($from, $until)) {
+    $data  = [];
+    $from  = dateToInt($_POST['from']);
+    $until = dateToInt($_POST['until']);
 
-            foreach ($despachos as $despachos) {
-                 $data[] = array(
-                     'codcli'             => $despachos["codcli"],
-                     'cliente'          => $despachos["den"],
-                     'monto'       => $despachos["monto"],
-                 );
-            }
+    if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
+        foreach ($rows as $r) {
+            $data[] = [
+                'codcli'       => $r['codcli'],
+                'cliente'      => $r['den'],
+                'n_despachos'  => (int)$r['n_despachos'],
+                'monto'        => (float)$r['monto'],
+            ];
         }
-       json_output(array("data" => $data));
     }
-    function invoice_client_desp(){
+    json_output(['data' => $data]);
+}
 
-        
-         ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($despachos = $this->despachosModel->invoice_client_desp($from, $until)) {
-            foreach ($despachos as $despachos) {
-                 $data[] = array(
-                    'fecha'    => $despachos["fecha"],
-                    'codcli'   => $despachos["codcli"],
-                    'cliente'  => $despachos["den"],
-                    'monto'      => $despachos["monto"],
-                    'estacion' => $despachos["abr"],
-                    'factura'   => $despachos["factura"],
-                 );
-            }
+function invoice_client_desp(){
+    ini_set('memory_limit', '512M');
+    set_time_limit(300);
+
+    $data  = [];
+    $from  = dateToInt($_POST['from']);
+    $until = dateToInt($_POST['until']);
+
+    if ($rows = $this->despachosModel->invoice_client_desp($from, $until)) {
+        foreach ($rows as $r) {
+        $data[] = [
+            'fecha'       => $r['fecha'],
+            'codcli'      => $r['codcli'],
+            'cliente'     => $r['den'],
+            'monto'       => (float)$r['monto'],
+            'n_despachos' => (int)$r['n_despachos'],   // <<<<<< nuevo
+            'estacion'    => $r['abr'],
+            'factura'     => $r['factura'],
+            'metodo_pago' => $r['metodo_pago'],
+        ];
+
         }
-       json_output(array("data" => $data));
     }
+    json_output(['data' => $data]);
+}
+
 
 
     function relation_credit_table(){
