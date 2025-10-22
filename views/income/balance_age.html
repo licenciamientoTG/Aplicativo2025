@@ -3,24 +3,34 @@
 
 {% block mycss %}
 <style>
+<<<<<<< HEAD
 /* -----------------------------
    Estilos DataTables (skin)
 ------------------------------ */
 table.dataTable thead th,
 table.dataTable thead td{
+=======
+/* ---- Estilos DataTables ---- */
+table.dataTable thead th, table.dataTable thead td {
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
   padding: 10px 18px;
   border-bottom: 1px solid #dee2e6;
   background-color: #3485a8 !important;
   color: #ffffff !important;
 }
+<<<<<<< HEAD
 table.dataTable tfoot th,
 table.dataTable tfoot td{
+=======
+table.dataTable tfoot th, table.dataTable tfoot td {
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
   padding: 10px 18px;
   border-top: 1px solid #dee2e6;
   background-color: #3485a8 !important;
   color: #ffffff !important;
 }
 
+<<<<<<< HEAD
 /* -----------------------------
    Solo la tabla scrollea (slide)
 ------------------------------ */
@@ -95,11 +105,63 @@ td.pct-green, td.pct-yellow, td.pct-red{ border-radius: 2px; }
 /* "Mostrar _MENU_ entradas" en una sola línea */
 #dt-controls-top .dataTables_length label,
 #dt-controls-bottom .dataTables_length label,
+=======
+/* Solo la tabla scrollea. Controles quedan fijos */
+.table-wrap{
+  max-height: 60vh;     /* ajusta a tu gusto */
+  overflow: auto;       /* scroll vertical y horizontal si se requiere */
+  border-top: 1px solid #e9ecef;
+}
+
+/* No auto-ajustar al ancho de la página */
+#balance_age_table{
+  width: auto !important;
+  table-layout: auto !important;
+  white-space: nowrap; /* evita saltos de línea */
+}
+
+/* Fondo + contraste para % de vencimiento */
+.pct-green  { background: #c6efce !important; color: #006100 !important; }
+.pct-yellow { background: #fff2cc !important; color: #7f6000 !important; }
+.pct-red    { background: #f8cbad !important; color: #9c0006 !important; }
+
+/* Opcional: suaviza bordes del cell pintado */
+td.pct-green, td.pct-yellow, td.pct-red { border-radius: 2px; }
+
+/* Asegura que los controles NO scrolleen con la tabla */
+#dt-controls-top, #dt-controls-bottom{
+  position: relative;
+  overflow: visible;
+  background: transparent;
+}
+.table-wrap { overflow: auto; } /* el scroll es SOLO aquí */
+/* --- Forzar "Mostrar _MENU_ entradas" en una sola línea --- */
+#dt-controls-top .dataTables_length label,
+#dt-controls-bottom .dataTables_length label{
+  display: inline-flex;         /* texto + select en línea */
+  align-items: center;
+  gap: .5rem;                   /* espacio entre texto y select */
+  white-space: nowrap;          /* no permitir saltos de línea */
+  margin: 0;                    /* evita que el label empuje hacia abajo */
+}
+
+/* Evitar que el select crezca o haga wrap */
+#dt-controls-top .dataTables_length select,
+#dt-controls-bottom .dataTables_length select,
+.dataTables_length select{
+  width: auto !important;       /* no ocupar 100% */
+  display: inline-block;        /* mantener en línea */
+  min-width: 72px;              /* opcional: ancho mínimo cómodo */
+}
+
+/* (Opcional) si tu tema pone el label como bloque, lo anulamos */
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
 .dataTables_length label{
   display: inline-flex;
   align-items: center;
   gap: .5rem;
   white-space: nowrap;
+<<<<<<< HEAD
   margin: 0;
 }
 #dt-controls-top .dataTables_length select,
@@ -124,6 +186,9 @@ tr.group, tr.group:hover{
 .table-wrap::-webkit-scrollbar{ height: 10px; width: 10px; }
 .table-wrap::-webkit-scrollbar-thumb{ background-color: rgba(0,0,0,.2); border-radius: 8px; }
 .table-wrap::-webkit-scrollbar-track{ background: transparent; }
+=======
+}
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
 
 </style>
 {% endblock %}
@@ -139,7 +204,11 @@ tr.group, tr.group:hover{
       <div class="card-header py-3">
         <form method="get" class="row gy-3 gx-3 align-items-end">
           <!-- Cuenta -->
+<<<<<<< HEAD
           <div class="col-12 col-md-6 col-lg-3">
+=======
+          <div class="col-12 col-md-6 col-lg-4">
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
             <label for="cta" class="form-label mb-1">Cuenta</label>
             <select id="cta" name="cta" class="form-select form-select-sm" required>
               <option value="" {{ cta_sel is null ? 'selected' : '' }} disabled>Selecciona una cuenta…</option>
@@ -150,7 +219,11 @@ tr.group, tr.group:hover{
           </div>
 
           <!-- Estación -->
+<<<<<<< HEAD
           <div class="col-12 col-md-6 col-lg-3">
+=======
+          <div class="col-12 col-md-6 col-lg-4">
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
             <label for="gas" class="form-label mb-1">Estación</label>
             <select id="gas" name="gas" class="form-select form-select-sm" required>
               <option value="" {{ gas_sel is null ? 'selected' : '' }} disabled>Selecciona una estación…</option>
@@ -161,7 +234,11 @@ tr.group, tr.group:hover{
           </div>
 
           <!-- Mostrar todas (switch) -->
+<<<<<<< HEAD
           <div class="col-12 col-lg-4 d-flex align-items-center">
+=======
+          <div class="col-12 col-lg-2 d-flex align-items-center">
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
             <div class="form-check form-switch mt-2 mt-lg-0">
               <input class="form-check-input" type="checkbox" id="show_all" checked>
               <label class="form-check-label" for="show_all">Mostrar todas</label>
@@ -171,7 +248,11 @@ tr.group, tr.group:hover{
           <!-- Botones -->
           <div class="col-12 col-lg-2 text-lg-end">
             <div class="d-grid d-sm-flex gap-2">
+<<<<<<< HEAD
               <button type="submit" class="btn btn-primary btn-md">
+=======
+              <button type="submit" class="btn btn-primary btn-sm">
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
                 <i class="fa fa-search me-1"></i> Consultar
               </button>
               <button id="btnExportXLS" type="button" class="btn btn-success btn-sm" {{ (submitted ?? false) ? '' : 'disabled' }}>
@@ -181,6 +262,7 @@ tr.group, tr.group:hover{
           </div>
         </form>
 
+<<<<<<< HEAD
       {% if submitted %}
       <div class="card-body pb-2 pt-0 px-0">
 
@@ -190,6 +272,17 @@ tr.group, tr.group:hover{
         {% endif %}
       </div>
 
+=======
+        {% if submitted %}
+        <!-- Controles superiores de DataTables (estáticos) -->
+        <div id="dt-controls-top" class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3"></div>
+        {% endif %}
+      </div>
+
+      {% if submitted %}
+      <div class="card-body">
+
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
         <div class="table-wrap">
           <table id="balance_age_table" class="table table-striped table-hover table-sm">
             <thead>
@@ -213,7 +306,11 @@ tr.group, tr.group:hover{
             <tbody>
               {% for r in rows %}
                 <tr>
+<<<<<<< HEAD
                   <td style="text-align: left !important;">{{ r.Cliente }}</td>
+=======
+                  <td>{{ r.Cliente }}</td>
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
                   <td>{{ r.Estacion }}</td>
                   <td>{{ r['ult. deb.'] }}</td>
                   <td>{{ r['ult. cred.'] }}</td>
@@ -253,7 +350,11 @@ tr.group, tr.group:hover{
                 <th class="text-end" data-colsum="10"></th>
                 <th class="text-end" data-colsum="11"></th>
                 <th class="text-end" data-colsum="12"></th>
+<<<<<<< HEAD
                 <th class="text-end" data-colpct="13"></th>
+=======
+
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
               </tr>
             </tfoot>
           </table>
@@ -261,8 +362,15 @@ tr.group, tr.group:hover{
 
         <!-- Controles inferiores de DataTables (estáticos) -->
         <div id="dt-controls-bottom" class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"></div>
+<<<<<<< HEAD
       </div>
       {% else %}
+=======
+
+      </div>
+      {% else %}
+
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
       {% endif %}
 
     </div>
@@ -273,7 +381,11 @@ tr.group, tr.group:hover{
 {% block myjs %}
 <script src="{{ JS }}administration.js"></script>
 
+<<<<<<< HEAD
 <!-- Helpers de coloreo para % de vencimiento (en pantalla) -->
+=======
+<!-- Helpers de coloreo para % de vencimiento -->
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
 <script>
 function parsePercentCellText(txt){
   if (txt == null) return NaN;
@@ -356,9 +468,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+<<<<<<< HEAD
   // Hacer accesible el DataTable para el exportador
   window.dtBalance = dt;
 
+=======
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
   // Colorear al primer render y en cada redraw
   dt.on('draw', function(){ colorizePctCells(dt); });
   colorizePctCells(dt);
@@ -376,11 +491,19 @@ document.addEventListener('DOMContentLoaded', function () {
   const showAll = document.getElementById('show_all');
   const toggleCols = () => {
     const visible = showAll.checked;              // activo => muestra todas
+<<<<<<< HEAD
     [1,2,3].forEach(i => dt.column(i).visible(visible, false));
     dt.columns.adjust().draw(false);
   };
   if (showAll) {
     toggleCols();
+=======
+    [1,2,3].forEach(i => dt.column(i).visible(visible, false)); // evita 3 redraws
+    dt.columns.adjust().draw(false);              // un solo redraw
+  };
+  if (showAll) {
+    toggleCols();                                  // estado inicial
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
     showAll.addEventListener('change', toggleCols);
   }
 
@@ -390,13 +513,18 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+<<<<<<< HEAD
 <!-- Exportar a Excel con estilos (respetando columnas visibles) -->
+=======
+<!-- Exportar a Excel con estilos -->
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const btn = document.getElementById('btnExportXLS');
   if (!btn) return;
 
+<<<<<<< HEAD
   // Construye una tabla que solo contiene las columnas visibles, en el mismo orden
   function buildVisibleOnlyTable(origTable, visibleIdx) {
     const tmp = document.createElement('table');
@@ -523,6 +651,68 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // 4) Crea y guarda el libro
+=======
+  btn.addEventListener('click', function () {
+    const table = document.getElementById('balance_age_table');
+    if (!table) return;
+
+    // Clon para evitar arrastrar estilos del DOM
+    const clone = table.cloneNode(true);
+
+    // Genera hoja
+    const ws = XLSX.utils.table_to_sheet(clone, { raw: true });
+
+    // Auto-filtro y anchos (incluye col 12 y 13)
+    const rango = ws['!ref'];
+    ws['!autofilter'] = { ref: rango };
+    ws['!cols'] = [
+      {wch:28}, {wch:24}, {wch:12}, {wch:12},  // 0-3
+      {wch:14}, {wch:12},                       // 4-5
+      {wch:16}, {wch:16},                       // 6-7
+      {wch:10}, {wch:10}, {wch:10}, {wch:10},   // 8-11
+      {wch:14}, {wch:16}                        // 12-13 (Total vencido, % de vencimiento)
+    ];
+
+    // Utilidades para localizar celdas
+    const range = XLSX.utils.decode_range(rango);
+    const COL_PCT = 13; // índice base 0 de "% de vencimiento" en la tabla
+    const headerRow = range.s.r; // fila del encabezado (0-based)
+    const firstDataRow = headerRow + 1;
+
+    // Colorear y convertir %: recorre filas de datos
+    for (let r = firstDataRow; r <= range.e.r; r++){
+      const cellAddr = XLSX.utils.encode_cell({ r, c: COL_PCT });
+      const cell = ws[cellAddr];
+      if (!cell) continue;
+
+      // Extrae número 0..100 desde string "12.34%" o "12.34"
+      const raw = (cell.v ?? '').toString();
+      const val100 = parseFloat(raw.replace('%','').replace(/[^0-9.\-]/g,''));
+      if (isNaN(val100)) continue;
+
+      // Convierte a 0..1 y aplica formato de porcentaje
+      const val01 = val100 / 100;
+      ws[cellAddr] = {
+        t: 'n',
+        v: val01,
+        z: '0.00%',
+        s: {}
+      };
+
+      // Decide color según umbral
+      let fg = 'C6EFCE', fontColor = '006100';  // verde
+      if (val100 > 40)      { fg = 'F8CBAD'; fontColor = '9C0006'; } // rojo
+      else if (val100 > 10) { fg = 'FFF2CC'; fontColor = '7F6000'; } // amarillo
+
+      // Aplica estilo (xlsx-js-style)
+      ws[cellAddr].s = {
+        fill: { patternType: "solid", fgColor: { rgb: fg } },
+        font: { color: { rgb: fontColor } }
+      };
+    }
+
+    // Crea y guarda el libro
+>>>>>>> 8e40c6a568ffe1b814ba708730043eb494ba97f7
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Balance');
 

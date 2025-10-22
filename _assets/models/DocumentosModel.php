@@ -704,6 +704,7 @@ class DocumentosModel extends Model{
                     x.txt,
                     CHARINDEX('@F:', x.txt) + 3,
                     CASE 
+<<<<<<< HEAD
                         WHEN CHARINDEX('@R:', x.txt) > 0 
                             THEN CHARINDEX('@R:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
                         WHEN CHARINDEX('@V:', x.txt) > 0 
@@ -858,7 +859,6 @@ class DocumentosModel extends Model{
                    
         $params = [];
         return $this->sql->select($query, $params);
-
     }
 
 }
