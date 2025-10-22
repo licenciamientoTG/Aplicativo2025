@@ -1692,18 +1692,21 @@ async function movement_analysis_table(){
         order: [0, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
+        paging: true,
+        pageLength: 100,
         buttons: [
             {
                 extend: 'excel',
                 className: 'btn btn-success',
                 text: ' Excel'
             },
+            {
+                text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
+                className: 'btn btn-primary',
+                action: function () {
+                    window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate, '_blank');
+                }
+            }
         ],
         ajax: {
             method: 'POST',
@@ -1732,17 +1735,25 @@ async function movement_analysis_table(){
             }
         },
         columns: [
-            {'data': 'nro',className:'text-nowrap'},
-            {'data': 'abr',className:'text-nowrap'},
-            {'data': 'fecha',className:'text-nowrap'},
-            {'data': 'den',className:'text-nowrap'},
-            {'data': 'factura',className:'text-nowrap'},
-            {'data': 'mov_n',className:'text-nowrap'},
-            {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
-            {'data': 'satuid',className:'text-nowrap'},
-            {'data': 'txtref',className:'text-nowrap'},
-            
-
+            {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Fecha'},
+            {'data': 'Vencimiento'},
+            {'data': 'Producto'},
+            {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
+            {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Estación'},
+            {'data': 'UUID'},
+            {'data': 'RFC'},
+            {'data': 'Remision'},
+            {'data': 'Vehiculo'},
+            {'data': 'Acciones'},
         ],
         deferRender: true,
         // destroy: true, 

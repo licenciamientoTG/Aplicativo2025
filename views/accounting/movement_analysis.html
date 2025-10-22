@@ -5,20 +5,22 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <div class="row">
-            <div class="col-2">
-                <label class="col-form-label-sm" for="from">Desde:</label>
-                <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ from }}" required>
+        <form method="GET" action="#">
+            <div class="row">
+                <div class="col-2">
+                    <label class="col-form-label-sm" for="from">Desde:</label>
+                    <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ from }}" required>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label-sm" for="until">Hasta:</label>
+                    <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ until }}" required>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label-sm">&nbsp;</label>
+                    <button type="submit" id="search_movement_analysis" class="btn btn-sm btn-primary w-100">Generar Reporte</button>
+                </div>
             </div>
-            <div class="col-2">
-                <label class="col-form-label-sm" for="until">Hasta:</label>
-                <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ until }}" required>
-            </div>
-            <div class="col-2">
-                <label class="col-form-label-sm">&nbsp;</label>
-                <button id="search_movement_analysis" class="btn btn-sm btn-primary w-100">Generar Reporte</button>
-            </div>
-        </div>
+        </form>
     </div>
 </div>
 
@@ -27,18 +29,28 @@
         <h5 class="card-title">Análisis de Compras de Combustible</h5>
     </div>
     <div class="card-body table-responsive">
-        <table id="movement_analysis_table" class="table table-hover table-sm w-100">
+        <table id="movement_analysis_table" class="table table-hover table-sm w-100" style="width: 100% !important;">
             <thead>
                 <tr>
                     <th>Número</th>
-                    <th>Estación</th>
-                    <th>Fecha</th>
-                    <th>Entidad</th>
                     <th>Factura</th>
-                    <th>Movimiento</th>
-                    <th>Monto</th>
+                    <th>Orden de Compra</th>
+                    <th>Fecha</th>
+                    <th>Vencimiento</th>
+                    <th>Producto</th>
+                    <th>VolumenRecibido</th>
+                    <th>Facturado</th>
+                    <th>Importe</th>
+                    <th>I.E.P.S</th>
+                    <th>I.V.A.</th>
+                    <th>Recargos</th>
+                    <th>TotalFactura</th>
+                    <th>Estación</th>
                     <th>UUID</th>
-                    <th>Ref</th>
+                    <th>RFC</th>
+                    <th>Remision</th>
+                    <th>Vehiculo</th>
+                    <th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -46,14 +58,24 @@
             <tfoot>
                 <tr>
                     <th>Número</th>
-                    <th>Estación</th>
-                    <th>Fecha</th>
-                    <th>Entidad</th>
                     <th>Factura</th>
-                    <th>Movimiento</th>
-                    <th>Monto</th>
+                    <th>Orden de Compra</th>
+                    <th>Fecha</th>
+                    <th>Vencimiento</th>
+                    <th>Producto</th>
+                    <th>VolumenRecibido</th>
+                    <th>Facturado</th>
+                    <th>Importe</th>
+                    <th>I.E.P.S</th>
+                    <th>I.V.A.</th>
+                    <th>Recargos</th>
+                    <th>TotalFactura</th>
+                    <th>Estación</th>
                     <th>UUID</th>
-                    <th>Ref</th>
+                    <th>RFC</th>
+                    <th>Remision</th>
+                    <th>Vehiculo</th>
+                    <th>Acciones</th>
                 </tr>
             </tfoot>
         </table>

@@ -18,6 +18,7 @@ use PhpOffice\PhpSpreadsheet\Chart\Title;
 use PhpOffice\PhpSpreadsheet\Helper\Sample;
 use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
+require_once('./_assets/classes/code128.php');
 
 class Accounting{
     public $twig;
@@ -1020,15 +1021,25 @@ class Accounting{
 
             foreach ($rows as $row) {
                 $data[] = array(
-                    'fecha'   => $row['fecha'],
-                    'factura' => $row['factura'],
-                    'mtoapl'  => $row['mtoapl'],
-                    'den'     => $row['den'],
-                    'abr'     => $row['abr'],
-                    'nro'     => $row['nro'],
-                    'satuid'  => $row['satuid'],
-                    'txtref'  => $row['txtref'],
-                    'mov_n'  => $row['mov_n'],
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'            => $row['I.V.A.'],
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Acciones'        => 'Acciones'
                 );
             }
             $data = array("data" => $data);
@@ -1046,7 +1057,38 @@ class Accounting{
         }
     }
 
-
+    function print_purchase_receipts($from, $until, $codgas = 0) {
+    if ($rows = $this->Documentos->movement_analysis_table(dateToInt($from), dateToInt($until))) {
+        // Crear una instancia de FPDF
+        $pdf = new PDF_Code128();
+        
+        // Establecer los márgenes
+        $pdf->SetMargins(3, 3, 3);  // Margen izquierdo, margen superior, margen derecho
+        
+        // Establecer el margen inferior
+        $pdf->SetAutoPageBreak(true, 5);  // Activar los saltos automáticos de página y establecer el margen inferior a 5 mm
+        
+        foreach ($rows as $key => $row) {
+            // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+            $pdf->AddPage('P');
+            
+            // Configurar fuente para el encabezado
+            $pdf->SetFont('Arial', 'B', 10);
+            
+            // Título del recibo
+            $pdf->Cell(79, 5, 'RECIBO DE COMPRA', 0, 1, 'C');
+            
+        }
+        
+        // Salida del PDF
+        $pdf->Output();
+    } else {
+        // Manejar el caso cuando no hay datos
+        echo '<pre>';
+        var_dump("Algo malio sal");
+        die();
+    }
+}
 }
 
 
