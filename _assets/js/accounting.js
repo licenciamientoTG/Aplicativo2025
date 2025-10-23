@@ -1667,10 +1667,11 @@ async function movement_analysis_table(){
     if ($.fn.DataTable.isDataTable('#movement_analysis_table')) {
         $('#movement_analysis_table').DataTable().destroy();
         $('#movement_analysis_table thead .filter').remove();
-       
     }
     var fromDate = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('station').value || 0;
+    var supplier = document.getElementById('supplier_val').value;
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
@@ -1704,7 +1705,7 @@ async function movement_analysis_table(){
                 text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
                 className: 'btn btn-primary',
                 action: function () {
-                    window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate, '_blank');
+                    window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate + '/' + codgas + '/' + supplier, '_blank');
                 }
             }
         ],
@@ -1713,6 +1714,8 @@ async function movement_analysis_table(){
             data: {
                 'fromDate':fromDate,
                 'untilDate':untilDate,
+                'codgas':codgas,
+                'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
             timeout: 600000, 
@@ -1753,7 +1756,7 @@ async function movement_analysis_table(){
             {'data': 'RFC'},
             {'data': 'Remision'},
             {'data': 'Vehiculo'},
-            {'data': 'Acciones'},
+            {'data': 'Proveedor'},
         ],
         deferRender: true,
         // destroy: true, 

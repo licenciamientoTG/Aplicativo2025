@@ -60,6 +60,11 @@ class EstacionesModel extends Model{
         return ($this->sql->select($query)) ?: false ;
     }
 
+    public function get_select_stations() : array|false {
+        $query = 'SELECT [Codigo],[Nombre] FROM [TG].[dbo].[Estaciones] WHERE Codigo NOT IN (0,4,20) ORDER BY Codigo;';
+        return ($this->sql->select($query)) ?: false ;
+    }
+
     /**
      * @param $data
      * @return bool
