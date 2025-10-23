@@ -229,39 +229,31 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 }
 #mailModeBadge{ font-size: .8rem; }
 
-
 /* === FIX: layout del ítem de cliente para que el checkbox nunca quede debajo === */
 #mailModalBA .ba-client-item.form-check{
-  /* anula offsets de Bootstrap y usa grid */
   padding-left: 0 !important;
   margin: 0;
   display: grid;
-  grid-template-columns: 22px 1fr; /* 22px para el checkbox, resto para el texto */
+  grid-template-columns: 22px 1fr;
   align-items: start;
   gap: .5rem;
   padding: .45rem .4rem;
   border-bottom: 1px solid #f1f3f5;
 }
 #mailModalBA .ba-client-item.form-check:last-child{ border-bottom: 0; }
-
-/* el input ya no necesita márgenes/posicionamientos "raros" de Bootstrap */
 #mailModalBA .ba-client-item .form-check-input{
   margin: 0 !important;
   float: none;
   position: static;
   transform: none;
 }
-
-/* el label ocupa la columna flexible y permite truncado correcto */
 #mailModalBA .ba-client-item .form-check-label{
   margin: 0;
   width: 100%;
-  min-width: 0;           /* clave para que elipsis funcione */
-  display: block;         /* no hace falta flex aquí */
+  min-width: 0;
+  display: block;
   cursor: pointer;
 }
-
-/* contenedor de textos con truncado */
 #mailModalBA .ba-client-item .client-text{ min-width: 0; }
 #mailModalBA .ba-client-item .client-name,
 #mailModalBA .ba-client-item .client-email{
@@ -269,13 +261,9 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* estados sin correo: rojo + deshabilitado visible */
 #mailModalBA .ba-client-item.no-email .client-name{ color: #c0392b; }
 #mailModalBA .ba-client-item.no-email .form-check-input{ cursor: not-allowed; }
 #mailModalBA .ba-client-item.no-email .form-check-input:disabled{ opacity: .45; }
-
-/* opcional: resaltar al pasar el mouse */
 #mailModalBA .ba-client-item:hover{ background: #fafafa; }
 
 </style>
@@ -290,7 +278,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 
       <!-- Header con filtros -->
       <div class="card-header py-3">
-        <form method="get" class="row gy-3 gx-3 align-items-end">
+        <form id="baFilterForm" method="get" class="row gy-3 gx-3 align-items-end">
           <!-- Cuenta -->
           <div class="col-12 col-md-6 col-lg-3">
             <label for="cta" class="form-label mb-1">Cuenta</label>
@@ -608,61 +596,105 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
           </div>
 
           <!-- Selección de clientes (solo Facturas) -->
-          <div id="clientListSection" class="mb-3" style="display:none;">
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <label class="form-label mb-0">Clientes a enviar (se usa el correo del cliente):</label>
-              <div class="btn-group btn-group-sm">
-                <button type="button" id="btnSelAllClients" class="btn btn-outline-secondary">Seleccionar todos</button>
-                <button type="button" id="btnSelNoneClients" class="btn btn-outline-secondary">Limpiar</button>
-              </div>
-            </div>
+       <div id="clientListSection" class="mb-3" style="display:none;">
 
-            <!-- 🔎 Buscador -->
-            <div class="input-group input-group-sm mb-2">
-              <span class="input-group-text"><i class="fa fa-search"></i></span>
-              <input type="text" id="clientSearch" class="form-control" placeholder="Buscar cliente o correo…">
-            </div>
-            <div class="small text-muted mb-2">
-              <span id="clientCount">Mostrando 0 de 0</span>
-            </div>
+  <!-- Encabezado + botón Filtros -->
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <label class="form-label mb-0">Clientes a enviar (se usa el correo del cliente):</label>
 
-            <!-- Listado -->
-            <div id="clientListWrap" class="ba-client-list">
-              {% set clientes_unicos = [] %}
-              {% for r in rows_det %}
-                {% if r.Cliente is defined and r.Cliente is not empty and (r.Cliente not in clientes_unicos) %}
-                  {% set clientes_unicos = clientes_unicos|merge([r.Cliente]) %}
-                {% endif %}
-              {% endfor %}
-              {% for c in clientes_unicos|sort %}
-                {% set c_mail = '' %}
-                {% for r in rows_det %}
-                  {% if r.Cliente == c and r.correo is defined and r.correo is not empty %}
-                    {% set c_mail = r.correo %}
-                  {% endif %}
-                {% endfor %}
-                <div class="form-check ba-client-item {{ c_mail ? '' : 'no-email' }}"
-                     data-client-name="{{ c|lower }}"
-                     data-client-email="{{ (c_mail|lower) }}">
-                  <input class="form-check-input chk-client" type="checkbox"
-                         value="{{ c|e }}" id="cli_{{ loop.index }}"
-                         data-email="{{ c_mail }}" {{ c_mail ? '' : 'disabled' }}>
-                  <label class="form-check-label w-100" for="cli_{{ loop.index }}">
-                    <div class="client-text">
-                      <div class="client-name truncate-1" title="{{ c }}">{{ c }}</div>
-                      {% if c_mail %}
-                        <div class="client-email truncate-1 text-muted" title="{{ c_mail }}">{{ c_mail }}</div>
-                      {% endif %}
-                    </div>
-                  </label>
-                </div>
-              {% endfor %}
-            </div>
+    <div class="d-flex align-items-center gap-2">
+      <!-- Botón que muestra/oculta los filtros -->
+      <button type="button"
+              class="btn btn-outline-secondary btn-sm"
+              data-bs-toggle="collapse"
+              data-bs-target="#clientFiltersCollapse"
+              aria-expanded="false"
+              aria-controls="clientFiltersCollapse">
+        <i class="fa fa-filter me-1"></i> Filtros
+      </button>
 
-            <small class="text-muted d-block mt-2">
-              Se enviará un correo <b>individual</b> por cada cliente seleccionado, adjuntando su Excel filtrado.
-            </small>
+      <div class="btn-group btn-group-sm">
+        <button type="button" id="btnSelAllClients" class="btn btn-outline-secondary">Seleccionar todos</button>
+        <button type="button" id="btnSelNoneClients" class="btn btn-outline-secondary">Limpiar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel colapsable con los filtros -->
+  <div id="clientFiltersCollapse" class="collapse">
+    <div class="card card-body p-2 mb-2">
+
+      <!-- Selección por % de adeudo -->
+      <div class="input-group input-group-sm mb-2">
+        <span class="input-group-text">Seleccionar clientes con % de adeudo ≥</span>
+        <input type="number" id="pctThreshold" class="form-control" min="0" max="100" step="1" placeholder="50">
+        <span class="input-group-text">%</span>
+        <button type="button" id="btnSelByPct" class="btn btn-outline-primary">Aplicar</button>
+      </div>
+      <div class="small text-muted mb-2">
+        Se toma el valor de la columna <b>% de vencimiento</b> de la pestaña <b>Totales</b>.
+      </div>
+
+      <!-- Selección por Total vencido -->
+      <div class="input-group input-group-sm mb-2">
+        <span class="input-group-text">Seleccionar clientes con Total vencido ≥</span>
+        <input type="number" id="totVencThreshold" class="form-control" min="0" step="0.01" placeholder="100000">
+        <button type="button" id="btnSelByTotVenc" class="btn btn-outline-primary">Aplicar</button>
+      </div>
+      <div class="small text-muted mb-2">
+        Se suma el <b>Total vencido</b> por cliente (todas sus filas visibles) de la pestaña <b>Totales</b>.
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 🔎 Buscador -->
+  <div class="input-group input-group-sm mb-2">
+    <span class="input-group-text"><i class="fa fa-search"></i></span>
+    <input type="text" id="clientSearch" class="form-control" placeholder="Buscar cliente o correo…">
+  </div>
+  <div class="small text-muted mb-2">
+    <span id="clientCount">Mostrando 0 de 0</span>
+  </div>
+
+  <!-- Listado -->
+  <div id="clientListWrap" class="ba-client-list">
+    {% set clientes_unicos = [] %}
+    {% for r in rows_det %}
+      {% if r.Cliente is defined and r.Cliente is not empty and (r.Cliente not in clientes_unicos) %}
+        {% set clientes_unicos = clientes_unicos|merge([r.Cliente]) %}
+      {% endif %}
+    {% endfor %}
+    {% for c in clientes_unicos|sort %}
+      {% set c_mail = '' %}
+      {% for r in rows_det %}
+        {% if r.Cliente == c and r.correo is defined and r.correo is not empty %}
+          {% set c_mail = r.correo %}
+        {% endif %}
+      {% endfor %}
+      <div class="form-check ba-client-item {{ c_mail ? '' : 'no-email' }}"
+           data-idx="{{ loop.index }}"
+           data-client-name="{{ c|lower }}"
+           data-client-email="{{ (c_mail|lower) }}">
+        <input class="form-check-input chk-client" type="checkbox"
+               value="{{ c|e }}" id="cli_{{ loop.index }}"
+               data-email="{{ c_mail }}" {{ c_mail ? '' : 'disabled' }}>
+        <label class="form-check-label w-100" for="cli_{{ loop.index }}">
+          <div class="client-text">
+            <div class="client-name truncate-1" title="{{ c }}">{{ c }}</div>
+            {% if c_mail %}
+              <div class="client-email truncate-1 text-muted" title="{{ c_mail }}">{{ c_mail }}</div>
+            {% endif %}
           </div>
+        </label>
+      </div>
+    {% endfor %}
+  </div>
+
+  <small class="text-muted d-block mt-2">
+    Se enviará un correo <b>individual</b> por cada cliente seleccionado, adjuntando su Excel filtrado.
+  </small>
+</div>
 
           <!-- Mensaje -->
           <div class="mb-2">
@@ -690,17 +722,82 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 
 {% block myjs %}
 
+<!-- ===== Helpers de "loading" ===== -->
+<script>
+/* Agrega/quita la clase global "loading" al <body> y marca aria-busy */
+function baSetLoading(on){
+  document.body.classList.toggle('loading', !!on);
+  document.body.setAttribute('aria-busy', on ? 'true' : 'false');
+}
+
+/* Mostrar loading cuando se consulta (GET del formulario) */
+document.addEventListener('DOMContentLoaded', function(){
+  const form = document.getElementById('baFilterForm');
+  if (form){
+    form.addEventListener('submit', function(){
+      baSetLoading(true);
+      const btn = form.querySelector('button[type="submit"]');
+      if (btn){ btn.disabled = true; }
+    });
+  }
+});
+</script>
+
 <script>
 /** Filtro + selección del modal (Facturas) */
 document.addEventListener('DOMContentLoaded', function () {
-  const search = document.getElementById('clientSearch');
-  const wrap   = document.getElementById('clientListWrap');
-  const count  = document.getElementById('clientCount');
-  const btnAll = document.getElementById('btnSelAllClients');
-  const btnNone= document.getElementById('btnSelNoneClients');
-  const modalEl= document.getElementById('mailModalBA');
+  const search   = document.getElementById('clientSearch');
+  const wrap     = document.getElementById('clientListWrap');
+  const count    = document.getElementById('clientCount');
+  const btnAll   = document.getElementById('btnSelAllClients');
+  const btnNone  = document.getElementById('btnSelNoneClients');
+  const modalEl  = document.getElementById('mailModalBA');
+
+  // Selección por % y por Total Vencido
+  const btnByPct      = document.getElementById('btnSelByPct');
+  const pctInput      = document.getElementById('pctThreshold');
+  const btnByTotVenc  = document.getElementById('btnSelByTotVenc');
+  const totVencInput  = document.getElementById('totVencThreshold');
 
   if (!wrap || !count) return;
+
+  // --- helpers locales ---
+  function stripHTMLLocal(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
+  function parsePercentLocal(txt){
+    if (txt == null) return NaN;
+    const s = (txt+'').replace('%','').replace(/[^0-9.\-]/g,'');
+    const v = parseFloat(s);
+    return isNaN(v) ? NaN : v;
+  }
+  function parseMoneyLocal(txt){
+    if (txt == null) return NaN;
+    const s = (txt+'').replace(/[^0-9,.\-]/g,'').replace(/,/g,''); // quita $ y comas
+    const v = parseFloat(s);
+    return isNaN(v) ? NaN : v;
+  }
+
+  // --- Reordenar: seleccionados primero (luego alfabético, luego data-idx) ---
+  function reorderListSelectedFirst(){
+    const items = Array.from(wrap.querySelectorAll('.ba-client-item'));
+    items.sort((a, b) => {
+      const ac = a.querySelector('.chk-client')?.checked ? 0 : 1;
+      const bc = b.querySelector('.chk-client')?.checked ? 0 : 1;
+      if (ac !== bc) return ac - bc;
+
+      const an = (a.getAttribute('data-client-name') || '');
+      const bn = (b.getAttribute('data-client-name') || '');
+      if (an < bn) return -1;
+      if (an > bn) return 1;
+
+      const ai = parseInt(a.getAttribute('data-idx') || '0', 10);
+      const bi = parseInt(b.getAttribute('data-idx') || '0', 10);
+      return ai - bi;
+    });
+    const frag = document.createDocumentFragment();
+    items.forEach(it => frag.appendChild(it));
+    wrap.appendChild(frag);
+  }
+  window.baReorderClientList = reorderListSelectedFirst;
 
   function updateCount() {
     const total = wrap.querySelectorAll('.ba-client-item').length;
@@ -718,6 +815,39 @@ document.addEventListener('DOMContentLoaded', function () {
       it.setAttribute('data-hidden', match ? '0' : '1');
     });
     updateCount();
+    reorderListSelectedFirst();
+  }
+
+  // Mapas construidos desde pestaña Totales (usando DataTables de Totales)
+  function buildPctMapFromTotales(useFiltered=true){
+    const dt = window.dtBalance;
+    if (!dt || !dt.rows) return null;
+    const src = useFiltered ? dt.rows({search:'applied'}) : dt.rows();
+    const map = {};
+    src.every(function(){
+      const data = this.data();
+      const cli  = stripHTMLLocal(data?.[0] || '');
+      const pct  = parsePercentLocal(data?.[13] || '');
+      if (!cli || isNaN(pct)) return;
+      const key = cli.toLowerCase();
+      if (!(key in map) || pct > map[key]) map[key] = pct; // nos quedamos con el mayor %
+    });
+    return map;
+  }
+  function buildTotVencMapFromTotales(useFiltered=true){
+    const dt = window.dtBalance;
+    if (!dt || !dt.rows) return null;
+    const src = useFiltered ? dt.rows({search:'applied'}) : dt.rows();
+    const map = {};
+    src.every(function(){
+      const data = this.data();
+      const cli  = stripHTMLLocal(data?.[0] || '');
+      const tv   = parseMoneyLocal(data?.[12] || ''); // col 12 = Total vencido
+      if (!cli || isNaN(tv)) return;
+      const key = cli.toLowerCase();
+      map[key] = (map[key] || 0) + tv; // SUMA por cliente
+    });
+    return map;
   }
 
   // Debounce para el input de búsqueda
@@ -734,20 +864,86 @@ document.addEventListener('DOMContentLoaded', function () {
     btnAll.addEventListener('click', function(){
       wrap.querySelectorAll('.ba-client-item:not([data-hidden="1"]) .chk-client:not(:disabled)')
           .forEach(chk => { chk.checked = true; });
+      reorderListSelectedFirst();
     });
   }
   if (btnNone) {
     btnNone.addEventListener('click', function(){
       wrap.querySelectorAll('.ba-client-item:not([data-hidden="1"]) .chk-client:not(:disabled)')
           .forEach(chk => { chk.checked = false; });
+      reorderListSelectedFirst();
     });
   }
 
-  // Reset al abrir el modal
+  // Selección por % de adeudo (≥ umbral)
+  if (btnByPct) {
+    btnByPct.addEventListener('click', function(){
+      const thr = parseFloat((pctInput?.value || '').replace(',','.'));
+      if (isNaN(thr)){
+        if (window.toastr) toastr.warning('Ingresa un porcentaje válido (0 a 100).', 'Atención');
+        return;
+      }
+      const map = buildPctMapFromTotales(true) || {};
+      let selected = 0;
+      wrap.querySelectorAll('.chk-client').forEach(chk=>{
+        const key = (chk.value || '').toLowerCase();
+        const pct = map[key];
+        if (typeof pct === 'number' && pct >= thr && !chk.disabled){
+          chk.checked = true;
+          selected++;
+        }
+      });
+      reorderListSelectedFirst();
+      if (window.toastr){
+        toastr.info(`Seleccionados ${selected} cliente(s) con % ≥ ${thr}%`, 'Filtro por %');
+      }
+    });
+  }
+
+  // NUEVO: Selección por Total vencido (≥ umbral)
+  if (btnByTotVenc) {
+    btnByTotVenc.addEventListener('click', function(){
+      const raw = (totVencInput?.value || '').toString().replace(/[, ]/g,'');
+      const thr = parseFloat(raw);
+      if (isNaN(thr)){
+        if (window.toastr) toastr.warning('Ingresa un monto válido para Total vencido.', 'Atención');
+        return;
+      }
+      const map = buildTotVencMapFromTotales(true) || {};
+      let selected = 0;
+      wrap.querySelectorAll('.chk-client').forEach(chk=>{
+        const key = (chk.value || '').toLowerCase();
+        const tv = map[key];
+        if (typeof tv === 'number' && tv >= thr && !chk.disabled){
+          chk.checked = true;
+          selected++;
+        }
+      });
+      reorderListSelectedFirst();
+      if (window.toastr){
+        toastr.info(
+          `Seleccionados ${selected} cliente(s) con Total vencido ≥ ${thr.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`,
+          'Filtro por Total vencido'
+        );
+      }
+    });
+  }
+
+  // Reordenar cuando se marque/desmarque manualmente
+  wrap.addEventListener('change', function(e){
+    if (e.target.classList.contains('chk-client')) {
+      reorderListSelectedFirst();
+    }
+  });
+
+  // Reset + reorden al abrir el modal
   if (modalEl) {
     modalEl.addEventListener('shown.bs.modal', function(){
       if (search) { search.value = ''; }
+      if (pctInput && !pctInput.value) pctInput.value = '50'; // default ejemplo
+      if (totVencInput && !totVencInput.value) totVencInput.value = ''; // vacío por defecto
       filterList('');
+      reorderListSelectedFirst();
     });
   }
 
@@ -1156,12 +1352,10 @@ function ba_buildWorkbookBase64(opt){
 }
 
 /* Construye workbook SOLO para un cliente (pestaña Facturas) */
-// --- helpers ---
 function stripHTML(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
 function parseNumberLike(txt){
   const t = stripHTML(txt);
   if (!/[0-9]/.test(t)) return null;
-  // formato "1,234,567.89" => quitar comas de miles, respetar punto decimal
   const n = parseFloat(t.replace(/,/g,''));
   return isNaN(n) ? null : n;
 }
@@ -1174,41 +1368,34 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
   const orig = document.getElementById(tableId);
   if (!orig || !dtInstance) return null;
 
-  // columnas visibles (como el usuario las ve)
   const visibleIdx = dtInstance.columns(':visible').indexes().toArray();
-
-  // encabezados visibles
   const thead = orig.tHead && orig.tHead.rows.length ? orig.tHead.rows[0] : null;
   const headers = visibleIdx.map(i => thead ? (thead.cells[i]?.innerText || '').trim() : '');
 
-  // qué columnas son numéricas (para meter números reales al Excel)
   const NUM_HEADERS = new Set([
     'Saldo Actual','Por Vencer','Vencido 1-15','Vencido 16-30',
     'Vencido 31-45','Vencido 45+','Total Vencido'
   ]);
 
-  // recolectar filas de ese cliente desde DataTables (todas las páginas)
   const rows = [];
   dtInstance.rows({ search:'applied' }).every(function(){
-    const data = this.data();           // array con HTML por celda
-    const cliHidden = stripHTML(data[11] || '');  // col oculta = cliente
+    const data = this.data();
+    const cliHidden = stripHTML(data[11] || '');
     if (cliHidden !== clientName) return;
 
     const row = visibleIdx.map((idx, j) => {
       const raw = data[idx];
       if (NUM_HEADERS.has(headers[j])) {
         const n = parseNumberLike(raw);
-        return (n === null) ? stripHTML(raw) : n; // número real si aplica
+        return (n === null) ? stripHTML(raw) : n;
       }
       return stripHTML(raw);
     });
     rows.push(row);
   });
 
-  // si no hubo filas, igual devolvemos algo válido (evita “solo cabecera”)
   if (!rows.length) return null;
 
-  // construir hoja por AOA
   const aoa = [ headers, ...rows ];
   const ws  = XLSX.utils.aoa_to_sheet(aoa);
   if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
@@ -1268,6 +1455,8 @@ document.addEventListener('DOMContentLoaded', function(){
           chk.checked = (chk.value === current);
         });
       }
+      // Reordenar seleccionados al inicio
+      if (window.baReorderClientList) window.baReorderClientList();
     }
     document.getElementById('mailBody_ba').value = '';
     mailProgress.style.display = 'none';
@@ -1280,14 +1469,16 @@ document.addEventListener('DOMContentLoaded', function(){
   const btnFact = document.getElementById('btnMailFacturas');
   if (btnFact) btnFact.addEventListener('click', ()=> openModal('facturas'));
 
-  // Seleccionar todos / ninguno (clientes)
+  // Seleccionar todos / ninguno (clientes) - reordenar después
   const btnAll = document.getElementById('btnSelAllClients');
   const btnNone = document.getElementById('btnSelNoneClients');
   if (btnAll) btnAll.addEventListener('click', ()=>{
     document.querySelectorAll('#clientListSection .chk-client').forEach(chk=>chk.checked=true);
+    window.baReorderClientList && window.baReorderClientList();
   });
   if (btnNone) btnNone.addEventListener('click', ()=>{
     document.querySelectorAll('#clientListSection .chk-client').forEach(chk=>chk.checked=false);
+    window.baReorderClientList && window.baReorderClientList();
   });
 
   // Envío
@@ -1301,10 +1492,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
     if (ba_mailMode === 'totales'){
       const file = window.__ba_totales_file;
-      if (!file){ toastr.error('No fue posible preparar el Excel.', 'Error'); return; }
       const sentTo = (document.getElementById('sentTo_ba').value || '').trim();
+      if (!file){ toastr.error('No fue posible preparar el Excel.', 'Error'); return; }
       if (!sentTo){ toastr.warning('Indica al menos un destinatario.', 'Atención'); return; }
 
+      baSetLoading(true);
       $.ajax({
         url:'/income/balance_age_send_mail',
         method:'POST',
@@ -1321,13 +1513,15 @@ document.addEventListener('DOMContentLoaded', function(){
             const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
             if (r.status === 'success'){
               toastr.success(r.message || 'Correo enviado.', 'Éxito');
-              modal.hide();
+              const modal = bootstrap.Modal.getInstance(document.getElementById('mailModalBA'));
+              modal && modal.hide();
             } else {
               toastr.error(r.message || 'No se pudo enviar el correo.', 'Error');
             }
           }catch(_){ toastr.error('Respuesta inesperada del servidor.','Error'); }
         },
-        error:function(){ toastr.error('Error de red o del servidor.','Error'); }
+        error:function(){ toastr.error('Error de red o del servidor.','Error'); },
+        complete:function(){ baSetLoading(false); }
       });
 
     } else {
@@ -1341,19 +1535,24 @@ document.addEventListener('DOMContentLoaded', function(){
         'Vencido 31-45':12,'Vencido 45+':12,'Total Vencido':14
       };
       let idx = 0, ok = 0, fail = 0;
-      mailProgress.style.display = ''; mailProgress.textContent = `Enviando 0/${chks.length}…`;
+      const modal = bootstrap.Modal.getInstance(document.getElementById('mailModalBA'));
+      document.getElementById('mailProgress').style.display = '';
+      document.getElementById('mailProgress').textContent = `Enviando 0/${chks.length}…`;
+
+      baSetLoading(true);
 
       (function sendNext(){
         if (idx >= chks.length){
           toastr[fail ? 'warning' : 'success'](`Envío finalizado. OK: ${ok}, Error: ${fail}`);
-          modal.hide();
+          modal && modal.hide();
+          baSetLoading(false);
           return;
         }
         const chk = chks[idx++];
         const cliente = chk.value;
         const email = (chk.dataset.email || '').trim();
         if (!email){
-          fail++; mailProgress.textContent = `(${idx}/${chks.length}) Sin correo para "${cliente}". Saltando…`;
+          fail++; document.getElementById('mailProgress').textContent = `(${idx}/${chks.length}) Sin correo para "${cliente}". Saltando…`;
           setTimeout(sendNext, 300);
           return;
         }
@@ -1367,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', function(){
           filePrefix:'Balance_Facturas'
         });
         if (!file){
-          fail++; mailProgress.textContent = `(${idx}/${chks.length}) Error al generar Excel de "${cliente}".`;
+          fail++; document.getElementById('mailProgress').textContent = `(${idx}/${chks.length}) Error al generar Excel de "${cliente}".`;
           setTimeout(sendNext, 300);
           return;
         }
@@ -1392,7 +1591,7 @@ document.addEventListener('DOMContentLoaded', function(){
           },
           error:function(){ fail++; },
           complete:function(){
-            mailProgress.textContent = `Enviando ${idx}/${chks.length}… (OK: ${ok} / Error: ${fail})`;
+            document.getElementById('mailProgress').textContent = `Enviando ${idx}/${chks.length}… (OK: ${ok} / Error: ${fail})`;
             setTimeout(sendNext, 200);
           }
         });
