@@ -364,6 +364,8 @@ public function balance_age()
         }
     }
 
+    $user_email = $_SESSION['tg_user']['Correo'] ?? '';
+
     echo $this->twig->render($this->route . 'balance_age.html', [
         'rows'        => $rows,
         'rows_det'    => $rows_det,     // <<-- NUEVO
@@ -372,6 +374,7 @@ public function balance_age()
         'cta_sel'     => $cta_sel,
         'gas_sel'     => $gas_sel,
         'submitted'   => $submitted,
+        'user_email'  => $user_email,  
     ]);
 }
 

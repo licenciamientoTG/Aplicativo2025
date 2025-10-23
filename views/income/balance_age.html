@@ -4,16 +4,113 @@
 {% block mycss %}
 <style>
 
-/* Botón Consultar alto 100px y centrado del texto */
+/* ===== Estilos específicos del modal de correo (scopeados) ===== */
+#mailModalBA .client-search {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #fff;
+  padding-bottom: .5rem;
+  margin-bottom: .5rem;
+  border-bottom: 1px solid #f1f3f5;
+}
+#mailModalBA #clientListWrap {
+  max-height: 45vh;
+  overflow: auto;
+  border: 1px solid #e9ecef;
+  border-radius: .5rem;
+  padding: .5rem;
+}
+
+/* Cada fila de cliente */
+#mailModalBA .form-check {
+  padding: .25rem .4rem;
+  border-radius: .5rem;
+  transition: background-color .15s ease;
+}
+#mailModalBA .form-check:hover {
+  background: #f8f9fa;
+}
+
+/* Ajuste de alineación del checkbox */
+#mailModalBA .form-check-input {
+  margin-top: .35rem; /* centra verticalmente con el texto */
+}
+
+/* Contenedor de textos (cliente/correo) que se truncan correctamente */
+#mailModalBA .client-text {
+  min-width: 0;           /* clave para que text-overflow funcione en flex */
+  overflow: hidden;
+}
+#mailModalBA .client-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#mailModalBA .client-email {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: .8rem;
+  opacity: .85;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* Espaciado y truncado en la etiqueta completa */
+#mailModalBA .form-check-label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+}
+#mailModalBA .client-right {
+  flex: 0 0 auto; /* evita que esta parte se trunque */
+  display: inline-flex;
+  align-items: center;
+}
+#mailModalBA .client-chip {
+  font-size: .7rem;
+  padding: .15rem .4rem;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #475569;
+}
+#mailModalBA .client-chip--danger {
+  border-color: #f1c0c0;
+  background: #fff5f5;
+  color: #b42318;
+}
+
+.ba-client-list{
+  max-height:45vh; overflow:auto;
+  border:1px solid #e9ecef; border-radius:.5rem; padding:.5rem;
+  background:#fff;
+}
+.ba-client-item{
+  display:flex; gap:.5rem; align-items:flex-start;
+  padding:.45rem .4rem; border-bottom:1px solid #f1f3f5;
+}
+.ba-client-item:last-child{ border-bottom:none; }
+.ba-client-item:hover{ background:#fafafa; }
+.ba-client-item .form-check-input{ margin-top:.35rem; }
+.ba-client-item .client-text{ min-width:0; }
+.truncate-1{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.client-name{ font-weight:600; line-height:1.2; }
+.client-email{ font-size:.875rem; line-height:1.2; }
+.ba-client-item.no-email .client-name{ color:#c0392b; }  /* rojo si no tiene correo */
+
+/* Botón Consultar alto 60px y centrado del texto */
 .btn-consultar{
   height: 60px;
   width: 200px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 1rem; /* conserva padding horizontal */
-  
+  padding: 0 1rem;
 }
+
 /* -----------------------------
    Estilos DataTables (skin)
 ------------------------------ */
@@ -33,7 +130,7 @@ table.dataTable tfoot td{
 }
 
 /* -----------------------------
-   Solo la tabla scrollea (slide)
+   Solo la tabla scrollea
 ------------------------------ */
 .table-wrap{
   position: relative;
@@ -43,11 +140,11 @@ table.dataTable tfoot td{
   -webkit-overflow-scrolling: touch;
 }
 .table-wrap table{
-  border-collapse: separate; /* sticky + table */
+  border-collapse: separate;
   border-spacing: 0;
 }
 
-/* Select2 del filtro de cliente: mínimo 500px */
+/* Select2 del filtro de cliente: mínimo 400px */
 #clientFilter + .select2-container{
   min-width: 400px !important;
 }
@@ -60,11 +157,7 @@ table.dataTable tfoot td{
   top: 0;
   z-index: 4;
 }
-.table-wrap thead tr{
-  position: sticky !important;
-  top: 0;
-  z-index: 5;
-}
+.table-wrap thead tr{ position: sticky !important; top: 0; z-index: 5; }
 .table-wrap thead th,
 .table-wrap thead td{
   position: sticky !important;
@@ -91,80 +184,101 @@ table.dataTable tfoot td{
 }
 
 /* Colores para % (solo tabla Totales) */
-.pct-green  { background: #c6efce !important; color: #006100 !important; }
-.pct-yellow { background: #fff2cc !important; color: #7f6000 !important; }
-.pct-red    { background: #f8cbad !important; color: #9c0006 !important; }
-td.pct-green, td.pct-yellow, td.pct-red{ border-radius: 2px; }
+.pct-green  { background:#c6efce !important; color:#006100 !important; }
+.pct-yellow { background:#fff2cc !important; color:#7f6000 !important; }
+.pct-red    { background:#f8cbad !important; color:#9c0006 !important; }
+td.pct-green, td.pct-yellow, td.pct-red{ border-radius:2px; }
 
-/* -----------------------------
-   Controles de DataTables fijos
------------------------------- */
+/* Controles de DataTables fijos */
 #dt-controls-top, #dt-controls-bottom,
 #dt-controls-top-det, #dt-controls-bottom-det{
   position: relative; overflow: visible; background: transparent; gap: .75rem;
 }
-#dt-controls-top .dataTables_length label,
-#dt-controls-bottom .dataTables_length label,
-#dt-controls-top-det .dataTables_length label,
-#dt-controls-bottom-det .dataTables_length label,
 .dataTables_length label{
   display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap; margin: 0;
 }
-#dt-controls-top .dataTables_length select,
-#dt-controls-bottom .dataTables_length select,
-#dt-controls-top-det .dataTables_length select,
-#dt-controls-bottom-det .dataTables_length select,
-.dataTables_length select{
-  width: auto !important; display: inline-block; min-width: 72px;
-}
+.dataTables_length select{ width: auto !important; min-width: 72px; }
 .dataTables_filter{ margin-left: auto; }
 #dt-controls-bottom .dataTables_info,
 #dt-controls-bottom-det .dataTables_info{ white-space: nowrap; }
 #dt-controls-bottom .dataTables_paginate,
 #dt-controls-bottom-det .dataTables_paginate{ margin-left: auto; }
 
-/* -----------------------------
-   Extras (pestaña Facturas)
------------------------------- */
-tr.group-start { background: #c6efce !important; font-weight: 600; }
-tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
+/* Extras (pestaña Facturas) */
+tr.group-start { background:#c6efce !important; font-weight:600; }
+tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 
 /* Columna oculta de cliente (para evitar parpadeo antes de DT) */
 .col-cliente-oculto{ display:none; }
 
 .table-wrap .dropdown-menu{ z-index: 1040; }
-.table-wrap::-webkit-scrollbar{ height: 10px; width: 10px; }
+.table-wrap::-webkit-scrollbar{ height:10px; width:10px; }
 .table-wrap::-webkit-scrollbar-thumb{ background-color: rgba(0,0,0,.2); border-radius: 8px; }
 .table-wrap::-webkit-scrollbar-track{ background: transparent; }
 
-/* Más separación entre 'Mostrar _ entradas' y 'Buscar' */
-#dt-controls-top,
-#dt-controls-top-det{
-  gap: 4rem; /* aumenta la separación general */
+/* Más separación entre 'Mostrar' y 'Buscar' */
+#dt-controls-top, #dt-controls-top-det{ gap: 4rem; }
+.dataTables_filter label{
+  display: inline-flex !important; align-items: center; gap:.5rem; white-space: nowrap; margin: 0;
 }
+.dataTables_filter input[type="search"]{ width: 260px; }
 
-/* Poner "Buscar:" e input en una sola línea y centrados verticalmente */
-.dataTables_filter label,
-#dt-controls-top .dataTables_filter label,
-#dt-controls-top-det .dataTables_filter label,
-#dt-controls-bottom .dataTables_filter label,
-#dt-controls-bottom-det .dataTables_filter label{
-  display: inline-flex !important;
-  align-items: center;
-  gap: .5rem;           /* espacio entre texto e input */
-  white-space: nowrap;  /* evita que el label salte de línea */
+/* --------- Modal de correo --------- */
+#clientListWrap{
+  max-height: 260px; overflow: auto; border: 1px solid #e9ecef; border-radius: .5rem; padding:.5rem;
+}
+#mailModeBadge{ font-size: .8rem; }
+
+
+/* === FIX: layout del ítem de cliente para que el checkbox nunca quede debajo === */
+#mailModalBA .ba-client-item.form-check{
+  /* anula offsets de Bootstrap y usa grid */
+  padding-left: 0 !important;
   margin: 0;
+  display: grid;
+  grid-template-columns: 22px 1fr; /* 22px para el checkbox, resto para el texto */
+  align-items: start;
+  gap: .5rem;
+  padding: .45rem .4rem;
+  border-bottom: 1px solid #f1f3f5;
+}
+#mailModalBA .ba-client-item.form-check:last-child{ border-bottom: 0; }
+
+/* el input ya no necesita márgenes/posicionamientos "raros" de Bootstrap */
+#mailModalBA .ba-client-item .form-check-input{
+  margin: 0 !important;
+  float: none;
+  position: static;
+  transform: none;
 }
 
-/* (opcional) ancho del input de búsqueda */
-.dataTables_filter input[type="search"]{
-  width: 260px;         /* ajusta a gusto */
-  display: inline-block;
+/* el label ocupa la columna flexible y permite truncado correcto */
+#mailModalBA .ba-client-item .form-check-label{
+  margin: 0;
+  width: 100%;
+  min-width: 0;           /* clave para que elipsis funcione */
+  display: block;         /* no hace falta flex aquí */
+  cursor: pointer;
 }
+
+/* contenedor de textos con truncado */
+#mailModalBA .ba-client-item .client-text{ min-width: 0; }
+#mailModalBA .ba-client-item .client-name,
+#mailModalBA .ba-client-item .client-email{
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* estados sin correo: rojo + deshabilitado visible */
+#mailModalBA .ba-client-item.no-email .client-name{ color: #c0392b; }
+#mailModalBA .ba-client-item.no-email .form-check-input{ cursor: not-allowed; }
+#mailModalBA .ba-client-item.no-email .form-check-input:disabled{ opacity: .45; }
+
+/* opcional: resaltar al pasar el mouse */
+#mailModalBA .ba-client-item:hover{ background: #fafafa; }
 
 </style>
-
-
 {% endblock %}
 
 {% block menutitle %}Balance por Cliente / Estación{% endblock %}
@@ -207,7 +321,7 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
             </div>
           </div>
 
-         <!-- Botón Consultar alineado a la derecha -->
+          <!-- Botón Consultar -->
           <div class="col-12 col-lg-2 ms-auto text-end">
             <div class="d-grid d-sm-flex justify-content-end">
               <button type="submit" class="btn btn-primary btn-consultar">
@@ -215,7 +329,6 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
               </button>
             </div>
           </div>
-
         </form>
       </div>
 
@@ -237,18 +350,14 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
       </div>
 
       <div class="tab-content">
-        <!-- ===== TAB 1: TOTALES (original) ===== -->
+        <!-- ===== TAB 1: TOTALES ===== -->
         <div class="tab-pane fade show active" id="totales-pane" role="tabpanel" aria-labelledby="totales-tab" tabindex="0">
-
-          <!-- Controles superiores (estáticos) + Excel Totales + ENVIAR MAIL -->
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-0 px-3">
             <div id="dt-controls-top" class="d-flex flex-wrap justify-content-between align-items-center"></div>
-
             <div class="d-flex gap-2">
               <button id="btnExportXLS" type="button" class="btn btn-success btn-sm">
                 <i class="fa-solid fa-file-excel me-1"></i> Exportar a Excel (Totales)
               </button>
-              <!-- NUEVO: enviar por correo (Totales) -->
               <button id="btnMailTotales" type="button" class="btn btn-danger btn-sm">
                 <i class="fa-solid fa-envelope me-1"></i> Enviar por correo
               </button>
@@ -277,22 +386,22 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
               </thead>
               <tbody>
                 {% for r in rows %}
-                  <tr>
-                    <td style="text-align: left !important;">{{ r.Cliente }}</td>
-                    <td>{{ r.Estacion }}</td>
-                    <td>{{ r['ult. deb.'] }}</td>
-                    <td>{{ r['ult. cred.'] }}</td>
-                    <td class="text-end">{{ r.Credito is not null ? r.Credito|number_format(2,'.',',') : '' }}</td>
-                    <td>{{ r['cond. pago'] }}</td>
-                    <td class="text-end">{{ r['Saldo actual']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['Por vencer']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['1-15']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['16-30']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['31-45']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['45+']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['Total vencido']|number_format(2,'.',',') }}</td>
-                    <td class="text-end">{{ r['% de vencimiento'] is not null ? (r['% de vencimiento']|number_format(2,'.',',')) ~ '%' : '' }}</td>
-                  </tr>
+                <tr>
+                  <td style="text-align:left !important;">{{ r.Cliente }}</td>
+                  <td>{{ r.Estacion }}</td>
+                  <td>{{ r['ult. deb.'] }}</td>
+                  <td>{{ r['ult. cred.'] }}</td>
+                  <td class="text-end">{{ r.Credito is not null ? r.Credito|number_format(2,'.',',') : '' }}</td>
+                  <td>{{ r['cond. pago'] }}</td>
+                  <td class="text-end">{{ r['Saldo actual']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['Por vencer']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['1-15']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['16-30']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['31-45']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['45+']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['Total vencido']|number_format(2,'.',',') }}</td>
+                  <td class="text-end">{{ r['% de vencimiento'] is not null ? (r['% de vencimiento']|number_format(2,'.',',')) ~ '%' : '' }}</td>
+                </tr>
                 {% endfor %}
               </tbody>
               <tfoot>
@@ -319,20 +428,20 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
           <div id="dt-controls-bottom" class="d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 px-3"></div>
         </div>
 
-        <!-- ===== TAB 2: FACTURAS (detalle agrupado + filtro de cliente) ===== -->
+        <!-- ===== TAB 2: FACTURAS ===== -->
         <div class="tab-pane fade" id="facturas-pane" role="tabpanel" aria-labelledby="facturas-tab" tabindex="0">
 
-          <!-- Top bar: controles DT + Select cliente + Excel + ENVIAR MAIL -->
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-0 px-3">
             <div id="dt-controls-top-det" class="d-flex flex-wrap justify-content-between align-items-center"></div>
 
-            <div class="d-flex flex-wrap align-items-center gap-2" style="min-width: 50%;">
+            <div class="d-flex flex-wrap align-items-center gap-2" style="min-width:50%;">
               {% set clientes_list = [] %}
               {% for r in rows_det %}
                 {% if r.Cliente is defined and r.Cliente is not empty and (r.Cliente not in clientes_list) %}
                   {% set clientes_list = clientes_list|merge([r.Cliente]) %}
                 {% endif %}
               {% endfor %}
+
               <label for="clientFilter" class="form-label mb-0">Cliente:</label>
               <select id="clientFilter" class="form-select form-select-sm" style="min-width:400px;">
                 <option value="">(Todos)</option>
@@ -345,7 +454,6 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
                 <button id="btnExportXLS_det" type="button" class="btn btn-success btn-sm">
                   <i class="fa-solid fa-file-excel me-1"></i> Exportar a Excel (Facturas)
                 </button>
-                <!-- NUEVO: enviar por correo (Facturas) -->
                 <button id="btnMailFacturas" type="button" class="btn btn-danger btn-sm">
                   <i class="fa-solid fa-envelope me-1"></i> Enviar por correo
                 </button>
@@ -357,18 +465,18 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
             <table id="balance_age_table_det" class="table table-striped table-hover table-sm">
               <thead>
                 <tr>
-                  <th>Clientes</th>      {# 0: C-Cliente / - Factura #}
-                  <th>Estación</th>      {# 1 (toggle) #}
-                  <th>Fecha</th>         {# 2 #}
-                  <th>Vencimiento</th>   {# 3 #}
-                  <th>Saldo Actual</th>  {# 4 (sum) #}
-                  <th>Por Vencer</th>    {# 5 (sum) #}
-                  <th>Vencido 1-15</th>  {# 6 (sum) #}
-                  <th>Vencido 16-30</th> {# 7 (sum) #}
-                  <th>Vencido 31-45</th> {# 8 (sum) #}
-                  <th>Vencido 45+</th>   {# 9 (sum) #}
-                  <th>Total Vencido</th> {# 10 (sum) #}
-                  <th>Cliente (hidden)</th> {# 11 (oculta, usada para búsqueda) #}
+                  <th>Clientes</th>
+                  <th>Estación</th>
+                  <th>Fecha</th>
+                  <th>Vencimiento</th>
+                  <th>Saldo Actual</th>
+                  <th>Por Vencer</th>
+                  <th>Vencido 1-15</th>
+                  <th>Vencido 16-30</th>
+                  <th>Vencido 31-45</th>
+                  <th>Vencido 45+</th>
+                  <th>Total Vencido</th>
+                  <th>Cliente (hidden)</th> {# índice 11 oculto #}
                 </tr>
               </thead>
               <tbody>
@@ -460,7 +568,7 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
                   <th class="text-end" data-colsum="8"></th>
                   <th class="text-end" data-colsum="9"></th>
                   <th class="text-end" data-colsum="10"></th>
-                  <th class="text-end" data-colsum=""></th> {# col oculta #}
+                  <th class="text-end" data-colsum=""></th>
                 </tr>
               </tfoot>
             </table>
@@ -476,24 +584,96 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
 </div>
 
 {% if submitted %}
-<!-- ===== NUEVO: Modal para enviar por correo (reutilizable) ===== -->
+<!-- ===== Modal de correo ===== -->
 <div class="modal fade" id="mailModalBA" tabindex="-1" aria-labelledby="mailModalBALabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h1 class="modal-title fs-5" id="mailModalBALabel">Enviar Excel por correo</h1>
+        <h1 class="modal-title fs-5" id="mailModalBALabel">
+          Enviar Excel por correo
+          <span id="mailModeBadge" class="badge bg-secondary ms-2">Totales</span>
+        </h1>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
       </div>
+
       <form id="mail_form_ba">
         <div class="modal-body">
-          <div class="mb-3">
+          <!-- Enviar a (solo Totales) -->
+          <div id="sendToWrap" class="mb-3">
             <label for="sentTo_ba" class="form-label">Enviar a:</label>
-            <input type="text" class="form-control" id="sentTo_ba" name="sentTo_ba" placeholder="correo1@totalgas.com; correo2@totalgas.com">
-            <hr>
-            <small class="text-primary d-block">Se enviará el archivo Excel generado de la pestaña activa.</small>
-            <small class="text-primary d-block">Puedes agregar varios correos separados por <b>;</b> (punto y coma). Solo se aceptan dominios @totalgas.com.</small>
+            <input type="text" class="form-control" id="sentTo_ba" name="sentTo_ba"
+                   placeholder="correo1@totalgas.com; correo2@totalgas.com"
+                   value="{{ user_email }}">
+            <small class="text-muted">Puedes agregar varios correos separados por <b>;</b>.</small>
           </div>
+
+          <!-- Selección de clientes (solo Facturas) -->
+          <div id="clientListSection" class="mb-3" style="display:none;">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <label class="form-label mb-0">Clientes a enviar (se usa el correo del cliente):</label>
+              <div class="btn-group btn-group-sm">
+                <button type="button" id="btnSelAllClients" class="btn btn-outline-secondary">Seleccionar todos</button>
+                <button type="button" id="btnSelNoneClients" class="btn btn-outline-secondary">Limpiar</button>
+              </div>
+            </div>
+
+            <!-- 🔎 Buscador -->
+            <div class="input-group input-group-sm mb-2">
+              <span class="input-group-text"><i class="fa fa-search"></i></span>
+              <input type="text" id="clientSearch" class="form-control" placeholder="Buscar cliente o correo…">
+            </div>
+            <div class="small text-muted mb-2">
+              <span id="clientCount">Mostrando 0 de 0</span>
+            </div>
+
+            <!-- Listado -->
+            <div id="clientListWrap" class="ba-client-list">
+              {% set clientes_unicos = [] %}
+              {% for r in rows_det %}
+                {% if r.Cliente is defined and r.Cliente is not empty and (r.Cliente not in clientes_unicos) %}
+                  {% set clientes_unicos = clientes_unicos|merge([r.Cliente]) %}
+                {% endif %}
+              {% endfor %}
+              {% for c in clientes_unicos|sort %}
+                {% set c_mail = '' %}
+                {% for r in rows_det %}
+                  {% if r.Cliente == c and r.correo is defined and r.correo is not empty %}
+                    {% set c_mail = r.correo %}
+                  {% endif %}
+                {% endfor %}
+                <div class="form-check ba-client-item {{ c_mail ? '' : 'no-email' }}"
+                     data-client-name="{{ c|lower }}"
+                     data-client-email="{{ (c_mail|lower) }}">
+                  <input class="form-check-input chk-client" type="checkbox"
+                         value="{{ c|e }}" id="cli_{{ loop.index }}"
+                         data-email="{{ c_mail }}" {{ c_mail ? '' : 'disabled' }}>
+                  <label class="form-check-label w-100" for="cli_{{ loop.index }}">
+                    <div class="client-text">
+                      <div class="client-name truncate-1" title="{{ c }}">{{ c }}</div>
+                      {% if c_mail %}
+                        <div class="client-email truncate-1 text-muted" title="{{ c_mail }}">{{ c_mail }}</div>
+                      {% endif %}
+                    </div>
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+
+            <small class="text-muted d-block mt-2">
+              Se enviará un correo <b>individual</b> por cada cliente seleccionado, adjuntando su Excel filtrado.
+            </small>
+          </div>
+
+          <!-- Mensaje -->
+          <div class="mb-2">
+            <label for="mailBody_ba" class="form-label">Mensaje (opcional):</label>
+            <textarea id="mailBody_ba" class="form-control form-control-sm" rows="3"
+                      placeholder="Escribe un mensaje breve para el destinatario..."></textarea>
+          </div>
+
+          <div id="mailProgress" class="small text-muted" style="display:none;">Enviando…</div>
         </div>
+
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
           <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
@@ -502,17 +682,87 @@ tr.group-total { background: #e2f0d9 !important; font-weight: 700; }
     </div>
   </div>
 </div>
+
 {% endif %}
+
+
 {% endblock %}
 
 {% block myjs %}
+
+<script>
+/** Filtro + selección del modal (Facturas) */
+document.addEventListener('DOMContentLoaded', function () {
+  const search = document.getElementById('clientSearch');
+  const wrap   = document.getElementById('clientListWrap');
+  const count  = document.getElementById('clientCount');
+  const btnAll = document.getElementById('btnSelAllClients');
+  const btnNone= document.getElementById('btnSelNoneClients');
+  const modalEl= document.getElementById('mailModalBA');
+
+  if (!wrap || !count) return;
+
+  function updateCount() {
+    const total = wrap.querySelectorAll('.ba-client-item').length;
+    const visible = wrap.querySelectorAll('.ba-client-item:not([data-hidden="1"])').length;
+    count.textContent = `Mostrando ${visible} de ${total}`;
+  }
+
+  function filterList(q) {
+    const ql = (q || '').trim().toLowerCase();
+    wrap.querySelectorAll('.ba-client-item').forEach(it => {
+      const name  = it.getAttribute('data-client-name')  || '';
+      const email = it.getAttribute('data-client-email') || '';
+      const match = !ql || name.includes(ql) || email.includes(ql);
+      it.style.display = match ? '' : 'none';
+      it.setAttribute('data-hidden', match ? '0' : '1');
+    });
+    updateCount();
+  }
+
+  // Debounce para el input de búsqueda
+  if (search) {
+    let t;
+    search.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(() => filterList(search.value), 120);
+    });
+  }
+
+  // Seleccionar/Limpiar solo visibles y habilitados
+  if (btnAll) {
+    btnAll.addEventListener('click', function(){
+      wrap.querySelectorAll('.ba-client-item:not([data-hidden="1"]) .chk-client:not(:disabled)')
+          .forEach(chk => { chk.checked = true; });
+    });
+  }
+  if (btnNone) {
+    btnNone.addEventListener('click', function(){
+      wrap.querySelectorAll('.ba-client-item:not([data-hidden="1"]) .chk-client:not(:disabled)')
+          .forEach(chk => { chk.checked = false; });
+    });
+  }
+
+  // Reset al abrir el modal
+  if (modalEl) {
+    modalEl.addEventListener('shown.bs.modal', function(){
+      if (search) { search.value = ''; }
+      filterList('');
+    });
+  }
+
+  // Primera cuenta al cargar
+  updateCount();
+});
+</script>
+
+
 <script src="{{ JS }}administration.js"></script>
 
-<!-- Select2 (para buscador dentro del select de cliente) -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 
-<!-- Helpers % y sumas -->
 <script>
 function parsePercentCellText(txt){
   if (txt == null) return NaN;
@@ -528,18 +778,18 @@ function colorizePctCells(dt){
     const val = parsePercentCellText(this.data());
     td.classList.remove('pct-green','pct-yellow','pct-red');
     if (isNaN(val)) return;
-    if (val <= 10)        td.classList.add('pct-green');
-    else if (val <= 40)   td.classList.add('pct-yellow');
-    else                  td.classList.add('pct-red');
+    if (val <= 10) td.classList.add('pct-green');
+    else if (val <= 40) td.classList.add('pct-yellow');
+    else td.classList.add('pct-red');
   });
   const $cell = $(dt.table().footer()).find('[data-colpct="13"]');
   if ($cell.length){
     const val = parsePercentCellText($cell.text());
     $cell.removeClass('pct-green pct-yellow pct-red');
     if (!isNaN(val)){
-      if (val <= 10)        $cell.addClass('pct-green');
-      else if (val <= 40)   $cell.addClass('pct-yellow');
-      else                  $cell.addClass('pct-red');
+      if (val <= 10) $cell.addClass('pct-green');
+      else if (val <= 40) $cell.addClass('pct-yellow');
+      else $cell.addClass('pct-red');
     }
   }
 }
@@ -552,28 +802,28 @@ function sumColumn(api, colIdx) {
 }
 </script>
 
-<!-- ===== Inicialización TOTALES (sin cambios) ===== -->
+<!-- ===== Inicialización TOTALES ===== -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const tbl = document.getElementById('balance_age_table');
   if (!tbl) return;
 
   const dt = $('#balance_age_table').DataTable({
-    autoWidth: false, ordering: true, order: [],
-    searching: true, paging: true, info: true, dom: 'lfrtip',
-    pageLength: 50,
-    lengthMenu: [[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
-    language: {
-      lengthMenu: 'Mostrar _MENU_ entradas',
-      info: 'Mostrando _START_ a _END_ de _TOTAL_ entradas',
-      infoEmpty: 'Mostrando 0 a 0 de 0 entradas',
-      infoFiltered: '(filtrado de _MAX_ entradas totales)',
-      search: 'Buscar:',
-      paginate: { first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
+    autoWidth:false, ordering:true, order:[],
+    searching:true, paging:true, info:true, dom:'lfrtip',
+    pageLength:50,
+    lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
+    language:{
+      lengthMenu:'Mostrar _MENU_ entradas',
+      info:'Mostrando _START_ a _END_ de _TOTAL_ entradas',
+      infoEmpty:'Mostrando 0 a 0 de 0 entradas',
+      infoFiltered:'(filtrado de _MAX_ entradas totales)',
+      search:'Buscar:',
+      paginate:{ first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
     },
-    footerCallback: function () {
+    footerCallback:function(){
       const api = this.api();
-      [6,7,8,9,10,11,12].forEach(idx => {
+      [6,7,8,9,10,11,12].forEach(idx=>{
         const total = sumColumn(api, idx);
         $(api.table().footer()).find(`[data-colsum="${idx}"]`)
           .text(total.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}));
@@ -595,12 +845,8 @@ document.addEventListener('DOMContentLoaded', function () {
   colorizePctCells(dt);
 
   const $wrap = $(dt.table().container());
-  $('#dt-controls-top')
-    .append($wrap.find('.dataTables_length'))
-    .append($wrap.find('.dataTables_filter'));
-  $('#dt-controls-bottom')
-    .append($wrap.find('.dataTables_info'))
-    .append($wrap.find('.dataTables_paginate'));
+  $('#dt-controls-top').append($wrap.find('.dataTables_length')).append($wrap.find('.dataTables_filter'));
+  $('#dt-controls-bottom').append($wrap.find('.dataTables_info')).append($wrap.find('.dataTables_paginate'));
 
   const showAll = document.getElementById('show_all');
   const toggleCols = () => {
@@ -608,15 +854,15 @@ document.addEventListener('DOMContentLoaded', function () {
     [1,2,3].forEach(i => dt.column(i).visible(visible, false));
     dt.columns.adjust().draw(false);
   };
-  if (showAll) { toggleCols(); showAll.addEventListener('change', toggleCols); }
+  if (showAll){ toggleCols(); showAll.addEventListener('change', toggleCols); }
 
-  const tabEls = document.querySelectorAll('#baTabs button[data-bs-toggle="tab"]');
-  tabEls.forEach(el => el.addEventListener('shown.bs.tab', () => { dt.columns.adjust(); }));
+  document.querySelectorAll('#baTabs button[data-bs-toggle="tab"]').forEach(el =>
+    el.addEventListener('shown.bs.tab', () => { dt.columns.adjust(); })
+  );
 });
 </script>
 
 <!-- ===== Exportar Excel (Totales) ===== -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const btn = document.getElementById('btnExportXLS');
@@ -679,7 +925,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const addr = XLSX.utils.encode_cell({ r, c: colPctExport });
         const cell = ws[addr]; if (!cell) continue;
         const raw = (cell.v ?? '').toString();
-        theVal100 = parseFloat(raw.replace('%','').replace(/[^0-9.\-]/g,'')); if (isNaN(theVal100)) continue;
+        const theVal100 = parseFloat(raw.replace('%','').replace(/[^0-9.\-]/g,'')); if (isNaN(theVal100)) continue;
         ws[addr] = { t: 'n', v: theVal100/100, z: '0.00%' };
         let fg='C6EFCE', fontColor='006100'; if (theVal100>40){fg='F8CBAD';fontColor='9C0006';} else if (theVal100>10){fg='FFF2CC';fontColor='7F6000';}
         ws[addr].s = { fill:{patternType:"solid",fgColor:{rgb:fg}}, font:{color:{rgb:fontColor}} };
@@ -695,33 +941,30 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-<!-- ===== Inicialización y Export DETALLE ===== -->
+<!-- ===== Inicialización y export (Facturas) ===== -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const tbl2 = document.getElementById('balance_age_table_det');
   if (!tbl2) return;
 
   const dt2 = $('#balance_age_table_det').DataTable({
-    autoWidth: false, ordering: true, order: [],
-    searching: true, paging: true, info: true, dom: 'lfrtip',
-    pageLength: 50,
-    lengthMenu: [[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
-    language: {
-      lengthMenu: 'Mostrar _MENU_ entradas',
-      info: 'Mostrando _START_ a _END_ de _TOTAL_ entradas',
-      infoEmpty: 'Mostrando 0 a 0 de 0 entradas',
-      infoFiltered: '(filtrado de _MAX_ entradas totales)',
-      search: 'Buscar:',
-      paginate: { first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
+    autoWidth:false, ordering:true, order:[],
+    searching:false, paging:true, info:true, dom:'lfrtip',
+    pageLength:50,
+    lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
+    language:{
+      lengthMenu:'Mostrar _MENU_ entradas',
+      info:'Mostrando _START_ a _END_ de _TOTAL_ entradas',
+      infoEmpty:'Mostrando 0 a 0 de 0 entradas',
+      infoFiltered:'(filtrado de _MAX_ entradas totales)',
+      search:'Buscar:',
+      paginate:{ first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
     },
-    /* OCULTA la última columna pero la deja searchable (clave para búsquedas por cliente) */
-    columnDefs: [
-      { targets: [11], visible: false, searchable: true }
-    ],
-    footerCallback: function () {
+    columnDefs:[ { targets:[11], visible:false, searchable:true } ],
+    footerCallback:function(){
       const api = this.api();
       [4,5,6,7,8,9,10].forEach(idx => {
-        const total = api.column(idx, { page: 'current' }).data().reduce((acc, val) => {
+        const total = api.column(idx, { page:'current' }).data().reduce((acc, val) => {
           const n = (val+'').replace(/[^0-9.\-]/g,'');
           const parsed = parseFloat(n);
           return acc + (isNaN(parsed) ? 0 : parsed);
@@ -733,16 +976,10 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   window.dtBalanceDet = dt2;
 
-  // Mover controles a contenedores fijos
   const $wrap2 = $(dt2.table().container());
-  $('#dt-controls-top-det')
-    .append($wrap2.find('.dataTables_length'))
-    .append($wrap2.find('.dataTables_filter'));
-  $('#dt-controls-bottom-det')
-    .append($wrap2.find('.dataTables_info'))
-    .append($wrap2.find('.dataTables_paginate'));
+  $('#dt-controls-top-det').append($wrap2.find('.dataTables_length')).append($wrap2.find('.dataTables_filter'));
+  $('#dt-controls-bottom-det').append($wrap2.find('.dataTables_info')).append($wrap2.find('.dataTables_paginate'));
 
-  // Toggle columnas de Facturas (solo Estación = col 1)
   const showAll = document.getElementById('show_all');
   const toggleCols2 = () => {
     const visible = showAll && showAll.checked;
@@ -752,123 +989,92 @@ document.addEventListener('DOMContentLoaded', function () {
   toggleCols2();
   if (showAll) showAll.addEventListener('change', toggleCols2);
 
-  // Ajuste de anchos al cambiar de pestaña
-  const tabEls = document.querySelectorAll('#baTabs button[data-bs-toggle="tab"]');
-  tabEls.forEach(el => el.addEventListener('shown.bs.tab', () => { dt2.columns.adjust(); }));
+  document.querySelectorAll('#baTabs button[data-bs-toggle="tab"]').forEach(el =>
+    el.addEventListener('shown.bs.tab', () => { dt2.columns.adjust(); })
+  );
 
-  // ---- Select2 para cliente ----
-  function initSelect2(){
+  // Select2 cliente (filtro visual)
+  (function initSelect2(){
     const $sel = $('#clientFilter');
     if (!$sel.length) return;
     $sel.select2({
-      placeholder: '(Todos)',
-      allowClear: true,
-      width: 'resolve',
-      language: { noResults: function(){ return 'Sin resultados'; } }
+      placeholder: '(Todos)', allowClear:true, width:'resolve',
+      language:{ noResults: function(){ return 'Sin resultados'; } }
     });
-
-    // Búsqueda por cliente usando la columna oculta (idx 11)
     function escapeRegex(text){ return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
     $sel.on('change', function(){
       const val = $(this).val() || '';
-      if (val) {
-        dt2.column(11).search('^' + escapeRegex(val) + '$', true, false);
-      } else {
-        dt2.column(11).search('');
-      }
+      if (val) dt2.column(11).search('^' + escapeRegex(val) + '$', true, false);
+      else dt2.column(11).search('');
       dt2.draw();
     });
-  }
-  initSelect2();
+  })();
 
-  // Excel Facturas
+  // Exportar Excel (Facturas - todo lo visible)
   const btn2 = document.getElementById('btnExportXLS_det');
-  if (!btn2) return;
-
-  function buildVisibleOnlyTable2(origTable, visibleIdx) {
-    const tmp = document.createElement('table'); tmp.className = origTable.className;
-    const sections = [
-      {src: origTable.tHead,      dst: tmp.createTHead()},
-      {src: origTable.tBodies[0], dst: tmp.createTBody()},
-      {src: origTable.tFoot,      dst: tmp.createTFoot()}
-    ];
-    sections.forEach(({src, dst}) => {
-      if (!src) return;
-      for (const srcRow of src.rows) {
-        const dstRow = dst.insertRow(-1);
-        visibleIdx.forEach((i) => {
-          const cell = srcRow.cells[i]; if (!cell) return;
-          const newCell = cell.tagName.toLowerCase() === 'th' ? document.createElement('th') : document.createElement('td');
-          newCell.innerHTML = cell.innerHTML; newCell.className = cell.className;
-          dstRow.appendChild(newCell);
-        });
-      }
-    });
-    return tmp;
-  }
-  function getHeaderTextsByIndex2(table) {
-    const headers = [];
-    if (table.tHead && table.tHead.rows.length) {
-      const row = table.tHead.rows[0];
-      for (let i = 0; i < row.cells.length; i++) headers.push((row.cells[i].innerText || row.cells[i].textContent || '').trim());
+  if (btn2){
+    function buildVisibleOnlyTable2(origTable, visibleIdx) {
+      const tmp = document.createElement('table'); tmp.className = origTable.className;
+      const sections = [
+        {src: origTable.tHead,      dst: tmp.createTHead()},
+        {src: origTable.tBodies[0], dst: tmp.createTBody()},
+        {src: origTable.tFoot,      dst: tmp.createTFoot()}
+      ];
+      sections.forEach(({src, dst}) => {
+        if (!src) return;
+        for (const srcRow of src.rows) {
+          const dstRow = dst.insertRow(-1);
+          visibleIdx.forEach((i) => {
+            const cell = srcRow.cells[i]; if (!cell) return;
+            const newCell = cell.tagName.toLowerCase() === 'th' ? document.createElement('th') : document.createElement('td');
+            newCell.innerHTML = cell.innerHTML; newCell.className = cell.className;
+            dstRow.appendChild(newCell);
+          });
+        }
+      });
+      return tmp;
     }
-    return headers;
+    function getHeaderTextsByIndex2(table) {
+      const headers = [];
+      if (table.tHead && table.tHead.rows.length) {
+        const row = table.tHead.rows[0];
+        for (let i = 0; i < row.cells.length; i++) headers.push((row.cells[i].innerText || row.cells[i].textContent || '').trim());
+      }
+      return headers;
+    }
+    btn2.addEventListener('click', function () {
+      const orig = document.getElementById('balance_age_table_det'); if (!orig) return;
+      let visibleIdx = dt2 && typeof dt2.columns === 'function'
+        ? dt2.columns(':visible').indexes().toArray()
+        : Array.from({length: (orig.tHead?.rows[0]?.cells.length || 0)}, (_,i)=>i);
+
+      const mini = buildVisibleOnlyTable2(orig, visibleIdx);
+      const headersExport = getHeaderTextsByIndex2(mini);
+
+      const ws = XLSX.utils.table_to_sheet(mini, { raw: true });
+      ws['!autofilter'] = { ref: ws['!ref'] };
+      const widthMap = {
+        'Clientes':28,'Estación':24,'Fecha':12,'Vencimiento':12,
+        'Saldo Actual':16,'Por Vencer':16,'Vencido 1-15':12,'Vencido 16-30':12,
+        'Vencido 31-45':12,'Vencido 45+':12,'Total Vencido':14,'Cliente (hidden)':28
+      };
+      ws['!cols'] = headersExport.map(h => ({ wch: widthMap[h] || 14 }));
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
+
+      const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
+      const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
+      XLSX.writeFile(wb, `Balance_Facturas_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    });
   }
-
-  btn2.addEventListener('click', function () {
-    const orig = document.getElementById('balance_age_table_det'); if (!orig) return;
-
-    let visibleIdx = dt2 && typeof dt2.columns === 'function'
-      ? dt2.columns(':visible').indexes().toArray()
-      : Array.from({length: (orig.tHead?.rows[0]?.cells.length || 0)}, (_,i)=>i);
-
-    const mini = buildVisibleOnlyTable2(orig, visibleIdx);
-    const headersExport = getHeaderTextsByIndex2(mini);
-
-    const ws = XLSX.utils.table_to_sheet(mini, { raw: true });
-    ws['!autofilter'] = { ref: ws['!ref'] };
-    const widthMap = {
-      'Clientes':28,'Estación':24,'Fecha':12,'Vencimiento':12,
-      'Saldo Actual':16,'Por Vencer':16,'Vencido 1-15':12,'Vencido 16-30':12,
-      'Vencido 31-45':12,'Vencido 45+':12,'Total Vencido':14,'Cliente (hidden)':28
-    };
-    ws['!cols'] = headersExport.map(h => ({ wch: widthMap[h] || 14 }));
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
-
-    const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
-    const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
-    XLSX.writeFile(wb, `Balance_Facturas_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`);
-  });
 });
 </script>
 
 {% if submitted %}
-<!-- ===== NUEVO: Lógica de ENVÍO POR CORREO (Totales/Facturas) ===== -->
+<!-- ===== Envío por correo (Totales / Facturas por cliente) ===== -->
 <script>
-// Utilidades separadas para construir el XLSX en base64 desde la tabla visible
-function ba_buildVisibleOnlyTable(origTable, visibleIdx) {
-  const tmp = document.createElement('table'); tmp.className = origTable.className;
-  const sections = [
-    {src: origTable.tHead,      dst: tmp.createTHead()},
-    {src: origTable.tBodies[0], dst: tmp.createTBody()},
-    {src: origTable.tFoot,      dst: tmp.createTFoot()}
-  ];
-  sections.forEach(({src, dst}) => {
-    if (!src) return;
-    for (const srcRow of src.rows) {
-      const dstRow = dst.insertRow(-1);
-      visibleIdx.forEach((i) => {
-        const cell = srcRow.cells[i]; if (!cell) return;
-        const newCell = cell.tagName.toLowerCase() === 'th' ? document.createElement('th') : document.createElement('td');
-        newCell.innerHTML = cell.innerHTML; newCell.className = cell.className;
-        dstRow.appendChild(newCell);
-      });
-    }
-  });
-  return tmp;
-}
+/* Utilidades comunes */
 function ba_getHeaders(table) {
   const headers = [];
   if (table.tHead && table.tHead.rows.length) {
@@ -877,16 +1083,9 @@ function ba_getHeaders(table) {
   }
   return headers;
 }
-/**
- * Construye el workbook y regresa { filename, file_b64 }
- * @param {Object} opt
- *  - tableId: ID de la tabla origen
- *  - dtInstance: instancia DataTable
- *  - widthMap: mapa de anchos por encabezado
- *  - sheetName: nombre de hoja
- *  - filePrefix: prefijo de archivo
- *  - paintPct: si true, convierte y colorea la columna "% de vencimiento"
- */
+function ba_sanitizeFilenamePart(s){
+  return (s||'').toString().normalize('NFKD').replace(/[^\w\s.-]/g,'').replace(/\s+/g,'_').slice(0,80);
+}
 function ba_buildWorkbookBase64(opt){
   const { tableId, dtInstance, widthMap, sheetName, filePrefix, paintPct } = opt;
   const orig = document.getElementById(tableId);
@@ -895,9 +1094,36 @@ function ba_buildWorkbookBase64(opt){
   const visibleIdx = dtInstance?.columns ? dtInstance.columns(':visible').indexes().toArray()
                                          : Array.from({length: (orig.tHead?.rows[0]?.cells.length || 0)}, (_,i)=>i);
 
-  const mini = ba_buildVisibleOnlyTable(orig, visibleIdx);
-  const headersExport = ba_getHeaders(mini);
-  const ws = XLSX.utils.table_to_sheet(mini, { raw: true });
+  const tmp = document.createElement('table'); tmp.className = orig.className;
+
+  // Header
+  if (orig.tHead){
+    const dstHead = tmp.createTHead();
+    const srcRow = orig.tHead.rows[0];
+    const dstRow = dstHead.insertRow(-1);
+    visibleIdx.forEach(i=>{
+      const cell = srcRow.cells[i]; if (!cell) return;
+      const c = document.createElement('th'); c.innerHTML = cell.innerHTML; c.className = cell.className;
+      dstRow.appendChild(c);
+    });
+  }
+
+  // Body (todo lo visible)
+  const dstBody = tmp.createTBody();
+  const srcBody = orig.tBodies[0];
+  if (srcBody){
+    for (const srcRow of srcBody.rows){
+      const dstRow = dstBody.insertRow(-1);
+      visibleIdx.forEach(i=>{
+        const cell = srcRow.cells[i]; if (!cell) return;
+        const c = document.createElement('td'); c.innerHTML = cell.innerHTML; c.className = cell.className;
+        dstRow.appendChild(c);
+      });
+    }
+  }
+
+  const headersExport = ba_getHeaders(tmp);
+  const ws = XLSX.utils.table_to_sheet(tmp, { raw:true });
   if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
   ws['!cols'] = headersExport.map(h => ({ wch: widthMap[h] || 14 }));
 
@@ -925,18 +1151,99 @@ function ba_buildWorkbookBase64(opt){
   const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
   const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
   const filename = `${filePrefix || 'Balance'}_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`;
-  const file_b64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  const file_b64 = XLSX.write(wb, { bookType:'xlsx', type:'base64' });
   return { filename, file_b64 };
 }
 
-// Estado temporal del adjunto a enviar
-let ba_pendingMail = null;
+/* Construye workbook SOLO para un cliente (pestaña Facturas) */
+// --- helpers ---
+function stripHTML(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
+function parseNumberLike(txt){
+  const t = stripHTML(txt);
+  if (!/[0-9]/.test(t)) return null;
+  // formato "1,234,567.89" => quitar comas de miles, respetar punto decimal
+  const n = parseFloat(t.replace(/,/g,''));
+  return isNaN(n) ? null : n;
+}
 
-// Botones de abrir modal (prepara adjunto)
+/**
+ * Construye un workbook SÓLO con filas del cliente indicado,
+ * usando DataTables (no el DOM) para que incluya todas las páginas.
+ */
+function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientName, sheetName, filePrefix }){
+  const orig = document.getElementById(tableId);
+  if (!orig || !dtInstance) return null;
+
+  // columnas visibles (como el usuario las ve)
+  const visibleIdx = dtInstance.columns(':visible').indexes().toArray();
+
+  // encabezados visibles
+  const thead = orig.tHead && orig.tHead.rows.length ? orig.tHead.rows[0] : null;
+  const headers = visibleIdx.map(i => thead ? (thead.cells[i]?.innerText || '').trim() : '');
+
+  // qué columnas son numéricas (para meter números reales al Excel)
+  const NUM_HEADERS = new Set([
+    'Saldo Actual','Por Vencer','Vencido 1-15','Vencido 16-30',
+    'Vencido 31-45','Vencido 45+','Total Vencido'
+  ]);
+
+  // recolectar filas de ese cliente desde DataTables (todas las páginas)
+  const rows = [];
+  dtInstance.rows({ search:'applied' }).every(function(){
+    const data = this.data();           // array con HTML por celda
+    const cliHidden = stripHTML(data[11] || '');  // col oculta = cliente
+    if (cliHidden !== clientName) return;
+
+    const row = visibleIdx.map((idx, j) => {
+      const raw = data[idx];
+      if (NUM_HEADERS.has(headers[j])) {
+        const n = parseNumberLike(raw);
+        return (n === null) ? stripHTML(raw) : n; // número real si aplica
+      }
+      return stripHTML(raw);
+    });
+    rows.push(row);
+  });
+
+  // si no hubo filas, igual devolvemos algo válido (evita “solo cabecera”)
+  if (!rows.length) return null;
+
+  // construir hoja por AOA
+  const aoa = [ headers, ...rows ];
+  const ws  = XLSX.utils.aoa_to_sheet(aoa);
+  if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
+  ws['!cols'] = headers.map(h => ({ wch: (widthMap[h] || 14) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Facturas');
+
+  const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
+  const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
+  const safeCli = (clientName||'').toString().normalize('NFKD').replace(/[^\w\s.-]/g,'').replace(/\s+/g,'_').slice(0,80);
+  const filename = `${filePrefix || 'Balance_Facturas'}_${cta}_${gas}_${safeCli}_${new Date().toISOString().slice(0,10)}.xlsx`;
+  const file_b64  = XLSX.write(wb, { bookType:'xlsx', type:'base64' });
+
+  return { filename, file_b64 };
+}
+
+/* -------- Modal & envío -------- */
+let ba_mailMode = 'totales';   // 'totales' | 'facturas'
+
 document.addEventListener('DOMContentLoaded', function(){
-  const btnTot = document.getElementById('btnMailTotales');
-  if (btnTot){
-    btnTot.addEventListener('click', function(){
+  const modalEl = document.getElementById('mailModalBA');
+  const modal   = new bootstrap.Modal(modalEl);
+  const badge   = document.getElementById('mailModeBadge');
+  const sendToWrap = document.getElementById('sendToWrap');
+  const clientListSection = document.getElementById('clientListSection');
+  const mailProgress = document.getElementById('mailProgress');
+
+  function openModal(mode){
+    ba_mailMode = mode;
+    if (mode === 'totales'){
+      badge.textContent = 'Totales'; badge.className = 'badge bg-secondary ms-2';
+      sendToWrap.style.display = '';
+      clientListSection.style.display = 'none';
+      // pre-armar archivo de Totales
       const widthMap = {
         'Cliente':28,'Estación':24,'Ult. Déb.':12,'Ult. Créd.':12,'Crédito':14,'Dias Crédito':12,
         'Saldo actual':16,'Por vencer':16,'1-15':10,'16-30':10,'31-45':10,'45+':10,'Total vencido':14,'% de vencimiento':16
@@ -949,112 +1256,150 @@ document.addEventListener('DOMContentLoaded', function(){
         filePrefix: 'Balance_Age',
         paintPct: true
       });
-      if (!res){ toastr.error('No fue posible generar el Excel de Totales.', 'Error'); return; }
-      ba_pendingMail = {
-        ...res,
-        subject: `Balance por Cliente/Estación - Totales (${new Date().toISOString().slice(0,10)})`
-      };
-      new bootstrap.Modal(document.getElementById('mailModalBA')).show();
-    });
+      window.__ba_totales_file = res;  // cache
+    } else {
+      badge.textContent = 'Facturas por cliente'; badge.className = 'badge bg-info ms-2';
+      sendToWrap.style.display = 'none';
+      clientListSection.style.display = '';
+      // Pre-seleccionar el cliente del filtro (si hay)
+      const current = $('#clientFilter').val();
+      if (current){
+        document.querySelectorAll('#clientListSection .chk-client').forEach(chk=>{
+          chk.checked = (chk.value === current);
+        });
+      }
+    }
+    document.getElementById('mailBody_ba').value = '';
+    mailProgress.style.display = 'none';
+    modal.show();
   }
 
-  const btnDet = document.getElementById('btnMailFacturas');
-  if (btnDet){
-    btnDet.addEventListener('click', function(){
+  const btnTot = document.getElementById('btnMailTotales');
+  if (btnTot) btnTot.addEventListener('click', ()=> openModal('totales'));
+
+  const btnFact = document.getElementById('btnMailFacturas');
+  if (btnFact) btnFact.addEventListener('click', ()=> openModal('facturas'));
+
+  // Seleccionar todos / ninguno (clientes)
+  const btnAll = document.getElementById('btnSelAllClients');
+  const btnNone = document.getElementById('btnSelNoneClients');
+  if (btnAll) btnAll.addEventListener('click', ()=>{
+    document.querySelectorAll('#clientListSection .chk-client').forEach(chk=>chk.checked=true);
+  });
+  if (btnNone) btnNone.addEventListener('click', ()=>{
+    document.querySelectorAll('#clientListSection .chk-client').forEach(chk=>chk.checked=false);
+  });
+
+  // Envío
+  const frm = document.getElementById('mail_form_ba');
+  if (!frm) return;
+  frm.addEventListener('submit', function(e){
+    e.preventDefault();
+    const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
+    const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
+    const bodyText = (document.getElementById('mailBody_ba').value || '').trim();
+
+    if (ba_mailMode === 'totales'){
+      const file = window.__ba_totales_file;
+      if (!file){ toastr.error('No fue posible preparar el Excel.', 'Error'); return; }
+      const sentTo = (document.getElementById('sentTo_ba').value || '').trim();
+      if (!sentTo){ toastr.warning('Indica al menos un destinatario.', 'Atención'); return; }
+
+      $.ajax({
+        url:'/income/balance_age_send_mail',
+        method:'POST',
+        data:{
+          sentTo: sentTo,
+          subject: `Balance por Cliente/Estación - Totales (${new Date().toISOString().slice(0,10)})`,
+          body: bodyText,
+          filename: file.filename,
+          file_b64: file.file_b64,
+          cta: cta, gas: gas
+        },
+        success:function(resp){
+          try{
+            const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
+            if (r.status === 'success'){
+              toastr.success(r.message || 'Correo enviado.', 'Éxito');
+              modal.hide();
+            } else {
+              toastr.error(r.message || 'No se pudo enviar el correo.', 'Error');
+            }
+          }catch(_){ toastr.error('Respuesta inesperada del servidor.','Error'); }
+        },
+        error:function(){ toastr.error('Error de red o del servidor.','Error'); }
+      });
+
+    } else {
+      // FACTURAS: enviar un correo por cliente seleccionado
+      const chks = Array.from(document.querySelectorAll('#clientListSection .chk-client:checked'));
+      if (!chks.length){ toastr.warning('Selecciona al menos un cliente.','Atención'); return; }
+
       const widthMap = {
         'Clientes':28,'Estación':24,'Fecha':12,'Vencimiento':12,
         'Saldo Actual':16,'Por Vencer':16,'Vencido 1-15':12,'Vencido 16-30':12,
         'Vencido 31-45':12,'Vencido 45+':12,'Total Vencido':14
       };
-      const res = ba_buildWorkbookBase64({
-        tableId: 'balance_age_table_det',
-        dtInstance: window.dtBalanceDet,
-        widthMap,
-        sheetName: 'Facturas',
-        filePrefix: 'Balance_Facturas',
-        paintPct: false
-      });
-      if (!res){ toastr.error('No fue posible generar el Excel de Facturas.', 'Error'); return; }
-      ba_pendingMail = {
-        ...res,
-        subject: `Balance por Cliente/Estación - Facturas (${new Date().toISOString().slice(0,10)})`
-      };
-      new bootstrap.Modal(document.getElementById('mailModalBA')).show();
-    });
-  }
+      let idx = 0, ok = 0, fail = 0;
+      mailProgress.style.display = ''; mailProgress.textContent = `Enviando 0/${chks.length}…`;
 
-  // Envío del formulario del modal
-  const frm = document.getElementById('mail_form_ba');
-  if (frm){
-    frm.addEventListener('submit', function(e){
-      e.preventDefault();
-      if (!ba_pendingMail){ toastr.error('No hay archivo preparado para enviar.', 'Error'); return; }
-      const sentTo = (document.getElementById('sentTo_ba').value || '').trim();
-      if (!sentTo){ toastr.warning('Ingrese al menos un destinatario.', 'Atención'); return; }
+      (function sendNext(){
+        if (idx >= chks.length){
+          toastr[fail ? 'warning' : 'success'](`Envío finalizado. OK: ${ok}, Error: ${fail}`);
+          modal.hide();
+          return;
+        }
+        const chk = chks[idx++];
+        const cliente = chk.value;
+        const email = (chk.dataset.email || '').trim();
+        if (!email){
+          fail++; mailProgress.textContent = `(${idx}/${chks.length}) Sin correo para "${cliente}". Saltando…`;
+          setTimeout(sendNext, 300);
+          return;
+        }
 
-      $.ajax({
-        url: '/income/balance_age_send_mail',
-        method: 'POST',
-        data: {
-          sentTo: sentTo,
-          subject: ba_pendingMail.subject,
-          filename: ba_pendingMail.filename,
-          file_b64: ba_pendingMail.file_b64,
-          cta: "{{ cta_sel is not null ? cta_sel : '' }}",
-          gas: "{{ gas_sel is not null ? gas_sel : '' }}"
-        },
-        success: function(resp){
-          try{
-            const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
-            if (r.status === 'success'){
-              toastr.success(r.message || 'Correo enviado.', 'Éxito');
-              const modalEl = document.getElementById('mailModalBA');
-              const modal = bootstrap.Modal.getInstance(modalEl);
-              if (modal) modal.hide();
-              document.getElementById('sentTo_ba').value = '';
-              ba_pendingMail = null;
-            } else {
-              toastr.error(r.message || 'No se pudo enviar el correo.', 'Error');
-            }
-          }catch(_){
-            toastr.error('Respuesta inesperada del servidor.', 'Error');
+        const file = ba_buildClientWorkbookBase64({
+          tableId:'balance_age_table_det',
+          dtInstance: window.dtBalanceDet,
+          widthMap,
+          clientName: cliente,
+          sheetName:'Facturas',
+          filePrefix:'Balance_Facturas'
+        });
+        if (!file){
+          fail++; mailProgress.textContent = `(${idx}/${chks.length}) Error al generar Excel de "${cliente}".`;
+          setTimeout(sendNext, 300);
+          return;
+        }
+
+        $.ajax({
+          url:'/income/balance_age_send_mail',
+          method:'POST',
+          data:{
+            sentTo: email,
+            subject: `Balance por Cliente/Estación - Facturas (${cliente}) (${new Date().toISOString().slice(0,10)})`,
+            body: bodyText || `Adjuntamos el Excel con el detalle de facturas del cliente ${cliente}.`,
+            filename: file.filename,
+            file_b64: file.file_b64,
+            cta: cta, gas: gas
+          },
+          success:function(resp){
+            try{
+              const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
+              if (r.status === 'success'){ ok++; }
+              else { fail++; toastr.error(r.message || `Error al enviar a ${email}`, 'Error'); }
+            }catch(_){ fail++; }
+          },
+          error:function(){ fail++; },
+          complete:function(){
+            mailProgress.textContent = `Enviando ${idx}/${chks.length}… (OK: ${ok} / Error: ${fail})`;
+            setTimeout(sendNext, 200);
           }
-        },
-        error: function(){ toastr.error('Error de red o del servidor.', 'Error'); }
-      });
-    });
-  }
+        });
+      })();
+    }
+  });
 });
 </script>
-
-<script>
-  // Autocompletar el correo del usuario al abrir el modal de envío
-  $(function () {
-    // Ajusta el selector del modal y del input según tu HTML
-    const MODAL_ID = '#baMailModal';
-    const INPUT_ID = '#ba_mail_to';
-
-    $(document).on('show.bs.modal', MODAL_ID, function () {
-      const $input = $(INPUT_ID);
-      if (!$input.length) return;
-
-      // Si ya hay algo escrito, no lo pisamos
-      if (($input.val() || '').trim() !== '') return;
-
-      $.getJSON('/income/balance_age_get_user_email')
-        .done(function (resp) {
-          if (resp && resp.ok && resp.user_mail) {
-            $input.val(resp.user_mail);
-          }
-        })
-        .fail(function () {
-         
-        });
-    });
-  });
-</script>
-
-
-
 {% endif %}
 {% endblock %}
