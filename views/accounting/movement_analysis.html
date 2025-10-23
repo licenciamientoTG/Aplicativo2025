@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
     <div class="card-body">
-        <form method="GET" action="#">
+        <form method="GET" action="#" >
             <div class="row">
                 <div class="col-2">
                     <label class="col-form-label-sm" for="from">Desde:</label>
@@ -14,6 +14,31 @@
                 <div class="col-2">
                     <label class="col-form-label-sm" for="until">Hasta:</label>
                     <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ until }}" required>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label-sm" for="station">Estación:</label>
+                    <select name="station" id="station" class="form-select form-select-sm">
+                        <option value="">-- Todas las estaciones --</option>
+                        {% for s in stations %}
+                            <option value="{{ s.Codigo }}"
+                                {% if s.Codigo == codgas %}selected{% endif %}>
+                                {{ s.Nombre }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label-sm" for="supplier">Proveedor:</label>
+                    <input type="hidden" name="supplier_val" id="supplier_val" value="{{ supplier }}">
+                    <select name="supplier" id="supplier" class="form-select form-select-sm selectpicker" data-live-search="true" title="-- Todos los proveedores --">
+                        <option value="">-- Todos los proveedores --</option>
+                        {% for su in suppliers %}
+                            <option value="{{ su.codopr }}"
+                                {% if su.codopr == supplier %}selected{% endif %}>
+                                {{ su.Entidad }}
+                            </option>
+                        {% endfor %}
+                    </select>
                 </div>
                 <div class="col-2">
                     <label class="col-form-label-sm">&nbsp;</label>
@@ -50,7 +75,7 @@
                     <th>RFC</th>
                     <th>Remision</th>
                     <th>Vehiculo</th>
-                    <th>Acciones</th>
+                    <th>Proveedor</th>
                 </tr>
             </thead>
             <tbody>
@@ -75,7 +100,7 @@
                     <th>RFC</th>
                     <th>Remision</th>
                     <th>Vehiculo</th>
-                    <th>Acciones</th>
+                    <th>Proveedor</th>
                 </tr>
             </tfoot>
         </table>
@@ -86,5 +111,8 @@
 <script src="{{ JS }}accounting.js"></script>
 <script>
     movement_analysis_table();
+    $(document).ready(function() {
+        $('.selectpicker').selectpicker();
+    });
 </script>
 {% endblock %}

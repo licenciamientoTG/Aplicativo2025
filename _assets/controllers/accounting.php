@@ -1017,7 +1017,10 @@ class Accounting{
 
         $from = dateToInt($_POST['fromDate']);
         $until = dateToInt($_POST['untilDate']);
-        if ($rows = $this->Documentos->movement_analysis_table($from,$until)) {
+        $codgas = $_POST['codgas'];
+        $supplier = $_POST['supplier'];
+
+        if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
 
             foreach ($rows as $row) {
                 $data[] = array(
@@ -1031,7 +1034,7 @@ class Accounting{
                     'Facturado'       => $row['Facturado'],
                     'Importe'         => $row['Importe'],
                     'IEPS'            => $row['I.E.P.S'],
-                    'IVA'            => $row['I.V.A.'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
                     'Recargos'        => $row['Recargos'],
                     'TotalFactura'    => $row['TotalFactura'],
                     'Estación'        => $row['Estación'],
@@ -1039,7 +1042,7 @@ class Accounting{
                     'RFC'             => $row['RFC'],
                     'Remision'        => $row['Remision'],
                     'Vehiculo'        => $row['Vehiculo'],
-                    'Acciones'        => 'Acciones'
+                    'Proveedor'       => $row['Proveedor'],
                 );
             }
             $data = array("data" => $data);
@@ -1053,42 +1056,125 @@ class Accounting{
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $from = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
             $until = $_GET['until'] ?? date('Y-m-d', strtotime('-1 day'));
-            echo $this->twig->render($this->route . 'movement_analysis.html', compact('from','until'));
+            $suppliers = $this->Documentos->get_suppliers();
+            $codgas = $_GET['station'] ?? 0 ;
+            $supplier = $_GET['supplier'] ?? 0 ;
+            $stations = $this->estacionesModel->get_select_stations();
+            echo $this->twig->render($this->route . 'movement_analysis.html', compact('from','until','stations','codgas','suppliers','supplier'));
         }
     }
 
-    function print_purchase_receipts($from, $until, $codgas = 0) {
-    if ($rows = $this->Documentos->movement_analysis_table(dateToInt($from), dateToInt($until))) {
-        // Crear una instancia de FPDF
-        $pdf = new PDF_Code128();
-        
-        // Establecer los márgenes
-        $pdf->SetMargins(3, 3, 3);  // Margen izquierdo, margen superior, margen derecho
-        
-        // Establecer el margen inferior
-        $pdf->SetAutoPageBreak(true, 5);  // Activar los saltos automáticos de página y establecer el margen inferior a 5 mm
-        
-        foreach ($rows as $key => $row) {
-            // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
-            $pdf->AddPage('P');
+
+    function print_purchase_receipts($from, $until, $codgas = 0, $supplier = 0) {
+        if ($rows = $this->Documentos->movement_analysis_table(dateToInt($from), dateToInt($until), $codgas, $supplier)) {
+            // Crear una instancia de FPDF
+            $pdf = new PDF_Code128();
             
-            // Configurar fuente para el encabezado
-            $pdf->SetFont('Arial', 'B', 10);
+            // Establecer los márgenes
+            $pdf->SetMargins(5, 5, 5);  // Margen izquierdo, margen superior, margen derecho
             
-            // Título del recibo
-            $pdf->Cell(79, 5, 'RECIBO DE COMPRA', 0, 1, 'C');
+            // Establecer el margen inferior
+            $pdf->SetAutoPageBreak(true, 12);  // Aumentado a 12 mm para el footer
             
+            $pageNumber = 0; // Contador de páginas
+            
+            foreach ($rows as $key => $row) {
+                // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+                $pdf->AddPage('P');
+                $pageNumber++; // Incrementar contador
+                
+                // Configurar fuente para el encabezado
+                $pdf->SetFont('Arial', 'B', 9);
+                
+                // TCabecera
+                $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Empresa']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Ciudad']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+                
+                // Sección de recepción
+                $pdf->SetFont('Arial', 'IB', 7);
+                $pdf->Cell(200, 3, '', 0, 1, 'C');
+                $pdf->Cell(23, 3.6, utf8_decode('Estación'), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, utf8_decode($row['DocDenominacion'] . ' (' .$row['nropcc']. ')'), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+                if ((!empty(trim($row['Factura'])))) {
+                    $factura = "Factura " . $row['Factura'];
+                } else {
+                    $factura = "";
+                }
+                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+                // Sección de tabla
+                $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+                $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+                $pdf->SetFont('Arial', '', 7);
+                $subtotal = 0;
+                $iva_concepto = 0;
+                if ($conceptos = $this->Documentos->get_concepts($row['codgas'], $row['Número'])) {
+                    foreach ($conceptos as $key => $concepto) {
+                        $subtotal += $concepto['Monto'];
+                        if (str_contains($concepto['Concepto'], 'IVA')) {
+                            $iva_concepto += $concepto['Monto'];
+                        }
+                        $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L'); $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'], 3, '.', ','), 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Precio'], 5, '.', ','), 0, 0, 'L'); $pdf->Cell(25, 3.5, number_format($concepto['Monto'], 2, '.', ','), 0, 0, 'L'); $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                    }
+                }
+
+                $pdf->SetFont('Arial', 'B', 7);
+                $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+                $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+                $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+                
+                // Espacio
+                $pdf->Cell(200, 10, '', 0, 1, 'L');
+                $pdf->Cell(33.3, 3.5, utf8_decode('Recepción'), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L'); 
+                if ($receptions = $this->Documentos->get_receptions($row['codgas'], $row['Número'])) {
+                    $pdf->SetFont('Arial', '', 7);
+                    foreach ($receptions as $key => $rec) {
+                        $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L'); 
+                    }
+                }
+
+                
+                
+                $pdf->SetFont('Arial', '', 7);
+                $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+                $pdf->Cell(40, 10, utf8_decode('Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                
+                // AGREGAR PIE DE PÁGINA MANUALMENTE
+                // Guardar posición actual
+                $currentY = $pdf->GetY();
+                
+                // Mover al final de la página (10mm desde el borde inferior)
+                $pdf->SetY(-18);
+                
+                // Configurar fuente para el pie
+                $pdf->SetFont('Arial', 'I', 7);
+                $pdf->Cell(200, 1, '', 'B', 1, 'L');
+                // Agregar los textos del pie
+                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                $pdf->Cell(100, 5, utf8_decode('Página ') . $pageNumber, 0, 0, 'R');
+                
+                // Restaurar la posición Y para el siguiente documento (si lo hay)
+                $pdf->SetY($currentY);
+            }
+            
+            // Salida del PDF
+            $pdf->Output();
+        } else {
+            // Manejar el caso cuando no hay datos
+            echo '<pre>';
+            var_dump("Algo malio sal");
+            die();
         }
-        
-        // Salida del PDF
-        $pdf->Output();
-    } else {
-        // Manejar el caso cuando no hay datos
-        echo '<pre>';
-        var_dump("Algo malio sal");
-        die();
     }
-}
-}
 
-
+}

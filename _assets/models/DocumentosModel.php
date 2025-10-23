@@ -693,18 +693,39 @@ class DocumentosModel extends Model{
                     ')";
         return $this->sql->select($query, []) ?: false;
     }
-    function movement_analysis_table($from, $until){
+
+    function movement_analysis_table($from, $until, $codgas=0,$supplier=0) {
+
+        // Construye la base del WHERE
+        $where = "
+            WHERE
+                t1.fch BETWEEN {$from} AND {$until}
+        ";
+
+        // Si se envía una estación específica (distinta de 0 o cadena vacía)
+        if (!empty($codgas) && $codgas != 0) {
+            $where .= " AND t1.codgas = {$codgas}";
+        }
+
+        // Si se envía una estación específica (distinta de 0 o cadena vacía)
+        if (!empty($supplier) && $supplier != 0) {
+            $where .= " AND t1.codopr = {$supplier}";
+        }
+
+
         $query = "
         SELECT
+            t1.logfch AS LogRegistro,
+            t1.codgas,
             t1.nro AS [Número],
+            t1.Entidad AS Proveedor,
 
             -- FACTURA
             LTRIM(RTRIM(
                 SUBSTRING(
                     x.txt,
                     CHARINDEX('@F:', x.txt) + 3,
-                    CASE 
-<<<<<<< HEAD
+                    CASE
                         WHEN CHARINDEX('@R:', x.txt) > 0 
                             THEN CHARINDEX('@R:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
                         WHEN CHARINDEX('@V:', x.txt) > 0 
@@ -721,13 +742,17 @@ class DocumentosModel extends Model{
 
             -- Suma priorizada
             t3.VolumenRecibido,
+            t3.Recepcion,
             ROUND(t1.can, 3) AS Facturado,
             ROUND(t1.mto / 100.0, 2) AS Importe,
             ROUND(t1.mtoiie / 100.0, 2) AS [I.E.P.S],
             ROUND(t1.mtoiva / 100.0, 2) AS [I.V.A.],
             ROUND(ISNULL(t4.Recargos, 0) / 100.0, 2) AS [Recargos],
+            ROUND(ISNULL(t7.iva_concepto, 0), 2) AS iva_concepto,
             ROUND((t1.mto / 100.0) + (t1.mtoiva / 100.0), 2) AS TotalFactura,
             t5.abr AS [Estación],
+            t5.den AS [DocDenominacion],
+            t5.nropcc,
             t1.satuid AS UUID,
             t1.RFC,
 
@@ -799,7 +824,7 @@ class DocumentosModel extends Model{
                 CHARINDEX('@V:', x.txt) + 3,
                 LEN(x.txt)
             )
-        )) AS [RemisiónVehículo]
+        )) AS [RemisionVehiculo]
 
         FROM [TG].[dbo].[vw_Documentos_Unificados] AS t1
         LEFT JOIN [SG12].[dbo].[Productos] AS t2
@@ -813,9 +838,11 @@ class DocumentosModel extends Model{
                 s.nrodoc,
                 s.codgas,
                 s.VolumenRecibido,
-                s.HrSel
+                s.HrSel,
+                s.nrotrn AS Recepcion
             FROM (
                 SELECT
+                    MAX(mt.nrotrn) AS nrotrn,
                     mt.nrodoc,
                     mt.codgas,
                     mt.tiptrn,
@@ -849,16 +876,58 @@ class DocumentosModel extends Model{
         LEFT JOIN [SG12].[dbo].[Empresas] AS t6
             ON t5.codemp = t6.cod
 
-        WHERE
-            t1.fch BETWEEN {$from} AND {$until}
+        LEFT JOIN (
+            SELECT SUM(mto/100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
+        ) AS t7 ON t1.nro    = t7.nro AND t1.codgas = t7.codgas
+
+        {$where}
 
         ORDER BY
             t1.nro ASC;
-
         ";
                    
         $params = [];
         return $this->sql->select($query, $params);
     }
 
+    function get_concepts($codgas, $nro) {
+        $query = "
+        SELECT
+            t2.dencpt AS Concepto,
+            COALESCE(t3.den, '') AS Producto,
+            NULLIF(t1.can, 0) AS Cantidad,
+            NULLIF(t1.pre, 0) AS Precio,
+            (t1.mto / 100) AS Monto
+        FROM Documentos t1
+        LEFT JOIN (SELECT * FROM Efectos WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
+        LEFT JOIN Productos t3 ON t1.codprd = t3.cod
+        WHERE t1.codgas = {$codgas} AND t1.nro = {$nro} AND t1.satdat IN ('@e:7','@e:2','@e:4') AND t1.codcpt NOT IN (4) AND t1.codcpt > 0
+        ";
+
+        return ($rs=$this->sql->select($query, [])) ? $rs : false ;
+    }
+
+    function get_receptions($codgas, $nro) {
+        $query = "
+        SELECT t1.nrotrn,
+        t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM MovimientosTan t1
+        LEFT JOIN Tanques t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 3
+        ";
+        
+        if ($rs=$this->sql->select($query, [])) {
+            return $rs;
+        } else {
+            $query = "
+            SELECT t1.nrotrn,
+            t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM MovimientosTan t1
+            LEFT JOIN Tanques t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 4
+            ";
+            return ($rs=$this->sql->select($query, [])) ? $rs : false ;
+        }
+    }
+
+    function get_suppliers() {
+        $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
+        return ($rs=$this->sql->select($query, [])) ? $rs : false ;
+    }
 }
