@@ -68,6 +68,257 @@ class Income{
         }
     }
 
+// === Dentro de class Income ===
+
+// Reemplaza/Agrega este método
+// Reemplaza este método dentro de class Income
+public function balance_age_send_mail(){
+    if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+        return json_output(['status'=>'error','message'=>'Método no permitido']);
+    }
+
+    // POST
+    $sentTo   = $_POST['sentTo']   ?? '';
+    $subject  = $_POST['subject']  ?? 'Balance por Cliente/Estación';
+    $filename = $_POST['filename'] ?? '';
+    $file_b64 = $_POST['file_b64'] ?? '';  // Excel en base64 (opcional)
+    $cta      = (int)($_POST['cta'] ?? 0);
+    $gas      = (int)($_POST['gas'] ?? 0);
+
+    // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
+    $rawList = str_replace(',', ';', (string)$sentTo);
+    $to = array_values(array_unique(array_filter(
+        array_map('trim', explode(';', $rawList)),
+        function($e){ return $e && filter_var($e, FILTER_VALIDATE_EMAIL) && preg_match('/@totalgas\.com$/i', $e); }
+    )));
+    if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com válido.']);
+
+    // Mensaje dinámico fin de mes (misma lógica de tu ejemplo)
+    $fechaActual   = new DateTime();
+    $diaActual     = (int)$fechaActual->format('d');
+    $ultimoDiaMes  = (int)$fechaActual->format('t');
+    $diasRestantes = $ultimoDiaMes - $diaActual;
+    $mensajeDinamico = ($diasRestantes >= 3)
+        ? "<p>Agradecemos que puedan revisar la información en un plazo no mayor a 72 horas.</p>"
+        : "<p>Es imprescindible su revisión inmediata, ya que faltan menos de 3 días para el cierre de mes.</p>";
+
+    // Construye el cuerpo como en la vista
+    $isFacturas = (stripos($subject, 'Facturas') !== false);
+    // Asegúrate de tener estos métodos en la clase (los pasé antes): buildBodyTotales() y buildBodyFacturas()
+    $bodyCore   = $isFacturas ? $this->buildBodyFacturas($cta, $gas) : $this->buildBodyTotales($cta, $gas);
+
+    $body  = '<p>Estimados compañeros,</p>'
+           . '<p>Se comparte el Balance por Cliente / Estación.</p>'
+           . $mensajeDinamico
+           . $bodyCore
+           . '<p>Saludos.</p>';
+
+    // Envío (con o sin adjunto)
+    $from = 'totalgasdesarrollo@gmail.com';
+    $ok   = false;
+    $tmp  = null;
+
+    // Si viene un dataURL, quítale el prefijo
+    if (!empty($file_b64) && strpos($file_b64, 'base64,') !== false) {
+        $file_b64 = explode('base64,', $file_b64, 2)[1] ?? $file_b64;
+    }
+
+    if (!empty($file_b64) && !empty($filename)) {
+        $safeName = preg_replace('/[^\w\.\-]+/', '_', $filename);
+        $tmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
+        $bytes = @file_put_contents($tmp, base64_decode($file_b64, true));
+        if ($bytes === false) {
+            return json_output(['status'=>'error','message'=>'No se pudo procesar el archivo adjunto.']);
+        }
+
+        // Captura la salida del PHPMailer para depurar sin romper el JSON
+        ob_start();
+        $ok = @send_mail($subject, $body, $to, $from, $tmp);
+        $mailerOut = trim(ob_get_clean());
+
+        @unlink($tmp);
+    } else {
+        ob_start();
+        $ok = @send_mail($subject, $body, $to, $from);
+        $mailerOut = trim(ob_get_clean());
+    }
+
+    if ($ok) {
+        return json_output([
+            'status'  => 'success',
+            'message' => !empty($filename) ? 'Correo enviado correctamente con adjunto.' : 'Correo enviado correctamente.'
+        ]);
+    }
+
+    // Error controlado (HTTP 200, pero con status=error)
+    return json_output([
+        'status'  => 'error',
+        'message' => 'No se pudo enviar el correo.',
+        'mailer'  => $mailerOut   // útil para ver SMTPDebug en el front si lo necesitas
+    ]);
+}
+
+/**
+ * Construye una tabla HTML compacta para el TAB "Totales"
+ */
+private function buildBodyTotales(int $cta, int $gas): string {
+    $rows = $this->clientesModel->get_balance_age($cta, $gas) ?: [];
+    if (!$rows) return '<p><em>Sin información de totales.</em></p>';
+
+    // Cabeceras que mostraremos (compacto)
+    $html  = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">';
+    $html .= '<thead><tr style="background:#3485a8;color:#fff;">'
+          .  '<th>Cliente</th><th>Estación</th>'
+          .  '<th>Saldo actual</th><th>Por vencer</th><th>Total vencido</th>'
+          .  '<th>% venc.</th>'
+          .  '</tr></thead><tbody>';
+
+    $tSaldo = $tPorVencer = $tVencido = 0.0;
+
+    foreach ($rows as $r) {
+        $cliente   = $r['Cliente']     ?? '';
+        $estacion  = $r['Estacion']    ?? '';
+        $saldo     = (float)($r['Saldo actual']  ?? 0);
+        $porvencer = (float)($r['Por vencer']    ?? 0);
+        $vencido   = (float)($r['Total vencido'] ?? 0);
+        $pct       = $r['% de vencimiento'] ?? null;
+
+        $tSaldo     += $saldo;
+        $tPorVencer += $porvencer;
+        $tVencido   += $vencido;
+
+        $html .= '<tr>'
+              .  '<td>'. htmlspecialchars($cliente) .'</td>'
+              .  '<td>'. htmlspecialchars($estacion) .'</td>'
+              .  '<td style="text-align:right;">'. number_format($saldo, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($porvencer, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($vencido, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. ($pct !== null ? number_format((float)$pct, 2, '.', ',') . '%' : '') .'</td>'
+              .  '</tr>';
+    }
+
+    // Totales
+    $pctTotal = ($tSaldo > 0) ? ($tVencido / $tSaldo * 100) : null;
+    $html .= '<tr style="background:#e9f3f8;font-weight:700;">'
+          .  '<td colspan="2" style="text-align:right;">Totales</td>'
+          .  '<td style="text-align:right;">'. number_format($tSaldo, 2, '.', ',') .'</td>'
+          .  '<td style="text-align:right;">'. number_format($tPorVencer, 2, '.', ',') .'</td>'
+          .  '<td style="text-align:right;">'. number_format($tVencido, 2, '.', ',') .'</td>'
+          .  '<td style="text-align:right;">'. ($pctTotal !== null ? number_format($pctTotal, 2, '.', ',') . '%' : '—') .'</td>'
+          .  '</tr>';
+
+    $html .= '</tbody></table>';
+    return $html;
+}
+
+/**
+ * Construye una tabla HTML agrupada por cliente para el TAB "Facturas"
+ * Incluye una fila de encabezado por cliente y una fila de totales por cliente.
+ */
+private function buildBodyFacturas(int $cta, int $gas): string {
+    $rows = $this->clientesModel->get_balance_age_detalle($cta, $gas) ?: [];
+    if (!$rows) return '<p><em>Sin información de facturas.</em></p>';
+
+    // Ordena por cliente para agrupar
+    usort($rows, function($a, $b){
+        return strcmp(($a['Cliente'] ?? ''), ($b['Cliente'] ?? ''));
+    });
+
+    $html  = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">';
+    $html .= '<thead><tr style="background:#3485a8;color:#fff;">'
+          .  '<th>Cliente / Factura</th><th>Estación</th><th>Fecha</th><th>Vencimiento</th>'
+          .  '<th>Saldo Actual</th><th>Por Vencer</th><th>1-15</th><th>16-30</th><th>31-45</th><th>45+</th><th>Total Vencido</th>'
+          .  '</tr></thead><tbody>';
+
+    $cliActual = null;
+    $s = $pv = $d1 = $d2 = $d3 = $d4 = $tv = 0.0;
+
+    $fmtDate = function($val){
+        if (empty($val)) return '';
+        $ts = strtotime($val);
+        return $ts ? date('d/m/Y', $ts) : $val;
+    };
+
+    $flushTotals = function($cliente) use (&$html,&$s,&$pv,&$d1,&$d2,&$d3,&$d4,&$tv){
+        $html .= '<tr style="background:#e2f0d9;font-weight:700;">'
+              .  '<td style="text-align:right;">Totales '. htmlspecialchars($cliente) .'</td>'
+              .  '<td></td><td></td><td></td>'
+              .  '<td style="text-align:right;">'. number_format($s,  2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($pv, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($d1, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($d2, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($d3, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($d4, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($tv, 2, '.', ',') .'</td>'
+              .  '</tr>';
+        // reset
+        $s=$pv=$d1=$d2=$d3=$d4=$tv=0.0;
+    };
+
+    foreach ($rows as $r) {
+        $cliente  = $r['Cliente']  ?? '';
+        $estacion = $r['Estacion'] ?? '';
+
+        // Encabezado de grupo si cambia el cliente
+        if ($cliActual !== $cliente) {
+            if ($cliActual !== null) {
+                $flushTotals($cliActual);
+            }
+            $cliActual = $cliente;
+            $html .= '<tr style="background:#c6efce;font-weight:600;">'
+                  .  '<td colspan="11">Cliente: '. htmlspecialchars($cliente) . (isset($r['cond. pago']) && $r['cond. pago'] ? ' ('.htmlspecialchars($r['cond. pago']).')' : '') .'</td>'
+                  .  '</tr>';
+        }
+
+        // Factura = nroope - 1,700,000,000
+        $factura = (isset($r['nroope']) && $r['nroope'] !== null) ? ((int)$r['nroope'] - 1700000000) : '';
+
+        $fcha = $fmtDate($r['fchope_dt'] ?? '');
+        $vto  = $fmtDate($r['fchvto_dt'] ?? '');
+
+        $saldo   = (float)($r['Saldo actual']  ?? 0);
+        $porv    = (float)($r['Por vencer']    ?? 0);
+        $v115    = (float)($r['1-15']          ?? 0);
+        $v1630   = (float)($r['16-30']         ?? 0);
+        $v3145   = (float)($r['31-45']         ?? 0);
+        $v45     = (float)($r['45+']           ?? 0);
+        $tvenc   = (float)($r['Total vencido'] ?? 0);
+
+        // Acumula grupo
+        $s  += $saldo;
+        $pv += $porv;
+        $d1 += $v115;
+        $d2 += $v1630;
+        $d3 += $v3145;
+        $d4 += $v45;
+        $tv += $tvenc;
+
+        $html .= '<tr>'
+              .  '<td>- Factura #'. htmlspecialchars((string)$factura) .'</td>'
+              .  '<td>'. htmlspecialchars($estacion) .'</td>'
+              .  '<td>'. htmlspecialchars($fcha) .'</td>'
+              .  '<td>'. htmlspecialchars($vto)  .'</td>'
+              .  '<td style="text-align:right;">'. number_format($saldo, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($porv,  2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($v115,  2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($v1630, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($v3145, 2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($v45,   2, '.', ',') .'</td>'
+              .  '<td style="text-align:right;">'. number_format($tvenc, 2, '.', ',') .'</td>'
+              .  '</tr>';
+    }
+
+    // Totales del último cliente
+    if ($cliActual !== null) {
+        $flushTotals($cliActual);
+    }
+
+    $html .= '</tbody></table>';
+    return $html;
+}
+
+
+
 public function balance_age()
 {
     // Catálogo de cuentas
@@ -77,8 +328,14 @@ public function balance_age()
         101032004 => '101032004 - Facturas X Cobrar Arrendamiento',
     ];
 
-    // Gasolineras para el select
-    $gasolineras = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+    // === Filtrar gasolineras permitidas ===
+    $permitidas = [2, 24, 26, 29, 31];
+
+    // Lee todas y filtra por los códigos permitidos
+    $gas_all = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+    $gasolineras = array_values(array_filter($gas_all, function ($g) use ($permitidas) {
+        return in_array((int)$g['cod'], $permitidas, true);
+    }));
 
     // Lee filtros SIN default (para no disparar consulta)
     $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
@@ -87,31 +344,36 @@ public function balance_age()
     // ¿El usuario ya dio "Consultar"?
     $submitted = ($cta_sel !== null && $gas_sel !== null);
 
-    $rows = [];
+    $rows     = [];
+    $rows_det = [];   // <<-- NUEVO (para la pestaña Facturas)
+
     if ($submitted) {
-        // Valida selección contra catálogos
+        // Valida selección contra catálogos ya filtrados
         $validCta = array_key_exists($cta_sel, $cuentas);
-        $validGas = in_array($gas_sel, array_map('intval', array_column($gasolineras, 'cod')), true);
+        $validGas = in_array(
+            $gas_sel,
+            array_map('intval', array_column($gasolineras, 'cod')),
+            true
+        );
 
         if ($validCta && $validGas) {
-            $rows = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+            $rows     = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+            $rows_det = $this->clientesModel->get_balance_age_detalle($cta_sel, $gas_sel) ?: []; // <<-- NUEVO
         } else {
-            // Si hay valores inválidos, no mostramos tabla
             $submitted = false;
         }
     }
 
     echo $this->twig->render($this->route . 'balance_age.html', [
         'rows'        => $rows,
+        'rows_det'    => $rows_det,     // <<-- NUEVO
         'cuentas'     => $cuentas,
         'gasolineras' => $gasolineras,
         'cta_sel'     => $cta_sel,
         'gas_sel'     => $gas_sel,
-        'submitted'   => $submitted, // <-- clave para la vista
+        'submitted'   => $submitted,
     ]);
 }
-
-
 
 
 
@@ -1247,6 +1509,8 @@ function invoice_client_desp(){
         }
     }
 
+
+    
     function send_mail($fch, $codgas, $shift, $dispatch_type, $sentTo) {
 
         if ($dispatch_type == 'payworks') { // Verificado OK
@@ -1333,6 +1597,18 @@ function invoice_client_desp(){
 
         json_output(array("user_mail" => $user_mail, "station_mail" => $station_mail));
     }
+
+    public function balance_age_get_user_email(): void
+{
+    // Toma el correo del usuario autenticado desde la sesión
+    $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
+
+    // Devuelve JSON (usa tu helper global)
+    json_output([
+        'ok' => true,
+        'user_mail' => $user_mail
+    ]);
+}
 
     function generateExcel($fecha) {
         // Crear el objeto de hoja de cálculo
