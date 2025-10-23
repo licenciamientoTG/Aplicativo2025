@@ -95,24 +95,26 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             
                 <div class="card-body table-responsive" id="cont">
                 
-                    <table id="cash_invoices_table" class="table table-striped table-hover table-sm w-100" >
-                        <thead >
-                        <tr>
-                                <th>C.Cliente</th>
-                                <th>Cliente</th>
-                                <th>Monto</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <th>C.Cliente</th>
-                                <th>Cliente</th>
-                                <th>Monto</th>
-                        </tr>
-                        </tfoot>
-                    </table>
+                  <table id="cash_invoices_table" class="table table-striped table-hover table-sm w-100">
+    <thead>
+    <tr>
+        <th>C.Cliente</th>
+        <th>Cliente</th>
+        <th>N. Despachos</th>
+        <th>Monto</th>
+    </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+    <tr>
+        <th>C.Cliente</th>
+        <th>Cliente</th>
+        <th>N. Despachos</th>
+        <th>Monto</th>
+    </tr>
+    </tfoot>
+</table>
+
                 </div>
             </div>
         </div>
@@ -142,15 +144,16 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <div class="card-body p-0">
                         <div class="table-responsive" style="max-height: 400px;">
                             <table class="table table-hover table-sm mb-0" id="top-facturas-table">
-                                <thead class="sticky-top bg-light">
+                               <thead class="sticky-top bg-light">
                                     <tr>
                                         <th class="text-center" style="width: 50px;">#</th>
                                         <th>Código</th>
                                         <th>Cliente</th>
+                                        <th class="text-end">Despachos</th>   <!-- <<<<<< nuevo -->
                                         <th class="text-end">Facturas</th>
                                         <th class="text-end">Monto</th>
                                     </tr>
-                                </thead>
+                                    </thead>
                                 <tbody>
                                     <!-- Se llenará dinámicamente -->
                                 </tbody>
@@ -170,13 +173,14 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         <div class="table-responsive" style="max-height: 400px;">
                             <table class="table table-hover table-sm mb-0" id="top-monto-table">
                                 <thead class="sticky-top bg-light">
-                                    <tr>
-                                        <th class="text-center" style="width: 50px;">#</th>
-                                        <th>Código</th>
-                                        <th>Cliente</th>
-                                        <th class="text-end">Facturas</th>
-                                        <th class="text-end">Monto</th>
-                                    </tr>
+                                <tr>
+                                    <th class="text-center" style="width: 50px;">#</th>
+                                    <th>Código</th>
+                                    <th>Cliente</th>
+                                    <th class="text-end">Despachos</th>   <!-- <<<<<< nuevo -->
+                                    <th class="text-end">Facturas</th>
+                                    <th class="text-end">Monto</th>
+                                </tr>
                                 </thead>
                                 <tbody>
                                     <!-- Se llenará dinámicamente -->
@@ -214,30 +218,32 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             
                 <div class="card-body table-responsive" id="cont">
                 
-                    <table id="invoice_client_desp" class="table table-striped table-hover table-sm w-100" >
-                        <thead >
-                        <tr>
-                                <th>Fecha</th>
-                                <th>C.Cliente</th>
-                                <th>Cliente</th>
-                                <th>Monto</th>
-                                <th>Estacion</th>
-                                <th>Factura</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                               <th>Fecha</th>
-                                <th>C.Cliente</th>
-                                <th>Cliente</th>
-                                <th>Monto</th>
-                                <th>Estacion</th>
-                                <th>Factura</th>
-                        </tr>
-                        </tfoot>
-                    </table>
+                 <table id="invoice_client_desp" class="table table-striped table-hover table-sm w-100">
+    <thead>
+    <tr>
+        <th>Fecha</th>
+        <th>C.Cliente</th>
+        <th>Cliente</th>
+        <th>Monto</th>
+        <th>Método de pago</th>
+        <th>Estación</th>
+        <th>Factura</th>
+    </tr>
+    </thead>
+    <tbody></tbody>
+    <tfoot>
+    <tr>
+        <th>Fecha</th>
+        <th>C.Cliente</th>
+        <th>Cliente</th>
+        <th>Monto</th>
+        <th>Método de pago</th>
+        <th>Estación</th>
+        <th>Factura</th>
+    </tr>
+    </tfoot>
+</table>
+
                 </div>
             </div>
         </div>
@@ -343,147 +349,187 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 <script>
 function generateClientStatsCards(tableData) {
-    // Objeto para almacenar estadísticas por cliente
-    const clientStats = {};
-    
-    // Procesar datos
-    tableData.forEach(row => {
-        const codcli = row.codcli;
-        const cliente = row.cliente;
-        const monto = parseFloat(row.monto) || 0;
-        
-        if (!clientStats[codcli]) {
-            clientStats[codcli] = {
-                nombre: cliente,
-                facturas: 0,
-                montoTotal: 0
-            };
-        }
-        
-        clientStats[codcli].facturas++;
-        clientStats[codcli].montoTotal += monto;
-    });
-    
-    // Convertir a array para ordenar
-    const clientsArray = Object.keys(clientStats).map(codcli => ({
-        codcli: codcli,
-        nombre: clientStats[codcli].nombre,
-        facturas: clientStats[codcli].facturas,
-        montoTotal: clientStats[codcli].montoTotal
-    }));
-    
-    // Ordenar por cantidad de facturas
-    const topByFacturas = [...clientsArray].sort((a, b) => b.facturas - a.facturas);
-    const top10Facturas = topByFacturas.slice(0, 10);
-    
-    // Ordenar por monto total
-    const topByMonto = [...clientsArray].sort((a, b) => b.montoTotal - a.montoTotal);
-    const top10Monto = topByMonto.slice(0, 10);
-    
-    // Total de clientes únicos
-    const totalClientes = clientsArray.length;
-    
-    // Total de facturas
-    const totalFacturas = clientsArray.reduce((sum, c) => sum + c.facturas, 0);
-    
-    // Total general de monto
-    const totalMonto = clientsArray.reduce((sum, c) => sum + c.montoTotal, 0);
-    
-    // Generar HTML de los cards de resumen
-    const cardsHTML = `
-        <!-- Total de Clientes -->
-        <div class="col-md-3 mb-3">
-            <div class="card stat-card bg-gradient-primary text-white">
-                <div class="card-body text-center">
-                    <div class="stat-icon">👥</div>
-                    <div class="stat-value">${totalClientes}</div>
-                    <div class="stat-label">Clientes Únicos</div>
-                    <div class="client-detail">${totalFacturas} facturas totales</div>
-                </div>
-            </div>
+  // Asegura layout responsive: 1 col (xs), 2 (sm), 3 (lg), 5 (xl)
+  $('#client-stats-cards')
+    .addClass('row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-5 g-3');
+
+  // Objeto para almacenar estadísticas por cliente
+  const clientStats = {};
+  
+  // Procesar datos
+  tableData.forEach(row => {
+    const codcli  = row.codcli;
+    const cliente = row.cliente;
+    const monto   = parseFloat(row.monto) || 0;
+    // si backend manda n_despachos por factura lo usamos; si no, asumimos 1
+    const desp    = (row.n_despachos != null && !isNaN(parseInt(row.n_despachos,10)))
+                    ? parseInt(row.n_despachos,10) : 1;
+
+    if (!clientStats[codcli]) {
+      clientStats[codcli] = {
+        nombre: cliente,
+        facturas: 0,
+        despachos: 0,
+        montoTotal: 0
+      };
+    }
+    clientStats[codcli].facturas   += 1;     // cada fila = 1 factura
+    clientStats[codcli].despachos  += desp;  // suma de despachos
+    clientStats[codcli].montoTotal += monto; // monto acumulado
+  });
+  
+  // Convertir a array para ordenar
+  const clientsArray = Object.keys(clientStats).map(codcli => ({
+    codcli,
+    nombre: clientStats[codcli].nombre,
+    facturas: clientStats[codcli].facturas,
+    despachos: clientStats[codcli].despachos,
+    montoTotal: clientStats[codcli].montoTotal
+  }));
+  
+  // Si no hay datos, limpia y sal
+  if (clientsArray.length === 0) {
+    $('#client-stats-cards').html(`
+      <div class="col text-center text-muted">
+        <p>No hay datos para mostrar estadísticas</p>
+      </div>
+    `);
+    $('#top-facturas-table tbody').html('');
+    $('#top-monto-table tbody').html('');
+    return;
+  }
+
+  // Ordenar para tops
+  const topByFacturas  = [...clientsArray].sort((a, b) => b.facturas   - a.facturas);
+  const topByMonto     = [...clientsArray].sort((a, b) => b.montoTotal - a.montoTotal);
+  const topByDespachos = [...clientsArray].sort((a, b) => b.despachos  - a.despachos);
+
+  const top10Facturas = topByFacturas.slice(0, 10);
+  const top10Monto    = topByMonto.slice(0, 10);
+  
+  // Totales
+  const totalClientes = clientsArray.length;
+  const totalFacturas = clientsArray.reduce((sum, c) => sum + c.facturas, 0);
+  const totalMonto    = clientsArray.reduce((sum, c) => sum + c.montoTotal, 0);
+  const promedio      = totalClientes ? (totalMonto / totalClientes) : 0;
+
+  // Safeties para no reventar si vienen vacíos
+  const tf0 = topByFacturas[0]  || { facturas: 0, codcli: '', nombre: '' };
+  const tm0 = topByMonto[0]     || { montoTotal: 0, codcli: '', nombre: '' };
+  const td0 = topByDespachos[0] || { despachos: 0, codcli: '', nombre: '' };
+
+  // 5 CARDS en la misma fila (xl): usa <div class="col"> en lugar de col-md-3
+  const cardsHTML = `
+    <!-- Total de Clientes -->
+    <div class="col">
+      <div class="card stat-card bg-gradient-primary text-white h-100">
+        <div class="card-body text-center">
+          <div class="stat-icon">👥</div>
+          <div class="stat-value">${totalClientes}</div>
+          <div class="stat-label">Clientes Únicos</div>
+          <div class="client-detail">${totalFacturas.toLocaleString('es-MX')} facturas totales</div>
         </div>
-        
-        <!-- Monto Total -->
-        <div class="col-md-3 mb-3">
-            <div class="card stat-card bg-gradient-info text-white">
-                <div class="card-body text-center">
-                    <div class="stat-icon">💰</div>
-                    <div class="stat-value">$${totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                    <div class="stat-label">Monto Total</div>
-                    <div class="client-detail">Promedio: $${(totalMonto / totalClientes).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Top Cliente por Facturas -->
-        <div class="col-md-3 mb-3">
-            <div class="card stat-card bg-gradient-success text-white">
-                <div class="card-body text-center">
-                    <div class="stat-icon">🏆</div>
-                    <div class="stat-value">${topByFacturas[0].facturas}</div>
-                    <div class="stat-label">Más Facturas</div>
-                    <div class="client-detail"><strong>${topByFacturas[0].codcli}</strong></div>
-                    <div class="client-detail">${topByFacturas[0].nombre.substring(0, 25)}${topByFacturas[0].nombre.length > 25 ? '...' : ''}</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Top Cliente por Monto -->
-        <div class="col-md-3 mb-3">
-            <div class="card stat-card bg-gradient-warning text-white">
-                <div class="card-body text-center">
-                    <div class="stat-icon">💎</div>
-                    <div class="stat-value">$${topByMonto[0].montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                    <div class="stat-label">Mayor Monto</div>
-                    <div class="client-detail"><strong>${topByMonto[0].codcli}</strong></div>
-                    <div class="client-detail">${topByMonto[0].nombre.substring(0, 25)}${topByMonto[0].nombre.length > 25 ? '...' : ''}</div>
-                </div>
-            </div>
-        </div>
-    `;
+      </div>
+    </div>
     
-    // Insertar cards de resumen
-    $('#client-stats-cards').html(cardsHTML);
+    <!-- Monto Total -->
+    <div class="col">
+      <div class="card stat-card bg-gradient-info text-white h-100">
+        <div class="card-body text-center">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value">$${totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+          <div class="stat-label">Monto Total</div>
+          <div class="client-detail">Promedio: $${promedio.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+        </div>
+      </div>
+    </div>
     
-    // Generar tabla Top 10 por Facturas
-    let topFacturasHTML = '';
-    top10Facturas.forEach((cliente, index) => {
-        const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : 'rank-other';
-        topFacturasHTML += `
-            <tr>
-                <td class="text-center">
-                    <span class="rank-badge ${rankClass}">${index + 1}</span>
-                </td>
-                <td><strong>${cliente.codcli}</strong></td>
-                <td>
-                    <span class="cliente-nombre" title="${cliente.nombre}">${cliente.nombre}</span>
-                </td>
-                <td class="text-end"><strong>${cliente.facturas}</strong></td>
-                <td class="text-end text-muted">$${cliente.montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-            </tr>
-        `;
-    });
-    $('#top-facturas-table tbody').html(topFacturasHTML);
+    <!-- Top Cliente por Facturas -->
+    <div class="col">
+      <div class="card stat-card bg-gradient-success text-white h-100">
+        <div class="card-body text-center">
+          <div class="stat-icon">🏆</div>
+          <div class="stat-value">${tf0.facturas.toLocaleString('es-MX')}</div>
+          <div class="stat-label">Más Facturas</div>
+          <div class="client-detail"><strong>${tf0.codcli}</strong></div>
+          <div class="client-detail">${(tf0.nombre || '').substring(0, 25)}${(tf0.nombre || '').length > 25 ? '...' : ''}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cliente más despachos -->
+    <div class="col">
+      <div class="card stat-card bg-gradient-success text-white h-100">
+        <div class="card-body text-center">
+          <div class="stat-icon">🚚</div>
+          <div class="stat-value">${td0.despachos.toLocaleString('es-MX')}</div>
+          <div class="stat-label">Más despachos</div>
+          <div class="client-detail"><strong>${td0.codcli}</strong></div>
+          <div class="client-detail">${(td0.nombre || '').substring(0, 25)}${(td0.nombre || '').length > 25 ? '...' : ''}</div>
+        </div>
+      </div>
+    </div>
     
-    // Generar tabla Top 10 por Monto
-    let topMontoHTML = '';
-    top10Monto.forEach((cliente, index) => {
-        const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : 'rank-other';
-        topMontoHTML += `
-            <tr>
-                <td class="text-center">
-                    <span class="rank-badge ${rankClass}">${index + 1}</span>
-                </td>
-                <td><strong>${cliente.codcli}</strong></td>
-                <td>
-                    <span class="cliente-nombre" title="${cliente.nombre}">${cliente.nombre}</span>
-                </td>
-                <td class="text-end text-muted">${cliente.facturas}</td>
-                <td class="text-end"><strong>$${cliente.montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
-            </tr>
-        `;
-    });
-    $('#top-monto-table tbody').html(topMontoHTML);
+    <!-- Top Cliente por Monto -->
+    <div class="col">
+      <div class="card stat-card bg-gradient-warning text-white h-100">
+        <div class="card-body text-center">
+          <div class="stat-icon">💎</div>
+          <div class="stat-value">$${tm0.montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+          <div class="stat-label">Mayor Monto</div>
+          <div class="client-detail"><strong>${tm0.codcli}</strong></div>
+          <div class="client-detail">${(tm0.nombre || '').substring(0, 25)}${(tm0.nombre || '').length > 25 ? '...' : ''}</div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Insertar cards de resumen
+  $('#client-stats-cards').html(cardsHTML);
+  
+  // Generar tabla Top 10 por Facturas
+let topFacturasHTML = '';
+top10Facturas.forEach((cliente, index) => {
+  const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : 'rank-other';
+  const desp = (typeof cliente.despachos === 'number') ? cliente.despachos : 0;
+  topFacturasHTML += `
+    <tr>
+      <td class="text-center">
+        <span class="rank-badge ${rankClass}">${index + 1}</span>
+      </td>
+      <td><strong>${cliente.codcli}</strong></td>
+      <td>
+        <span class="cliente-nombre" title="${cliente.nombre}">${cliente.nombre}</span>
+      </td>
+      <td class="text-end">${desp.toLocaleString('es-MX')}</td>                <!-- 👈 NUEVO -->
+      <td class="text-end"><strong>${cliente.facturas.toLocaleString('es-MX')}</strong></td>
+      <td class="text-end text-muted">$${cliente.montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+    </tr>
+  `;
+});
+$('#top-facturas-table tbody').html(topFacturasHTML);
+  
+  // Generar tabla Top 10 por Monto
+  let topMontoHTML = '';
+top10Monto.forEach((cliente, index) => {
+  const rankClass = index === 0 ? 'rank-1' : index === 1 ? 'rank-2' : index === 2 ? 'rank-3' : 'rank-other';
+  const desp = (typeof cliente.despachos === 'number') ? cliente.despachos : 0;
+  topMontoHTML += `
+    <tr>
+      <td class="text-center">
+        <span class="rank-badge ${rankClass}">${index + 1}</span>
+      </td>
+      <td><strong>${cliente.codcli}</strong></td>
+      <td>
+        <span class="cliente-nombre" title="${cliente.nombre}">${cliente.nombre}</span>
+      </td>
+      <td class="text-end">${desp.toLocaleString('es-MX')}</td>                <!-- 👈 NUEVO -->
+      <td class="text-end text-muted">${cliente.facturas.toLocaleString('es-MX')}</td>
+      <td class="text-end"><strong>$${cliente.montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+    </tr>
+  `;
+});
+$('#top-monto-table tbody').html(topMontoHTML);
 }
 </script>
 

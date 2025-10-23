@@ -2514,61 +2514,152 @@ class DespachosModel extends Model{
 function cash_invoices_advance($from, $until)
 {
     $query = "
+        ;WITH B AS (
+            SELECT
+                t1.codcli,
+                t2.den,
+                t1.mto,
+                CASE 
+                    WHEN t1.tiptrn = 51 AND t1.datref LIKE '%@P:04%' THEN 'TC'  -- Tarjeta de crédito
+                    WHEN t1.tiptrn = 52 AND t1.datref LIKE '%@P:28%' THEN 'TD'  -- Tarjeta de débito
+                    WHEN t1.tiptrn = 49 AND t1.datref LIKE '%@P:01%' THEN 'EF'  -- Efectivo
+                    WHEN t1.tiptrn = 53 AND t1.datref LIKE '%@P:05%' THEN 'MO'  -- Monedero
+                    WHEN t1.tiptrn = 50 AND t1.datref LIKE '%@P:02%' THEN 'CH'  -- Cheque
+                    ELSE 'OT'
+                END AS mp
+            FROM SG12.dbo.Despachos t1
+            LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+            WHERE
+                t1.fchtrn BETWEEN ? AND ?
+                AND t2.tipval NOT IN (3, 4)
+                AND t1.codcli <> 21701354
+        )
         SELECT
-            t1.codcli,
-            t2.den,
-            SUM(t1.mto) AS monto
-        FROM SG12.dbo.Despachos t1
-        LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-        WHERE
-            t1.fchtrn BETWEEN ? AND ?
-            AND t2.tipval NOT IN (3, 4)
-            and t1.codcli !=21701354
-        GROUP BY t1.codcli, t2.den
-        ORDER BY SUM(t1.mto) DESC
+            B.codcli,
+            B.den,
+            SUM(B.mto) AS monto,
+            COUNT(*)   AS n_despachos,
+            CASE
+                WHEN (   SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
+                       + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
+                       + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
+                       + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
+                       + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) = 0
+                    THEN 'Sin dato'
+                WHEN SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END) >=
+                     MAX(  SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
+                    THEN 'Tarjeta de crédito'
+                WHEN SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END) >=
+                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
+                    THEN 'Tarjeta de débito'
+                WHEN SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END) >=
+                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
+                    THEN 'Efectivo'
+                WHEN SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END) >=
+                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
+                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
+                    THEN 'Monedero'
+                ELSE 'Cheque'
+            END AS metodo_pago
+        FROM B
+        GROUP BY B.codcli, B.den
+        ORDER BY SUM(B.mto) DESC
     ";
 
     $params = [$from, $until];
 
     return $this->sql->select($query, $params);
 }
- 
+
 
 function invoice_client_desp($from, $until)
 {
     $query = "
-          SELECT
-            CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) as fecha,
+        ;WITH Base AS (
+            SELECT
+                CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23) AS fecha,
                 t1.codcli,
                 t2.den,
-                --t1.mto,
                 t1.codgas,
                 t3.abr,
                 CASE 
-                WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
-                ELSE CAST(t1.nrofac AS VARCHAR(10)) 
-            END AS 'factura',
-                SUM(t1.mto) AS monto
+                    WHEN t1.nrofac BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    WHEN t1.nrofac BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t1.nrofac AS VARCHAR(10)), 4, 10)
+                    ELSE CAST(t1.nrofac AS VARCHAR(10)) 
+                END AS factura,
+                t1.mto,
+                -- monto por método en cada fila (despacho)
+                CASE WHEN t1.tiptrn=51 AND t1.datref LIKE '%@P:04%' THEN t1.mto ELSE 0 END AS m_tc,
+                CASE WHEN t1.tiptrn=52 AND t1.datref LIKE '%@P:28%' THEN t1.mto ELSE 0 END AS m_td,
+                CASE WHEN t1.tiptrn=49 AND t1.datref LIKE '%@P:01%' THEN t1.mto ELSE 0 END AS m_ef,
+                CASE WHEN t1.tiptrn=53 AND t1.datref LIKE '%@P:05%' THEN t1.mto ELSE 0 END AS m_mo,
+                CASE WHEN t1.tiptrn=50 AND t1.datref LIKE '%@P:02%' THEN t1.mto ELSE 0 END AS m_ch
             FROM SG12.dbo.Despachos t1
-            LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-            LEFT JOIN SG12.dbo.Gasolineras t3 on t1.codgas = t3.cod
+            LEFT JOIN SG12.dbo.Clientes    t2 ON t1.codcli = t2.cod
+            LEFT JOIN SG12.dbo.Gasolineras t3 ON t1.codgas = t3.cod
             WHERE
                 t1.fchtrn BETWEEN ? AND ?
                 AND t2.tipval NOT IN (3, 4)
-                and t1.codcli !=21701354
-            GROUP BY t1.codgas,t3.abr,t1.codcli, t2.den, t1.nrofac,CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fchtrn), 23)
-                order by t1.codcli
+                AND t1.codcli <> 21701354
+        ),
+        Agg AS (
+            SELECT
+                fecha, codcli, den, codgas, abr, factura,
+                COUNT(*) AS n_despachos,           -- <<<<<< aquí contamos despachos
+                SUM(mto) AS monto,
+                SUM(m_tc) AS m_tc,
+                SUM(m_td) AS m_td,
+                SUM(m_ef) AS m_ef,
+                SUM(m_mo) AS m_mo,
+                SUM(m_ch) AS m_ch
+            FROM Base
+            GROUP BY fecha, codcli, den, codgas, abr, factura
+        )
+        SELECT
+            A.fecha,
+            A.codcli,
+            A.den,
+            A.codgas,
+            A.abr,
+            A.factura,
+            A.n_despachos,                         -- <<<<<< devolvemos el total de despachos por factura
+            A.monto,
+            COALESCE(M.metodo_pago, 'Sin dato') AS metodo_pago
+        FROM Agg A
+        OUTER APPLY (
+            SELECT TOP 1 metodo_pago
+            FROM (VALUES
+                ('Tarjeta de crédito', A.m_tc),
+                ('Tarjeta de débito',  A.m_td),
+                ('Efectivo',           A.m_ef),
+                ('Monedero',           A.m_mo),
+                ('Cheque',             A.m_ch)
+            ) v(metodo_pago, monto)
+            WHERE v.monto > 0
+            ORDER BY v.monto DESC
+        ) M
+        ORDER BY A.codcli;
     ";
 
     $params = [$from, $until];
-
     return $this->sql->select($query, $params);
 }
+
 
 function getCFDIs($from, $codgas) {
     $query = "
@@ -2599,7 +2690,7 @@ function getCFDIs($from, $codgas) {
             AND Doc.codprd = D.codprd
             AND D.nrotrn = CASE 
                 WHEN CHARINDEX('@d:', Doc.satdat) > 0 
-                    THEN [dbo].[GetRef](Doc.satdat, 'D')
+                THEN [dbo].[GetRef](Doc.satdat, 'D')
                 ELSE D.nrotrn
             END
         INNER JOIN Gasolineras G ON G.cod = D.codgas
