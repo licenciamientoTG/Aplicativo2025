@@ -85,6 +85,9 @@ public function balance_age_send_mail(){
     $cta      = (int)($_POST['cta'] ?? 0);
     $gas      = (int)($_POST['gas'] ?? 0);
 
+    // 🔹 NUEVO: mensaje opcional del formulario
+    $body     = (string)($_POST['body'] ?? '');
+
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
     $rawList = str_replace(',', ';', (string)$sentTo);
     $to = array_values(array_unique(array_filter(
@@ -93,25 +96,10 @@ public function balance_age_send_mail(){
     )));
     if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com válido.']);
 
-    // Mensaje dinámico fin de mes (misma lógica de tu ejemplo)
+    // Mensaje dinámico fin de mes (sin cambios)
     $fechaActual   = new DateTime();
     $diaActual     = (int)$fechaActual->format('d');
     $ultimoDiaMes  = (int)$fechaActual->format('t');
-    $diasRestantes = $ultimoDiaMes - $diaActual;
-    $mensajeDinamico = ($diasRestantes >= 3)
-        ? "<p>Agradecemos que puedan revisar la información en un plazo no mayor a 72 horas.</p>"
-        : "<p>Es imprescindible su revisión inmediata, ya que faltan menos de 3 días para el cierre de mes.</p>";
-
-    // Construye el cuerpo como en la vista
-    $isFacturas = (stripos($subject, 'Facturas') !== false);
-    // Asegúrate de tener estos métodos en la clase (los pasé antes): buildBodyTotales() y buildBodyFacturas()
-    $bodyCore   = $isFacturas ? $this->buildBodyFacturas($cta, $gas) : $this->buildBodyTotales($cta, $gas);
-
-    $body  = '<p>Estimados compañeros,</p>'
-           . '<p>Se comparte el Balance por Cliente / Estación.</p>'
-           . $mensajeDinamico
-           . $bodyCore
-           . '<p>Saludos.</p>';
 
     // Envío (con o sin adjunto)
     $from = 'totalgasdesarrollo@gmail.com';
@@ -154,168 +142,14 @@ public function balance_age_send_mail(){
     return json_output([
         'status'  => 'error',
         'message' => 'No se pudo enviar el correo.',
-        'mailer'  => $mailerOut   // útil para ver SMTPDebug en el front si lo necesitas
+        'mailer'  => $mailerOut
     ]);
 }
 
 /**
  * Construye una tabla HTML compacta para el TAB "Totales"
  */
-private function buildBodyTotales(int $cta, int $gas): string {
-    $rows = $this->clientesModel->get_balance_age($cta, $gas) ?: [];
-    if (!$rows) return '<p><em>Sin información de totales.</em></p>';
 
-    // Cabeceras que mostraremos (compacto)
-    $html  = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">';
-    $html .= '<thead><tr style="background:#3485a8;color:#fff;">'
-          .  '<th>Cliente</th><th>Estación</th>'
-          .  '<th>Saldo actual</th><th>Por vencer</th><th>Total vencido</th>'
-          .  '<th>% venc.</th>'
-          .  '</tr></thead><tbody>';
-
-    $tSaldo = $tPorVencer = $tVencido = 0.0;
-
-    foreach ($rows as $r) {
-        $cliente   = $r['Cliente']     ?? '';
-        $estacion  = $r['Estacion']    ?? '';
-        $saldo     = (float)($r['Saldo actual']  ?? 0);
-        $porvencer = (float)($r['Por vencer']    ?? 0);
-        $vencido   = (float)($r['Total vencido'] ?? 0);
-        $pct       = $r['% de vencimiento'] ?? null;
-
-        $tSaldo     += $saldo;
-        $tPorVencer += $porvencer;
-        $tVencido   += $vencido;
-
-        $html .= '<tr>'
-              .  '<td>'. htmlspecialchars($cliente) .'</td>'
-              .  '<td>'. htmlspecialchars($estacion) .'</td>'
-              .  '<td style="text-align:right;">'. number_format($saldo, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($porvencer, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($vencido, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. ($pct !== null ? number_format((float)$pct, 2, '.', ',') . '%' : '') .'</td>'
-              .  '</tr>';
-    }
-
-    // Totales
-    $pctTotal = ($tSaldo > 0) ? ($tVencido / $tSaldo * 100) : null;
-    $html .= '<tr style="background:#e9f3f8;font-weight:700;">'
-          .  '<td colspan="2" style="text-align:right;">Totales</td>'
-          .  '<td style="text-align:right;">'. number_format($tSaldo, 2, '.', ',') .'</td>'
-          .  '<td style="text-align:right;">'. number_format($tPorVencer, 2, '.', ',') .'</td>'
-          .  '<td style="text-align:right;">'. number_format($tVencido, 2, '.', ',') .'</td>'
-          .  '<td style="text-align:right;">'. ($pctTotal !== null ? number_format($pctTotal, 2, '.', ',') . '%' : '—') .'</td>'
-          .  '</tr>';
-
-    $html .= '</tbody></table>';
-    return $html;
-}
-
-/**
- * Construye una tabla HTML agrupada por cliente para el TAB "Facturas"
- * Incluye una fila de encabezado por cliente y una fila de totales por cliente.
- */
-private function buildBodyFacturas(int $cta, int $gas): string {
-    $rows = $this->clientesModel->get_balance_age_detalle($cta, $gas) ?: [];
-    if (!$rows) return '<p><em>Sin información de facturas.</em></p>';
-
-    // Ordena por cliente para agrupar
-    usort($rows, function($a, $b){
-        return strcmp(($a['Cliente'] ?? ''), ($b['Cliente'] ?? ''));
-    });
-
-    $html  = '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">';
-    $html .= '<thead><tr style="background:#3485a8;color:#fff;">'
-          .  '<th>Cliente / Factura</th><th>Estación</th><th>Fecha</th><th>Vencimiento</th>'
-          .  '<th>Saldo Actual</th><th>Por Vencer</th><th>1-15</th><th>16-30</th><th>31-45</th><th>45+</th><th>Total Vencido</th>'
-          .  '</tr></thead><tbody>';
-
-    $cliActual = null;
-    $s = $pv = $d1 = $d2 = $d3 = $d4 = $tv = 0.0;
-
-    $fmtDate = function($val){
-        if (empty($val)) return '';
-        $ts = strtotime($val);
-        return $ts ? date('d/m/Y', $ts) : $val;
-    };
-
-    $flushTotals = function($cliente) use (&$html,&$s,&$pv,&$d1,&$d2,&$d3,&$d4,&$tv){
-        $html .= '<tr style="background:#e2f0d9;font-weight:700;">'
-              .  '<td style="text-align:right;">Totales '. htmlspecialchars($cliente) .'</td>'
-              .  '<td></td><td></td><td></td>'
-              .  '<td style="text-align:right;">'. number_format($s,  2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($pv, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($d1, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($d2, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($d3, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($d4, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($tv, 2, '.', ',') .'</td>'
-              .  '</tr>';
-        // reset
-        $s=$pv=$d1=$d2=$d3=$d4=$tv=0.0;
-    };
-
-    foreach ($rows as $r) {
-        $cliente  = $r['Cliente']  ?? '';
-        $estacion = $r['Estacion'] ?? '';
-
-        // Encabezado de grupo si cambia el cliente
-        if ($cliActual !== $cliente) {
-            if ($cliActual !== null) {
-                $flushTotals($cliActual);
-            }
-            $cliActual = $cliente;
-            $html .= '<tr style="background:#c6efce;font-weight:600;">'
-                  .  '<td colspan="11">Cliente: '. htmlspecialchars($cliente) . (isset($r['cond. pago']) && $r['cond. pago'] ? ' ('.htmlspecialchars($r['cond. pago']).')' : '') .'</td>'
-                  .  '</tr>';
-        }
-
-        // Factura = nroope - 1,700,000,000
-        $factura = (isset($r['nroope']) && $r['nroope'] !== null) ? ((int)$r['nroope'] - 1700000000) : '';
-
-        $fcha = $fmtDate($r['fchope_dt'] ?? '');
-        $vto  = $fmtDate($r['fchvto_dt'] ?? '');
-
-        $saldo   = (float)($r['Saldo actual']  ?? 0);
-        $porv    = (float)($r['Por vencer']    ?? 0);
-        $v115    = (float)($r['1-15']          ?? 0);
-        $v1630   = (float)($r['16-30']         ?? 0);
-        $v3145   = (float)($r['31-45']         ?? 0);
-        $v45     = (float)($r['45+']           ?? 0);
-        $tvenc   = (float)($r['Total vencido'] ?? 0);
-
-        // Acumula grupo
-        $s  += $saldo;
-        $pv += $porv;
-        $d1 += $v115;
-        $d2 += $v1630;
-        $d3 += $v3145;
-        $d4 += $v45;
-        $tv += $tvenc;
-
-        $html .= '<tr>'
-              .  '<td>- Factura #'. htmlspecialchars((string)$factura) .'</td>'
-              .  '<td>'. htmlspecialchars($estacion) .'</td>'
-              .  '<td>'. htmlspecialchars($fcha) .'</td>'
-              .  '<td>'. htmlspecialchars($vto)  .'</td>'
-              .  '<td style="text-align:right;">'. number_format($saldo, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($porv,  2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($v115,  2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($v1630, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($v3145, 2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($v45,   2, '.', ',') .'</td>'
-              .  '<td style="text-align:right;">'. number_format($tvenc, 2, '.', ',') .'</td>'
-              .  '</tr>';
-    }
-
-    // Totales del último cliente
-    if ($cliActual !== null) {
-        $flushTotals($cliActual);
-    }
-
-    $html .= '</tbody></table>';
-    return $html;
-}
 
 
 
@@ -364,6 +198,8 @@ public function balance_age()
         }
     }
 
+    $user_email = $_SESSION['tg_user']['Correo'] ?? '';
+
     echo $this->twig->render($this->route . 'balance_age.html', [
         'rows'        => $rows,
         'rows_det'    => $rows_det,     // <<-- NUEVO
@@ -372,6 +208,7 @@ public function balance_age()
         'cta_sel'     => $cta_sel,
         'gas_sel'     => $gas_sel,
         'submitted'   => $submitted,
+        'user_email'  => $user_email,  
     ]);
 }
 

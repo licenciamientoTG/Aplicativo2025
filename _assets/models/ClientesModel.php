@@ -355,22 +355,14 @@ EXEC [SG12].dbo.sp_SelMovPen
     C.den    AS Cliente,
     C.mtoasg AS Credito,
     C.cndpag AS [cond. pago],
+    C.correo AS correo,            -- <<<<<< NUEVO
     G.den    AS Estacion
   FROM #MovPen AS M
   LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
   LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
   WHERE C.codest <> -1
     AND M.tipope <> 101
-    AND M.mtopenori > 0       -- solo pendientes positivos
-),
-Ultimos AS (
-  SELECT
-    B.codopr,
-    B.codgas,
-    MAX(CASE WHEN B.tipope = 3 THEN B.fchope_dt END)     AS max_fchope_deb,
-    MAX(CASE WHEN B.tipope IN (4,6) THEN B.fchope_dt END) AS max_fchope_cred
-  FROM Base B
-  GROUP BY B.codopr, B.codgas
+    AND M.mtopenori > 0
 ),
 Detalles AS (
   SELECT
@@ -381,52 +373,45 @@ Detalles AS (
     B.[cond. pago],
     B.Credito,
     B.nroope,
-    (B.nroope - 1700000000) AS nrofac,  -- opcional: ya calculado
+    (B.nroope - 1700000000) AS nrofac,
     B.fchope_dt,
     B.fchvto_dt,
-
+    B.correo,                      -- <<<<<< NUEVO
     CAST(B.mtopenori/100.0 AS decimal(18,2)) AS [Saldo actual],
-
-    CAST(CASE 
-          WHEN B.fchvto_dt >= CAST(GETDATE() AS date) THEN B.mtopenori/100.0
-          ELSE 0 END AS decimal(18,2)) AS [Por vencer],
-
-    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+    CAST(CASE WHEN B.fchvto_dt >= CAST(GETDATE() AS date)
+              THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [Por vencer],
+    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
               THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [1-15],
-
-    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 16 AND 30
               THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [16-30],
-
-    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 31 AND 45
               THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [31-45],
-
-    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+    CAST(CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
               THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [45+],
-
     CAST((
-          CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+          CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                  AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
                THEN B.mtopenori/100.0 ELSE 0 END
-        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                  AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 16 AND 30
                THEN B.mtopenori/100.0 ELSE 0 END
-        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                  AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 31 AND 45
                THEN B.mtopenori/100.0 ELSE 0 END
-        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date) 
+        + CASE WHEN B.fchvto_dt < CAST(GETDATE() AS date)
                  AND DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
                THEN B.mtopenori/100.0 ELSE 0 END
         ) AS decimal(18,2)) AS [Total vencido]
   FROM Base B
-  LEFT JOIN Ultimos U ON U.codopr = B.codopr AND U.codgas = B.codgas
 )
 SELECT *
 FROM Detalles
 ORDER BY codopr, Cliente, codgas, Estacion, fchope_dt, fchvto_dt;
+
 
 DROP TABLE IF EXISTS #MovPen;
 SQL;
