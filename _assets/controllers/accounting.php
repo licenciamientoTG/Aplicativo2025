@@ -1052,6 +1052,66 @@ class Accounting{
         }
     }
 
+    function folio_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $folios = $_POST['folios'];
+        $codgas = $_POST['codgas2'];
+
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $folios = trim($folios);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $folios = preg_replace('/,+/', ',', $folios);
+
+        // 3️⃣ Separar por comas
+        $foliosArray = explode(',', $folios);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $foliosArray = array_unique($foliosArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($foliosArray, SORT_NUMERIC);
+
+        // 7️⃣ Si necesitás devolverlo como string limpio:
+        $foliosLimpio = implode(',', $foliosArray);
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
+    }
+
     function fuel_purchases() {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $from = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
@@ -1067,6 +1127,141 @@ class Accounting{
 
     function print_purchase_receipts($from, $until, $codgas = 0, $supplier = 0) {
         if ($rows = $this->Documentos->movement_analysis_table(dateToInt($from), dateToInt($until), $codgas, $supplier)) {
+            // Crear una instancia de FPDF
+            $pdf = new PDF_Code128();
+            
+            // Establecer los márgenes
+            $pdf->SetMargins(5, 5, 5);  // Margen izquierdo, margen superior, margen derecho
+            
+            // Establecer el margen inferior
+            $pdf->SetAutoPageBreak(true, 12);  // Aumentado a 12 mm para el footer
+            
+            $pageNumber = 0; // Contador de páginas
+            
+            foreach ($rows as $key => $row) {
+                // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+                $pdf->AddPage('P');
+                $pageNumber++; // Incrementar contador
+                
+                // Configurar fuente para el encabezado
+                $pdf->SetFont('Arial', 'B', 9);
+                
+                // TCabecera
+                $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Empresa']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Ciudad']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+                
+                // Sección de recepción
+                $pdf->SetFont('Arial', 'IB', 7);
+                $pdf->Cell(200, 3, '', 0, 1, 'C');
+                $pdf->Cell(23, 3.6, utf8_decode('Estación'), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, utf8_decode($row['DocDenominacion'] . ' (' .$row['nropcc']. ')'), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+                if ((!empty(trim($row['Factura'])))) {
+                    $factura = "Factura " . $row['Factura'];
+                } else {
+                    $factura = "";
+                }
+                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+                // Sección de tabla
+                $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+                $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+                $pdf->SetFont('Arial', '', 7);
+                $subtotal = 0;
+                $iva_concepto = 0;
+                if ($conceptos = $this->Documentos->get_concepts($row['codgas'], $row['Número'])) {
+                    foreach ($conceptos as $key => $concepto) {
+                        $subtotal += $concepto['Monto'];
+                        if (str_contains($concepto['Concepto'], 'IVA')) {
+                            $iva_concepto += $concepto['Monto'];
+                        }
+                        $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L'); $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'], 3, '.', ','), 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Precio'], 5, '.', ','), 0, 0, 'L'); $pdf->Cell(25, 3.5, number_format($concepto['Monto'], 2, '.', ','), 0, 0, 'L'); $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                    }
+                }
+
+                $pdf->SetFont('Arial', 'B', 7);
+                $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+                $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+                $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+                
+                // Espacio
+                $pdf->Cell(200, 10, '', 0, 1, 'L');
+                $pdf->Cell(33.3, 3.5, utf8_decode('Recepción'), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L'); 
+                if ($receptions = $this->Documentos->get_receptions($row['codgas'], $row['Número'])) {
+                    $pdf->SetFont('Arial', '', 7);
+                    foreach ($receptions as $key => $rec) {
+                        $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L'); 
+                    }
+                }
+
+                
+                
+                $pdf->SetFont('Arial', '', 7);
+                $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+                $pdf->Cell(40, 10, utf8_decode('Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                
+                // AGREGAR PIE DE PÁGINA MANUALMENTE
+                // Guardar posición actual
+                $currentY = $pdf->GetY();
+                
+                // Mover al final de la página (10mm desde el borde inferior)
+                $pdf->SetY(-18);
+                
+                // Configurar fuente para el pie
+                $pdf->SetFont('Arial', 'I', 7);
+                $pdf->Cell(200, 1, '', 'B', 1, 'L');
+                // Agregar los textos del pie
+                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                $pdf->Cell(100, 5, utf8_decode('Página ') . $pageNumber, 0, 0, 'R');
+                
+                // Restaurar la posición Y para el siguiente documento (si lo hay)
+                $pdf->SetY($currentY);
+            }
+            
+            // Salida del PDF
+            $pdf->Output();
+        } else {
+            // Manejar el caso cuando no hay datos
+            echo '<pre>';
+            var_dump("Algo malio sal");
+            die();
+        }
+    }
+
+
+    function print_purchase_receipts2($folios, $codgas) {
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $folios = trim($folios);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $folios = preg_replace('/,+/', ',', $folios);
+
+        // 3️⃣ Separar por comas
+        $foliosArray = explode(',', $folios);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $foliosArray = array_unique($foliosArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($foliosArray, SORT_NUMERIC);
+
+        // 7️⃣ Si necesitás devolverlo como string limpio:
+        $foliosLimpio = implode(',', $foliosArray);
+
+        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio, $codgas)) {
             // Crear una instancia de FPDF
             $pdf = new PDF_Code128();
             

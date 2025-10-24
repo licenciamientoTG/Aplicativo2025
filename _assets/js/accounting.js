@@ -1668,28 +1668,47 @@ async function movement_analysis_table(){
         $('#movement_analysis_table').DataTable().destroy();
         $('#movement_analysis_table thead .filter').remove();
     }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-    var codgas = document.getElementById('station').value || 0;
-    var supplier = document.getElementById('supplier_val').value;
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
         col = $('#movement_analysis_table thead th').length/2;
         if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
+            var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
     });
     $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#movement_analysis_table').DataTable(); // Obtiene la instancia de DataTable
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
         table
             .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
+            .search(this.value)
+            .draw();
     });
-    let movement_analysis_table =$('#movement_analysis_table').DataTable({
+    
+    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
+    $('#movement_analysis_table').DataTable({
         order: [0, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
@@ -1712,9 +1731,9 @@ async function movement_analysis_table(){
         ajax: {
             method: 'POST',
             data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'codgas':codgas,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
                 'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
@@ -1728,10 +1747,9 @@ async function movement_analysis_table(){
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                     </div>`
                 );
-
             },
             beforeSend: function() {
                 $('.table-responsive').addClass('loading');
@@ -1759,14 +1777,11 @@ async function movement_analysis_table(){
             {'data': 'Proveedor'},
         ],
         deferRender: true,
-        // destroy: true, 
         createdRow: function (row, data, dataIndex) {
            
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
         footerCallback: function (row, data, start, end, display) {
 
