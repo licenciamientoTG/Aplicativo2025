@@ -18,6 +18,8 @@ use PhpOffice\PhpSpreadsheet\Chart\Title;
 use PhpOffice\PhpSpreadsheet\Helper\Sample;
 use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+
 require_once('./_assets/classes/code128.php');
 
 class Accounting{
@@ -30,6 +32,7 @@ class Accounting{
     public ComprasPetrotalModel $comprasPetrotalModel;
     public PetrotalConceptosModel $petrotalConceptosModel;
     public ERAjustesModel $eraJustesModel;
+    public MovimientosTanModel $movimientosTanModel;
     /**
      * @param $twig
      */
@@ -43,7 +46,7 @@ class Accounting{
         $this->comprasPetrotalModel   = new ComprasPetrotalModel();
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
         $this->eraJustesModel         = new ERAjustesModel();
-
+        $this->movimientosTanModel    = new MovimientosTanModel();
     }
 
     /**
@@ -1372,4 +1375,115 @@ class Accounting{
         }
     }
 
+    function purchases_vs_receptions() {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'purchases_vs_receptions.html');
+        } else {
+            // Aumentar límite de memoria
+            ini_set('memory_limit', '1024M');
+            
+            try {
+                // 1. Verificar que se haya subido un archivo
+                if (!isset($_FILES['excel']) || $_FILES['excel']['error'] !== UPLOAD_ERR_OK) {
+                    throw new Exception('No se ha subido ningún archivo o hubo un error en la carga.');
+                }
+
+                $file = $_FILES['excel'];
+
+                // 2. Verificar que sea un archivo Excel (.xlsx)
+                $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                if ($fileExtension !== 'xlsx') {
+                    throw new Exception('El archivo debe ser de formato .xlsx');
+                }
+
+                // 3. Crear lector con configuración para lectura eficiente
+                $reader = new XlsxReader();
+                
+                // Configurar para leer solo datos (sin formato, sin imágenes, etc.)
+                $reader->setReadDataOnly(true);
+                
+                // 4. Cargar el archivo Excel
+                $spreadsheet = $reader->load($file['tmp_name']);
+                
+                // 5. Obtener la primera hoja
+                $worksheet = $spreadsheet->getActiveSheet();
+                
+                // 6. Obtener los encabezados (primera fila)
+                $headers = [];
+                $highestColumn = $worksheet->getHighestColumn();
+                $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+                
+                // Leer encabezados
+                for ($col = 1; $col <= $highestColumnIndex; $col++) {
+                    $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+                    $headers[] = trim($worksheet->getCell($columnLetter . '1')->getValue());
+                }
+
+                // 7. Verificar que exista la columna UUID
+                $uuidColumnIndex = array_search('UUID', $headers);
+                
+                if ($uuidColumnIndex === false) {
+                    throw new Exception('El archivo no contiene la columna "UUID".');
+                }
+
+                // Convertir índice a letra de columna (A, B, C, etc.)
+                $uuidColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($uuidColumnIndex + 1);
+                
+                // 8. Obtener todos los valores de la columna UUID
+                $uuids = [];
+                $highestRow = $worksheet->getHighestRow();
+                
+                for ($row = 2; $row <= $highestRow; $row++) {
+                    $uuid = trim($worksheet->getCell($uuidColumn . $row)->getValue());
+                    
+                    // Solo agregar si no está vacío
+                    if (!empty($uuid)) {
+                        $uuids[] = $uuid;
+                    }
+                    
+                    // Liberar memoria cada 1000 filas
+                    if ($row % 1000 == 0) {
+                        $worksheet->garbageCollect();
+                    }
+                }
+
+                // 9. Liberar memoria
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+
+                // 10. Verificar que se hayan encontrado UUIDs
+                if (empty($uuids)) {
+                    throw new Exception('No se encontraron UUIDs en el archivo.');
+                }
+
+                // 11. Buscar registros en la base de datos
+                $uuidsCadena = "'" . implode("','", $uuids) . "'";
+
+                $data = [];
+                if ($resultados = $this->movimientosTanModel->buscarPorUUID($uuidsCadena)) {
+                    foreach ($resultados as $key => $row) {
+                        $data[] = array(
+                            'proveedor'        => $row['Proveedor'],
+                            'estacion'         => $row['Estacion'],
+                            'factura'          => str_replace(':', '', $row['Factura']),
+                            'remision'         => str_replace(':', '', $row['Remision']),
+                            'documento'        => $row['Documento'],
+                            'uuid'             => $row['satuid'],
+                            'fecha'            => ($row['Fecha'] . ' (' . $row['fch'] . ')'),
+                            'volumen_recibido' => floatval($row['VolRecibido']),
+                        );
+                    }
+                }
+                
+                // 12. Retornar JSON
+                json_output(array("data" => $data));
+
+            } catch (Exception $e) {
+                // Retornar error en formato JSON
+                http_response_code(400);
+                json_output(array("error" => $e->getMessage()));
+            }
+        }
+    }
+    
 }
