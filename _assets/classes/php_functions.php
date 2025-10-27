@@ -54,45 +54,61 @@ function json_modal($title, $html) {
 // Recipents = ['aaguirre@totalgas.com','acarrasco@totalgas.com','aochoa@totalgas.com','customerservice@totalgas.com','lcoronel@totalgas.com','dfong@totalgas.com','jfong@totalgas.com'];
 // CCAddress = ['hcastorena@totalgas.com'];
 // SetFrom: 'corsys@totalgas.com'
-function send_mail($subject,$body,$recipients,$setFrom, $attachment1=false, $attachment2=false): bool {
+function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false): bool {
 
-    // $mail = new PHPMailer\PHPMailer\PHPMailer(true);
     $mail = new PHPMailer(true);
 
-    // Passing `true` enables exceptions
-    $mail->IsSMTP(); // enable SMTP
-    $mail->SMTPDebug = SMTP::DEBUG_SERVER;
-    $mail->SMTPAuth = true; // authentication enabled
-    $mail->SMTPSecure = 'ssl'; // secure transfer enabled REQUIRED for Gmail
-    $mail->Host = "smtp.gmail.com";
-    $mail->Port = 465; // or 587
-    $mail->IsHTML(true);
-    $mail->Username = 'totalgasdesarrollo@gmail.com';
-    // $mail->Password = "fgblyrfoimujaaou";
-    $mail->Password = "bdppgxrwzhmyfrmf";
-
-
-    $mail->SetFrom($setFrom, mb_convert_encoding('TotalGas | Sistema de Gestión de correos', 'ISO-8859-1'));
-    $mail->Subject = $subject;
-    $mail->Body = $body;
-    $mail->AddAddress($recipients[0]);
-
-    foreach ($recipients as $item) {
-        $mail->addAddress($item);                               //Add a recipient
-    }
-    if ($attachment1 != false) {
-        $mail->addAttachment($attachment1);
-    }
-    if ($attachment2 != false) {
-        $mail->addAttachment($attachment2);
-    }
-
-    // Vamos a enviar el correo y luego a retornar un booleano
     try {
-        $mail->send();
-        return true;
+        // --- SMTP Gmail ---
+        $mail->isSMTP();
+        // En producción apaga el debug:
+        $mail->SMTPDebug = SMTP::DEBUG_OFF;               // antes: DEBUG_SERVER
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        // TLS (587) o SMTPS (465). Con Gmail cualquiera; dejo SMTPS:
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
+        $mail->Port       = 465;
+
+        $mail->Username   = 'totalgasdesarrollo@gmail.com';
+        $mail->Password   = 'bdppgxrwzhmyfrmf';
+
+        // --- Codificación y HTML ---
+        $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
+        $mail->Encoding = 'base64';       // o 'quoted-printable'
+        $mail->isHTML(true);
+
+        // Mensajes de PHPMailer en español (opcional, para errores)
+        $mail->setLanguage('es');
+
+        // --- Remitente ---
+        // ¡Quita la conversión a ISO-8859-1!
+        $mail->setFrom($setFrom, 'TotalGas | Sistema de Gestión de correos');
+
+        // --- Destinatarios ---
+        // No agregues dos veces el primero; sólo recorre el arreglo
+        foreach ((array)$recipients as $to) {
+            if ($to) { $mail->addAddress(trim($to)); }
+        }
+
+        // --- Asunto y cuerpo (UTF-8) ---
+        $mail->Subject = (string)$subject;           // Puede llevar acentos y ñ
+        $mail->Body    = (string)$body;              // HTML permitido
+        $mail->AltBody = strip_tags((string)$body);  // texto plano de respaldo
+
+        // --- Adjuntos ---
+        if ($attachment1) { $mail->addAttachment($attachment1); }
+        if ($attachment2) { $mail->addAttachment($attachment2); }
+
+        // (Opcional) Asegura el contexto interno a UTF-8
+        if (function_exists('mb_internal_encoding')) {
+            mb_internal_encoding('UTF-8');
+        }
+
+        return $mail->send();
+
     } catch (Exception $e) {
-        echo "Mailer Error: {$mail->ErrorInfo}";
+        // Si estás devolviendo JSON desde el endpoint, no hagas echo aquí.
+        error_log("Mailer Error: {$mail->ErrorInfo}");
         return false;
     }
 }

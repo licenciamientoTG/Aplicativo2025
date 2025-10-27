@@ -68,6 +68,91 @@ class Income{
         }
     }
 
+// === Dentro de class Income ===
+
+// Reemplaza/Agrega este método
+// Reemplaza este método dentro de class Income
+public function balance_age_send_mail(){
+    if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+        return json_output(['status'=>'error','message'=>'Método no permitido']);
+    }
+
+    // POST
+    $sentTo   = $_POST['sentTo']   ?? '';
+    $subject  = $_POST['subject']  ?? 'Balance por Cliente/Estación';
+    $filename = $_POST['filename'] ?? '';
+    $file_b64 = $_POST['file_b64'] ?? '';  // Excel en base64 (opcional)
+    $cta      = (int)($_POST['cta'] ?? 0);
+    $gas      = (int)($_POST['gas'] ?? 0);
+
+    // 🔹 NUEVO: mensaje opcional del formulario
+    $body     = (string)($_POST['body'] ?? ' ');
+
+    // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
+    $rawList = str_replace(',', ';', (string)$sentTo);
+    $to = array_values(array_unique(array_filter(
+        array_map('trim', explode(';', $rawList)),
+        function($e){ return $e && filter_var($e, FILTER_VALIDATE_EMAIL) && preg_match('/@totalgas\.com$/i', $e); }
+    )));
+    if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com válido.']);
+
+    // Mensaje dinámico fin de mes (sin cambios)
+    $fechaActual   = new DateTime();
+    $diaActual     = (int)$fechaActual->format('d');
+    $ultimoDiaMes  = (int)$fechaActual->format('t');
+
+    // Envío (con o sin adjunto)
+    $from = 'totalgasdesarrollo@gmail.com';
+    $ok   = false;
+    $tmp  = null;
+
+    // Si viene un dataURL, quítale el prefijo
+    if (!empty($file_b64) && strpos($file_b64, 'base64,') !== false) {
+        $file_b64 = explode('base64,', $file_b64, 2)[1] ?? $file_b64;
+    }
+
+    if (!empty($file_b64) && !empty($filename)) {
+        $safeName = preg_replace('/[^\w\.\-]+/', '_', $filename);
+        $tmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
+        $bytes = @file_put_contents($tmp, base64_decode($file_b64, true));
+        if ($bytes === false) {
+            return json_output(['status'=>'error','message'=>'No se pudo procesar el archivo adjunto.']);
+        }
+
+        // Captura la salida del PHPMailer para depurar sin romper el JSON
+        ob_start();
+        $ok = @send_mail($subject, $body, $to, $from, $tmp);
+        $mailerOut = trim(ob_get_clean());
+
+        @unlink($tmp);
+    } else {
+        ob_start();
+        $ok = @send_mail($subject, $body, $to, $from);
+        $mailerOut = trim(ob_get_clean());
+    }
+
+    if ($ok) {
+        return json_output([
+            'status'  => 'success',
+            'message' => !empty($filename) ? 'Correo enviado correctamente con adjunto.' : 'Correo enviado correctamente.'
+        ]);
+    }
+
+    // Error controlado (HTTP 200, pero con status=error)
+    return json_output([
+        'status'  => 'error',
+        'message' => 'No se pudo enviar el correo.',
+        'mailer'  => $mailerOut
+    ]);
+}
+
+/**
+ * Construye una tabla HTML compacta para el TAB "Totales"
+ */
+
+
+
+
 public function balance_age()
 {
     // Catálogo de cuentas
@@ -77,8 +162,14 @@ public function balance_age()
         101032004 => '101032004 - Facturas X Cobrar Arrendamiento',
     ];
 
-    // Gasolineras para el select
-    $gasolineras = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+    // === Filtrar gasolineras permitidas ===
+    $permitidas = [2, 24, 26, 29, 31];
+
+    // Lee todas y filtra por los códigos permitidos
+    $gas_all = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
+    $gasolineras = array_values(array_filter($gas_all, function ($g) use ($permitidas) {
+        return in_array((int)$g['cod'], $permitidas, true);
+    }));
 
     // Lee filtros SIN default (para no disparar consulta)
     $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
@@ -87,31 +178,39 @@ public function balance_age()
     // ¿El usuario ya dio "Consultar"?
     $submitted = ($cta_sel !== null && $gas_sel !== null);
 
-    $rows = [];
+    $rows     = [];
+    $rows_det = [];   // <<-- NUEVO (para la pestaña Facturas)
+
     if ($submitted) {
-        // Valida selección contra catálogos
+        // Valida selección contra catálogos ya filtrados
         $validCta = array_key_exists($cta_sel, $cuentas);
-        $validGas = in_array($gas_sel, array_map('intval', array_column($gasolineras, 'cod')), true);
+        $validGas = in_array(
+            $gas_sel,
+            array_map('intval', array_column($gasolineras, 'cod')),
+            true
+        );
 
         if ($validCta && $validGas) {
-            $rows = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+            $rows     = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
+            $rows_det = $this->clientesModel->get_balance_age_detalle($cta_sel, $gas_sel) ?: []; // <<-- NUEVO
         } else {
-            // Si hay valores inválidos, no mostramos tabla
             $submitted = false;
         }
     }
 
+    $user_email = $_SESSION['tg_user']['Correo'] ?? '';
+
     echo $this->twig->render($this->route . 'balance_age.html', [
         'rows'        => $rows,
+        'rows_det'    => $rows_det,     // <<-- NUEVO
         'cuentas'     => $cuentas,
         'gasolineras' => $gasolineras,
         'cta_sel'     => $cta_sel,
         'gas_sel'     => $gas_sel,
-        'submitted'   => $submitted, // <-- clave para la vista
+        'submitted'   => $submitted,
+        'user_email'  => $user_email,  
     ]);
 }
-
-
 
 
 
@@ -292,49 +391,52 @@ public function balance_age()
     }
 
     function cash_invoices_table(){
+    ini_set('memory_limit', '512M');
+    set_time_limit(300);
 
-        
-         ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($despachos = $this->despachosModel->cash_invoices_advance($from, $until)) {
+    $data  = [];
+    $from  = dateToInt($_POST['from']);
+    $until = dateToInt($_POST['until']);
 
-            foreach ($despachos as $despachos) {
-                 $data[] = array(
-                     'codcli'             => $despachos["codcli"],
-                     'cliente'          => $despachos["den"],
-                     'monto'       => $despachos["monto"],
-                 );
-            }
+    if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
+        foreach ($rows as $r) {
+            $data[] = [
+                'codcli'       => $r['codcli'],
+                'cliente'      => $r['den'],
+                'n_despachos'  => (int)$r['n_despachos'],
+                'monto'        => (float)$r['monto'],
+            ];
         }
-       json_output(array("data" => $data));
     }
-    function invoice_client_desp(){
+    json_output(['data' => $data]);
+}
 
-        
-         ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($despachos = $this->despachosModel->invoice_client_desp($from, $until)) {
-            foreach ($despachos as $despachos) {
-                 $data[] = array(
-                    'fecha'    => $despachos["fecha"],
-                    'codcli'   => $despachos["codcli"],
-                    'cliente'  => $despachos["den"],
-                    'monto'      => $despachos["monto"],
-                    'estacion' => $despachos["abr"],
-                    'factura'   => $despachos["factura"],
-                 );
-            }
+function invoice_client_desp(){
+    ini_set('memory_limit', '512M');
+    set_time_limit(300);
+
+    $data  = [];
+    $from  = dateToInt($_POST['from']);
+    $until = dateToInt($_POST['until']);
+
+    if ($rows = $this->despachosModel->invoice_client_desp($from, $until)) {
+        foreach ($rows as $r) {
+        $data[] = [
+            'fecha'       => $r['fecha'],
+            'codcli'      => $r['codcli'],
+            'cliente'     => $r['den'],
+            'monto'       => (float)$r['monto'],
+            'n_despachos' => (int)$r['n_despachos'],   // <<<<<< nuevo
+            'estacion'    => $r['abr'],
+            'factura'     => $r['factura'],
+            'metodo_pago' => $r['metodo_pago'],
+        ];
+
         }
-       json_output(array("data" => $data));
     }
+    json_output(['data' => $data]);
+}
+
 
 
     function relation_credit_table(){
@@ -1244,6 +1346,8 @@ public function balance_age()
         }
     }
 
+
+    
     function send_mail($fch, $codgas, $shift, $dispatch_type, $sentTo) {
 
         if ($dispatch_type == 'payworks') { // Verificado OK
@@ -1330,6 +1434,18 @@ public function balance_age()
 
         json_output(array("user_mail" => $user_mail, "station_mail" => $station_mail));
     }
+
+    public function balance_age_get_user_email(): void
+{
+    // Toma el correo del usuario autenticado desde la sesión
+    $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
+
+    // Devuelve JSON (usa tu helper global)
+    json_output([
+        'ok' => true,
+        'user_mail' => $user_mail
+    ]);
+}
 
     function generateExcel($fecha) {
         // Crear el objeto de hoja de cálculo

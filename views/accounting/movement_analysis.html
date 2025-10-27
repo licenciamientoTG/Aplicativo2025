@@ -1,122 +1,129 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Cobranza Credito{% endblock %}
+{% block title %}Análisis de movimientos{% endblock %}
 {% block mycss %}{% endblock %}
-{% block menutitle %}Cobranza Credito{% endblock %}
+{% block menutitle %}Análisis de movimientos{% endblock %}
 {% block content %}
 
-<style>
-    tr.group,
-tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.1) !important;
-}
- 
-:root.dark tr.group,
-:root.dark tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.75) !important;
-}
-.column_estation{
-    background-color: #add5e6 !important;
-    color: white !important;
-}
-.total_bg{
-    background-color: #48A1C7 !important;
-    color: white !important;
-}
-.total_bg2{
-    background-color:#48A1C7 !important;
-    color: white !important;
-
-}
-
-.border_center{
-    border-top: 1px dotted  #358f92 !important;
-    border-bottom: 1px dotted  #358f92 !important;
-    border-left: 1px dotted #358f92 !important;
-    border-right: 1px dotted  #358f92 !important;
-}
-
-
-table.dataTable thead th, table.dataTable thead td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-
-table.dataTable tfoot th, table.dataTable tfoot td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-.border_OG{
-    border: 0.5px solid #0c202091 !important;
-    background-color: #6d7277e8;
-}
-</style>
-<ul class="nav nav-tabs" id="myTab" role="tablist">
-
+<!-- Nav Tabs -->
+<ul class="nav nav-tabs mb-3" id="analysisTab" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="movement_analysis-tab" data-bs-toggle="tab" data-bs-target="#movement_analysis" type="button" role="tab" aria-controls="movement_analysis" aria-selected="true">Facturas Compra</button>
+        <button class="nav-link active" id="tab-compras" data-bs-toggle="tab" data-bs-target="#compras-tab-pane" type="button" role="tab" aria-controls="compras-tab-pane" aria-selected="true">
+            Análisis por Rangos
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-folios-tabla" data-bs-toggle="tab" data-bs-target="#folios-tabla-pane" type="button" role="tab" aria-controls="folios-tabla-pane" aria-selected="false">
+            Análisis por Folios
+        </button>
     </li>
 </ul>
 
-
-<div class="tab-content">
-    <div class="tab-pane active" id="movement_analysis" role="tabpanel" aria-labelledby="movement_analysis-tab">
+<!-- Tab Content -->
+<div class="tab-content" id="analysisTabContent">
+    
+    <!-- TAB 1: Análisis de Compras -->
+    <div class="tab-pane fade show active" id="compras-tab-pane" role="tabpanel" aria-labelledby="tab-compras" tabindex="0">
+        
+        <!-- Formulario de búsqueda por filtros -->
         <div class="card">
             <div class="card-body">
-                <div class="row">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date_modify('first day of this month')|date('Y-m-d') }}"  required>
+                <form method="GET" action="#" id="movementSearchForm">
+                    <div class="row">
+                        <div class="col-2">
+                            <label class="col-form-label-sm" for="from">Desde:</label>
+                            <input type="date" class="form-control form-control-sm" name="from" id="from" value="{{ from }}" required>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm" for="until">Hasta:</label>
+                            <input type="date" class="form-control form-control-sm" name="until" id="until" value="{{ until }}" required>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm" for="station">Estación:</label>
+                            <select name="station" id="station" class="form-select form-select-sm">
+                                <option value="">-- Todas las estaciones --</option>
+                                {% for s in stations %}
+                                    <option value="{{ s.Codigo }}"
+                                        {% if s.Codigo == codgas2 %}selected{% endif %}>
+                                        {{ s.Nombre }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm" for="supplier">Proveedor:</label>
+                            <input type="hidden" name="supplier_val" id="supplier_val" value="{{ supplier }}">
+                            <select name="supplier" id="supplier" class="form-select form-select-sm selectpicker" data-live-search="true" title="-- Todos los proveedores --">
+                                <option value="">-- Todos los proveedores --</option>
+                                {% for su in suppliers %}
+                                    <option value="{{ su.codopr }}"
+                                        {% if su.codopr == supplier %}selected{% endif %}>
+                                        {{ su.Entidad }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm">&nbsp;</label>
+                            <button type="submit" id="search_movement_analysis" class="btn btn-sm btn-primary w-100">Generar Reporte</button>
+                        </div>
                     </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
-                    </div>
-
-                    <div class="col-2 " >
-                        <button id="seach_movement_analysis" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
-                    </div>
-                </div>
+                </form>
             </div>
         </div>
+
+        <!-- Tabla de Análisis de Compras -->
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title">Cobranza Credito </h5>
+                <h5 class="card-title">Análisis de Compras de Combustible por Rangos</h5>
             </div>
-            <div class="card-body table-responsive" >
-                <table id="movement_analysis_table" class="table table-hover table-sm w-100">
+            <div class="card-body table-responsive">
+                <table id="movement_analysis_table" class="table table-hover table-sm w-100" style="width: 100% !important;">
                     <thead>
                         <tr>
-                            <th>Numero</th>
-                            <th>Estacion</th>
-                            <th>Fecha</th>
-                            <th>Entidad</th>
+                            <th>Número</th>
                             <th>Factura</th>
-                            <th>Movimiento</th>
-                            <th>Monto</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
                             <th>UUID</th>
-                            <th>Ref</th>
-
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
                         </tr>
                     </thead>
                     <tbody>
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th>Numero</th>
-                            <th>Estacion</th>
-                            <th>Fecha</th>
-                            <th>Entidad</th>
+                            <th>Número</th>
                             <th>Factura</th>
-                            <th>Movimiento</th>
-                            <th>Monto</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
                             <th>UUID</th>
-                            <th>Ref</th>
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
                         </tr>
                     </tfoot>
                 </table>
@@ -124,22 +131,257 @@ table.dataTable tfoot th, table.dataTable tfoot td {
         </div>
 
     </div>
+
+    <!-- TAB 2: Segunda Tabla -->
+    <div class="tab-pane fade" id="folios-tabla-pane" role="tabpanel" aria-labelledby="tab-folios-tabla" tabindex="0">
+        
+        <!-- Formulario de búsqueda por folios -->
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" id="folioSearchForm">
+                    <div class="row align-items-end">
+                        <div class="col-6">
+                            <label class="col-form-label-sm" for="folios">Buscar por folios (separados por coma):</label>
+                            <textarea class="form-control form-control-sm" name="folios" id="folios" rows="1" placeholder="Ejemplo: 12345, 67890, 11223" required></textarea>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm" for="station2">Estación: <span class="text-danger">*</span></label>
+                            <select name="station2" id="station2" class="form-select form-select-sm" required>
+                                <option value="">-- Seleccione estación --</option>
+                                {% for s in stations %}
+                                    <option value="{{ s.Codigo }}">
+                                        {{ s.Nombre }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm d-block">&nbsp;</label>
+                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                Generar Reporte
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Segunda Tabla -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Análisis de Compras de Combustible por Folios</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="folio_analysis_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Factura</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
+                            <th>UUID</th>
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Número</th>
+                            <th>Factura</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
+                            <th>UUID</th>
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
-
-
-
 
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}accounting.js"></script>
 <script>
-$('#seach_movement_analysis').on('click', function() {
-    movement_analysis_table();
-});
+    $(document).ready(function() {
+        // Inicializar selectpicker
+        $('.selectpicker').selectpicker();
+        
+        // Debug: Verificar que jQuery está funcionando
+        console.log('jQuery cargado:', typeof $ !== 'undefined');
+        console.log('Formulario folio existe:', $('#folioSearchForm').length);
+        
+        // Manejo del PRIMER formulario (búsqueda por fechas)
+        $('#movementSearchForm').on('submit', function(e) {
+            e.preventDefault();
+            console.log('Formulario 1 enviado');
+            movement_analysis_table();
+        });
+        
+        // Manejo del SEGUNDO formulario (búsqueda por folios)
+        $('#folioSearchForm').on('submit', function (e) {
+            e.preventDefault();
+            folio_analysis_table(this);  // pasamos el form
+        });
 
+        async function folio_analysis_table(){
+            
+            if ($.fn.DataTable.isDataTable('#folio_analysis_table')) {
+                $('#folio_analysis_table').DataTable().destroy();
+                $('#folio_analysis_table thead .filter').remove();
+            }
+            
+            // Validar que el elemento exista
+            var foliosElement = document.getElementById('folios');
+            var codgas2Element = document.getElementById('station2');
+            
+            if (!foliosElement) {
+                alertify.error('Campo de folios no encontrado');
+                return;
+            }
 
+            if (!codgas2Element) {
+                alertify.error('Campo de Estación no encontrado');
+                return;
+            }
+            
+            var folios = foliosElement.value.trim();
+            var codgas2 = codgas2Element.value.trim();
+            
+            if (!folios) {
+                alertify.error('Por favor ingrese al menos un folio');
+                return;
+            }
 
-</script>
+            // VALIDACIÓN OBLIGATORIA DE ESTACIÓN
+            if (!codgas2 || codgas2 === '') {
+                alertify.error('Por favor seleccione una estación');
+                return;
+            }
 
+            $('#folio_analysis_table thead').prepend($('#folio_analysis_table thead tr').clone().addClass('filter'));
+            $('#folio_analysis_table thead tr.filter th').each(function (index) {
+                col = $('#folio_analysis_table thead th').length/2;
+                if (index < col ) {
+                    var title = $(this).text();
+                    $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+                }
+            });
+            $('#folio_analysis_table thead tr.filter th input').on('keyup change', function () {
+                var index = $(this).parent().index();
+                var table = $('#folio_analysis_table').DataTable();
+                table
+                    .column(index)
+                    .search(this.value)
+                    .draw();
+            });
+            
+            $('#folio_analysis_table').DataTable({
+                order: [0, "asc"],
+                colReorder: true,
+                dom: '<"top"Bf>rt<"bottom"lip>',
+                paging: true,
+                pageLength: 100,
+                buttons: [
+                    {
+                        extend: 'excel',
+                        className: 'btn btn-success',
+                        text: ' Excel'
+                    },
+                    {
+                        text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
+                        className: 'btn btn-primary',
+                        action: function () {
+                            window.open('/accounting/print_purchase_receipts2/' + folios + '/' + codgas2, '_blank');
+                        }
+                    }
+                ],
+                ajax: {
+                    method: 'POST',
+                    data: {
+                        'folios': folios,
+                        'codgas2': codgas2
+                    },
+                    url: '/accounting/folio_analysis_table',
+                    timeout: 600000, 
+                    error: function() {
+                        $('#folio_analysis_table').waitMe('hide');
+                        $('.table-responsive').removeClass('loading');
+
+                        alertify.myAlert(
+                            `<div class="container text-center text-danger">
+                                <h4 class="mt-2 text-danger">¡Error!</h4>
+                            </div>
+                            <div class="text-dark">
+                                <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                            </div>`
+                        );
+                    },
+                    beforeSend: function() {
+                        $('.table-responsive').addClass('loading');
+                    }
+                },
+                columns: [
+                    {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Fecha'},
+                    {'data': 'Vencimiento'},
+                    {'data': 'Producto'},
+                    {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
+                    {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Estación'},
+                    {'data': 'UUID'},
+                    {'data': 'RFC'},
+                    {'data': 'Remision'},
+                    {'data': 'Vehiculo'},
+                    {'data': 'Proveedor'},
+                ],
+                deferRender: true,
+                createdRow: function (row, data, dataIndex) {
+                
+                },
+                initComplete: function () {
+                    $('.table-responsive').removeClass('loading');
+                },
+                footerCallback: function (row, data, start, end, display) {
+
+                }
+            });
+        }
+    });
 </script>
 {% endblock %}

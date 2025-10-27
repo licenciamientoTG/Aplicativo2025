@@ -2007,148 +2007,105 @@ async function cash_invoices_table(){
     if ($.fn.DataTable.isDataTable('#cash_invoices_table')) {
         $('#cash_invoices_table').DataTable().destroy();
         $('#cash_invoices_table thead .filter').remove();
-      
     }
     const from  = $('#from').val();
     const until = $('#until').val();
 
     $('#cash_invoices_table thead').prepend($('#cash_invoices_table thead tr').clone().addClass('filter'));
     $('#cash_invoices_table thead tr.filter th').each(function (index) {
-        col = $('#cash_invoices_table thead th').length/2;
+        const col = $('#cash_invoices_table thead th').length/2;
         if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            const title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" '+ title +'" />');
         }
     });
     $('#cash_invoices_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#cash_invoices_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
+        const index = $(this).parent().index();
+        const table = $('#cash_invoices_table').DataTable();
+        table.column(index).search(this.value).draw();
     });
-    let cash_invoices_table =$('#cash_invoices_table').DataTable({
-        order: [2, "desc"],
+
+    let dt = $('#cash_invoices_table').DataTable({
+        order: [3, "desc"], // ahora Monto es la columna 3
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
         scrollY: '700px',
         scrollX: true,
         scrollCollapse: true,
         paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
         buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel' }
         ],
         ajax: {
             method: 'POST',
-            data: {
-                'from':from,
-                'until':until
-            },
+            data: { from, until },
             url: '/income/cash_invoices_table',
-            timeout: 600000, 
+            timeout: 600000,
             error: function() {
                 $('#cash_invoices_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
+                alertify.myAlert(`
+                    <div class="container text-center text-danger">
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
                         <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
+                    </div>
+                `);
             },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
+            beforeSend: function() { $('.table-responsive').addClass('loading'); }
         },
         columns: [
-            {'data': 'codcli',className:'text-nowrap'},
-            {'data': 'cliente'},
-            {'data': 'monto', render: $.fn.dataTable.render.number(',','.',2) },
-
+            { data: 'codcli',      className:'text-nowrap' },
+            { data: 'cliente' },
+            { data: 'n_despachos', render: $.fn.dataTable.render.number(',','.',0), className: 'text-center' },
+            { data: 'monto',       render: $.fn.dataTable.render.number(',','.',2) }
         ],
         deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-           
-        },
+        createdRow: function (row, data, dataIndex) {},
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
-        footerCallback: function (row, data, start, end, display) {
-
-        }
+        footerCallback: function (row, data, start, end, display) {}
     });
 }
-
-
-
 
 async function invoice_client_desp(){
     if ($.fn.DataTable.isDataTable('#invoice_client_desp')) {
         $('#invoice_client_desp').DataTable().destroy();
         $('#invoice_client_desp thead .filter').remove();
-      
     }
-    var from  = $('#from2').val();
-    var until = $('#until2').val();
+    const from  = $('#from2').val();
+    const until = $('#until2').val();
 
     $('#invoice_client_desp thead').prepend($('#invoice_client_desp thead tr').clone().addClass('filter'));
     $('#invoice_client_desp thead tr.filter th').each(function (index) {
-        col = $('#invoice_client_desp thead th').length/2;
+        const col = $('#invoice_client_desp thead th').length/2;
         if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            const title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" '+ title +'" />');
         }
     });
     $('#invoice_client_desp thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#invoice_client_desp').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
+        const index = $(this).parent().index();
+        const table = $('#invoice_client_desp').DataTable();
+        table.column(index).search(this.value).draw();
     });
-    let invoice_client_desp =$('#invoice_client_desp').DataTable({
-        order: [2, "desc"],
+
+    let dt = $('#invoice_client_desp').DataTable({
+        order: [2, "desc"], // sigue ordenando por Cliente
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
-         pageLength: 100,
-        // scrollY: '700px',
-        // scrollX: true,
-        // scrollCollapse: true,
-        // paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
+        pageLength: 100,
         buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
+            { extend: 'excel', className: 'btn btn-success', text: ' Excel' }
         ],
         ajax: {
             method: 'POST',
-            data: {
-                'from':from,
-                'until':until
-            },
+            data: { from, until },
             url: '/income/invoice_client_desp',
-            timeout: 600000, 
+            timeout: 600000,
             dataSrc: function(json) {
-                // *** AQUÍ GENERAMOS LOS CARDS CON LOS DATOS ***
                 if (json.data && json.data.length > 0) {
                     generateClientStatsCards(json.data);
                 }
@@ -2157,26 +2114,22 @@ async function invoice_client_desp(){
             error: function() {
                 $('#invoice_client_desp').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
-
                 $('#client-stats-cards').html(`
                     <div class="col-12 text-center text-muted">
                         <p>No hay datos para mostrar estadísticas</p>
                     </div>
                 `);
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
+                alertify.myAlert(`
+                    <div class="container text-center text-danger">
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
                         <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
+                    </div>
+                `);
             },
             beforeSend: function() {
-                 $('.table-responsive').addClass('loading');
-                // Mostrar mensaje de carga en los cards
+                $('.table-responsive').addClass('loading');
                 $('#client-stats-cards').html(`
                     <div class="col-12 text-center">
                         <div class="spinner-border text-primary" role="status">
@@ -2188,29 +2141,25 @@ async function invoice_client_desp(){
             }
         },
         columns: [
-            {'data': 'fecha',className:'text-nowrap'},
-            {'data': 'codcli',className:'text-nowrap'},
-            {'data': 'cliente'},
-            {'data': 'monto', render: $.fn.dataTable.render.number(',','.',2) },
-            {'data': 'estacion'},
-            {'data': 'factura'},
-
+            { data: 'fecha',       className:'text-nowrap' },
+            { data: 'codcli',      className:'text-nowrap' },
+            { data: 'cliente' },
+            { data: 'monto',       render: $.fn.dataTable.render.number(',','.',2) },
+            { data: 'metodo_pago' },
+            { data: 'estacion' },
+            { data: 'factura' }
         ],
         deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-           
-        },
+        createdRow: function (row, data, dataIndex) {},
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
-        footerCallback: function (row, data, start, end, display) {
-
-        }
+        footerCallback: function (row, data, start, end, display) {}
     });
 }
+
+
+
 
 ///////////////////
 

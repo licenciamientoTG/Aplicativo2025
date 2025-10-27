@@ -1667,49 +1667,74 @@ async function movement_analysis_table(){
     if ($.fn.DataTable.isDataTable('#movement_analysis_table')) {
         $('#movement_analysis_table').DataTable().destroy();
         $('#movement_analysis_table thead .filter').remove();
-       
     }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
         col = $('#movement_analysis_table thead th').length/2;
         if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
+            var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
     });
     $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#movement_analysis_table').DataTable(); // Obtiene la instancia de DataTable
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
         table
             .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
+            .search(this.value)
+            .draw();
     });
-    let movement_analysis_table =$('#movement_analysis_table').DataTable({
+    
+    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
+    $('#movement_analysis_table').DataTable({
         order: [0, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
+        paging: true,
+        pageLength: 100,
         buttons: [
             {
                 extend: 'excel',
                 className: 'btn btn-success',
                 text: ' Excel'
             },
+            {
+                text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
+                className: 'btn btn-primary',
+                action: function () {
+                    window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate + '/' + codgas + '/' + supplier, '_blank');
+                }
+            }
         ],
         ajax: {
             method: 'POST',
             data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
             timeout: 600000, 
@@ -1722,37 +1747,41 @@ async function movement_analysis_table(){
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                     </div>`
                 );
-
             },
             beforeSend: function() {
                 $('.table-responsive').addClass('loading');
             }
         },
         columns: [
-            {'data': 'nro',className:'text-nowrap'},
-            {'data': 'abr',className:'text-nowrap'},
-            {'data': 'fecha',className:'text-nowrap'},
-            {'data': 'den',className:'text-nowrap'},
-            {'data': 'factura',className:'text-nowrap'},
-            {'data': 'mov_n',className:'text-nowrap'},
-            {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
-            {'data': 'satuid',className:'text-nowrap'},
-            {'data': 'txtref',className:'text-nowrap'},
-            
-
+            {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
+            {'data': 'Fecha'},
+            {'data': 'Vencimiento'},
+            {'data': 'Producto'},
+            {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
+            {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
+            {'data': 'Estación'},
+            {'data': 'UUID'},
+            {'data': 'RFC'},
+            {'data': 'Remision'},
+            {'data': 'Vehiculo'},
+            {'data': 'Proveedor'},
         ],
         deferRender: true,
-        // destroy: true, 
         createdRow: function (row, data, dataIndex) {
            
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
         },
         footerCallback: function (row, data, start, end, display) {
 
