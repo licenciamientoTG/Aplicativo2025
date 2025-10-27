@@ -138,6 +138,38 @@ class PreciosModel extends Model{
                         t1.fch = {$today}";
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
     }
+
+    function get_today_prices() {
+        $query = "
+            SELECT 
+                t2.abr,
+                TRIM(t3.den) AS Producto,
+                p.pre,
+                CONVERT(date, DATEADD(DAY, p.fch, '1899-12-31')) AS Fecha,
+                p.hra,
+                p.codgas,
+                p.codprd,
+                p.fch
+            FROM [SG12].[dbo].[Precios] p
+            INNER JOIN (
+                SELECT 
+                    codgas, 
+                    codprd, 
+                    MAX(fch) AS max_fch
+                FROM [SG12].[dbo].[Precios]
+                WHERE codprd IN (179, 180, 181, 192, 193)
+                GROUP BY codgas, codprd
+            ) ult ON p.codgas = ult.codgas 
+                AND p.codprd = ult.codprd 
+                AND p.fch = ult.max_fch
+            LEFT JOIN [SG12].[dbo].[Gasolineras] t2 ON p.codgas = t2.cod
+            LEFT JOIN [SG12].[dbo].[Productos] t3 ON p.codprd = t3.cod
+            WHERE p.codprd IN (179, 180, 181, 192, 193) AND p.codgas <> 0
+            ORDER BY p.codgas, p.codprd;
+        ";
+
+        return ($rs=$this->sql->select($query, [])) ? $rs : false ;
+    }
 }
 
 
