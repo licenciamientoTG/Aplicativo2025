@@ -1729,13 +1729,10 @@ async function movement_analysis_table(){
             .column(index)
             .search(this.value)
             .draw();
-            .search(this.value)
-            .draw();
+
     });
     
-    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
-    $('#movement_analysis_table').DataTable({
-    
+
     // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
     $('#movement_analysis_table').DataTable({
         order: [0, "asc"],
@@ -1811,7 +1808,7 @@ async function movement_analysis_table(){
         ],
         deferRender: true,
         createdRow: function (row, data, dataIndex) {
-           
+
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
@@ -1825,7 +1822,7 @@ async function movement_analysis_table(){
 
 // volumetric.js
 
-let volumetricTable;
+
 
 function actualizarDataTableVolumetric() {
     const codgas = $('#codgas').val();

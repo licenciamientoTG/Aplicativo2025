@@ -442,8 +442,6 @@ class Accounting{
     function volumetrics_comparator() {
         $stations = $this->estacionesModel->get_actives_stations();
         echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
-        $stations = $this->estacionesModel->get_actives_stations();
-        echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
     }
 
     function volumetrics_table() {
@@ -1027,32 +1025,9 @@ class Accounting{
         $supplier = $_POST['supplier'];
 
         if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
-        $codgas = $_POST['codgas'];
-        $supplier = $_POST['supplier'];
-
-        if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
 
             foreach ($rows as $row) {
                 $data[] = array(
-                    'Número'          => $row['Número'],
-                    'Factura'         => $row['Factura'],
-                    'Orden de Compra' => $row['Orden de Compra'],
-                    'Fecha'           => $row['Fecha'],
-                    'Vencimiento'     => $row['Vencimiento'],
-                    'Producto'        => $row['Producto'],
-                    'VolumenRecibido' => $row['VolumenRecibido'],
-                    'Facturado'       => $row['Facturado'],
-                    'Importe'         => $row['Importe'],
-                    'IEPS'            => $row['I.E.P.S'],
-                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
-                    'Recargos'        => $row['Recargos'],
-                    'TotalFactura'    => $row['TotalFactura'],
-                    'Estación'        => $row['Estación'],
-                    'UUID'            => $row['UUID'],
-                    'RFC'             => $row['RFC'],
-                    'Remision'        => $row['Remision'],
-                    'Vehiculo'        => $row['Vehiculo'],
-                    'Proveedor'       => $row['Proveedor'],
                     'Número'          => $row['Número'],
                     'Factura'         => $row['Factura'],
                     'Orden de Compra' => $row['Orden de Compra'],
@@ -1079,66 +1054,6 @@ class Accounting{
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
-    }
-
-    function folio_analysis_table() {
-        set_time_limit(280);
-        header('Content-Type: application/json');
-
-        $folios = $_POST['folios'];
-        $codgas = $_POST['codgas2'];
-
-
-        // 1️⃣ Quitar espacios en blanco alrededor de todo
-        $folios = trim($folios);
-
-        // 2️⃣ Reemplazar comas dobles o triples por una sola
-        $folios = preg_replace('/,+/', ',', $folios);
-
-        // 3️⃣ Separar por comas
-        $foliosArray = explode(',', $folios);
-
-        // 4️⃣ Eliminar elementos vacíos y espacios extra
-        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
-
-        // 5️⃣ (Opcional) Eliminar duplicados
-        $foliosArray = array_unique($foliosArray);
-
-        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
-        sort($foliosArray, SORT_NUMERIC);
-
-        // 7️⃣ Si necesitás devolverlo como string limpio:
-        $foliosLimpio = implode(',', $foliosArray);
-
-        $data = [];
-        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
-            foreach ($rows as $row) {
-                $data[] = array(
-                    'Número'          => $row['Número'],
-                    'Factura'         => $row['Factura'],
-                    'Orden de Compra' => $row['Orden de Compra'],
-                    'Fecha'           => $row['Fecha'],
-                    'Vencimiento'     => $row['Vencimiento'],
-                    'Producto'        => $row['Producto'],
-                    'VolumenRecibido' => $row['VolumenRecibido'],
-                    'Facturado'       => $row['Facturado'],
-                    'Importe'         => $row['Importe'],
-                    'IEPS'            => $row['I.E.P.S'],
-                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
-                    'Recargos'        => $row['Recargos'],
-                    'TotalFactura'    => $row['TotalFactura'],
-                    'Estación'        => $row['Estación'],
-                    'UUID'            => $row['UUID'],
-                    'RFC'             => $row['RFC'],
-                    'Remision'        => $row['Remision'],
-                    'Vehiculo'        => $row['Vehiculo'],
-                    'Proveedor'       => $row['Proveedor'],
-                );
-            }
-        }
-        $data = array("data" => $data);
-        echo json_encode($data);
-        
     }
 
     function folio_analysis_table() {
@@ -1560,7 +1475,6 @@ class Accounting{
                         );
                     }
                 }
-
                 // 12. Retornar JSON
                 json_output(array("data" => $data));
 
@@ -1572,4 +1486,99 @@ class Accounting{
         }
     }
 
+    function print_purchase_receipts3() {
+        // Aumentar límite de memoria
+        ini_set('memory_limit', '1024M');
+        
+        try {
+            // 1. Verificar que se haya subido un archivo
+            if (!isset($_FILES['excel']) || $_FILES['excel']['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('No se ha subido ningún archivo o hubo un error en la carga.');
+            }
+
+            $file = $_FILES['excel'];
+
+            // 2. Verificar que sea un archivo Excel (.xlsx)
+            $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+            if ($fileExtension !== 'xlsx') {
+                throw new Exception('El archivo debe ser de formato .xlsx');
+            }
+
+            // 3. Crear lector con configuración para lectura eficiente
+            $reader = new XlsxReader();
+            
+            // Configurar para leer solo datos (sin formato, sin imágenes, etc.)
+            $reader->setReadDataOnly(true);
+            
+            // 4. Cargar el archivo Excel
+            $spreadsheet = $reader->load($file['tmp_name']);
+            
+            // 5. Obtener la primera hoja
+            $worksheet = $spreadsheet->getActiveSheet();
+            
+            // 6. Obtener los encabezados (primera fila)
+            $headers = [];
+            $highestColumn = $worksheet->getHighestColumn();
+            $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+            
+            // Leer encabezados
+            for ($col = 1; $col <= $highestColumnIndex; $col++) {
+                $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+                $headers[] = trim($worksheet->getCell($columnLetter . '1')->getValue());
+            }
+
+            // 7. Verificar que exista la columna UUID
+            $uuidColumnIndex = array_search('UUID', $headers);
+            
+            if ($uuidColumnIndex === false) {
+                throw new Exception('El archivo no contiene la columna "UUID".');
+            }
+
+            // Convertir índice a letra de columna (A, B, C, etc.)
+            $uuidColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($uuidColumnIndex + 1);
+            
+            // 8. Obtener todos los valores de la columna UUID
+            $uuids = [];
+            $highestRow = $worksheet->getHighestRow();
+            
+            for ($row = 2; $row <= $highestRow; $row++) {
+                $uuid = trim($worksheet->getCell($uuidColumn . $row)->getValue());
+                
+                // Solo agregar si no está vacío
+                if (!empty($uuid)) {
+                    $uuids[] = $uuid;
+                }
+                
+                // Liberar memoria cada 1000 filas
+                if ($row % 1000 == 0) {
+                    $worksheet->garbageCollect();
+                }
+            }
+
+            // 9. Liberar memoria
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
+            // 10. Verificar que se hayan encontrado UUIDs
+            if (empty($uuids)) {
+                throw new Exception('No se encontraron UUIDs en el archivo.');
+            }
+
+            // 11. Generar cadena de UUIDs separados por coma
+            $uuidsCadena = implode(',', $uuids);
+
+            // 12. Retornar la cadena de UUIDs
+            echo '<pre>';
+            var_dump($uuidsCadena);
+            die();
+
+        } catch (Exception $e) {
+            // Retornar error en formato JSON
+            http_response_code(400);
+            echo json_encode([
+                "success" => false,
+                "error" => $e->getMessage()
+            ]);
+        }
+    }
 }
