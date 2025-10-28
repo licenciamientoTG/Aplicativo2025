@@ -1689,11 +1689,33 @@ async function movement_analysis_table(){
         alertify.error('Por favor seleccione las fechas');
         return;
     }
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
         col = $('#movement_analysis_table thead th').length/2;
         if (index < col ) {
+            var title = $(this).text();
             var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
@@ -1701,11 +1723,18 @@ async function movement_analysis_table(){
     $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
         var index = $(this).parent().index();
         var table = $('#movement_analysis_table').DataTable();
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
         table
             .column(index)
             .search(this.value)
             .draw();
+            .search(this.value)
+            .draw();
     });
+    
+    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
+    $('#movement_analysis_table').DataTable({
     
     // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
     $('#movement_analysis_table').DataTable({
@@ -1734,6 +1763,9 @@ async function movement_analysis_table(){
                 'fromDate': fromDate,
                 'untilDate': untilDate,
                 'codgas': codgas,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
                 'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
@@ -1747,6 +1779,7 @@ async function movement_analysis_table(){
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                         <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                     </div>`
                 );

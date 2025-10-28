@@ -442,6 +442,8 @@ class Accounting{
     function volumetrics_comparator() {
         $stations = $this->estacionesModel->get_actives_stations();
         echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
+        $stations = $this->estacionesModel->get_actives_stations();
+        echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
     }
 
     function volumetrics_table() {
@@ -1025,9 +1027,32 @@ class Accounting{
         $supplier = $_POST['supplier'];
 
         if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
+        $codgas = $_POST['codgas'];
+        $supplier = $_POST['supplier'];
+
+        if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
 
             foreach ($rows as $row) {
                 $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
                     'Número'          => $row['Número'],
                     'Factura'         => $row['Factura'],
                     'Orden de Compra' => $row['Orden de Compra'],
@@ -1054,6 +1079,66 @@ class Accounting{
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
+    }
+
+    function folio_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $folios = $_POST['folios'];
+        $codgas = $_POST['codgas2'];
+
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $folios = trim($folios);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $folios = preg_replace('/,+/', ',', $folios);
+
+        // 3️⃣ Separar por comas
+        $foliosArray = explode(',', $folios);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $foliosArray = array_unique($foliosArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($foliosArray, SORT_NUMERIC);
+
+        // 7️⃣ Si necesitás devolverlo como string limpio:
+        $foliosLimpio = implode(',', $foliosArray);
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
     }
 
     function folio_analysis_table() {
