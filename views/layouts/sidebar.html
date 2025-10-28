@@ -303,7 +303,6 @@
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
           <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Analisis de Movimientos</a></li>
             {% if authorized(47) %}
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a></li>
             {% endif %}
@@ -316,9 +315,10 @@
             {% endif %}
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchase_invoice">Compras Combustible</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/supplier_payments">Pagos</a></li>
-            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Comparador de Volumétricos</a></li>
-            <!-- <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li> -->
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics_comparator">Comparador de Volumétricos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/fuel_purchases">Compras de combustible</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchases_vs_receptions">Pagos VS Recepciones</a></li>
           </ul>
         </li>
         {% endif %}
@@ -347,6 +347,8 @@
             </li>
           </ul>
           {% endif %}
+          
+          
         </li>
         {% endif %}
         {% if authorized(25) %}

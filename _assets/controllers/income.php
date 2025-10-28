@@ -86,7 +86,7 @@ public function balance_age_send_mail(){
     $gas      = (int)($_POST['gas'] ?? 0);
 
     // 🔹 NUEVO: mensaje opcional del formulario
-    $body     = (string)($_POST['body'] ?? '');
+    $body     = (string)($_POST['body'] ?? ' ');
 
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
     $rawList = str_replace(',', ';', (string)$sentTo);

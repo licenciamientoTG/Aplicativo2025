@@ -2316,8 +2316,6 @@ class MojoTicketsModel extends Model{
     
 
     
-
-// Antes: function danny($from, $until, $ticket_form_id, $assigned_to_id = 0)
 /**
  * Trae tickets (urgentes y normales) dentro de un rango, filtrando por formulario
  * y por uno o varios agentes (o todos).
@@ -2328,7 +2326,7 @@ class MojoTicketsModel extends Model{
  * @param array|string|int  $assigned_to    [0]=todos, o lista/CSV/int de agentes
  * @return array|false
  */
-function danny($from, $until, $ticket_form_id, array|string|int $assigned_to = 0) : array|false
+function ecv_calc_var($from, $until, $ticket_form_id, array|string|int $assigned_to = 0) : array|false
 {
     // Normaliza $assigned_to a arreglo de enteros únicos
     if (!is_array($assigned_to)) {
