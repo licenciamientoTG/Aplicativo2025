@@ -1689,11 +1689,33 @@ async function movement_analysis_table(){
         alertify.error('Por favor seleccione las fechas');
         return;
     }
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
         col = $('#movement_analysis_table thead th').length/2;
         if (index < col ) {
+            var title = $(this).text();
             var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
@@ -1701,12 +1723,16 @@ async function movement_analysis_table(){
     $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
         var index = $(this).parent().index();
         var table = $('#movement_analysis_table').DataTable();
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
         table
             .column(index)
             .search(this.value)
             .draw();
+
     });
     
+
     // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
     $('#movement_analysis_table').DataTable({
         order: [0, "asc"],
@@ -1734,6 +1760,9 @@ async function movement_analysis_table(){
                 'fromDate': fromDate,
                 'untilDate': untilDate,
                 'codgas': codgas,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
                 'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
@@ -1747,6 +1776,7 @@ async function movement_analysis_table(){
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                         <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                     </div>`
                 );
@@ -1778,7 +1808,7 @@ async function movement_analysis_table(){
         ],
         deferRender: true,
         createdRow: function (row, data, dataIndex) {
-           
+
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
@@ -1788,3 +1818,310 @@ async function movement_analysis_table(){
         }
     });
 }
+
+
+// volumetric.js
+
+
+
+function actualizarDataTableVolumetric() {
+    const codgas = $('#codgas').val();
+    
+    if (!codgas) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'Por favor seleccione una estación',
+            confirmButtonColor: '#3085d6'
+        });
+        return;
+    }
+
+    // Mostrar loader
+    Swal.fire({
+        title: 'Cargando datos...',
+        text: 'Por favor espere mientras se procesan los volumétricos',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    // Destruir tabla existente si existe
+    if ($.fn.DataTable.isDataTable('#volumetric_table')) {
+        volumetricTable.destroy();
+        $('#volumetric_table tbody').empty();
+    }
+
+    // Llamar a la API
+    $.ajax({
+        // url: API_URL + '/xmlCre/',  // Ajusta esta URL según tu configuración
+        url: "/accounting/xmlCre",
+        method: 'POST',
+        data: JSON.stringify({
+            codgas: codgas
+        }),
+        contentType: 'application/json',
+        dataType: 'json',
+        success: function(response) {
+            Swal.close();
+            
+            if (response.success) {
+                $('#no_selected').hide();
+                
+                // Crear collapse con resumen
+                crearCollapseResumen(response);
+                
+                // Inicializar DataTable con los datos
+                inicializarTablaVolumetricos(response.data);
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Éxito',
+                    text: `Se cargaron ${response.total_registros} registros del período ${response.periodo}`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: response.message || 'No se encontraron datos para el período seleccionado'
+                });
+            }
+        },
+        error: function(xhr, status, error) {
+            Swal.close();
+            console.error('Error:', error);
+            
+            let errorMessage = 'Error al cargar los datos volumétricos';
+            if (xhr.responseJSON && xhr.responseJSON.error) {
+                errorMessage = xhr.responseJSON.error;
+            }
+            
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: errorMessage
+            });
+        }
+    });
+}
+
+function crearCollapseResumen(response) {
+    const container = $('#collapses-container');
+    container.empty();
+    
+    // Agrupar datos por origen
+    const datosPorOrigen = {
+        'XML_mensual': [],
+        'DB_despachos': [],
+        'XML_diarios_consolidado': []
+    };
+    
+    response.data.forEach(item => {
+        if (datosPorOrigen[item.Origen]) {
+            datosPorOrigen[item.Origen].push(item);
+        }
+    });
+    
+    // Crear collapse para cada origen
+    let collapseHTML = '<div class="accordion" id="accordionResumen">';
+    
+    Object.keys(datosPorOrigen).forEach((origen, index) => {
+        const datos = datosPorOrigen[origen];
+        if (datos.length === 0) return;
+        
+        const collapseId = `collapse${index}`;
+        const totalVolumen = datos.reduce((sum, item) => sum + (item.SumaVolumenEntregadoMes_ValorNumerico || 0), 0);
+        const totalImporte = datos.reduce((sum, item) => sum + (item.ImporteTotalEntregasMes || 0), 0);
+        
+        collapseHTML += `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading${index}">
+                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#${collapseId}" 
+                            aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
+                        <strong>${origen}</strong> 
+                        <span class="ms-3 text-muted">
+                            ${datos.length} productos | Volumen: ${totalVolumen.toFixed(2)} L | 
+                            Importe: $${totalImporte.toFixed(2)}
+                        </span>
+                    </button>
+                </h2>
+                <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                     aria-labelledby="heading${index}" data-bs-parent="#accordionResumen">
+                    <div class="accordion-body">
+                        <div class="row">
+                            ${datos.map(item => `
+                                <div class="col-md-4 mb-2">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">${item.MarcaComercial || 'N/A'}</h6>
+                                            <p class="card-text small mb-1">
+                                                <strong>Volumen:</strong> ${(item.SumaVolumenEntregadoMes_ValorNumerico || 0).toFixed(2)} L<br>
+                                                <strong>Importe:</strong> $${(item.ImporteTotalEntregasMes || 0).toFixed(2)}<br>
+                                                <strong>Entregas:</strong> ${item.TotalEntregasMes || 0}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    collapseHTML += '</div>';
+    container.html(collapseHTML);
+}
+
+function inicializarTablaVolumetricos(data) {
+    volumetricTable = $('#volumetric_table').DataTable({
+        data: data,
+        columns: [
+            { 
+                data: 'Origen',
+                render: function(data) {
+                    const badges = {
+                        'XML_mensual': '<span class="badge bg-primary">XML Mensual</span>',
+                        'DB_despachos': '<span class="badge bg-success">Base de Datos</span>',
+                        'XML_diarios_consolidado': '<span class="badge bg-info">XML Diarios</span>'
+                    };
+                    return badges[data] || data;
+                }
+            },
+            { 
+                data: 'archivo',
+                render: function(data) {
+                    return data || '<span class="text-muted">N/A</span>';
+                }
+            },
+            { 
+                data: 'Estación',
+                render: function(data) {
+                    return data || '<span class="text-muted">N/A</span>';
+                }
+            },
+            { 
+                data: 'FechaYHoraReporteMes',
+                render: function(data) {
+                    if (!data) return '<span class="text-muted">N/A</span>';
+                    return moment(data).format('DD/MM/YYYY HH:mm:ss');
+                }
+            },
+            { data: 'MarcaComercial' },
+            { 
+                data: 'TotalEntregasMes',
+                render: function(data) {
+                    return data ? Number(data).toLocaleString('es-MX') : '0';
+                },
+                className: 'text-end'
+            },
+            { 
+                data: 'SumaVolumenEntregadoMes_ValorNumerico',
+                render: function(data) {
+                    return data ? Number(data).toFixed(3) : '0.000';
+                },
+                className: 'text-end'
+            },
+            { 
+                data: 'TotalDocumentosMes',
+                render: function(data) {
+                    return data ? Number(data).toLocaleString('es-MX') : '0';
+                },
+                className: 'text-end'
+            },
+            { 
+                data: 'ImporteTotalEntregasMes',
+                render: function(data) {
+                    return data ? '$' + Number(data).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') : '$0.00';
+                },
+                className: 'text-end'
+            },
+            { 
+                data: 'SumaVolumenCFDIs',
+                render: function(data) {
+                    return data ? Number(data).toFixed(3) : '0.000';
+                },
+                className: 'text-end'
+            }
+        ],
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-MX.json'
+        },
+        dom: 'Bfrtip',
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-success btn-sm',
+                title: 'Comparativo Volumétricos',
+                exportOptions: {
+                    columns: ':visible'
+                }
+            },
+            {
+                extend: 'pdfHtml5',
+                text: '<i class="fas fa-file-pdf"></i> PDF',
+                className: 'btn btn-danger btn-sm',
+                orientation: 'landscape',
+                pageSize: 'LEGAL',
+                title: 'Comparativo Volumétricos'
+            },
+            {
+                extend: 'print',
+                text: '<i class="fas fa-print"></i> Imprimir',
+                className: 'btn btn-info btn-sm'
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-secondary btn-sm'
+            }
+        ],
+        responsive: true,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+        order: [[0, 'asc'], [4, 'asc']],
+        rowCallback: function(row, data) {
+            // Resaltar filas según el origen
+            if (data.Origen === 'XML_mensual') {
+                $(row).addClass('table-primary');
+            } else if (data.Origen === 'DB_despachos') {
+                $(row).addClass('table-success');
+            } else if (data.Origen === 'XML_diarios_consolidado') {
+                $(row).addClass('table-info');
+            }
+        },
+        footerCallback: function(row, data, start, end, display) {
+            const api = this.api();
+            
+            // Calcular totales
+            const totalVolumen = api.column(6, { page: 'current' }).data()
+                .reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            const totalImporte = api.column(8, { page: 'current' }).data()
+                .reduce((a, b) => {
+                    const val = typeof b === 'string' ? b.replace(/[$,]/g, '') : b;
+                    return a + (parseFloat(val) || 0);
+                }, 0);
+            const totalCFDIs = api.column(9, { page: 'current' }).data()
+                .reduce((a, b) => a + (parseFloat(b) || 0), 0);
+            
+            // Actualizar footer
+            $(api.column(6).footer()).html(
+                '<strong>' + totalVolumen.toFixed(3) + '</strong>'
+            );
+            $(api.column(8).footer()).html(
+                '<strong>$' + totalImporte.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') + '</strong>'
+            );
+            $(api.column(9).footer()).html(
+                '<strong>' + totalCFDIs.toFixed(3) + '</strong>'
+            );
+        }
+    });
+}
+
