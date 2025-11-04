@@ -1963,9 +1963,9 @@ let inventories_details_table = $('#inventories_details_table').DataTable({
             // Título del archivo de exportación
             title: 'Inventarios por estación',
             // Prevenimos la exportación de la columna de checkbox y de las acciones
-            exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6]
-            }
+            // exportOptions: {
+            //     columns: [0, 1, 2, 3, 4, 5, 6]
+            // }
         }
     ],
     ajax: {
