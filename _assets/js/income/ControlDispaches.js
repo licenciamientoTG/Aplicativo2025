@@ -217,8 +217,8 @@ function actualizarDataTableEst() {
     var codgas = $('#codgas1').val();
     var uuid = $('#uuid1').val();
     var billed = $('#billed1').val();
-    console.log(billed);
     var timestamp = new Date().getTime();
+    console.log(billed);
 
     if (!codgas || codgas === "") {
         alertify.myAlert(
