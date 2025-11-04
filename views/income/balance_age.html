@@ -269,7 +269,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 </style>
 {% endblock %}
 
-{% block menutitle %}Balance por Cliente / Estación{% endblock %}
+{% block menutitle %}Cartera de clientes{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -342,7 +342,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
         <div class="tab-pane fade show active" id="totales-pane" role="tabpanel" aria-labelledby="totales-tab" tabindex="0">
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-0 px-3">
             <div id="dt-controls-top" class="d-flex flex-wrap justify-content-between align-items-center"></div>
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 mt-4 ">
               <button id="btnExportXLS" type="button" class="btn btn-success btn-sm">
                 <i class="fa-solid fa-file-excel me-1"></i> Exportar a Excel (Totales)
               </button>
@@ -422,7 +422,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-4 px-3">
             <div id="dt-controls-top-det" class="d-flex flex-wrap justify-content-between align-items-center"></div>
 
-            <div class="d-flex flex-wrap align-items-center gap-2" style="min-width:50%;">
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-4" style="min-width:50%;">
               {% set clientes_list = [] %}
               {% for r in rows_det %}
                 {% if r.Cliente is defined and r.Cliente is not empty and (r.Cliente not in clientes_list) %}
@@ -643,7 +643,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
   </div>
 
   <!-- 🔎 Buscador -->
-  <div class="input-group input-group-sm mb-2">
+  <div class="input-group input-group-sm mb-6">
     <span class="input-group-text"><i class="fa fa-search"></i></span>
     <input type="text" id="clientSearch" class="form-control" placeholder="Buscar cliente o correo…">
   </div>
@@ -1001,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const dt = $('#balance_age_table').DataTable({
     autoWidth:false, ordering:true, order:[],
     searching:true, paging:true, info:true, dom:'lfrtip',
-    pageLength:50,
+    pageLength: -1,
     lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
     language:{
       lengthMenu:'Mostrar _MENU_ entradas',

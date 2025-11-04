@@ -284,17 +284,17 @@ case 'ecv_agents_pdf':
 
     if ($has_all) {
         // TODOS
-        $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        $rows = $model->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
     } elseif ($has_unassigned && empty($positive_ids)) {
         // SOLO SIN ASIGNAR: traemos todos y filtramos
-        $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        $rowsAll = $model->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
         $rows = array_values(array_filter($rowsAll, static function($t){
             $v = $t['assigned_to_id'] ?? null;
             return $v === null || $v === '' || (int)$v === 0;
         }));
     } elseif ($has_unassigned && !empty($positive_ids)) {
         // SIN ASIGNAR + IDs positivos: traemos todos y filtramos unión
-        $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+        $rowsAll = $model->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
         $allow   = array_flip($positive_ids);
         $rows = array_values(array_filter($rowsAll, static function($t) use ($allow){
             $v = $t['assigned_to_id'] ?? null;
@@ -304,13 +304,13 @@ case 'ecv_agents_pdf':
         }));
     } else {
         // SOLO IDs positivos
-        if (method_exists($model, 'danny_multi')) {
-            // Si tienes un danny_multi real, úsalo. Si no, quita este branch.
+        if (method_exists($model, 'ecv_calc_var_multi')) {
+            // Si tienes un ecv_calc_var_multi real, úsalo. Si no, quita este branch.
             $agent_csv = implode(',', $positive_ids);
-            $rows = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, $agent_csv) ?: [];
+            $rows = $model->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, $agent_csv) ?: [];
         } else {
             // Fallback: trae todos y filtra en PHP
-            $rowsAll = $model->danny($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
+            $rowsAll = $model->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, 0) ?: [];
             $allow   = array_flip($positive_ids);
             $rows    = array_values(array_filter($rowsAll, static function($t) use ($allow){
                 return isset($allow[(int)($t['assigned_to_id'] ?? 0)]);
