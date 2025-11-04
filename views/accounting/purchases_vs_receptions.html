@@ -33,7 +33,7 @@
   </div>
 </div>
 
-<div class="card shadow-sm mt-3" id="resultadosCard" style="display: none;">
+<div class="card shadow-sm mt-3" id="res_res">
   <div class="card-header">
     <h5 class="mb-0"><i class="ti ti-file-text"></i> Reporte de Recepciones</h5>
   </div>
@@ -51,7 +51,7 @@
           <th>Volumen recibido</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="resultadosCard" style="display: none;">
       </tbody>
     </table>
   </div>
@@ -81,7 +81,7 @@ $(document).ready(function() {
 
         // Deshabilitar botón y mostrar loading
         $('#btnSubmit').prop('disabled', true).html('<i class="ti ti-loader"></i> Procesando...');
-
+        $('#res_res').addClass('loading');
         // Enviar via AJAX
         $.ajax({
             url: window.location.href,
@@ -127,21 +127,50 @@ $(document).ready(function() {
                         order: [[0, 'asc']],
                         pageLength: 100,
                         dom: '<"top"Bf>rt<"bottom"lip><"clear">',
+                        createdRow: function(row, data, dataIndex) {
+                          // Verificar si volumen_recibido es 0
+                          if (parseFloat(data.volumen_recibido) === 0) {
+                            $(row).addClass('table-danger');
+                          }
+                        },
                         buttons: [
                             {
                                 extend: 'excelHtml5',
-                                text: '<i class="ti ti-file-spreadsheet"></i> Excel',
-                                className: 'btn btn-success btn-sm'
+                                text: '<i class="fas fa-file-excel"></i> Excel',
+                                className: 'btn btn-success'
                             },
                             {
                                 extend: 'copyHtml5',
-                                text: '<i class="ti ti-copy"></i> Copiar',
-                                className: 'btn btn-secondary btn-sm'
+                                text: '<i class="fas fa-copy"></i> Copiar',
+                                className: 'btn btn-secondary'
                             },
                             {
                                 extend: 'pdfHtml5',
-                                text: '<i class="ti ti-file-text"></i> PDF',
-                                className: 'btn btn-danger btn-sm'
+                                text: '<i class="fas fa-file-pdf"></i> PDF',
+                                className: 'btn btn-danger'
+                            },
+                            {
+                              text: '<i class="fas fa-print"></i> Imprimir Comprobantes',
+                              className: 'btn btn-primary',
+                              action: function () {
+                                // Crear formulario temporal
+                                const form = document.createElement('form');
+                                form.method = 'POST';
+                                form.action = '/accounting/print_purchase_receipts3';
+                                form.target = '_blank'; // Abre en nueva pestaña
+
+                                // Campo oculto con la variable
+                                const input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = 'uuids_encontrados';
+                                input.value = response.uuids_encontrados;
+                                form.appendChild(input);
+
+                                // Agregar y enviar
+                                document.body.appendChild(form);
+                                form.submit();
+                                document.body.removeChild(form);
+                              }
                             }
                         ]
                     });
@@ -166,10 +195,10 @@ $(document).ready(function() {
             complete: function() {
                 // Habilitar botón nuevamente
                 $('#btnSubmit').prop('disabled', false).html('<i class="ti ti-upload"></i> Subir y procesar');
+                $('#res_res').removeClass('loading');
             }
         });
     });
 });
 </script>
-
 {% endblock %}
