@@ -51,50 +51,50 @@
 
       {% if authorized(7) %} {# Ver módulo de Administración #}
       <li class="sidebar-header">ADMINISTRACIÓN</li>
-      {% if authorized(8) %}
-      <li class="sidebar-item">
-        <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
-          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
-        </a>
-         <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a></li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a></li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
-        </ul>
-      </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
-          <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
-        </a>
-        {% if authorized(41) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
-        </ul>
-        {% endif %}
+        {% if authorized(8) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a></li>
+          </ul>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a></li>
+          </ul>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
+          </ul>
+        </li>
+        <li class="sidebar-item">
+          <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+          </a>
+          {% if authorized(41) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
+          </ul>
+          {% endif %}
 
-        {% if authorized(39) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a></li>
-        </ul>
-        {% endif %}
-        {% if authorized(65) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
-        </ul>
-        {% endif %}
+          {% if authorized(39) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
+          </ul>
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
+          </ul>
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a></li>
+          </ul>
+          {% endif %}
+          {% if authorized(65) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
+          </ul>
+          {% endif %}
 
-      </li>
-      {% endif %}
+        </li>
+        {% endif %}
       {% endif %}
 
 

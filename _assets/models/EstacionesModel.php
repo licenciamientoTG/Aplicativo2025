@@ -162,7 +162,7 @@ class EstacionesModel extends Model{
     }
 
     function getStationsByCompany($companies) {
-        $query = "SELECT STRING_AGG(CONVERT(VARCHAR(10), Codigo), ',') AS Codigos FROM [TG].[dbo].[Estaciones] WHERE RFC IN ('{$companies}') AND activa = 1 AND Codigo > 0 AND Codigo NOT IN (17,38);";
+        $query = "SELECT STRING_AGG(CONVERT(VARCHAR(10), Codigo), ',') AS Codigos FROM [TG].[dbo].[Estaciones] WHERE RFC IN ('{$companies}') AND activa = 1 AND Codigo > 0 AND Codigo NOT IN (17);";
         return ($rs = $this->sql->select($query)) ? $rs[0]['Codigos'] : false ;
     }
 
