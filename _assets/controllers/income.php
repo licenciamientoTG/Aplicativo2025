@@ -121,13 +121,13 @@ public function balance_age_send_mail(){
 
         // Captura la salida del PHPMailer para depurar sin romper el JSON
         ob_start();
-        $ok = @send_mail($subject, $body, $to, $from, $tmp);
+        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
         $mailerOut = trim(ob_get_clean());
 
         @unlink($tmp);
     } else {
         ob_start();
-        $ok = @send_mail($subject, $body, $to, $from);
+        $ok = @send_mail2($subject, $body, $to, $from);
         $mailerOut = trim(ob_get_clean());
     }
 

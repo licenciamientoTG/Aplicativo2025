@@ -78,17 +78,31 @@ class MojoTicketsModel extends Model{
                 -- Aseguramos que lunes sea 1 y domingo 7
                 SET DATEFIRST 1;
 
-                SELECT
-                    t1.*,
-                    t2.name AS company,
-                    ISNULL(t3.first_name, '') + ' ' + ISNULL(t3.middle_name, '') + ' ' + ISNULL(t3.last_name, '') AS username,
-                    ISNULL(NULLIF(ISNULL(t4.first_name, '') + ' ' + ISNULL(t4.middle_name, '') + ' ' + ISNULL(t4.last_name, ''), '  '), 'Sin asignar') AS agent,
-                    t5.name AS status,
-                    t6.name AS priority,
-                    t7.name AS queue,
-                    ISNULL(CAST(t1.rating AS VARCHAR), 'N/A') AS rating,
-                    ISNULL(CAST(t8.name AS VARCHAR), 'N/A') AS ticket_type,
-                    t9.name AS ticket_form,
+              SELECT
+    t1.*,
+    t2.name AS company,
+
+    -- Usuario solicitante (igual que antes)
+    ISNULL(t3.first_name, '') + ' ' + ISNULL(t3.middle_name, '') + ' ' + ISNULL(t3.last_name, '') AS username,
+
+    -- Agente actual (tu campo existente, lo dejo intacto)
+    ISNULL(NULLIF(
+        ISNULL(t4.first_name, '') + ' ' + ISNULL(t4.middle_name, '') + ' ' + ISNULL(t4.last_name, ''), '  '
+    ), 'Sin asignar') AS agent,
+
+    -- NUEVO: estación y nombre del agente por mojo_id
+    t1.requesting_department AS station,
+    ISNULL(NULLIF(
+        LTRIM(RTRIM(ISNULL(t4m.first_name, '') + ' ' + ISNULL(t4m.last_name, '')))
+    , ''), 'Sin asignar') AS assigned_agent_name,
+
+    t5.name AS status,
+    t6.name AS priority,
+    t7.name AS queue,
+    ISNULL(CAST(t1.rating AS VARCHAR), 'N/A') AS rating,
+    ISNULL(CAST(t8.name AS VARCHAR), 'N/A') AS ticket_type,
+    t9.name AS ticket_form,
+
                     CASE
                         WHEN LEN(t1.description) > 100 THEN LEFT(t1.description, 100) + '...'
                         ELSE t1.description
@@ -261,157 +275,199 @@ class MojoTicketsModel extends Model{
                                 WHEN 7 THEN 'Domingo'
                             END
                     END AS dia_semana_solucion
-                FROM
-                    [TG].[dbo].[mojo_tickets] t1
-                    LEFT JOIN [TG].[dbo].[mojo_companies] t2 ON t1.company_id = t2.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_users] t3 ON t1.user_id = t3.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_users] t4 ON t1.assigned_to_id = t4.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_ticket_status] t5 ON t1.status_id = t5.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_ticket_priority] t6 ON t1.priority_id = t6.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_ticket_queue] t7 ON t1.ticket_queue_id = t7.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_ticket_types] t8 ON t1.ticket_type_id = t8.id_mojo
-                    LEFT JOIN [TG].[dbo].[mojo_ticket_forms] t9 ON t1.ticket_form_id = t9.id_mojo
-                WHERE
-                    t1.created_on BETWEEN @fechaInicio AND @fechaFin
-                    AND t1.ticket_form_id = {$ticket_form}
-                ORDER BY
-                    t1.created_on DESC;
+              FROM
+    [TG].[dbo].[mojo_tickets] t1
+    LEFT JOIN [TG].[dbo].[mojo_companies] t2    ON t1.company_id = t2.id_mojo
+    LEFT JOIN [TG].[dbo].[mojo_users]    t3    ON t1.user_id = t3.id_mojo
+    -- Tu join existente por id_mojo (no lo toco para no romper nada que ya uses):
+    LEFT JOIN [TG].[dbo].[mojo_users]    t4    ON t1.assigned_to_id = t4.id_mojo
+    -- NUEVO join EXACTAMENTE como pediste: por mojo_id
+    LEFT JOIN [TG].[dbo].[mojo_users]    t4m   ON t4m.id_mojo = t1.assigned_to_id
+    LEFT JOIN [TG].[dbo].[mojo_ticket_status]  t5 ON t1.status_id = t5.id_mojo
+    LEFT JOIN [TG].[dbo].[mojo_ticket_priority] t6 ON t1.priority_id = t6.id_mojo
+    LEFT JOIN [TG].[dbo].[mojo_ticket_queue]    t7 ON t1.ticket_queue_id = t7.id_mojo
+    LEFT JOIN [TG].[dbo].[mojo_ticket_types]    t8 ON t1.ticket_type_id = t8.id_mojo
+    LEFT JOIN [TG].[dbo].[mojo_ticket_forms]    t9 ON t1.ticket_form_id = t9.id_mojo
+WHERE
+    t1.created_on BETWEEN @fechaInicio AND @fechaFin
+    AND t1.ticket_form_id = {$ticket_form}
+ORDER BY
+    t1.created_on DESC;
                 ;";
 
 
         return $this->sql->select($query);
     }
 
-    function update_ticket($ticket) : bool {
-        $solicitante = (isset($ticket['custom_field_solicitante']) ? $ticket['custom_field_solicitante'] : null);
-        $problema = (isset($ticket['custom_field_problema']) ? $ticket['custom_field_problema'] : null);
+  function update_ticket($ticket): bool
+{
+    // Obtener valores personalizados solo si existen
+    $solicitante = isset($ticket['custom_field_solicitante']) ? $ticket['custom_field_solicitante'] : null;
+    $problema = isset($ticket['custom_field_problema']) ? $ticket['custom_field_problema'] : null;
 
-        $ticket_forms = [
-            'custom_field_area_o_departamento' => [51598, 72404, 72397, 72712, 73137],
-            'custom_field_estacion' => [57328, 15139, 54072],
-            'custom_field_estacin' => [63319, 51646]
-        ];
+    $ticket_forms = [
+        'custom_field_area_o_departamento' => [51598, 72404, 72397, 72712, 73137],
+        'custom_field_estacion' => [57328, 15139, 54072],
+        'custom_field_estacin' => [63319, 51646]
+    ];
 
-        $requesting_department = null;
+    $requesting_department = null;
 
-        foreach ($ticket_forms as $field => $ids) {
-            if (in_array($ticket['ticket_form_id'], $ids)) {
-                $requesting_department = $this->getCustomField($field, $ticket);
-                break;
-            }
+    foreach ($ticket_forms as $field => $ids) {
+        if (in_array($ticket['ticket_form_id'], $ids)) {
+            $requesting_department = $this->getCustomField($field, $ticket);
+            break;
         }
-
-        // Convertir fechas de UTC a hora local de México
-        $solved_on = $this->convertUtcToLocal($ticket['solved_on']);
-        $rated_on = $this->convertUtcToLocal($ticket['rated_on']);
-        $assigned_on = $this->convertUtcToLocal($ticket['assigned_on']);
-        $created_on = $this->convertUtcToLocal($ticket['created_on']);
-        $updated_on = $this->convertUtcToLocal($ticket['updated_on']);
-        $status_changed_on = $this->convertUtcToLocal($ticket['status_changed_on']);
-        $first_assigned_on = $this->convertUtcToLocal($ticket['first_assigned_on']);
-        $due_on = $this->convertUtcToLocal($ticket['due_on']);
-        $scheduled_on = $this->convertUtcToLocal($ticket['scheduled_on']);
-        $first_commented_on = $this->convertUtcToLocal($ticket['first_commented_on']);
-
-        // Preparar valores para SQL
-        $solved_on_sql = is_null($solved_on) ? "NULL" : "'{$solved_on}'";
-        $rated_on_sql = is_null($rated_on) ? "NULL" : "'{$rated_on}'";
-        $assigned_on_sql = is_null($assigned_on) ? "NULL" : "'{$assigned_on}'";
-        $created_on_sql = is_null($created_on) ? "NULL" : "'{$created_on}'";
-        $updated_on_sql = is_null($updated_on) ? "NULL" : "'{$updated_on}'";
-        $status_changed_on_sql = is_null($status_changed_on) ? "NULL" : "'{$status_changed_on}'";
-        $first_assigned_on_sql = is_null($first_assigned_on) ? "NULL" : "'{$first_assigned_on}'";
-        $due_on_sql = is_null($due_on) ? "NULL" : "'{$due_on}'";
-        $scheduled_on_sql = is_null($scheduled_on) ? "NULL" : "'{$scheduled_on}'";
-        $first_commented_on_sql = is_null($first_commented_on) ? "NULL" : "'{$first_commented_on}'";
-
-        $query = "
-        DECLARE @id_mojo INT = {$ticket['id']};
-        DECLARE @created_on DATETIME = $created_on_sql;
-        DECLARE @updated_on DATETIME = $updated_on_sql;
-        DECLARE @status_changed_on DATETIME = $status_changed_on_sql;
-        DECLARE @first_assigned_on DATETIME = $first_assigned_on_sql;
-        DECLARE @due_on DATETIME = $due_on_sql;
-        DECLARE @scheduled_on DATETIME = $scheduled_on_sql;
-        DECLARE @first_commented_on DATETIME = $first_commented_on_sql;
-        DECLARE @rated_on DATETIME = $rated_on_sql;
-        DECLARE @solved_on DATETIME = $solved_on_sql;
-        DECLARE @assigned_on DATETIME = $assigned_on_sql;
-        
-        IF EXISTS (SELECT 1 FROM [TG].[dbo].[mojo_tickets] WHERE id_mojo = @id_mojo)
-            BEGIN
-                UPDATE [TG].[dbo].[mojo_tickets]
-                SET
-                    title = '{$ticket['title']}',
-                    description = '{$ticket['description']}',
-                    user_id = {$ticket['user_id']},
-                    company_id = {$ticket['company_id']},
-                    assigned_to_id = '{$ticket['assigned_to_id']}',
-                    status_id = {$ticket['status_id']},
-                    priority_id = {$ticket['priority_id']},
-                    ticket_queue_id = {$ticket['ticket_queue_id']},
-                    rating = '{$ticket['rating']}',
-                    rated_on = @rated_on,
-                    created_on = @created_on,
-                    updated_on = @updated_on,
-                    status_changed_on = @status_changed_on,
-                    solved_on = @solved_on,
-                    assigned_on = @assigned_on,
-                    ticket_type_id = '{$ticket['ticket_type_id']}',
-                    first_assigned_on = @first_assigned_on,
-                    due_on = @due_on,
-                    scheduled_on = @scheduled_on,
-                    is_attention_required = '{$ticket['is_attention_required']}',
-                    ticket_form_id = {$ticket['ticket_form_id']},
-                    resolution_id = 1,
-                    first_commented_on = @first_commented_on,
-                    rating_comment = '{$ticket['rating_comment']}',
-                    requesting_department = '{$requesting_department}',
-                    applicants_name = '{$solicitante}',
-                    problem = '{$problema}'
-                WHERE id_mojo = @id_mojo
-            END
-        ELSE
-            BEGIN
-                INSERT INTO [TG].[dbo].[mojo_tickets] (
-                    id_mojo,
-                    title,
-                    description,
-                    user_id,
-                    company_id,
-                    assigned_to_id,
-                    status_id,
-                    priority_id,
-                    ticket_queue_id,
-                    rating,
-                    rated_on,
-                    created_on,
-                    updated_on,
-                    status_changed_on,
-                    solved_on,
-                    assigned_on,
-                    created_from,
-                    ticket_type_id,
-                    cc,
-                    legacy_id,
-                    first_assigned_on,
-                    due_on,
-                    scheduled_on,
-                    is_attention_required,
-                    ticket_form_id,
-                    resolution_id,
-                    first_commented_on,
-                    rating_comment,
-                    requesting_department,
-                    applicants_name,
-                    problem
-                ) VALUES (@id_mojo, '{$ticket['title']}', '{$ticket['description']}', {$ticket['user_id']}, {$ticket['company_id']}, '{$ticket['assigned_to_id']}', {$ticket['status_id']}, {$ticket['priority_id']}, {$ticket['ticket_queue_id']}, '{$ticket['rating']}', @rated_on, @created_on, @updated_on, @status_changed_on, @solved_on, @assigned_on, null, '{$ticket['ticket_type_id']}', null, null, @first_assigned_on, @due_on, @scheduled_on, 
-                '{$ticket['is_attention_required']}', {$ticket['ticket_form_id']}, 1, $first_commented_on_sql, '{$ticket['rating_comment']}', '{$requesting_department}', '{$solicitante}', '{$problema}')
-            END
-        ";
-
-        return $this->sql->query($query);
     }
+
+    // Convertir fechas de UTC a hora local de México
+    $solved_on = $this->convertUtcToLocal($ticket['solved_on']);
+    $rated_on = $this->convertUtcToLocal($ticket['rated_on']);
+    $assigned_on = $this->convertUtcToLocal($ticket['assigned_on']);
+    $created_on = $this->convertUtcToLocal($ticket['created_on']);
+    $updated_on = $this->convertUtcToLocal($ticket['updated_on']);
+    $status_changed_on = $this->convertUtcToLocal($ticket['status_changed_on']);
+    $first_assigned_on = $this->convertUtcToLocal($ticket['first_assigned_on']);
+    $due_on = $this->convertUtcToLocal($ticket['due_on']);
+    $scheduled_on = $this->convertUtcToLocal($ticket['scheduled_on']);
+    $first_commented_on = $this->convertUtcToLocal($ticket['first_commented_on']);
+
+    // Preparar valores para SQL
+    $solved_on_sql = is_null($solved_on) ? "NULL" : "'{$solved_on}'";
+    $rated_on_sql = is_null($rated_on) ? "NULL" : "'{$rated_on}'";
+    $assigned_on_sql = is_null($assigned_on) ? "NULL" : "'{$assigned_on}'";
+    $created_on_sql = is_null($created_on) ? "NULL" : "'{$created_on}'";
+    $updated_on_sql = is_null($updated_on) ? "NULL" : "'{$updated_on}'";
+    $status_changed_on_sql = is_null($status_changed_on) ? "NULL" : "'{$status_changed_on}'";
+    $first_assigned_on_sql = is_null($first_assigned_on) ? "NULL" : "'{$first_assigned_on}'";
+    $due_on_sql = is_null($due_on) ? "NULL" : "'{$due_on}'";
+    $scheduled_on_sql = is_null($scheduled_on) ? "NULL" : "'{$scheduled_on}'";
+    $first_commented_on_sql = is_null($first_commented_on) ? "NULL" : "'{$first_commented_on}'";
+
+    // Si el solicitante no viene definido, no lo incluimos en el UPDATE
+    $applicants_name_sql = isset($ticket['custom_field_solicitante'])
+        ? "applicants_name = '{$solicitante}',"
+        : "";
+
+    $query = "
+    DECLARE @id_mojo INT = {$ticket['id']};
+    DECLARE @created_on DATETIME = $created_on_sql;
+    DECLARE @updated_on DATETIME = $updated_on_sql;
+    DECLARE @status_changed_on DATETIME = $status_changed_on_sql;
+    DECLARE @first_assigned_on DATETIME = $first_assigned_on_sql;
+    DECLARE @due_on DATETIME = $due_on_sql;
+    DECLARE @scheduled_on DATETIME = $scheduled_on_sql;
+    DECLARE @first_commented_on DATETIME = $first_commented_on_sql;
+    DECLARE @rated_on DATETIME = $rated_on_sql;
+    DECLARE @solved_on DATETIME = $solved_on_sql;
+    DECLARE @assigned_on DATETIME = $assigned_on_sql;
+    
+    IF EXISTS (SELECT 1 FROM [TG].[dbo].[mojo_tickets] WHERE id_mojo = @id_mojo)
+        BEGIN
+            UPDATE [TG].[dbo].[mojo_tickets]
+            SET
+                title = '{$ticket['title']}',
+                description = '{$ticket['description']}',
+                user_id = {$ticket['user_id']},
+                company_id = {$ticket['company_id']},
+                assigned_to_id = '{$ticket['assigned_to_id']}',
+                status_id = {$ticket['status_id']},
+                priority_id = {$ticket['priority_id']},
+                ticket_queue_id = {$ticket['ticket_queue_id']},
+                rating = '{$ticket['rating']}',
+                rated_on = @rated_on,
+                created_on = @created_on,
+                updated_on = @updated_on,
+                status_changed_on = @status_changed_on,
+                solved_on = @solved_on,
+                assigned_on = @assigned_on,
+                ticket_type_id = '{$ticket['ticket_type_id']}',
+                first_assigned_on = @first_assigned_on,
+                due_on = @due_on,
+                scheduled_on = @scheduled_on,
+                is_attention_required = '{$ticket['is_attention_required']}',
+                ticket_form_id = {$ticket['ticket_form_id']},
+                resolution_id = 1,
+                first_commented_on = @first_commented_on,
+                rating_comment = '{$ticket['rating_comment']}',
+                requesting_department = '{$requesting_department}',
+                {$applicants_name_sql}
+                problem = '{$problema}'
+            WHERE id_mojo = @id_mojo
+        END
+    ELSE
+        BEGIN
+            INSERT INTO [TG].[dbo].[mojo_tickets] (
+                id_mojo,
+                title,
+                description,
+                user_id,
+                company_id,
+                assigned_to_id,
+                status_id,
+                priority_id,
+                ticket_queue_id,
+                rating,
+                rated_on,
+                created_on,
+                updated_on,
+                status_changed_on,
+                solved_on,
+                assigned_on,
+                created_from,
+                ticket_type_id,
+                cc,
+                legacy_id,
+                first_assigned_on,
+                due_on,
+                scheduled_on,
+                is_attention_required,
+                ticket_form_id,
+                resolution_id,
+                first_commented_on,
+                rating_comment,
+                requesting_department,
+                applicants_name,
+                problem
+            ) VALUES (
+                @id_mojo,
+                '{$ticket['title']}',
+                '{$ticket['description']}',
+                {$ticket['user_id']},
+                {$ticket['company_id']},
+                '{$ticket['assigned_to_id']}',
+                {$ticket['status_id']},
+                {$ticket['priority_id']},
+                {$ticket['ticket_queue_id']},
+                '{$ticket['rating']}',
+                @rated_on,
+                @created_on,
+                @updated_on,
+                @status_changed_on,
+                @solved_on,
+                @assigned_on,
+                NULL,
+                '{$ticket['ticket_type_id']}',
+                NULL,
+                NULL,
+                @first_assigned_on,
+                @due_on,
+                @scheduled_on,
+                '{$ticket['is_attention_required']}',
+                {$ticket['ticket_form_id']},
+                1,
+                $first_commented_on_sql,
+                '{$ticket['rating_comment']}',
+                '{$requesting_department}',
+                '{$solicitante}',
+                '{$problema}'
+            )
+        END
+    ";
+
+    return $this->sql->query($query);
+}
+
 
     /**
      * Convierte una fecha UTC del API de Mojo Helpdesk a hora local de México
@@ -2326,6 +2382,8 @@ class MojoTicketsModel extends Model{
  * @param array|string|int  $assigned_to    [0]=todos, o lista/CSV/int de agentes
  * @return array|false
  */
+
+
 function ecv_calc_var($from, $until, $ticket_form_id, array|string|int $assigned_to = 0) : array|false
 {
     // Normaliza $assigned_to a arreglo de enteros únicos

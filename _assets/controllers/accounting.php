@@ -971,6 +971,113 @@ class Accounting{
         echo json_encode($data);
 
     } 
+    public function xmlCre(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $postData = [
+            'codgas' => $_POST['codgas']
+        ];
+        
+        $ch = curl_init('http://192.168.0.109:82/api/xmlCre/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        
+        $badges = [
+            'XML_mensual' => '<span class="badge bg-primary">XML Mensual</span>',
+            'DB_despachos' => '<span class="badge bg-success">Base de Datos</span>',
+            'XML_diarios_consolidado' => '<span class="badge bg-info">XML Diarios</span>'
+        ];
+        
+        // Mapeo de productos
+        $mapeoProductos = [
+            '07-1' => 'T-Maxima Regular',
+            '07-2' => 'T-Super Premium',
+            '03-3' => 'Diesel Automotriz'
+        ];
+        
+        $data = [];
+        $dataOriginal = []; // Mantener datos originales para los collapses
+        
+        if ($apiData['success'] == true) {
+            // Procesar XML Mensual
+            $dataOriginal['mensual'] = $apiData['mensual'];
+            foreach ($apiData['mensual'] as $row) {
+                $data[] = [
+                    'Origen'                                => $badges['XML_mensual'],
+                    'OrigenRaw'                             => 'XML_mensual',
+                    'archivo'                               => $row['archivo'] ?? 'N/A',
+                    'Estación'                              => $row['Estación'] ?? 'N/A',
+                    'FechaYHoraReporteMes'                  => $row['FechaYHoraReporteMes'] ?? 'N/A',
+                    'MarcaComercial'                        => $row['MarcaComercial'] ?? 'N/A',
+                    'TotalEntregasMes'                      => $row['TotalEntregasMes'] ?? 0,
+                    'SumaVolumenEntregadoMes_ValorNumerico' => $row['SumaVolumenEntregadoMes_ValorNumerico'] ?? 0,
+                    'TotalDocumentosMes'                    => $row['TotalDocumentosMes'] ?? 0,
+                    'ImporteTotalEntregasMes'               => $row['ImporteTotalEntregasMes'] ?? 0,
+                    'SumaVolumenCFDIs'                      => $row['SumaVolumenCFDIs'] ?? 0,
+                ];
+            }
+            
+            // Procesar Despachos
+            $dataOriginal['despachos'] = $apiData['despachos'];
+            foreach ($apiData['despachos'] as $row) {
+                $data[] = [
+                    'Origen'                                => $badges['DB_despachos'],
+                    'OrigenRaw'                             => 'DB_despachos',
+                    'archivo'                               => 'N/A',
+                    'Estación'                              => $row['Estación'] ?? 'N/A',
+                    'FechaYHoraReporteMes'                  => 'N/A',
+                    'MarcaComercial'                        => $row['MarcaComercial'] ?? $row['Producto'] ?? 'N/A',
+                    'TotalEntregasMes'                      => $row['TotalEntregasMes'] ?? 0,
+                    'SumaVolumenEntregadoMes_ValorNumerico' => $row['SumaVolumenEntregadoMes_ValorNumerico'] ?? 0,
+                    'TotalDocumentosMes'                    => $row['TotalDocumentosMes'] ?? 0,
+                    'ImporteTotalEntregasMes'               => $row['ImporteTotalEntregasMes'] ?? 0,
+                    'SumaVolumenCFDIs'                      => $row['SumaVolumenCFDIs'] ?? 0,
+                ];
+            }
+            
+            // Procesar Diarios - AQUÍ ESTABA EL ERROR
+            $dataOriginal['diarios'] = $apiData['diarios'];
+            if (isset($apiData['diarios']['datos']) && is_array($apiData['diarios']['datos'])) {
+                foreach ($apiData['diarios']['datos'] as $row) {
+                    $claveProducto = $row['ClaveProducto'] ?? '';
+                    $claveSubProducto = $row['ClaveSubProducto'] ?? '';
+                    $claveCompleta = $claveProducto . '-' . $claveSubProducto;
+                    $nombreProducto = $mapeoProductos[$claveCompleta] ?? 'Desconocido';
+                    
+                    $data[] = [
+                        'Origen'                                => $badges['XML_diarios_consolidado'],
+                        'OrigenRaw'                             => 'XML_diarios_consolidado',
+                        'archivo'                               => 'N/A',
+                        'Estación'                              => $row['Estación'] ?? 'N/A',
+                        'FechaYHoraReporteMes'                  => 'N/A',
+                        'MarcaComercial'                        => $nombreProducto,
+                        'TotalEntregasMes'                      => $row['TotalTransaccionesMes'] ?? 0,
+                        'SumaVolumenEntregadoMes_ValorNumerico' => $row['VolumenTotalMes'] ?? 0,
+                        'TotalDocumentosMes'                    => $row['TotalTransaccionesMes'] ?? 0,
+                        'ImporteTotalEntregasMes'               => $row['ImporteTotalMes'] ?? 0,
+                        'SumaVolumenCFDIs'                      => 0, // Los diarios no tienen este campo
+                    ];
+                }
+            }
+        }
+        
+        $response = [
+            "success" => $apiData['success'] ?? false,
+            "periodo" => $apiData['periodo'] ?? null,
+            "data" => $data,
+            "dataOriginal" => $dataOriginal // Para usar en los collapses
+        ];
+        
+        echo json_encode($response);
+    }
 
     public function er_petrotal_concept(){
         ini_set('max_execution_time', 5000);
