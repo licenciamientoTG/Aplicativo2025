@@ -1,0 +1,204 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas Compra{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Facturas Compra{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-header">
+    <h5 class="mb-0">
+      <i class="ti ti-file-spreadsheet"></i> Cargar archivo Excel (.xlsx)
+    </h5>
+  </div>
+
+  <div class="card-body">
+    <form id="uploadExcelForm" method="POST" enctype="multipart/form-data">
+      <div class="mb-3">
+        <label for="excelFile" class="form-label">Selecciona el archivo Excel</label>
+        <div class="row g-2">
+          <div class="col">
+            <input type="file" name="excel" id="excelFile" accept=".xlsx" class="form-control" required>
+          </div>
+          <div class="col-auto">
+            <button type="submit" class="btn btn-primary" id="btnSubmit">
+              <i class="ti ti-upload"></i> Subir y procesar
+            </button>
+          </div>
+        </div>
+        <div class="form-text">
+          El archivo debe contener la columna <strong>UUID</strong>.
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card shadow-sm mt-3" id="res_res">
+  <div class="card-header">
+    <h5 class="mb-0"><i class="ti ti-file-text"></i> Reporte de Recepciones</h5>
+  </div>
+  <div class="card-body table-responsive">
+    <table id="recepciones_table" class="table table-striped table-bordered w-100">
+      <thead class="table-light">
+        <tr>
+          <th>Proveedor</th>
+          <th>Estación</th>
+          <th>Factura</th>
+          <th>Remisión</th>
+          <th>Documento</th>
+          <th>UUID</th>
+          <th>Fecha</th>
+          <th>Volumen recibido</th>
+        </tr>
+      </thead>
+      <tbody id="resultadosCard" style="display: none;">
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+<script>
+$(document).ready(function() {
+    let table = null;
+
+    // Manejo del envío del formulario
+    $('#uploadExcelForm').on('submit', function(e) {
+        e.preventDefault();
+
+        // Validar que se haya seleccionado un archivo
+        if (!$('#excelFile')[0].files.length) {
+            alertify.warning('Por favor selecciona un archivo Excel');  // 🔥 ALERTIFY
+            return;
+        }
+
+        // Crear FormData para enviar el archivo
+        let formData = new FormData(this);
+
+        // Deshabilitar botón y mostrar loading
+        $('#btnSubmit').prop('disabled', true).html('<i class="ti ti-loader"></i> Procesando...');
+        $('#res_res').addClass('loading');
+        // Enviar via AJAX
+        $.ajax({
+            url: window.location.href,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            dataType: 'json',
+            success: function(response) {
+                if (response.data && response.data.length > 0) {
+                    // Mostrar card de resultados
+                    $('#resultadosCard').show();
+
+                    // Destruir tabla anterior si existe
+                    if (table) {
+                        table.destroy();
+                    }
+
+                    // Inicializar DataTable con los datos
+                    table = $('#recepciones_table').DataTable({
+                        data: response.data,
+                        columns: [
+                            { data: 'proveedor' },
+                            { data: 'estacion' },
+                            { data: 'factura' },
+                            { data: 'remision' },
+                            { data: 'documento' },
+                            { data: 'uuid' },
+                            { data: 'fecha' },
+                            { 
+                                data: 'volumen_recibido',
+                                type: 'num',
+                                className: 'text-end',
+                                render: $.fn.dataTable.render.number( ',', '.', 3, '' )
+                            }
+                        ],
+                        columnDefs: [
+                            {
+                                targets: 7,
+                                type: 'num'
+                            }
+                        ],
+                        order: [[0, 'asc']],
+                        pageLength: 100,
+                        dom: '<"top"Bf>rt<"bottom"lip><"clear">',
+                        createdRow: function(row, data, dataIndex) {
+                          // Verificar si volumen_recibido es 0
+                          if (parseFloat(data.volumen_recibido) === 0) {
+                            $(row).addClass('table-danger');
+                          }
+                        },
+                        buttons: [
+                            {
+                                extend: 'excelHtml5',
+                                text: '<i class="fas fa-file-excel"></i> Excel',
+                                className: 'btn btn-success'
+                            },
+                            {
+                                extend: 'copyHtml5',
+                                text: '<i class="fas fa-copy"></i> Copiar',
+                                className: 'btn btn-secondary'
+                            },
+                            {
+                                extend: 'pdfHtml5',
+                                text: '<i class="fas fa-file-pdf"></i> PDF',
+                                className: 'btn btn-danger'
+                            },
+                            {
+                              text: '<i class="fas fa-print"></i> Imprimir Comprobantes',
+                              className: 'btn btn-primary',
+                              action: function () {
+                                // Crear formulario temporal
+                                const form = document.createElement('form');
+                                form.method = 'POST';
+                                form.action = '/accounting/print_purchase_receipts3';
+                                form.target = '_blank'; // Abre en nueva pestaña
+
+                                // Campo oculto con la variable
+                                const input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = 'uuids_encontrados';
+                                input.value = response.uuids_encontrados;
+                                form.appendChild(input);
+
+                                // Agregar y enviar
+                                document.body.appendChild(form);
+                                form.submit();
+                                document.body.removeChild(form);
+                              }
+                            }
+                        ]
+                    });
+
+                    alertify.success(`¡Éxito! Se encontraron ${response.data.length} registros`);  // 🔥 ALERTIFY
+                    
+                } else {
+                    alertify.warning('Sin resultados. No se encontraron registros con los UUIDs proporcionados');  // 🔥 ALERTIFY
+                }
+            },
+            error: function(xhr, status, error) {
+                let errorMsg = 'Error al procesar el archivo';
+                
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMsg = xhr.responseJSON.error;
+                } else if (xhr.responseText) {
+                    errorMsg = xhr.responseText;
+                }
+
+                alertify.error(errorMsg);  // 🔥 ALERTIFY
+            },
+            complete: function() {
+                // Habilitar botón nuevamente
+                $('#btnSubmit').prop('disabled', false).html('<i class="ti ti-upload"></i> Subir y procesar');
+                $('#res_res').removeClass('loading');
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

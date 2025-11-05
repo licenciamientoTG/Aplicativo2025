@@ -1,0 +1,321 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Volumen de Tanques{% endblock %}
+{% block content %}
+
+<!-- Pestañas -->
+<ul class="nav nav-tabs" id="tankTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="individual-tab" data-bs-toggle="tab" data-bs-target="#individual" type="button">
+            Consulta Individual
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="consolidated-tab" data-bs-toggle="tab" data-bs-target="#consolidated" type="button">
+            Reporte Consolidado
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="tankTabContent">
+    <!-- TAB 1: Consulta Individual (tu código actual) -->
+    <div class="tab-pane fade show active" id="individual" role="tabpanel">
+        <div class="row mt-3">
+            <div class="card flex-fill w-100">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="station_select" class="col-form-label col-form-label-sm">Estación: </label>
+                            <select class="form-control" name="station_select" id="station_select" required>
+                                <option value="">Seleccione una estación</option>
+                                {% for station in stations %}
+                                    <option value="{{ station.Codigo }}" data-servidor="{{ station.Servidor }}" data-base="{{ station.BaseDatos }}">
+                                        {{ station.Nombre }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="tank_select" class="col-form-label col-form-label-sm">Tanque: </label>
+                            <select class="form-control" name="tank_select" id="tank_select" required disabled>
+                                <option value="">Primero seleccione una estación</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="limit_records" class="col-form-label col-form-label-sm">Registros: </label>
+                            <input type="number" class="form-control" name="limit_records" id="limit_records" value="100" min="10" max="1000">
+                        </div>
+                        <div class="col-md-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" class="btn btn-success btn-block w-100" id="btn_consultar_volumen">
+                                <i data-feather="search"></i> Consultar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col">
+                            <div id="progress_container_volume" class="d-none">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress_bar_volume" style="width: 0%"></div>
+                                </div>
+                                <p class="text-center mt-2" id="progress_text_volume">Consultando datos...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico Individual -->
+        <div class="row mt-3">
+            <div class="card shadow">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Gráfico de Volumen</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="volumeChart" style="height: 800px;"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla Individual -->
+        <div class="row mt-3">
+            <div class="card shadow">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcelVolume"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item" href="#" id="refresh_volume_table"><i data-feather="refresh-ccw"></i> Limpiar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Historial de Volumen - <span id="tank_info"></span></h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="tank_volume_table">
+                        <thead>
+                        <tr>
+                            <th>FECHA</th>
+                            <th>HORA</th>
+                            <th>PRODUCTO</th>
+                            <th>VOLUMEN</th>
+                            <th>VOLUMEN CxT</th>
+                            <th>AGUA</th>
+                            <th>CAP. MÁXIMA</th>
+                            <th>CAP. OPERATIVA</th>
+                            <th>ÚTIL</th>
+                            <th>FONDAJE</th>
+                            <th>VOL. MÍNIMO</th>
+                        </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: Reporte Consolidado -->
+    <div class="tab-pane fade" id="consolidated" role="tabpanel">
+        <div class="row mt-3">
+            <div class="card flex-fill w-100">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="from_date_cons" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from_date_cons" id="from_date_cons" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="until_date_cons" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until_date_cons" id="until_date_cons" required>
+                        </div>
+                        <div class="col-md-4 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" class="btn btn-success btn-block w-100" id="btn_consultar_consolidado">
+                                <i data-feather="download-cloud"></i> Consultar Todas las Estaciones
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col">
+                            <div id="progress_container_cons" class="d-none">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress_bar_cons" style="width: 0%"></div>
+                                </div>
+                                <p class="text-center mt-2" id="progress_text_cons">Consultando todas las estaciones...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cards de Alertas -->
+        <div class="row mt-3" id="alert_cards_container">
+            <div class="col-md-4">
+                <div class="card border-info">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <div class="rounded-circle bg-info bg-opacity-10 p-3">
+                                    <i data-feather="info" class="text-info"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h3 class="mb-0" id="total_tanques">0</h3>
+                                <p class="text-muted mb-0">Total Tanques Analizados</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-warning">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <div class="rounded-circle bg-warning bg-opacity-10 p-3">
+                                    <i data-feather="alert-triangle" class="text-warning"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h3 class="mb-0" id="tanques_bajo_minimo">0</h3>
+                                <p class="text-muted mb-0">Tanques Bajo Capacidad Mínima</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card border-danger">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <div class="rounded-circle bg-danger bg-opacity-10 p-3">
+                                    <i data-feather="alert-octagon" class="text-danger"></i>
+                                </div>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h3 class="mb-0" id="tanques_sobre_maximo">0</h3>
+                                <p class="text-muted mb-0">Tanques Sobre Capacidad Máxima</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Alertas: Tanques Bajo Mínimo -->
+        <div class="row mt-3" id="alertas_bajo_minimo_container" style="display: none;">
+            <div class="col-12">
+                <div class="card border-warning">
+                    <div class="card-header bg-warning bg-opacity-10">
+                        <h5 class="card-title mb-0 text-warning">
+                            <i data-feather="alert-triangle"></i> Tanques con Volumen Bajo Capacidad Mínima
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Estación</th>
+                                        <th>Tanque</th>
+                                        <th>Producto</th>
+                                        <th>Vol. Mínimo</th>
+                                        <th>Cap. Mínima</th>
+                                        <th>Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alertas_bajo_minimo_body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de Alertas: Tanques Sobre Máximo -->
+        <div class="row mt-3" id="alertas_sobre_maximo_container" style="display: none;">
+            <div class="col-12">
+                <div class="card border-danger">
+                    <div class="card-header bg-danger bg-opacity-10">
+                        <h5 class="card-title mb-0 text-danger">
+                            <i data-feather="alert-octagon"></i> Tanques con Volumen Sobre Capacidad Máxima
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Estación</th>
+                                        <th>Tanque</th>
+                                        <th>Producto</th>
+                                        <th>Vol. Máximo</th>
+                                        <th>Cap. Máxima</th>
+                                        <th>Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alertas_sobre_maximo_body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla Consolidada -->
+        <div class="row mt-3">
+            <div class="card shadow">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcelCons"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item" href="#" id="refresh_cons_table"><i data-feather="refresh-ccw"></i> Limpiar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Reporte Consolidado de Tanques</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="consolidated_table">
+                        <thead>
+                        <tr>
+                            <th>ESTACIÓN</th>
+                            <th>TANQUE</th>
+                            <th>PRODUCTO</th>
+                            <th>VOL. MÁXIMO</th>
+                            <th>VOL. MÍNIMO</th>
+                            <th>VOL. PROMEDIO</th>
+                            <th>CAP. MÁXIMA</th>
+                            <th>CAP. MÍNIMA</th>
+                            <th>ESTADO</th>
+                        </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ JS }}operations/tank_volume.js"></script>
+{% endblock %}

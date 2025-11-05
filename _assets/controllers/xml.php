@@ -82,9 +82,11 @@ class Xml
                                     $estacionServicioVolumenComprado->addAttribute('PrecioCompraConDescuento', $row['precioCompraConDescuento']);
                                 }
                                 $estacionServicioVolumenComprado->addAttribute('PagoServicioFlete', $row['pagoServicioFlete']);
-                                if ($row['pagoServicioFlete'] == 1) {
-                                    $estacionServicioVolumenComprado->addAttribute('CostoFlete', $row['costoFlete']);
-                                }
+                           if ($row['pagoServicioFlete'] == 1) {
+                                
+                                $costoFleteTruncado = round($row['costoFlete'], 2);
+                                $estacionServicioVolumenComprado->addAttribute('CostoFlete', $costoFleteTruncado);
+}
                                 $estacionServicioVolumenComprado->addAttribute('PermisoTransportistaCRE', $row['permisoTransportistaCRE']);
                             } else {
                                 setFlashMessage('error', 'El valor de precioCompraSinDescuento no es un número o no está en el rango permitido');
