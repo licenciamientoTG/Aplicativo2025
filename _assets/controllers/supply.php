@@ -660,9 +660,6 @@ class Supply{
             //         return (int)$val !== 18;
             //     }
             // ));
-            // echo '<pre>';
-            // var_dump($codgas_products);
-            // die();
 
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
