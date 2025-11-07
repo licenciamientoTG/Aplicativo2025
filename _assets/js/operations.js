@@ -1881,9 +1881,7 @@ function inventories_table(){
                 // Título del archivo de exportación
                 title: 'Inventarios/Mermas',
                 // Prevenimos la exportación de la columna de checkbox y de las acciones
-                exportOptions: {
-                    columns: [0, 1, 2, 3, 4, 5, 6, 7]
-                }
+               
             }
         ],
         ajax: {

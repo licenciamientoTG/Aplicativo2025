@@ -2368,3 +2368,102 @@ function inicializarTablaVolumetricos(data) {
 $(document).ready(function() {
     $('#no_selected').show();
 });
+
+
+
+async function analysis_movement_table(){
+    if ($.fn.DataTable.isDataTable('#analysis_movement_table')) {
+        $('#analysis_movement_table').DataTable().destroy();
+        $('#analysis_movement_table thead .filter').remove();
+       
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+
+    $('#analysis_movement_table thead').prepend($('#analysis_movement_table thead tr').clone().addClass('filter'));
+    $('#analysis_movement_table thead tr.filter th').each(function (index) {
+        col = $('#analysis_movement_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#analysis_movement_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#analysis_movement_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let analysis_movement_table =$('#analysis_movement_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+            },
+            url: '/accounting/analysis_movement_table',
+            timeout: 600000, 
+            error: function() {
+                $('#analysis_movement_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            {'data': 'nro',className:'text-nowrap'},
+            {'data': 'abr',className:'text-nowrap'},
+            {'data': 'fecha',className:'text-nowrap'},
+            {'data': 'den',className:'text-nowrap'},
+            {'data': 'factura',className:'text-nowrap'},
+            {'data': 'mov_n',className:'text-nowrap'},
+            {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
+            {'data': 'satuid',className:'text-nowrap'},
+            {'data': 'txtref',className:'text-nowrap'},
+            
+
+        ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+           
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+        }
+    });
+}

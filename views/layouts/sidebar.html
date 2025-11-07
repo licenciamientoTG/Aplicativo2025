@@ -321,10 +321,20 @@
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/fuel_purchases">Compras de combustible</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchases_vs_receptions">Pagos VS Recepciones</a></li>
-            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchases_vs_receptions">Pagos VS Recepciones</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Análisis de Movimientos</a></li>
           </ul>
+
         </li>
         {% endif %}
+        <li class="sidebar-item">
+          <a data-bs-target="#accounting_credit" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Cobranza Clientes Credito</span>
+          </a>
+          <ul id="accounting_credit" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Análisis de Movimientos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/analysis_movement">Cobranza Credito</a></li>
+          </ul>
+        </li>
       {% endif %}
 
       {% if authorized(23) %}

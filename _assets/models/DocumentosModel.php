@@ -1297,4 +1297,54 @@ class DocumentosModel extends Model{
         $params = [];
         return $this->sql->select($query, $params);
     }
+
+    function analysis_movement_table( $from, $until){
+        $query = "SELECT
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fch), 23) as fecha,
+                    CASE 
+                        WHEN t2.nroapl BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        ELSE CAST(t2.nroapl AS VARCHAR(10)) 
+                    END AS 'factura',
+                    (t2.mtoapl)/100 as [mtoapl],
+                    t3.abr,
+                    t4.den,
+                    t1.nro,
+                    t1.satuid,
+                    t1.txtref,
+                    TRY_CONVERT(int,
+    CASE WHEN d.start_digits IS NOT NULL AND f.len_digits IS NOT NULL
+         THEN SUBSTRING(r.ref, d.start_digits, f.len_digits) END
+  ) AS mov_n
+                    from DocumentosC t1 
+                    LEFT JOIN DocumentosA t2 on t1.codgas = t2.codgas  and t1.nro = t2.nro and t2.tip = 4
+                    LEFT JOIN Gasolineras t3 on t1.codgas = t3.cod
+                    LEFT JOiN Clientes t4 on t1.codopr = t4.cod
+                    OUTER APPLY (SELECT TRY_CAST(t1.txtref AS NVARCHAR(MAX)) AS ref) r
+OUTER APPLY (SELECT pos_tag = NULLIF(CHARINDEX('@N:MOV', r.ref), 0)) a
+OUTER APPLY (SELECT after_tag = CASE WHEN a.pos_tag IS NOT NULL
+                                     THEN SUBSTRING(r.ref, a.pos_tag + LEN('@N:MOV'), 1000) END) b
+OUTER APPLY (SELECT off_first_digit = NULLIF(PATINDEX('%[0-9]%', b.after_tag), 0)) c
+OUTER APPLY (SELECT start_digits = CASE WHEN c.off_first_digit IS NOT NULL
+                                        THEN a.pos_tag + LEN('@N:MOV') + c.off_first_digit - 1 END) d
+OUTER APPLY (SELECT tail = CASE WHEN d.start_digits IS NOT NULL
+                                THEN SUBSTRING(r.ref, d.start_digits, 20) END) e
+OUTER APPLY (SELECT len_digits = CASE WHEN e.tail IS NOT NULL
+                                      THEN COALESCE(NULLIF(PATINDEX('%[^0-9]%', e.tail), 0) - 1, LEN(e.tail)) END) f
+                    where 
+                    --t1.satuid = '7bccf774-be8d-486c-87db-5840c19580e3'
+                    t1.fch between ? and ?
+                    and t1.tip = 4
+                    --and t1.flgcon = 129
+                    and t1.subope  = 8
+                    order by t1.nro";
+            $params = [$from,$until];
+            return $this->sql->select($query, $params);
+
+    }
 }
