@@ -270,6 +270,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 {% endblock %}
 
 {% block menutitle %}Cartera de clientes{% endblock %}
+{% block menutitle %}Cartera de clientes{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -342,6 +343,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
         <div class="tab-pane fade show active" id="totales-pane" role="tabpanel" aria-labelledby="totales-tab" tabindex="0">
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-0 px-3">
             <div id="dt-controls-top" class="d-flex flex-wrap justify-content-between align-items-center"></div>
+            <div class="d-flex gap-2 mt-4 ">
             <div class="d-flex gap-2 mt-4 ">
               <button id="btnExportXLS" type="button" class="btn btn-success btn-sm">
                 <i class="fa-solid fa-file-excel me-1"></i> Exportar a Excel (Totales)
@@ -420,8 +422,10 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
         <div class="tab-pane fade" id="facturas-pane" role="tabpanel" aria-labelledby="facturas-tab" tabindex="0">
 
           <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-4 px-3">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mt-4 mb-4 px-3">
             <div id="dt-controls-top-det" class="d-flex flex-wrap justify-content-between align-items-center"></div>
 
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-4" style="min-width:50%;">
             <div class="d-flex flex-wrap align-items-center gap-2 mt-4" style="min-width:50%;">
               {% set clientes_list = [] %}
               {% for r in rows_det %}
@@ -449,6 +453,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
             </div>
           </div>
 
+          <div class="table-wrap mt-4">
           <div class="table-wrap mt-4">
             <table id="balance_age_table_det" class="table table-striped table-hover table-sm">
               <thead>
@@ -506,6 +511,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
 
                     {% set factura_num = (r.nroope is defined and r.nroope is not null) ? (r.nroope - 1700000000) : null %}
                     <tr>
+                      <td style="text-align:left !important;">- Factura {{ factura_num is not null ? factura_num : '' }}</td>
                       <td style="text-align:left !important;">- Factura {{ factura_num is not null ? factura_num : '' }}</td>
                       <td>{{ r.Estacion }}</td>
                       <td>{{ r.fchope_dt is not null ? (r.fchope_dt|date('d/m/Y')) : '' }}</td>
@@ -643,6 +649,7 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
   </div>
 
   <!-- 🔎 Buscador -->
+  <div class="input-group input-group-sm mb-6">
   <div class="input-group input-group-sm mb-6">
     <span class="input-group-text"><i class="fa fa-search"></i></span>
     <input type="text" id="clientSearch" class="form-control" placeholder="Buscar cliente o correo…">
@@ -1002,6 +1009,7 @@ document.addEventListener('DOMContentLoaded', function () {
     autoWidth:false, ordering:true, order:[],
     searching:true, paging:true, info:true, dom:'lfrtip',
     pageLength: -1,
+    pageLength: -1,
     lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
     language:{
       lengthMenu:'Mostrar _MENU_ entradas',
@@ -1011,6 +1019,21 @@ document.addEventListener('DOMContentLoaded', function () {
       search:'Buscar:',
       paginate:{ first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
     },
+footerCallback:function(){
+  const api = this.api();
+
+  // Sumas visibles
+  [6,7,8,9,10,11,12].forEach(idx=>{
+    const total = sumColumn(api, idx);
+    $(api.table().footer()).find(`[data-colsum="${idx}"]`)
+      .text(total.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}));
+  });
+
+  // % de vencimiento en Totales: DEJAR VACÍO
+  const $pctCell = $(api.table().footer()).find('[data-colpct="13"]');
+  $pctCell.text(''); // <-- vacío
+}
+
 footerCallback:function(){
   const api = this.api();
 
@@ -1096,10 +1119,23 @@ document.addEventListener('DOMContentLoaded', function () {
     for (let i = 0; i < data.length; i++) acc += parseNumber(data[i]);
     return acc;
   }
+  function parseNumber(v){
+    const s = (v==null?'':String(v)).replace(/[^0-9.\-]/g,'');
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+  function sumApplied(dt, colIdx){
+    if (!dt) return 0;
+    const data = dt.column(colIdx, {search:'applied'}).data();
+    let acc = 0;
+    for (let i = 0; i < data.length; i++) acc += parseNumber(data[i]);
+    return acc;
+  }
 
   btn.addEventListener('click', function () {
     const orig = document.getElementById('balance_age_table'); if (!orig) return;
     const dt = window.dtBalance;
+    const visibleIdx = dt && typeof dt.columns === 'function'
     const visibleIdx = dt && typeof dt.columns === 'function'
       ? dt.columns(':visible').indexes().toArray()
       : Array.from({length: (orig.tHead?.rows[0]?.cells.length || 0)}, (_,i)=>i);
@@ -1116,11 +1152,14 @@ document.addEventListener('DOMContentLoaded', function () {
     ws['!cols'] = headersExport.map(h => ({ wch: widthMap[h] || 14 }));
 
     // Convertir % a número + estilos (data)
+    // Convertir % a número + estilos (data)
     const HEADER_PCT = '% de vencimiento';
     const colPctExport = headersExport.findIndex(h => h === HEADER_PCT);
     if (colPctExport >= 0 && ws['!ref']) {
       const range = XLSX.utils.decode_range(ws['!ref']);
       const firstDataRow = range.s.r + 1;
+      const lastDataRow  = range.e.r; // antes de agregar totales
+      for (let r = firstDataRow; r <= lastDataRow; r++){
       const lastDataRow  = range.e.r; // antes de agregar totales
       for (let r = firstDataRow; r <= lastDataRow; r++){
         const addr = XLSX.utils.encode_cell({ r, c: colPctExport });
@@ -1177,14 +1216,60 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     // <<< /TOTALS ROW ADDED >>>
 
+    // <<< TOTALS ROW ADDED >>> (Totales: sobre filas filtradas)
+    if (ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      const totalsRowIndex = range.e.r + 1;
+      const makeAddr = (c) => XLSX.utils.encode_cell({ r: totalsRowIndex, c });
+      const boldCell = (cell) => { ws[cell] = ws[cell] || {}; ws[cell].s = Object.assign({}, ws[cell].s||{}, { font:{ bold:true } }); };
+
+      // Texto en primera visible
+      const firstColAddr = makeAddr(0);
+      ws[firstColAddr] = { t:'s', v:'Totales' };
+      boldCell(firstColAddr);
+
+      const sumCols = new Set([6,7,8,9,10,11,12]); // columnas numéricas
+      let totalVencido = 0, totalCredito = 0;
+
+      visibleIdx.forEach((origColIdx, pos) => {
+        if (pos === 0) return;
+        const addr = makeAddr(pos);
+
+        if (sumCols.has(origColIdx)) {
+          const s = sumApplied(dt, origColIdx);
+          ws[addr] = { t:'n', v:s, z:'#,##0.00' };
+          boldCell(addr);
+          if (origColIdx === 12) totalVencido = s;
+        } else if (origColIdx === 4) {
+          const s = sumApplied(dt, 4);
+          ws[addr] = { t:'n', v:s, z:'#,##0.00' };
+          boldCell(addr);
+          totalCredito = s;
+       } else if (origColIdx === 13) {
+  // % de vencimiento en Totales (Excel): vacío
+  ws[addr] = { t:'s', v:'' };
+}
+
+      });
+
+      // Expandir rango
+      ws['!ref'] = XLSX.utils.encode_range({
+        s:{ r: range.s.r, c: range.s.c },
+        e:{ r: totalsRowIndex, c: range.e.c }
+      });
+    }
+    // <<< /TOTALS ROW ADDED >>>
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Balance');
     const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
     const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
     XLSX.writeFile(wb, `Antiguedad_De_Saldos_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `Antiguedad_De_Saldos_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`);
   });
 });
 </script>
+
 
 
 <!-- ===== Inicialización y export (Facturas) ===== -->
@@ -1265,6 +1350,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Exportar Excel (Facturas - todo lo visible)
     // Exportar Excel (Facturas - todo lo visible)
+  // Exportar Excel (Facturas - todo lo visible)
+    // Exportar Excel (Facturas - todo lo visible)
   const btn2 = document.getElementById('btnExportXLS_det');
   if (btn2){
     function buildVisibleOnlyTable2(origTable, visibleIdx) {
@@ -1309,8 +1396,23 @@ document.addEventListener('DOMContentLoaded', function () {
       return acc;
     }
 
+    function parseNumber2(v){
+      const s = (v==null?'':String(v)).replace(/[^0-9.\-]/g,'');
+      const n = parseFloat(s);
+      return isNaN(n) ? 0 : n;
+    }
+    function sumApplied2(dt, colIdx){
+      if (!dt) return 0;
+      const data = dt.column(colIdx, {search:'applied'}).data();
+      let acc = 0;
+      for (let i = 0; i < data.length; i++) acc += parseNumber2(data[i]);
+      return acc;
+    }
+
     btn2.addEventListener('click', function () {
       const orig = document.getElementById('balance_age_table_det'); if (!orig) return;
+      const dt2 = window.dtBalanceDet;
+      const visibleIdx = dt2 && typeof dt2.columns === 'function'
       const dt2 = window.dtBalanceDet;
       const visibleIdx = dt2 && typeof dt2.columns === 'function'
         ? dt2.columns(':visible').indexes().toArray()
@@ -1361,6 +1463,39 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       // <<< /TOTALS ROW ADDED >>>
 
+      // <<< TOTALS ROW ADDED >>> (Facturas: suma 4..10 en todo lo filtrado)
+      if (ws['!ref']) {
+        const range = XLSX.utils.decode_range(ws['!ref']);
+        const totalsRowIndex = range.e.r + 1;
+        const makeAddr = (c) => XLSX.utils.encode_cell({ r: totalsRowIndex, c });
+        const boldCell = (cell) => { ws[cell] = ws[cell] || {}; ws[cell].s = Object.assign({}, ws[cell].s||{}, { font:{ bold:true } }); };
+
+        // Primera visible: "Totales"
+        const firstColAddr = makeAddr(0);
+        ws[firstColAddr] = { t:'s', v:'Totales' };
+        boldCell(firstColAddr);
+
+        const sumCols = new Set([4,5,6,7,8,9,10]);
+        visibleIdx.forEach((origColIdx, pos) => {
+          if (pos === 0) return;
+          const addr = makeAddr(pos);
+          if (sumCols.has(origColIdx)) {
+            const s = sumApplied2(dt2, origColIdx);
+            ws[addr] = { t:'n', v:s, z:'#,##0.00' };
+            boldCell(addr);
+          } else {
+            ws[addr] = { t:'s', v:'' };
+          }
+        });
+
+        // Expandir rango
+        ws['!ref'] = XLSX.utils.encode_range({
+          s:{ r: range.s.r, c: range.s.c },
+          e:{ r: totalsRowIndex, c: range.e.c }
+        });
+      }
+      // <<< /TOTALS ROW ADDED >>>
+
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Facturas');
 
@@ -1369,6 +1504,7 @@ document.addEventListener('DOMContentLoaded', function () {
       XLSX.writeFile(wb, `Balance_Facturas_${cta}_${gas}_${new Date().toISOString().slice(0,10)}.xlsx`);
     });
   }
+
 
 });
 </script>
@@ -1429,6 +1565,7 @@ function ba_buildWorkbookBase64(opt){
   if (ws['!ref']) ws['!autofilter'] = { ref: ws['!ref'] };
   ws['!cols'] = headersExport.map(h => ({ wch: widthMap[h] || 14 }));
 
+  // Pintar % (si aplica)
   // Pintar % (si aplica)
   if (paintPct && ws['!ref']) {
     const HEADER_PCT = '% de vencimiento';
@@ -1510,6 +1647,68 @@ function ba_buildWorkbookBase64(opt){
   })();
   // <<< /TOTALS ROW ADDED >>>
 
+  // <<< TOTALS ROW ADDED >>> (para envío por correo - Totales / Facturas)
+  (function appendTotalsRow(){
+    if (!dtInstance || !ws['!ref']) return;
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    const totalsRowIndex = range.e.r + 1;
+    const makeAddr = (c) => XLSX.utils.encode_cell({ r: totalsRowIndex, c });
+    const boldCell = (addr) => { ws[addr] = ws[addr] || {}; ws[addr].s = Object.assign({}, ws[addr].s||{}, { font:{ bold:true } }); };
+
+    // "Totales" en la primera columna visible
+    const firstAddr = makeAddr(0);
+    ws[firstAddr] = { t:'s', v:'Totales' };
+    boldCell(firstAddr);
+
+    // Funciones de suma con filtro aplicado
+    const parseNumber = (v)=>{ const s=(v==null?'':String(v)).replace(/[^0-9.\-]/g,''); const n=parseFloat(s); return isNaN(n)?0:n; };
+    const sumApplied = (col)=>{ const data = dtInstance.column(col,{search:'applied'}).data(); let acc=0; for (let i=0;i<data.length;i++) acc+=parseNumber(data[i]); return acc; };
+
+    // Totales para TOTALES (cols 6..12) y FACTURAS (cols 4..10)
+    const visibleSet = new Set(visibleIdx);
+    const isTotales = visibleSet.has(13) || visibleSet.has(6); // heurística simple
+    const sumColsTotales = new Set([6,7,8,9,10,11,12]);
+    const sumColsFacturas = new Set([4,5,6,7,8,9,10]);
+
+    let totalVencido = 0, totalCredito = 0;
+
+    visibleIdx.forEach((origColIdx, pos) => {
+      if (pos === 0) return;
+      const addr = makeAddr(pos);
+
+      if (isTotales) {
+        if (sumColsTotales.has(origColIdx)) {
+          const s = sumApplied(origColIdx);
+          ws[addr] = { t:'n', v:s, z:'#,##0.00' }; boldCell(addr);
+          if (origColIdx === 12) totalVencido = s;
+        } else if (origColIdx === 4) {
+          const s = sumApplied(4);
+          ws[addr] = { t:'n', v:s, z:'#,##0.00' }; boldCell(addr);
+          totalCredito = s;
+      } else if (origColIdx === 13) {
+  // % de vencimiento en Totales (Excel): vacío
+  ws[addr] = { t:'s', v:'' };
+}
+
+      } else {
+        // FACTURAS
+        if (sumColsFacturas.has(origColIdx)) {
+          const s = sumApplied(origColIdx);
+          ws[addr] = { t:'n', v:s, z:'#,##0.00' }; boldCell(addr);
+        } else {
+          ws[addr] = { t:'s', v:'' };
+        }
+      }
+    });
+
+    // Expand range
+    ws['!ref'] = XLSX.utils.encode_range({
+      s:{ r: range.s.r, c: range.s.c },
+      e:{ r: totalsRowIndex, c: range.e.c }
+    });
+  })();
+  // <<< /TOTALS ROW ADDED >>>
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Hoja1');
 
@@ -1519,6 +1718,7 @@ function ba_buildWorkbookBase64(opt){
   const file_b64 = XLSX.write(wb, { bookType:'xlsx', type:'base64' });
   return { filename, file_b64 };
 }
+
 
 
 /* Construye workbook SOLO para un cliente (pestaña Facturas) */
@@ -1546,6 +1746,14 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
     'Saldo Actual','Por Vencer','Vencido 1-15','Vencido 16-30',
     'Vencido 31-45','Vencido 45+','Total Vencido'
   ]);
+
+  function stripHTML(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
+  function parseNumberLike(txt){
+    const t = stripHTML(txt);
+    if (!/[0-9]/.test(t)) return null;
+    const n = parseFloat(t.replace(/,/g,'')); // simple
+    return isNaN(n) ? null : n;
+  }
 
   function stripHTML(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
   function parseNumberLike(txt){
@@ -1590,7 +1798,34 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
   // <<< /TOTALS ROW ADDED >>>
 
   const aoa = [ headers, ...rows, totalsRow ];
+  // <<< TOTALS ROW ADDED (cliente) >>>
+  const totalsRow = headers.map((h, j) => {
+    if (j === 0) return `Totales ${clientName}`;
+    if (NUM_HEADERS.has(h)) {
+      let s = 0;
+      for (const r of rows) {
+        const v = r[j];
+        if (typeof v === 'number' && !isNaN(v)) s += v;
+      }
+      return s;
+    }
+    return '';
+  });
+  // <<< /TOTALS ROW ADDED >>>
+
+  const aoa = [ headers, ...rows, totalsRow ];
   const ws  = XLSX.utils.aoa_to_sheet(aoa);
+
+  // Autofiltro solo sobre los datos (sin incluir la fila Totales)
+  if (ws['!ref']) {
+    ws['!autofilter'] = {
+      ref: XLSX.utils.encode_range({
+        s:{ r:0, c:0 },
+        e:{ r: rows.length, c: headers.length-1 }
+      })
+    };
+  }
+
 
   // Autofiltro solo sobre los datos (sin incluir la fila Totales)
   if (ws['!ref']) {
@@ -1613,6 +1848,15 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
     ws[addr].s = Object.assign({}, ws[addr].s||{}, { font:{ bold:true } });
   }
 
+  // Negritas + formato numérico en fila de totales del cliente
+  const totalsRowIndex = rows.length + 1;
+  for (let c = 0; c < headers.length; c++) {
+    const addr = XLSX.utils.encode_cell({ r: totalsRowIndex, c });
+    if (!ws[addr]) continue;
+    ws[addr].z = NUM_HEADERS.has(headers[c]) ? '#,##0.00' : ws[addr].z;
+    ws[addr].s = Object.assign({}, ws[addr].s||{}, { font:{ bold:true } });
+  }
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Facturas');
 
@@ -1624,6 +1868,7 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
 
   return { filename, file_b64 };
 }
+
 
 
 /* -------- Modal & envío -------- */
@@ -1701,6 +1946,7 @@ document.addEventListener('DOMContentLoaded', function(){
     e.preventDefault();
     const cta = "{{ cta_sel is not null ? cta_sel : '' }}";
     const gas = "{{ gas_sel is not null ? gas_sel : '' }}";
+    const bodyText = (document.getElementById('mailBody_ba').value || ' ');
     const bodyText = (document.getElementById('mailBody_ba').value || ' ');
 
     if (ba_mailMode === 'totales'){
@@ -1788,6 +2034,8 @@ document.addEventListener('DOMContentLoaded', function(){
           url:'/income/balance_age_send_mail',
           method:'POST',
           data:{
+            CharSet: 'UTF-8',
+            Encoding : 'base64',
             CharSet: 'UTF-8',
             Encoding : 'base64',
             sentTo: email,
