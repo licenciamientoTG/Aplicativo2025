@@ -68,6 +68,11 @@ class Accounting{
             echo $this->twig->render($this->route . 'movement_analysis.html');
         }
     }
+     public function analysis_movement() : void {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'analysis_movement.html');
+        }
+    }
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
@@ -1704,6 +1709,34 @@ class Accounting{
                 var_dump("Error: 123456789");
                 die();
             }
+        }
+    }
+
+    public function analysis_movement_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $from = dateToInt($_POST['fromDate']);
+        $until = dateToInt($_POST['untilDate']);
+        if ($rows = $this->Documentos->analysis_movement_table($from,$until)) {
+
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'fecha'   => $row['fecha'],
+                    'factura' => $row['factura'],
+                    'mtoapl'  => $row['mtoapl'],
+                    'den'     => $row['den'],
+                    'abr'     => $row['abr'],
+                    'nro'     => $row['nro'],
+                    'satuid'  => $row['satuid'],
+                    'txtref'  => $row['txtref'],
+                    'mov_n'   => $row['mov_n'],
+                );
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
 }

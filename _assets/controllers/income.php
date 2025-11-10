@@ -746,6 +746,44 @@ function invoice_client_desp(){
         }
     }
 
+function invoiced_dispatches() {
+    if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+        echo $this->twig->render($this->route . 'invoiced_dispatches.html');
+    }
+}
+
+function invoiced_dispatches_table() {
+    ini_set('memory_limit', '512M');
+    set_time_limit(300);
+
+    $data = [];
+    $from = dateToInt($_POST['from']);
+    $until = dateToInt($_POST['until']);
+
+    // Llamar al método de tu modelo que ejecuta la consulta SQL
+    if ($rows = $this->despachosModel->invoiced_dispatches_data($from, $until)) {
+        foreach ($rows as $r) {
+            $data[] = [
+                'nrofac'       => $r['nrofac'],
+                'nrotrn'       => $r['nrotrn'],
+                'fchtrn'       => $r['fchtrn'],
+                'fecha'        => $r['fecha'],
+                'codcli'       => $r['codcli'],
+                'cliente'      => $r['cliente'],
+                'monto'        => $r['monto'],
+                'turno'        => $r['turno'],
+                'islaDen'      => $r['islaDen'],
+                'Estacion'     => $r['Estacion'],
+                'serie'        => $r['serie'],
+                'conceptofac'  => $r['conceptofac']
+            ];
+        }
+    }
+    
+    json_output(['data' => $data]);
+}
+
+
 
     /**
      * @throws Exception
@@ -1053,7 +1091,7 @@ function invoice_client_desp(){
         $tipo_cliente=0;
 
 
-        if ($dispatches = $this->despachosModel->control_dispatches_invoiced(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
+        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
 
             foreach ($dispatches as $dispatch) {
                 $data[] = array(
