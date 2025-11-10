@@ -152,6 +152,7 @@ class Supply{
     }
 
     function fuel_prices() : void {
+        $prices = $this->preciosModel->get_today_prices();
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Ingreso', 'Se ingresó a la pantalla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'fuel_prices');
         $stations = $this->gasolinerasModel->get_active_station_TG();
 
@@ -223,7 +224,7 @@ class Supply{
             $mensajeFinal2 .= "</div></div>";
         }
 
-        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2'));
+        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices'));
     }
 
     function datatable_product_prices() {
@@ -659,9 +660,6 @@ class Supply{
             //         return (int)$val !== 18;
             //     }
             // ));
-            // echo '<pre>';
-            // var_dump($codgas_products);
-            // die();
 
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {

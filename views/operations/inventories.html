@@ -1,30 +1,46 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Operaciones{% endblock %}
+{% block title %}Operaciones - Consulta Distribuida{% endblock %}
 {% block content %}
-<div class="row">
-    <div class="card flex-fill w-100">
-        <div class="card-body">
-            <form action="#" method="get">
-                <div class="row">
-                    <div class="col">
-                        <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
-                        <input type="date" class="form-control" name="from" id="from" value="{{ from }}" required>
-                    </div>
-                    <div class="col">
-                        <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
-                        <input type="date" class="form-control" name="until" id="until" value="{{ until }}" required>
-                    </div>
-                    <div class="col-2 d-flex flex-column justify-content-between">
-                        <div></div>
-                        <button type="submit" class="btn btn-primary btn-block w-100" id="download_info"><i data-feather="search"></i> Buscar</button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+<ul class="nav nav-tabs" id="operationsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="central-tab" data-bs-toggle="tab" data-bs-target="#central" type="button">
+            Consulta Central
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="distributed-tab" data-bs-toggle="tab" data-bs-target="#distributed" type="button">
+            Consulta Distribuida
+        </button>
+    </li>
+</ul>
 
-<div class="row">
+<div class="tab-content" id="operationsTabContent">
+    <!-- TAB 1: Consulta Central (tu código actual) -->
+    <div class="tab-pane fade show active" id="central" role="tabpanel">
+        <div class="row mt-3">
+            <div class="card flex-fill w-100">
+                <div class="card-body">
+                    <form action="#" method="get">
+                        <div class="row">
+                            <div class="col">
+                                <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                                <input type="date" class="form-control" name="from" id="from" value="{{ from }}" required>
+                            </div>
+                            <div class="col">
+                                <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
+                                <input type="date" class="form-control" name="until" id="until" value="{{ until }}" required>
+                            </div>
+                            <div class="col-2 d-flex flex-column justify-content-between">
+                                <div></div>
+                                <button onclick="inventories_table()" class="btn btn-primary btn-block w-100"><i data-feather="search"></i> Buscar</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
     <div class="card shadow">
         <div class="card-header">
             <div class="card-actions float-end">
@@ -92,7 +108,85 @@
         </div>
     </div>
 </div>
+    </div>
+
+    <!-- TAB 2: Consulta Distribuida (NUEVO) -->
+    <div class="tab-pane fade" id="distributed" role="tabpanel">
+        <div class="row mt-3">
+            <div class="card flex-fill w-100">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col">
+                            <label for="from_dist" class="col-form-label col-form-label-sm">Fecha inicio: </label>
+                            <input type="date" class="form-control" name="from_dist" id="from_dist" value="{{ from }}" required>
+                        </div>
+                        <div class="col">
+                            <label for="until_dist" class="col-form-label col-form-label-sm">Fecha final: </label>
+                            <input type="date" class="form-control" name="until_dist" id="until_dist" value="{{ until }}" required>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-between">
+                            <div></div>
+                            <button type="button" class="btn btn-success btn-block w-100" id="btn_consultar_distribuido">
+                                <i data-feather="download-cloud"></i> Consultar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col">
+                            <div id="progress_container" class="d-none">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress_bar" style="width: 0%"></div>
+                                </div>
+                                <p class="text-center mt-2" id="progress_text">Consultando estaciones...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <div class="card shadow">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcelDist"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item" href="#" id="refresh_distributed_table"><i data-feather="refresh-ccw"></i> Limpiar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Inventarios y mermas - Consulta Distribuida</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="inventories_distributed_table">
+                        <thead>
+                        <tr>
+                            <th>ESTACION</th>
+                            <th>PRODUCTO</th>
+                            <th>SALDOINICIAL</th>
+                            <th>COMPRAS</th>
+                            <th>VENTAS</th>
+                            <th>SALDOFINAL</th>
+                            <th>SALDOREAL</th>
+                            <th>MERMA</th>
+                            <th>ACCIONES</th>
+                        </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}operations.js"></script>
+<script src="{{ JS }}operations/operations_distributed.js"></script>
 {% endblock %}

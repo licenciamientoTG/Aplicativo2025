@@ -30,6 +30,9 @@ class Marketing{
     public function client_cards() : void {
         echo $this->twig->render($this->route . 'client_cards.html');
     }
+    public function client_cards_nexus() : void {
+        echo $this->twig->render($this->route . 'client_cards_nexus.html');
+    }
 
     /**
      * @return void
@@ -133,6 +136,52 @@ class Marketing{
         $pdf->SetFont('Arial','b',8);
         $pdf->SetXY(0,38);
         $pdf->multiCell(85, 4, mb_convert_encoding($card_info['Cliente'], 'ISO-8859-1'), 0, 'C');
+        $pdf->SetFont('Arial','',7);
+        $pdf->multiCell(85, 4, mb_convert_encoding('PRESENTAR ESTA TARJETA ANTES DE INICIAR SU CARGA', 'ISO-8859-1'), 0, 'C');
+        $pdf->Output();
+    }
+    function print_card_nexus() : void {
+         $number_card = $_GET['number_card'] ?? '';
+        $name_card = $_GET['name_card'] ?? '';
+        $name_client = $_GET['name_client'] ?? '';
+        $typo = $_GET['typo'] ?? '';
+        $name_vehicle = $_GET['name_vehicle'] ?? '';
+
+        if (empty($number_card) || empty($name_card) || empty($name_client)) {
+            die('Faltan parámetros');
+        }
+
+
+        $pdf = new PDF_Code128();
+        // Establecer el tamaño de la página en milimetros (Ancho x Alto)
+        $pdf->AddPage('L', array(85, 54));
+        $pdf->SetMargins(0, 0, 0);
+        $pdf->SetAutoPageBreak(false);
+        // Recuadro de la fotografia
+        $pdf->Image($_SERVER['DOCUMENT_ROOT']. '/_assets/images/Tarjeta Pago Electronico.jpg', 0, 0, 85, 54);
+        $pdf->SetFont('Arial','',8);
+        // cAMBIAR COLOR DE TEXTO
+        $pdf->SetTextColor(255,255,255);
+        // $pdf->SetTextColor(0,0,0);
+        // Tipo
+        $pdf->SetXY(0,19);
+        $pdf->multiCell(50, 4, mb_convert_encoding(strtoupper($typo), 'ISO-8859-1'), 0, 'C');
+        // ZONA
+        $pdf->SetXY(0,15);
+        $pdf->multiCell(50, 4, mb_convert_encoding(strtoupper('Praxedis'), 'ISO-8859-1'), 0, 'C');
+        // Tarjeta
+        $pdf->SetXY(30,12);
+        $pdf->multiCell(50, 4, mb_convert_encoding(strtoupper($number_card), 'ISO-8859-1'), 0, 'R');
+        // Placas
+        $pdf->SetXY(30,16);
+        $pdf->multiCell(50, 4, mb_convert_encoding(strtoupper($name_vehicle), 'ISO-8859-1'), 0, 'R');
+        // Placas
+        $pdf->SetXY(30,20);
+        $pdf->multiCell(50, 4, mb_convert_encoding(strtoupper($name_card), 'ISO-8859-1'), 0, 'R');
+        // Nombre
+        $pdf->SetFont('Arial','b',8);
+        $pdf->SetXY(0,38);
+        $pdf->multiCell(85, 4, mb_convert_encoding(strtoupper($name_client), 'ISO-8859-1'), 0, 'C');
         $pdf->SetFont('Arial','',7);
         $pdf->multiCell(85, 4, mb_convert_encoding('PRESENTAR ESTA TARJETA ANTES DE INICIAR SU CARGA', 'ISO-8859-1'), 0, 'C');
         $pdf->Output();

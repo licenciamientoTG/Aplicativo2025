@@ -228,14 +228,20 @@ EXEC [SG12].dbo.sp_SelMovPen
   LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
   LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
   WHERE C.codest <> -1
+    AND C.tipval = 3
+    AND C.cod NOT IN (37106,37173)          -- excluir clientes
     AND M.tipope <> 101
-    AND M.mtopenori > 0          -- <<--- DESCARTA negativos (y ceros)
+    -- Excluir solo negativos con fchope <= 2022-09-30
+    AND NOT (
+      M.mtopenori < 0
+      AND CONVERT(date, DATEADD(DAY, M.fchope - 1, '19000101')) <= '2022-09-30'
+    )
 ),
 Ultimos AS (
   SELECT
     B.codopr,
     B.codgas,
-    MAX(CASE WHEN B.tipope = 3 THEN B.fchope_dt END)     AS max_fchope_deb,
+    MAX(CASE WHEN B.tipope = 3 THEN B.fchope_dt END)      AS max_fchope_deb,
     MAX(CASE WHEN B.tipope IN (4,6) THEN B.fchope_dt END) AS max_fchope_cred
   FROM Base B
   GROUP BY B.codopr, B.codgas
@@ -251,16 +257,16 @@ Resultados AS (
     MAX(B.Credito)      AS Credito,
     MAX(B.[cond. pago]) AS [cond. pago],
 
-    -- Saldo actual (ya solo positivos por el filtro en Base)
+    -- Saldo actual
     SUM(B.mtopenori/100.0) AS [Saldo actual],
 
-    -- Por vencer (solo positivos por el filtro en Base)
+    -- Por vencer
     SUM(CASE 
           WHEN B.fchvto_dt >= CAST(GETDATE() AS date) THEN B.mtopenori/100.0
           ELSE 0
         END) AS [Por vencer],
 
-    -- Buckets vencidos (positivos; Base ya filtra)
+    -- Buckets vencidos
     SUM(CASE WHEN DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
              THEN B.mtopenori/100.0 ELSE 0 END) AS [1-15],
 
@@ -273,7 +279,7 @@ Resultados AS (
     SUM(CASE WHEN DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) > 45
              THEN B.mtopenori/100.0 ELSE 0 END) AS [45+],
 
-    -- Total vencido = suma de los buckets
+    -- Total vencido
     (
       SUM(CASE WHEN DATEDIFF(DAY, B.fchvto_dt, CAST(GETDATE() AS date)) BETWEEN 1 AND 15
                THEN B.mtopenori/100.0 ELSE 0 END)
@@ -318,6 +324,7 @@ SQL;
     return $this->sql->select($sql, $params) ?: false;
 }
 
+
 public function get_balance_age_detalle(int $cta, int $gas): array|false
 {
     $sql = <<<SQL
@@ -355,14 +362,29 @@ EXEC [SG12].dbo.sp_SelMovPen
     C.den    AS Cliente,
     C.mtoasg AS Credito,
     C.cndpag AS [cond. pago],
-    C.correo AS correo,            -- <<<<<< NUEVO
+    C.correo AS correo,
     G.den    AS Estacion
   FROM #MovPen AS M
   LEFT JOIN [SG12].dbo.Clientes    AS C ON C.cod = M.codopr
   LEFT JOIN [SG12].dbo.Gasolineras AS G ON G.cod = M.codgas
   WHERE C.codest <> -1
+    AND C.tipval = 3
+    AND C.cod NOT IN (37106,37173)          -- excluir clientes
     AND M.tipope <> 101
-    AND M.mtopenori > 0
+    -- Excluir solo negativos con fchope <= 2022-09-30
+    AND NOT (
+      M.mtopenori < 0
+      AND CONVERT(date, DATEADD(DAY, M.fchope - 1, '19000101')) <= '2022-09-30'
+    )
+),
+-- Mantener únicamente (cliente, estación) con saldo > 0
+SaldosPositivos AS (
+  SELECT
+    B.codopr,
+    B.codgas
+  FROM Base B
+  GROUP BY B.codopr, B.codgas
+  HAVING SUM(B.mtopenori/100.0) > 0
 ),
 Detalles AS (
   SELECT
@@ -376,7 +398,7 @@ Detalles AS (
     (B.nroope - 1700000000) AS nrofac,
     B.fchope_dt,
     B.fchvto_dt,
-    B.correo,                      -- <<<<<< NUEVO
+    B.correo,
     CAST(B.mtopenori/100.0 AS decimal(18,2)) AS [Saldo actual],
     CAST(CASE WHEN B.fchvto_dt >= CAST(GETDATE() AS date)
               THEN B.mtopenori/100.0 ELSE 0 END AS decimal(18,2)) AS [Por vencer],
@@ -407,11 +429,13 @@ Detalles AS (
                THEN B.mtopenori/100.0 ELSE 0 END
         ) AS decimal(18,2)) AS [Total vencido]
   FROM Base B
+  INNER JOIN SaldosPositivos SP
+          ON SP.codopr = B.codopr
+         AND SP.codgas = B.codgas
 )
 SELECT *
 FROM Detalles
 ORDER BY codopr, Cliente, codgas, Estacion, fchope_dt, fchvto_dt;
-
 
 DROP TABLE IF EXISTS #MovPen;
 SQL;
@@ -420,6 +444,7 @@ SQL;
     $params = [$cta, $cta, $gas, $gas];
     return $this->sql->select($sql, $params) ?: false;
 }
+
 
 
 }
