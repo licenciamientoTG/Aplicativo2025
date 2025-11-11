@@ -1,0 +1,145 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Cobranza Credito{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Cobranza Credito{% endblock %}
+{% block content %}
+
+<style>
+    tr.group,
+tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.1) !important;
+}
+ 
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background-color: rgba(0, 0, 0, 0.75) !important;
+}
+.column_estation{
+    background-color: #add5e6 !important;
+    color: white !important;
+}
+.total_bg{
+    background-color: #48A1C7 !important;
+    color: white !important;
+}
+.total_bg2{
+    background-color:#48A1C7 !important;
+    color: white !important;
+
+}
+
+.border_center{
+    border-top: 1px dotted  #358f92 !important;
+    border-bottom: 1px dotted  #358f92 !important;
+    border-left: 1px dotted #358f92 !important;
+    border-right: 1px dotted  #358f92 !important;
+}
+
+
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+
+table.dataTable tfoot th, table.dataTable tfoot td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color:  #3485a8 !important;
+    color: #ffffff !important;
+
+}
+.border_OG{
+    border: 0.5px solid #0c202091 !important;
+    background-color: #6d7277e8;
+}
+</style>
+<ul class="nav nav-tabs" id="myTab" role="tablist">
+
+    <li class="nav-item" role="presentation">
+        <button class="nav-link " id="movement_analysis-tab" data-bs-toggle="tab" data-bs-target="#movement_analysis" type="button" role="tab" aria-controls="movement_analysis" aria-selected="true">Facturas Compra</button>
+    </li>
+</ul>
+
+
+<div class="tab-content">
+    <div class="tab-pane active" id="movement_analysis" role="tabpanel" aria-labelledby="movement_analysis-tab">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Desde: </label>
+                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{ 'now'|date_modify('first day of this month')|date('Y-m-d') }}"  required>
+                    </div>
+                    <div class="col-2 ">
+                        <label class="col-form-label-sm" for="">Hasta: </label>
+                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    </div>
+
+                    <div class="col-2 " >
+                        <button id="search_analysis_movement" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Cobranza Credito </h5>
+            </div>
+            <div class="card-body table-responsive" >
+                <table id="analysis_movement_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Numero</th>
+                            <th>Estacion</th>
+                            <th>Fecha</th>
+                            <th>Entidad</th>
+                            <th>Factura</th>
+                            <th>Movimiento</th>
+                            <th>Monto</th>
+                            <th>UUID</th>
+                            <th>Ref</th>
+
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Numero</th>
+                            <th>Estacion</th>
+                            <th>Fecha</th>
+                            <th>Entidad</th>
+                            <th>Factura</th>
+                            <th>Movimiento</th>
+                            <th>Monto</th>
+                            <th>UUID</th>
+                            <th>Ref</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}accounting.js"></script>
+<script>
+$('#search_analysis_movement').on('click', function() {
+    analysis_movement_table();
+});
+
+
+
+</script>
+
+</script>
+{% endblock %}

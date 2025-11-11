@@ -101,9 +101,7 @@ class DocumentosModel extends Model{
             AND t1.satuid IS NOT NULL
 	 $queryProduct
         ";
-        // echo '<pre>';
-        // var_dump($query);
-        // die();
+
         return $this->sql->select($query, []);
     } 
 
@@ -890,6 +888,190 @@ class DocumentosModel extends Model{
         return $this->sql->select($query, $params);
     }
 
+
+    function movement_analysis_table2($folios, $codgas) {
+        // Construye la base del WHERE
+        $where = "
+            WHERE
+                t1.nro IN ({$folios}) AND t1.codgas = {$codgas}
+        ";
+
+        $query = "
+        SELECT
+            t1.logfch AS LogRegistro,
+            t1.codgas,
+            t1.nro AS [Número],
+            t1.Entidad AS Proveedor,
+
+            -- FACTURA
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@F:', x.txt) + 3,
+                    CASE
+                        WHEN CHARINDEX('@R:', x.txt) > 0 
+                            THEN CHARINDEX('@R:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
+                        WHEN CHARINDEX('@V:', x.txt) > 0 
+                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
+                        ELSE LEN(x.txt)
+                    END
+                )
+            )) AS Factura,
+
+            t1.nroref AS [Orden de Compra],
+            CONVERT(date, DATEADD(DAY, t1.fch, '1899-12-31')) AS Fecha,
+            CONVERT(date, DATEADD(DAY, t1.vto, '1899-12-31')) AS Vencimiento,
+            TRIM(t2.den) AS [Producto],
+
+            -- Suma priorizada
+            t3.VolumenRecibido,
+            t3.Recepcion,
+            ROUND(t1.can, 3) AS Facturado,
+            ROUND(t1.mto / 100.0, 2) AS Importe,
+            ROUND(t1.mtoiie / 100.0, 2) AS [I.E.P.S],
+            ROUND(t1.mtoiva / 100.0, 2) AS [I.V.A.],
+            ROUND(ISNULL(t4.Recargos, 0) / 100.0, 2) AS [Recargos],
+            ROUND(ISNULL(t7.iva_concepto, 0), 2) AS iva_concepto,
+            ROUND((t1.mto / 100.0) + (t1.mtoiva / 100.0), 2) AS TotalFactura,
+            t5.abr AS [Estación],
+            t5.den AS [DocDenominacion],
+            t5.nropcc,
+            t1.satuid AS UUID,
+            t1.RFC,
+
+            -- REMISIÓN
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@R:', x.txt) + 3,
+                    CASE 
+                        WHEN CHARINDEX('@V:', x.txt) > 0 
+                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
+                        ELSE LEN(x.txt)
+                    END
+                )
+            )) AS Remision,
+
+            -- VEHÍCULO
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@V:', x.txt) + 3,
+                    LEN(x.txt)
+                )
+            )) AS Vehiculo,
+
+            t6.den AS [Empresa],
+            LTRIM(RTRIM(COALESCE(t6.dom, '') + ' ' + COALESCE(t6.col, ''))) AS [Domicilio],
+            COALESCE(t6.codpos, '') + ' - ' + COALESCE(t6.del, '') + ', ' + COALESCE(t6.ciu, '') + ', ' + COALESCE(t6.est, '') AS [Ciudad],
+            'R.F.C.: ' + COALESCE(t6.rfc, '') AS [RFC],
+            COALESCE(t2.den, '') + ' ' + COALESCE(t5.nropcc, '') AS [Denominación],
+            CAST(ISNULL(t1.nro, 0) AS VARCHAR(20)) + ' Compra Combustibles Pesos' AS [NroDocumento],
+            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) 
+            + ', Vencimiento ' 
+            + CONVERT(VARCHAR(10), DATEADD(DAY, t1.vto, '1899-12-31'), 103) AS DocFecha,
+
+            -- 🔹 TURNO según hratrn del movimiento prioritario
+            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) + ', ' +
+            CASE 
+                WHEN t3.HrSel BETWEEN 0 AND 599 THEN '1 (00:00 a 06:00) [4]'
+                WHEN t3.HrSel BETWEEN 600 AND 1399 THEN '2 (06:01 a 14:00) [1]'
+                WHEN t3.HrSel BETWEEN 1400 AND 2199 THEN '3 (14:01 a 22:00) [2]'
+                WHEN t3.HrSel BETWEEN 2200 AND 2399 THEN '4 (22:01 a 23:59) [3]'
+                ELSE 'Sin turno'
+            END AS DocTurno,
+
+            -- 🔹 HORA del turno (derivada de HrSel en formato time)
+            CASE 
+                WHEN t3.HrSel IS NOT NULL THEN
+                    CONVERT(time, DATEADD(MINUTE, (t3.HrSel % 100), DATEADD(HOUR, (t3.HrSel / 100), '00:00')))
+                ELSE NULL
+            END AS HoraTurno,
+            t1.Entidad AS Proveedor,
+            'Remisión ' + 
+        LTRIM(RTRIM(
+            SUBSTRING(
+                x.txt,
+                CHARINDEX('@R:', x.txt) + 3,
+                CASE 
+                    WHEN CHARINDEX('@V:', x.txt) > 0 
+                        THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
+                    ELSE LEN(x.txt)
+                END
+            )
+        )) + 
+        ' Vehículo ' + 
+        LTRIM(RTRIM(
+            SUBSTRING(
+                x.txt,
+                CHARINDEX('@V:', x.txt) + 3,
+                LEN(x.txt)
+            )
+        )) AS [RemisionVehiculo]
+
+        FROM [TG].[dbo].[vw_Documentos_Unificados] AS t1
+        LEFT JOIN [SG12].[dbo].[Productos] AS t2
+            ON t1.codprd = t2.cod
+
+        CROSS APPLY (SELECT CAST(t1.TxtRef AS VARCHAR(MAX)) AS txt) AS x
+
+        -- Subconsulta priorizada: primero 3, si no hay 4; con HrSel (usa MIN, cambia a MAX si quieres)
+        LEFT JOIN (
+            SELECT 
+                s.nrodoc,
+                s.codgas,
+                s.VolumenRecibido,
+                s.HrSel,
+                s.nrotrn AS Recepcion
+            FROM (
+                SELECT
+                    MAX(mt.nrotrn) AS nrotrn,
+                    mt.nrodoc,
+                    mt.codgas,
+                    mt.tiptrn,
+                    ROUND(SUM(CAST(mt.volrec AS DECIMAL(14,3))), 3) AS VolumenRecibido,
+                    MAX(mt.hratrn) AS HrSel,  -- 👈 cambia a MAX(mt.hratrn) si prefieres
+                    CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END AS prioridad,
+                    MIN(CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END)
+                        OVER (PARTITION BY mt.nrodoc, mt.codgas) AS prioridad_grupo
+                FROM [SG12].[dbo].[MovimientosTan] AS mt
+                WHERE mt.tiptrn IN (3, 4)
+                AND mt.nrodoc > 0
+                GROUP BY mt.nrodoc, mt.codgas, mt.tiptrn
+            ) AS s
+            WHERE s.prioridad = s.prioridad_grupo
+        ) AS t3
+            ON t1.codgas = t3.codgas
+        AND t1.nro    = t3.nrodoc
+
+        LEFT JOIN (
+            SELECT SUM(mto) AS Recargos, nro, codgas
+            FROM [SG12].[dbo].[Documentos]
+            WHERE satdat = '@e:7'
+            GROUP BY nro, codgas
+        ) AS t4
+            ON t1.nro    = t4.nro
+        AND t1.codgas = t4.codgas
+
+        LEFT JOIN [SG12].[dbo].[Gasolineras] AS t5
+            ON t1.codgas = t5.cod
+
+        LEFT JOIN [SG12].[dbo].[Empresas] AS t6
+            ON t5.codemp = t6.cod
+
+        LEFT JOIN (
+            SELECT SUM(mto/100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
+        ) AS t7 ON t1.nro    = t7.nro AND t1.codgas = t7.codgas
+
+        {$where}
+
+        ORDER BY
+            t1.nro ASC;
+        ";                   
+        $params = [];
+        return $this->sql->select($query, $params);
+    }
+
     function get_concepts($codgas, $nro) {
         $query = "
         SELECT
@@ -929,5 +1111,363 @@ class DocumentosModel extends Model{
     function get_suppliers() {
         $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
+    }
+
+    function movement_analysis_table3($uuids) {
+        // Construye la base del WHERE
+        $where = "
+            WHERE
+                t1.satuid IN ({$uuids})
+        ";
+
+        $query = "
+        SELECT
+            t1.logfch AS LogRegistro,
+            t1.codgas,
+            t1.nro AS [Número],
+            t1.Entidad AS Proveedor,
+
+            -- FACTURA
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@F:', x.txt) + 3,
+                    CASE
+                        WHEN CHARINDEX('@R:', x.txt) > 0 
+                            THEN CHARINDEX('@R:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
+                        WHEN CHARINDEX('@V:', x.txt) > 0 
+                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
+                        ELSE LEN(x.txt)
+                    END
+                )
+            )) AS Factura,
+
+            t1.nroref AS [Orden de Compra],
+            CONVERT(date, DATEADD(DAY, t1.fch, '1899-12-31')) AS Fecha,
+            CONVERT(date, DATEADD(DAY, t1.vto, '1899-12-31')) AS Vencimiento,
+            TRIM(t2.den) AS [Producto],
+
+            -- Suma priorizada
+            t3.VolumenRecibido,
+            t3.Recepcion,
+            ROUND(t1.can, 3) AS Facturado,
+            ROUND(t1.mto / 100.0, 2) AS Importe,
+            ROUND(t1.mtoiie / 100.0, 2) AS [I.E.P.S],
+            ROUND(t1.mtoiva / 100.0, 2) AS [I.V.A.],
+            ROUND(ISNULL(t4.Recargos, 0) / 100.0, 2) AS [Recargos],
+            ROUND(ISNULL(t7.iva_concepto, 0), 2) AS iva_concepto,
+            ROUND((t1.mto / 100.0) + (t1.mtoiva / 100.0), 2) AS TotalFactura,
+            t5.abr AS [Estación],
+            t5.den AS [DocDenominacion],
+            t5.nropcc,
+            t1.satuid AS UUID,
+            t1.RFC,
+
+            -- REMISIÓN
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@R:', x.txt) + 3,
+                    CASE 
+                        WHEN CHARINDEX('@V:', x.txt) > 0 
+                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
+                        ELSE LEN(x.txt)
+                    END
+                )
+            )) AS Remision,
+
+            -- VEHÍCULO
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    CHARINDEX('@V:', x.txt) + 3,
+                    LEN(x.txt)
+                )
+            )) AS Vehiculo,
+
+            t6.den AS [Empresa],
+            LTRIM(RTRIM(COALESCE(t6.dom, '') + ' ' + COALESCE(t6.col, ''))) AS [Domicilio],
+            COALESCE(t6.codpos, '') + ' - ' + COALESCE(t6.del, '') + ', ' + COALESCE(t6.ciu, '') + ', ' + COALESCE(t6.est, '') AS [Ciudad],
+            'R.F.C.: ' + COALESCE(t6.rfc, '') AS [RFC],
+            COALESCE(t2.den, '') + ' ' + COALESCE(t5.nropcc, '') AS [Denominación],
+            CAST(ISNULL(t1.nro, 0) AS VARCHAR(20)) + ' Compra Combustibles Pesos' AS [NroDocumento],
+            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) 
+            + ', Vencimiento ' 
+            + CONVERT(VARCHAR(10), DATEADD(DAY, t1.vto, '1899-12-31'), 103) AS DocFecha,
+
+            -- 🔹 TURNO según hratrn del movimiento prioritario
+            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) + ', ' +
+            CASE 
+                WHEN t3.HrSel BETWEEN 0 AND 599 THEN '1 (00:00 a 06:00) [4]'
+                WHEN t3.HrSel BETWEEN 600 AND 1399 THEN '2 (06:01 a 14:00) [1]'
+                WHEN t3.HrSel BETWEEN 1400 AND 2199 THEN '3 (14:01 a 22:00) [2]'
+                WHEN t3.HrSel BETWEEN 2200 AND 2399 THEN '4 (22:01 a 23:59) [3]'
+                ELSE 'Sin turno'
+            END AS DocTurno,
+
+            -- 🔹 HORA del turno (derivada de HrSel en formato time)
+            CASE 
+                WHEN t3.HrSel IS NOT NULL THEN
+                    CONVERT(time, DATEADD(MINUTE, (t3.HrSel % 100), DATEADD(HOUR, (t3.HrSel / 100), '00:00')))
+                ELSE NULL
+            END AS HoraTurno,
+            t1.Entidad AS Proveedor,
+            'Remisión ' + 
+        LTRIM(RTRIM(
+            SUBSTRING(
+                x.txt,
+                CHARINDEX('@R:', x.txt) + 3,
+                CASE 
+                    WHEN CHARINDEX('@V:', x.txt) > 0 
+                        THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
+                    ELSE LEN(x.txt)
+                END
+            )
+        )) + 
+        ' Vehículo ' + 
+        LTRIM(RTRIM(
+            SUBSTRING(
+                x.txt,
+                CHARINDEX('@V:', x.txt) + 3,
+                LEN(x.txt)
+            )
+        )) AS [RemisionVehiculo]
+
+        FROM [TG].[dbo].[vw_Documentos_Unificados] AS t1
+        LEFT JOIN [SG12].[dbo].[Productos] AS t2
+            ON t1.codprd = t2.cod
+
+        CROSS APPLY (SELECT CAST(t1.TxtRef AS VARCHAR(MAX)) AS txt) AS x
+
+        -- Subconsulta priorizada: primero 3, si no hay 4; con HrSel (usa MIN, cambia a MAX si quieres)
+        LEFT JOIN (
+            SELECT 
+                s.nrodoc,
+                s.codgas,
+                s.VolumenRecibido,
+                s.HrSel,
+                s.nrotrn AS Recepcion
+            FROM (
+                SELECT
+                    MAX(mt.nrotrn) AS nrotrn,
+                    mt.nrodoc,
+                    mt.codgas,
+                    mt.tiptrn,
+                    ROUND(SUM(CAST(mt.volrec AS DECIMAL(14,3))), 3) AS VolumenRecibido,
+                    MAX(mt.hratrn) AS HrSel,  -- 👈 cambia a MAX(mt.hratrn) si prefieres
+                    CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END AS prioridad,
+                    MIN(CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END)
+                        OVER (PARTITION BY mt.nrodoc, mt.codgas) AS prioridad_grupo
+                FROM [SG12].[dbo].[MovimientosTan] AS mt
+                WHERE mt.tiptrn IN (3, 4)
+                AND mt.nrodoc > 0
+                GROUP BY mt.nrodoc, mt.codgas, mt.tiptrn
+            ) AS s
+            WHERE s.prioridad = s.prioridad_grupo
+        ) AS t3
+            ON t1.codgas = t3.codgas
+        AND t1.nro    = t3.nrodoc
+
+        LEFT JOIN (
+            SELECT SUM(mto) AS Recargos, nro, codgas
+            FROM [SG12].[dbo].[Documentos]
+            WHERE satdat = '@e:7'
+            GROUP BY nro, codgas
+        ) AS t4
+            ON t1.nro    = t4.nro
+        AND t1.codgas = t4.codgas
+
+        LEFT JOIN [SG12].[dbo].[Gasolineras] AS t5
+            ON t1.codgas = t5.cod
+
+        LEFT JOIN [SG12].[dbo].[Empresas] AS t6
+            ON t5.codemp = t6.cod
+
+        LEFT JOIN (
+            SELECT SUM(mto/100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
+        ) AS t7 ON t1.nro    = t7.nro AND t1.codgas = t7.codgas
+
+        {$where}
+
+        ORDER BY
+            t1.nro ASC;
+        ";                   
+        $params = [];
+        return $this->sql->select($query, $params);
+    }
+
+    function analysis_movement_table( $from, $until){
+        $query = "SELECT
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, t1.fch), 23) as fecha,
+                    CASE
+                        WHEN t2.nroapl BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        WHEN t2.nroapl BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t2.nroapl AS VARCHAR(10)), 4, 10)
+                        ELSE CAST(t2.nroapl AS VARCHAR(10))
+                    END AS 'factura',
+                    (t2.mtoapl)/100 as [mtoapl],
+                    t3.abr,
+                    t4.den,
+                    t1.nro,
+                    t1.satuid,
+                    t1.txtref,
+                    TRY_CONVERT(int,
+    CASE WHEN d.start_digits IS NOT NULL AND f.len_digits IS NOT NULL
+         THEN SUBSTRING(r.ref, d.start_digits, f.len_digits) END
+  ) AS mov_n
+                    from DocumentosC t1
+                    LEFT JOIN DocumentosA t2 on t1.codgas = t2.codgas  and t1.nro = t2.nro and t2.tip = 4
+                    LEFT JOIN Gasolineras t3 on t1.codgas = t3.cod
+                    LEFT JOiN Clientes t4 on t1.codopr = t4.cod
+                    OUTER APPLY (SELECT TRY_CAST(t1.txtref AS NVARCHAR(MAX)) AS ref) r
+OUTER APPLY (SELECT pos_tag = NULLIF(CHARINDEX('@N:MOV', r.ref), 0)) a
+OUTER APPLY (SELECT after_tag = CASE WHEN a.pos_tag IS NOT NULL
+                                     THEN SUBSTRING(r.ref, a.pos_tag + LEN('@N:MOV'), 1000) END) b
+OUTER APPLY (SELECT off_first_digit = NULLIF(PATINDEX('%[^0-9]%', b.after_tag), 0)) c
+OUTER APPLY (SELECT start_digits = CASE WHEN c.off_first_digit IS NOT NULL
+                                        THEN a.pos_tag + LEN('@N:MOV') + c.off_first_digit - 1 END) d
+OUTER APPLY (SELECT tail = CASE WHEN d.start_digits IS NOT NULL
+                                THEN SUBSTRING(r.ref, d.start_digits, 20) END) e
+OUTER APPLY (SELECT len_digits = CASE WHEN e.tail IS NOT NULL
+                                      THEN COALESCE(NULLIF(PATINDEX('%[^0-9]%', e.tail), 0) - 1, LEN(e.tail)) END) f
+                    where
+                    --t1.satuid = '7bccf774-be8d-486c-87db-5840c19580e3'
+                    t1.fch between ? and ?
+                    and t1.tip = 4
+                    --and t1.flgcon = 129
+                    and t1.subope  = 8
+                    order by t1.nro";
+            $params = [$from,$until];
+            return $this->sql->select($query, $params);
+
+    }
+
+    /**
+     * Obtiene todas las facturas de la tabla Documentos sin paginación
+     *
+     * @param string|null $from Fecha inicio (formato: Y-m-d)
+     * @param string|null $until Fecha fin (formato: Y-m-d)
+     * @param int|null $codgas Código de gasolinera (opcional)
+     * @return array|false Array con las facturas o false si falla
+     */
+    public function get_all_facturas(?string $from = null, ?string $until = null, ?int $codgas = null): array|false {
+        $where = "WHERE 1=1"; // Todos los tipos de documentos
+        $params = [];
+
+        if ($from && $until) {
+            $fromInt = dateToInt($from);
+            $untilInt = dateToInt($until);
+            $where .= " AND t2.fch BETWEEN ? AND ?";
+            $params[] = $fromInt;
+            $params[] = $untilInt;
+        }
+
+        if ($codgas !== null && $codgas > 0) {
+            $where .= " AND t1.codgas = ?";
+            $params[] = $codgas;
+        }
+
+        $query = "
+            SELECT
+                t2.nro AS NumeroDocumento,
+                t2.codgas AS CodigoEstacion,
+                t3.abr AS Estacion,
+                t3.den AS EstacionNombre,
+                CONVERT(VARCHAR(10), DATEADD(DAY, -1, t2.fch), 23) AS Fecha,
+                CONVERT(VARCHAR(10), DATEADD(DAY, -1, t2.vto), 23) AS Vencimiento,
+                CASE
+                    WHEN t2.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 2000000000 AND 2099999999 THEN 'T ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1900000000 AND 1999999999 THEN 'K ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1100000000 AND 1199999999 THEN 'C ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1200000000 AND 1299999999 THEN 'D ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1700000000 AND 1799999999 THEN 'I ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1300000000 AND 1399999999 THEN 'E ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    WHEN t2.nro BETWEEN 1500000000 AND 1599999999 THEN 'G ' + SUBSTRING(CAST(t2.nro AS VARCHAR(10)), 4, 10)
+                    ELSE CAST(t2.nro AS VARCHAR(10))
+                END AS FacturaFormateada,
+                STRING_AGG(CAST(t4.den AS NVARCHAR(MAX)), ', ') AS Producto,
+                ROUND(SUM(t1.can), 3) AS Cantidad,
+                ROUND(AVG(t1.pre), 2) AS Precio,
+                ROUND(SUM(t1.mto / 100.0), 2) AS Subtotal,
+                ROUND(SUM(t1.mtoiva / 100.0), 2) AS IVA,
+                ROUND(SUM(t1.mtoiie / 100.0), 2) AS IEPS,
+                ROUND(SUM((t1.mto + t1.mtoiva + t1.mtoiie) / 100.0), 2) AS Total,
+                CASE
+                    WHEN t2.tip = 1 THEN 'Compra'
+                    WHEN t2.tip = 3 THEN 'Venta'
+                    WHEN t2.tip = 4 THEN 'Nota de Crédito'
+                    WHEN t2.tip = 6 THEN 'Nota de Débito'
+                    ELSE 'Tipo ' + CAST(t2.tip AS VARCHAR(10))
+                END AS TipoDocumento,
+                CASE
+                    WHEN t5.cod IS NOT NULL THEN t5.den
+                    WHEN t6.cod IS NOT NULL THEN t6.den
+                    ELSE 'N/A'
+                END AS EntidadNombre,
+                t2.satuid AS UUID
+            FROM [SG12].[dbo].[DocumentosC] t2
+            LEFT JOIN [SG12].[dbo].[Documentos] t1
+                ON t2.nro = t1.nro AND t2.codgas = t1.codgas AND t2.tip = t1.tip AND t1.nroitm > 0
+            LEFT JOIN [SG12].[dbo].[Gasolineras] t3
+                ON t2.codgas = t3.cod
+            LEFT JOIN [SG12].[dbo].[Productos] t4
+                ON t1.codprd = t4.cod
+            LEFT JOIN [SG12].[dbo].[Proveedores] t5
+                ON t2.codopr = t5.cod AND t2.tip = 1
+            LEFT JOIN [SG12].[dbo].[Clientes] t6
+                ON t2.codopr = t6.cod AND t2.tip = 3
+            {$where}
+            GROUP BY
+                t2.nro, t2.codgas, t2.fch, t2.vto, t2.tip, t2.satuid, 
+                t3.abr, t3.den, t5.cod, t5.den, t6.cod, t6.den
+            ORDER BY t2.fch DESC, t2.nro DESC
+        ";
+  
+        
+
+        return $this->sql->select($query, $params) ?: false;
+    }
+
+    /**
+     * Obtiene el conteo total de facturas según filtros
+     *
+     * @param string|null $from Fecha inicio
+     * @param string|null $until Fecha fin
+     * @param int|null $codgas Código de gasolinera
+     * @return int Total de registros
+     */
+    public function get_facturas_count(?string $from = null, ?string $until = null, ?int $codgas = null): int {
+        $where = "WHERE t1.tip IN (1, 3)";
+        $params = [];
+
+        if ($from && $until) {
+            $fromInt = dateToInt($from);
+            $untilInt = dateToInt($until);
+            $where .= " AND t2.fch BETWEEN ? AND ?";
+            $params[] = $fromInt;
+            $params[] = $untilInt;
+        }
+
+        if ($codgas !== null && $codgas > 0) {
+            $where .= " AND t1.codgas = ?";
+            $params[] = $codgas;
+        }
+
+        $query = "
+            SELECT COUNT(*) AS total
+            FROM [SG12].[dbo].[Documentos] t1
+            INNER JOIN [SG12].[dbo].[DocumentosC] t2
+                ON t1.nro = t2.nro AND t1.codgas = t2.codgas AND t1.tip = t2.tip
+            {$where}
+            AND t1.nroitm > 0
+        ";
+
+        $result = $this->sql->select($query, $params);
+        return $result[0]['total'] ?? 0;
     }
 }

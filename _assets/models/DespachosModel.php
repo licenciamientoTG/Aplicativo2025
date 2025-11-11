@@ -2582,6 +2582,119 @@ function cash_invoices_advance($from, $until)
     return $this->sql->select($query, $params);
 }
 
+public function invoiced_dispatches_data() {
+    $query = "
+       DECLARE @desde date = '2025-10-01';
+DECLARE @hasta date = '2025-10-31';
+
+DECLARE @desde_int int = DATEDIFF(DAY, '1900-01-01', @desde) + 1;
+DECLARE @hasta_int int = DATEDIFF(DAY, '1900-01-01', @hasta) + 1;
+
+;WITH D AS (
+    SELECT
+        nrotrn, codgas, nrobom, fchtrn, hratrn, fchcor, nrotur,
+        codprd, can, mto, codcli, codisl, codres, nrofac, tiptrn, datref, satuid, satrfc
+    FROM SG12.dbo.Despachos WITH (NOLOCK)
+    WHERE nrofac > 0
+      AND fchtrn BETWEEN @desde_int AND @hasta_int
+),
+DC AS (
+    SELECT nro, codgas, codopr, tip, satuid
+    FROM SG12.dbo.DocumentosC WITH (NOLOCK)
+    WHERE codopr NOT IN (21701354, 1710801)
+),
+C AS (
+    SELECT cod, den
+    FROM SG12.dbo.Clientes WITH (NOLOCK)
+    WHERE tipval NOT IN (3,4)
+)
+SELECT
+      t1.nrotrn
+    , t1.codgas
+    , g.abr AS Estacion
+    , t1.nrobom
+    , t1.fchtrn
+    , t2.tip
+    , CAST(DATEADD(DAY, t1.fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha
+    , t1.hratrn
+    , t1.fchcor
+    , t1.nrotur
+    , t1.codprd
+    , p.den AS nomPrd
+    , t1.can
+    , t1.mto
+    , t1.codcli AS [codcli (D)]
+    , c.den  AS nombreCliente
+    , t2.codopr AS [codopr (F)]
+    , t1.codisl
+    , i.den AS Isla
+    , t1.codres
+    , CASE WHEN t1.codres = 0 THEN 'No encontrado' ELSE r.den END AS responsable
+    , t1.nrofac
+    , calc.Factura
+    , calc.serie
+    , calc.conceptofac
+    , t1.tiptrn
+    , t1.datref
+    , t1.satuid
+    , t1.satrfc
+FROM D AS t1
+JOIN DC AS t2
+  ON t1.nrofac = t2.nro
+ AND t1.codgas = t2.codgas
+JOIN C  AS c
+  ON t2.codopr = c.cod
+JOIN SG12.dbo.Gasolineras  AS g ON t1.codgas = g.cod
+JOIN SG12.dbo.Productos    AS p ON t1.codprd = p.cod
+LEFT JOIN SG12.dbo.Responsables AS r ON t1.codres = r.cod
+LEFT JOIN SG12.dbo.Islas        AS i ON t1.codisl = i.cod
+CROSS APPLY (
+    /* Dígito de centenas de millón y derivados */
+    SELECT
+        n2 = (t2.nro / 100000000)
+) k
+CROSS APPLY (
+    /* Sustituyen los CASE por rangos repetitivos */
+    SELECT
+        Factura =
+            CASE WHEN t1.nrofac BETWEEN 1000000000 AND 2499999999
+                 THEN t1.nrofac - ((t1.nrofac / 100000000) * 100000000)
+                 ELSE t1.nrofac
+            END,
+        serie =
+            CASE k.n2
+                WHEN 10 THEN 'B' WHEN 11 THEN 'C' WHEN 12 THEN 'D' WHEN 13 THEN 'E'
+                WHEN 14 THEN 'F' WHEN 15 THEN 'G' WHEN 16 THEN 'H' WHEN 17 THEN 'I'
+                WHEN 18 THEN 'J' WHEN 19 THEN 'K' WHEN 20 THEN 'T'
+                WHEN 21 THEN 'Z' WHEN 22 THEN 'Z' WHEN 23 THEN 'Z' WHEN 24 THEN 'Z'
+                ELSE 'Unknown'
+            END,
+        conceptofac =
+            CASE k.n2
+                WHEN 10 THEN 'Contado Independencia'
+                WHEN 11 THEN 'Contado'
+                WHEN 12 THEN 'Anticipos'
+                WHEN 13 THEN 'Consumos'
+                WHEN 14 THEN 'Notas de crédito'
+                WHEN 15 THEN 'Notas de crédito'
+                WHEN 16 THEN 'Web'
+                WHEN 17 THEN 'Crédito'
+                WHEN 18 THEN 'Crédito'
+                WHEN 19 THEN 'Web'
+                WHEN 20 THEN 'Terminales'
+                WHEN 21 THEN 'Global' WHEN 22 THEN 'Global' WHEN 23 THEN 'Global' WHEN 24 THEN 'Global'
+                ELSE ''
+            END
+) calc
+
+OPTION (RECOMPILE);
+
+    ";
+
+    return $this->sql->select($query);
+}
+
+
 
 function invoice_client_desp($from, $until)
 {

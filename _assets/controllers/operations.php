@@ -1951,10 +1951,98 @@ class Operations{
 
         json_output(array("data" => $data));
     }
+    public function inventories_distributed_table() {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $data = [];
+        
+        try {
+            // Preparar datos para enviar a la API de Python
+            $postData = [
+                'from' => dateToInt($_POST['from']),
+                'until' => dateToInt($_POST['until'])
+            ];
+
+            // Inicializar cURL
+            $ch = curl_init('http://192.168.0.109:82/api/inventarios/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Timeout de 5 minutos
+            
+            // Ejecutar y obtener respuesta
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+
+            $apiData = json_decode($response, true);
+            
+            if (!$apiData || !is_array($apiData)) {
+                throw new Exception("Respuesta inválida de la API");
+            }
+            
+            // Procesar la respuesta de la API
+            foreach ($apiData as $estacion) {
+                if (isset($estacion['Resultados']) && is_array($estacion['Resultados'])) {
+                    foreach ($estacion['Resultados'] as $row) {
+                        $actions = '<a class="btn btn-primary btn-sm" href="/operations/details_api/'. 
+                                dateToInt($_POST['from']) .'/'. 
+                                dateToInt($_POST['until']) .'/'. 
+                                $estacion['Estacion'] .'/'. 
+                                $row['codprd'] .'" role="button" target="_blank">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                                </a>';
+                        
+                        $data[] = [
+                            'ESTACION'     => $estacion['Nombre'] ?? $estacion['Estacion'],
+                            'PRODUCTO'     => $row['Producto'] ?? '',
+                            'SALDOINICIAL' => floatval($row['SaldoInicial'] ?? 0),
+                            'COMPRAS'      => floatval($row['Compras'] ?? 0),
+                            'VENTAS'       => floatval($row['Ventas'] ?? 0),
+                            'SALDOFINAL'   => floatval($row['SaldoFinal'] ?? 0),
+                            'SALDOREAL'    => floatval($row['SaldoReal'] ?? 0),
+                            'MERMA'        => floatval($row['Merma'] ?? 0),
+                            'ACCIONES'     => $actions,
+                        ];
+                    }
+                }
+            }
+            
+            echo json_encode(["data" => $data]);
+            
+        } catch (Exception $e) {
+            error_log("Error en inventories_distributed_table: " . $e->getMessage());
+            echo json_encode([
+                "data" => [],
+                "error" => $e->getMessage()
+            ]);
+        }
+    }
 
     function details($from, $until, $codgas, $codprd) : void {
-        echo $this->twig->render($this->route . 'details.html', compact('from', 'until', 'codgas', 'codprd'));
+        $detail = 'inventories_details_table';
+        echo $this->twig->render($this->route . 'details.html', compact('from', 'until', 'codgas', 'codprd','detail'));
     }
+    function details_api($from, $until, $codgas, $codprd) : void {
+        $detail = 'inventories_details_table_api';
+
+        echo $this->twig->render($this->route . 'details.html', compact('from', 'until', 'codgas', 'codprd','detail'));
+    }
+
 
     function inventories_details_table() {
         $data = [];
@@ -1976,6 +2064,90 @@ class Operations{
             }
         }
         json_output(array("data" => $data));
+    }
+
+    public function inventories_details_table_api() {
+        $from  = intval($_GET['from']);
+        $until = intval($_GET['until']);
+        $codgas = intval($_GET['codgas']);
+        $codprd = intval($_GET['codprd']);
+       
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $data = [];
+        
+        try {
+            // Preparar datos para enviar a la API de Python
+            $postData = [
+                'from' => $from,
+                'until' => $until,
+                'codgas' => $codgas,
+                'codprd' => $codprd
+            ];
+           
+
+            // Inicializar cURL
+            $ch = curl_init('http://192.168.0.109:82/api/inventarios/detalles/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120); // Timeout de 2 minutos
+            
+            // Ejecutar y obtener respuesta
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+            
+            $apiData = json_decode($response, true);
+            
+            if (!$apiData || !isset($apiData['Resultados'])) {
+                throw new Exception("Respuesta inválida de la API");
+            }
+            
+            // Procesar la respuesta de la API
+            $inventory = $apiData['Resultados'];
+            
+            // Remover el primer elemento si existe (equivalente a unset($inventory[0]))
+            if (count($inventory) > 0 && isset($inventory[0])) {
+                array_shift($inventory);
+            }
+            
+            if ($inventory && count($inventory) > 0) {
+                foreach ($inventory as $row) {
+                    $data[] = [
+                        'FECHA'        => $row['Fecha'] ?? '',
+                        'ESTACION'     => $row['Estacion'] ?? '',
+                        'PRODUCTO'     => $row['Producto'] ?? '',
+                        'SALDOINICIAL' => floatval($row['SdoInicial'] ?? 0),
+                        'COMPRAS'      => floatval($row['Compras'] ?? 0),
+                        'VENTAS'       => floatval($row['Ventas'] ?? 0),
+                        'SALDO'        => floatval($row['Saldo_Final'] ?? 0),
+                        'SALDOREAL'    => floatval($row['SaldoReal'] ?? 0),
+                        'MERMA'        => floatval($row['Merma'] ?? 0)
+                    ];
+                }
+            }
+            
+            echo json_encode(["data" => $data]);
+            
+        } catch (Exception $e) {
+            error_log("Error en inventories_details_table: " . $e->getMessage());
+            echo json_encode([
+                "data" => [],
+                "error" => $e->getMessage()
+            ]);
+        }
     }
     public function SalesHourCash() : void {
         // Imprimimos el segmento de red del cliente
@@ -2253,6 +2425,187 @@ class Operations{
         $pdf->setxy(15, 141);
         $pdf->Cell(65.5,10,date('H:i'), 0, 0, 'L');
         $pdf->Output();
+    }
+
+    // Método para renderizar la vista
+    function tank_volume() {
+        $all_stations = $this->estacionesModel->get_stations();
+        $stations = array_filter($all_stations, fn($station) => !in_array($station['Codigo'], [0, 20]));
+        echo $this->twig->render($this->route . 'tank_volume.html', compact('stations'));
+    }
+
+// Método para obtener tanques de una estación
+    public function get_tanks() {
+        ini_set('max_execution_time', 60);
+        header('Content-Type: application/json');
+        
+        try {
+            $postData = [
+                'codgas' => $_POST['codgas'],
+                'servidor' => $_POST['servidor'],
+                'base' => $_POST['base']
+            ];
+            
+            $ch = curl_init('http://192.168.0.109:82/api/tanques/estacion/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+            
+            echo $response;
+            
+        } catch (Exception $e) {
+            error_log("Error en get_tanks: " . $e->getMessage());
+            echo json_encode([
+                "tanks" => [],
+                "error" => $e->getMessage()
+            ]);
+        }
+    }
+
+// Método para obtener volumen del tanque
+    public function tank_volume_table() {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $data = [];
+        
+        try {
+            $postData = [
+                'codgas' => $_POST['codgas'],
+                'codtan' => $_POST['codtan'],
+                'limit' => $_POST['limit'] ?? 100
+            ];
+            
+            $ch = curl_init('http://192.168.0.109:82/api/tanques/volumen/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+            
+            $apiData = json_decode($response, true);
+            
+            if (!$apiData || !isset($apiData['Resultados'])) {
+                throw new Exception("Respuesta inválida de la API");
+            }
+            
+            $resultados = $apiData['Resultados'];
+            
+            if ($resultados && count($resultados) > 0) {
+                foreach ($resultados as $row) {
+                    $data[] = [
+                        'FECHA'         => $row['fecha'] ?? '',
+                        'HORA'          => $row['hora'] ?? '',
+                        'PRODUCTO'      => $row['producto'] ?? '',
+                        'VOLUMEN'       => floatval($row['vol'] ?? 0),
+                        'VOLUMEN_CXT'   => floatval($row['volCxT'] ?? 0),
+                        'AGUA'          => floatval($row['volh2o'] ?? 0),
+                        'CAP_MAXIMA'    => floatval($row['capacidad_maxima'] ?? 0),
+                        'CAP_OPERATIVA' => floatval($row['capacidad_operativa'] ?? 0),
+                        'UTIL'          => floatval($row['util'] ?? 0),
+                        'FONDAJE'       => floatval($row['fondage'] ?? 0),
+                        'VOL_MINIMO'    => floatval($row['volumen_min'] ?? 0)
+                    ];
+                }
+            }
+            
+            echo json_encode(["data" => $data]);
+            
+        } catch (Exception $e) {
+            error_log("Error en tank_volume_table: " . $e->getMessage());
+            echo json_encode([
+                "data" => [],
+                "error" => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function tank_consolidated_report() {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $data = [];
+        
+        try {
+            $postData = [
+                'from' => $_POST['from'],
+                'until' => $_POST['until']
+            ];
+            
+            $ch = curl_init('http://192.168.0.109:82/api/tanques/consolidado/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ));
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+            
+            $apiData = json_decode($response, true);
+            
+            if (!$apiData || !is_array($apiData)) {
+                throw new Exception("Respuesta inválida de la API");
+            }
+            
+            foreach ($apiData as $row) {
+                $data[] = [
+                    'ESTACION'      => $row['Estacion'] ?? '',
+                    'TANQUE'        => $row['numero_tan'] ?? 0,
+                    'PRODUCTO'      => $row['producto'] ?? '',
+                    'VOL_MAXIMO'    => floatval($row['vol_maximo'] ?? 0),
+                    'VOL_MINIMO'    => floatval($row['vol_minimo'] ?? 0),
+                    'VOL_PROMEDIO'  => floatval($row['vol_promedio'] ?? 0),
+                    'CAP_MAXIMA'    => floatval($row['capacidad_maxima'] ?? 0),
+                    'CAP_MINIMA'    => floatval($row['capacidad_minima'] ?? 0)
+                ];
+            }
+            
+            echo json_encode(["data" => $data]);
+            
+        } catch (Exception $e) {
+            error_log("Error en tank_consolidated_report: " . $e->getMessage());
+            echo json_encode([
+                "data" => [],
+                "error" => $e->getMessage()
+            ]);
+        }
     }
 
 }
