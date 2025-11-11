@@ -87,6 +87,7 @@ public function balance_age_send_mail(){
 
     // 🔹 NUEVO: mensaje opcional del formulario
     $body     = (string)($_POST['body'] ?? ' ');
+    $body     = (string)($_POST['body'] ?? ' ');
 
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
     $rawList = str_replace(',', ';', (string)$sentTo);
@@ -122,11 +123,13 @@ public function balance_age_send_mail(){
         // Captura la salida del PHPMailer para depurar sin romper el JSON
         ob_start();
         $ok = @send_mail2($subject, $body, $to, $from, $tmp);
+        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
         $mailerOut = trim(ob_get_clean());
 
         @unlink($tmp);
     } else {
         ob_start();
+        $ok = @send_mail2($subject, $body, $to, $from);
         $ok = @send_mail2($subject, $body, $to, $from);
         $mailerOut = trim(ob_get_clean());
     }
@@ -746,42 +749,29 @@ function invoice_client_desp(){
         }
     }
 
-function invoiced_dispatches() {
+function invoiced_dispatches()
+{
     if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-        echo $this->twig->render($this->route . 'invoiced_dispatches.html');
+
+        $desde = $_GET['desde'] ?? '2025-10-01';
+        $hasta = $_GET['hasta'] ?? '2025-10-31';
+
+
+        $rows = $this->despachosModel->invoiced_dispatches_data();
+        var_dump($rows);
+        die();
+        // 3) Pasa datos y metadatos a Twig
+        echo $this->twig->render(
+            $this->route . 'invoiced_dispatches.html',
+            [
+                'rows'  => $rows,
+                'count' => is_array($rows) ? count($rows) : 0,
+            ]
+        );
     }
 }
 
-function invoiced_dispatches_table() {
-    ini_set('memory_limit', '512M');
-    set_time_limit(300);
 
-    $data = [];
-    $from = dateToInt($_POST['from']);
-    $until = dateToInt($_POST['until']);
-
-    // Llamar al método de tu modelo que ejecuta la consulta SQL
-    if ($rows = $this->despachosModel->invoiced_dispatches_data($from, $until)) {
-        foreach ($rows as $r) {
-            $data[] = [
-                'nrofac'       => $r['nrofac'],
-                'nrotrn'       => $r['nrotrn'],
-                'fchtrn'       => $r['fchtrn'],
-                'fecha'        => $r['fecha'],
-                'codcli'       => $r['codcli'],
-                'cliente'      => $r['cliente'],
-                'monto'        => $r['monto'],
-                'turno'        => $r['turno'],
-                'islaDen'      => $r['islaDen'],
-                'Estacion'     => $r['Estacion'],
-                'serie'        => $r['serie'],
-                'conceptofac'  => $r['conceptofac']
-            ];
-        }
-    }
-    
-    json_output(['data' => $data]);
-}
 
 
 
@@ -1091,6 +1081,7 @@ function invoiced_dispatches_table() {
         $tipo_cliente=0;
 
 
+        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
         if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
 
             foreach ($dispatches as $dispatch) {
