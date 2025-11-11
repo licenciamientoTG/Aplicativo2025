@@ -51,50 +51,50 @@
 
       {% if authorized(7) %} {# Ver módulo de Administración #}
       <li class="sidebar-header">ADMINISTRACIÓN</li>
-      {% if authorized(8) %}
-      <li class="sidebar-item">
-        <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
-          <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
-        </a>
-         <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a></li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a></li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
-        </ul>
-      </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
-          <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
-        </a>
-        {% if authorized(41) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
-        </ul>
-        {% endif %}
+        {% if authorized(8) %}
+        <li class="sidebar-item">
+          <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
+          </a>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a></li>
+          </ul>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a></li>
+          </ul>
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
+          </ul>
+        </li>
+        <li class="sidebar-item">
+          <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
+          </a>
+          {% if authorized(41) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
+          </ul>
+          {% endif %}
 
-        {% if authorized(39) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a></li>
-        </ul>
-        {% endif %}
-        {% if authorized(65) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
-        </ul>
-        {% endif %}
+          {% if authorized(39) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
+          </ul>
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
+          </ul>
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a></li>
+          </ul>
+          {% endif %}
+          {% if authorized(65) %}
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
+          </ul>
+          {% endif %}
 
-      </li>
-      {% endif %}
+        </li>
+        {% endif %}
       {% endif %}
 
 
@@ -223,6 +223,8 @@
             {% if authorized(49) %}
             <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_stations">Ventas por estación</a></li>
             {% endif %}
+            <li class="sidebar-item"><a class="sidebar-link" href="/operations/tank_volume">Tanques</a></li>
+
           </ul>
         </li>
         {% endif %}
@@ -303,7 +305,6 @@
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
           <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Analisis de Movimientos</a></li>
             {% if authorized(47) %}
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a></li>
             {% endif %}
@@ -316,12 +317,24 @@
             {% endif %}
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchase_invoice">Compras Combustible</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/supplier_payments">Pagos</a></li>
-            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Comparador de Volumétricos</a></li>
-            <!-- <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li> -->
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics_comparator">Comparador de Volumétricos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/volumetrics">Generador de Volumétricos</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/fuel_purchases">Compras de combustible</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/purchases_vs_receptions">Pagos VS Recepciones</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Análisis de Movimientos</a></li>
           </ul>
+
         </li>
         {% endif %}
+        <li class="sidebar-item">
+          <a data-bs-target="#accounting_credit" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+            <i data-feather="clipboard"></i> <span class="align-middle">Cobranza Clientes Credito</span>
+          </a>
+          <ul id="accounting_credit" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Análisis de Movimientos</a></li>
+            <li class="sidebar-item"><a class="sidebar-link" href="/accounting/analysis_movement">Cobranza Credito</a></li>
+          </ul>
+        </li>
       {% endif %}
 
       {% if authorized(23) %}
@@ -336,6 +349,7 @@
           <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
+              <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
             </li>
             <li class="sidebar-item"><a class="sidebar-link" href="/income/control_dispatches">Control de Despachos </a></li>
             <li class="sidebar-item">
@@ -347,6 +361,8 @@
             </li>
           </ul>
           {% endif %}
+          
+          
         </li>
         {% endif %}
         {% if authorized(25) %}

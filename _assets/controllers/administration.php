@@ -313,7 +313,7 @@ function ecv_calc() {
 
     // 4) Construir SIEMPRE el listado del combo (incluye -1 = "Sin asignar")
     //    Usamos [0] para que el modelo devuelva todo el período; de ahí armamos el combo.
-    $rows_combo = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+    $rows_combo = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
     $visto_ids = [];
     foreach ($rows_combo as $t) {
         $raw = $t['assigned_to_id'] ?? 0;
@@ -376,12 +376,12 @@ function ecv_calc() {
 
         if ($is_all) {
             // TODOS: que el modelo traiga todo
-            $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+            $rows = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
         } else {
             if ($incluye_sin_asignar) {
                 // Caso mixto (con “Sin asignar”): obtener TODO y filtrar en PHP
                 // (si quieres optimizar, podrías hacer dos llamadas y unir, pero esta es la más robusta)
-                $rows_all = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+                $rows_all = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
                 $rows = array_values(array_filter($rows_all, function($t) use ($ids_reales) {
                     $rid = (int)($t['assigned_to_id'] ?? 0);
                     if (in_array($rid, [0, null], true)) return true;             // sin asignar
@@ -391,10 +391,10 @@ function ecv_calc() {
             } else {
                 // Solo agentes reales
                 if (!empty($ids_reales)) {
-                    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, $ids_reales) ?: [];
+                    $rows = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, $ids_reales) ?: [];
                 } else {
                     // Selección vacía, equivalente a TODOS
-                    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
+                    $rows = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, $ticket_form_id, [0]) ?: [];
                 }
             }
         }
@@ -551,7 +551,7 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
     }
 
     // 3) Trae filas desde el modelo (el modelo ya respeta ALL / lista de IDs)
-    $rows = $this->mojoTicketsModel->danny($fecha_ini, $fecha_fin, (int)$ticket_form_id, $filter_for_model) ?: [];
+    $rows = $this->mojoTicketsModel->ecv_calc_var($fecha_ini, $fecha_fin, (int)$ticket_form_id, $filter_for_model) ?: [];
 
     // Si se requiere filtrado posterior (para sin asignar y/o combinación con agentes)
     if ($need_post_filter && $post_filter) {

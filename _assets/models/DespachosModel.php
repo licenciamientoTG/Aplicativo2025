@@ -2582,6 +2582,49 @@ function cash_invoices_advance($from, $until)
     return $this->sql->select($query, $params);
 }
 
+public function invoiced_dispatches_data($from, $until) {
+    $query = "
+        SELECT TOP 200
+            t1.nrofac,
+            t1.nrotrn,
+            t1.fchtrn,
+            DATEADD(DAY, t1.fchtrn - 2, '1900-01-01') AS fecha,
+            t1.codcli,
+            t1.codprd,
+            t1.mto,
+            LEFT(t1.nrotur, 1) AS turno,
+            t1.codisl,
+            t1.hratrn,
+            t1.nrotur,
+            t1.nrotrn,
+            i.den AS islaDen,
+            g.den AS Estacion,
+            t2.codres,
+            R.den AS nomRes,
+            R.pto AS ptoRes,
+            CASE
+                WHEN t1.nrofac BETWEEN 1000000000 AND 1099999999 THEN 'B'
+                -- (Las demás condiciones del CASE)
+            END AS serie,
+            CASE
+                WHEN t1.nrofac BETWEEN 1000000000 AND 1099999999 THEN 'Contado Independencia'
+                -- (Las demás condiciones del CASE)
+            END AS conceptofac
+        FROM
+            SG12.dbo.despachos t1
+        -- (Las demás uniones)
+        WHERE 
+            t1.codisl = 67
+            AND t1.fchtrn < 45964
+            AND nrofac > 0
+        ORDER BY 
+            t1.fchtrn DESC
+    ";
+
+    return $this->sql->select($query, [$from, $until]);
+}
+
+
 
 function invoice_client_desp($from, $until)
 {

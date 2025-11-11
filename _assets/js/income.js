@@ -2070,6 +2070,38 @@ async function cash_invoices_table(){
     });
 }
 
+$('#dispatches_table_2').DataTable({
+    order: [2, "desc"],  // Ordenar por Fecha de Transacción de manera descendente
+    scrollY: '400px',
+    scrollX: true,
+    scrollCollapse: true,
+    paging: true,
+    dom: '<"top"Bf>rt<"bottom"lip>',
+    buttons: [
+        { extend: 'excel', className: 'btn btn-success', text: 'Exportar a Excel' }
+    ],
+    ajax: {
+        method: 'POST',
+        data: { from: $('#from').val(), until: $('#until').val() },
+        url: 'income/datatables_dispatches_invoiced',
+        error: function() {
+            alert('Error al cargar los datos');
+        }
+    },
+    columns: [
+        { data: 'nrofac' },
+        { data: 'nrotrn' },
+        { data: 'fchtrn' },
+        { data: 'cliente' },
+        { data: 'islaDen' },
+        { data: 'Estacion' },
+        { data: 'serie' },
+        { data: 'conceptofac' },
+        { data: 'monto', render: $.fn.dataTable.render.number(',', '.', 2) }
+    ]
+});
+
+
 async function invoice_client_desp(){
     if ($.fn.DataTable.isDataTable('#invoice_client_desp')) {
         $('#invoice_client_desp').DataTable().destroy();

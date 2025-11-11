@@ -1,0 +1,104 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Marketing{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Tarjetas de clientes{% endblock %}
+{% block content %}
+<style>
+.card {
+    border-radius: 10px;
+    border: none;
+}
+
+.card-header {
+    border-radius: 10px 10px 0 0 !important;
+}
+
+.form-label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.form-control, .form-select {
+    border-radius: 8px;
+    border: 1px solid #ced4da;
+    padding: 0.75rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.15);
+}
+
+.btn-primary {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+.shadow-sm {
+    box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.075) !important;
+}
+</style>
+
+<div class="row">
+    <div class="col-md-8 col-lg-6 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Generar Tarjeta de Cliente</h5>
+            </div>
+            <div class="card-body">
+                <form id="cardForm">
+                    <div class="mb-3">
+                        <label for="number_card" class="form-label">Número de la tarjeta <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="number_card" placeholder="Ej: 12345" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="name_card" class="form-label">Nombre de la tarjeta <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name_card" placeholder="Ej: Tarjeta Corporativa" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="name_vehicle" class="form-label">Nombre del Vehículo</label>
+                        <input type="text" class="form-control" id="name_vehicle" placeholder="Ej: Camioneta Roja">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="name_client" class="form-label">Nombre del Cliente <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name_client" placeholder="Ej: Juan Pérez" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="typo" class="form-label">Tipo de Tarjeta</label>
+                        <select class="form-select" id="typo">
+                            <option value="">Seleccione una opción</option>
+                            <option value="Debito">Débito</option>
+                            <option value="Credito">Crédito</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary btn-lg" onclick="print_card_nexus()">
+                            <i class="bi bi-printer"></i> Imprimir Tarjeta
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}marketing.js"></script>
+{% endblock %}

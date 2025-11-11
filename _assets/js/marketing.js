@@ -41,3 +41,23 @@ $(document).on("submit", "#findClientForm", function (event) {
         }
     });
 });
+
+function print_card_nexus()  {
+     let number_card = document.getElementById("number_card").value;
+    let name_card = document.getElementById("name_card").value;
+    let name_vehicle = document.getElementById("name_vehicle").value;
+    let name_client = document.getElementById("name_client").value;
+    let typo = document.getElementById("typo").value;
+
+    // Validación básica
+    if (!number_card || !name_card || !name_client) {
+        alert("Por favor, completa todos los campos obligatorios (marcados con *)");
+        return;
+    }
+
+    let url = `/marketing/print_card_nexus?number_card=${encodeURIComponent(number_card)}&name_card=${encodeURIComponent(name_card)}&name_client=${encodeURIComponent(name_client)}&typo=${encodeURIComponent(typo)}&name_vehicle=${encodeURIComponent(name_vehicle)}`;
+
+   window.open(url, '_blank');
+}
+
+    

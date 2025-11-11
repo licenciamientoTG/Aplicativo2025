@@ -92,7 +92,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <tbody>
                         {% for ticket in result %}
                             <tr>
-                                <td>{{ ticket.id_mojo }}</td>
+                                <td><a href="https://totalgas.mojohelpdesk.com/ma/#/tickets/{{ ticket.id_mojo }}">{{ ticket.id_mojo }}</a></td>
                                 <td>{{ ticket.solicitante }}</td>
                                 <td>{{ticket.assigned_to_name}}</td>
                                 <td>{{ticket.titulo}}</td>
