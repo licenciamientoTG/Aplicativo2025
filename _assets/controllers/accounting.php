@@ -203,6 +203,76 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    /**
+     * Obtiene todas las facturas de la tabla Documentos para DataTables
+     * Soporta filtrado por fechas y estación
+     *
+     * @return void
+     */
+    public function documentos_facturas_table(): void {
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            json_output(['error' => 'Método no permitido']);
+            return;
+        }
+         ini_set('memory_limit', '512M');
+            ini_set('max_execution_time', 300);
+
+        $data = [];
+
+        // Obtener parámetros de la petición
+        $from = $_POST['from'] ?? null;
+        $until = $_POST['until'] ?? null;
+        $codgas = isset($_POST['codgas']) && $_POST['codgas'] !== '' ? (int)$_POST['codgas'] : null;
+
+        try {
+            // Obtener facturas del modelo
+            if ($facturas = $this->Documentos->get_all_facturas($from, $until, $codgas)) {
+                
+                foreach ($facturas as $factura) {
+                    $data[] = [
+                        'NumeroDocumento'   => $factura['NumeroDocumento'],
+                        'FacturaFormateada' => $factura['FacturaFormateada'],
+                        'Fecha'             => $factura['Fecha'],
+                        'Vencimiento'       => $factura['Vencimiento'],
+                        'Estacion'          => $factura['Estacion'],
+                        'EstacionNombre'    => $factura['EstacionNombre'],
+                        'Producto'          => $factura['Producto'],
+                        'Cantidad'          => number_format($factura['Cantidad'], 3),
+                        'Precio'            => '$' . number_format($factura['Precio'], 2),
+                        'Subtotal'          => '$' . number_format($factura['Subtotal'], 2),
+                        'IVA'               => '$' . number_format($factura['IVA'], 2),
+                        'IEPS'              => '$' . number_format($factura['IEPS'], 2),
+                        'Total'             => '$' . number_format($factura['Total'], 2),
+                        'TipoDocumento'     => $factura['TipoDocumento'],
+                        'EntidadNombre'     => $factura['EntidadNombre'],
+                        'UUID'              => $factura['UUID'] ?? 'N/A',
+                        'Referencia'        => $factura['Referencia'] ?? ''
+                    ];
+                }
+            }
+
+            json_output(['data' => $data]);
+
+        } catch (Exception $e) {
+            error_log("Error en documentos_facturas_table: " . $e->getMessage());
+            json_output(['error' => 'Error al obtener las facturas', 'data' => []]);
+        }
+    }
+
+    /**
+     * Vista para mostrar el listado de facturas de Documentos
+     *
+     * @return void
+     */
+    public function documentos_facturas(): void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $first_date = date('Y-m-01'); // Primer día del mes actual
+            $last_date = date('Y-m-d');   // Fecha actual
+            $estaciones = $this->estacionesModel->get_select_stations() ?: [];
+            echo $this->twig->render($this->route . 'documentos_facturas.html', compact('first_date', 'last_date', 'estaciones'));
+        }
+    }
+
     public function invoice_purchase_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -489,6 +559,7 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    
     function delete_volumetrics($from, $until) {
         $permisoCre = $_POST['permisoCre'];
         $this->estacionesModel->delete_volumetrics($permisoCre, $from, $until);
@@ -865,9 +936,11 @@ class Accounting{
         ]);
 
     }
+    
 
-    public function getFileErrorMessage($errorCode)
+    public function getFileErrorMessage($errorCode = 0): string
     {
+        
         switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
                 return 'El archivo excede el tamaño máximo permitido.';
@@ -1359,7 +1432,7 @@ class Accounting{
         // 1️⃣ Quitar espacios en blanco alrededor de todo
         $folios = trim($folios);
 
-        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        // 2️⃣ Reemplazar comas dobles o triples por una sol
         $folios = preg_replace('/,+/', ',', $folios);
 
         // 3️⃣ Separar por comas

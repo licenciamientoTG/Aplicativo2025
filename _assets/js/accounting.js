@@ -2467,3 +2467,134 @@ async function analysis_movement_table(){
         }
     });
 }
+
+
+ function initializeDataTable() {
+
+         if ($.fn.DataTable.isDataTable('#documentos_facturas_table')) {
+            $('#documentos_facturas_table').DataTable().destroy();
+            $('#documentos_facturas_table thead .filter').remove();
+
+        }
+
+        const from = $('#from').val();
+        const until = $('#until').val();
+        const codgas = $('#codgas').val();
+
+        if (!from || !until) {
+            showAlert('Por favor seleccione un rango de fechas válido', 'warning');
+            return;
+        }
+        $('#documentos_facturas_table thead').prepend($('#documentos_facturas_table thead tr').clone().addClass('filter'));
+        $('#documentos_facturas_table thead tr.filter th').each(function (index) {
+            col = $('#documentos_facturas_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#documentos_facturas_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#documentos_facturas_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+
+        documentosTable = $('#documentos_facturas_table').DataTable({
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            order: [[2, 'desc']], // Ordenar por fecha descendente
+            buttons: [
+                {
+                    extend: 'excel',
+                    text: 'Exportar a Excel',
+                    className: 'btn btn-success',
+                    exportOptions: {
+                        columns: ':visible:not(:last-child)'
+                    }
+                }
+            ],
+            ajax: {
+                url: '/accounting/documentos_facturas_table',
+                type: 'POST',
+                timeout: 600000, 
+                data: {
+                    from: from,
+                    until: until,
+                    codgas: codgas
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                dataSrc: function(json) {
+                    if (json.error) {
+                        showAlert(json.error, 'danger');
+                        return [];
+                    }
+                    return json.data;
+                },
+                error: function(xhr, error, thrown) {
+                    showAlert('Error al cargar los datos: ' + thrown, 'danger');
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            columns: [
+                { data: 'NumeroDocumento' },
+                { data: 'FacturaFormateada' },
+                { data: 'Fecha' },
+                { data: 'Vencimiento' },
+                { data: 'Estacion' },
+                {
+                    data: 'TipoDocumento',
+                    render: function(data) {
+                        const badgeClass = data === 'Compra' ? 'badge-compra' : 'badge-venta';
+                        return `<span class="badge ${badgeClass}">${data}</span>`;
+                    }
+                },
+                { data: 'EntidadNombre' },
+                { data: 'Producto' },
+                { data: 'Cantidad', className: 'text-end' },
+                { data: 'Precio', className: 'text-end' },
+                { data: 'Subtotal', className: 'text-end' },
+                { data: 'IVA', className: 'text-end' },
+                { data: 'IEPS', className: 'text-end' },
+                { data: 'Total', className: 'text-end font-weight-bold' },
+                { data: 'UUID', className: 'text-end' },
+
+            ],
+            // language: {
+            //     url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+            // },
+            initComplete: function() {
+                $('.table-responsive').removeClass('loading');
+                showAlert(`Se cargaron ${this.api().data().length} facturas`, 'success');
+
+                // Reemplazar iconos de Feather
+                if (typeof feather !== 'undefined') {
+                    feather.replace();
+                }
+            }
+        });
+    }
+    function showAlert(message, type = 'info') {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                <strong>${type === 'danger' ? 'Error:' : 'Info:'}</strong> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        $('#alert-container').html(alertHtml);
+
+        // Auto-cerrar después de 5 segundos
+        setTimeout(() => {
+            $('.alert').fadeOut('slow', function() {
+                $(this).remove();
+            });
+        }, 5000);
+    }
