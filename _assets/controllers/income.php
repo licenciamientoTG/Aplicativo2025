@@ -87,6 +87,7 @@ public function balance_age_send_mail(){
 
     // 🔹 NUEVO: mensaje opcional del formulario
     $body     = (string)($_POST['body'] ?? ' ');
+    $body     = (string)($_POST['body'] ?? ' ');
 
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
     $rawList = str_replace(',', ';', (string)$sentTo);
@@ -122,11 +123,13 @@ public function balance_age_send_mail(){
         // Captura la salida del PHPMailer para depurar sin romper el JSON
         ob_start();
         $ok = @send_mail2($subject, $body, $to, $from, $tmp);
+        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
         $mailerOut = trim(ob_get_clean());
 
         @unlink($tmp);
     } else {
         ob_start();
+        $ok = @send_mail2($subject, $body, $to, $from);
         $ok = @send_mail2($subject, $body, $to, $from);
         $mailerOut = trim(ob_get_clean());
     }
@@ -1078,6 +1081,7 @@ function invoiced_dispatches()
         $tipo_cliente=0;
 
 
+        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
         if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
 
             foreach ($dispatches as $dispatch) {

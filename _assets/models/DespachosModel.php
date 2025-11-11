@@ -1069,7 +1069,6 @@ class DespachosModel extends Model{
         DECLARE @from INT = '{$from}';
         DECLARE @until INT = '{$until}';
         DECLARE @clients VARCHAR(MAX) = '{$clients}';
-        
         -- CTE (Common Table Expression) para agrupar y sumar datos relevantes
         WITH Clientes AS (
             SELECT
@@ -1119,32 +1118,30 @@ class DespachosModel extends Model{
         return ($this->sql->select($query, [])) ?: false ;
     }
 
+
     function get_graph1($from, $until, $clients) {
         $query = "
             DECLARE @from INT = '{$from}';
             DECLARE @until INT = '{$until}';
             DECLARE @clients VARCHAR(MAX) = '{$clients}';
             SELECT
-                YEAR(DATEADD(DAY, t1.fchcor, '1899-31-12')) AS Year,
-                MONTH(DATEADD(DAY, t1.fchcor, '1899-31-12')) AS Month,
-                DATENAME(MONTH, DATEADD(DAY, t1.fchcor, '1899-31-12')) AS MonthName,
+                 YEAR(d)                 AS [Year],
+                    MONTH(d) AS [Month],
+                    DATENAME(MONTH, d) AS [MonthName],
                 SUM(CASE WHEN t2.tipval = 3 THEN t1.mto ELSE 0 END) AS MontosDebito,
                 SUM(CASE WHEN t2.tipval = 4 THEN t1.mto ELSE 0 END) AS MontosCredito
             FROM
                 [SG12].[dbo].[Despachos] t1
             INNER JOIN
                 SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
+                CROSS APPLY (SELECT DATEADD(DAY, TRY_CONVERT(INT, t1.fchcor), '1899-12-30')) AS x(d)
+
             WHERE
                 t2.tipval IN (3, 4) AND
                 t1.fchcor BETWEEN @from AND @until
                 AND (@clients = '0' OR t1.codcli IN ({$clients}))
-            GROUP BY
-                YEAR(DATEADD(DAY, t1.fchcor, '1899-31-12')),
-                MONTH(DATEADD(DAY, t1.fchcor, '1899-31-12')),
-                DATENAME(MONTH, DATEADD(DAY, t1.fchcor, '1899-31-12'))
-            ORDER BY
-                YEAR(DATEADD(DAY, t1.fchcor, '1899-31-12')),
-                MONTH(DATEADD(DAY, t1.fchcor, '1899-31-12'));
+           GROUP BY YEAR(d), MONTH(d), DATENAME(MONTH, d)
+            ORDER BY YEAR(d), MONTH(d);
         ";
         return ($this->sql->select($query, [])) ?: false ;
     }
