@@ -308,6 +308,7 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -359,6 +360,7 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -374,9 +376,11 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
+
 
     public function payments_table() {
         set_time_limit(280);
@@ -389,6 +393,8 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
+
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
 
         $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
@@ -961,6 +967,7 @@ class Accounting{
         ];
 
         $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -995,6 +1002,7 @@ class Accounting{
             'codgas' => $_POST['codgas']
         ];
         
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         
         $badges = [
@@ -1793,6 +1801,17 @@ class Accounting{
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
     }
 
     private function _callApi($url, $postData) {
