@@ -332,16 +332,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-resultados/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
-        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -392,15 +383,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-anual/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -415,18 +398,11 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/get_er_budget/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
+
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -438,16 +414,8 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/pagos/get_pagos');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -1016,15 +984,8 @@ class Accounting{
         $postData = [
             'date' => $_POST['fromDate'] ?? $date, // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -1059,14 +1020,7 @@ class Accounting{
             'codgas' => $_POST['codgas']
         ];
         
-        $ch = curl_init('http://192.168.0.109:82/api/xmlCre/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         
         $badges = [
             'XML_mensual' => '<span class="badge bg-primary">XML Mensual</span>',
@@ -1165,15 +1119,9 @@ class Accounting{
         $postData = [
             'date' => $_POST['date'] // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal_concept/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal_concept/', $postData);
+        
         echo json_encode($apiData);
 
     }
@@ -1811,5 +1759,16 @@ class Accounting{
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
     }
 }
