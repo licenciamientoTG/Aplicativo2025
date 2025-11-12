@@ -214,44 +214,19 @@ class Accounting{
             json_output(['error' => 'Método no permitido']);
             return;
         }
-         ini_set('memory_limit', '512M');
-            ini_set('max_execution_time', 300);
+        
+        ini_set('memory_limit', '512M');
+        ini_set('max_execution_time', 300);
 
-        $data = [];
-
-        // Obtener parámetros de la petición
         $from = $_POST['from'] ?? null;
         $until = $_POST['until'] ?? null;
         $codgas = isset($_POST['codgas']) && $_POST['codgas'] !== '' ? (int)$_POST['codgas'] : null;
+        $tipo_factura = $_POST['tipo_factura'] ?? null;
 
         try {
-            // Obtener facturas del modelo
-            if ($facturas = $this->Documentos->get_all_facturas($from, $until, $codgas)) {
-                
-                foreach ($facturas as $factura) {
-                    $data[] = [
-                        'NumeroDocumento'   => $factura['NumeroDocumento'],
-                        'FacturaFormateada' => $factura['FacturaFormateada'],
-                        'Fecha'             => $factura['Fecha'],
-                        'Vencimiento'       => $factura['Vencimiento'],
-                        'Estacion'          => $factura['Estacion'],
-                        'EstacionNombre'    => $factura['EstacionNombre'],
-                        'Producto'          => $factura['Producto'],
-                        'Cantidad'          => number_format($factura['Cantidad'], 3),
-                        'Precio'            => '$' . number_format($factura['Precio'], 2),
-                        'Subtotal'          => '$' . number_format($factura['Subtotal'], 2),
-                        'IVA'               => '$' . number_format($factura['IVA'], 2),
-                        'IEPS'              => '$' . number_format($factura['IEPS'], 2),
-                        'Total'             => '$' . number_format($factura['Total'], 2),
-                        'TipoDocumento'     => $factura['TipoDocumento'],
-                        'EntidadNombre'     => $factura['EntidadNombre'],
-                        'UUID'              => $factura['UUID'] ?? 'N/A',
-                        'Referencia'        => $factura['Referencia'] ?? ''
-                    ];
-                }
-            }
-
-            json_output(['data' => $data]);
+            // 🎯 Datos salen formateados directamente del modelo
+            $facturas = $this->Documentos->get_all_facturas($from, $until, $codgas, $tipo_factura);
+            json_output(['data' => $facturas ?: []]);
 
         } catch (Exception $e) {
             error_log("Error en documentos_facturas_table: " . $e->getMessage());
@@ -332,16 +307,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-resultados/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
-        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -392,15 +358,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-anual/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -415,18 +373,11 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/get_er_budget/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
+
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -438,16 +389,8 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/pagos/get_pagos');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -1016,15 +959,8 @@ class Accounting{
         $postData = [
             'date' => $_POST['fromDate'] ?? $date, // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -1059,14 +995,7 @@ class Accounting{
             'codgas' => $_POST['codgas']
         ];
         
-        $ch = curl_init('http://192.168.0.109:82/api/xmlCre/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         
         $badges = [
             'XML_mensual' => '<span class="badge bg-primary">XML Mensual</span>',
@@ -1165,15 +1094,9 @@ class Accounting{
         $postData = [
             'date' => $_POST['date'] // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal_concept/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
+        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal_concept/', $postData);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
         echo json_encode($apiData);
 
     }
@@ -1272,6 +1195,65 @@ class Accounting{
 
         $data = [];
         if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
+    }
+
+    function facturas_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $facturas = $_POST['facturas'];
+        $codgas = $_POST['codgas2'];
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $facturas = trim($facturas);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $facturas = preg_replace('/,+/', ',', $facturas);
+
+        // 3️⃣ Separar por comas
+        $facturasArray = explode(',', $facturas);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $facturasArray = array_filter(array_map('trim', $facturasArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $facturasArray = array_unique($facturasArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($facturasArray, SORT_NUMERIC);
+
+        // 7️⃣ Agregar comillas simples a cada elemento y unir
+        $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio,$codgas)) {
             foreach ($rows as $row) {
                 $data[] = array(
                     'Número'          => $row['Número'],
@@ -1811,5 +1793,16 @@ class Accounting{
         } else {
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
     }
 }
