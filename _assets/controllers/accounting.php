@@ -20,6 +20,7 @@ use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
+
 require_once('./_assets/classes/code128.php');
 
 class Accounting{
@@ -47,6 +48,7 @@ class Accounting{
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
         $this->eraJustesModel         = new ERAjustesModel();
         $this->movimientosTanModel    = new MovimientosTanModel();
+        $this->movimientosTanModel    = new MovimientosTanModel();
     }
 
     /**
@@ -73,6 +75,7 @@ class Accounting{
             echo $this->twig->render($this->route . 'analysis_movement.html');
         }
     }
+
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
@@ -307,7 +310,6 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
-        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -359,7 +361,6 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
-        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -375,11 +376,9 @@ class Accounting{
             'year' => $_POST['year']
         ];
         $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
-        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
-
 
     public function payments_table() {
         set_time_limit(280);
@@ -392,8 +391,6 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
-
-        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
 
         $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
@@ -465,6 +462,8 @@ class Accounting{
     function volumetrics_comparator() {
         $stations = $this->estacionesModel->get_actives_stations();
         echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
+        $stations = $this->estacionesModel->get_actives_stations();
+        echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
     }
 
     function volumetrics_table() {
@@ -506,6 +505,8 @@ class Accounting{
     
         json_output(array("data" => $data));
     }
+
+    
 
     
     function delete_volumetrics($from, $until) {
@@ -886,8 +887,11 @@ class Accounting{
     }
     
 
+    
+
     public function getFileErrorMessage($errorCode = 0): string
     {
+        
         
         switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
@@ -966,7 +970,6 @@ class Accounting{
         ];
 
         $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
-        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -1001,7 +1004,6 @@ class Accounting{
             'codgas' => $_POST['codgas']
         ];
         
-        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         
         $badges = [
@@ -1104,7 +1106,6 @@ class Accounting{
         
         $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal_concept/', $postData);
 
-
         echo json_encode($apiData);
 
     }
@@ -1171,6 +1172,10 @@ class Accounting{
             echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
         }
     }
+
+   
+
+    
 
     function folio_analysis_table() {
         set_time_limit(280);
@@ -1346,6 +1351,7 @@ class Accounting{
                 } else {
                     $factura = "";
                 }
+                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
                 $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
                 $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
 
