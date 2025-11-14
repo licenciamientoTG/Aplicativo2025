@@ -16,6 +16,11 @@
             Análisis por Folios
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-facturas-tabla" data-bs-toggle="tab" data-bs-target="#facturas-tabla-pane" type="button" role="tab" aria-controls="facturas-tabla-pane" aria-selected="false">
+            Análisis por Facturas
+        </button>
+    </li>
 </ul>
 
 <!-- Tab Content -->
@@ -225,6 +230,89 @@
             </div>
         </div>
     </div>
+
+    <!-- TAB 2: Segunda Tabla -->
+    <div class="tab-pane fade" id="facturas-tabla-pane" role="tabpanel" aria-labelledby="tab-facturas-tabla" tabindex="0">
+        
+        <!-- Formulario de búsqueda por facturas -->
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" id="facturaSearchForm">
+                    <div class="row align-items-end">
+                        <div class="col-6">
+                            <label class="col-form-label-sm" for="facturas">Buscar por facturas (separadas por coma):</label>
+                            <textarea class="form-control form-control-sm" name="facturas" id="facturas" rows="1" placeholder="Ejemplo: 12345, 67890, 11223" required></textarea>
+                        </div>
+                        <div class="col-2">
+                            <label class="col-form-label-sm d-block">&nbsp;</label>
+                            <button type="submit" class="btn btn-sm btn-primary w-100">
+                                Generar Reporte
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Segunda Tabla -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">Análisis de Compras de Combustible por Facturas</h5>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="facturas_analysis_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Factura</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
+                            <th>UUID</th>
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Número</th>
+                            <th>Factura</th>
+                            <th>Orden de Compra</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Producto</th>
+                            <th>VolumenRecibido</th>
+                            <th>Facturado</th>
+                            <th>Importe</th>
+                            <th>I.E.P.S</th>
+                            <th>I.V.A.</th>
+                            <th>Recargos</th>
+                            <th>TotalFactura</th>
+                            <th>Estación</th>
+                            <th>UUID</th>
+                            <th>RFC</th>
+                            <th>Remision</th>
+                            <th>Vehiculo</th>
+                            <th>Proveedor</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
 </div>
 
 {% endblock %}
@@ -238,6 +326,7 @@
         // Debug: Verificar que jQuery está funcionando
         console.log('jQuery cargado:', typeof $ !== 'undefined');
         console.log('Formulario folio existe:', $('#folioSearchForm').length);
+        console.log('Formulario factura existe:', $('#facturaSearchForm').length);
         
         // Manejo del PRIMER formulario (búsqueda por fechas)
         $('#movementSearchForm').on('submit', function(e) {
@@ -250,6 +339,12 @@
         $('#folioSearchForm').on('submit', function (e) {
             e.preventDefault();
             folio_analysis_table(this);  // pasamos el form
+        });
+
+        // Manejo del TERCER formulario (búsqueda por facturas)
+        $('#facturaSearchForm').on('submit', function (e) {
+            e.preventDefault();
+            facturas_analysis_table(this);  // pasamos el form
         });
 
         async function folio_analysis_table(){
@@ -334,6 +429,148 @@
                     timeout: 600000, 
                     error: function() {
                         $('#folio_analysis_table').waitMe('hide');
+                        $('.table-responsive').removeClass('loading');
+
+                        alertify.myAlert(
+                            `<div class="container text-center text-danger">
+                                <h4 class="mt-2 text-danger">¡Error!</h4>
+                            </div>
+                            <div class="text-dark">
+                                <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                            </div>`
+                        );
+                    },
+                    beforeSend: function() {
+                        $('.table-responsive').addClass('loading');
+                    }
+                },
+                columns: [
+                    {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
+                    {'data': 'Fecha'},
+                    {'data': 'Vencimiento'},
+                    {'data': 'Producto'},
+                    {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
+                    {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
+                    {'data': 'Estación'},
+                    {'data': 'UUID'},
+                    {'data': 'RFC'},
+                    {'data': 'Remision'},
+                    {'data': 'Vehiculo'},
+                    {'data': 'Proveedor'},
+                ],
+                deferRender: true,
+                createdRow: function (row, data, dataIndex) {
+                
+                },
+                initComplete: function () {
+                    $('.table-responsive').removeClass('loading');
+                },
+                footerCallback: function (row, data, start, end, display) {
+
+                }
+            });
+        }
+
+
+        async function facturas_analysis_table(){
+            
+            if ($.fn.DataTable.isDataTable('#facturas_analysis_table')) {
+                $('#facturas_analysis_table').DataTable().destroy();
+                $('#facturas_analysis_table thead .filter').remove();
+            }
+            
+            // Validar que el elemento exista
+            var facturasElement = document.getElementById('facturas');
+            
+            if (!facturasElement) {
+                alertify.error('Campo de facturas no encontrado');
+                return;
+            }
+            
+            var facturas = facturasElement.value.trim();
+            
+            if (!facturas) {
+                alertify.error('Por favor ingrese al menos una factura');
+                return;
+            }
+
+            $('#facturas_analysis_table thead').prepend($('#facturas_analysis_table thead tr').clone().addClass('filter'));
+            $('#facturas_analysis_table thead tr.filter th').each(function (index) {
+                col = $('#facturas_analysis_table thead th').length/2;
+                if (index < col ) {
+                    var title = $(this).text();
+                    $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+                }
+            });
+            $('#facturas_analysis_table thead tr.filter th input').on('keyup change', function () {
+                var index = $(this).parent().index();
+                var table = $('#facturas_analysis_table').DataTable();
+                table
+                    .column(index)
+                    .search(this.value)
+                    .draw();
+            });
+            
+            $('#facturas_analysis_table').DataTable({
+                order: [0, "asc"],
+                colReorder: true,
+                dom: '<"top"Bf>rt<"bottom"lip>',
+                paging: true,
+                pageLength: 100,
+                buttons: [
+                    {
+                        extend: 'excel',
+                        className: 'btn btn-success',
+                        text: ' Excel'
+                    },
+                    {
+                        text: '<i class="fas fa-print"></i> Imprimir Comprobantes',
+                        className: 'btn btn-primary',
+                        action: function () {
+                            // Obtener las facturas del textarea
+                            const facturasValue = document.getElementById('facturas').value.trim();
+                            
+                            if (!facturasValue) {
+                                alertify.error('No hay facturas para imprimir');
+                                return;
+                            }
+                            
+                            // Crear formulario temporal
+                            const form = document.createElement('form');
+                            form.method = 'POST';
+                            form.action = '/accounting/print_purchase_receipts4';
+                            form.target = '_blank'; // Abre en nueva pestaña
+
+                            // Campo oculto con la variable
+                            const input = document.createElement('input');
+                            input.type = 'hidden';
+                            input.name = 'facturas';
+                            input.value = facturasValue; // ✅ Usar el valor del textarea
+                            form.appendChild(input);
+
+                            // Agregar y enviar
+                            document.body.appendChild(form);
+                            form.submit();
+                            document.body.removeChild(form);
+                        }
+                    }
+                ],
+                ajax: {
+                    method: 'POST',
+                    data: {
+                        'facturas': facturas
+                    },
+                    url: '/accounting/facturas_analysis_table',
+                    timeout: 600000, 
+                    error: function() {
+                        $('#facturas_analysis_table').waitMe('hide');
                         $('.table-responsive').removeClass('loading');
 
                         alertify.myAlert(
