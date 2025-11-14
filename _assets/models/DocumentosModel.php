@@ -1495,9 +1495,6 @@ OUTER APPLY (SELECT len_digits = CASE WHEN e.tail IS NOT NULL
     public function get_all_facturas(?string $from = null, ?string $until = null, ?int $codgas = null, ?string $tipo_factura = null): array|false {
             $whereConditions = ["1=1"];
             $params = [];
-    public function get_all_facturas(?string $from = null, ?string $until = null, ?int $codgas = null, ?string $tipo_factura = null): array|false {
-            $whereConditions = ["1=1"];
-            $params = [];
 
             // Filtro de fechas
             if ($from && $until) {
