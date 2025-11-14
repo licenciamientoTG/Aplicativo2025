@@ -1509,16 +1509,16 @@ public function anomalies_clients_table()
     }
 
     public function balance_age_get_user_email(): void
-{
-    // Toma el correo del usuario autenticado desde la sesión
-    $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
+    {
+        // Toma el correo del usuario autenticado desde la sesión
+        $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
 
-    // Devuelve JSON (usa tu helper global)
-    json_output([
-        'ok' => true,
-        'user_mail' => $user_mail
-    ]);
-}
+        // Devuelve JSON (usa tu helper global)
+        json_output([
+            'ok' => true,
+            'user_mail' => $user_mail
+        ]);
+    }
 
     function generateExcel($fecha) {
         // Crear el objeto de hoja de cálculo
