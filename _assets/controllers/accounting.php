@@ -462,8 +462,6 @@ class Accounting{
     function volumetrics_comparator() {
         $stations = $this->estacionesModel->get_actives_stations();
         echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
-        $stations = $this->estacionesModel->get_actives_stations();
-        echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
     }
 
     function volumetrics_table() {
