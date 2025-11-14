@@ -2484,9 +2484,6 @@ function initializeDataTable() {
                 extend: 'excel',
                 text: 'Exportar a Excel',
                 className: 'btn btn-success',
-                exportOptions: {
-                    columns: ':visible:not(:last-child)'
-                }
             }
         ],
         ajax: {
