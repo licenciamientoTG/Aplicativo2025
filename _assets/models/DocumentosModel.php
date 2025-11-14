@@ -1495,7 +1495,18 @@ OUTER APPLY (SELECT len_digits = CASE WHEN e.tail IS NOT NULL
     public function get_all_facturas(?string $from = null, ?string $until = null, ?int $codgas = null, ?string $tipo_factura = null): array|false {
             $whereConditions = ["1=1"];
             $params = [];
+    public function get_all_facturas(?string $from = null, ?string $until = null, ?int $codgas = null, ?string $tipo_factura = null): array|false {
+            $whereConditions = ["1=1"];
+            $params = [];
 
+            // Filtro de fechas
+            if ($from && $until) {
+                $fromInt = dateToInt($from);
+                $untilInt = dateToInt($until);
+                $whereConditions[] = "t1.fch BETWEEN ? AND ?";
+                $params[] = $fromInt;
+                $params[] = $untilInt;
+            }
             // Filtro de fechas
             if ($from && $until) {
                 $fromInt = dateToInt($from);
@@ -1636,6 +1647,7 @@ OUTER APPLY (SELECT len_digits = CASE WHEN e.tail IS NOT NULL
                 ORDER BY c.Fecha DESC, c.NumeroDocumento DESC
             ";
 
+            return $this->sql->select($query, $params) ?: false;
             return $this->sql->select($query, $params) ?: false;
     }
     /**
