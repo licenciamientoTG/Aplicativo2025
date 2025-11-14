@@ -57,8 +57,7 @@
         <div class="row">
             <div class="col-md-3">
                 <label for="codgas" class="col-form-label col-form-label-sm">Estación: </label>
-                <select class="selectpicker form-control" data-live-search="true" 
-                        name="codgas" id="codgas" placeholder="Estacion" required>
+                <select class="selectpicker form-control" data-live-search="true" name="codgas" id="codgas" placeholder="Estacion" required>
                     {% for station in stations %}
                         <option value="{{ station.Codigo }}">{{ station.Nombre }}</option>
                     {% endfor %}

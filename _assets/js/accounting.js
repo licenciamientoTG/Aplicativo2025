@@ -1,5 +1,8 @@
 $(document).ready(function() {
-    console.log('accounting.js');
+let allStationsData = []; // Almacenar datos de todas las estaciones
+let isTableInitialized = false; // Bandera para saber si la tabla ya está inicializada
+
+
     let stimulus_table = $('#stimulus_table').DataTable({
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
@@ -1632,36 +1635,6 @@ async function spend_real(){
     }
 }
 
-// Función para validar la estructura de la tabla
-// function validateTableStructure() {
-//     const table = document.getElementById('estadoResultadosTable');
-//     const headerCols = table.querySelectorAll('thead th').length;
-//     const bodyRows = table.querySelectorAll('tbody tr');
-    
-//     console.log(`Header tiene ${headerCols} columnas`);
-    
-//     bodyRows.forEach((row, index) => {
-//         const cells = row.querySelectorAll('td');
-        
-//         // Verificar si es una fila de divider
-//         if (row.classList.contains('divider')) {
-//             // Las filas de divider tienen colspan, no las procesamos
-//             return;
-//         }
-        
-//         // Para filas normales, verificar que tengan el número correcto de columnas
-//         if (cells.length !== headerCols) {
-//             console.warn(`Fila ${index + 1} tiene ${cells.length} columnas, esperadas ${headerCols}`);
-            
-//             // Agregar celdas faltantes si es necesario
-//             while (cells.length < headerCols) {
-//                 const newCell = document.createElement('td');
-//                 newCell.textContent = '-';
-//                 row.appendChild(newCell);
-//             }
-//         }
-//     });
-// }
 
 async function movement_analysis_table(){
     if ($.fn.DataTable.isDataTable('#movement_analysis_table')) {
@@ -1821,8 +1794,6 @@ async function movement_analysis_table(){
 
 
 // vollet volumetricTable;
-let allStationsData = []; // Almacenar datos de todas las estaciones
-let isTableInitialized = false; // Bandera para saber si la tabla ya está inicializada
 
 async function actualizarDataTableVolumetric() {
     const codgas = $('#codgas').val();
@@ -1849,7 +1820,8 @@ async function actualizarDataTableVolumetric() {
 
     if ($.fn.DataTable.isDataTable('#volumetric_table')) {
         volumetricTable.destroy();
-        $('#volumetric_table tbody').empty();
+        $('#volumetric_table thead').empty(); // ← Limpiar thead
+        $('#volumetric_table tbody').empty(); // ← Limpiar tbody
         isTableInitialized = false;
     }
 
