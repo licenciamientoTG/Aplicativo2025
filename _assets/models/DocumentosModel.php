@@ -1488,7 +1488,7 @@ class DocumentosModel extends Model{
     /**
      * Obtiene todas las facturas de la tabla Documentos sin paginación
      *
-     * @param string|null $from Fecha inicio (formato: Y-m-d)
+     * @param string|null $from
      * @param string|null $until Fecha fin (formato: Y-m-d)
      * @param int|null $codgas Código de gasolinera (opcional)
      * @return array|false Array con las facturas o false si falla
