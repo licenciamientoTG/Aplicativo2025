@@ -954,3 +954,536 @@ async function shop_fuel_table(){
 
 
 
+// ==========================================
+// DESCARGAR FACTURAS POR UUID
+// ==========================================
+// ==========================================
+// DESCARGAR FACTURAS POR UUID
+// ==========================================
+
+$(document).ready(function() {
+    // Solo ejecutar si estamos en la página correcta
+    if ($('#formImportarUUIDs').length > 0) {
+        $('#formImportarUUIDs').on('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const btnProcesar = $('#btnProcesar');
+            
+            // Validar que se haya seleccionado un archivo
+            if (!$('#archivo_excel')[0].files[0]) {
+                alertify.error('Debe seleccionar un archivo Excel');
+                return;
+            }
+            
+            // Deshabilitar botón y mostrar progreso
+            btnProcesar.prop('disabled', true);
+            $('#areaProgreso').show();
+            $('#areaResumen').hide();
+            $('#barraProgreso').css('width', '10%').text('10%');
+            $('#textoProgreso').text('Procesando archivo Excel...');
+            
+            // Enviar archivo para procesar
+            $.ajax({
+                url: '/supply/procesar_uuids_facturas',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    if (response.success) {
+                        $('#barraProgreso').css('width', '100%').text('100%');
+                        $('#textoProgreso').text('UUIDs procesados correctamente');
+                        
+                        // Mostrar opciones de descarga
+                        mostrarOpcionesDescarga(response.facturas, btnProcesar);
+                    } else {
+                        btnProcesar.prop('disabled', false);
+                        $('#areaProgreso').hide();
+                        alertify.error(response.message || 'Error al procesar el archivo');
+                    }
+                },
+                error: function(xhr) {
+                    btnProcesar.prop('disabled', false);
+                    $('#areaProgreso').hide();
+                    
+                    let mensaje = 'Error al procesar el archivo';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        mensaje = xhr.responseJSON.message;
+                    }
+                    
+                    alertify.error(mensaje);
+                }
+            });
+        });
+    }
+});
+
+function mostrarOpcionesDescarga(facturas, btnProcesar, facturasFallidas = []) {
+    $('#areaProgreso').hide();
+    $('#areaResumen').show();
+    
+    const totalExitosas = facturas.length;
+    const totalFallidas = facturasFallidas.length;
+    const totalGeneral = totalExitosas + totalFallidas;
+    
+    if (totalGeneral === 0) {
+        $('#areaResumen').html(`
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                No se encontraron UUIDs válidos en el archivo Excel
+            </div>
+        `);
+        btnProcesar.prop('disabled', false);
+        return;
+    }
+    
+    // Crear resumen con opciones de descarga
+    let html = `
+        <div class="row">
+            <div class="col-12 mb-3">
+                <div class="alert ${totalFallidas > 0 ? 'alert-warning' : 'alert-success'}">
+                    <h5><i class="fas fa-info-circle"></i> Resumen de Búsqueda</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>Total solicitado:</strong> <span class="badge bg-primary">${totalGeneral}</span>
+                        </div>
+                        <div class="col-md-4">
+                            <strong class="text-success">Encontradas:</strong> <span class="badge bg-success">${totalExitosas}</span>
+                        </div>
+                        <div class="col-md-4">
+                            <strong class="text-danger">Fallidas:</strong> <span class="badge bg-danger">${totalFallidas}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Tarjeta de facturas exitosas
+    if (totalExitosas > 0) {
+        html += `
+            <div class="card border-success mb-3">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle"></i> 
+                        Facturas Disponibles para Descarga (${totalExitosas})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button class="btn btn-primary btn-lg" id="btnDescargarZip">
+                            <i class="fas fa-file-archive"></i> Descargar Todo en ZIP (Recomendado)
+                        </button>
+                        <button class="btn btn-secondary" id="btnDescargarIndividual">
+                            <i class="fas fa-file-pdf"></i> Descargar Individual
+                        </button>
+                    </div>
+                    
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped table-hover">
+                            <thead class="table-success sticky-top">
+                                <tr>
+                                    <th width="40"><i class="fas fa-check"></i></th>
+                                    <th>Folio</th>
+                                    <th>UUID</th>
+                                    <th>Emisor</th>
+                                    <th class="text-end">Total</th>
+                                    <th>Archivo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+        
+        facturas.forEach(f => {
+            html += `
+                <tr>
+                    <td><i class="fas fa-check-circle text-success"></i></td>
+                    <td><strong>${f.folio || 'N/A'}</strong></td>
+                    <td><small class="font-monospace text-muted">${f.uuid.substring(0, 8)}...${f.uuid.substring(28)}</small></td>
+                    <td>${f.emisor || 'N/A'}</td>
+                    <td class="text-end"><strong>$${parseFloat(f.total || 0).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+                    <td><small>${f.nombre_archivo}</small></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Tarjeta de facturas fallidas
+    if (totalFallidas > 0) {
+        html += `
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-times-circle"></i> 
+                        UUIDs No Disponibles (${totalFallidas})
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning mb-3">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Los siguientes UUIDs no pudieron ser procesados. Revise el motivo de cada uno.
+                    </div>
+                    
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-danger sticky-top">
+                                <tr>
+                                    <th width="40"><i class="fas fa-times"></i></th>
+                                    <th>UUID</th>
+                                    <th>Folio</th>
+                                    <th>Tipo de Error</th>
+                                    <th>Detalle</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+        `;
+        
+        facturasFallidas.forEach(f => {
+            let tipoError = '';
+            let iconoError = '';
+            let colorBadge = 'bg-danger';
+            
+            switch(f.estado) {
+                case 'formato_invalido':
+                    tipoError = 'Formato Inválido';
+                    iconoError = '<i class="fas fa-exclamation-triangle text-warning"></i>';
+                    colorBadge = 'bg-warning';
+                    break;
+                case 'no_encontrado_bd':
+                    tipoError = 'No en BD';
+                    iconoError = '<i class="fas fa-database text-danger"></i>';
+                    colorBadge = 'bg-danger';
+                    break;
+                case 'archivo_no_existe':
+                    tipoError = 'Archivo No Existe';
+                    iconoError = '<i class="fas fa-file-excel text-orange"></i>';
+                    colorBadge = 'bg-orange';
+                    break;
+                default:
+                    tipoError = 'Error';
+                    iconoError = '<i class="fas fa-times-circle text-danger"></i>';
+            }
+            
+            const folioTexto = f.folio || 'N/A';
+            const filaInfo = f.fila ? ` (Fila ${f.fila})` : '';
+            
+            html += `
+                <tr>
+                    <td class="text-center">${iconoError}</td>
+                    <td><small class="font-monospace">${f.uuid}${filaInfo}</small></td>
+                    <td><strong>${folioTexto}</strong></td>
+                    <td><span class="badge ${colorBadge}">${tipoError}</span></td>
+                    <td><small>${f.error || 'Error desconocido'}</small></td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    $('#areaResumen').html(html);
+    btnProcesar.prop('disabled', false);
+    
+    // Event listeners solo si hay facturas exitosas
+    if (totalExitosas > 0) {
+        $('#btnDescargarZip').on('click', function() {
+            descargarFacturasZip(facturas);
+        });
+        
+        $('#btnDescargarIndividual').on('click', function() {
+            descargarFacturasIndividual(facturas);
+        });
+    }
+}   
+
+// Actualizar la llamada en el success del formulario
+$('#formImportarUUIDs').on('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const btnProcesar = $('#btnProcesar');
+    
+    if (!$('#archivo_excel')[0].files[0]) {
+        alertify.error('Debe seleccionar un archivo Excel');
+        return;
+    }
+    
+    btnProcesar.prop('disabled', true);
+    $('#areaProgreso').show();
+    $('#areaResumen').hide();
+    $('#barraProgreso').css('width', '10%').text('10%');
+    $('#textoProgreso').text('Procesando archivo Excel...');
+    
+    $.ajax({
+        url: '/supply/procesar_uuids_facturas',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.success) {
+                $('#barraProgreso').css('width', '100%').text('100%');
+                $('#textoProgreso').text('Procesamiento completado');
+                
+                // Pasar tanto exitosas como fallidas
+                setTimeout(() => {
+                    mostrarOpcionesDescarga(
+                        response.facturas || [], 
+                        btnProcesar,
+                        response.facturas_fallidas || []
+                    );
+                }, 500);
+            } else {
+                btnProcesar.prop('disabled', false);
+                $('#areaProgreso').hide();
+                alertify.error(response.message || 'Error al procesar el archivo');
+            }
+        },
+        error: function(xhr) {
+            btnProcesar.prop('disabled', false);
+            $('#areaProgreso').hide();
+            
+            let mensaje = 'Error al procesar el archivo';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                mensaje = xhr.responseJSON.message;
+            }
+            
+            alertify.error(mensaje);
+        }
+    });
+});
+
+function descargarFacturasZip(facturas) {
+    $('#btnDescargarZip').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Creando ZIP...');
+    
+    const ids = facturas.map(f => f.id);
+    
+    $.ajax({
+        url: '/supply/descargar_facturas_zip',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ ids: ids }),
+        success: function(response) {
+            if (response.success) {
+                alertify.success(`ZIP creado con ${response.archivos_agregados} facturas`);
+                
+                // Descargar el ZIP
+                window.location.href = response.download_url;
+                
+                // Mostrar advertencias si hubo archivos no encontrados
+                if (response.archivos_no_encontrados.length > 0) {
+                    setTimeout(() => {
+                        alertify.warning(`${response.archivos_no_encontrados.length} archivos no se pudieron agregar al ZIP`);
+                    }, 1000);
+                }
+            } else {
+                alertify.error(response.message || 'Error al crear ZIP');
+            }
+            
+            $('#btnDescargarZip').prop('disabled', false).html('<i class="fas fa-file-archive"></i> Descargar Todo en ZIP');
+        },
+        error: function() {
+            alertify.error('Error al crear el archivo ZIP');
+            $('#btnDescargarZip').prop('disabled', false).html('<i class="fas fa-file-archive"></i> Descargar Todo en ZIP');
+        }
+    });
+}
+
+function descargarFacturasIndividual(facturas) {
+    alertify.confirm(
+        'Descarga Individual',
+        `¿Desea descargar ${facturas.length} archivos de forma individual? (Esto puede tardar más tiempo)`,
+        function() {
+            const exitosas = [];
+            const fallidas = [];
+            const total = facturas.length;
+            let procesados = 0;
+            
+            $('#areaProgreso').show();
+            $('#barraProgreso').css('width', '0%').text('0%').addClass('progress-bar-animated');
+            $('#textoProgreso').text('Descargando archivos...');
+            
+            async function descargarArchivo(factura) {
+                return new Promise((resolve) => {
+                    fetch('/supply/descargar_factura/' + factura.id, {
+                        method: 'GET'
+                    })
+                    .then(response => {
+                        if (!response.ok) throw new Error('No se pudo descargar');
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = factura.nombre_archivo;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        exitosas.push(factura);
+                        resolve(true);
+                    })
+                    .catch(error => {
+                        fallidas.push({ uuid: factura.uuid, error: error.message });
+                        resolve(false);
+                    })
+                    .finally(() => {
+                        procesados++;
+                        const progreso = (procesados / total * 100);
+                        $('#barraProgreso').css('width', progreso + '%').text(Math.round(progreso) + '%');
+                        $('#textoProgreso').text(`Descargando... ${procesados}/${total}`);
+                    });
+                });
+            }
+            
+            async function procesarDescargas() {
+                for (let i = 0; i < facturas.length; i++) {
+                    await descargarArchivo(facturas[i]);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+                
+                $('#areaProgreso').hide();
+                alertify.success(`Descarga completada: ${exitosas.length} exitosas, ${fallidas.length} fallidas`);
+            }
+            
+            procesarDescargas();
+        },
+        function() {
+            alertify.message('Descarga cancelada');
+        }
+    );
+}
+
+function descargarFacturas(facturas, btnProcesar) {
+    const exitosas = [];
+    const fallidas = [];
+    const total = facturas.length;
+    let procesados = 0;
+    
+    if (total === 0) {
+        alertify.warning('No se encontraron facturas con los UUIDs proporcionados');
+        btnProcesar.prop('disabled', false);
+        $('#areaProgreso').hide();
+        return;
+    }
+    
+    // Función para descargar un archivo individual
+    function descargarArchivo(factura, index) {
+        return new Promise((resolve) => {
+            fetch('/supply/descargar_factura/' + factura.id, {
+                method: 'GET'
+            })
+            .then(response => {
+                if (!response.ok) throw new Error('No se pudo descargar');
+                return response.blob();
+            })
+            .then(blob => {
+                // Crear enlace de descarga
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = factura.nombre_archivo;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                exitosas.push(factura);
+                resolve(true);
+            })
+            .catch(error => {
+                fallidas.push({
+                    uuid: factura.uuid,
+                    error: error.message,
+                    folio: factura.folio
+                });
+                resolve(false);
+            })
+            .finally(() => {
+                procesados++;
+                const progreso = 50 + (procesados / total * 50);
+                $('#barraProgreso').css('width', progreso + '%')
+                    .text(Math.round(progreso) + '%');
+                $('#textoProgreso').text(`Descargando archivos... ${procesados}/${total}`);
+            });
+        });
+    }
+    
+    // Procesar descargas con delay para no saturar el navegador
+    async function procesarDescargas() {
+        for (let i = 0; i < facturas.length; i++) {
+            await descargarArchivo(facturas[i], i);
+            // Delay de 500ms entre descargas para no saturar
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+        // Mostrar resumen
+        mostrarResumen(exitosas, fallidas, btnProcesar);
+    }
+    
+    procesarDescargas();
+}
+
+function mostrarResumen(exitosas, fallidas, btnProcesar) {
+    $('#barraProgreso').css('width', '100%').text('100%')
+        .removeClass('progress-bar-animated');
+    $('#textoProgreso').text('Proceso completado');
+    
+    setTimeout(() => {
+        $('#areaProgreso').hide();
+        $('#areaResumen').show();
+        
+        // Mostrar exitosas
+        if (exitosas.length > 0) {
+            $('#cardExitosas').show();
+            $('#countExitosas').text(exitosas.length);
+            const listaHtml = exitosas.map(f => 
+                `<li class="mb-1">
+                    <i class="fas fa-check text-success"></i> 
+                    <strong>Folio:</strong> ${f.folio || 'N/A'} | 
+                    <strong>UUID:</strong> ${f.uuid}<br>
+                    <small class="text-muted">${f.nombre_archivo}</small>
+                </li>`
+            ).join('');
+            $('#listaExitosas').html(listaHtml);
+        }
+        
+        // Mostrar fallidas
+        if (fallidas.length > 0) {
+            $('#cardFallidas').show();
+            $('#countFallidas').text(fallidas.length);
+            const listaHtml = fallidas.map(f => 
+                `<li class="mb-1">
+                    <i class="fas fa-times text-danger"></i> 
+                    <strong>UUID:</strong> ${f.uuid}<br>
+                    <small>${f.error || 'No encontrada'}</small>
+                </li>`
+            ).join('');
+            $('#listaFallidas').html(listaHtml);
+        }
+        
+        btnProcesar.prop('disabled', false);
+        
+        // Mensaje resumen
+        alertify.success(`Proceso completado: ${exitosas.length} descargadas, ${fallidas.length} fallidas`);
+    }, 500);
+}

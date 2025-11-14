@@ -86,7 +86,7 @@ public function balance_age_send_mail(){
     $gas      = (int)($_POST['gas'] ?? 0);
 
     // 🔹 NUEVO: mensaje opcional del formulario
-    $body     = (string)($_POST['body'] ?? '');
+    $body     = (string)($_POST['body'] ?? ' ');
 
     // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
     $rawList = str_replace(',', ';', (string)$sentTo);
@@ -121,13 +121,13 @@ public function balance_age_send_mail(){
 
         // Captura la salida del PHPMailer para depurar sin romper el JSON
         ob_start();
-        $ok = @send_mail($subject, $body, $to, $from, $tmp);
+        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
         $mailerOut = trim(ob_get_clean());
 
         @unlink($tmp);
     } else {
         ob_start();
-        $ok = @send_mail($subject, $body, $to, $from);
+        $ok = @send_mail2($subject, $body, $to, $from);
         $mailerOut = trim(ob_get_clean());
     }
 
@@ -746,6 +746,79 @@ function invoice_client_desp(){
         }
     }
 
+        public function anomalies()
+    {
+        // Puedes pasar valores por defecto si quieres
+        echo $this->twig->render('views/income/invoiced_dispatches.html', [
+            'until' => false
+        ]);
+    }
+
+public function anomalies_clients_table()
+{
+    // Cabeceras y buffer limpio
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
+
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
+
+        $from  = $_POST['from']  ?? null;
+        $until = $_POST['until'] ?? null;
+
+        if (!$from || !$until) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        // Validación sencilla
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas inválidas']);
+            return;
+        }
+
+        $rows = $this->despachosModel->anomalies_by_client($desde_eval_i, $hasta_eval_i);
+
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                'codopr'               => $r['codopr'] ?? null,
+                'cliente'              => $r['cliente'] ?? '',
+                'dias_anomalos'        => (int)($r['dias_anomalos'] ?? 0),
+                'total_incremento_abs' => (float)($r['total_incremento_abs'] ?? 0),
+                'prom_incremento_abs'  => (float)($r['prom_incremento_abs'] ?? 0),
+                'prom_incremento_pct'  => (float)($r['prom_incremento_pct'] ?? 0),
+                'prom_zscore'          => (float)($r['prom_zscore'] ?? 0),
+                // Nuevo campo para el checkbox de ≥10 tickets en un día:
+                'max_facturas_dia'     => (int)($r['max_facturas_dia'] ?? 0),
+            ];
+        }
+
+        http_response_code(200);
+        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES TABLE ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data' => [],
+            'error' => true,
+            'message' => 'Error interno al generar el reporte'
+        ]);
+    } finally {
+        ob_end_flush();
+    }
+}
+
+
+
 
     /**
      * @throws Exception
@@ -1053,7 +1126,7 @@ function invoice_client_desp(){
         $tipo_cliente=0;
 
 
-        if ($dispatches = $this->despachosModel->control_dispatches_invoiced(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
+        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
 
             foreach ($dispatches as $dispatch) {
                 $data[] = array(

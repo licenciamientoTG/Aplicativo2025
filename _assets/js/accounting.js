@@ -1668,28 +1668,73 @@ async function movement_analysis_table(){
         $('#movement_analysis_table').DataTable().destroy();
         $('#movement_analysis_table thead .filter').remove();
     }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-    var codgas = document.getElementById('station').value || 0;
-    var supplier = document.getElementById('supplier_val').value;
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
+    
+    // Validar que los elementos existan
+    var fromElement = document.getElementById('from');
+    var untilElement = document.getElementById('until');
+    var stationElement = document.getElementById('station');
+    var supplierElement = document.getElementById('supplier_val');
+    
+    if (!fromElement || !untilElement) {
+        alertify.error('Por favor complete los campos de fecha');
+        return;
+    }
+    
+    var fromDate = fromElement.value;
+    var untilDate = untilElement.value;
+    var codgas = stationElement ? (stationElement.value || 0) : 0;
+    var supplier = supplierElement ? supplierElement.value : '';
+    
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione las fechas');
+        return;
+    }
 
     $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
     $('#movement_analysis_table thead tr.filter th').each(function (index) {
         col = $('#movement_analysis_table thead th').length/2;
         if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
+            var title = $(this).text();
+            var title = $(this).text();
             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
         }
     });
     $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#movement_analysis_table').DataTable(); // Obtiene la instancia de DataTable
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
+        var index = $(this).parent().index();
+        var table = $('#movement_analysis_table').DataTable();
         table
             .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
+            .search(this.value)
+            .draw();
+
     });
-    let movement_analysis_table =$('#movement_analysis_table').DataTable({
+    
+
+    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
+    $('#movement_analysis_table').DataTable({
         order: [0, "asc"],
         colReorder: true,
         dom: '<"top"Bf>rt<"bottom"lip>',
@@ -1712,9 +1757,12 @@ async function movement_analysis_table(){
         ajax: {
             method: 'POST',
             data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'codgas':codgas,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
                 'supplier': supplier
             },
             url: '/accounting/movement_analysis_table',
@@ -1728,10 +1776,10 @@ async function movement_analysis_table(){
                         <h4 class="mt-2 text-danger">¡Error!</h4>
                     </div>
                     <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
                     </div>`
                 );
-
             },
             beforeSend: function() {
                 $('.table-responsive').addClass('loading');
@@ -1759,6 +1807,652 @@ async function movement_analysis_table(){
             {'data': 'Proveedor'},
         ],
         deferRender: true,
+        createdRow: function (row, data, dataIndex) {
+
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+        }
+    });
+}
+
+
+// vollet volumetricTable;
+let allStationsData = []; // Almacenar datos de todas las estaciones
+let isTableInitialized = false; // Bandera para saber si la tabla ya está inicializada
+
+async function actualizarDataTableVolumetric() {
+    const codgas = $('#codgas').val();
+    
+    if (!codgas) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'Por favor seleccione una estación',
+            confirmButtonColor: '#3085d6'
+        });
+        return;
+    }
+
+    Swal.fire({
+        title: 'Cargando datos...',
+        text: 'Por favor espere mientras se procesan los volumétricos',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    if ($.fn.DataTable.isDataTable('#volumetric_table')) {
+        volumetricTable.destroy();
+        $('#volumetric_table tbody').empty();
+        isTableInitialized = false;
+    }
+
+    const formData = new FormData();
+    formData.append('codgas', codgas);
+    
+    try {
+        const response = await fetch('/accounting/xmlCre', {
+            method: 'POST',
+            body: formData,
+        });
+
+        const data = await response.json();
+        
+        console.log('Respuesta completa:', data);
+
+        if (data.success === true) {
+            Swal.close();
+            
+            $('#no_selected').hide();
+            
+            if (data.dataOriginal) {
+                crearCollapseResumen(data.dataOriginal);
+            }
+            
+            inicializarTablaVolumetricos(data.data);
+            isTableInitialized = true;
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: `Se cargaron ${data.data.length} registros del período ${data.periodo || ''}`,
+                timer: 2000,
+                showConfirmButton: false
+            });
+        } else {
+            Swal.close();
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'No se encontraron datos para el período seleccionado'
+            });
+        }
+
+    } catch (error) {
+        Swal.close();
+        console.error('Error al consultar volumétricos:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Ocurrió un error al procesar la solicitud'
+        });
+    }
+}
+
+async function procesarTodasLasEstaciones() {
+    // Obtener todas las estaciones del select
+    const estaciones = [];
+    $('#codgas option').each(function() {
+        const codigo = $(this).val();
+        const nombre = $(this).text();
+        if (codigo) {
+            estaciones.push({ codigo, nombre });
+        }
+    });
+    
+    if (estaciones.length === 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'No hay estaciones disponibles para procesar'
+        });
+        return;
+    }
+    
+    // Confirmar acción
+    const confirmResult = await Swal.fire({
+        title: '¿Procesar todas las estaciones?',
+        html: `Se procesarán <strong>${estaciones.length}</strong> estaciones.<br>Este proceso puede tardar varios minutos.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, procesar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#198754',
+        cancelButtonColor: '#6c757d'
+    });
+    
+    if (!confirmResult.isConfirmed) {
+        return;
+    }
+    
+    // Resetear datos globales
+    allStationsData = [];
+    
+    // Destruir tabla existente
+    if ($.fn.DataTable.isDataTable('#volumetric_table')) {
+        volumetricTable.destroy();
+        $('#volumetric_table tbody').empty();
+        isTableInitialized = false;
+    }
+    
+    // Mostrar contenedor de progreso
+    $('#progress-container').slideDown();
+    $('#results-summary').hide();
+    $('#results-list').empty();
+    $('#no_selected').hide();
+    $('#collapses-container').empty(); // Limpiar collapses
+    
+    // Deshabilitar botones
+    $('#search_volumetric_table, #process_all_stations').prop('disabled', true);
+    
+    // Variables de control
+    let successCount = 0;
+    let errorCount = 0;
+    const results = [];
+    
+    // Procesar cada estación secuencialmente
+    for (let i = 0; i < estaciones.length; i++) {
+        const estacion = estaciones[i];
+        const progress = ((i + 1) / estaciones.length) * 100;
+        
+        // Actualizar UI
+        $('#current-station').text(estacion.nombre);
+        $('#progress-text').text(`${i + 1} / ${estaciones.length}`);
+        $('#progress-percentage').text(Math.round(progress));
+        $('#progress-bar')
+            .css('width', progress + '%')
+            .text(Math.round(progress) + '%');
+        
+        try {
+            // Procesar estación
+            const result = await procesarEstacion(estacion.codigo, estacion.nombre);
+            
+            if (result.success) {
+                successCount++;
+                results.push({
+                    estacion: estacion.nombre,
+                    success: true,
+                    registros: result.registros,
+                    periodo: result.periodo
+                });
+                
+                // Agregar datos al acumulador global
+                if (result.data && Array.isArray(result.data)) {
+                    // Agregar nombre de estación a cada registro para mejor identificación
+                    const dataConEstacion = result.data.map(item => ({
+                        ...item,
+                        EstacionProcesada: estacion.nombre
+                    }));
+                    
+                    allStationsData = allStationsData.concat(dataConEstacion);
+                    
+                    // Actualizar tabla en tiempo real
+                    actualizarTablaProgresiva(allStationsData);
+                }
+            } else {
+                errorCount++;
+                results.push({
+                    estacion: estacion.nombre,
+                    success: false,
+                    error: result.error || 'Error desconocido'
+                });
+            }
+        } catch (error) {
+            errorCount++;
+            results.push({
+                estacion: estacion.nombre,
+                success: false,
+                error: error.message || 'Error al procesar'
+            });
+            console.error(`Error procesando ${estacion.nombre}:`, error);
+        }
+        
+        // Actualizar contadores
+        $('#success-count').text(successCount);
+        $('#error-count').text(errorCount);
+    }
+    
+    // Completado
+    $('#progress-bar').removeClass('progress-bar-animated');
+    $('#current-station').text('Proceso completado');
+    
+    // Mostrar resumen
+    $('#results-summary').slideDown();
+    mostrarResumenResultados(results);
+    
+    // Rehabilitar botones
+    $('#search_volumetric_table, #process_all_stations').prop('disabled', false);
+    
+    // Notificación final
+    Swal.fire({
+        icon: successCount > 0 ? 'success' : 'error',
+        title: 'Proceso Completado',
+        html: `
+            <div style="text-align: left;">
+                <p><strong>Estaciones procesadas:</strong> ${estaciones.length}</p>
+                <p><strong>Exitosas:</strong> ${successCount}</p>
+                <p><strong>Con errores:</strong> ${errorCount}</p>
+                <p><strong>Total de registros:</strong> ${allStationsData.length}</p>
+            </div>
+        `,
+        confirmButtonText: 'Aceptar'
+    });
+}
+
+function actualizarTablaProgresiva(data) {
+    /**
+     * Actualiza la tabla agregando nuevos datos sin reinicializarla completamente
+     */
+    if (!isTableInitialized) {
+        // Primera vez: inicializar la tabla
+        inicializarTablaVolumetricos(data);
+        isTableInitialized = true;
+    } else {
+        // Tabla ya existe: limpiar y recargar con todos los datos
+        volumetricTable.clear();
+        volumetricTable.rows.add(data);
+        volumetricTable.draw(false); // false para mantener la página actual
+    }
+}
+
+async function procesarEstacion(codgas, nombreEstacion) {
+    const formData = new FormData();
+    formData.append('codgas', codgas);
+    
+    try {
+        const response = await fetch('/accounting/xmlCre', {
+            method: 'POST',
+            body: formData,
+        });
+        
+        const data = await response.json();
+        
+        if (data.success === true) {
+            return {
+                success: true,
+                data: data.data || [],
+                registros: data.data ? data.data.length : 0,
+                periodo: data.periodo
+            };
+        } else {
+            return {
+                success: false,
+                error: data.message || 'No se encontraron datos'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message || 'Error de conexión'
+        };
+    }
+}
+
+function mostrarResumenResultados(results) {
+    const resultsList = $('#results-list');
+    resultsList.empty();
+    
+    results.forEach(result => {
+        const itemClass = result.success ? 'result-success' : 'result-error';
+        const icon = result.success ? '✓' : '✗';
+        const mensaje = result.success 
+            ? `${result.registros} registros (${result.periodo})`
+            : result.error;
+        
+        const item = `
+            <div class="result-item ${itemClass}">
+                <strong>${icon} ${result.estacion}:</strong> ${mensaje}
+            </div>
+        `;
+        resultsList.append(item);
+    });
+}
+
+function mapearNombreProducto(claveProducto, claveSubProducto) {
+    const mapeo = {
+        '07-1': 'T-Maxima Regular',
+        '07-2': 'T-Super Premium',
+        '03-3': 'Diesel Automotriz'
+    };
+    return mapeo[`${claveProducto}-${claveSubProducto}`] || 'Desconocido';
+}
+
+function crearCollapseResumen(dataOriginal) {
+    const container = $('#collapses-container');
+    container.empty();
+    
+    let collapseHTML = '<div class="accordion" id="accordionResumen">';
+    
+    if (dataOriginal.mensual && dataOriginal.mensual.length > 0) {
+        collapseHTML += crearAccordionItem(
+            'XML Mensual CRE', 
+            dataOriginal.mensual, 
+            0,
+            'SumaVolumenEntregadoMes_ValorNumerico',
+            'ImporteTotalEntregasMes',
+            'TotalEntregasMes'
+        );
+    }
+    
+    if (dataOriginal.despachos && dataOriginal.despachos.length > 0) {
+        collapseHTML += crearAccordionItem(
+            'Base de Datos (Despachos)', 
+            dataOriginal.despachos, 
+            1,
+            'SumaVolumenEntregadoMes_ValorNumerico',
+            'ImporteTotalEntregasMes',
+            'TotalEntregasMes'
+        );
+    }
+    
+    if (dataOriginal.diarios && dataOriginal.diarios.datos && dataOriginal.diarios.datos.length > 0) {
+        const datosConNombre = dataOriginal.diarios.datos.map(item => ({
+            ...item,
+            MarcaComercial: mapearNombreProducto(item.ClaveProducto, item.ClaveSubProducto),
+            SumaVolumenEntregadoMes_ValorNumerico: item.VolumenTotalMes,
+            ImporteTotalEntregasMes: item.ImporteTotalMes,
+            TotalEntregasMes: item.TotalTransaccionesMes
+        }));
+        
+        collapseHTML += crearAccordionItem(
+            'XML Diarios Consolidados', 
+            datosConNombre, 
+            2,
+            'SumaVolumenEntregadoMes_ValorNumerico',
+            'ImporteTotalEntregasMes',
+            'TotalEntregasMes'
+        );
+    }
+    
+    collapseHTML += '</div>';
+    container.html(collapseHTML);
+}
+
+function crearAccordionItem(titulo, datos, index, campoVolumen, campoImporte, campoEntregas) {
+    const collapseId = `collapse${index}`;
+    
+    const totalVolumen = datos.reduce((sum, item) => 
+        sum + (parseFloat(item[campoVolumen]) || 0), 0
+    );
+    const totalImporte = datos.reduce((sum, item) => 
+        sum + (parseFloat(item[campoImporte]) || 0), 0
+    );
+    
+    return `
+        <div class="accordion-item">
+            <h2 class="accordion-header" id="heading${index}">
+                <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
+                        data-bs-toggle="collapse" data-bs-target="#${collapseId}" 
+                        aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
+                    <strong>${titulo}</strong> 
+                    <span class="ms-3 text-muted">
+                        ${datos.length} productos | 
+                        Volumen: ${totalVolumen.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} L | 
+                        Importe: $${totalImporte.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </span>
+                </button>
+            </h2>
+            <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                 aria-labelledby="heading${index}" data-bs-parent="#accordionResumen">
+                <div class="accordion-body">
+                    <div class="row">
+                        ${datos.map(item => `
+                            <div class="col-md-4 mb-2">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h6 class="card-title">${item.MarcaComercial || item.Producto || 'N/A'}</h6>
+                                        <p class="card-text small mb-1">
+                                            <strong>Volumen:</strong> ${(parseFloat(item[campoVolumen]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 3})} L<br>
+                                            <strong>Importe:</strong> $${(parseFloat(item[campoImporte]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+                                            <strong>Entregas:</strong> ${(item[campoEntregas] || 0).toLocaleString('es-MX')}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function inicializarTablaVolumetricos(data) {
+    volumetricTable = $('#volumetric_table').DataTable({
+        data: data,
+        columns: [
+            {'data': 'Origen'},
+            {'data': 'archivo'},
+            {
+                'data': 'Estación',
+                render: function(data, type, row) {
+                    // Si existe EstacionProcesada (de proceso masivo), mostrarla
+                    return row.EstacionProcesada || data || 'N/A';
+                }
+            },
+            {'data': 'FechaYHoraReporteMes'},
+            {'data': 'MarcaComercial'},
+            {
+                'data': 'TotalEntregasMes',
+                render: function(data) {
+                    return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
+                },
+                className: 'text-end'
+            },
+            {
+                'data': 'SumaVolumenEntregadoMes_ValorNumerico',
+                render: function(data) {
+                    return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
+                },
+                className: 'text-end'
+            },
+            {
+                'data': 'TotalDocumentosMes',
+                render: function(data) {
+                    return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
+                },
+                className: 'text-end'
+            },
+            {
+                'data': 'ImporteTotalEntregasMes',
+                render: function(data) {
+                    return data && data !== 'N/A' ? '$' + Number(data).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') : '$0.00';
+                },
+                className: 'text-end'
+            },
+            {
+                'data': 'SumaVolumenCFDIs',
+                render: function(data) {
+                    return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
+                },
+                className: 'text-end'
+            }
+        ],
+        language: {
+            url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-MX.json'
+        },
+        dom: 'Bfrtip',
+        buttons: [
+            {
+                extend: 'excelHtml5',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-success btn-sm',
+                title: 'Comparativo Volumétricos',
+                exportOptions: {
+                    columns: ':visible',
+                    format: {
+                        body: function (data, row, column, node) {
+                            return column === 0 ? $(data).text() : data;
+                        }
+                    }
+                }
+            },
+            {
+                extend: 'pdfHtml5',
+                text: '<i class="fas fa-file-pdf"></i> PDF',
+                className: 'btn btn-danger btn-sm',
+                orientation: 'landscape',
+                pageSize: 'LEGAL',
+                title: 'Comparativo Volumétricos'
+            },
+            {
+                extend: 'print',
+                text: '<i class="fas fa-print"></i> Imprimir',
+                className: 'btn btn-info btn-sm'
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-secondary btn-sm'
+            }
+        ],
+        responsive: true,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+        order: [[2, 'asc'], [4, 'asc']],
+        deferRender: true, // Mejora el rendimiento con muchos datos
+        processing: true, // Muestra indicador de procesamiento
+        rowCallback: function(row, data) {
+            if (data.OrigenRaw === 'XML_mensual') {
+                $(row).addClass('table-primary');
+            } else if (data.OrigenRaw === 'DB_despachos') {
+                $(row).addClass('table-success');
+            } else if (data.OrigenRaw === 'XML_diarios_consolidado') {
+                $(row).addClass('table-info');
+            }
+        },
+        footerCallback: function(row, data, start, end, display) {
+            const api = this.api();
+            
+            const totalVolumen = api.column(6, { search: 'applied' }).data()
+                .reduce((a, b) => {
+                    const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
+                    return a + (val || 0);
+                }, 0);
+            
+            const totalImporte = api.column(8, { search: 'applied' }).data()
+                .reduce((a, b) => {
+                    const val = typeof b === 'string' ? b.replace(/[$,]/g, '') : b;
+                    return a + (parseFloat(val) || 0);
+                }, 0);
+            
+            const totalCFDIs = api.column(9, { search: 'applied' }).data()
+                .reduce((a, b) => {
+                    const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
+                    return a + (val || 0);
+                }, 0);
+            
+            $(api.column(6).footer()).html('<strong>' + totalVolumen.toFixed(3) + '</strong>');
+            $(api.column(8).footer()).html('<strong>$' + totalImporte.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') + '</strong>');
+            $(api.column(9).footer()).html('<strong>' + totalCFDIs.toFixed(3) + '</strong>');
+        }
+    });
+}
+
+$(document).ready(function() {
+    $('#no_selected').show();
+});
+
+
+
+async function analysis_movement_table(){
+    if ($.fn.DataTable.isDataTable('#analysis_movement_table')) {
+        $('#analysis_movement_table').DataTable().destroy();
+        $('#analysis_movement_table thead .filter').remove();
+       
+    }
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+
+    $('#analysis_movement_table thead').prepend($('#analysis_movement_table thead tr').clone().addClass('filter'));
+    $('#analysis_movement_table thead tr.filter th').each(function (index) {
+        col = $('#analysis_movement_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#analysis_movement_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#analysis_movement_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+    let analysis_movement_table =$('#analysis_movement_table').DataTable({
+        order: [0, "asc"],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        // processing: true,  // Agregar esta línea
+        // serverSide: true,  // Agregar esta línea
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+            },
+            url: '/accounting/analysis_movement_table',
+            timeout: 600000, 
+            error: function() {
+                $('#analysis_movement_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        columns: [
+            {'data': 'nro',className:'text-nowrap'},
+            {'data': 'abr',className:'text-nowrap'},
+            {'data': 'fecha',className:'text-nowrap'},
+            {'data': 'den',className:'text-nowrap'},
+            {'data': 'factura',className:'text-nowrap'},
+            {'data': 'mov_n',className:'text-nowrap'},
+            {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
+            {'data': 'satuid',className:'text-nowrap'},
+            {'data': 'txtref',className:'text-nowrap'},
+            
+
+        ],
+        deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
            
@@ -1772,4 +2466,152 @@ async function movement_analysis_table(){
 
         }
     });
+}
+
+function initializeDataTable() {
+    if ($.fn.DataTable.isDataTable('#documentos_facturas_table')) {
+        $('#documentos_facturas_table').DataTable().destroy();
+        $('#documentos_facturas_table thead .filter').remove();
+    }
+
+    const from = $('#from').val();
+    const until = $('#until').val();
+    const codgas = $('#codgas').val();
+    const tipo_factura = $('#tipo_factura').val(); // 🎯 Nuevo parámetro
+
+    if (!from || !until) {
+        showAlert('Por favor seleccione un rango de fechas válido', 'warning');
+        return;
+    }
+
+    $('#documentos_facturas_table thead').prepend($('#documentos_facturas_table thead tr').clone().addClass('filter'));
+    $('#documentos_facturas_table thead tr.filter th').each(function (index) {
+        col = $('#documentos_facturas_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+
+    $('#documentos_facturas_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index();
+        var table = $('#documentos_facturas_table').DataTable();
+        table.column(index).search(this.value).draw();
+    });
+
+    documentosTable = $('#documentos_facturas_table').DataTable({
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollY: '700px',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        order: [[2, 'desc']],
+        buttons: [
+            {
+                extend: 'excel',
+                text: 'Exportar a Excel',
+                className: 'btn btn-success',
+                exportOptions: {
+                    columns: ':visible:not(:last-child)'
+                }
+            }
+        ],
+        ajax: {
+            url: '/accounting/documentos_facturas_table',
+            type: 'POST',
+            timeout: 600000, 
+            data: {
+                from: from,
+                until: until,
+                codgas: codgas,
+                tipo_factura: tipo_factura // 🎯 Enviar tipo de factura
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            dataSrc: function(json) {
+                if (json.error) {
+                    showAlert(json.error, 'danger');
+                    return [];
+                }
+                return json.data;
+            },
+            error: function(xhr, error, thrown) {
+                showAlert('Error al cargar los datos: ' + thrown, 'danger');
+                $('.table-responsive').removeClass('loading');
+            }
+        },
+        columns: [
+            { data: 'NumeroDocumento' },
+            { 
+                data: 'Serie',
+                className: 'text-center fw-bold',
+                render: function(data) {
+                    // Colores por serie
+                    const colores = {
+                        'W': 'badge bg-warning text-dark',
+                        'Z': 'badge bg-primary',
+                        'T': 'badge bg-info text-dark',
+                        'K': 'badge bg-success',
+                        'C': 'badge bg-danger',
+                        'D': 'badge bg-secondary',
+                        'I': 'badge bg-dark',
+                        'E': 'badge bg-light text-dark',
+                        'G': 'badge bg-purple'
+                    };
+                    const clase = colores[data] || 'badge bg-secondary';
+                    return data ? `<span class="${clase}">${data}</span>` : '';
+                }
+            },
+            { data: 'FacturaFormateada' },
+            { data: 'Fecha' },
+            { data: 'Vencimiento' },
+            { data: 'Estacion' },
+            {
+                data: 'TipoDocumento',
+                render: function(data) {
+                    let badgeClass = 'badge-venta';
+                    if (data === 'Compra') {
+                        badgeClass = 'badge-compra';
+                    } else if (data === 'Nota de Crédito') {
+                        badgeClass = 'badge-nota-credito';
+                    }
+                    return `<span class="badge ${badgeClass}">${data}</span>`;
+                }
+            },
+            { data: 'EntidadNombre' },
+            { data: 'Producto' },
+            { data: 'Cantidad', className: 'text-end' },
+            { data: 'Subtotal', className: 'text-end' },
+            { data: 'IVA', className: 'text-end' },
+            { data: 'IEPS', className: 'text-end' },
+            { data: 'Total', className: 'text-end fw-bold' },
+            { data: 'UUID', className: 'text-end' }
+        ],
+        initComplete: function() {
+            $('.table-responsive').removeClass('loading');
+            showAlert(`Se cargaron ${this.api().data().length} facturas`, 'success');
+
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
+        }
+    });
+}
+
+function showAlert(message, type = 'info') {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            <strong>${type === 'danger' ? 'Error:' : 'Info:'}</strong> ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+    $('#alert-container').html(alertHtml);
+
+    setTimeout(() => {
+        $('.alert').fadeOut('slow', function() {
+            $(this).remove();
+        });
+    }, 5000);
 }

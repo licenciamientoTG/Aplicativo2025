@@ -7,7 +7,14 @@
     }
 </style>
 {% endblock %}
-{% block menutitle %}Precios de combustibles{% endblock %}
+{% block menutitle %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <span>Precios de combustibles</span>
+    <a href="#" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#revisarModal">
+        <i class="fa fa-eye me-1"></i> Revisar
+    </a>
+</div>
+{% endblock %}
 {% block content %}
 
 
@@ -146,11 +153,58 @@
         </table>
     </div>
 </div>
+<div class="modal fade" id="revisarModal" tabindex="-1" aria-labelledby="revisarModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 id="revisarModalLabel" class="modal-title">Revisar combustible</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
 
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-hover table-bordered align-middle" id="tablaPrecios">
+            <thead class="table-light text-center">
+              <tr>
+                <th>Gasolinera</th>
+                <th>Producto</th>
+                <th>Precio (MXN)</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in prices %}
+                <tr>
+                  <td><strong>{{ item.abr }}</strong></td>
+                  <td>{{ item.Producto }}</td>
+                  <td class="text-center">
+                    <span class="badge bg-success fs-6">$ {{ item.pre|number_format(2, '.', ',') }}</span>
+                  </td>
+                  <td>{{ item.Fecha|date('Y-m-d') }}</td>
+                  <td>{{ item.hra }}</td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="5" class="text-center text-muted">No hay datos disponibles.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
 <script>
+        
     $('[data-toggle="tooltip"]').tooltip();
 
     // Cuando hagamos un onchange en el select #product, vamos a actualizar las opciones del select #iva
@@ -190,6 +244,22 @@
 
         // Insertar las badges en el elemento con id="estaciones_seleccionadas"
         $('#estaciones_seleccionadas').html(badges);
+    });
+</script>
+
+<script>
+    $('#tablaPrecios').DataTable({
+        pageLength: 100,
+        order: [[3, 'desc']], // Ordenar por fecha descendente
+        language: {
+            url: "https://cdn.datatables.net/plug-ins/2.1.2/i18n/es-MX.json"
+        }
+    });
+
+    // Cuando se abre el modal, podrías hacer lógica adicional si necesitás
+    $('#revisarModal').on('show.bs.modal', function () {
+        // Ejemplo: limpiar alertas, inicializar validaciones, etc.
+        console.log('Modal Revisar abierto con datos precargados desde el controlador.');
     });
 </script>
 {% endblock %}

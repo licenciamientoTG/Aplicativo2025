@@ -18,6 +18,8 @@ use PhpOffice\PhpSpreadsheet\Chart\Title;
 use PhpOffice\PhpSpreadsheet\Helper\Sample;
 use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+
 require_once('./_assets/classes/code128.php');
 
 class Accounting{
@@ -30,6 +32,7 @@ class Accounting{
     public ComprasPetrotalModel $comprasPetrotalModel;
     public PetrotalConceptosModel $petrotalConceptosModel;
     public ERAjustesModel $eraJustesModel;
+    public MovimientosTanModel $movimientosTanModel;
     /**
      * @param $twig
      */
@@ -43,7 +46,7 @@ class Accounting{
         $this->comprasPetrotalModel   = new ComprasPetrotalModel();
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
         $this->eraJustesModel         = new ERAjustesModel();
-
+        $this->movimientosTanModel    = new MovimientosTanModel();
     }
 
     /**
@@ -63,6 +66,11 @@ class Accounting{
     public function movement_analysis() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'movement_analysis.html');
+        }
+    }
+     public function analysis_movement() : void {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'analysis_movement.html');
         }
     }
     public function supplier_payments() : void {
@@ -195,6 +203,51 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    /**
+     * Obtiene todas las facturas de la tabla Documentos para DataTables
+     * Soporta filtrado por fechas y estación
+     *
+     * @return void
+     */
+    public function documentos_facturas_table(): void {
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            json_output(['error' => 'Método no permitido']);
+            return;
+        }
+        
+        ini_set('memory_limit', '512M');
+        ini_set('max_execution_time', 300);
+
+        $from = $_POST['from'] ?? null;
+        $until = $_POST['until'] ?? null;
+        $codgas = isset($_POST['codgas']) && $_POST['codgas'] !== '' ? (int)$_POST['codgas'] : null;
+        $tipo_factura = $_POST['tipo_factura'] ?? null;
+
+        try {
+            // 🎯 Datos salen formateados directamente del modelo
+            $facturas = $this->Documentos->get_all_facturas($from, $until, $codgas, $tipo_factura);
+            json_output(['data' => $facturas ?: []]);
+
+        } catch (Exception $e) {
+            error_log("Error en documentos_facturas_table: " . $e->getMessage());
+            json_output(['error' => 'Error al obtener las facturas', 'data' => []]);
+        }
+    }
+
+    /**
+     * Vista para mostrar el listado de facturas de Documentos
+     *
+     * @return void
+     */
+    public function documentos_facturas(): void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $first_date = date('Y-m-01'); // Primer día del mes actual
+            $last_date = date('Y-m-d');   // Fecha actual
+            $estaciones = $this->estacionesModel->get_select_stations() ?: [];
+            echo $this->twig->render($this->route . 'documentos_facturas.html', compact('first_date', 'last_date', 'estaciones'));
+        }
+    }
+
     public function invoice_purchase_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -254,16 +307,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-resultados/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
-        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -314,15 +358,7 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-anual/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -337,18 +373,11 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/get_er_budget/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
+
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -360,16 +389,8 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/pagos/get_pagos');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -437,7 +458,8 @@ class Accounting{
     }
 
     function volumetrics_comparator() {
-        echo $this->twig->render($this->route . 'volumetrics_comparator.html');
+        $stations = $this->estacionesModel->get_actives_stations();
+        echo $this->twig->render($this->route . 'volumetrics_comparator.html' , compact('stations'));
     }
 
     function volumetrics_table() {
@@ -480,6 +502,7 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    
     function delete_volumetrics($from, $until) {
         $permisoCre = $_POST['permisoCre'];
         $this->estacionesModel->delete_volumetrics($permisoCre, $from, $until);
@@ -856,9 +879,11 @@ class Accounting{
         ]);
 
     }
+    
 
-    public function getFileErrorMessage($errorCode)
+    public function getFileErrorMessage($errorCode = 0): string
     {
+        
         switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
                 return 'El archivo excede el tamaño máximo permitido.';
@@ -934,15 +959,8 @@ class Accounting{
         $postData = [
             'date' => $_POST['fromDate'] ?? $date, // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -967,6 +985,106 @@ class Accounting{
         echo json_encode($data);
 
     } 
+    public function xmlCre(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        $postData = [
+            'codgas' => $_POST['codgas']
+        ];
+        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
+        
+        $badges = [
+            'XML_mensual' => '<span class="badge bg-primary">XML Mensual</span>',
+            'DB_despachos' => '<span class="badge bg-success">Base de Datos</span>',
+            'XML_diarios_consolidado' => '<span class="badge bg-info">XML Diarios</span>'
+        ];
+        
+        // Mapeo de productos
+        $mapeoProductos = [
+            '07-1' => 'T-Maxima Regular',
+            '07-2' => 'T-Super Premium',
+            '03-3' => 'Diesel Automotriz'
+        ];
+        
+        $data = [];
+        $dataOriginal = []; // Mantener datos originales para los collapses
+        
+        if ($apiData['success'] == true) {
+            // Procesar XML Mensual
+            $dataOriginal['mensual'] = $apiData['mensual'];
+            foreach ($apiData['mensual'] as $row) {
+                $data[] = [
+                    'Origen'                                => $badges['XML_mensual'],
+                    'OrigenRaw'                             => 'XML_mensual',
+                    'archivo'                               => $row['archivo'] ?? 'N/A',
+                    'Estación'                              => $row['Estación'] ?? 'N/A',
+                    'FechaYHoraReporteMes'                  => $row['FechaYHoraReporteMes'] ?? 'N/A',
+                    'MarcaComercial'                        => $row['MarcaComercial'] ?? 'N/A',
+                    'TotalEntregasMes'                      => $row['TotalEntregasMes'] ?? 0,
+                    'SumaVolumenEntregadoMes_ValorNumerico' => $row['SumaVolumenEntregadoMes_ValorNumerico'] ?? 0,
+                    'TotalDocumentosMes'                    => $row['TotalDocumentosMes'] ?? 0,
+                    'ImporteTotalEntregasMes'               => $row['ImporteTotalEntregasMes'] ?? 0,
+                    'SumaVolumenCFDIs'                      => $row['SumaVolumenCFDIs'] ?? 0,
+                ];
+            }
+            
+            // Procesar Despachos
+            $dataOriginal['despachos'] = $apiData['despachos'];
+            foreach ($apiData['despachos'] as $row) {
+                $data[] = [
+                    'Origen'                                => $badges['DB_despachos'],
+                    'OrigenRaw'                             => 'DB_despachos',
+                    'archivo'                               => 'N/A',
+                    'Estación'                              => $row['Estación'] ?? 'N/A',
+                    'FechaYHoraReporteMes'                  => 'N/A',
+                    'MarcaComercial'                        => $row['MarcaComercial'] ?? $row['Producto'] ?? 'N/A',
+                    'TotalEntregasMes'                      => $row['TotalEntregasMes'] ?? 0,
+                    'SumaVolumenEntregadoMes_ValorNumerico' => $row['SumaVolumenEntregadoMes_ValorNumerico'] ?? 0,
+                    'TotalDocumentosMes'                    => $row['TotalDocumentosMes'] ?? 0,
+                    'ImporteTotalEntregasMes'               => $row['ImporteTotalEntregasMes'] ?? 0,
+                    'SumaVolumenCFDIs'                      => $row['SumaVolumenCFDIs'] ?? 0,
+                ];
+            }
+            
+            // Procesar Diarios - AQUÍ ESTABA EL ERROR
+            $dataOriginal['diarios'] = $apiData['diarios'];
+            if (isset($apiData['diarios']['datos']) && is_array($apiData['diarios']['datos'])) {
+                foreach ($apiData['diarios']['datos'] as $row) {
+                    $claveProducto = $row['ClaveProducto'] ?? '';
+                    $claveSubProducto = $row['ClaveSubProducto'] ?? '';
+                    $claveCompleta = $claveProducto . '-' . $claveSubProducto;
+                    $nombreProducto = $mapeoProductos[$claveCompleta] ?? 'Desconocido';
+                    
+                    $data[] = [
+                        'Origen'                                => $badges['XML_diarios_consolidado'],
+                        'OrigenRaw'                             => 'XML_diarios_consolidado',
+                        'archivo'                               => 'N/A',
+                        'Estación'                              => $row['Estación'] ?? 'N/A',
+                        'FechaYHoraReporteMes'                  => 'N/A',
+                        'MarcaComercial'                        => $nombreProducto,
+                        'TotalEntregasMes'                      => $row['TotalTransaccionesMes'] ?? 0,
+                        'SumaVolumenEntregadoMes_ValorNumerico' => $row['VolumenTotalMes'] ?? 0,
+                        'TotalDocumentosMes'                    => $row['TotalTransaccionesMes'] ?? 0,
+                        'ImporteTotalEntregasMes'               => $row['ImporteTotalMes'] ?? 0,
+                        'SumaVolumenCFDIs'                      => 0, // Los diarios no tienen este campo
+                    ];
+                }
+            }
+        }
+        
+        $response = [
+            "success" => $apiData['success'] ?? false,
+            "periodo" => $apiData['periodo'] ?? null,
+            "data" => $data,
+            "dataOriginal" => $dataOriginal // Para usar en los collapses
+        ];
+        
+        echo json_encode($response);
+    }
 
     public function er_petrotal_concept(){
         ini_set('max_execution_time', 5000);
@@ -976,15 +1094,9 @@ class Accounting{
         $postData = [
             'date' => $_POST['date'] // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal_concept/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
+        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal_concept/', $postData);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
         echo json_encode($apiData);
 
     }
@@ -1052,6 +1164,124 @@ class Accounting{
         }
     }
 
+    function folio_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $folios = $_POST['folios'];
+        $codgas = $_POST['codgas2'];
+
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $folios = trim($folios);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $folios = preg_replace('/,+/', ',', $folios);
+
+        // 3️⃣ Separar por comas
+        $foliosArray = explode(',', $folios);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $foliosArray = array_unique($foliosArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($foliosArray, SORT_NUMERIC);
+
+        // 7️⃣ Si necesitás devolverlo como string limpio:
+        $foliosLimpio = implode(',', $foliosArray);
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
+    }
+
+    function facturas_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $facturas = $_POST['facturas'];
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $facturas = trim($facturas);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $facturas = preg_replace('/,+/', ',', $facturas);
+
+        // 3️⃣ Separar por comas
+        $facturasArray = explode(',', $facturas);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $facturasArray = array_filter(array_map('trim', $facturasArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $facturasArray = array_unique($facturasArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($facturasArray, SORT_NUMERIC);
+
+        // 7️⃣ Agregar comillas simples a cada elemento y unir
+        $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
+    }
+
     function fuel_purchases() {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $from = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
@@ -1108,7 +1338,7 @@ class Accounting{
                 } else {
                     $factura = "";
                 }
-                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
                 $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
 
                 // Sección de tabla
@@ -1177,4 +1407,537 @@ class Accounting{
         }
     }
 
+
+    function print_purchase_receipts2($folios, $codgas) {
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $folios = trim($folios);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sol
+        $folios = preg_replace('/,+/', ',', $folios);
+
+        // 3️⃣ Separar por comas
+        $foliosArray = explode(',', $folios);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $foliosArray = array_unique($foliosArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($foliosArray, SORT_NUMERIC);
+
+        // 7️⃣ Si necesitás devolverlo como string limpio:
+        $foliosLimpio = implode(',', $foliosArray);
+
+        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio, $codgas)) {
+            // Crear una instancia de FPDF
+            $pdf = new PDF_Code128();
+            
+            // Establecer los márgenes
+            $pdf->SetMargins(5, 5, 5);  // Margen izquierdo, margen superior, margen derecho
+            
+            // Establecer el margen inferior
+            $pdf->SetAutoPageBreak(true, 12);  // Aumentado a 12 mm para el footer
+            
+            $pageNumber = 0; // Contador de páginas
+            
+            foreach ($rows as $key => $row) {
+                // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+                $pdf->AddPage('P');
+                $pageNumber++; // Incrementar contador
+                
+                // Configurar fuente para el encabezado
+                $pdf->SetFont('Arial', 'B', 9);
+                
+                // TCabecera
+                $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Empresa']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, utf8_decode($row['Ciudad']), 0, 1, 'C');
+                $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+                $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+                $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+                
+                // Sección de recepción
+                $pdf->SetFont('Arial', 'IB', 7);
+                $pdf->Cell(200, 3, '', 0, 1, 'C');
+                $pdf->Cell(23, 3.6, utf8_decode('Estación'), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, utf8_decode($row['DocDenominacion'] . ' (' .$row['nropcc']. ')'), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+                if ((!empty(trim($row['Factura'])))) {
+                    $factura = "Factura " . $row['Factura'];
+                } else {
+                    $factura = "";
+                }
+                $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+                // Sección de tabla
+                $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+                $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+                $pdf->SetFont('Arial', '', 7);
+                $subtotal = 0;
+                $iva_concepto = 0;
+                if ($conceptos = $this->Documentos->get_concepts($row['codgas'], $row['Número'])) {
+                    foreach ($conceptos as $key => $concepto) {
+                        $subtotal += $concepto['Monto'];
+                        if (str_contains($concepto['Concepto'], 'IVA')) {
+                            $iva_concepto += $concepto['Monto'];
+                        }
+                        $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L'); $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'], 3, '.', ','), 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Precio'], 5, '.', ','), 0, 0, 'L'); $pdf->Cell(25, 3.5, number_format($concepto['Monto'], 2, '.', ','), 0, 0, 'L'); $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                    }
+                }
+
+                $pdf->SetFont('Arial', 'B', 7);
+                $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+                $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+                $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+                
+                // Espacio
+                $pdf->Cell(200, 10, '', 0, 1, 'L');
+                $pdf->Cell(33.3, 3.5, utf8_decode('Recepción'), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L'); 
+                if ($receptions = $this->Documentos->get_receptions($row['codgas'], $row['Número'])) {
+                    $pdf->SetFont('Arial', '', 7);
+                    foreach ($receptions as $key => $rec) {
+                        $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L'); 
+                    }
+                }
+
+                
+                
+                $pdf->SetFont('Arial', '', 7);
+                $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+                $pdf->Cell(40, 10, utf8_decode('Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                
+                // AGREGAR PIE DE PÁGINA MANUALMENTE
+                // Guardar posición actual
+                $currentY = $pdf->GetY();
+                
+                // Mover al final de la página (10mm desde el borde inferior)
+                $pdf->SetY(-18);
+                
+                // Configurar fuente para el pie
+                $pdf->SetFont('Arial', 'I', 7);
+                $pdf->Cell(200, 1, '', 'B', 1, 'L');
+                // Agregar los textos del pie
+                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                $pdf->Cell(100, 5, utf8_decode('Página ') . $pageNumber, 0, 0, 'R');
+                
+                // Restaurar la posición Y para el siguiente documento (si lo hay)
+                $pdf->SetY($currentY);
+            }
+            
+            // Salida del PDF
+            $pdf->Output();
+        } else {
+            // Manejar el caso cuando no hay datos
+            echo '<pre>';
+            var_dump("Algo malio sal");
+            die();
+        }
+    }
+
+    function purchases_vs_receptions() {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'purchases_vs_receptions.html');
+        } else {
+            // Aumentar límite de memoria
+            ini_set('memory_limit', '1024M');
+            
+            try {
+                // 1. Verificar que se haya subido un archivo
+                if (!isset($_FILES['excel']) || $_FILES['excel']['error'] !== UPLOAD_ERR_OK) {
+                    throw new Exception('No se ha subido ningún archivo o hubo un error en la carga.');
+                }
+
+                $file = $_FILES['excel'];
+
+                // 2. Verificar que sea un archivo Excel (.xlsx)
+                $fileExtension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                if ($fileExtension !== 'xlsx') {
+                    throw new Exception('El archivo debe ser de formato .xlsx');
+                }
+
+                // 3. Crear lector con configuración para lectura eficiente
+                $reader = new XlsxReader();
+                
+                // Configurar para leer solo datos (sin formato, sin imágenes, etc.)
+                $reader->setReadDataOnly(true);
+                
+                // 4. Cargar el archivo Excel
+                $spreadsheet = $reader->load($file['tmp_name']);
+                
+                // 5. Obtener la primera hoja
+                $worksheet = $spreadsheet->getActiveSheet();
+                
+                // 6. Obtener los encabezados (primera fila)
+                $headers = [];
+                $highestColumn = $worksheet->getHighestColumn();
+                $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+                
+                // Leer encabezados
+                for ($col = 1; $col <= $highestColumnIndex; $col++) {
+                    $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+                    $headers[] = trim($worksheet->getCell($columnLetter . '1')->getValue());
+                }
+
+                // 7. Verificar que exista la columna UUID
+                $uuidColumnIndex = array_search('UUID', $headers);
+                
+                if ($uuidColumnIndex === false) {
+                    throw new Exception('El archivo no contiene la columna "UUID".');
+                }
+
+                // Convertir índice a letra de columna (A, B, C, etc.)
+                $uuidColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($uuidColumnIndex + 1);
+                
+                // 8. Obtener todos los valores de la columna UUID
+                $uuids = [];
+                $highestRow = $worksheet->getHighestRow();
+                
+                for ($row = 2; $row <= $highestRow; $row++) {
+                    $uuid = trim($worksheet->getCell($uuidColumn . $row)->getValue());
+                    
+                    // Solo agregar si no está vacío
+                    if (!empty($uuid)) {
+                        $uuids[] = $uuid;
+                    }
+                    
+                    // Liberar memoria cada 1000 filas
+                    if ($row % 1000 == 0) {
+                        $worksheet->garbageCollect();
+                    }
+                }
+
+                // 9. Liberar memoria
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+
+                // 10. Verificar que se hayan encontrado UUIDs
+                if (empty($uuids)) {
+                    throw new Exception('No se encontraron UUIDs en el archivo.');
+                }
+
+                // 11. Buscar registros en la base de datos
+                $uuidsCadena = "'" . implode("','", $uuids) . "'";
+
+                $data = [];
+                if ($resultados = $this->movimientosTanModel->buscarPorUUID($uuidsCadena)) {
+                    foreach ($resultados as $key => $row) {
+                        $data[] = array(
+                            'proveedor'        => $row['Proveedor'],
+                            'estacion'         => $row['Estacion'],
+                            'factura'          => str_replace(':', '', $row['Factura']),
+                            'remision'         => str_replace(':', '', $row['Remision']),
+                            'documento'        => $row['Documento'],
+                            'uuid'             => $row['satuid'],
+                            'fecha'            => ($row['Fecha'] . ' (' . $row['fch'] . ')'),
+                            'volumen_recibido' => floatval($row['VolRecibido']),
+                        );
+                    }
+                }
+                // 12. Retornar JSON
+                json_output(array("data" => $data, "uuids_encontrados" => $uuidsCadena, "uuids_procesados" => count($uuids)));
+
+            } catch (Exception $e) {
+                // Retornar error en formato JSON
+                http_response_code(400);
+                json_output(array("error" => $e->getMessage()));
+            }
+        }
+    }
+
+    function print_purchase_receipts3() {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $uuids = $_POST['uuids_encontrados'] ?? '';
+            if ($rows = $this->Documentos->movement_analysis_table3($uuids)) {
+                // Crear una instancia de FPDF
+                $pdf = new PDF_Code128();
+                
+                // Establecer los márgenes
+                $pdf->SetMargins(5, 5, 5);  // Margen izquierdo, margen superior, margen derecho
+                
+                // Establecer el margen inferior
+                $pdf->SetAutoPageBreak(true, 12);  // Aumentado a 12 mm para el footer
+                
+                $pageNumber = 0; // Contador de páginas
+                
+                foreach ($rows as $key => $row) {
+                    // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+                    $pdf->AddPage('P');
+                    $pageNumber++; // Incrementar contador
+                    
+                    // Configurar fuente para el encabezado
+                    $pdf->SetFont('Arial', 'B', 9);
+                    
+                    // TCabecera
+                    $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, utf8_decode($row['Empresa']), 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, utf8_decode($row['Ciudad']), 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+                    
+                    // Sección de recepción
+                    $pdf->SetFont('Arial', 'IB', 7);
+                    $pdf->Cell(200, 3, '', 0, 1, 'C');
+                    $pdf->Cell(23, 3.6, utf8_decode('Estación'), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, utf8_decode($row['DocDenominacion'] . ' (' .$row['nropcc']. ')'), 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+                    if ((!empty(trim($row['Factura'])))) {
+                        $factura = "Factura " . $row['Factura'];
+                    } else {
+                        $factura = "";
+                    }
+                    $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+                    // Sección de tabla
+                    $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+                    $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+                    $pdf->SetFont('Arial', '', 7);
+                    $subtotal = 0;
+                    $iva_concepto = 0;
+                    if ($conceptos = $this->Documentos->get_concepts($row['codgas'], $row['Número'])) {
+                        foreach ($conceptos as $key => $concepto) {
+                            $subtotal += $concepto['Monto'];
+                            if (str_contains($concepto['Concepto'], 'IVA')) {
+                                $iva_concepto += $concepto['Monto'];
+                            }
+                            $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L'); $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'], 3, '.', ','), 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Precio'], 5, '.', ','), 0, 0, 'L'); $pdf->Cell(25, 3.5, number_format($concepto['Monto'], 2, '.', ','), 0, 0, 'L'); $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                        }
+                    }
+
+                    $pdf->SetFont('Arial', 'B', 7);
+                    $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+                    $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+                    $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+                    
+                    // Espacio
+                    $pdf->Cell(200, 10, '', 0, 1, 'L');
+                    $pdf->Cell(33.3, 3.5, utf8_decode('Recepción'), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L'); 
+                    if ($receptions = $this->Documentos->get_receptions($row['codgas'], $row['Número'])) {
+                        $pdf->SetFont('Arial', '', 7);
+                        foreach ($receptions as $key => $rec) {
+                            $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L'); 
+                        }
+                    }
+
+                    
+                    
+                    $pdf->SetFont('Arial', '', 7);
+                    $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+                    $pdf->Cell(40, 10, utf8_decode('Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                    $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                    
+                    // AGREGAR PIE DE PÁGINA MANUALMENTE
+                    // Guardar posición actual
+                    $currentY = $pdf->GetY();
+                    
+                    // Mover al final de la página (10mm desde el borde inferior)
+                    $pdf->SetY(-18);
+                    
+                    // Configurar fuente para el pie
+                    $pdf->SetFont('Arial', 'I', 7);
+                    $pdf->Cell(200, 1, '', 'B', 1, 'L');
+                    // Agregar los textos del pie
+                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                    $pdf->Cell(100, 5, utf8_decode('Página ') . $pageNumber, 0, 0, 'R');
+                    
+                    // Restaurar la posición Y para el siguiente documento (si lo hay)
+                    $pdf->SetY($currentY);
+                }
+                
+                // Salida del PDF
+                $pdf->Output();
+            } else {
+                echo '<pre>';
+                var_dump("Error: 123456789");
+                die();
+            }
+        }
+    }
+
+    function print_purchase_receipts4() {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $facturas = $_POST['facturas'] ?? '';
+
+            // 1️⃣ Quitar espacios en blanco alrededor de todo
+            $facturas = trim($facturas);
+
+            // 2️⃣ Reemplazar comas dobles o triples por una sola
+            $facturas = preg_replace('/,+/', ',', $facturas);
+
+            // 3️⃣ Separar por comas
+            $facturasArray = explode(',', $facturas);
+
+            // 4️⃣ Eliminar elementos vacíos y espacios extra
+            $facturasArray = array_filter(array_map('trim', $facturasArray), 'strlen');
+
+            // 5️⃣ (Opcional) Eliminar duplicados
+            $facturasArray = array_unique($facturasArray);
+
+            // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+            sort($facturasArray, SORT_NUMERIC);
+
+            // 7️⃣ Agregar comillas simples a cada elemento y unir
+            $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
+            
+            if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio)) {
+                // Crear una instancia de FPDF
+                $pdf = new PDF_Code128();
+                
+                // Establecer los márgenes
+                $pdf->SetMargins(5, 5, 5);  // Margen izquierdo, margen superior, margen derecho
+                
+                // Establecer el margen inferior
+                $pdf->SetAutoPageBreak(true, 12);  // Aumentado a 12 mm para el footer
+                
+                $pageNumber = 0; // Contador de páginas
+                
+                foreach ($rows as $key => $row) {
+                    // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
+                    $pdf->AddPage('P');
+                    $pageNumber++; // Incrementar contador
+                    
+                    // Configurar fuente para el encabezado
+                    $pdf->SetFont('Arial', 'B', 9);
+                    
+                    // TCabecera
+                    $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, utf8_decode($row['Empresa']), 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, utf8_decode($row['Ciudad']), 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+                    $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+                    
+                    // Sección de recepción
+                    $pdf->SetFont('Arial', 'IB', 7);
+                    $pdf->Cell(200, 3, '', 0, 1, 'C');
+                    $pdf->Cell(23, 3.6, utf8_decode('Estación'), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, utf8_decode($row['DocDenominacion'] . ' (' .$row['nropcc']. ')'), 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+                    if ((!empty(trim($row['Factura'])))) {
+                        $factura = "Factura " . $row['Factura'];
+                    } else {
+                        $factura = "";
+                    }
+                    $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . utf8_decode($row['RemisionVehiculo']), 0, 1, 'L');
+                    $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+                    // Sección de tabla
+                    $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+                    $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+                    $pdf->SetFont('Arial', '', 7);
+                    $subtotal = 0;
+                    $iva_concepto = 0;
+                    if ($conceptos = $this->Documentos->get_concepts($row['codgas'], $row['Número'])) {
+                        foreach ($conceptos as $key => $concepto) {
+                            $subtotal += $concepto['Monto'];
+                            if (str_contains($concepto['Concepto'], 'IVA')) {
+                                $iva_concepto += $concepto['Monto'];
+                            }
+                            $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L'); $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'], 3, '.', ','), 0, 0, 'L'); $pdf->Cell(20, 3.5, number_format($concepto['Precio'], 5, '.', ','), 0, 0, 'L'); $pdf->Cell(25, 3.5, number_format($concepto['Monto'], 2, '.', ','), 0, 0, 'L'); $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                        }
+                    }
+
+                    $pdf->SetFont('Arial', 'B', 7);
+                    $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+                    $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+                    $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+                    
+                    // Espacio
+                    $pdf->Cell(200, 10, '', 0, 1, 'L');
+                    $pdf->Cell(33.3, 3.5, utf8_decode('Recepción'), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L'); 
+                    if ($receptions = $this->Documentos->get_receptions($row['codgas'], $row['Número'])) {
+                        $pdf->SetFont('Arial', '', 7);
+                        foreach ($receptions as $key => $rec) {
+                            $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L'); 
+                        }
+                    }
+
+                    
+                    
+                    $pdf->SetFont('Arial', '', 7);
+                    $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+                    $pdf->Cell(40, 10, utf8_decode('Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                    $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+                    
+                    // AGREGAR PIE DE PÁGINA MANUALMENTE
+                    // Guardar posición actual
+                    $currentY = $pdf->GetY();
+                    
+                    // Mover al final de la página (10mm desde el borde inferior)
+                    $pdf->SetY(-18);
+                    
+                    // Configurar fuente para el pie
+                    $pdf->SetFont('Arial', 'I', 7);
+                    $pdf->Cell(200, 1, '', 'B', 1, 'L');
+                    // Agregar los textos del pie
+                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                    $pdf->Cell(100, 5, utf8_decode('Página ') . $pageNumber, 0, 0, 'R');
+                    
+                    // Restaurar la posición Y para el siguiente documento (si lo hay)
+                    $pdf->SetY($currentY);
+                }
+                
+                // Salida del PDF
+                $pdf->Output();
+            } else {
+                echo '<pre>';
+                var_dump("Error: 123456789");
+                die();
+            }
+        }
+    }
+
+    public function analysis_movement_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $from = dateToInt($_POST['fromDate']);
+        $until = dateToInt($_POST['untilDate']);
+        if ($rows = $this->Documentos->analysis_movement_table($from,$until)) {
+
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'fecha'   => $row['fecha'],
+                    'factura' => $row['factura'],
+                    'mtoapl'  => $row['mtoapl'],
+                    'den'     => $row['den'],
+                    'abr'     => $row['abr'],
+                    'nro'     => $row['nro'],
+                    'satuid'  => $row['satuid'],
+                    'txtref'  => $row['txtref'],
+                    'mov_n'   => $row['mov_n'],
+                );
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
+    }
 }

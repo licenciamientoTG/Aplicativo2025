@@ -1,0 +1,103 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Abastos - Descargar Facturas por UUID{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Descargar Facturas por UUID{% endblock %}
+{% block content %}
+<style>
+.sticky-top {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.font-monospace {
+    font-family: 'Courier New', monospace;
+}
+
+.table-responsive {
+    scrollbar-width: thin;
+    scrollbar-color: #888 #f1f1f1;
+}
+
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+</style>
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Descargar Facturas por UUID</h3>
+    </div>
+    <div class="card-body">
+        <form id="formImportarUUIDs" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="archivo_excel">Seleccionar archivo Excel con UUIDs</label>
+                <input type="file" class="form-control-file" id="archivo_excel" 
+                       name="archivo_excel" accept=".xlsx,.xls" required>
+                <small class="form-text text-muted">
+                    El archivo debe tener los UUIDs en la primera columna (columna A)
+                </small>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3" id="btnProcesar">
+                <i class="fas fa-upload"></i> Procesar y Descargar Facturas
+            </button>
+        </form>
+
+        <!-- Área de progreso -->
+        <div id="areaProgreso" class="mt-4" style="display:none;">
+            <div class="progress">
+                <div id="barraProgreso" class="progress-bar progress-bar-striped progress-bar-animated" 
+                     role="progressbar" style="width: 0%">0%</div>
+            </div>
+            <p class="mt-2" id="textoProgreso"></p>
+        </div>
+
+        <!-- Resumen de descargas -->
+        <div id="areaResumen" class="mt-4" style="display:none;">
+            <h4>Resumen de Descargas</h4>
+            
+            <!-- Exitosas -->
+            <div class="card border-success mb-3" id="cardExitosas" style="display:none;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-check-circle"></i> 
+                        Descargadas Exitosamente (<span id="countExitosas">0</span>)
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                    <ul id="listaExitosas" class="list-unstyled mb-0"></ul>
+                </div>
+            </div>
+
+            <!-- Fallidas -->
+            <div class="card border-danger mb-3" id="cardFallidas" style="display:none;">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-times-circle"></i> 
+                        No Encontradas o Fallidas (<span id="countFallidas">0</span>)
+                    </h5>
+                </div>
+                <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                    <ul id="listaFallidas" class="list-unstyled mb-0 text-danger"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+{% endblock %}

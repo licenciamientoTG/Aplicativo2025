@@ -880,23 +880,20 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
         {
             extend: 'excel',
             className: 'd-none',
-            // Título del archivo de exportación
             title: 'Tabuladores',
-            // Prevenimos la exportación de la columna de checkbox y de las acciones
             exportOptions: {
+                // Ajusta si quieres exportar más columnas
                 columns: [0, 1, 2, 3, 4, 5, 6, 7, 8]
             }
         },
         {
-            extend: 'pdf', // Agrega el botón de exportación a PDF
+            extend: 'pdf',
             className: 'd-none',
             text: 'PDF',
             customize: function (doc) {
-                // Establecer la orientación horizontal (apaisada)
                 doc.pageOrientation = 'landscape';
-                // Ajustar todas las columnas al ancho del PDF
                 let colWidths = [];
-                let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500; // Ancho de página para orientación horizontal o vertical
+                let tableWidth = doc.pageOrientation === 'landscape' ? 1060 : 500;
                 let totalColWidths = 0;
 
                 $('#datatables_tickets_2 thead th').each(function () {
@@ -906,14 +903,14 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
                 });
 
                 if (totalColWidths < 1) {
-                    colWidths.push('*'); // Columna extra para completar el ancho restante
+                    colWidths.push('*');
                 }
 
                 doc.content[1].table.widths = colWidths;
             }
         },
         {
-            extend: 'print', // Agrega el botón de impresión
+            extend: 'print',
             className: 'd-none',
         }
     ],
@@ -943,53 +940,47 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
     },
     deferRender: true,
     columns: [
-        {'data': 'ID'},
-        {'data': 'TIPO'},
-        {'data': 'FORMULARIO'},
-        {'data': 'GRUPO'},
-        {'data': 'TÍTULO'},
-        {'data': 'DESCRIPCIÓN'},
-        {'data': 'CREADO'},
-        {'data': 'RESUELTO'},
-        {'data': 'TIEMPO_RESPUESTA'},
-        {'data': 'USUARIO'},
-        {'data': 'AGENTE'},
-        {'data': 'STATUS'},
-        {'data': 'PRIORIDAD'},
-        {'data': 'COLA'},
-        {'data': 'ASIGNADO'},
-        {'data': 'ACTUALIZADO'},
-        {'data': 'CALIFICACIÓN'},
-        {'data': 'DEPARTAMENTO'},
-        {'data': 'SOLICITANTE'},
-        {'data': 'PROBLEMA'},
-        {'data': 'ACCIONES'},
+        {'data': 'ID'},              // 0
+        {'data': 'TIPO'},            // 1
+        {'data': 'FORMULARIO'},      // 2
+        {'data': 'GRUPO'},           // 3
+        {'data': 'TÍTULO'},          // 4
+        {'data': 'DESCRIPCIÓN'},     // 5
+        {'data': 'CREADO'},          // 6
+        {'data': 'RESUELTO'},        // 7
+        {'data': 'TIEMPO_RESPUESTA'},// 8
+        {'data': 'USUARIO'},         // 9
+        {'data': 'AGENTE'},          // 10
+        {'data': 'STATUS'},          // 12
+        {'data': 'PRIORIDAD'},       // 13
+        {'data': 'COLA'},            // 14
+        {'data': 'ASIGNADO'},        // 15
+        {'data': 'ACTUALIZADO'},     // 16
+        {'data': 'CALIFICACIÓN'},    // 17
+        {'data': 'DEPARTAMENTO'},    // 18
+        {'data': 'SOLICITANTE'},     // 20
+        {'data': 'PROBLEMA'},        // 21
+        {'data': 'ACCIONES'},        // 22
     ],
     rowId: 'Id',
     footerCallback: function (row, data, start, end, display) {
         var api = this.api();
-        var columnIndex = 8; // Índice de la columna TIEMPO_RESPUESTA
-        
-        // Función para convertir valores a números (maneja diferentes formatos)
+        var columnIndex = 8; // Índice de TIEMPO_RESPUESTA
+
         var intVal = function (i) {
-            // Si es string, remover caracteres no numéricos excepto puntos y comas decimales
             if (typeof i === 'string') {
-                // Reemplazar comas por puntos para decimales
                 i = i.replace(',', '.');
-                // Extraer solo números y puntos decimales
                 i = i.replace(/[^\d.-]/g, '');
             }
-            return typeof i === 'string' && i !== '' ? parseFloat(i) : 
+            return typeof i === 'string' && i !== '' ? parseFloat(i) :
                    typeof i === 'number' ? i : 0;
         };
 
-        // Obtener todos los datos de la columna que están actualmente filtrados
         var filteredData = api
             .column(columnIndex, { search: 'applied' })
             .data()
             .toArray();
 
-        // Convertir a números válidos
         var validValues = filteredData
             .map(function(val) { return intVal(val); })
             .filter(function(val) { return !isNaN(val) && val !== null; });
@@ -998,7 +989,6 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
         var sum = validValues.reduce(function(a, b) { return a + b; }, 0);
         var average = count > 0 ? (sum / count) : 0;
 
-        // Formatear números con 3 decimales
         var formatNumber = function(num) {
             return num.toLocaleString('es-MX', {
                 minimumFractionDigits: 3,
@@ -1006,7 +996,6 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
             });
         };
 
-        // Actualizar el footer de la columna TIEMPO_RESPUESTA
         $(api.column(columnIndex).footer()).html(
             '<div style="font-size: 11px; line-height: 1.2;">' +
             '<div><strong>Registros:</strong> ' + count + '</div>' +
@@ -1015,7 +1004,6 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
             '</div>'
         );
 
-        // Actualizar los badges arriba de la tabla
         $('#badge-registros').text(count.toLocaleString('es-MX'));
         $('#badge-suma').text(formatNumber(sum));
         $('#badge-promedio').text(formatNumber(average));
@@ -1028,7 +1016,7 @@ let datatables_tickets_2 = $('#datatables_tickets_2').DataTable({
     }
 });
 
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+// Filtros (agrega inputs para #AGENTE_MOJO y #ESTACION si no existen)
 $('#filtro-datatables_tickets_2 input').on('keyup  change clear', function () {
     datatables_tickets_2
         .column(0).search($('#ID').val().trim())
@@ -1042,26 +1030,25 @@ $('#filtro-datatables_tickets_2 input').on('keyup  change clear', function () {
         .column(8).search($('#TRESOLUCION').val().trim())
         .column(9).search($('#USUARIO').val().trim())
         .column(10).search($('#AGENTE').val().trim())
-        .column(11).search($('#STATUS').val().trim())
-        .column(12).search($('#PRIORIDAD').val().trim())
-        .column(13).search($('#COLA').val().trim())
-        .column(14).search($('#ASIGNADO').val().trim())
-        .column(15).search($('#ACTUALIZADO').val().trim())
-        .column(16).search($('#CALIFICACION').val().trim())
-        .column(17).search($('#DEPARTAMENTO').val().trim())
-        .column(18).search($('#SOLICITANTE').val().trim())
-        .column(19).search($('#PROBLEMA').val().trim())
+        .column(12).search($('#STATUS').val().trim())
+        .column(13).search($('#PRIORIDAD').val().trim())
+        .column(14).search($('#COLA').val().trim())
+        .column(15).search($('#ASIGNADO').val().trim())
+        .column(16).search($('#ACTUALIZADO').val().trim())
+        .column(17).search($('#CALIFICACION').val().trim())
+        .column(18).search($('#DEPARTAMENTO').val().trim())
+        .column(20).search($('#SOLICITANTE').val().trim())
+        .column(21).search($('#PROBLEMA').val().trim())
         .draw();
 });
 
-// Agregar un evento clic de refresh
+// Refresh
 $('.refresh_datatables_tickets_2').on('click', function () {
     datatables_tickets_2.clear().draw();
     datatables_tickets_2.ajax.reload();
     $('#datatables_tickets_2').waitMe('hide');
 });
 
-//////////////////////////////////////////////////////////////////////////////
 
 let datatables_urgentes_tickets = $('#datatables_urgentes_tickets').DataTable({
     colReorder: true,

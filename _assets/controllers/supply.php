@@ -1,5 +1,23 @@
 <?php
-
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpSpreadsheet\NamedRange;
+use PhpOffice\PhpSpreadsheet\Settings;
+use PhpOffice\PhpSpreadsheet\Chart\Chart;
+use PhpOffice\PhpSpreadsheet\Chart\DataSeries;
+use PhpOffice\PhpSpreadsheet\Chart\DataSeriesValues;
+use PhpOffice\PhpSpreadsheet\Chart\Legend;
+use PhpOffice\PhpSpreadsheet\Chart\PlotArea;
+use PhpOffice\PhpSpreadsheet\Chart\Title;
+use PhpOffice\PhpSpreadsheet\Helper\Sample;
+use PhpOffice\PhpSpreadsheet\Reader\IReader;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
+use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 class Supply{
     public $twig;
     public $route;
@@ -9,6 +27,7 @@ class Supply{
     public PreciosModel $preciosModel;
     public EstacionesModel $estacionesModel;
     public DocumentosModel $documentosModel;
+    public FacturasRecibidasModel $facturasRecibidasModel;
 
     public BinnaclePricesModel $binnaclePricesModel;
     public CreProductsByStationsModel $creProductsByStationsModel;
@@ -54,6 +73,8 @@ class Supply{
         $this->paymentRequestsModel                               = new PaymentRequestsModel();
         $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
         $this->proveedores                                       = new ProveedoresModel();
+        $this->facturasRecibidasModel = new FacturasRecibidasModel();
+
     }
 
     /**
@@ -152,6 +173,7 @@ class Supply{
     }
 
     function fuel_prices() : void {
+        $prices = $this->preciosModel->get_today_prices();
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Ingreso', 'Se ingresó a la pantalla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'fuel_prices');
         $stations = $this->gasolinerasModel->get_active_station_TG();
 
@@ -223,7 +245,7 @@ class Supply{
             $mensajeFinal2 .= "</div></div>";
         }
 
-        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2'));
+        echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices'));
     }
 
     function datatable_product_prices() {
@@ -659,9 +681,6 @@ class Supply{
             //         return (int)$val !== 18;
             //     }
             // ));
-            // echo '<pre>';
-            // var_dump($codgas_products);
-            // die();
 
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
@@ -1295,6 +1314,338 @@ class Supply{
         }
         json_output(array("data" => $data));
     }
+
+
+    /**
+     * Vista para descargar facturas por UUID
+     */
+    function descargar_facturas() {
+        echo $this->twig->render($this->route . 'descargar_facturas.html');
+    }
+
+    /**
+     * Procesar Excel con UUIDs y buscar facturas
+     */
+function procesar_uuids_facturas() {
+    header('Content-Type: application/json');
+    
+    try {
+        // Validar que llegue el archivo
+        if (!isset($_FILES['archivo_excel']) || $_FILES['archivo_excel']['error'] !== UPLOAD_ERR_OK) {
+            json_output(['success' => false, 'message' => 'No se recibió el archivo o hubo un error']);
+            return;
+        }
+
+        $archivo = $_FILES['archivo_excel']['tmp_name'];
+        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($archivo);
+        $sheet = $spreadsheet->getActiveSheet();
+        
+        $uuidsValidos = [];
+        $uuidsInvalidos = [];
+        $highestRow = $sheet->getHighestRow();
+        
+        // Leer TODOS los UUIDs de la primera columna
+        for ($row = 2; $row <= $highestRow; $row++) {
+            $uuid = $sheet->getCell('A' . $row)->getValue();
+            if (!empty($uuid)) {
+                $uuid = trim($uuid);
+                $uuidOriginal = $uuid;
+                $uuid = strtoupper($uuid);
+                
+                // Validar formato UUID
+                if (strlen($uuid) !== 36) {
+                    // UUID inválido - longitud incorrecta
+                    $uuidsInvalidos[] = [
+                        'fila' => $row,
+                        'uuid' => $uuid,
+                        'estado' => 'formato_invalido',
+                        'error' => 'UUID con formato inválido (longitud: ' . strlen($uuid) . ', debe ser 36 caracteres)'
+                    ];
+                } else if (!preg_match('/^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/i', $uuid)) {
+                    // UUID inválido - formato incorrecto
+                    $uuidsInvalidos[] = [
+                        'fila' => $row,
+                        'uuid' => $uuid,
+                        'estado' => 'formato_invalido',
+                        'error' => 'UUID con formato inválido (no cumple patrón XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)'
+                    ];
+                } else {
+                    // UUID válido
+                    $uuidsValidos[] = $uuid;
+                }
+            }
+        }
+        
+        $totalSolicitados = count($uuidsValidos) + count($uuidsInvalidos);
+        
+        if ($totalSolicitados === 0) {
+            json_output(['success' => false, 'message' => 'No se encontraron UUIDs en el archivo']);
+            return;
+        }
+        
+        // Buscar facturas en la base de datos (solo con UUIDs válidos)
+        $facturas = [];
+        if (!empty($uuidsValidos)) {
+            $facturas = $this->facturasRecibidasModel->buscarPorUUIDs($uuidsValidos);
+        }
+        
+        // Crear un array asociativo de facturas encontradas por UUID
+        $facturasEncontradas = [];
+        $uuidsEncontrados = [];
+        
+        if ($facturas) {
+            foreach ($facturas as $factura) {
+                $uuidsEncontrados[] = $factura['UUID'];
+                
+                // Verificar que el archivo exista
+                if (!empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
+                    $facturasEncontradas[] = [
+                        'id' => $factura['Id'],
+                        'uuid' => $factura['UUID'],
+                        'nombre_archivo' => $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']),
+                        'folio' => $factura['Folio'],
+                        'emisor' => $factura['EmisorNombre'],
+                        'total' => $factura['Total'],
+                        'estado' => 'success'
+                    ];
+                } else {
+                    // Factura encontrada en BD pero archivo no existe
+                    $uuidsInvalidos[] = [
+                        'uuid' => $factura['UUID'],
+                        'folio' => $factura['Folio'],
+                        'estado' => 'archivo_no_existe',
+                        'error' => 'Archivo físico no encontrado en el servidor: ' . basename($factura['RutaArchivo'])
+                    ];
+                }
+            }
+        }
+        
+        // Identificar UUIDs válidos que no se encontraron en la BD
+        foreach ($uuidsValidos as $uuid) {
+            if (!in_array($uuid, $uuidsEncontrados)) {
+                $uuidsInvalidos[] = [
+                    'uuid' => $uuid,
+                    'folio' => null,
+                    'estado' => 'no_encontrado_bd',
+                    'error' => 'UUID no encontrado en la base de datos'
+                ];
+            }
+        }
+        
+        // Resultado final
+        json_output([
+            'success' => true,
+            'facturas' => array_values($facturasEncontradas),
+            'facturas_fallidas' => array_values($uuidsInvalidos),
+            'total_solicitados' => $totalSolicitados,
+            'total_encontrados' => count($facturasEncontradas),
+            'total_fallidos' => count($uuidsInvalidos)
+        ]);
+        
+    } catch (Exception $e) {
+        json_output([
+            'success' => false,
+            'message' => 'Error al procesar el archivo: ' . $e->getMessage()
+        ]);
+    }
+}
+
+    /**
+     * Descargar archivo de factura individual
+     */
+    function descargar_factura($id) {
+        try {
+            $factura = $this->facturasRecibidasModel->obtenerPorId($id);
+            
+            if (!$factura) {
+                http_response_code(404);
+                echo json_encode(['message' => 'Factura no encontrada']);
+                return;
+            }
+            
+            if (empty($factura['RutaArchivo']) || !file_exists($factura['RutaArchivo'])) {
+                http_response_code(404);
+                echo json_encode(['message' => 'Archivo no encontrado en el servidor']);
+                return;
+            }
+            
+            $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
+            $rutaArchivo = $factura['RutaArchivo'];
+            
+            // Establecer headers para descarga
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
+            header('Content-Length: ' . filesize($rutaArchivo));
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Pragma: public');
+            
+            // Limpiar buffer de salida
+            ob_clean();
+            flush();
+            
+            // Leer y enviar el archivo
+            readfile($rutaArchivo);
+            exit;
+            
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode(['message' => 'Error al descargar: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+ * Descargar múltiples facturas en un archivo ZIP
+ */
+function descargar_facturas_zip() {
+    header('Content-Type: application/json');
+    
+    try {
+        // Recibir los IDs de las facturas a descargar
+        $input = json_decode(file_get_contents('php://input'), true);
+        $ids = $input['ids'] ?? [];
+        
+        if (empty($ids)) {
+            json_output(['success' => false, 'message' => 'No se proporcionaron IDs de facturas']);
+            return;
+        }
+        
+        // Crear directorio temporal si no existe
+        $tempDir = __DIR__ . '/../temp/';
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0777, true);
+        }
+        
+        // Nombre único para el archivo ZIP
+        $zipFileName = 'facturas_' . date('YmdHis') . '_' . uniqid() . '.zip';
+        $zipPath = $tempDir . $zipFileName;
+        
+        // Crear archivo ZIP
+        $zip = new ZipArchive();
+        if ($zip->open($zipPath, ZipArchive::CREATE) !== TRUE) {
+            json_output(['success' => false, 'message' => 'No se pudo crear el archivo ZIP']);
+            return;
+        }
+        
+        $archivosAgregados = 0;
+        $archivosNoEncontrados = [];
+        
+        // Agregar cada factura al ZIP
+        foreach ($ids as $id) {
+            $factura = $this->facturasRecibidasModel->obtenerPorId($id);
+            
+            if ($factura && !empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
+                $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
+                
+                // Agregar archivo al ZIP
+                if ($zip->addFile($factura['RutaArchivo'], $nombreArchivo)) {
+                    $archivosAgregados++;
+                } else {
+                    $archivosNoEncontrados[] = $nombreArchivo;
+                }
+            } else {
+                $archivosNoEncontrados[] = 'Factura ID: ' . $id;
+            }
+        }
+        
+        $zip->close();
+        
+        // Verificar que se agregó al menos un archivo
+        if ($archivosAgregados === 0) {
+            unlink($zipPath); // Eliminar ZIP vacío
+            json_output([
+                'success' => false, 
+                'message' => 'No se encontraron archivos para descargar',
+                'archivos_no_encontrados' => $archivosNoEncontrados
+            ]);
+            return;
+        }
+        
+        // Retornar información del ZIP creado
+        json_output([
+            'success' => true,
+            'zip_file' => $zipFileName,
+            'archivos_agregados' => $archivosAgregados,
+            'archivos_no_encontrados' => $archivosNoEncontrados,
+            'download_url' => '/supply/download_zip/' . $zipFileName
+        ]);
+        
+    } catch (Exception $e) {
+        json_output([
+            'success' => false,
+            'message' => 'Error al crear ZIP: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Descargar el archivo ZIP generado
+ */
+function download_zip($zipFileName) {
+    try {
+        // Validar nombre de archivo (seguridad)
+        if (!preg_match('/^facturas_\d{14}_[a-z0-9]+\.zip$/', $zipFileName)) {
+            http_response_code(400);
+            die('Nombre de archivo inválido');
+        }
+        
+        $zipPath = __DIR__ . '/../temp/' . $zipFileName;
+        
+        if (!file_exists($zipPath)) {
+            http_response_code(404);
+            die('Archivo ZIP no encontrado');
+        }
+        
+        // Limpiar buffer
+        if (ob_get_level()) {
+            ob_end_clean();
+        }
+        
+        // Headers para descarga
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . $zipFileName . '"');
+        header('Content-Length: ' . filesize($zipPath));
+        header('Cache-Control: no-cache, must-revalidate');
+        header('Pragma: public');
+        
+        // Enviar archivo
+        readfile($zipPath);
+        
+        // Eliminar archivo temporal después de enviarlo
+        unlink($zipPath);
+        exit;
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        die('Error al descargar ZIP: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Limpiar archivos ZIP antiguos (ejecutar periódicamente)
+ */
+function limpiar_zips_antiguos() {
+    $tempDir = __DIR__ . '/../temp/';
+    
+    if (!is_dir($tempDir)) {
+        return;
+    }
+    
+    $archivos = glob($tempDir . 'facturas_*.zip');
+    $horaLimite = time() - (3600 * 2); // 2 horas
+    $eliminados = 0;
+    
+    foreach ($archivos as $archivo) {
+        if (filemtime($archivo) < $horaLimite) {
+            unlink($archivo);
+            $eliminados++;
+        }
+    }
+    
+    json_output([
+        'success' => true,
+        'archivos_eliminados' => $eliminados
+    ]);
+}
 
 
 
