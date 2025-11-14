@@ -20,7 +20,6 @@ use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
-use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
 require_once('./_assets/classes/code128.php');
 
@@ -34,7 +33,6 @@ class Accounting{
     public ComprasPetrotalModel $comprasPetrotalModel;
     public PetrotalConceptosModel $petrotalConceptosModel;
     public ERAjustesModel $eraJustesModel;
-    public MovimientosTanModel $movimientosTanModel;
     public MovimientosTanModel $movimientosTanModel;
     /**
      * @param $twig
@@ -77,11 +75,7 @@ class Accounting{
             echo $this->twig->render($this->route . 'analysis_movement.html');
         }
     }
-     public function analysis_movement() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            echo $this->twig->render($this->route . 'analysis_movement.html');
-        }
-    }
+
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
@@ -894,7 +888,6 @@ class Accounting{
     }
     
 
-    public function getFileErrorMessage($errorCode = 0): string
     
 
     public function getFileErrorMessage($errorCode = 0): string
@@ -1181,123 +1174,9 @@ class Accounting{
         }
     }
 
-    function folio_analysis_table() {
-        set_time_limit(280);
-        header('Content-Type: application/json');
+   
 
-        $folios = $_POST['folios'];
-        $codgas = $_POST['codgas2'];
-
-
-        // 1️⃣ Quitar espacios en blanco alrededor de todo
-        $folios = trim($folios);
-
-        // 2️⃣ Reemplazar comas dobles o triples por una sola
-        $folios = preg_replace('/,+/', ',', $folios);
-
-        // 3️⃣ Separar por comas
-        $foliosArray = explode(',', $folios);
-
-        // 4️⃣ Eliminar elementos vacíos y espacios extra
-        $foliosArray = array_filter(array_map('trim', $foliosArray), 'strlen');
-
-        // 5️⃣ (Opcional) Eliminar duplicados
-        $foliosArray = array_unique($foliosArray);
-
-        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
-        sort($foliosArray, SORT_NUMERIC);
-
-        // 7️⃣ Si necesitás devolverlo como string limpio:
-        $foliosLimpio = implode(',', $foliosArray);
-
-        $data = [];
-        if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
-            foreach ($rows as $row) {
-                $data[] = array(
-                    'Número'          => $row['Número'],
-                    'Factura'         => $row['Factura'],
-                    'Orden de Compra' => $row['Orden de Compra'],
-                    'Fecha'           => $row['Fecha'],
-                    'Vencimiento'     => $row['Vencimiento'],
-                    'Producto'        => $row['Producto'],
-                    'VolumenRecibido' => $row['VolumenRecibido'],
-                    'Facturado'       => $row['Facturado'],
-                    'Importe'         => $row['Importe'],
-                    'IEPS'            => $row['I.E.P.S'],
-                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
-                    'Recargos'        => $row['Recargos'],
-                    'TotalFactura'    => $row['TotalFactura'],
-                    'Estación'        => $row['Estación'],
-                    'UUID'            => $row['UUID'],
-                    'RFC'             => $row['RFC'],
-                    'Remision'        => $row['Remision'],
-                    'Vehiculo'        => $row['Vehiculo'],
-                    'Proveedor'       => $row['Proveedor'],
-                );
-            }
-        }
-        $data = array("data" => $data);
-        echo json_encode($data);
-        
-    }
-
-    function facturas_analysis_table() {
-        set_time_limit(280);
-        header('Content-Type: application/json');
-
-        $facturas = $_POST['facturas'];
-
-        // 1️⃣ Quitar espacios en blanco alrededor de todo
-        $facturas = trim($facturas);
-
-        // 2️⃣ Reemplazar comas dobles o triples por una sola
-        $facturas = preg_replace('/,+/', ',', $facturas);
-
-        // 3️⃣ Separar por comas
-        $facturasArray = explode(',', $facturas);
-
-        // 4️⃣ Eliminar elementos vacíos y espacios extra
-        $facturasArray = array_filter(array_map('trim', $facturasArray), 'strlen');
-
-        // 5️⃣ (Opcional) Eliminar duplicados
-        $facturasArray = array_unique($facturasArray);
-
-        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
-        sort($facturasArray, SORT_NUMERIC);
-
-        // 7️⃣ Agregar comillas simples a cada elemento y unir
-        $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
-
-        $data = [];
-        if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio)) {
-            foreach ($rows as $row) {
-                $data[] = array(
-                    'Número'          => $row['Número'],
-                    'Factura'         => $row['Factura'],
-                    'Orden de Compra' => $row['Orden de Compra'],
-                    'Fecha'           => $row['Fecha'],
-                    'Vencimiento'     => $row['Vencimiento'],
-                    'Producto'        => $row['Producto'],
-                    'VolumenRecibido' => $row['VolumenRecibido'],
-                    'Facturado'       => $row['Facturado'],
-                    'Importe'         => $row['Importe'],
-                    'IEPS'            => $row['I.E.P.S'],
-                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
-                    'Recargos'        => $row['Recargos'],
-                    'TotalFactura'    => $row['TotalFactura'],
-                    'Estación'        => $row['Estación'],
-                    'UUID'            => $row['UUID'],
-                    'RFC'             => $row['RFC'],
-                    'Remision'        => $row['Remision'],
-                    'Vehiculo'        => $row['Vehiculo'],
-                    'Proveedor'       => $row['Proveedor'],
-                );
-            }
-        }
-        $data = array("data" => $data);
-        echo json_encode($data);
-        
-    }
+    
 
     function folio_analysis_table() {
         set_time_limit(280);
