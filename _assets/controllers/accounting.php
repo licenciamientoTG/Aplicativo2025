@@ -68,6 +68,11 @@ class Accounting{
             echo $this->twig->render($this->route . 'movement_analysis.html');
         }
     }
+     public function analysis_movement() : void {
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'analysis_movement.html');
+        }
+    }
     public function supplier_payments() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $first_date = date('Y-01-01');
@@ -198,6 +203,51 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    /**
+     * Obtiene todas las facturas de la tabla Documentos para DataTables
+     * Soporta filtrado por fechas y estación
+     *
+     * @return void
+     */
+    public function documentos_facturas_table(): void {
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            json_output(['error' => 'Método no permitido']);
+            return;
+        }
+        
+        ini_set('memory_limit', '512M');
+        ini_set('max_execution_time', 300);
+
+        $from = $_POST['from'] ?? null;
+        $until = $_POST['until'] ?? null;
+        $codgas = isset($_POST['codgas']) && $_POST['codgas'] !== '' ? (int)$_POST['codgas'] : null;
+        $tipo_factura = $_POST['tipo_factura'] ?? null;
+
+        try {
+            // 🎯 Datos salen formateados directamente del modelo
+            $facturas = $this->Documentos->get_all_facturas($from, $until, $codgas, $tipo_factura);
+            json_output(['data' => $facturas ?: []]);
+
+        } catch (Exception $e) {
+            error_log("Error en documentos_facturas_table: " . $e->getMessage());
+            json_output(['error' => 'Error al obtener las facturas', 'data' => []]);
+        }
+    }
+
+    /**
+     * Vista para mostrar el listado de facturas de Documentos
+     *
+     * @return void
+     */
+    public function documentos_facturas(): void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $first_date = date('Y-m-01'); // Primer día del mes actual
+            $last_date = date('Y-m-d');   // Fecha actual
+            $estaciones = $this->estacionesModel->get_select_stations() ?: [];
+            echo $this->twig->render($this->route . 'documentos_facturas.html', compact('first_date', 'last_date', 'estaciones'));
+        }
+    }
+
     public function invoice_purchase_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -257,16 +307,8 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-resultados/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
-        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-resultados/', $postData);        
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -317,15 +359,8 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/concentrado-anual/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/concentrado-anual/', $postData);
 
         echo json_encode($apiData);
     }
@@ -340,18 +375,13 @@ class Accounting{
         $postData = [
             'year' => $_POST['year']
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/get_er_budget/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/get_er_budget/', $postData);
 
         echo json_encode($apiData);
     }
+
+
     public function payments_table() {
         set_time_limit(280);
         header('Content-Type: application/json');
@@ -363,16 +393,10 @@ class Accounting{
             'fromDate' => $fromDate,
             'untilDate' => $untilDate
         ];
-        $ch = curl_init('http://192.168.0.3:388/api/pagos/get_pagos');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
 
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.3:388/api/pagos/get_pagos', $postData);
       
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -484,6 +508,7 @@ class Accounting{
         json_output(array("data" => $data));
     }
 
+    
     function delete_volumetrics($from, $until) {
         $permisoCre = $_POST['permisoCre'];
         $this->estacionesModel->delete_volumetrics($permisoCre, $from, $until);
@@ -860,9 +885,11 @@ class Accounting{
         ]);
 
     }
+    
 
-    public function getFileErrorMessage($errorCode)
+    public function getFileErrorMessage($errorCode = 0): string
     {
+        
         switch ($errorCode) {
             case UPLOAD_ERR_INI_SIZE:
                 return 'El archivo excede el tamaño máximo permitido.';
@@ -938,15 +965,9 @@ class Accounting{
         $postData = [
             'date' => $_POST['fromDate'] ?? $date, // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal/', $postData);
 
         if (count($apiData) > 0) {
             foreach ($apiData as $row) {
@@ -981,14 +1002,8 @@ class Accounting{
             'codgas' => $_POST['codgas']
         ];
         
-        $ch = curl_init('http://192.168.0.109:82/api/xmlCre/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/xmlCre/', $postData);
         
         $badges = [
             'XML_mensual' => '<span class="badge bg-primary">XML Mensual</span>',
@@ -1087,15 +1102,9 @@ class Accounting{
         $postData = [
             'date' => $_POST['date'] // Usar la fecha del POST o una por defecto
         ];
-        $ch = curl_init('http://192.168.0.109:82/api/er_petrotal_concept/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
+        
+        $apiData = $this->_callApi('http://192.168.0.109:82/api/er_petrotal_concept/', $postData);
 
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-        $apiData = json_decode($response, true);
         echo json_encode($apiData);
 
     }
@@ -1194,6 +1203,65 @@ class Accounting{
 
         $data = [];
         if ($rows = $this->Documentos->movement_analysis_table2($foliosLimpio,$codgas)) {
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'Número'          => $row['Número'],
+                    'Factura'         => $row['Factura'],
+                    'Orden de Compra' => $row['Orden de Compra'],
+                    'Fecha'           => $row['Fecha'],
+                    'Vencimiento'     => $row['Vencimiento'],
+                    'Producto'        => $row['Producto'],
+                    'VolumenRecibido' => $row['VolumenRecibido'],
+                    'Facturado'       => $row['Facturado'],
+                    'Importe'         => $row['Importe'],
+                    'IEPS'            => $row['I.E.P.S'],
+                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
+                    'Recargos'        => $row['Recargos'],
+                    'TotalFactura'    => $row['TotalFactura'],
+                    'Estación'        => $row['Estación'],
+                    'UUID'            => $row['UUID'],
+                    'RFC'             => $row['RFC'],
+                    'Remision'        => $row['Remision'],
+                    'Vehiculo'        => $row['Vehiculo'],
+                    'Proveedor'       => $row['Proveedor'],
+                );
+            }
+        }
+        $data = array("data" => $data);
+        echo json_encode($data);
+        
+    }
+
+    function facturas_analysis_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $facturas = $_POST['facturas'];
+        $codgas = $_POST['codgas2'];
+
+        // 1️⃣ Quitar espacios en blanco alrededor de todo
+        $facturas = trim($facturas);
+
+        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        $facturas = preg_replace('/,+/', ',', $facturas);
+
+        // 3️⃣ Separar por comas
+        $facturasArray = explode(',', $facturas);
+
+        // 4️⃣ Eliminar elementos vacíos y espacios extra
+        $facturasArray = array_filter(array_map('trim', $facturasArray), 'strlen');
+
+        // 5️⃣ (Opcional) Eliminar duplicados
+        $facturasArray = array_unique($facturasArray);
+
+        // 6️⃣ (Opcional) Reordenar si querés que queden ordenados numéricamente
+        sort($facturasArray, SORT_NUMERIC);
+
+        // 7️⃣ Agregar comillas simples a cada elemento y unir
+        $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
+
+        $data = [];
+        if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio,$codgas)) {
             foreach ($rows as $row) {
                 $data[] = array(
                     'Número'          => $row['Número'],
@@ -1354,7 +1422,7 @@ class Accounting{
         // 1️⃣ Quitar espacios en blanco alrededor de todo
         $folios = trim($folios);
 
-        // 2️⃣ Reemplazar comas dobles o triples por una sola
+        // 2️⃣ Reemplazar comas dobles o triples por una sol
         $folios = preg_replace('/,+/', ',', $folios);
 
         // 3️⃣ Separar por comas
@@ -1705,5 +1773,55 @@ class Accounting{
                 die();
             }
         }
+    }
+
+    public function analysis_movement_table() {
+        set_time_limit(280);
+        header('Content-Type: application/json');
+
+        $from = dateToInt($_POST['fromDate']);
+        $until = dateToInt($_POST['untilDate']);
+        if ($rows = $this->Documentos->analysis_movement_table($from,$until)) {
+
+            foreach ($rows as $row) {
+                $data[] = array(
+                    'fecha'   => $row['fecha'],
+                    'factura' => $row['factura'],
+                    'mtoapl'  => $row['mtoapl'],
+                    'den'     => $row['den'],
+                    'abr'     => $row['abr'],
+                    'nro'     => $row['nro'],
+                    'satuid'  => $row['satuid'],
+                    'txtref'  => $row['txtref'],
+                    'mov_n'   => $row['mov_n'],
+                );
+            }
+            $data = array("data" => $data);
+            echo json_encode($data);
+        } else {
+            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        }
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
+    }
+
+    private function _callApi($url, $postData) {
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+    
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
     }
 }

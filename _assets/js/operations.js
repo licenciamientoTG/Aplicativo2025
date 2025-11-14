@@ -1866,181 +1866,182 @@ $(document).on('submit', '.formulario-ajax', function(e) {
 
 });
 
+function inventories_table(){
 
 
-let inventories_table = $('#inventories_table').DataTable({
-    colReorder: true,
-    order: [0, "desc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-        {
-            extend: 'excel',
-            className: 'd-none',
-            // Título del archivo de exportación
-            title: 'Inventarios/Mermas',
-            // Prevenimos la exportación de la columna de checkbox y de las acciones
-            exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6, 7]
+    let inventories_table = $('#inventories_table').DataTable({
+        colReorder: true,
+        order: [0, "desc"],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+                // Título del archivo de exportación
+                title: 'Inventarios/Mermas',
+                // Prevenimos la exportación de la columna de checkbox y de las acciones
+               
             }
-        }
-    ],
-    ajax: {
-        url: '/operations/inventories_table',
-        data: {
-            "from":  $("input#from").val(),
-            "until":    $("input#until").val(),
+        ],
+        ajax: {
+            url: '/operations/inventories_table',
+            data: {
+                "from":  $("input#from").val(),
+                "until":    $("input#until").val(),
+            },
+            error: function() {
+                $('#inventories_table').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
         },
-        error: function() {
-            $('#inventories_table').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
+        deferRender: true,
+        columns: [
+            {'data': 'ESTACION'},
+            {'data': 'PRODUCTO'},
+            {'data': 'SALDOINICIAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'COMPRAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'VENTAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'SALDOFINAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'SALDOREAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'MERMA', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'ACCIONES'},
+        ],
+        createdRow: function (row, data, dataIndex) {
+    
         },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+            $('.table-responsive').removeClass('loading');
         }
-    },
-    deferRender: true,
-    columns: [
-        {'data': 'ESTACION'},
-        {'data': 'PRODUCTO'},
-        {'data': 'SALDOINICIAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'COMPRAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'VENTAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'SALDOFINAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'SALDOREAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'MERMA', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'ACCIONES'},
-    ],
-    createdRow: function (row, data, dataIndex) {
-
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    }
-});
-
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-inventories_table input').on('keyup  change clear', function () {
-    inventories_table
-        .column(0).search($('#ESTACION').val().trim())
-        .column(1).search($('#PRODUCTO').val().trim())
-        .column(2).search($('#SALDOINICIAL').val().trim())
-        .column(3).search($('#COMPRAS').val().trim())
-        .column(4).search($('#VENTAS').val().trim())
-        .column(5).search($('#SALDOFINAL').val().trim())
-        .column(6).search($('#SALDOREAL').val().trim())
-        .column(7).search($('#MERMA').val().trim())
-        .draw();
-});
-
-// Agregar un evento clic de refresh
-$('.refresh_inventories_table').on('click', function () {
-    inventories_table.clear().draw();
-    inventories_table.ajax.reload();
-    $('#inventories_table').waitMe('hide');
-});
+    });
+    
+    // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+    $('#filtro-inventories_table input').on('keyup  change clear', function () {
+        inventories_table
+            .column(0).search($('#ESTACION').val().trim())
+            .column(1).search($('#PRODUCTO').val().trim())
+            .column(2).search($('#SALDOINICIAL').val().trim())
+            .column(3).search($('#COMPRAS').val().trim())
+            .column(4).search($('#VENTAS').val().trim())
+            .column(5).search($('#SALDOFINAL').val().trim())
+            .column(6).search($('#SALDOREAL').val().trim())
+            .column(7).search($('#MERMA').val().trim())
+            .draw();
+    });
+    
+    // Agregar un evento clic de refresh
+    $('.refresh_inventories_table').on('click', function () {
+        inventories_table.clear().draw();
+        inventories_table.ajax.reload();
+        $('#inventories_table').waitMe('hide');
+    });
+}
 
 
+function inventories_details_table(route){
 
-
-let inventories_details_table = $('#inventories_details_table').DataTable({
-    colReorder: true,
-    order: [0, "desc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-        {
-            extend: 'excel',
-            className: 'd-none',
-            // Título del archivo de exportación
-            title: 'Inventarios por estación',
-            // Prevenimos la exportación de la columna de checkbox y de las acciones
-            // exportOptions: {
-            //     columns: [0, 1, 2, 3, 4, 5, 6]
-            // }
-        }
-    ],
-    ajax: {
-        url: '/operations/inventories_details_table',
-        data: {
-            "from":   $("input#from").val(),
-            "until":  $("input#until").val(),
-            "codgas": $("input#codgas").val(),
-            "codprd": $("input#codprd").val(),
+    
+    let inventories_details_table = $('#inventories_details_table').DataTable({
+        colReorder: true,
+        order: [0, "desc"],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+                // Título del archivo de exportación
+                title: 'Inventarios por estación',
+                // Prevenimos la exportación de la columna de checkbox y de las acciones
+                // exportOptions: {
+                //     columns: [0, 1, 2, 3, 4, 5, 6]
+                // }
+            }
+        ],
+        ajax: {
+            url: '/operations/' + route,
+            data: {
+                "from":   $("input#from").val(),
+                "until":  $("input#until").val(),
+                "codgas": $("input#codgas").val(),
+                "codprd": $("input#codprd").val(),
+            },
+            error: function() {
+                $('#inventories_details_table').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
         },
-        error: function() {
-            $('#inventories_details_table').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
+        deferRender: true,
+        columns: [
+            {'data': 'FECHA'},
+            {'data': 'ESTACION'},
+            {'data': 'PRODUCTO'},
+            {'data': 'SALDOINICIAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'COMPRAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'VENTAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'SALDO', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'SALDOREAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
+            {'data': 'MERMA', 'render': $.fn.dataTable.render.number( ',', '.', 3)}
+        ],
+        createdRow: function (row, data, dataIndex) {
+
         },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+            $('.table-responsive').removeClass('loading');
         }
-    },
-    deferRender: true,
-    columns: [
-        {'data': 'FECHA'},
-        {'data': 'ESTACION'},
-        {'data': 'PRODUCTO'},
-        {'data': 'SALDOINICIAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'COMPRAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'VENTAS', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'SALDO', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'SALDOREAL', 'render': $.fn.dataTable.render.number( ',', '.', 3)},
-        {'data': 'MERMA', 'render': $.fn.dataTable.render.number( ',', '.', 3)}
-    ],
-    createdRow: function (row, data, dataIndex) {
+    });
 
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    }
-});
+    // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+    $('#filtro-inventories_details_table input').on('keyup  change clear', function () {
+        inventories_details_table
+            .column(0).search($('#FECHA').val().trim())
+            .column(1).search($('#SALDOINICIAL').val().trim())
+            .column(2).search($('#COMPRAS').val().trim())
+            .column(3).search($('#VENTAS').val().trim())
+            .column(4).search($('#SALDO').val().trim())
+            .column(5).search($('#SALDOREAL').val().trim())
+            .column(6).search($('#MERMA').val().trim())
+            .draw();
+    });
 
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-inventories_details_table input').on('keyup  change clear', function () {
-    inventories_details_table
-        .column(0).search($('#FECHA').val().trim())
-        .column(1).search($('#SALDOINICIAL').val().trim())
-        .column(2).search($('#COMPRAS').val().trim())
-        .column(3).search($('#VENTAS').val().trim())
-        .column(4).search($('#SALDO').val().trim())
-        .column(5).search($('#SALDOREAL').val().trim())
-        .column(6).search($('#MERMA').val().trim())
-        .draw();
-});
+    // Agregar un evento clic de refresh
+    $('.refresh_inventories_details_table').on('click', function () {
+        inventories_details_table.clear().draw();
+        inventories_details_table.ajax.reload();
+        $('#inventories_details_table').waitMe('hide');
+    });
 
-// Agregar un evento clic de refresh
-$('.refresh_inventories_details_table').on('click', function () {
-    inventories_details_table.clear().draw();
-    inventories_details_table.ajax.reload();
-    $('#inventories_details_table').waitMe('hide');
-});
-
-inventories_details_table.on('draw', function() {
-    // Supongamos que la columna que quieres sumar es la columna con índice 2
-    var total = inventories_details_table.column(8, { search: 'applied' }).data().reduce(function(a, b) {
-        return parseFloat(a) + parseFloat(b);
-    }, 0);
-
-    // Actualiza el total en algún elemento de la página
-    // $('#totalDisplay').html(total.toFixed(2)); // Asumiendo que #totalDisplay es el ID de un elemento donde quieres mostrar el total
-});
+    inventories_details_table.on('draw', function() {
+        // Supongamos que la columna que quieres sumar es la columna con índice 2
+        var total = inventories_details_table.column(8, { search: 'applied' }).data().reduce(function(a, b) {
+            return parseFloat(a) + parseFloat(b);
+        }, 0);
+        // Actualiza el total en algún elemento de la página
+        // $('#totalDisplay').html(total.toFixed(2)); // Asumiendo que #totalDisplay es el ID de un elemento donde quieres mostrar el total
+    });
+}
 
 
 var sales_stations_table = $('#sales_stations_table').DataTable({
