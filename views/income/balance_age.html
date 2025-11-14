@@ -1193,33 +1193,40 @@ document.addEventListener('DOMContentLoaded', function () {
   const tbl2 = document.getElementById('balance_age_table_det');
   if (!tbl2) return;
 
-  const dt2 = $('#balance_age_table_det').DataTable({
-    autoWidth:false, ordering:true, order:[],
-    searching:true, paging:true, dom:'lrtip', info:true, dom:'lfrtip',
-    pageLength:50,
-    lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
-    language:{
-      lengthMenu:'Mostrar _MENU_ entradas',
-      info:'Mostrando _START_ a _END_ de _TOTAL_ entradas',
-      infoEmpty:'Mostrando 0 a 0 de 0 entradas',
-      infoFiltered:'(filtrado de _MAX_ entradas totales)',
-      search:'Buscar:',
-      paginate:{ first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
-    },
-    columnDefs:[ { targets:[11], visible:false, searchable:true } ],
-    footerCallback:function(){
-      const api = this.api();
-      [4,5,6,7,8,9,10].forEach(idx => {
-        const total = api.column(idx, { page:'current' }).data().reduce((acc, val) => {
-          const n = (val+'').replace(/[^0-9.\-]/g,'');
-          const parsed = parseFloat(n);
-          return acc + (isNaN(parsed) ? 0 : parsed);
-        }, 0);
-        $(api.table().footer()).find(`[data-colsum="${idx}"]`)
-          .text(total.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}));
-      });
-    }
-  });
+ const dt2 = $('#balance_age_table_det').DataTable({
+  autoWidth:false,
+  ordering:true,
+  order:[],                 // el usuario sigue pudiendo ordenar por cualquier columna
+  orderFixed: { pre: [[11, 'asc']] },  // <-- agrupa por cliente (columna oculta 11)
+  searching:true,
+  paging:true,
+  dom:'lfrtip',
+  info:true,
+  pageLength:50,
+  lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
+  language:{
+    lengthMenu:'Mostrar _MENU_ entradas',
+    info:'Mostrando _START_ a _END_ de _TOTAL_ entradas',
+    infoEmpty:'Mostrando 0 a 0 de 0 entradas',
+    infoFiltered:'(filtrado de _MAX_ entradas totales)',
+    search:'Buscar:',
+    paginate:{ first:'Primero', last:'Último', next:'Siguiente', previous:'Anterior' }
+  },
+  columnDefs:[ { targets:[11], visible:false, searchable:true } ],
+  footerCallback:function(){
+    const api = this.api();
+    [4,5,6,7,8,9,10].forEach(idx => {
+      const total = api.column(idx, { page:'current' }).data().reduce((acc, val) => {
+        const n = (val+'').replace(/[^0-9.\-]/g,'');
+        const parsed = parseFloat(n);
+        return acc + (isNaN(parsed) ? 0 : parsed);
+      }, 0);
+      $(api.table().footer()).find(`[data-colsum="${idx}"]`)
+        .text(total.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}));
+    });
+  }
+});
+
   window.dtBalanceDet = dt2;
 
   const $wrap2 = $(dt2.table().container());

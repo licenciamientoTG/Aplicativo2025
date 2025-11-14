@@ -746,42 +746,77 @@ function invoice_client_desp(){
         }
     }
 
-function invoiced_dispatches() {
-    if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-        echo $this->twig->render($this->route . 'invoiced_dispatches.html');
+        public function anomalies()
+    {
+        // Puedes pasar valores por defecto si quieres
+        echo $this->twig->render('views/income/invoiced_dispatches.html', [
+            'until' => false
+        ]);
     }
-}
 
-function invoiced_dispatches_table() {
-    ini_set('memory_limit', '512M');
-    set_time_limit(300);
+public function anomalies_clients_table()
+{
+    // Cabeceras y buffer limpio
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
 
-    $data = [];
-    $from = dateToInt($_POST['from']);
-    $until = dateToInt($_POST['until']);
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
 
-    // Llamar al método de tu modelo que ejecuta la consulta SQL
-    if ($rows = $this->despachosModel->invoiced_dispatches_data($from, $until)) {
+        $from  = $_POST['from']  ?? null;
+        $until = $_POST['until'] ?? null;
+
+        if (!$from || !$until) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        // Validación sencilla
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas inválidas']);
+            return;
+        }
+
+        $rows = $this->despachosModel->anomalies_by_client($desde_eval_i, $hasta_eval_i);
+
+        $data = [];
         foreach ($rows as $r) {
             $data[] = [
-                'nrofac'       => $r['nrofac'],
-                'nrotrn'       => $r['nrotrn'],
-                'fchtrn'       => $r['fchtrn'],
-                'fecha'        => $r['fecha'],
-                'codcli'       => $r['codcli'],
-                'cliente'      => $r['cliente'],
-                'monto'        => $r['monto'],
-                'turno'        => $r['turno'],
-                'islaDen'      => $r['islaDen'],
-                'Estacion'     => $r['Estacion'],
-                'serie'        => $r['serie'],
-                'conceptofac'  => $r['conceptofac']
+                'codopr'               => $r['codopr'] ?? null,
+                'cliente'              => $r['cliente'] ?? '',
+                'dias_anomalos'        => (int)($r['dias_anomalos'] ?? 0),
+                'total_incremento_abs' => (float)($r['total_incremento_abs'] ?? 0),
+                'prom_incremento_abs'  => (float)($r['prom_incremento_abs'] ?? 0),
+                'prom_incremento_pct'  => (float)($r['prom_incremento_pct'] ?? 0),
+                'prom_zscore'          => (float)($r['prom_zscore'] ?? 0),
+                // Nuevo campo para el checkbox de ≥10 tickets en un día:
+                'max_facturas_dia'     => (int)($r['max_facturas_dia'] ?? 0),
             ];
         }
+
+        http_response_code(200);
+        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES TABLE ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data' => [],
+            'error' => true,
+            'message' => 'Error interno al generar el reporte'
+        ]);
+    } finally {
+        ob_end_flush();
     }
-    
-    json_output(['data' => $data]);
 }
+
 
 
 
