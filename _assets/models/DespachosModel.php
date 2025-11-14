@@ -2508,76 +2508,135 @@ class DespachosModel extends Model{
  *
  * @return array
  */
-function cash_invoices_advance($from, $until)
-{
-    $query = "
-        ;WITH B AS (
-            SELECT
-                t1.codcli,
-                t2.den,
-                t1.mto,
-                CASE 
-                    WHEN t1.tiptrn = 51 AND t1.datref LIKE '%@P:04%' THEN 'TC'  -- Tarjeta de crédito
-                    WHEN t1.tiptrn = 52 AND t1.datref LIKE '%@P:28%' THEN 'TD'  -- Tarjeta de débito
-                    WHEN t1.tiptrn = 49 AND t1.datref LIKE '%@P:01%' THEN 'EF'  -- Efectivo
-                    WHEN t1.tiptrn = 53 AND t1.datref LIKE '%@P:05%' THEN 'MO'  -- Monedero
-                    WHEN t1.tiptrn = 50 AND t1.datref LIKE '%@P:02%' THEN 'CH'  -- Cheque
-                    ELSE 'OT'
-                END AS mp
-            FROM SG12.dbo.Despachos t1
-            LEFT JOIN SG12.dbo.Clientes t2 ON t1.codcli = t2.cod
-            WHERE
-                t1.fchtrn BETWEEN ? AND ?
-                AND t2.tipval NOT IN (3, 4)
-                AND t1.codcli <> 21701354
-        )
-        SELECT
-            B.codcli,
-            B.den,
-            SUM(B.mto) AS monto,
-            COUNT(*)   AS n_despachos,
-            CASE
-                WHEN (   SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
-                       + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
-                       + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
-                       + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
-                       + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) = 0
-                    THEN 'Sin dato'
-                WHEN SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END) >=
-                     MAX(  SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
-                    THEN 'Tarjeta de crédito'
-                WHEN SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END) >=
-                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
-                    THEN 'Tarjeta de débito'
-                WHEN SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END) >=
-                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
-                    THEN 'Efectivo'
-                WHEN SUM(CASE WHEN B.mp='MO' THEN B.mto ELSE 0 END) >=
-                     MAX(  SUM(CASE WHEN B.mp='TC' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='TD' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='EF' THEN B.mto ELSE 0 END)
-                         + SUM(CASE WHEN B.mp='CH' THEN B.mto ELSE 0 END)) OVER ()
-                    THEN 'Monedero'
-                ELSE 'Cheque'
-            END AS metodo_pago
-        FROM B
-        GROUP BY B.codcli, B.den
-        ORDER BY SUM(B.mto) DESC
-    ";
+  public function anomalies_by_client(int $desde_eval_i, int $hasta_eval_i): array
+    {
+        $query = "
+/* ========= INPUT ========= */
+DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
+DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
 
-    $params = [$from, $until];
+/* ====== 1) HISTÓRICO (2 meses previos completos) ====== */
+DECLARE @desde_hist date = DATEFROMPARTS(
+    YEAR(DATEADD(MONTH, -3, @desde_eval)),
+    MONTH(DATEADD(MONTH, -3, @desde_eval)),
+    1
+);
+DECLARE @hasta_hist date = EOMONTH(DATEADD(MONTH, -1, @desde_eval));
 
-    return $this->sql->select($query, $params);
-}
+/* ====== 2) fchtrn (entero) ====== */
+DECLARE @desde_hist_i int = DATEDIFF(DAY,'1900-01-01',@desde_hist) + 1;
+DECLARE @hasta_hist_i int = DATEDIFF(DAY,'1900-01-01',@hasta_hist) + 1;
+DECLARE @desde_eval_i int = DATEDIFF(DAY,'1900-01-01',@desde_eval) + 1;
+DECLARE @hasta_eval_i int = DATEDIFF(DAY,'1900-01-01',@hasta_eval) + 1;
+
+/* ====== 3) Parámetros de umbral ====== */
+DECLARE @k_sigma  float = 3.0;   -- σ
+DECLARE @iqr_mult float = 1.5;   -- IQR
+
+;WITH
+-- Hist: facturas únicas por (cliente, día histórico)
+HistDaily AS (
+    SELECT  H.codopr, H.fchtrn, COUNT(*) AS cnt
+    FROM (
+        SELECT DISTINCT
+            [codopr (F)] AS codopr,
+            fchtrn,
+            nrofac
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @desde_hist_i AND @hasta_hist_i
+    ) H
+    GROUP BY H.codopr, H.fchtrn
+),
+-- Baseline por cliente (ventanas sobre el histórico)
+Baseline AS (
+    SELECT DISTINCT
+        codopr,
+        AVG(CAST(cnt AS float))  OVER (PARTITION BY codopr) AS media_hist,
+        STDEV(CAST(cnt AS float))OVER (PARTITION BY codopr) AS desv_hist,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY cnt) OVER (PARTITION BY codopr) AS q1_hist,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY cnt) OVER (PARTITION BY codopr) AS q3_hist
+    FROM HistDaily
+),
+-- Eval: facturas únicas por (cliente, día evaluado)
+EvalDaily AS (
+    SELECT  E.codopr, E.fchtrn, COUNT(*) AS facturas_dia
+    FROM (
+        SELECT DISTINCT
+            [codopr (F)] AS codopr,
+            fchtrn,
+            nrofac
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+    ) E
+    GROUP BY E.codopr, E.fchtrn
+)
+SELECT
+    ed.codopr                              AS codopr,
+    c.den                                  AS cliente,
+
+    -- Días anómalos (σ o IQR)
+    SUM(CASE
+            WHEN ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+              OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist)
+            THEN 1 ELSE 0
+        END)                                AS dias_anomalos,
+
+    CAST(SUM(CASE
+                WHEN ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+                  OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist)
+                THEN (ed.facturas_dia - b.media_hist) ELSE 0
+             END) AS decimal(18,2))         AS total_incremento_abs,
+
+    CAST(AVG(CASE
+                WHEN ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+                  OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist)
+                THEN (ed.facturas_dia - b.media_hist)
+             END) AS decimal(18,2))         AS prom_incremento_abs,
+
+    CAST(AVG(CASE
+                WHEN (   ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+                      OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist))
+                 AND NULLIF(b.media_hist,0) IS NOT NULL
+                THEN (ed.facturas_dia - b.media_hist) / b.media_hist * 100.0
+             END) AS decimal(18,2))         AS prom_incremento_pct,
+
+    CAST((
+        SUM(CASE
+                WHEN (   ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+                      OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist))
+                 AND NULLIF(b.desv_hist,0) IS NOT NULL
+                THEN (ed.facturas_dia - b.media_hist) / b.desv_hist
+                ELSE 0
+            END)
+        /
+        NULLIF(SUM(CASE
+                      WHEN (   ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+                            OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist))
+                       AND NULLIF(b.desv_hist,0) IS NOT NULL
+                      THEN 1 ELSE 0
+                  END),0)
+    ) AS decimal(18,2))                      AS prom_zscore,
+
+    -- === Nuevo: máximo de tickets en un día en el periodo evaluado ===
+    MAX(ed.facturas_dia)                     AS max_facturas_dia
+FROM EvalDaily ed
+JOIN Baseline b  ON b.codopr = ed.codopr
+LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = ed.codopr
+GROUP BY ed.codopr, c.den
+HAVING
+    SUM(CASE
+            WHEN ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+              OR ed.facturas_dia > b.q3_hist   + @iqr_mult * (b.q3_hist - b.q1_hist)
+            THEN 1 ELSE 0
+        END) > 0
+ORDER BY prom_zscore DESC, ed.codopr
+OPTION (RECOMPILE);
+";
+
+        // Orden de parámetros coincide con los ? del DECLARE
+        return $this->sql->select($query, [$desde_eval_i, $hasta_eval_i]);
+    }
+
 
 public function invoiced_dispatches_data() {
     $query = "

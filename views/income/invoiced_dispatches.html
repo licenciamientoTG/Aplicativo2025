@@ -1,130 +1,217 @@
 {% extends "views/layouts/base.html" %}
-
-{% block title %}Despachos Facturados{% endblock %}
-
-{% block mycss %}
-<style>
-    /* Estilos personalizados para la tabla */
-    tr.group,
-    tr.group:hover {
-        background-color: rgba(0, 0, 0, 0.1) !important;
-    }
-
-    :root.dark tr.group,
-    :root.dark tr.group:hover {
-        background-color: rgba(0, 0, 0, 0.75) !important;
-    }
-    .column_estation {
-        background-color: #add5e6 !important;
-        color: white !important;
-    }
-    .total_bg {
-        background-color: #48A1C7 !important;
-        color: white !important;
-    }
-    .total_bg2 {
-        background-color: #48A1C7 !important;
-        color: white !important;
-    }
-    .border_center {
-        border-top: 1px dotted  #358f92 !important;
-        border-bottom: 1px dotted  #358f92 !important;
-        border-left: 1px dotted #358f92 !important;
-        border-right: 1px dotted  #358f92 !important;
-    }
-    table.dataTable thead th, table.dataTable thead td {
-        padding: 10px 18px;
-        border-bottom: 1px solid #dee2e6;
-        background-color: #3485a8 !important;
-        color: #ffffff !important;
-    }
-    table.dataTable tfoot th, table.dataTable tfoot td {
-        padding: 10px 18px;
-        border-bottom: 1px solid #dee2e6;
-        background-color: #3485a8 !important;
-        color: #ffffff !important;
-    }
-    .border_OG {
-        border: 0.5px solid #0c202091 !important;
-        background-color: #6d7277e8;
-    }
-</style>
-{% endblock %}
-
-{% block menutitle %}Despachos Facturados{% endblock %}
+{% block title %}Anomalías por Cliente{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Anomalías por Cliente{% endblock %}
 
 {% block content %}
-<div class="row">
-    <!-- Tabla de despachos facturados -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="card-title">Despachos Facturados</h5>
-        </div>
-        <div class="card-body table-responsive" id="cont">
-            <table id="dispatches_table_2" class="table table-striped table-hover table-sm w-100">
-                <thead>
-                    <tr>
-                        <th>Nro Factura</th>
-                        <th>Nro Transacción</th>
-                        <th>Fecha Transacción</th>
-                        <th>Cliente</th>
-                        <th>Isla</th>
-                        <th>Estación</th>
-                        <th>Serie</th>
-                        <th>Concepto de Factura</th>
-                        <th>Monto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in dispatches %}
-                        <tr>
-                            <td>{{ row.nrofac }}</td>
-                            <td>{{ row.nrotrn }}</td>
-                            <td>{{ row.fchtrn }}</td>
-                            <td>{{ row.cliente }}</td>
-                            <td>{{ row.islaDen }}</td>
-                            <td>{{ row.Estacion }}</td>
-                            <td>{{ row.serie }}</td>
-                            <td>{{ row.conceptofac }}</td>
-                            <td>{{ row.monto | number_format(2, ',', '.') }}</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <th>Nro Factura</th>
-                        <th>Nro Transacción</th>
-                        <th>Fecha Transacción</th>
-                        <th>Cliente</th>
-                        <th>Isla</th>
-                        <th>Estación</th>
-                        <th>Serie</th>
-                        <th>Concepto de Factura</th>
-                        <th>Monto</th>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+<style>
+  tr.group, tr.group:hover { background-color: rgba(0,0,0,0.1) !important; }
+  :root.dark tr.group, :root.dark tr.group:hover { background-color: rgba(0,0,0,0.75) !important; }
+  .column_estation{ background-color:#add5e6 !important; color:#fff !important; }
+  .total_bg{ background-color:#48A1C7 !important; color:#fff !important; }
+  .total_bg2{ background-color:#48A1C7 !important; color:#fff !important; }
+  .border_center{
+    border-top:1px dotted #358f92 !important; border-bottom:1px dotted #358f92 !important;
+    border-left:1px dotted #358f92 !important; border-right:1px dotted #358f92 !important;
+  }
+  table.dataTable thead th, table.dataTable thead td{
+    padding:10px 18px; border-bottom:1px solid #dee2e6; background-color:#3485a8 !important; color:#fff !important;
+  }
+  table.dataTable tfoot th, table.dataTable tfoot td{
+    padding:10px 18px; border-bottom:1px solid #dee2e6; background-color:#3485a8 !important; color:#fff !important;
+  }
+  .border_OG{ border:0.5px solid #0c202091 !important; background-color:#6d7277e8; }
+
+  /* Barra de progreso (ancho de la tabla) */
+  #loadbar { height: 6px; background-color: rgba(52,133,168,0.2); display: none; overflow: hidden; }
+  #loadbar .progress-bar { height: 100%; background-color: #3485a8; transition: width .2s ease; width: 0%; }
+</style>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-sm-3">
+        <label class="col-form-label-sm">Desde</label>
+        <input type="date" id="from" class="form-control form-control-sm" value="{{ 'now'|date('Y-m-01') }}" required>
+      </div>
+      <div class="col-12 col-sm-3">
+        <label class="col-form-label-sm">Hasta</label>
+        <input type="date" id="until" class="form-control form-control-sm" value="{{ 'now'|date('Y-m-d') }}" required>
+      </div>
+      <div class="col-12 col-sm-3">
+        <button id="btn-run" class="btn btn-sm btn-primary w-100" style="margin-top: 15px;">Generar</button>
+      </div>
     </div>
+  </div>
+</div>
+
+<div class="card">
+
+    <div class="col-12 col-sm-3">
+  <div class="form-check form-switch mt-4">
+    <input class="form-check-input ms-1" type="checkbox" id="chk-10plus">
+    <label class="form-check-label ms-1" for="chk-10plus">
+      ≥ 10 tickets en un día
+    </label>
+  </div>
+</div>
+
+
+  <div class="card-header"><h5 class="mb-0">Anomalías por Cliente</h5></div>
+  <div class="card-body table-responsive">
+    <!-- Barra de progreso -->
+    <div id="loadbar" class="mb-2">
+      <div class="progress-bar" role="progressbar"></div>
+    </div>
+
+    <table id="anomalies_table" class="table table-striped table-hover table-sm w-100">
+      <thead>
+        <tr class="titles">
+          <th>Cod. Cliente (codopr)</th>
+          <th>Cliente</th>
+          <th>Días anómalos</th>
+          <th>Total inc. abs</th>
+          <th>Prom. inc. abs</th>
+          <th>Prom. inc. %</th>
+          <th>Prom. z-score</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr>
+          <th colspan="2" class="text-end">Totales:</th>
+          <th id="ft_dias" class="text-end"></th>
+          <th id="ft_total" class="text-end"></th>
+          <th id="ft_prom_abs" class="text-end"></th>
+          <th id="ft_prom_pct" className="text-end"></th>
+          <th id="ft_prom_z" class="text-end"></th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
 </div>
 {% endblock %}
 
 {% block myjs %}
-<script src="{{ JS }}income.js"></script>
 <script>
-    $(document).ready(function() {
-        // Inicializa la tabla con DataTables
-        $('#dispatches_table_2').DataTable({
-            order: [2, "desc"],  // Orden por Fecha Transacción
-            scrollY: '700px',
-            scrollX: true,
-            scrollCollapse: true,
-            paging: true,
-            dom: '<"top"Bf>rt<"bottom"lip>',
-            buttons: [
-                { extend: 'excel', className: 'btn btn-success', text: 'Exportar a Excel' }
-            ]
-        });
-    });
+
+    // --- Filtro global (registrar una sola vez) ---
+let filterRegistered = false;
+function registerTenPlusFilter(){
+  if (filterRegistered) return;
+  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+    if (settings.nTable && settings.nTable.id !== 'anomalies_table') return true;
+
+    const api = new $.fn.dataTable.Api(settings);
+    const row = api.row(dataIndex).data() || {};
+    const only10 = $('#chk-10plus').prop('checked');
+    if (!only10) return true;
+
+    // Si no viene el campo, lo tratamos como 0
+    const maxDia = Number(row.max_facturas_dia || 0);
+    return maxDia >= 10;
+  });
+  filterRegistered = true;
+}
+/* ===== Barra de progreso ===== */
+let progressTimer = null;
+let startTs = 0;
+let durationMs = 8000;
+
+function startLoadBar() {
+  stopLoadBar(true);
+  const $wrap = $('#loadbar');
+  const $bar  = $('#loadbar .progress-bar');
+  startTs = performance.now();
+  $bar.css('width', '0%');
+  $wrap.show();
+  progressTimer = setInterval(() => {
+    const elapsed = performance.now() - startTs;
+    const pct = Math.min(95, (elapsed / durationMs) * 95);
+    $bar.css('width', pct + '%');
+  }, 100);
+}
+function finishLoadBar() {
+  const $bar = $('#loadbar .progress-bar');
+  $bar.css('width', '100%');
+  stopLoadBar(false);
+  setTimeout(() => { $('#loadbar').fadeOut(150); }, 180);
+}
+function failLoadBar() { finishLoadBar(); }
+function stopLoadBar(resetToZero) {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  if (resetToZero) $('#loadbar .progress-bar').css('width','0%');
+}
+
+/* ===== Totales ===== */
+function updateFooters(api){
+  const rows = api.rows({ search: 'applied' }).data().toArray();
+  const sum = (arr, sel) => arr.reduce((s, r) => s + (parseFloat(sel(r)) || 0), 0);
+  const n = rows.length || 1;
+
+  $('#ft_dias').text(sum(rows, r => r.dias_anomalos).toLocaleString('es-MX'));
+  $('#ft_total').text(sum(rows, r => r.total_incremento_abs).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+  $('#ft_prom_abs').text((sum(rows, r => r.prom_incremento_abs) / n).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+  $('#ft_prom_pct').text((sum(rows, r => r.prom_incremento_pct) / n).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+  $('#ft_prom_z').text((sum(rows, r => r.prom_zscore) / n).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+}
+
+/* ===== DataTable (solo búsqueda global) ===== */
+function loadAnomalies(){
+  if ($.fn.DataTable.isDataTable('#anomalies_table')) {
+    $('#anomalies_table').DataTable().destroy();
+  }
+
+  registerTenPlusFilter(); // ← asegurar filtro registrado
+
+  const from  = $('#from').val();
+  const until = $('#until').val();
+
+  const dt = $('#anomalies_table').DataTable({
+    order: [[6, "desc"], [0, "asc"]],
+    colReorder: true,
+    dom: '<"top"Bfl>rt<"bottom"lip>',
+    searchDelay: 350,
+    scrollX: true,
+    scrollY: '60vh',
+    scrollCollapse: true,
+    paging: true,
+    pageLength: 50,
+    lengthMenu: [[10,25,50,100,250,500,-1],[10,25,50,100,250,500,"Todos"]],
+    //processing: true,
+    deferRender: true,
+    buttons: [{ extend: 'excel', className: 'btn btn-success', text: 'Excel' }],
+    ajax: {
+      type: 'POST',
+      url: '/income/anomalies_clients_table',
+      data: { from, until },
+      beforeSend: function(){ startLoadBar(); },
+      complete:    function(){ finishLoadBar(); },
+      error:       function(){ failLoadBar(); }
+    },
+    columns: [
+      { data: 'codopr', className: 'text-nowrap' },
+      { data: 'cliente' },
+      { data: 'dias_anomalos',        className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
+      { data: 'total_incremento_abs', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'prom_incremento_abs',  className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'prom_incremento_pct',  className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'prom_zscore',          className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) }
+      // NOTA: 'max_facturas_dia' viene en el JSON pero no lo mostramos en columnas
+    ],
+    initComplete: function(){ updateFooters(this.api()); }
+  });
+
+  // Redibuja al cambiar el checkbox
+  $('#chk-10plus').off('change').on('change', function(){
+    dt.draw();
+  });
+
+  dt.on('draw', function(){ updateFooters(dt); });
+}
+
+
+$('#btn-run').on('click', loadAnomalies);
+// $(document).ready(loadAnomalies);
 </script>
 {% endblock %}
