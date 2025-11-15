@@ -2759,7 +2759,7 @@ function getCFDIs($from, $codgas) {
     return $this->sql->select($query, []) ?: false;
 }
 
-function cfdi_comparison_advance($from, $until, $codgas = null, $bd, $server)
+function cfdi_comparison_advance($from, $until, $codgas, $bd, $server)
 {
     $query = "
         SELECT

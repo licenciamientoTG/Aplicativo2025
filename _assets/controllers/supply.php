@@ -1,4 +1,7 @@
 <?php
+// Incluir la clase generadora (ajusta la ruta según tu estructura)
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/GeneradorXMLPrecios.php';
+
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -18,6 +21,8 @@ use PhpOffice\PhpSpreadsheet\Helper\Sample;
 use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+
+
 class Supply{
     public $twig;
     public $route;
@@ -1118,10 +1123,102 @@ class Supply{
 
     function fuel_payments() {
         $stations = $this->gasolinerasModel->get_active_stations();
-
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
     }
-     function shops_fuel() {
+
+
+    function prices_xml() {
+        echo $this->twig->render($this->route . 'prices_xml.html');
+    }
+
+    function generar_xml_precios() {
+        try {
+            // Verificar que sea una petición POST
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                $this->responderJSON(false, 'Método no permitido. Use POST.');
+            }
+            
+            // Obtener y validar la hora
+            $hora = isset($_POST['hora']) ? trim($_POST['hora']) : '';
+            
+            if (empty($hora)) {
+                $this->responderJSON(false, 'La hora es requerida');
+            }
+            
+            // Validar formato de hora (HH:MM)
+            if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/', $hora)) {
+                $this->responderJSON(false, 'Formato de hora inválido. Use HH:MM (ej: 14:00)');
+            }
+
+            // Correos adicionales
+            $emailsExtra = isset($_POST['emails_extra']) ? (array)$_POST['emails_extra'] : [];
+            $emailsExtra = array_filter(array_map('trim', $emailsExtra)); // limpia vacíos
+
+            // Validar formato de correo (simple y suficiente)
+            foreach ($emailsExtra as $email) {
+                if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $this->responderJSON(false, "El correo '$email' no es válido");
+                }
+            }
+            
+            // Crear instancia y ejecutar
+            $generador = new GeneradorXMLPrecios();
+
+            // Pasar correos adicionales a la clase
+            if (!empty($emailsExtra)) {
+                $generador->setEmailsAdicionales($emailsExtra);
+            }
+
+            $resultado = $generador->generarYEnviarXML($hora);
+            
+            if ($resultado) {
+                // Contar archivos generados
+                $archivosXML = glob('xml_output/*.xml');
+                $totalArchivos = count($archivosXML);
+                
+                $this->responderJSON(
+                    true, 
+                    "XMLs generados y enviados correctamente con hora de aplicación: $hora",
+                    [
+                        'archivos_generados' => $totalArchivos,
+                        'hora_aplicacion' => $hora,
+                        'archivos' => array_map('basename', $archivosXML)
+                    ]
+                );
+            } else {
+                $errores = $generador->getErrores(); // Necesitarás agregar este método
+                $this->responderJSON(
+                    false, 
+                    'Error al generar o enviar los XMLs',
+                    ['errores' => $errores]
+                );
+            }
+            
+        } catch (Exception $e) {
+            // Log del error (opcional)
+            error_log("Error en generar_xml.php: " . $e->getMessage());
+            
+            $this->responderJSON(
+                false,
+                'Error del servidor: ' . $e->getMessage(),
+                ['error_details' => $e->getTraceAsString()]
+            );
+        }
+    }
+
+    // Función para responder en formato JSON
+    function responderJSON($success, $message, $data = []) {
+        // Configuración de headers para respuestas JSON
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(array_merge([
+            'success' => $success,
+            'message' => $message,
+            'timestamp' => date('Y-m-d H:i:s')
+        ], $data), JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    function shops_fuel() {
         $stations = $this->gasolinerasModel->get_active_stations();
 
         echo $this->twig->render($this->route . 'shops_fuel.html', compact('stations'));

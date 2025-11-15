@@ -1,0 +1,418 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Abastos - Precios XML{% endblock %}
+
+{% block mycss %}
+<style>
+    .xml-container {
+        max-width: 600px;
+        margin: 40px auto;
+        padding: 30px;
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .xml-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #e0e0e0;
+    }
+    
+    .xml-header h2 {
+        color: #333;
+        margin: 0 0 10px 0;
+        font-size: 24px;
+    }
+    
+    .xml-header p {
+        color: #666;
+        margin: 0;
+        font-size: 14px;
+    }
+    
+    .form-group {
+        margin-bottom: 25px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .form-group input[type="time"] {
+        width: 100%;
+        padding: 12px 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 16px;
+        transition: all 0.3s;
+        box-sizing: border-box;
+    }
+    
+    .form-group input[type="time"]:focus {
+        outline: none;
+        border-color: #4CAF50;
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+    }
+    
+    .btn-generate {
+        width: 100%;
+        padding: 14px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+    
+    .btn-generate:hover {
+        background: #45a049;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+    
+    .btn-generate:active {
+        transform: translateY(0);
+    }
+    
+    .btn-generate:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .spinner {
+        display: none;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .alert {
+        padding: 15px 20px;
+        border-radius: 6px;
+        margin-bottom: 20px;
+        display: none;
+        animation: slideDown 0.3s ease;
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .alert-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+    }
+    
+    .alert-icon {
+        display: inline-block;
+        margin-right: 8px;
+        font-size: 18px;
+    }
+    
+    .help-text {
+        font-size: 13px;
+        color: #666;
+        margin-top: 6px;
+        display: block;
+    }
+    
+    .info-box {
+        background: #f8f9fa;
+        border-left: 4px solid #4CAF50;
+        padding: 15px;
+        margin-bottom: 25px;
+        border-radius: 4px;
+    }
+    
+    .info-box p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+</style>
+{% endblock %}
+
+{% block menutitle %}Precios XML{% endblock %}
+
+{% block content %}
+<div class="xml-container">
+    <div class="xml-header">
+        <h2>📋 Generación de XML - Precios CRE</h2>
+        <p>Configura la hora de aplicación y genera los archivos XML</p>
+    </div>
+    
+    <div id="alertContainer"></div>
+    
+    <div class="info-box">
+        <p><strong>📌 Importante:</strong> Los archivos XML se generarán con la hora seleccionada y se enviarán automáticamente por correo electrónico.</p>
+    </div>
+    
+    <form id="formGenerarXML">
+        <div class="form-group">
+            <label for="horaAplicacion">
+                🕐 Hora de Aplicación
+            </label>
+            <input 
+                type="time" 
+                id="horaAplicacion" 
+                name="hora" 
+                required
+                step="3600"  {# 3600 segundos = 1 hora #}
+            />
+            <span class="help-text">Selecciona la hora en la que aplicarán los precios (formato 24 horas)</span>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">
+                        📧 Correos adicionales (opcionales)
+                    </label>
+                    
+                    <div class="vstack gap-2">
+                        <input 
+                            type="email" 
+                            name="emails_extra[]" 
+                            class="form-control"
+                            placeholder="correo1@ejemplo.com"
+                        >
+                        <input 
+                            type="email" 
+                            name="emails_extra[]" 
+                            class="form-control"
+                            placeholder="correo2@ejemplo.com"
+                        >
+                        <input 
+                            type="email" 
+                            name="emails_extra[]" 
+                            class="form-control"
+                            placeholder="correo3@ejemplo.com"
+                        >
+                    </div>
+
+                    <div class="form-text mt-2">
+                        Puedes agregar hasta 3 correos extra que recibirán copia de los XML.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <button type="submit" class="btn-generate" id="btnGenerar">
+            <span id="btnText">🚀 Generar y Enviar XML</span>
+            <div class="spinner" id="spinner"></div>
+        </button>
+    </form>
+
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script>
+$(document).ready(function() {
+    // Función para mostrar alertas
+    function mostrarAlerta(tipo, mensaje) {
+        const iconos = {
+            'success': '✅',
+            'error': '❌',
+            'info': 'ℹ️'
+        };
+        
+        const html = `
+            <div class="alert alert-${tipo}">
+                <span class="alert-icon">${iconos[tipo]}</span>
+                <span>${mensaje}</span>
+            </div>
+        `;
+        
+        $('#alertContainer').html(html).find('.alert').slideDown(300);
+        
+        // Auto-ocultar después de 5 segundos (solo en éxito)
+        if (tipo === 'success') {
+            setTimeout(function() {
+                $('#alertContainer .alert').slideUp(300, function() {
+                    $(this).remove();
+                });
+            }, 5000);
+        }
+    }
+    
+    // Función para cambiar estado del botón
+    function toggleBoton(cargando) {
+        const $btn = $('#btnGenerar');
+        const $btnText = $('#btnText');
+        const $spinner = $('#spinner');
+        
+        if (cargando) {
+            $btn.prop('disabled', true);
+            $btnText.text('Generando...');
+            $spinner.show();
+        } else {
+            $btn.prop('disabled', false);
+            $btnText.text('🚀 Generar y Enviar XML');
+            $spinner.hide();
+        }
+    }
+    
+    // Manejar envío del formulario
+    $('#formGenerarXML').on('submit', function(e) {
+        e.preventDefault();
+        
+        // Limpiar alertas previas
+        $('#alertContainer').empty();
+        
+        // Validar hora (antes de enviar)
+        const hora = $('#horaAplicacion').val();
+        if (!hora) {
+            mostrarAlerta('error', 'Por favor selecciona una hora válida');
+            return;
+        }
+
+        // Solo para que veas qué se va a mandar (debug)
+        // console.log($(this).serialize());
+
+        // Mostrar alerta de proceso iniciado
+        mostrarAlerta('info', 'Iniciando proceso de generación de XML...');
+        
+        // Cambiar estado del botón
+        toggleBoton(true);
+        
+        // Enviar petición AJAX con TODO el form
+        $.ajax({
+            url: '/supply/generar_xml_precios', // Cambia esta URL por tu endpoint
+            type: 'POST',
+            data: $(this).serialize(),   // 👈 AQUÍ LA CLAVE
+            dataType: 'json',
+            timeout: 60000, // 60 segundos de timeout
+            success: function(response) {
+                toggleBoton(false);
+                
+                if (response.success) {
+                    let mensaje = response.message || 'XML generado y enviado correctamente';
+                    
+                    // Agregar información adicional si existe
+                    if (response.archivos_generados) {
+                        mensaje += `<br><small>Archivos generados: ${response.archivos_generados}</small>`;
+                    }
+                    
+                    mostrarAlerta('success', mensaje);
+                    
+                    // Opcional: Resetear el formulario
+                    // $('#formGenerarXML')[0].reset();
+                } else {
+                    const mensajeError = response.message || 'Error desconocido al generar XML';
+                    mostrarAlerta('error', mensajeError);
+                    
+                    // Mostrar errores específicos si existen
+                    if (response.errores && response.errores.length > 0) {
+                        let detallesError = '<ul style="margin: 10px 0 0 20px;">';
+                        response.errores.forEach(function(error) {
+                            detallesError += `<li>${error}</li>`;
+                        });
+                        detallesError += '</ul>';
+                        
+                        $('#alertContainer .alert').append(detallesError);
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                toggleBoton(false);
+                
+                let mensajeError = 'Error al procesar la solicitud';
+                
+                if (status === 'timeout') {
+                    mensajeError = 'La solicitud tardó demasiado. El proceso podría continuar en segundo plano.';
+                } else if (xhr.status === 500) {
+                    mensajeError = 'Error del servidor. Verifica los logs del sistema.';
+                } else if (xhr.status === 404) {
+                    mensajeError = 'El archivo PHP no fue encontrado. Verifica la ruta.';
+                } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                    mensajeError = xhr.responseJSON.message;
+                }
+                
+                mostrarAlerta('error', `${mensajeError}<br><small>Detalles técnicos: ${error}</small>`);
+                
+                console.error('Error AJAX:', {
+                    status: status,
+                    error: error,
+                    xhr: xhr
+                });
+            }
+        });
+    });
+    
+    // Validación en tiempo real de la hora (solo horas cerradas)
+    $('#horaAplicacion').on('change', function() {
+        let hora = $(this).val();
+        if (!hora) {
+            return;
+        }
+
+        let [h] = hora.split(':');      // ignoramos los minutos
+        h = String(h).padStart(2, '0');
+        
+        const normalizada = `${h}:00`;
+        $(this).val(normalizada);
+
+        console.log('Hora seleccionada normalizada:', normalizada);
+    });
+
+    // ==========================
+    // Hora por defecto: ahora + 2 horas, minutos = 00
+    // ==========================
+    function setDefaultHour() {
+        const now = new Date();
+        now.setHours(now.getHours() + 2);
+        now.setMinutes(0, 0, 0);
+
+        const horas = String(now.getHours()).padStart(2, '0');
+        const minutos = '00';
+
+        $('#horaAplicacion').val(`${horas}:${minutos}`);
+        console.log('Hora por defecto asignada:', `${horas}:${minutos}`);
+    }
+
+    setDefaultHour();
+});
+</script>
+{% endblock %}
