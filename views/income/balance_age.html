@@ -83,6 +83,12 @@
   color: #b42318;
 }
 
+/* Chip para adeudo más antiguo (puedes personalizar colores si quieres) */
+#mailModalBA .client-chip--aging {
+  margin-left: .25rem;
+}
+
+/* Lista de clientes (modal) */
 .ba-client-list{
   max-height:45vh; overflow:auto;
   border:1px solid #e9ecef; border-radius:.5rem; padding:.5rem;
@@ -639,6 +645,19 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
         <button type="button" id="btnSelByTotVenc" class="btn btn-outline-primary">Aplicar</button>
       </div>
 
+      <!-- Selección por adeudo más antiguo (NUEVO) -->
+      <div class="input-group input-group-sm mb-2">
+        <span class="input-group-text">Seleccionar clientes cuyo adeudo más antiguo sea</span>
+        <select id="maxAgingBucket" class="form-select">
+          <option value="">(Cualquier rango)</option>
+          <option value="1-15">1-15 días</option>
+          <option value="16-30">16-30 días</option>
+          <option value="31-45">31-45 días</option>
+          <option value="45+">45+ días</option>
+        </select>
+        <button type="button" id="btnSelByAgingBucket" class="btn btn-outline-primary">Aplicar</button>
+      </div>
+
     </div>
   </div>
 
@@ -674,11 +693,15 @@ tr.group-total { background:#e2f0d9 !important; font-weight:700; }
                value="{{ c|e }}" id="cli_{{ loop.index }}"
                data-email="{{ c_mail }}" {{ c_mail ? '' : 'disabled' }}>
         <label class="form-check-label w-100" for="cli_{{ loop.index }}">
-          <div class="client-text">
-            <div class="client-name truncate-1" title="{{ c }}">{{ c }}</div>
-            {% if c_mail %}
-              <div class="client-email truncate-1 text-muted" title="{{ c_mail }}">{{ c_mail }}</div>
-            {% endif %}
+          <div class="d-flex align-items-center justify-content-between gap-2">
+            <div class="client-text">
+              <div class="client-name truncate-1" title="{{ c }}">{{ c }}</div>
+              {% if c_mail %}
+                <div class="client-email truncate-1 text-muted" title="{{ c_mail }}">{{ c_mail }}</div>
+              {% endif %}
+            </div>
+            <!-- Aquí irá el chip de adeudo más antiguo (lo rellena JS) -->
+            <div class="client-right"></div>
           </div>
         </label>
       </div>
@@ -747,11 +770,13 @@ document.addEventListener('DOMContentLoaded', function () {
   const btnNone  = document.getElementById('btnSelNoneClients');
   const modalEl  = document.getElementById('mailModalBA');
 
-  // Selección por % y por Total Vencido
-  const btnByPct      = document.getElementById('btnSelByPct');
-  const pctInput      = document.getElementById('pctThreshold');
-  const btnByTotVenc  = document.getElementById('btnSelByTotVenc');
-  const totVencInput  = document.getElementById('totVencThreshold');
+  // Selección por % y por Total Vencido y por adeudo más antiguo
+  const btnByPct         = document.getElementById('btnSelByPct');
+  const pctInput         = document.getElementById('pctThreshold');
+  const btnByTotVenc     = document.getElementById('btnSelByTotVenc');
+  const totVencInput     = document.getElementById('totVencThreshold');
+  const btnByAgingBucket = document.getElementById('btnSelByAgingBucket');
+  const agingBucketSelect= document.getElementById('maxAgingBucket');
 
   if (!wrap || !count) return;
 
@@ -828,6 +853,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     return map;
   }
+
   function buildTotVencMapFromTotales(useFiltered=true){
     const dt = window.dtBalance;
     if (!dt || !dt.rows) return null;
@@ -843,6 +869,66 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     return map;
   }
+
+  // NUEVO: mapa cliente -> adeudo más antiguo (1-15, 16-30, 31-45, 45+)
+  function buildMaxBucketMapFromTotales(useFiltered=true){
+    const dt = window.dtBalance;
+    if (!dt || !dt.rows) return {};
+    const src = useFiltered ? dt.rows({search:'applied'}) : dt.rows();
+    const map = {}; // key -> {priority, label}
+    src.every(function(){
+      const data = this.data();
+      const cli  = stripHTMLLocal(data?.[0] || '');
+      if (!cli) return;
+      const key = cli.toLowerCase();
+
+      const v115  = parseMoneyLocal(data?.[8]  || ''); // 1-15
+      const v1630 = parseMoneyLocal(data?.[9]  || ''); // 16-30
+      const v3145 = parseMoneyLocal(data?.[10] || ''); // 31-45
+      const v45   = parseMoneyLocal(data?.[11] || ''); // 45+
+
+      let pr = 0;
+      let label = '';
+      // Mayor prioridad = mayor atraso
+      if (v45   > 0.0001){ pr = 4; label = '45+';   }
+      else if (v3145 > 0.0001){ pr = 3; label = '31-45'; }
+      else if (v1630 > 0.0001){ pr = 2; label = '16-30'; }
+      else if (v115  > 0.0001){ pr = 1; label = '1-15'; }
+
+      if (pr === 0) return; // sin vencido
+
+      const prev = map[key];
+      if (!prev || pr > prev.priority){
+        map[key] = { priority: pr, label: label };
+      }
+    });
+
+    const out = {};
+    Object.keys(map).forEach(k => out[k] = map[k].label);
+    return out;
+  }
+
+  // Render de chips de adeudo más antiguo en la lista del modal
+  function renderAgingChips(){
+    const maxBucketMap = buildMaxBucketMapFromTotales(true) || {};
+    wrap.querySelectorAll('.ba-client-item').forEach(it => {
+      const chk  = it.querySelector('.chk-client');
+      if (!chk) return;
+      const cliKey = (chk.value || '').toLowerCase();
+      const bucket = maxBucketMap[cliKey];
+      const right  = it.querySelector('.client-right');
+      if (!right) return;
+
+      right.innerHTML = '';
+      if (!bucket) return; // cliente sin vencidos, no se muestra chip
+
+      const chip = document.createElement('span');
+      chip.className = 'client-chip client-chip--aging';
+      chip.textContent = bucket; // '1-15', '16-30', '31-45', '45+'
+      right.appendChild(chip);
+    });
+  }
+  window.baRenderAgingChips = renderAgingChips;
 
   // Debounce para el input de búsqueda
   if (search) {
@@ -894,7 +980,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // NUEVO: Selección por Total vencido (≥ umbral)
+  // Selección por Total vencido (≥ umbral)
   if (btnByTotVenc) {
     btnByTotVenc.addEventListener('click', function(){
       const raw = (totVencInput?.value || '').toString().replace(/[, ]/g,'');
@@ -923,6 +1009,35 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // NUEVO: selección por adeudo más antiguo
+  if (btnByAgingBucket) {
+    btnByAgingBucket.addEventListener('click', function(){
+      const bucket = (agingBucketSelect?.value || '').trim();
+      if (!bucket){
+        if (window.toastr) toastr.warning('Selecciona un rango de días.', 'Atención');
+        return;
+      }
+      const map = buildMaxBucketMapFromTotales(true) || {};
+      let selected = 0;
+      wrap.querySelectorAll('.chk-client').forEach(chk=>{
+        const key = (chk.value || '').toLowerCase();
+        const maxBucket = map[key];
+        if (maxBucket === bucket && !chk.disabled){
+          chk.checked = true;
+          selected++;
+        }
+      });
+      reorderListSelectedFirst();
+      renderAgingChips();
+      if (window.toastr){
+        toastr.info(
+          `Seleccionados ${selected} cliente(s) con adeudo más antiguo en ${bucket}`,
+          'Filtro por antigüedad'
+        );
+      }
+    });
+  }
+
   // Reordenar cuando se marque/desmarque manualmente
   wrap.addEventListener('change', function(e){
     if (e.target.classList.contains('chk-client')) {
@@ -930,14 +1045,16 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // Reset + reorden al abrir el modal
+  // Reset + reorden + chips al abrir el modal
   if (modalEl) {
     modalEl.addEventListener('shown.bs.modal', function(){
       if (search) { search.value = ''; }
       if (pctInput && !pctInput.value) pctInput.value = '50'; // default ejemplo
       if (totVencInput && !totVencInput.value) totVencInput.value = ''; // vacío por defecto
+      if (agingBucketSelect) agingBucketSelect.value = '';
       filterList('');
       reorderListSelectedFirst();
+      if (window.baRenderAgingChips) window.baRenderAgingChips();
     });
   }
 
@@ -1003,6 +1120,7 @@ document.addEventListener('DOMContentLoaded', function () {
     searching:true, paging:true, info:true, dom:'lfrtip',
     pageLength: -1,
     lengthMenu:[[25,50,100,250,500,-1],[25,50,100,250,500,'Todas']],
+
     language:{
       lengthMenu:'Mostrar _MENU_ entradas',
       info:'Mostrando _START_ a _END_ de _TOTAL_ entradas',
@@ -1265,7 +1383,6 @@ document.addEventListener('DOMContentLoaded', function () {
   })();
 
   // Exportar Excel (Facturas - todo lo visible)
-    // Exportar Excel (Facturas - todo lo visible)
   const btn2 = document.getElementById('btnExportXLS_det');
   if (btn2){
     function buildVisibleOnlyTable2(origTable, visibleIdx) {
@@ -1548,9 +1665,9 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
     'Vencido 31-45','Vencido 45+','Total Vencido'
   ]);
 
-  function stripHTML(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
-  function parseNumberLike(txt){
-    const t = stripHTML(txt);
+  function stripHTML_(s){ const d=document.createElement('div'); d.innerHTML = s || ''; return (d.textContent||'').trim(); }
+  function parseNumberLike_(txt){
+    const t = stripHTML_(txt);
     if (!/[0-9]/.test(t)) return null;
     const n = parseFloat(t.replace(/,/g,'')); // simple
     return isNaN(n) ? null : n;
@@ -1559,16 +1676,16 @@ function ba_buildClientWorkbookBase64({ tableId, dtInstance, widthMap, clientNam
   const rows = [];
   dtInstance.rows({ search:'applied' }).every(function(){
     const data = this.data();
-    const cliHidden = stripHTML(data[11] || '');
+    const cliHidden = stripHTML_(data[11] || '');
     if (cliHidden !== clientName) return;
 
     const row = visibleIdx.map((idx, j) => {
       const raw = data[idx];
       if (NUM_HEADERS.has(headers[j])) {
-        const n = parseNumberLike(raw);
-        return (n === null) ? stripHTML(raw) : n;
+        const n = parseNumberLike_(raw);
+        return (n === null) ? stripHTML_(raw) : n;
       }
-      return stripHTML(raw);
+      return stripHTML_(raw);
     });
     rows.push(row);
   });
@@ -1671,6 +1788,8 @@ document.addEventListener('DOMContentLoaded', function(){
       }
       // Reordenar seleccionados al inicio
       if (window.baReorderClientList) window.baReorderClientList();
+      // Renderizar chips de adeudo más antiguo
+      if (window.baRenderAgingChips) window.baRenderAgingChips();
     }
     document.getElementById('mailBody_ba').value = '';
     mailProgress.style.display = 'none';
