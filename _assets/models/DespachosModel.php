@@ -2508,9 +2508,9 @@ class DespachosModel extends Model{
  *
  * @return array
  */
-  public function anomalies_by_client(int $desde_eval_i, int $hasta_eval_i): array
-    {
-        $query = "
+public function anomalies_by_client(int $desde_eval_i, int $hasta_eval_i): array
+{
+    $query = "
 /* ========= INPUT ========= */
 DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
 DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
@@ -2569,6 +2569,44 @@ EvalDaily AS (
         WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
     ) E
     GROUP BY E.codopr, E.fchtrn
+),
+-- Por cada factura, cuántos productos distintos tiene
+EvalMulti AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        fchtrn,
+        nrofac,
+        COUNT(DISTINCT codprd) AS productos_distintos
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+    GROUP BY [codopr (F)], fchtrn, nrofac
+),
+-- Flag a nivel cliente: ¿tiene al menos una factura con >1 producto?
+MultiFlag AS (
+    SELECT
+        codopr,
+        MAX(CASE WHEN productos_distintos > 1 THEN 1 ELSE 0 END) AS tiene_factura_multi_prod
+    FROM EvalMulti
+    GROUP BY codopr
+),
+-- NUEVO: por cada factura, cuántos montos distintos tiene
+EvalMontos AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        fchtrn,
+        nrofac,
+        COUNT(DISTINCT mto) AS montos_distintos
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+    GROUP BY [codopr (F)], fchtrn, nrofac
+),
+-- NUEVO: flag a nivel cliente: ¿tiene al menos una factura con montos distintos?
+MontosFlag AS (
+    SELECT
+        codopr,
+        MAX(CASE WHEN montos_distintos > 1 THEN 1 ELSE 0 END) AS tiene_factura_montos_diferentes
+    FROM EvalMontos
+    GROUP BY codopr
 )
 SELECT
     ed.codopr                              AS codopr,
@@ -2617,12 +2655,21 @@ SELECT
                   END),0)
     ) AS decimal(18,2))                      AS prom_zscore,
 
-    -- === Nuevo: máximo de tickets en un día en el periodo evaluado ===
-    MAX(ed.facturas_dia)                     AS max_facturas_dia
+    -- Máximo de tickets en un día en el periodo evaluado
+    MAX(ed.facturas_dia)                     AS max_facturas_dia,
+
+    -- Flag “tiene al menos una factura con varios productos”
+    ISNULL(mf.tiene_factura_multi_prod, 0)   AS tiene_factura_multi_prod,
+
+    -- NUEVO: flag “tiene al menos una factura con montos distintos”
+    ISNULL(mf2.tiene_factura_montos_diferentes, 0) AS tiene_factura_montos_diferentes
+
 FROM EvalDaily ed
 JOIN Baseline b  ON b.codopr = ed.codopr
+LEFT JOIN MultiFlag  mf  ON mf.codopr  = ed.codopr
+LEFT JOIN MontosFlag mf2 ON mf2.codopr = ed.codopr
 LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = ed.codopr
-GROUP BY ed.codopr, c.den
+GROUP BY ed.codopr, c.den, mf.tiene_factura_multi_prod, mf2.tiene_factura_montos_diferentes
 HAVING
     SUM(CASE
             WHEN ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
@@ -2633,9 +2680,253 @@ ORDER BY prom_zscore DESC, ed.codopr
 OPTION (RECOMPILE);
 ";
 
-        // Orden de parámetros coincide con los ? del DECLARE
-        return $this->sql->select($query, [$desde_eval_i, $hasta_eval_i]);
-    }
+    return $this->sql->select($query, [$desde_eval_i, $hasta_eval_i]);
+}
+
+
+public function anomalies_by_client_days(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
+{
+    $query = "
+/* ====== PARÁMETROS (desde/hasta vienen como enteros) ====== */
+DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
+DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
+DECLARE @codopr     int  = ?;
+
+DECLARE @k_sigma float = 3.0;   -- umbral σ
+DECLARE @iqr_mult float = 1.5;  -- umbral IQR
+
+/* ====== 1) HISTÓRICO (2 meses previos completos) ====== */
+DECLARE @desde_hist date = DATEFROMPARTS(
+    YEAR(DATEADD(MONTH, -3, @desde_eval)),
+    MONTH(DATEADD(MONTH, -3, @desde_eval)),
+    1
+);
+DECLARE @hasta_hist date = EOMONTH(DATEADD(MONTH, -1, @desde_eval));
+
+/* ====== 2) fchtrn (entero) ====== */
+DECLARE @desde_hist_i int = DATEDIFF(DAY,'1900-01-01',@desde_hist)+1;
+DECLARE @hasta_hist_i int = DATEDIFF(DAY,'1900-01-01',@hasta_hist)+1;
+DECLARE @desde_eval_i int = DATEDIFF(DAY,'1900-01-01',@desde_eval)+1;
+DECLARE @hasta_eval_i int = DATEDIFF(DAY,'1900-01-01',@hasta_eval)+1;
+
+/* ====== 3) HISTÓRICO diario ====== */
+;WITH Hist AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        CAST(DATEADD(DAY, fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha,
+        COUNT(DISTINCT nrofac) AS cnt_facturas_dia
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_hist_i AND @hasta_hist_i
+      AND [codopr (F)] = @codopr
+    GROUP BY [codopr (F)],
+             CAST(DATEADD(DAY, fchtrn - 1, CONVERT(date,'1900-01-01')) AS date)
+),
+Baseline AS (
+    SELECT DISTINCT
+        codopr,
+        AVG(CAST(cnt_facturas_dia AS float))  OVER (PARTITION BY codopr) AS media_hist,
+        STDEV(CAST(cnt_facturas_dia AS float))OVER (PARTITION BY codopr) AS desv_hist,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY cnt_facturas_dia)
+            OVER (PARTITION BY codopr) AS q1_hist,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY cnt_facturas_dia)
+            OVER (PARTITION BY codopr) AS q3_hist,
+        COUNT(*) OVER (PARTITION BY codopr) AS dias_hist
+    FROM Hist
+),
+EvalDaily AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        CAST(DATEADD(DAY, fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha,
+        COUNT(DISTINCT nrofac) AS facturas_dia
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+      AND [codopr (F)] = @codopr
+    GROUP BY [codopr (F)],
+             CAST(DATEADD(DAY, fchtrn - 1, CONVERT(date,'1900-01-01')) AS date)
+)
+SELECT
+    e.codopr                                       AS codopr,
+    e.fecha,
+    e.facturas_dia,
+    CAST(b.media_hist AS decimal(18,2))            AS baseline_media_hist,
+    CAST(b.desv_hist  AS decimal(18,2))            AS baseline_desv_hist,
+    CAST(b.q1_hist    AS decimal(18,2))            AS q1_hist,
+    CAST(b.q3_hist    AS decimal(18,2))            AS q3_hist,
+    CAST((e.facturas_dia - b.media_hist) / NULLIF(b.desv_hist,0)
+         AS decimal(18,2))                         AS zscore_hist,
+    CAST((e.facturas_dia - b.media_hist) / NULLIF(NULLIF(b.media_hist,0),0) * 100.0
+         AS decimal(18,2))                         AS incremento_pct_vs_hist,
+    1                                              AS es_anomalia
+FROM EvalDaily e
+JOIN Baseline b
+  ON b.codopr = e.codopr
+WHERE
+    e.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+    OR e.facturas_dia > b.q3_hist  + @iqr_mult * (b.q3_hist - b.q1_hist)
+ORDER BY zscore_hist DESC, e.fecha, e.codopr
+OPTION (RECOMPILE);
+";
+
+    return $this->sql->select($query, [
+        $desde_eval_i,
+        $hasta_eval_i,
+        $codopr
+    ]);
+}
+
+
+public function anomalies_by_client_tickets(int $desde_eval_i, int $hasta_eval_i, int $codopr): array
+{
+    $query = "
+DECLARE @desde_int int = ?;
+DECLARE @hasta_int int = ?;
+DECLARE @codopr   int = ?;
+
+;WITH D AS (
+    SELECT
+        nrotrn, codgas, nrobom, fchtrn, hratrn, fchcor, nrotur,
+        codprd, can, mto, codcli, codisl, codres, nrofac, tiptrn, datref, satuid, satrfc
+    FROM SG12.dbo.Despachos WITH (NOLOCK)
+    WHERE nrofac > 0
+      AND fchtrn BETWEEN @desde_int AND @hasta_int
+),
+DC AS (
+    SELECT nro, codgas, codopr, tip, satuid
+    FROM SG12.dbo.DocumentosC WITH (NOLOCK)
+    WHERE codopr NOT IN (21701354, 1710801)
+      AND codopr = @codopr
+),
+C AS (
+    SELECT cod, den
+    FROM SG12.dbo.Clientes WITH (NOLOCK)
+    WHERE tipval NOT IN (3,4)
+)
+SELECT
+      t1.nrotrn
+    , t1.codgas
+    , g.abr                 AS estacion
+    , t1.nrobom
+    , t1.fchtrn
+    , t2.tip
+    , CAST(DATEADD(DAY, t1.fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha
+    , t1.hratrn
+    , t1.fchcor
+    , t1.nrotur
+    , t1.codprd
+    , p.den                 AS nomPrd
+    , t1.can
+    , t1.mto
+    , t1.codcli             AS codcli_d
+    , c.den                 AS nombreCliente
+    , t2.codopr             AS codopr_f
+    , t1.codisl
+    , i.den                 AS isla
+    , t1.codres
+    , CASE WHEN t1.codres = 0 THEN 'No encontrado' ELSE r.den END AS responsable
+    , t1.nrofac
+    , calc.Factura          AS factura
+    , calc.serie
+    , calc.conceptofac
+    , t1.tiptrn
+    , t1.datref
+    , t1.satuid
+    , t1.satrfc
+FROM D AS t1
+JOIN DC AS t2
+  ON t1.nrofac = t2.nro
+ AND t1.codgas = t2.codgas
+JOIN C  AS c
+  ON t2.codopr = c.cod
+JOIN SG12.dbo.Gasolineras  AS g ON t1.codgas = g.cod
+JOIN SG12.dbo.Productos    AS p ON t1.codprd = p.cod
+LEFT JOIN SG12.dbo.Responsables AS r ON t1.codres = r.cod
+LEFT JOIN SG12.dbo.Islas        AS i ON t1.codisl = i.cod
+CROSS APPLY (
+    SELECT n2 = (t2.nro / 100000000)
+) k
+CROSS APPLY (
+    SELECT
+        Factura =
+            CASE WHEN t1.nrofac BETWEEN 1000000000 AND 2499999999
+                 THEN t1.nrofac - ((t1.nrofac / 100000000) * 100000000)
+                 ELSE t1.nrofac
+            END,
+        serie =
+            CASE k.n2
+                WHEN 10 THEN 'B' WHEN 11 THEN 'C' WHEN 12 THEN 'D' WHEN 13 THEN 'E'
+                WHEN 14 THEN 'F' WHEN 15 THEN 'G' WHEN 16 THEN 'H' WHEN 17 THEN 'I'
+                WHEN 18 THEN 'J' WHEN 19 THEN 'K' WHEN 20 THEN 'T'
+                WHEN 21 THEN 'Z' WHEN 22 THEN 'Z' WHEN 23 THEN 'Z' WHEN 24 THEN 'Z'
+                ELSE 'Unknown'
+            END,
+        conceptofac =
+            CASE k.n2
+                WHEN 10 THEN 'Contado Independencia'
+                WHEN 11 THEN 'Contado'
+                WHEN 12 THEN 'Anticipos'
+                WHEN 13 THEN 'Consumos'
+                WHEN 14 THEN 'Notas de crédito'
+                WHEN 15 THEN 'Notas de crédito'
+                WHEN 16 THEN 'Web'
+                WHEN 17 THEN 'Crédito'
+                WHEN 18 THEN 'Crédito'
+                WHEN 19 THEN 'Web'
+                WHEN 20 THEN 'Terminales'
+                WHEN 21 THEN 'Global' WHEN 22 THEN 'Global' WHEN 23 THEN 'Global' WHEN 24 THEN 'Global'
+                ELSE ''
+            END
+) calc
+ORDER BY fecha DESC, t1.hratrn ASC
+OPTION (RECOMPILE);
+";
+
+    return $this->sql->select($query, [
+        $desde_eval_i,
+        $hasta_eval_i,
+        $codopr
+    ]);
+}
+
+
+public function anomalies_clients_totals(int $desde_eval_i, int $hasta_eval_i): array
+{
+    $query = "
+DECLARE @desde_int int = ?;
+DECLARE @hasta_int int = ?;
+
+;WITH V AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        nombreCliente,
+        nrotrn,
+        nrofac,
+        codgas,
+        can,
+        mto
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_int AND @hasta_int
+)
+SELECT
+      v.codopr                         AS codopr
+    , MIN(v.nombreCliente)             AS nombreCliente
+    , COUNT(DISTINCT v.nrotrn)         AS n_despachos
+    , COUNT(DISTINCT v.nrofac)         AS facturas_unicas
+    , SUM(v.mto)                       AS total_mto
+FROM V AS v
+GROUP BY v.codopr
+ORDER BY v.codopr
+OPTION (RECOMPILE);
+";
+
+    return $this->sql->select($query, [
+        $desde_eval_i,
+        $hasta_eval_i
+    ]);
+}
+
+
+
+
 
 
 

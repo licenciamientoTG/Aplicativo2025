@@ -754,9 +754,9 @@ function invoice_client_desp(){
         ]);
     }
 
+    
 public function anomalies_clients_table()
 {
-    // Cabeceras y buffer limpio
     header('Content-Type: application/json; charset=UTF-8');
     while (ob_get_level()) { ob_end_clean(); }
     ob_start();
@@ -777,27 +777,60 @@ public function anomalies_clients_table()
         $desde_eval_i = dateToInt($from);
         $hasta_eval_i = dateToInt($until);
 
-        // Validación sencilla
         if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
             http_response_code(400);
             echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas inválidas']);
             return;
         }
 
-        $rows = $this->despachosModel->anomalies_by_client($desde_eval_i, $hasta_eval_i);
+        // 1) Consulta de anomalías (ya existente)
+        $rowsAnom = $this->despachosModel->anomalies_by_client(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i
+        );
+
+        // 2) Nueva consulta de totales (despachos / facturas / monto)
+        $rowsTot = $this->despachosModel->anomalies_clients_totals(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i
+        );
+
+        // Indexar totales por codopr para merge rápido
+        $totalesPorCodopr = [];
+        foreach ($rowsTot as $t) {
+            $cod = $t['codopr'] ?? null;
+            if ($cod === null) continue;
+            $totalesPorCodopr[$cod] = $t;
+        }
 
         $data = [];
-        foreach ($rows as $r) {
+        foreach ($rowsAnom as $r) {
+            $codopr = $r['codopr'] ?? null;
+
+            $tot = $codopr !== null && isset($totalesPorCodopr[$codopr])
+                ? $totalesPorCodopr[$codopr]
+                : [
+                    'n_despachos'     => 0,
+                    'facturas_unicas' => 0,
+                    'total_mto'       => 0,
+                ];
+
             $data[] = [
-                'codopr'               => $r['codopr'] ?? null,
-                'cliente'              => $r['cliente'] ?? '',
-                'dias_anomalos'        => (int)($r['dias_anomalos'] ?? 0),
-                'total_incremento_abs' => (float)($r['total_incremento_abs'] ?? 0),
-                'prom_incremento_abs'  => (float)($r['prom_incremento_abs'] ?? 0),
-                'prom_incremento_pct'  => (float)($r['prom_incremento_pct'] ?? 0),
-                'prom_zscore'          => (float)($r['prom_zscore'] ?? 0),
-                // Nuevo campo para el checkbox de ≥10 tickets en un día:
-                'max_facturas_dia'     => (int)($r['max_facturas_dia'] ?? 0),
+                'codopr'       => $codopr,
+                'cliente'      => $r['cliente'] ?? '',
+
+                'dias_anomalos' => (int)($r['dias_anomalos'] ?? 0),
+                'prom_zscore'   => (float)($r['prom_zscore'] ?? 0),
+
+                // NUEVOS CAMPOS (de la segunda consulta)
+                'n_despachos'     => (int)($tot['n_despachos'] ?? 0),
+                'facturas_unicas' => (int)($tot['facturas_unicas'] ?? 0),
+                'total_mto'       => (float)($tot['total_mto'] ?? 0),
+
+                // Campos auxiliares para filtros
+                'max_facturas_dia'             => (int)($r['max_facturas_dia'] ?? 0),
+                'tiene_factura_multi_prod'     => (int)($r['tiene_factura_multi_prod'] ?? 0),
+                'tiene_factura_montos_diferentes' => (int)($r['tiene_factura_montos_diferentes'] ?? 0),
             ];
         }
 
@@ -817,6 +850,154 @@ public function anomalies_clients_table()
     }
 }
 
+
+
+public function anomalies_client_days()
+{
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
+
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
+
+        $from   = $_POST['from']   ?? null;
+        $until  = $_POST['until']  ?? null;
+        $codopr = $_POST['codopr'] ?? null;
+
+        if (!$from || !$until || !$codopr) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $rows = $this->despachosModel->anomalies_by_client_days(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i,
+            (int)$codopr
+        );
+
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                'codopr'                  => $r['codopr'] ?? null,
+                'fecha'                   => $r['fecha'] ?? null,
+                'facturas_dia'            => (int)($r['facturas_dia'] ?? 0),
+                'baseline_media_hist'     => (float)($r['baseline_media_hist'] ?? 0),
+                'baseline_desv_hist'      => (float)($r['baseline_desv_hist'] ?? 0),
+                'q1_hist'                 => (float)($r['q1_hist'] ?? 0),
+                'q3_hist'                 => (float)($r['q3_hist'] ?? 0),
+                'zscore_hist'             => (float)($r['zscore_hist'] ?? 0),
+                'incremento_pct_vs_hist'  => (float)($r['incremento_pct_vs_hist'] ?? 0),
+                'es_anomalia'             => (int)($r['es_anomalia'] ?? 0),
+            ];
+        }
+
+        http_response_code(200);
+        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES CLIENT DAYS ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data'    => [],
+            'error'   => true,
+            'message' => 'Error interno al generar el detalle de días'
+        ]);
+    } finally {
+        ob_end_flush();
+    }
+}
+
+
+public function anomalies_client_tickets()
+{
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
+
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
+
+        $from   = $_POST['from']   ?? null;
+        $until  = $_POST['until']  ?? null;
+        $codopr = $_POST['codopr'] ?? null;
+
+        if (!$from || !$until || !$codopr) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
+            http_response_code(400);
+            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $rows = $this->despachosModel->anomalies_by_client_tickets(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i,
+            (int)$codopr
+        );
+
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                'fecha'          => $r['fecha'] ?? null,
+                'hratrn'         => $r['hratrn'] ?? null,
+                'nrotrn'         => (int)($r['nrotrn'] ?? 0),
+                'nrofac'         => (int)($r['nrofac'] ?? 0),
+                'factura'        => (int)($r['factura'] ?? 0),
+                'serie'          => $r['serie'] ?? '',
+                'conceptofac'    => $r['conceptofac'] ?? '',
+                'codgas'         => (int)($r['codgas'] ?? 0),
+                'estacion'       => $r['estacion'] ?? '',
+                'codprd'         => (int)($r['codprd'] ?? 0),
+                'nomPrd'         => $r['nomPrd'] ?? '',
+                'can'            => (float)($r['can'] ?? 0),
+                'mto'            => (float)($r['mto'] ?? 0),
+                'codcli_d'       => (int)($r['codcli_d'] ?? 0),
+                'nombreCliente'  => $r['nombreCliente'] ?? '',
+                'codopr_f'       => (int)($r['codopr_f'] ?? 0),
+                'isla'           => $r['isla'] ?? '',
+                'responsable'    => $r['responsable'] ?? '',
+                'tiptrn'         => $r['tiptrn'] ?? '',
+                'datref'         => $r['datref'] ?? '',
+                'satuid'         => $r['satuid'] ?? '',
+                'satrfc'         => $r['satrfc'] ?? '',
+            ];
+        }
+
+        http_response_code(200);
+        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES CLIENT TICKETS ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data'    => [],
+            'error'   => true,
+            'message' => 'Error interno al generar la lista de tickets'
+        ]);
+    } finally {
+        ob_end_flush();
+    }
+}
 
 
 
