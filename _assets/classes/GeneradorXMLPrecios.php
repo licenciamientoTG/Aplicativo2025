@@ -25,7 +25,7 @@ class GeneradorXMLPrecios {
         'password' => 'sysdhepknmlkigbs',
         'smtp_server' => 'smtp.gmail.com',
         'smtp_port' => 465,
-        'to' => 'aldo.ochoa@totalgas.com'
+        'to' => 'aldo.ochoa@totalgas.com,claudia.martinez@totalgas.com'
     ];
     
     private $errores = [];
