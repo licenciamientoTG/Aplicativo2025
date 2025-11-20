@@ -2924,6 +2924,152 @@ OPTION (RECOMPILE);
     ]);
 }
 
+public function anomalies_client_totals_period(int $desde_int, int $hasta_int, int $codopr): array
+{
+    $query = "
+DECLARE @desde_int int = ?;
+DECLARE @hasta_int int = ?;
+DECLARE @codopr     int = ?;
+
+;WITH V AS (
+    SELECT
+        [codopr (F)] AS codopr,
+        nombreCliente,
+        nrotrn,
+        nrofac,
+        codgas,
+        can,
+        mto
+    FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+    WHERE fchtrn BETWEEN @desde_int AND @hasta_int
+      AND [codopr (F)] = @codopr
+)
+SELECT
+      v.codopr                                     AS codopr
+    , MIN(v.nombreCliente)                         AS nombreCliente
+    , COUNT(DISTINCT v.nrotrn)                     AS n_despachos
+    , COUNT(DISTINCT v.nrofac)                     AS facturas_unicas
+    , COUNT(DISTINCT CAST(CONCAT(v.nrofac,':',v.codgas) AS nvarchar(40)))
+                                                  AS facturas_codgas_unicas
+    , SUM(v.can)                                   AS total_cant
+    , SUM(v.mto)                                   AS total_mto
+FROM V AS v
+GROUP BY v.codopr
+ORDER BY v.codopr
+OPTION (RECOMPILE);
+";
+
+    return $this->sql->select($query, [
+        $desde_int,
+        $hasta_int,
+        $codopr
+    ]);
+}
+
+
+public function anomalies_top_station(int $desde_eval_i, int $hasta_eval_i): array
+{
+    $query = "
+/* ========= INPUT ========= */
+DECLARE @desde_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
+DECLARE @hasta_eval date = DATEADD(DAY, ? - 1, '1900-01-01');
+
+/* ====== 1) HISTÓRICO (2 meses previos completos) ====== */
+DECLARE @desde_hist date = DATEFROMPARTS(
+    YEAR(DATEADD(MONTH, -3, @desde_eval)),
+    MONTH(DATEADD(MONTH, -3, @desde_eval)),
+    1
+);
+DECLARE @hasta_hist date = EOMONTH(DATEADD(MONTH, -1, @desde_eval));
+
+/* ====== 2) fchtrn (entero) ====== */
+DECLARE @desde_hist_i int = DATEDIFF(DAY,'1900-01-01',@desde_hist) + 1;
+DECLARE @hasta_hist_i int = DATEDIFF(DAY,'1900-01-01',@hasta_hist) + 1;
+DECLARE @desde_eval_i int = DATEDIFF(DAY,'1900-01-01',@desde_eval) + 1;
+DECLARE @hasta_eval_i int = DATEDIFF(DAY,'1900-01-01',@hasta_eval) + 1;
+
+/* ====== 3) Parámetros de umbral ====== */
+DECLARE @k_sigma  float = 3.0;   -- σ
+DECLARE @iqr_mult float = 1.5;   -- IQR
+
+;WITH
+-- Hist: facturas únicas por (cliente, día histórico)
+HistDaily AS (
+    SELECT  H.codopr, H.fchtrn, COUNT(*) AS cnt
+    FROM (
+        SELECT DISTINCT
+            [codopr (F)] AS codopr,
+            fchtrn,
+            nrofac
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @desde_hist_i AND @hasta_hist_i
+    ) H
+    GROUP BY H.codopr, H.fchtrn
+),
+-- Baseline por cliente (ventanas sobre el histórico)
+Baseline AS (
+    SELECT DISTINCT
+        codopr,
+        AVG(CAST(cnt AS float))  OVER (PARTITION BY codopr) AS media_hist,
+        STDEV(CAST(cnt AS float))OVER (PARTITION BY codopr) AS desv_hist,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY cnt) OVER (PARTITION BY codopr) AS q1_hist,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY cnt) OVER (PARTITION BY codopr) AS q3_hist
+    FROM HistDaily
+),
+-- Eval: facturas únicas por (cliente, día evaluado)
+EvalDaily AS (
+    SELECT  E.codopr, E.fchtrn, COUNT(*) AS facturas_dia
+    FROM (
+        SELECT DISTINCT
+            [codopr (F)] AS codopr,
+            fchtrn,
+            nrofac
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+    ) E
+    GROUP BY E.codopr, E.fchtrn
+),
+-- Días anómalos por cliente
+AnomDays AS (
+    SELECT
+        ed.codopr,
+        ed.fchtrn
+    FROM EvalDaily ed
+    JOIN Baseline b
+      ON b.codopr = ed.codopr
+    WHERE
+        ed.facturas_dia > b.media_hist + @k_sigma * ISNULL(b.desv_hist,0)
+        OR ed.facturas_dia > b.q3_hist  + @iqr_mult * (b.q3_hist - b.q1_hist)
+),
+-- Tickets por estación en días anómalos
+TicketsPorEstacion AS (
+    SELECT
+        v.codgas,
+        v.Estacion,
+        COUNT(*) AS tickets_anomalos
+    FROM TG.dbo.vw_DespachosConFactura v WITH (NOLOCK)
+    JOIN AnomDays a
+      ON a.codopr = v.[codopr (F)]
+     AND a.fchtrn = v.fchtrn
+    WHERE v.fchtrn BETWEEN @desde_eval_i AND @hasta_eval_i
+    GROUP BY v.codgas, v.Estacion
+)
+SELECT
+    codgas,
+    Estacion,
+    tickets_anomalos
+FROM TicketsPorEstacion
+ORDER BY tickets_anomalos DESC, Estacion
+OPTION (RECOMPILE);
+";
+
+    return $this->sql->select($query, [
+        $desde_eval_i,
+        $hasta_eval_i
+    ]);
+}
+
+
 
 
 

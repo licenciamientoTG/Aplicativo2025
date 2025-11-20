@@ -754,6 +754,208 @@ function invoice_client_desp(){
         ]);
     }
 
+    public function anomalies_top_station()
+{
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
+
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
+
+        $from  = $_POST['from']  ?? null;
+        $until = $_POST['until'] ?? null;
+
+        if (!$from || !$until) {
+            http_response_code(400);
+            echo json_encode([
+                'data'    => [],
+                'error'   => true,
+                'message' => 'Parámetros inválidos'
+            ]);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
+            http_response_code(400);
+            echo json_encode([
+                'data'    => [],
+                'error'   => true,
+                'message' => 'Fechas inválidas'
+            ]);
+            return;
+        }
+
+        $rows = $this->despachosModel->anomalies_top_station(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i
+        );
+
+        $data = [];
+        foreach ($rows as $r) {
+            $data[] = [
+                'codgas'           => (int)($r['codgas'] ?? 0),
+                // en la vista el alias es Estacion con mayúscula
+                'estacion'         => $r['Estacion'] ?? ($r['estacion'] ?? ''),
+                'tickets_anomalos' => (int)($r['tickets_anomalos'] ?? 0),
+            ];
+        }
+
+        http_response_code(200);
+        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES TOP STATION ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data'    => [],
+            'error'   => true,
+            'message' => 'Error interno al calcular la estación con más tickets en días anómalos'
+        ]);
+    } finally {
+        ob_end_flush();
+    }
+}
+
+public function anomalies_client_summary()
+{
+    header('Content-Type: application/json; charset=UTF-8');
+    while (ob_get_level()) { ob_end_clean(); }
+    ob_start();
+
+    try {
+        ini_set('display_errors', '0');
+        set_time_limit(300);
+
+        $from   = $_POST['from']   ?? null;
+        $until  = $_POST['until']  ?? null;
+        $codopr = $_POST['codopr'] ?? null;
+
+        if (!$from || !$until || !$codopr) {
+            http_response_code(400);
+            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $desde_eval_i = dateToInt($from);
+        $hasta_eval_i = dateToInt($until);
+
+        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
+            http_response_code(400);
+            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+
+        $codoprInt = (int)$codopr;
+
+        // 1) Totales del periodo evaluado
+        $rowsEval = $this->despachosModel->anomalies_client_totals_period(
+            (int)$desde_eval_i,
+            (int)$hasta_eval_i,
+            $codoprInt
+        );
+
+        // 2) Cálculo de los 3 meses históricos previos,
+        // igual que en anomalies_by_client (3 meses completos anteriores)
+        $desdeEvalDate = new \DateTime($from);
+
+        // mes -3: primer día 3 meses antes
+        $m1Start = (clone $desdeEvalDate)->modify('first day of -3 month');
+        $m1End   = (clone $m1Start)->modify('last day of this month');
+
+        // mes -2
+        $m2Start = (clone $m1Start)->modify('first day of +1 month');
+        $m2End   = (clone $m2Start)->modify('last day of this month');
+
+        // mes -1
+        $m3Start = (clone $m2Start)->modify('first day of +1 month');
+        $m3End   = (clone $m3Start)->modify('last day of this month');
+
+        // convertir a enteros fchtrn
+        $m1Desde_i = dateToInt($m1Start->format('Y-m-d'));
+        $m1Hasta_i = dateToInt($m1End->format('Y-m-d'));
+
+        $m2Desde_i = dateToInt($m2Start->format('Y-m-d'));
+        $m2Hasta_i = dateToInt($m2End->format('Y-m-d'));
+
+        $m3Desde_i = dateToInt($m3Start->format('Y-m-d'));
+        $m3Hasta_i = dateToInt($m3End->format('Y-m-d'));
+
+        $rowsM1 = $this->despachosModel->anomalies_client_totals_period(
+            (int)$m1Desde_i,
+            (int)$m1Hasta_i,
+            $codoprInt
+        );
+
+        $rowsM2 = $this->despachosModel->anomalies_client_totals_period(
+            (int)$m2Desde_i,
+            (int)$m2Hasta_i,
+            $codoprInt
+        );
+
+        $rowsM3 = $this->despachosModel->anomalies_client_totals_period(
+            (int)$m3Desde_i,
+            (int)$m3Hasta_i,
+            $codoprInt
+        );
+
+        // Labels sencillos (YYYY-MM)
+        $m1Label = $m1Start->format('Y-m');
+        $m2Label = $m2Start->format('Y-m');
+        $m3Label = $m3Start->format('Y-m');
+
+        // Formatear salida (si no hay filas, devolvemos arreglo vacío)
+        $fmt = function(array $rows): array {
+            if (empty($rows)) return [];
+            $out = [];
+            foreach ($rows as $r) {
+                $out[] = [
+                    'codopr'                  => (int)($r['codopr'] ?? 0),
+                    'nombreCliente'           => $r['nombreCliente'] ?? '',
+                    'n_despachos'             => (int)($r['n_despachos'] ?? 0),
+                    'facturas_unicas'         => (int)($r['facturas_unicas'] ?? 0),
+                    'facturas_codgas_unicas'  => (int)($r['facturas_codgas_unicas'] ?? 0),
+                    'total_cant'              => (float)($r['total_cant'] ?? 0),
+                    'total_mto'               => (float)($r['total_mto'] ?? 0),
+                ];
+            }
+            return $out;
+        };
+
+        $dataEval = $fmt($rowsEval);
+        $dataM1   = $fmt($rowsM1);
+        $dataM2   = $fmt($rowsM2);
+        $dataM3   = $fmt($rowsM3);
+
+        http_response_code(200);
+        echo json_encode([
+            'error'      => false,
+            'data_eval'  => $dataEval,
+            'data_m1'    => $dataM1,
+            'data_m2'    => $dataM2,
+            'data_m3'    => $dataM3,
+            'm1_label'   => $m1Label,
+            'm2_label'   => $m2Label,
+            'm3_label'   => $m3Label,
+        ], JSON_INVALID_UTF8_SUBSTITUTE);
+
+    } catch (\Throwable $e) {
+        error_log('ANOMALIES CLIENT SUMMARY ERROR: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'data_eval' => [],
+            'error'     => true,
+            'message'   => 'Error interno al generar el resumen del cliente'
+        ]);
+    } finally {
+        ob_end_flush();
+    }
+}
+
     
 public function anomalies_clients_table()
 {
@@ -980,6 +1182,7 @@ public function anomalies_client_tickets()
                 'datref'         => $r['datref'] ?? '',
                 'satuid'         => $r['satuid'] ?? '',
                 'satrfc'         => $r['satrfc'] ?? '',
+                'turno'          => isset($r['nrotur']) ? substr((string)$r['nrotur'], 0, 1) : null,
             ];
         }
 
