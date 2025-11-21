@@ -35,22 +35,311 @@
 .table-responsive::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+/* Estilos para el cuadro informativo */
+.info-box {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    color: white;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+#archivo_excel {
+    pointer-events: none; /* ← Evita que capture clicks directos */
+}
+.info-box::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: pulse 3s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.1); opacity: 0.3; }
+}
+
+.info-box-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.info-box-icon {
+    background: rgba(255, 255, 255, 0.2);
+    width: 45px;
+    height: 45px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+    font-size: 1.3rem;
+    backdrop-filter: blur(10px);
+}
+
+.info-box-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.info-box-content {
+    position: relative;
+    z-index: 1;
+}
+
+.info-box-text {
+    margin-bottom: 1rem;
+    opacity: 0.95;
+    font-size: 0.95rem;
+}
+
+.providers-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.provider-badge {
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 25px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.provider-badge:hover {
+    background: rgba(255, 255, 255, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+/* Estilos para el input de archivo */
+.file-upload-wrapper {
+    position: relative;
+    margin-bottom: 1.5rem;
+}
+
+.file-upload-label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.75rem;
+    display: block;
+    font-size: 1rem;
+}
+
+.file-upload-container {
+    position: relative;
+    border: 2px dashed #667eea;
+    border-radius: 12px;
+    padding: 2rem;
+    background: linear-gradient(135deg, #f8f9ff 0%, #fff 100%);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.file-upload-container:hover {
+    border-color: #764ba2;
+    background: linear-gradient(135deg, #fff 0%, #f8f9ff 100%);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
+}
+
+.file-upload-container.dragover {
+    border-color: #28a745;
+    background: linear-gradient(135deg, #e8f5e9 0%, #fff 100%);
+    transform: scale(1.02);
+}
+
+.file-upload-icon {
+    font-size: 3rem;
+    color: #667eea;
+    margin-bottom: 1rem;
+    display: block;
+    text-align: center;
+}
+
+.file-upload-text {
+    text-align: center;
+    color: #6c757d;
+}
+
+.file-upload-main-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #667eea;
+    margin-bottom: 0.5rem;
+}
+
+.file-upload-sub-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 0.25rem;
+}
+
+.file-upload-formats {
+    font-size: 0.8rem;
+    color: #adb5bd;
+    font-style: italic;
+}
+
+#archivo_excel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.file-selected-info {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: #e8f5e9;
+    border: 1px solid #28a745;
+    border-radius: 8px;
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.file-selected-info.show {
+    display: flex;
+}
+
+.file-selected-icon {
+    color: #28a745;
+    font-size: 1.2rem;
+}
+
+.file-selected-name {
+    flex: 1;
+    color: #155724;
+    font-weight: 500;
+}
+
+.file-selected-remove {
+    color: #dc3545;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.file-selected-remove:hover {
+    transform: scale(1.2);
+}
+
+/* Botón mejorado */
+.btn-process {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    padding: 0.75rem 2rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    transition: all 0.3s ease;
+}
+
+.btn-process:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.btn-process:active {
+    transform: translateY(0);
+}
 </style>
+
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Descargar Facturas por UUID</h3>
     </div>
     <div class="card-body">
-        <form id="formImportarUUIDs" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="archivo_excel">Seleccionar archivo Excel con UUIDs</label>
-                <input type="file" class="form-control-file" id="archivo_excel" name="archivo_excel" accept=".xlsx,.xls" required>
-                <small class="form-text text-muted">
-                    El archivo debe tener los UUIDs en la primera columna (columna A)
-                </small>
+        <!-- Cuadro informativo de proveedores -->
+         <div class="info-box">
+            <div class="info-box-header">
+                <div class="info-box-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <h5 class="info-box-title">Proveedores Disponibles en el Sistema</h5>
             </div>
-            <button type="submit" class="btn btn-primary mt-3" id="btnProcesar">
-                <i class="fas fa-upload"></i> Procesar y Descargar Facturas
+            <div class="info-box-content">
+                <p class="info-box-text">
+                    Las facturas que se pueden encontrar y descargar son de los siguientes proveedores:
+                </p>
+                <div class="providers-container">
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>AEMSA
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>ENEREY
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>ESSAFUEL
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>LOBO
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>MCG
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>PREMIERGAS
+                    </span>
+                    <span class="provider-badge">
+                        <i class="fas fa-check-circle me-1"></i>TESORO
+                    </span>
+                </div>
+            </div>
+        </div>
+
+       <form id="formImportarUUIDs" enctype="multipart/form-data">
+            <div class="file-upload-wrapper">
+                <label class="file-upload-label">
+                    <i class="fas fa-file-excel me-2"></i>Archivo Excel con UUIDs
+                </label>
+                <div class="file-upload-container" id="fileUploadArea">
+                    <i class="fas fa-cloud-upload-alt file-upload-icon"></i>
+                    <div class="file-upload-text">
+                        <div class="file-upload-main-text">
+                            Arrastra tu archivo aquí o haz clic para seleccionar
+                        </div>
+                        <div class="file-upload-sub-text">
+                            El archivo debe tener los UUIDs en la primera columna (Columna A)
+                        </div>
+                        <div class="file-upload-formats">
+                            Formatos aceptados: .xlsx, .xls
+                        </div>
+                    </div>
+                    <input type="file" id="archivo_excel" name="archivo_excel" accept=".xlsx,.xls" required>
+                </div>
+                <div class="file-selected-info" id="fileSelectedInfo">
+                    <i class="fas fa-file-excel file-selected-icon"></i>
+                    <span class="file-selected-name" id="fileName"></span>
+                    <i class="fas fa-times-circle file-selected-remove" id="removeFile"></i>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-process" id="btnProcesar">
+                <i class="fas fa-upload me-2"></i>Procesar y Descargar Facturas
             </button>
         </form>
 
@@ -98,4 +387,83 @@
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('archivo_excel');
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const fileSelectedInfo = document.getElementById('fileSelectedInfo');
+    const fileName = document.getElementById('fileName');
+    const removeFile = document.getElementById('removeFile');
+
+    // Click en el área para abrir selector de archivos
+    fileUploadArea.addEventListener('click', function(e) {
+         if (e.target !== fileInput && !fileInput.contains(e.target)) {
+            e.preventDefault();
+            e.stopPropagation();
+            fileInput.click();
+        }
+    });
+    fileInput.addEventListener('click', function(e) {
+        e.stopPropagation();
+    });
+
+    // Cuando se selecciona un archivo
+    fileInput.addEventListener('change', function(e) {
+        if (this.files && this.files[0]) {
+            showFileInfo(this.files[0]);
+        }
+    });
+
+    // Drag & Drop
+    fileUploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.classList.add('dragover');
+    });
+
+    fileUploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.classList.remove('dragover');
+    });
+
+    fileUploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            // Verificar extensión
+            if (file.name.match(/\.(xlsx|xls)$/i)) {
+                fileInput.files = files;
+                showFileInfo(file);
+            } else {
+                alertify.error('Por favor, selecciona un archivo Excel (.xlsx o .xls)');
+            }
+        }
+    });
+
+    // Mostrar información del archivo seleccionado
+    function showFileInfo(file) {
+        const fileSize = (file.size / 1024).toFixed(2);
+        fileName.innerHTML = `
+            <strong>${file.name}</strong> 
+            <span class="text-muted ms-2">(${fileSize} KB)</span>
+        `;
+        fileSelectedInfo.classList.add('show');
+        fileUploadArea.style.display = 'none';
+    }
+
+    // Remover archivo seleccionado
+    removeFile.addEventListener('click', function(e) {
+        e.stopPropagation();
+        fileInput.value = '';
+        fileSelectedInfo.classList.remove('show');
+        fileUploadArea.style.display = 'block';
+    });
+});
+</script>
 {% endblock %}
