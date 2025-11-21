@@ -1,477 +1,465 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Despachos Facturados{% endblock %}
-{% block mycss %}{% endblock %}
-{% block menutitle %}Despachos Facturados{% endblock %}
+{% block title %}Despachos Facturados - Análisis de Anomalías{% endblock %}
+{% block menutitle %}Auditoría de Despachos{% endblock %}
 
 {% block content %}
 <style>
 
-  /* Que cabecera y celdas de la lista de tickets no se rompan en varias líneas */
-  #client_tickets_table th,
-  #client_tickets_table td {
-    white-space: nowrap;
-  }
+  
+    :root {
+        --primary-color: #3485a8;
+        --secondary-bg: #f8f9fa;
+        --border-radius: 12px;
+    }
 
-  tr.group, tr.group:hover { background-color: rgba(0,0,0,0.1) !important; }
-  :root.dark tr.group, :root.dark tr.group:hover { background-color: rgba(0,0,0,0.75) !important; }
-  .column_estation{ background-color:#add5e6 !important; color:#fff !important; }
-  .total_bg{ background-color:#48A1C7 !important; color:#fff !important; }
-  .total_bg2{ background-color:#48A1C7 !important; color:#fff !important; }
-  .border_center{
-    border-top:1px dotted #358f92 !important; border-bottom:1px dotted #358f92 !important;
-    border-left:1px dotted #358f92 !important; border-right:1px dotted #358f92 !important;
-  }
-  table.dataTable thead th, table.dataTable thead td{
-    padding:10px 18px; border-bottom:1px solid #dee2e6; background-color:#3485a8 !important; color:#fff !important;
-  }
-  table.dataTable tfoot th, table.dataTable tfoot td{
-    padding:10px 18px; border-bottom:1px solid #dee2e6; background-color:#3485a8 !important; color:#fff !important;
-  }
-  .border_OG{ border:0.5px solid #0c202091 !important; background-color:#6d7277e8; }
+    /* --- General Layout --- */
+    .content-wrapper { background-color: #f4f6f9; }
+    
+    .card {
+        border: none;
+        border-radius: var(--border-radius);
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        transition: transform 0.2s ease-in-out;
+    }
 
-  /* Barra de progreso (ancho de la tabla) */
-  #loadbar { height: 6px; background-color: rgba(52,133,168,0.2); display: none; overflow: hidden; }
-  #loadbar .progress-bar { height: 100%; background-color: #3485a8; transition: width .2s ease; width: 0%; }
+    /* --- Control Panel --- */
+    .control-panel {
+        background: #fff;
+        padding: 1.5rem;
+        border-radius: var(--border-radius);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+    }
+    .form-floating > label { padding-top: 0.6rem; padding-bottom: 0.6rem; }
 
-  /* Grupos clickeables en lista de tickets */
-  #client_tickets_table tr.group {
-    cursor: pointer;
-    font-weight: bold;
-  }
+    /* --- KPI Cards (Diseño Original con Gradientes) --- */
+    .kpi-card {
+        overflow: hidden;
+        position: relative;
+        color: #fff;
+        min-height: 140px;
+    }
+    .kpi-card .card-body {
+        z-index: 2;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .kpi-bg-icon {
+        position: absolute;
+        right: -10px;
+        bottom: -20px;
+        font-size: 6rem;
+        opacity: 0.15;
+        transform: rotate(-15deg);
+        z-index: 1;
+    }
+    .kpi-value { font-size: 2rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .kpi-label { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
+    .kpi-sub {
+        font-size: 0.8rem;
+        background: rgba(0,0,0,0.2);
+        padding: 2px 8px;
+        border-radius: 10px;
+        display: inline-block;
+        margin-top: 5px;
+        max-width: 100%;
+    }
+    
+    .bg-gradient-info-dark { background: linear-gradient(45deg, #0ea5e9, #2563eb); }
+    .bg-gradient-danger-dark { background: linear-gradient(45deg, #ef4444, #b91c1c); }
+    .bg-gradient-success-dark { background: linear-gradient(45deg, #10b981, #059669); }
+    .bg-gradient-warning-dark { background: linear-gradient(45deg, #f59e0b, #d97706); }
 
-  #modal-client-days .modal-body{
-    overflow-x: auto;
-  }
+    /* --- Tablas --- */
+    .table-card-header {
+        background-color: #fff;
+        border-bottom: 1px solid #eef2f7;
+        padding: 1.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
 
-  /* ===== KPI CARDS ===== */
-  .kpi-row {
-    row-gap: 20px;
-  }
+    /* Corrección crítica para evitar descuadres en DataTables */
+    table.dataTable {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    
+    table.dataTable thead th {
+        background-color: #f8f9fa !important;
+        color: #495057 !important;
+        border-bottom: 2px solid #dee2e6 !important;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.5px;
+        padding-top: 15px;
+        padding-bottom: 15px;
+        white-space: nowrap; 
+    }
 
-  .kpi-card {
-    border: none;
-    border-radius: .9rem;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
-    color: #fff;
-    position: relative;
-    overflow: hidden;
-  }
-  .kpi-card .card-body {
-    display: flex;
-    align-items: center;
-    padding: 0.9rem 1rem;
-  }
-  .kpi-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.18);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.4rem;
-    margin-right: .75rem;
-    flex-shrink: 0;
-  }
-  .kpi-label {
-    font-size: .7rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    opacity: .9;
-  }
-  .kpi-value {
-    font-size: 1.15rem;
-    font-weight: 700;
-    line-height: 1.1;
-  }
-  .kpi-sub {
-    font-size: .8rem;
-    opacity: .95;
-  }
+    /* --- Pestañas (Tabs) Mejoradas --- */
+    .nav-tabs { border-bottom: 1px solid #dee2e6; }
+    .nav-tabs .nav-link {
+        color: #495057;
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-top-left-radius: .25rem;
+        border-top-right-radius: .25rem;
+        font-weight: 600;
+        padding: 10px 15px;
+        transition: all 0.2s;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: var(--primary-color) !important;
+        background-color: #fff;
+        border-color: #dee2e6 #dee2e6 #fff;
+        border-top: 3px solid var(--primary-color) !important;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+    }
+    
+    .nav-tabs .nav-link:hover:not(.active) {
+        background-color: #e9ecef;
+        border-color: #e9ecef #e9ecef #dee2e6;
+    }
 
-  .kpi-zscore {
-    background: linear-gradient(130deg, #0f766e, #14b8a6);
-  }
-  .kpi-dias {
-    background: linear-gradient(130deg, #b91c1c, #ef4444);
-  }
-  .kpi-despachos {
-    background: linear-gradient(130deg, #1d4ed8, #3b82f6);
-  }
-  .kpi-facturas-dia {
-    background: linear-gradient(130deg, #7c2d12, #f97316);
-  }
-  .kpi-estacion {
-    background: linear-gradient(130deg, #4b5563, #0f172a);
-  }
+    /* Links y Badges */
+    a.link-client-summary { font-weight: 600; color: var(--primary-color); text-decoration: none; }
+    a.link-client-summary:hover { text-decoration: underline; }
+    
+    .badge-anomalies {
+        background-color: #fee2e2;
+        color: #991b1b;
+        padding: 0.4em 0.8em;
+        border-radius: 20px;
+        font-weight: 700;
+        transition: background-color 0.2s;
+    }
+    .badge-anomalies:hover { background-color: #fca5a5; color: #7f1d1d; }
+
+    /* Barra de Carga */
+    #loadbar { 
+        height: 4px; background-color: #e9ecef; display: none; 
+        width: 100%; position: absolute; top: 0; left: 0; z-index: 10;
+    }
+    #loadbar .progress-bar { 
+        height: 100%; background-color: var(--primary-color); 
+        width: 0%; transition: width .2s ease;
+    }
+
+    /* Grupos en tabla de tickets */
+    tr.group { background-color: #eef2f7 !important; cursor: pointer; }
+    tr.group td { font-weight: 600; color: #495057; }
+
+    #client_summary_eval,
+#client_summary_m1,
+#client_summary_m2,
+#client_summary_m3 {
+    table-layout: fixed;
+}
 
 </style>
 
-<!-- === KPI CARDS === -->
-<div class="row kpi-row mb-3" id="summary-cards" style="display:none;">
-  <div class="col-12 col-md-6 col-xl-6">
-    <div class="card kpi-card kpi-zscore h-100">
-      <div class="card-body">
-        <div class="kpi-icon">📈</div>
-        <div class="flex-grow-1">
-          <div class="kpi-label">Mayor prom. z-score</div>
-          <div class="kpi-value" id="kpi-zscore-value">—</div>
-          <div class="kpi-sub text-truncate" id="kpi-zscore-client">Sin datos</div>
-        </div>
-      </div>
-    </div>
-  </div>
+<div class="container-fluid">
 
-  <div class="col-12 col-md-6 col-xl-6">
-    <div class="card kpi-card kpi-dias h-100">
-      <div class="card-body">
-        <div class="kpi-icon">📅</div>
-        <div class="flex-grow-1">
-          <div class="kpi-label">Más días anómalos</div>
-          <div class="kpi-value" id="kpi-dias-value">—</div>
-          <div class="kpi-sub text-truncate" id="kpi-dias-client">Sin datos</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12 col-md-6 col-xl-6">
-    <div class="card kpi-card kpi-despachos h-100">
-      <div class="card-body">
-        <div class="kpi-icon">⛽</div>
-        <div class="flex-grow-1">
-          <div class="kpi-label">Más despachos (periodo)</div>
-          <div class="kpi-value" id="kpi-despachos-value">—</div>
-          <div class="kpi-sub text-truncate" id="kpi-despachos-client">Sin datos</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12 col-md-6 col-xl-6">
-    <div class="card kpi-card kpi-facturas-dia h-100">
-      <div class="card-body">
-        <div class="kpi-icon">🧾</div>
-        <div class="flex-grow-1">
-          <div class="kpi-label">Más facturas en un día</div>
-          <div class="kpi-value" id="kpi-facturasdia-value">—</div>
-          <div class="kpi-sub text-truncate" id="kpi-facturasdia-client">Sin datos</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="col-12 col-md-6 col-xl-12">
-    <div class="card kpi-card kpi-estacion h-100">
-      <div class="card-body">
-        <div class="kpi-icon">🏭</div>
-        <div class="flex-grow-1">
-          <div class="kpi-label">Estación con más tickets en días anómalos</div>
-          <div class="kpi-value" id="kpi-estacion-value">—</div>
-          <div class="kpi-sub text-truncate" id="kpi-estacion-name">Pendiente de cálculo</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Filtros de fecha -->
-<div class="card mb-3">
-  <div class="card-body">
-    <div class="row g-2 align-items-end">
-      <div class="col-12 col-sm-3">
-        <label class="col-form-label-sm">Desde</label>
-        <input type="date" id="from" class="form-control form-control-sm" value="{{ 'now'|date('Y-m-01') }}" required>
-      </div>
-      <div class="col-12 col-sm-3">
-        <label class="col-form-label-sm">Hasta</label>
-        <input type="date" id="until" class="form-control form-control-sm" value="{{ 'now'|date('Y-m-d') }}" required>
-      </div>
-      <div class="col-12 col-sm-3">
-        <button id="btn-run" class="btn btn-sm btn-primary w-100" style="margin-top: 15px;">Generar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Tabla principal + filtros de anomalías -->
-<div class="card">
-
-  <!-- Filtros en una sola fila -->
-  <div class="card-body pb-0">
-    <div class="d-flex flex-wrap align-items-center mb-3">
-
-      <div class="form-check form-switch me-4 mt-2">
-        <input class="form-check-input ms-1" type="checkbox" id="chk-10plus">
-        <label class="form-check-label ms-2" for="chk-10plus">
-          ≥ 10 tickets en un día
-        </label>
-      </div>
-
-      <!-- filtro por facturas con varios productos -->
-      <div class="form-check form-switch me-4 mt-2">
-        <input class="form-check-input ms-1" type="checkbox" id="chk-multi-prod">
-        <label class="form-check-label ms-2" for="chk-multi-prod">
-          Factura con varios productos
-        </label>
-      </div>
-
-      <!-- filtro por facturas con montos distintos -->
-      <div class="form-check form-switch me-4 mt-2">
-        <input class="form-check-input ms-1" type="checkbox" id="chk-multi-montos">
-        <label class="form-check-label ms-2" for="chk-multi-montos">
-          Factura con montos distintos
-        </label>
-      </div>
-
-    </div>
-  </div>
-
-  <div class="card-header"><h5 class="mb-0">Anomalías por Cliente</h5></div>
-  <div class="card-body table-responsive">
-    <!-- Barra de progreso -->
-    <div id="loadbar" class="mb-2">
-      <div class="progress-bar" role="progressbar"></div>
-    </div>
-
-    <table id="anomalies_table" class="table table-striped table-hover table-sm w-100">
-      <thead>
-        <tr class="titles">
-          <th>Cod. Cliente</th>
-          <th>Cliente</th>
-          <th>Días anómalos</th>
-          <th>Prom. z-score</th>
-          <th>Despachos</th>
-          <th>Facturas</th>
-          <th>Monto</th>
-        </tr>
-      </thead>
-
-      <tbody></tbody>
-      <tfoot>
-        <tr>
-          <th colspan="2" class="text-end">Totales:</th>
-          <th id="ft_dias"    class="text-end"></th>
-          <th id="ft_prom_z"  class="text-end"></th>
-          <th id="ft_desp"    class="text-end"></th>
-          <th id="ft_fact"    class="text-end"></th>
-          <th id="ft_mto"     class="text-end"></th>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-</div>
-
-<!-- MODAL: Resumen por cliente (periodo + 3 meses previos) -->
-<div class="modal fade" id="modal-client-summary" tabindex="-1" aria-labelledby="modalClientSummaryLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalClientSummaryLabel">
-          Resumen Cliente <span id="sum-codopr"></span>
-          <small class="text-muted">(<span id="sum-cliente"></span>)</small>
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-
-      <div class="modal-body">
-
-        <!-- Periodo evaluado -->
-        <h6 class="mb-2">
-          Periodo evaluado:
-          <span id="sum-periodo-eval"></span>
-        </h6>
-        <div class="table-responsive mb-4">
-          <table id="client_summary_eval" class="table table-striped table-hover table-sm w-100">
-            <thead>
-              <tr>
-                <th>Cod. Cliente (codopr)</th>
-                <th>Cliente</th>
-                <th>Despachos</th>
-                <th>Facturas</th>
-                <th>Facturas x Estación</th>
-                <th>Total Cantidad</th>
-                <th>Total Monto</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <hr>
-
-        <!-- Mes -1 -->
-        <h6 class="mb-2">
-          Mes -1: <span id="sum-m3-label"></span>
-        </h6>
-        <div class="table-responsive mb-4">
-          <table id="client_summary_m3" class="table table-striped table-hover table-sm w-100">
-            <thead>
-              <tr>
-                <th>Cod. Cliente (codopr)</th>
-                <th>Cliente</th>
-                <th>Despachos</th>
-                <th>Facturas</th>
-                <th>Facturas x Estación</th>
-                <th>Total Cantidad</th>
-                <th>Total Monto</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <!-- Mes -2 -->
-        <h6 class="mb-2">
-          Mes -2: <span id="sum-m2-label"></span>
-        </h6>
-        <div class="table-responsive mb-4">
-          <table id="client_summary_m2" class="table table-striped table-hover table-sm w-100">
-            <thead>
-              <tr>
-                <th>Cod. Cliente (codopr)</th>
-                <th>Cliente</th>
-                <th>Despachos</th>
-                <th>Facturas</th>
-                <th>Facturas x Estación</th>
-                <th>Total Cantidad</th>
-                <th>Total Monto</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-        <!-- Mes -3 -->
-        <h6 class="mb-2">
-          Mes -3: <span id="sum-m1-label"></span>
-        </h6>
-        <div class="table-responsive mb-2">
-          <table id="client_summary_m1" class="table table-striped table-hover table-sm w-100">
-            <thead>
-              <tr>
-                <th>Cod. Cliente (codopr)</th>
-                <th>Cliente</th>
-                <th>Despachos</th>
-                <th>Facturas</th>
-                <th>Facturas x Estación</th>
-                <th>Total Cantidad</th>
-                <th>Total Monto</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-
-      </div>
-    </div>
-  </div>
-</div>
-
-
-<!-- MODAL: detalle por cliente (tabs: días anómalos / lista de tickets) -->
-<div class="modal fade" id="modal-client-days" tabindex="-1" aria-labelledby="modalClientDaysLabel" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalClientDaysLabel">
-          Detalle - Cliente <span id="mdl-codopr"></span>
-          <small class="text-muted">(<span id="mdl-cliente"></span>)</small>
-        </h5>
-
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-
-      <div class="modal-body">
-
-        <!-- NAV TABS -->
-        <ul class="nav nav-tabs" id="clientTabs" role="tablist">
-          <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-days-tab"
-                    data-bs-toggle="tab" data-bs-target="#tab-days"
-                    type="button" role="tab" aria-controls="tab-days" aria-selected="true">
-              Días anómalos
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-tickets-tab"
-                    data-bs-toggle="tab" data-bs-target="#tab-tickets"
-                    type="button" role="tab" aria-controls="tab-tickets" aria-selected="false">
-              Lista de tickets
-            </button>
-          </li>
-        </ul>
-
-        <div class="tab-content pt-3" id="clientTabsContent">
-
-
-          
-          <!-- TAB 1: Días anómalos -->
-          <div class="tab-pane fade show active" id="tab-days" role="tabpanel" aria-labelledby="tab-days-tab">
-            <table id="client_days_table" class="table table-striped table-hover table-sm w-100">
-              <thead>
-                <tr class="titles">
-                  <th>Fecha</th>
-                  <th>Facturas día</th>
-                  <th>Media hist.</th>
-                  <th>Desv. hist.</th>
-                  <th>Q1</th>
-                  <th>Q3</th>
-                  <th>Z-score</th>
-                  <th>Inc. % vs hist.</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-
-          <!-- TAB 2: Lista de tickets -->
-          <div class="tab-pane fade" id="tab-tickets" role="tabpanel" aria-labelledby="tab-tickets-tab">
-
-            <div class="mb-2 d-flex flex-wrap gap-2">
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-collapse-all-tickets">
-                Colapsar todas las facturas
-              </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-expand-all-tickets">
-                Expandir todas las facturas
-              </button>
+    <div class="control-panel d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3 flex-grow-1">
+            <div class="d-flex align-items-center bg-light rounded p-2 border">
+                <i class="fas fa-calendar-alt text-muted mx-2"></i>
+                <div class="form-floating" style="min-width: 160px;">
+                    <input type="date" id="from" class="form-control border-0 bg-transparent shadow-none" value="{{ 'now'|date('Y-m-01') }}">
+                    <label for="from">Desde</label>
+                </div>
+                <span class="text-muted mx-2">➜</span>
+                <div class="form-floating" style="min-width: 160px;">
+                    <input type="date" id="until" class="form-control border-0 bg-transparent shadow-none" value="{{ 'now'|date('Y-m-d') }}">
+                    <label for="until">Hasta</label>
+                </div>
             </div>
+        </div>
+        <div>
+            <button id="btn-run" class="btn btn-primary btn-lg px-4 shadow-sm">
+                <i class="fas fa-search me-2"></i> Analizar Despachos
+            </button>
+        </div>
+    </div>
 
-            <table id="client_tickets_table" class="table table-striped table-hover table-sm w-100">
-              <thead>
-                <tr class="titles">
-                  <th>Fecha</th>
-                  <th>Hora</th>
-                  <th>Transacción</th>
-                  <th>Factura</th>
-                  <th>Folio</th>
-                  <th>Serie</th>
-                  <th>Concepto</th>
-                  <th>Cod. gas</th>
-                  <th>Estación</th>
-                  <th>Cód. prod.</th>
-                  <th>Producto</th>
-                  <th>Cantidad</th>
-                  <th>Monto</th>
-                  <th>Cód. cliente (D)</th>
-                  <th>Nombre cliente</th>
-                  <th>Codopr (F)</th>
-                  <th>Turno</th>
-                  <th>Isla</th>
-                  <th>Responsable</th>
-                  <th>Tipo trn</th>
-                  <th>Referencia</th>
-                  <th>UUID</th>
-                  <th>RFC facturación</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
+    <div class="row g-3 mb-4" id="summary-cards" style="display:none;">
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card bg-gradient-info-dark">
+                <div class="card-body">
+                    <i class="fas fa-chart-line kpi-bg-icon"></i>
+                    <div class="kpi-label">Mayor Prom. Z-Score</div>
+                    <div class="kpi-value" id="kpi-zscore-value">—</div>
+                    <div class="kpi-sub text-truncate" id="kpi-zscore-client">Sin datos</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card bg-gradient-danger-dark">
+                <div class="card-body">
+                    <i class="fas fa-calendar-times kpi-bg-icon"></i>
+                    <div class="kpi-label">Más Días Anómalos</div>
+                    <div class="kpi-value" id="kpi-dias-value">—</div>
+                    <div class="kpi-sub text-truncate" id="kpi-dias-client">Sin datos</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card bg-gradient-success-dark">
+                <div class="card-body">
+                    <i class="fas fa-gas-pump kpi-bg-icon"></i>
+                    <div class="kpi-label">Más Despachos</div>
+                    <div class="kpi-value" id="kpi-despachos-value">—</div>
+                    <div class="kpi-sub text-truncate" id="kpi-despachos-client">Sin datos</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+            <div class="card kpi-card bg-gradient-warning-dark">
+                <div class="card-body">
+                    <i class="fas fa-file-invoice-dollar kpi-bg-icon"></i>
+                    <div class="kpi-label">Más Facturas/Día</div>
+                    <div class="kpi-value" id="kpi-facturasdia-value">—</div>
+                    <div class="kpi-sub text-truncate" id="kpi-facturasdia-client">Sin datos</div>
+                </div>
+            </div>
+        </div>
+        
+         <div class="col-12 mt-3">
+             <div class="card border-0 shadow-sm" style="background: #e2e8f0;">
+                 <div class="card-body d-flex align-items-center justify-content-between">
+                     <div class="d-flex align-items-center">
+                         <div class="bg-white p-2 rounded-circle me-3 shadow-sm">
+                             <i class="fas fa-industry text-secondary fs-4"></i>
+                         </div>
+                         <div>
+                             <h6 class="mb-0 text-muted text-uppercase" style="font-size: 0.75rem; letter-spacing: 1px;">Estación con más tickets anómalos</h6>
+                             <h5 class="mb-0 fw-bold text-dark" id="kpi-estacion-name">Pendiente de cálculo</h5>
+                         </div>
+                     </div>
+                     <div class="text-end">
+                         <div class="fs-4 fw-bold text-dark" id="kpi-estacion-value">—</div>
+                         <small class="text-muted">Tickets</small>
+                     </div>
+                 </div>
+             </div>
+         </div>
+    </div>
 
+    <div class="card position-relative overflow-hidden">
+        <div id="loadbar"><div class="progress-bar"></div></div>
+
+        <div class="table-card-header">
+            <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-list-alt me-2 text-primary"></i>Anomalías por Cliente</h5>
+            
+            <div class="d-flex align-items-center bg-light rounded px-3 py-2">
+                <span class="filter-group-label"><i class="fas fa-filter me-1"></i> Filtrar:</span>
+                <div class="btn-group" role="group">
+                    <input type="checkbox" class="btn-check" id="chk-10plus" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-secondary" for="chk-10plus">≥ 10 Tickets/Día</label>
+                    
+                    <input type="checkbox" class="btn-check" id="chk-multi-prod" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-secondary" for="chk-multi-prod"><i class="fas fa-cubes me-1"></i> Multi-Prod</label>
+                    
+                    <input type="checkbox" class="btn-check" id="chk-multi-montos" autocomplete="off">
+                    <label class="btn btn-sm btn-outline-secondary" for="chk-multi-montos"><i class="fas fa-dollar-sign me-1"></i> Montos Distintos</label>
+                </div>
+            </div>
         </div>
 
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table id="anomalies_table" class="table table-hover w-100 mb-0" style="width:100% !important;">
+                    <thead>
+                        <tr>
+                            <th>Cod. Cliente</th>
+                            <th>Cliente</th>
+                            <th class="text-center">Días Anómalos</th>
+                            <th class="text-end">Prom. Z-Score</th>
+                            <th class="text-end">Despachos</th>
+                            <th class="text-end">Facturas</th>
+                            <th class="text-end">Monto Total</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot class="bg-light">
+                        <tr>
+                            <th colspan="2" class="text-end">Totales Generales:</th>
+                            <th id="ft_dias" class="text-center fw-bold"></th>
+                            <th id="ft_prom_z" class="text-end fw-bold"></th>
+                            <th id="ft_desp" class="text-end fw-bold"></th>
+                            <th id="ft_fact" class="text-end fw-bold"></th>
+                            <th id="ft_mto" class="text-end fw-bold"></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<div class="modal fade" id="modal-client-summary" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header">
+        <div>
+            <h5 class="modal-title fw-bold">Resumen de Cliente</h5>
+            <small class="text-muted">Código: <span id="sum-codopr" class="fw-bold text-dark"></span> | Nombre: <span id="sum-cliente" class="fw-bold text-dark"></span></small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body bg-light">
+        
+        <div class="card mb-3 border-0 shadow-sm">
+            <div class="card-header bg-white fw-bold text-primary border-bottom-0">
+                <i class="fas fa-clock me-2"></i> Periodo Evaluado: <span id="sum-periodo-eval" class="text-dark"></span>
+            </div>
+            <div class="card-body p-0">
+                <table id="client_summary_eval" class="table table-sm table-striped mb-0 w-100">
+                    <thead class="table-light"><tr><th>Cod.</th><th>Cliente</th><th>Despachos</th><th>Facturas</th><th>Fact x Est</th><th>Cant</th><th>Monto</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+     <div class="row">
+    <div class="col-md-12">
+         <h6 class="text-muted text-uppercase fs-7 mb-3 mt-2 fw-bold">Historial Reciente</h6>
+    </div>
+    
+    <div class="col-12 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-1 px-3 bg-white border-bottom-0">
+                <small class="fw-bold text-muted">Mes Anterior: <span id="sum-m3-label"></span></small>
+            </div>
+            <div class="card-body p-0">
+                 <table id="client_summary_m3" class="table table-sm table-hover mb-0 w-100">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Cod</th>
+                            <th>Cliente</th>
+                            <th class="text-end">Desp</th>
+                            <th class="text-end">Fac</th>
+                            <th class="text-end">FxE</th> <th class="text-end">Cant</th>
+                            <th class="text-end">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                 </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-1 px-3 bg-white border-bottom-0">
+                <small class="fw-bold text-muted">Mes -2: <span id="sum-m2-label"></span></small>
+            </div>
+            <div class="card-body p-0">
+                 <table id="client_summary_m2" class="table table-sm table-hover mb-0 w-100">
+                    <thead class="bg-light">
+                        <tr><th>Cod</th><th>Cliente</th><th class="text-end">Desp</th><th class="text-end">Fac</th><th class="text-end">FxE</th><th class="text-end">Cant</th><th class="text-end">Monto</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                 </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 mb-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header py-1 px-3 bg-white border-bottom-0">
+                <small class="fw-bold text-muted">Mes -3: <span id="sum-m1-label"></span></small>
+            </div>
+            <div class="card-body p-0">
+                 <table id="client_summary_m1" class="table table-sm table-hover mb-0 w-100">
+                    <thead class="bg-light">
+                        <tr><th>Cod</th><th>Cliente</th><th class="text-end">Desp</th><th class="text-end">Fac</th><th class="text-end">FxE</th><th class="text-end">Cant</th><th class="text-end">Monto</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                 </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modal-client-days" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header">
+        <div>
+            <h5 class="modal-title fw-bold"><i class="fas fa-search-plus me-2"></i>Detalle de Anomalías</h5>
+            <small class="text-muted">Cliente: <span id="mdl-cliente" class="fw-bold text-dark"></span> (<span id="mdl-codopr"></span>)</small>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body p-0">
+        <div class="bg-light px-3 pt-3 border-bottom">
+            <ul class="nav nav-tabs border-0" id="clientTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-days-tab" data-bs-toggle="tab" data-bs-target="#tab-days" type="button" role="tab">
+                    <i class="fas fa-calendar-day me-2 text-danger"></i>Días Anómalos
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-tickets-tab" data-bs-toggle="tab" data-bs-target="#tab-tickets" type="button" role="tab">
+                    <i class="fas fa-receipt me-2 text-secondary"></i>Lista de Tickets
+                </button>
+              </li>
+            </ul>
+        </div>
+
+        <div class="tab-content p-3" id="clientTabsContent">
+          <div class="tab-pane fade show active" id="tab-days" role="tabpanel">
+            <div class="table-responsive rounded border">
+                <table id="client_days_table" class="table table-striped table-hover w-100 mb-0" style="width:100% !important;">
+                  <thead class="bg-light">
+                    <tr>
+                      <th>Fecha</th>
+                      <th class="text-end">Facturas día</th>
+                      <th class="text-end">Media hist.</th>
+                      <th class="text-end">Desv. hist.</th>
+                      <th class="text-end">Z-score</th>
+                      <th class="text-end">Inc. % vs hist.</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="tab-tickets" role="tabpanel">
+            <div class="d-flex justify-content-end mb-2 gap-2">
+              <button type="button" class="btn btn-sm btn-light border" id="btn-collapse-all-tickets"><i class="fas fa-compress-alt me-1"></i> Colapsar Todo</button>
+              <button type="button" class="btn btn-sm btn-light border" id="btn-expand-all-tickets"><i class="fas fa-expand-alt me-1"></i> Expandir Todo</button>
+            </div>
+            <div class="table-responsive rounded border">
+                <table id="client_tickets_table" class="table table-sm table-hover w-100 mb-0" style="width:100% !important;">
+                  <thead class="bg-light">
+                    <tr>
+                      <th>Fecha</th><th>Hora</th><th>Trn</th><th>Fac</th><th>Folio</th><th>Serie</th><th>Concepto</th><th>Estación</th>
+                      <th>Producto</th><th>Cant</th><th>Monto</th><th>Cliente</th><th>Turno</th><th>Isla</th><th>Resp.</th><th>UUID</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -481,62 +469,46 @@
 
 {% block myjs %}
 <script>
-
-// --- Filtro global (registrar una sola vez) ---
+// ==========================================
+// VARIABLES & UTILIDADES
+// ==========================================
 let filterRegistered = false;
-function registerTenPlusFilter(){
-  if (filterRegistered) return;
+let dtClientDays = null;
+let dtClientTickets = null;
+let ticketGroupsCollapsed = {};
 
-  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
-    if (settings.nTable && settings.nTable.id !== 'anomalies_table') return true;
-
-    const api = new $.fn.dataTable.Api(settings);
-    const row = api.row(dataIndex).data() || {};
-
-    const only10         = $('#chk-10plus').prop('checked');
-    const onlyMultiProd  = $('#chk-multi-prod').prop('checked');
-    const onlyMultiMonto = $('#chk-multi-montos').prop('checked');
-
-    const maxDia         = Number(row.max_facturas_dia || 0);
-    const hasMultiProd   = Number(row.tiene_factura_multi_prod || 0) > 0;
-    const hasMultiMontos = Number(row.tiene_factura_montos_diferentes || 0) > 0;
-
-    // ≥ 10 tickets en un día
-    if (only10 && maxDia < 10) return false;
-
-    // factura con varios productos
-    if (onlyMultiProd && !hasMultiProd) return false;
-
-    // factura con montos distintos
-    if (onlyMultiMonto && !hasMultiMontos) return false;
-
-    return true;
-  });
-
-  filterRegistered = true;
+// Formateador de hora
+function formatHratrnTo12(data, type) {
+  if (type !== 'display' && type !== 'filter') return data;
+  if (data == null) return '';
+  var n = parseInt(data, 10);
+  if (isNaN(n)) return data;
+  var h24 = Math.floor(n / 100);
+  var m   = n % 100;
+  var ampm = h24 >= 12 ? 'PM' : 'AM';
+  var h12  = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  return h12.toString().padStart(2, '0') + ':' + m.toString().padStart(2, '0') + ' ' + ampm;
 }
 
-/* ===== Barra de progreso ===== */
+// Barra de Carga
 let progressTimer = null;
 let startTs = 0;
 let durationMs = 20000;
 
 function startLoadBar() {
   stopLoadBar(true);
-  const $wrap = $('#loadbar');
-  const $bar  = $('#loadbar .progress-bar');
+  $('#loadbar').show();
+  $('#loadbar .progress-bar').css('width', '0%');
   startTs = performance.now();
-  $bar.css('width', '0%');
-  $wrap.show();
   progressTimer = setInterval(function() {
     const elapsed = performance.now() - startTs;
     const pct = Math.min(95, (elapsed / durationMs) * 95);
-    $bar.css('width', pct + '%');
+    $('#loadbar .progress-bar').css('width', pct + '%');
   }, 100);
 }
 function finishLoadBar() {
-  const $bar = $('#loadbar .progress-bar');
-  $bar.css('width', '100%');
+  $('#loadbar .progress-bar').css('width', '100%');
   stopLoadBar(false);
   setTimeout(function() { $('#loadbar').fadeOut(150); }, 180);
 }
@@ -546,12 +518,35 @@ function stopLoadBar(resetToZero) {
   if (resetToZero) $('#loadbar .progress-bar').css('width','0%');
 }
 
-/* ===== KPI CARDS ===== */
+// Filtros DataTables
+function registerTenPlusFilter(){
+  if (filterRegistered) return;
+  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+    if (settings.nTable && settings.nTable.id !== 'anomalies_table') return true;
+    const api = new $.fn.dataTable.Api(settings);
+    const row = api.row(dataIndex).data() || {};
+    
+    const only10         = $('#chk-10plus').prop('checked');
+    const onlyMultiProd  = $('#chk-multi-prod').prop('checked');
+    const onlyMultiMonto = $('#chk-multi-montos').prop('checked');
+
+    const maxDia         = Number(row.max_facturas_dia || 0);
+    const hasMultiProd   = Number(row.tiene_factura_multi_prod || 0) > 0;
+    const hasMultiMontos = Number(row.tiene_factura_montos_diferentes || 0) > 0;
+
+    if (only10 && maxDia < 10) return false;
+    if (onlyMultiProd && !hasMultiProd) return false;
+    if (onlyMultiMonto && !hasMultiMontos) return false;
+    return true;
+  });
+  filterRegistered = true;
+}
+
+// ==========================================
+// KPIS & FOOTERS
+// ==========================================
 function updateHighlightCards(rows){
-  if (!rows || !rows.length){
-    $('#summary-cards').hide();
-    return;
-  }
+  if (!rows || !rows.length){ $('#summary-cards').hide(); return; }
   $('#summary-cards').show();
 
   let bestZ = null, bestZVal = -Infinity;
@@ -571,55 +566,26 @@ function updateHighlightCards(rows){
     if (maxF > bestFactDiaVal)  { bestFactDiaVal = maxF; bestFactDia = r; }
   });
 
-  // Z-score
-  if (bestZ){
-    $('#kpi-zscore-value').text(bestZVal.toLocaleString('es-MX',{minimumFractionDigits:2, maximumFractionDigits:2}));
-    $('#kpi-zscore-client').text((bestZ.cliente || 'Sin nombre') + ' (' + bestZ.codopr + ')');
-  } else {
-    $('#kpi-zscore-value').text('—');
-    $('#kpi-zscore-client').text('Sin datos');
-  }
+  const fmtNum = (n) => n.toLocaleString('es-MX');
+  const fmtDec = (n) => n.toLocaleString('es-MX',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const setTxt = (id, val) => $(id).text(val);
 
-  // Días anómalos
-  if (bestDias){
-    $('#kpi-dias-value').text(bestDiasVal.toLocaleString('es-MX'));
-    $('#kpi-dias-client').text((bestDias.cliente || 'Sin nombre') + ' (' + bestDias.codopr + ')');
-  } else {
-    $('#kpi-dias-value').text('—');
-    $('#kpi-dias-client').text('Sin datos');
-  }
+  setTxt('#kpi-zscore-value', bestZ ? fmtDec(bestZVal) : '—');
+  setTxt('#kpi-zscore-client', bestZ ? `${bestZ.cliente || 'Sin nombre'} (${bestZ.codopr})` : 'Sin datos');
 
-  // Despachos (total periodo)
-  if (bestDesp){
-    $('#kpi-despachos-value').text(bestDespVal.toLocaleString('es-MX'));
-    $('#kpi-despachos-client').text((bestDesp.cliente || 'Sin nombre') + ' (' + bestDesp.codopr + ')');
-  } else {
-    $('#kpi-despachos-value').text('—');
-    $('#kpi-despachos-client').text('Sin datos');
-  }
+  setTxt('#kpi-dias-value', bestDias ? fmtNum(bestDiasVal) : '—');
+  setTxt('#kpi-dias-client', bestDias ? `${bestDias.cliente || 'Sin nombre'} (${bestDias.codopr})` : 'Sin datos');
 
-  // Facturas máximas en un día
-  if (bestFactDia){
-    $('#kpi-facturasdia-value').text(bestFactDiaVal.toLocaleString('es-MX'));
-    $('#kpi-facturasdia-client').text((bestFactDia.cliente || 'Sin nombre') + ' (' + bestFactDia.codopr + ')');
-  } else {
-    $('#kpi-facturasdia-value').text('—');
-    $('#kpi-facturasdia-client').text('Sin datos');
-  }
+  setTxt('#kpi-despachos-value', bestDesp ? fmtNum(bestDespVal) : '—');
+  setTxt('#kpi-despachos-client', bestDesp ? `${bestDesp.cliente || 'Sin nombre'} (${bestDesp.codopr})` : 'Sin datos');
 
-  // Estación con más tickets en días anómalos
-  // TODO: llenar esto con una consulta específica en backend
-  // Por ahora dejamos el placeholder.
+  setTxt('#kpi-facturasdia-value', bestFactDia ? fmtNum(bestFactDiaVal) : '—');
+  setTxt('#kpi-facturasdia-client', bestFactDia ? `${bestFactDia.cliente || 'Sin nombre'} (${bestFactDia.codopr})` : 'Sin datos');
 }
 
-/* ===== Totales ===== */
 function updateFooters(api){
   const rows = api.rows({ search: 'applied' }).data().toArray();
-  const sum = function(arr, sel) {
-    return arr.reduce(function(s, r) {
-      return s + (parseFloat(sel(r)) || 0);
-    }, 0);
-  };
+  const sum = (arr, sel) => arr.reduce((s, r) => s + (parseFloat(sel(r)) || 0), 0);
   const n = rows.length || 1;
 
   const totalDias   = sum(rows, r => r.dias_anomalos);
@@ -629,169 +595,109 @@ function updateFooters(api){
   const promZ       = sum(rows, r => r.prom_zscore) / n;
 
   $('#ft_dias').text(totalDias.toLocaleString('es-MX'));
-  $('#ft_prom_z').text(promZ.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+  $('#ft_prom_z').text(promZ.toLocaleString('es-MX', {minimumFractionDigits:2}));
   $('#ft_desp').text(totalDesp.toLocaleString('es-MX'));
   $('#ft_fact').text(totalFact.toLocaleString('es-MX'));
-  $('#ft_mto').text(totalMonto.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2}));
+  $('#ft_mto').text(totalMonto.toLocaleString('es-MX', {minimumFractionDigits:2}));
 
-  // Actualizar tarjetas KPI
   updateHighlightCards(rows);
 }
 
-/* ===== Detalles por cliente: días anómalos + tickets ===== */
-let dtClientDays = null;
-let dtClientTickets = null;
-
-let ticketGroupsCollapsed = {};
-
-function formatHratrnTo12(data, type) {
-  if (type !== 'display' && type !== 'filter') return data;
-  if (data == null) return '';
-
-  var n = parseInt(data, 10);
-  if (isNaN(n)) return data;
-
-  var h24 = Math.floor(n / 100);
-  var m   = n % 100;
-
-  var ampm = h24 >= 12 ? 'PM' : 'AM';
-  var h12  = h24 % 12;
-  if (h12 === 0) h12 = 12;
-
-  return h12.toString().padStart(2, '0') + ':' +
-         m.toString().padStart(2, '0') + ' ' + ampm;
+function loadTopStation(from, until) {
+  $('#kpi-estacion-value').text('…');
+  $('#kpi-estacion-name').text('Calculando...');
+  $.post('/income/anomalies_top_station', { from: from, until: until }, function (resp) {
+    if (!resp || !resp.data || !resp.data.length) {
+      $('#kpi-estacion-value').text('—');
+      $('#kpi-estacion-name').text('Sin datos');
+      return;
+    }
+    const top = resp.data[0];
+    $('#kpi-estacion-value').text((top.tickets_anomalos || 0).toLocaleString('es-MX'));
+    $('#kpi-estacion-name').text((top.estacion || 'Sin nombre'));
+  }, 'json').fail(function () {
+    $('#kpi-estacion-value').text('—'); $('#kpi-estacion-name').text('Error');
+  });
 }
 
+// ==========================================
+// CARGA DE MODALES (Lógica Original)
+// ==========================================
+
+// Modal 1: Detalle (Days/Tickets)
 function loadClientDetail(codopr, cliente) {
   const from  = $('#from').val();
   const until = $('#until').val();
-
-  ticketGroupsCollapsed = {}; // reset por cliente
+  ticketGroupsCollapsed = {}; 
 
   $('#mdl-codopr').text(codopr);
   $('#mdl-cliente').text(cliente || '');
 
-  if ($.fn.DataTable.isDataTable('#client_days_table')) {
-    $('#client_days_table').DataTable().destroy();
-  }
-  if ($.fn.DataTable.isDataTable('#client_tickets_table')) {
-    $('#client_tickets_table').DataTable().destroy();
-  }
+  if ($.fn.DataTable.isDataTable('#client_days_table')) $('#client_days_table').DataTable().destroy();
+  if ($.fn.DataTable.isDataTable('#client_tickets_table')) $('#client_tickets_table').DataTable().destroy();
 
-  // TAB 1: días anómalos
+  // TAB 1
   dtClientDays = $('#client_days_table').DataTable({
-    order: [[6, "desc"], [0, "asc"]],
-    dom: '<"top"Bf>rt',
+    order: [[0, "asc"]],
+    dom: 't',
     paging: false,
-    info: false,
-    lengthChange: false,
-    buttons: [{
-      extend: 'excel',
-      className: 'btn btn-success',
-      text: 'Excel',
-      exportOptions: { columns: ':visible' }
-    }],
-    searchDelay: 350,
-    deferRender: true,
     ajax: {
-      type: 'POST',
-      url: '/income/anomalies_client_days',
-      data: { from: from, until: until, codopr: codopr }
+      type: 'POST', url: '/income/anomalies_client_days',
+      data: { from, until, codopr }
     },
     columns: [
-      { data: 'fecha',                className: 'text-nowrap' },
-      { data: 'facturas_dia',         className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
-      { data: 'baseline_media_hist',  className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'baseline_desv_hist',   className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'q1_hist',              className: 'text-end', render: $.fn.dataTable.render.number(',','.',2), visible: false },
-      { data: 'q3_hist',              className: 'text-end', render: $.fn.dataTable.render.number(',','.',2), visible: false },
-      { data: 'zscore_hist',          className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'fecha', className: 'text-nowrap' },
+      { data: 'facturas_dia', className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
+      { data: 'baseline_media_hist', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'baseline_desv_hist', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'zscore_hist', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
       { data: 'incremento_pct_vs_hist', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) }
     ]
   });
 
-  // TAB 2: lista de tickets
+  // TAB 2
   dtClientTickets = $('#client_tickets_table').DataTable({
     order: [[4, "asc"], [0, "asc"], [1, "asc"]],
-    dom: '<"top"Bf>rt<"bottom"ip>',
-    pageLength: 25,
-    lengthMenu: [[10,25,50,100,-1],[10,25,50,100,"Todos"]],
-    buttons: [{
-      extend: 'excel',
-      className: 'btn btn-success',
-      text: 'Excel',
-      exportOptions: { columns: ':visible' }
-    }],
-    searchDelay: 350,
-    deferRender: true,
+    dom: '<"d-flex justify-content-between mb-2"Bf>rt<"d-flex justify-content-between mt-2"ip>',
+    pageLength: 10,
+    lengthMenu: [[10,25,50,-1],[10,25,50,"Todos"]],
+    buttons: [{ extend: 'excel', className: 'btn btn-sm btn-success', text: 'Excel' }],
     ajax: {
-      type: 'POST',
-      url: '/income/anomalies_client_tickets',
-      data: { from: from, until: until, codopr: codopr }
+      type: 'POST', url: '/income/anomalies_client_tickets',
+      data: { from, until, codopr }
     },
     columns: [
-      { data: 'fecha',   className: 'text-nowrap' },
-      {
-        data: 'hratrn',
-        className: 'text-nowrap',
-        render: function (data, type, row) {
-          return formatHratrnTo12(data, type);
-        }
-      },
-      { data: 'nrotrn',  className: 'text-end' },
-      { data: 'nrofac',  className: 'text-end' },
+      { data: 'fecha', className: 'text-nowrap' },
+      { data: 'hratrn', className: 'text-nowrap', render: formatHratrnTo12 },
+      { data: 'nrotrn', className: 'text-end' },
+      { data: 'nrofac', className: 'text-end' },
       { data: 'factura', className: 'text-end' },
-      { data: 'serie',   className: 'text-center' },
+      { data: 'serie', className: 'text-center' },
       { data: 'conceptofac' },
-      { data: 'codgas',  className: 'text-end', visible: false },
       { data: 'estacion' },
-      { data: 'codprd',  className: 'text-end', visible: false },
       { data: 'nomPrd' },
-      { data: 'can',     className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'mto',     className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'codcli_d',    className: 'text-end', visible: false },
+      { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'mto', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
       { data: 'nombreCliente' },
-      { data: 'codopr_f',    className: 'text-end', visible: false },
       { data: 'turno', className: 'text-center' },
       { data: 'isla' },
       { data: 'responsable' },
-      { data: 'tiptrn',  visible: false },
-      { data: 'datref',  visible: false },
-      { data: 'satuid' },
-      { data: 'satrfc',  visible: false }
+      { data: 'satuid' }
     ],
     drawCallback: function (settings) {
       var api  = this.api();
       var rows = api.rows({ page: 'current' }).nodes();
       var lastFactura = null;
-
       api.column(4, { page: 'current' }).data().each(function (factura, i) {
         var key = factura == null ? '' : String(factura);
-
-        if (!(key in ticketGroupsCollapsed)) {
-          ticketGroupsCollapsed[key] = true; // por defecto colapsado
-        }
-
+        if (!(key in ticketGroupsCollapsed)) { ticketGroupsCollapsed[key] = true; }
         var collapsed = ticketGroupsCollapsed[key] === true;
-        var icon = collapsed ? '&#x25B6;' : '&#x25BC;';
-
+        var icon = collapsed ? '<i class="fas fa-caret-right text-muted"></i>' : '<i class="fas fa-caret-down text-primary"></i>';
         if (lastFactura !== key) {
-          $(rows).eq(i).before(
-            '<tr class="group" data-factura="'+ key.replace(/"/g,'&quot;') +'">' +
-              '<td colspan="22">' +
-                '<span class="me-2">'+ icon +'</span>' +
-                'Factura: ' + (key || '(sin folio)') +
-              '</td>' +
-            '</tr>'
-          );
+          $(rows).eq(i).before('<tr class="group" data-factura="'+ key.replace(/"/g,'&quot;') +'"><td colspan="16" class="py-2"><span class="me-2">'+ icon +'</span><strong>Factura: ' + (key || '(sin folio)') + '</strong></td></tr>');
           lastFactura = key;
         }
-
-        if (collapsed) {
-          $(rows).eq(i).addClass('d-none');
-        } else {
-          $(rows).eq(i).removeClass('d-none');
-        }
+        collapsed ? $(rows).eq(i).addClass('d-none') : $(rows).eq(i).removeClass('d-none');
       });
     }
   });
@@ -799,50 +705,69 @@ function loadClientDetail(codopr, cliente) {
   var modalEl = document.getElementById('modal-client-days');
   var modal = new bootstrap.Modal(modalEl);
   modal.show();
-
-  var firstTabTrigger = document.querySelector('#tab-days-tab');
-  if (firstTabTrigger) {
-    var tab = new bootstrap.Tab(firstTabTrigger);
-    tab.show();
-  }
 }
 
-// ===== Resumen por cliente (periodo + 3 meses previos) =====
-let dtSummaryEval = null;
-let dtSummaryM1   = null;
-let dtSummaryM2   = null;
-let dtSummaryM3   = null;
-
-function initSummaryTable($table, dtVarName, rows) {
+// Modal 2: Resumen (Historical)
+function initSummaryTable($table, rows) {
   if ($.fn.DataTable.isDataTable($table)) {
     $table.DataTable().destroy();
   }
   $table.find('tbody').empty();
 
-  const dt = $table.DataTable({
+  $table.DataTable({
     data: rows || [],
     paging: false,
     searching: false,
     info: false,
     ordering: false,
-    dom: '<"top"f>rt',
+    dom: 't',
+    autoWidth: false, // 👈 importante
+
     columns: [
-      { data: 'codopr',              className: 'text-end' },
-      { data: 'nombreCliente' },
-      { data: 'n_despachos',         className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
-      { data: 'facturas_unicas',     className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
-      { data: 'facturas_codgas_unicas', className: 'text-end', render: $.fn.dataTable.render.number(',','.',0), visible: false  },
-      { data: 'total_cant',          className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'total_mto',           className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) }
+      { // Cod
+        data: 'codopr',
+        className: 'text-end text-muted',
+        width: '8%'
+      },
+      { // Cliente
+        data: 'nombreCliente',
+        className: 'fw-bold',
+        width: '32%'
+      },
+      { // Despachos
+        data: 'n_despachos',
+        className: 'text-end',
+        render: $.fn.dataTable.render.number(',', '.', 0),
+        width: '12%'
+      },
+      { // Facturas
+        data: 'facturas_unicas',
+        className: 'text-end',
+        render: $.fn.dataTable.render.number(',', '.', 0),
+        width: '12%'
+      },
+      { // Fact x Est (oculta)
+        data: 'facturas_codgas_unicas',
+        className: 'text-end',
+        visible: false
+      },
+      { // Cant
+        data: 'total_cant',
+        className: 'text-end',
+        render: $.fn.dataTable.render.number(',', '.', 2),
+        width: '18%'
+      },
+      { // Monto
+        data: 'total_mto',
+        className: 'text-end fw-bold text-primary',
+        render: $.fn.dataTable.render.number(',', '.', 2),
+        width: '18%'
+      }
     ]
   });
-
-  // guardar referencia en variable global, por si quieres usarla después
-  if (dtVarName === 'eval') dtSummaryEval = dt;
-  if (dtVarName === 'm1')   dtSummaryM1   = dt;
-  if (dtVarName === 'm2')   dtSummaryM2   = dt;
-  if (dtVarName === 'm3')   dtSummaryM3   = dt;
 }
+
+
 
 function loadClientSummary(codopr, cliente) {
   const from  = $('#from').val();
@@ -851,281 +776,186 @@ function loadClientSummary(codopr, cliente) {
   $('#sum-codopr').text(codopr);
   $('#sum-cliente').text(cliente || '');
   $('#sum-periodo-eval').text(from + ' al ' + until);
+  $('#sum-m1-label').text(''); $('#sum-m2-label').text(''); $('#sum-m3-label').text('');
 
-  // labels de meses previos (el backend también los manda, pero por si acaso)
-  $('#sum-m1-label').text('');
-  $('#sum-m2-label').text('');
-  $('#sum-m3-label').text('');
-
-  // estado inicial
-  ['#client_summary_eval','#client_summary_m1','#client_summary_m2','#client_summary_m3']
-    .forEach(sel => {
-      $(sel).find('tbody').html(
-        '<tr><td colspan="7" class="text-center text-muted">Cargando...</td></tr>'
-      );
-    });
-
-  $.post('/income/anomalies_client_summary', {
-    from: from,
-    until: until,
-    codopr: codopr
-  }, function(resp) {
-    // resp: { data_eval, data_m1, data_m2, data_m3, m1_label, m2_label, m3_label }
-
-    const dataEval = resp.data_eval || [];
-    const dataM1   = resp.data_m1   || [];
-    const dataM2   = resp.data_m2   || [];
-    const dataM3   = resp.data_m3   || [];
-
-    initSummaryTable($('#client_summary_eval'), 'eval', dataEval);
-    initSummaryTable($('#client_summary_m1'),   'm1',   dataM1);
-    initSummaryTable($('#client_summary_m2'),   'm2',   dataM2);
-    initSummaryTable($('#client_summary_m3'),   'm3',   dataM3);
-
-    if (resp.m1_label) $('#sum-m1-label').text(resp.m1_label);
-    if (resp.m2_label) $('#sum-m2-label').text(resp.m2_label);
-    if (resp.m3_label) $('#sum-m3-label').text(resp.m3_label);
-
-  }, 'json').fail(function() {
-    ['#client_summary_eval','#client_summary_m1','#client_summary_m2','#client_summary_m3']
-      .forEach(sel => {
-        $(sel).find('tbody').html(
-          '<tr><td colspan="7" class="text-center text-danger">Error al cargar datos</td></tr>'
-        );
-      });
+  ['#client_summary_eval','#client_summary_m1','#client_summary_m2','#client_summary_m3'].forEach(sel => {
+      $(sel).find('tbody').html('<tr><td colspan="7" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Cargando...</td></tr>');
   });
+
+$.post('/income/anomalies_client_summary', { from: from, until: until, codopr: codopr }, function(resp) {
+  initSummaryTable($('#client_summary_eval'), resp.data_eval || []);
+  initSummaryTable($('#client_summary_m1'),   resp.data_m1   || []);
+  initSummaryTable($('#client_summary_m2'),   resp.data_m2   || []);
+  initSummaryTable($('#client_summary_m3'),   resp.data_m3   || []);
+
+  if (resp.m1_label) $('#sum-m1-label').text(resp.m1_label);
+  if (resp.m2_label) $('#sum-m2-label').text(resp.m2_label);
+  if (resp.m3_label) $('#sum-m3-label').text(resp.m3_label);
+}, 'json');
+
 
   const modalEl = document.getElementById('modal-client-summary');
   const modal   = new bootstrap.Modal(modalEl);
   modal.show();
 }
 
-
-/* ===== DataTable principal ===== */
-
-/* ===== Estación con más tickets en días anómalos ===== */
-function loadTopStation(from, until) {
-  // Opcional: pequeño estado de “cargando”
-  $('#kpi-estacion-value').text('…');
-  $('#kpi-estacion-name').text('Calculando estación…');
-
-  $.post('/income/anomalies_top_station', { from: from, until: until }, function (resp) {
-    if (!resp || !resp.data || !resp.data.length) {
-      $('#kpi-estacion-value').text('—');
-      $('#kpi-estacion-name').text('Sin datos');
-      return;
-    }
-    const top = resp.data[0];
-    $('#kpi-estacion-value').text(
-      (top.tickets_anomalos || 0).toLocaleString('es-MX')
-    );
-    $('#kpi-estacion-name').text(
-      (top.estacion || 'Sin nombre') + ' (Cod. ' + (top.codgas || 0) + ')'
-    );
-  }, 'json')
-  .fail(function () {
-    $('#kpi-estacion-value').text('—');
-    $('#kpi-estacion-name').text('Error al calcular estación');
-  });
-}
-
-
-
+// ==========================================
+// CARGA PRINCIPAL
+// ==========================================
 function loadAnomalies(){
-  if ($.fn.DataTable.isDataTable('#anomalies_table')) {
-    $('#anomalies_table').DataTable().destroy();
-  }
-
+  if ($.fn.DataTable.isDataTable('#anomalies_table')) { $('#anomalies_table').DataTable().destroy(); }
   registerTenPlusFilter();
-
   const from  = $('#from').val();
   const until = $('#until').val();
 
-    loadTopStation(from, until);
+  loadTopStation(from, until);
 
   const dt = $('#anomalies_table').DataTable({
-    order: [[3, "desc"], [0, "asc"]],
-    colReorder: true,
-    dom: '<"top"Bfl>rt<"bottom"lip>',
-    searchDelay: 350,
-    scrollX: true,
-    scrollY: '60vh',
-    scrollCollapse: true,
-    paging: true,
-    pageLength: 50,
-    lengthMenu: [[10,25,50,100,250,500,-1],[10,25,50,100,250,500,"Todos"]],
-    deferRender: true,
-    buttons: [{
-      extend: 'excel',
-      className: 'btn btn-success',
-      text: 'Excel',
-      exportOptions: { columns: ':visible' }
-    }],
-    ajax: {
-      type: 'POST',
-      url: '/income/anomalies_clients_table',
-      data: { from: from, until: until },
-      beforeSend: function(){ startLoadBar(); },
-      complete:    function(){ finishLoadBar(); },
-      error:       function(){ failLoadBar(); }
-    },
-   columns: [
-  { data: 'codopr', className: 'text-nowrap' },
-
-  // NOMBRE DEL CLIENTE + ICONO
-  { 
-    data: 'cliente',
-    render: function(data, type, row){
-      if (type !== 'display') return data;
-      const nombre = data || 'Sin nombre';
-      return '' +
-        '<a href="#" class="link-client-summary text-decoration-none" ' +
-          'data-codopr="'+ row.codopr +'" ' +
-          'data-cliente="'+ nombre.replace(/"/g,'&quot;') +'">' +
-            nombre +
-            ' <span class="text-muted ms-1" title="Ver resumen">&#x2197;</span>' +
-        '</a>';
-    }
+  order: [[3, "desc"], [0, "asc"]],
+  // Agregamos B (Buttons) al dom, junto al filtro
+  dom: '<"row mb-2"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6 d-flex justify-content-end"Bf>>rt<"row mt-2"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+  paging: true, pageLength: 50,
+  lengthMenu: [[10,25,50,100,-1],[10,25,50,100,"Todos"]],
+  deferRender: true,
+  language: { 
+    search: "_INPUT_", 
+    searchPlaceholder: "Buscar cliente..." 
   },
 
-  // DÍAS ANÓMALOS + ICONO
-  {
-    data: 'dias_anomalos',
-    className: 'text-end',
-    render: function(data, type, row){
-      if (type === 'display') {
-        var val = data || 0;
-        if (val > 0) {
-          var cliente = row.cliente || '';
-          return '' +
-            '<a href="#" class="link-dias-anom text-decoration-none" ' +
-              'data-codopr="'+ row.codopr +'" ' +
-              'data-cliente="'+ cliente.replace(/"/g, '&quot;') +'">' +
-                val +
-                ' <span class="text-muted ms-1" title="Ver días anómalos">&#x2197;</span>' +
-            '</a>';
-        }
+  // 🔹 Botones
+  buttons: [
+    {
+      extend: 'excelHtml5',
+      text: '<i class="fas fa-file-excel me-1"></i> Excel',
+      titleAttr: 'Exportar a Excel',
+      className: 'btn btn-sm btn-outline-success',
+      exportOptions: {
+        // ajusta columnas según lo que quieras exportar
+        columns: ':visible'
       }
-      // para ordenamiento / export, sigue siendo numérico
-      return $.fn.dataTable.render.number(',','.',0).display(data);
     }
-  },
-
-  { data: 'prom_zscore',     className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-  { data: 'n_despachos',     className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
-  { data: 'facturas_unicas', className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
-  { data: 'total_mto',       className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) }
-],
-
-
+  ],
+    ajax: {
+      type: 'POST', url: '/income/anomalies_clients_table',
+      data: { from, until },
+      beforeSend: startLoadBar, complete: finishLoadBar, error: failLoadBar
+    },
+    columns: [
+      { data: 'codopr', className: 'text-muted text-nowrap' },
+      { 
+        data: 'cliente',
+        render: function(data, type, row){
+          if (type !== 'display') return data;
+          // LINK 1: Resumen (Historical)
+          return `<a href="#" class="link-client-summary text-decoration-none" data-codopr="${row.codopr}" data-cliente="${(data||'').replace(/"/g,'&quot;')}">
+                    <i class="fas fa-user-tie me-1 text-secondary opacity-50"></i> ${data || 'Sin nombre'}
+                  </a>`;
+        }
+      },
+      {
+        data: 'dias_anomalos', className: 'text-center',
+        render: function(data, type, row){
+          if (type === 'display') {
+            var val = data || 0;
+            if (val > 0) {
+              // LINK 2: Detalle (Days/Tickets)
+              return `<a href="#" class="link-dias-anom badge-anomalies text-decoration-none" data-codopr="${row.codopr}" data-cliente="${(row.cliente||'').replace(/"/g, '&quot;')}">
+                        ${val} <i class="fas fa-exclamation-circle ms-1"></i>
+                      </a>`;
+            }
+            return '<span class="text-muted">-</span>';
+          }
+          return data;
+        }
+      },
+      { data: 'prom_zscore', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+      { data: 'n_despachos', className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
+      { data: 'facturas_unicas', className: 'text-end', render: $.fn.dataTable.render.number(',','.',0) },
+      { data: 'total_mto', className: 'text-end fw-bold', render: $.fn.dataTable.render.number(',','.',2) }
+    ],
     initComplete: function(){ updateFooters(this.api()); }
   });
 
-  $('#chk-10plus, #chk-multi-prod, #chk-multi-montos').off('change').on('change', function(){
-    dt.draw();
-  });
-
+  $('#chk-10plus, #chk-multi-prod, #chk-multi-montos').off('change').on('change', function(){ dt.draw(); });
   dt.on('draw', function(){ updateFooters(dt); });
 
+  // Event listeners para los dos tipos de link en la tabla
   $('#anomalies_table tbody').off('click', 'a.link-dias-anom').on('click', 'a.link-dias-anom', function(e){
     e.preventDefault();
-    const codopr  = $(this).data('codopr');
-    const cliente = $(this).data('cliente') || '';
-    if (codopr) {
-      loadClientDetail(codopr, cliente);
-    }
+    loadClientDetail($(this).data('codopr'), $(this).data('cliente'));
   });
 
- dt.on('draw', function () {
-    updateFooters(dt);
+  $('#anomalies_table tbody').off('click', 'a.link-client-summary').on('click', 'a.link-client-summary', function(e){
+    e.preventDefault();
+    loadClientSummary($(this).data('codopr'), $(this).data('cliente'));
   });
 }
 
-// Click en nombre de cliente -> resumen por cliente
-$('#anomalies_table tbody').off('click', 'a.link-client-summary').on('click', 'a.link-client-summary', function(e){
-  e.preventDefault();
-  const codopr  = $(this).data('codopr');
-  const cliente = $(this).data('cliente') || '';
-  if (codopr) {
-    loadClientSummary(codopr, cliente);
-  }
+// ==========================================
+// EVENTOS GLOBALES Y CORRECCIONES DE UI
+// ==========================================
+$(document).ready(function() {
+    $('#btn-run').on('click', loadAnomalies);
+
+    // --- CORRECCIÓN: Ajustar columnas al cambiar de pestaña ---
+    $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+        $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+    });
+    
+    // --- CORRECCIÓN: Ajustar columnas al abrir modales ---
+    $('#modal-client-days').on('shown.bs.modal', function () {
+        if(dtClientDays) dtClientDays.columns.adjust();
+        if(dtClientTickets) dtClientTickets.columns.adjust();
+    });
+
+// Evento para ajustar columnas SOLO cuando el modal termina de abrirse
+$('#modal-client-summary').on('shown.bs.modal', function () {
+    // Lista de las 4 tablas dentro de este modal
+    const tables = [
+        '#client_summary_eval', 
+        '#client_summary_m1', 
+        '#client_summary_m2', 
+        '#client_summary_m3'
+    ];
+
+    tables.forEach(selector => {
+        // Solo ajustamos si la tabla es un DataTable activo
+        if ($.fn.DataTable.isDataTable(selector)) {
+            $(selector).DataTable().columns.adjust();
+        }
+    });
+  });
+
 });
 
-
-$('#btn-run').on('click', loadAnomalies);
-
-$('#modal-client-days').on('shown.bs.modal', function () {
-  if (dtClientDays) {
-    dtClientDays.columns.adjust();
-  }
-  if (dtClientTickets) {
-    dtClientTickets.columns.adjust();
-  }
-});
-
-$('button[data-bs-target="#tab-tickets"]').on('shown.bs.tab', function () {
-  if (dtClientTickets) {
-    dtClientTickets.columns.adjust();
-  }
-});
-
-// Toggle de grupos por factura en Lista de tickets
+// Helpers de UI para Tickets
 $('#client_tickets_table tbody').on('click', 'tr.group', function () {
   var factura = $(this).data('factura') || '';
   var key = String(factura);
-
   ticketGroupsCollapsed[key] = !ticketGroupsCollapsed[key];
-
   var api = $('#client_tickets_table').DataTable();
+  
+  var $icon = $(this).find('span').first();
+  $icon.html(ticketGroupsCollapsed[key] ? '<i class="fas fa-caret-right text-muted"></i>' : '<i class="fas fa-caret-down text-primary"></i>');
 
   api.rows({ page: 'current' }).every(function () {
-    var data = this.data();
-    var f = data && (data.factura == null ? '' : String(data.factura));
-    if (f === key) {
-      var node = this.node();
-      if (ticketGroupsCollapsed[key]) {
-        $(node).addClass('d-none');
-      } else {
-        $(node).removeClass('d-none');
+      var d = this.data();
+      if(d && String(d.factura) === key) {
+          ticketGroupsCollapsed[key] ? $(this.node()).addClass('d-none') : $(this.node()).removeClass('d-none');
       }
-    }
   });
-
-  var $icon = $(this).find('span').first();
-  if (ticketGroupsCollapsed[key]) {
-    $icon.html('&#x25B6;');
-  } else {
-    $icon.html('&#x25BC;');
-  }
 });
 
-// Colapsar todas las facturas en Lista de tickets
 $('#btn-collapse-all-tickets').on('click', function () {
   if (!dtClientTickets) return;
-
-  var api = dtClientTickets;
-
-  api.column(4).data().each(function (factura) {
-    var key = factura == null ? '' : String(factura);
-    ticketGroupsCollapsed[key] = true;
-  });
-
-  api.draw(false);
+  dtClientTickets.column(4).data().each(function (factura) { ticketGroupsCollapsed[String(factura)] = true; });
+  dtClientTickets.draw(false);
 });
 
-// Expandir todas las facturas en Lista de tickets
 $('#btn-expand-all-tickets').on('click', function () {
   if (!dtClientTickets) return;
-
-  var api = dtClientTickets;
-
-  api.column(4).data().each(function (factura) {
-    var key = factura == null ? '' : String(factura);
-    ticketGroupsCollapsed[key] = false;
-  });
-
-  api.draw(false);
+  dtClientTickets.column(4).data().each(function (factura) { ticketGroupsCollapsed[String(factura)] = false; });
+  dtClientTickets.draw(false);
 });
-
 </script>
 {% endblock %}
