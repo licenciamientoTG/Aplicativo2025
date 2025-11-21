@@ -391,6 +391,48 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mt-2">
+  <div class="card-header py-1 px-3 bg-white border-bottom-0">
+      <small class="fw-bold text-muted">
+          Consultar otro mes
+      </small>
+  </div>
+  <div class="card-body p-3">
+      <div class="row align-items-end g-2 mb-3">
+          <div class="col-sm-6 col-md-4">
+              <label for="sum-custom-month" class="form-label small text-muted mb-1">Mes a consultar</label>
+              <input type="month" id="sum-custom-month" class="form-control form-control-sm">
+          </div>
+          <div class="col-sm-6 col-md-3">
+              <button type="button" id="btn-sum-custom-month" class="btn btn-sm btn-primary w-100">
+                  <i class="fas fa-search me-1"></i> Consultar
+              </button>
+          </div>
+          <div class="col-12 col-md-5 text-md-end">
+              <small id="sum-custom-label" class="text-muted"></small>
+          </div>
+      </div>
+
+      <div class="table-responsive">
+          <table id="client_summary_custom" class="table table-sm table-hover mb-0 w-100">
+              <thead class="bg-light">
+                  <tr>
+                      <th>Cod</th>
+                      <th>Cliente</th>
+                      <th class="text-end">Desp</th>
+                      <th class="text-end">Fac</th>
+                      <th class="text-end">FxE</th>
+                      <th class="text-end">Cant</th>
+                      <th class="text-end">Monto</th>
+                  </tr>
+              </thead>
+              <tbody></tbody>
+          </table>
+      </div>
+  </div>
+</div>
+
+
       </div>
     </div>
   </div>
@@ -517,6 +559,24 @@ function stopLoadBar(resetToZero) {
   if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
   if (resetToZero) $('#loadbar .progress-bar').css('width','0%');
 }
+
+function getMonthRange(ym) {
+  // ym esperado en formato "YYYY-MM"
+  if (!ym) return null;
+  const parts = ym.split('-');
+  if (parts.length !== 2) return null;
+
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10); // 1–12
+  if (isNaN(year) || isNaN(month) || month < 1 || month > 12) return null;
+
+  const from = ym + '-01';
+  const lastDay = new Date(year, month, 0).getDate(); // día 0 del siguiente mes = último del actual
+  const until = ym + '-' + String(lastDay).padStart(2, '0');
+
+  return { from, until };
+}
+
 
 // Filtros DataTables
 function registerTenPlusFilter(){
@@ -658,7 +718,7 @@ function loadClientDetail(codopr, cliente) {
   // TAB 2
   dtClientTickets = $('#client_tickets_table').DataTable({
     order: [[4, "asc"], [0, "asc"], [1, "asc"]],
-    dom: '<"d-flex justify-content-between mb-2"Bf>rt<"d-flex justify-content-between mt-2"ip>',
+    dom: '<"d-flex justify-content-between mb-2"lBf>rt<"d-flex justify-content-between mt-2"ip>',
     pageLength: 10,
     lengthMenu: [[10,25,50,-1],[10,25,50,"Todos"]],
     buttons: [{ extend: 'excel', className: 'btn btn-sm btn-success', text: 'Excel' }],
@@ -721,7 +781,7 @@ function initSummaryTable($table, rows) {
     info: false,
     ordering: false,
     dom: 't',
-    autoWidth: false, // 👈 importante
+    autoWidth: false,
 
     columns: [
       { // Cod
@@ -926,6 +986,41 @@ $('#modal-client-summary').on('shown.bs.modal', function () {
     });
   });
 
+  
+  $('#btn-sum-custom-month').on('click', function () {
+    const codopr = $('#sum-codopr').text();
+    const ym = $('#sum-custom-month').val(); // formato YYYY-MM
+
+    const range = getMonthRange(ym);
+    if (!codopr || !range) {
+      // si quieres puedes poner un toast/alert sencillo
+      console.warn('Falta cliente o mes inválido');
+      return;
+    }
+
+    $('#sum-custom-label').text(`Periodo: ${range.from} al ${range.until}`);
+
+    const $tbl = $('#client_summary_custom');
+    // mensaje de carga
+    $tbl.find('tbody').html(
+      '<tr><td colspan="7" class="text-center text-muted py-3">' +
+        '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Cargando...' +
+      '</td></tr>'
+    );
+
+    $.post('/income/anomalies_client_summary', {
+      from: range.from,
+      until: range.until,
+      codopr: codopr
+    }, function (resp) {
+      // Para el mes elegido usamos solo data_eval
+      initSummaryTable($tbl, resp.data_eval || []);
+      // Ajustamos columnas por si el modal ya está visible
+      if ($.fn.DataTable.isDataTable('#client_summary_custom')) {
+        $('#client_summary_custom').DataTable().columns.adjust();
+      }
+    }, 'json');
+  });
 });
 
 // Helpers de UI para Tickets
