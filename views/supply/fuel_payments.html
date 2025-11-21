@@ -5,36 +5,6 @@
 {% block content %}
 
 <style>
-    tr.group,
-tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.1) !important;
-}
- 
-:root.dark tr.group,
-:root.dark tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.75) !important;
-}
-.column_estation{
-    background-color: #add5e6 !important;
-    color: white !important;
-}
-.total_bg{
-    background-color: #48A1C7 !important;
-    color: white !important;
-}
-.total_bg2{
-    background-color:#48A1C7 !important;
-    color: white !important;
-
-}
-
-.border_center{
-    border-top: 1px dotted  #358f92 !important;
-    border-bottom: 1px dotted  #358f92 !important;
-    border-left: 1px dotted #358f92 !important;
-    border-right: 1px dotted  #358f92 !important;
-}
-
 
 table.dataTable thead th, table.dataTable thead td {
     padding: 10px 18px;
@@ -44,33 +14,22 @@ table.dataTable thead th, table.dataTable thead td {
 
 }
 
-table.dataTable tfoot th, table.dataTable tfoot td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-.border_OG{
-    border: 0.5px solid #0c202091 !important;
-    background-color: #6d7277e8;
-}
 </style>
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link  active " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
+        <button class="nav-link   " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link   " id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
+        <button class="nav-link active" id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
     </li>
 </ul>
 
 <div class="tab-content" >
-    <div class="tab-pane active " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
+    <div class="tab-pane  " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
@@ -184,124 +143,108 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
     </div>
-    <div class="tab-pane  " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
+   <div class="tab-pane active" id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
         <div class="card">
             <div class="card-body">
-                <div class="row">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  first_date }}" required>
+                <div class="row" style="align-items: flex-end;">
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="from_resumen">Desde:</label>
+                        <input type="date" class="form-control form-control-sm" name="from_resumen" id="from_resumen" 
+                            value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                     </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="until_resumen">Hasta:</label>
+                        <input type="date" class="form-control form-control-sm" name="until_resumen" id="until_resumen" 
+                            value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                    <div class="col-2 ">
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" placeholder="Seleccione una estación">
-                        {% for station in stations %}
-                            <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
-                        {% endfor %}
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="station_id_resumen">Estación:</label>
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id_resumen" 
+                                id="station_id_resumen" placeholder="Seleccione una estación">
+                            <option value="0" selected>Todas las estaciones</option>
+                            {% for station in stations %}
+                                <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
                         </select>
                     </div>
-                    <div class="col-2 " >
-                        <button id="seach_payments_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="proveedor_resumen">Proveedor:</label>
+                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_resumen" 
+                                id="proveedor_resumen">
+                            <option value="0" selected>Todos los proveedores</option>
+                            {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.cod }}">{{ proveedor.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="company_resumen">Empresa:</label>
+                        <select class="selectpicker w-100" name="company_resumen" id="company_resumen">
+                            <option value="0" selected>Todas las empresas</option>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.cod }}">{{ empresa.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <button onclick="resumen_payment_table()" class="btn btn-sm btn-primary" 
+                                style="width: 100%; margin-top: 15px;">
+                            Generar Reporte
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+        
         <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Resumen </h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Resumen de Pagos - Movimientos de Tanques</h5>
+                <div id="table-info" class="text-muted small"></div>
             </div>
-            <div class="card-body table-responsive" >
-                <table id="payments_table" class="table table-hover table-sm w-100">
-                   <thead>
-                        <tr>
-                            <th>FECHA DE DESCARGA</th>
-                            <th>NUMERO DE ESTACION</th>
-                            <th>PROVEEDOR ORIGINAL</th>
-                            <th>PRODUCTO</th>
-                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
-                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
-                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
-                            <th>MONTO FACTURA</th>
-                            <th>SALDO FACTURA</th>
-                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
-                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
-                            <th>DIFERENCIA</th>
-                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
-                            <th>PRECIO VENTA EN ESTACION</th>
-                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
-                            <th>% IVA FACTURADO</th>
-                            <th>COSTO ALMACENAMIENTO</th>
-                            <th>UTILIDAD POR LITRO</th>
-                            <th>UTILIDAD LITRO FACTURA</th>
-                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
-                            <th>PRECIO PEMEX AL 16 %</th>
-                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
-                            <th>NUMERO DE FACTURA PETROTAL</th>
-                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
-                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
-                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
-                            <th>BOL NUMBER O NO. EMBARQUE</th>
-                            <th>RAZON SOCIAL FACTURADA</th>
-                            <th>IEPS</th>
-                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
-                            <th>Menos IEPS</th>
-                            <th>Precio sin IVA 16%</th>
-                            <th>Por IVA ,08</th>
-                            <th>Precio C/IVA 8% Y C/IEPS</th>
-                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
-                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
-                            <th>UTILIDAD PETROTAL</th>
-                            <th>OBSERVACIONES</th>
-                        </tr>
+            <!-- IMPORTANTE: Agregar clase datatable-wrapper para scroll horizontal -->
+            <div class="card-body p-0">
+                <div class="table-responsive datatable-wrapper" >
+                    <table id="resumen_payment_table" class="table table-hover table-sm table-striped w-100" style="min-width: 2000px;">
+                        <thead >
+                            <tr>
+                                <th >Fecha</th>
+                                <th >Estación</th>
+                                <th >Número Estación</th>
+                                <th >Proveedor Original</th>
+                                <th >Producto</th>
+                                <th >Num Factura Proveedor original</th>
+                                <th >Proveedor Factura Final</th>
+                                <th >Litros en Documento</th>
+                                <th >Monto Factura</th>
+                                <th >Precio Factura</th>
+                                <th >UUID</th>
+                                <th >Proveedor ControlGas</th>
+                                <th >Monto Factura</th>
+                                <th >Cantidad Factura</th>
+                                <th >Grupo Producto</th>
+                                <th >Nro. Transacción</th>
+                            </tr>
                         </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                        <tr>
-                            <th>FECHA DE DESCARGA</th>
-                            <th>NUMERO DE ESTACION</th>
-                            <th>PROVEEDOR ORIGINAL</th>
-                            <th>PRODUCTO</th>
-                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
-                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
-                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
-                            <th>MONTO FACTURA</th>
-                            <th>SALDO FACTURA</th>
-                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
-                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
-                            <th>DIFERENCIA</th>
-                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
-                            <th>PRECIO VENTA EN ESTACION</th>
-                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
-                            <th>% IVA FACTURADO</th>
-                            <th>COSTO ALMACENAMIENTO</th>
-                            <th>UTILIDAD POR LITRO</th>
-                            <th>UTILIDAD LITRO FACTURA</th>
-                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
-                            <th>PRECIO PEMEX AL 16 %</th>
-                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
-                            <th>NUMERO DE FACTURA PETROTAL</th>
-                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
-                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
-                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
-                            <th>BOL NUMBER O NO. EMBARQUE</th>
-                            <th>RAZON SOCIAL FACTURADA</th>
-                            <th>IEPS</th>
-                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
-                            <th>Menos IEPS</th>
-                            <th>Precio sin IVA 16%</th>
-                            <th>Por IVA ,08</th>
-                            <th>Precio C/IVA 8% Y C/IEPS</th>
-                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
-                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
-                            <th>UTILIDAD PETROTAL</th>
-                            <th>OBSERVACIONES</th>
-
-                        </tr>
-                    </tfoot>
-                </table>
+                        <tbody></tbody>
+                        <tfoot >
+                                <!-- <th >Fecha</th>
+                                <th >Nro. Transacción</th>
+                                <th >Estación</th>
+                                <th >Número Estación</th>
+                                <th >Proveedor Original</th>
+                                <th >Productro</th>
+                                <th >Vol. Recaudado</th>
+                                <th >Vol. Factura Rec.</th>
+                                <th >Nro. Factura</th>
+                                <th >UUID</th>
+                                <th >Proveedor ControlGas</th>
+                                <th >Monto Factura</th>
+                                <th >Cantidad Factura</th>
+                                <th >Precio Factura</th>
+                                <th >Grupo Producto</th> -->
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

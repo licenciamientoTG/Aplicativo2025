@@ -44,8 +44,7 @@
         <form id="formImportarUUIDs" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="archivo_excel">Seleccionar archivo Excel con UUIDs</label>
-                <input type="file" class="form-control-file" id="archivo_excel" 
-                       name="archivo_excel" accept=".xlsx,.xls" required>
+                <input type="file" class="form-control-file" id="archivo_excel" name="archivo_excel" accept=".xlsx,.xls" required>
                 <small class="form-text text-muted">
                     El archivo debe tener los UUIDs en la primera columna (columna A)
                 </small>
@@ -58,7 +57,7 @@
         <!-- Área de progreso -->
         <div id="areaProgreso" class="mt-4" style="display:none;">
             <div class="progress">
-                <div id="barraProgreso" class="progress-bar progress-bar-striped progress-bar-animated" 
+                <div id="barraProgreso" class="progress-bar progress-bar-striped progress-bar-animated"
                      role="progressbar" style="width: 0%">0%</div>
             </div>
             <p class="mt-2" id="textoProgreso"></p>
@@ -67,7 +66,6 @@
         <!-- Resumen de descargas -->
         <div id="areaResumen" class="mt-4" style="display:none;">
             <h4>Resumen de Descargas</h4>
-            
             <!-- Exitosas -->
             <div class="card border-success mb-3" id="cardExitosas" style="display:none;">
                 <div class="card-header bg-success text-white">

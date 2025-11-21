@@ -506,7 +506,7 @@ async function payment_list_table(){
                 'untilDate':untilDate,
                 'codgas':codgas
             },
-            url: '/supply/payment_list_table',
+            url: '/supply/  ',
             timeout: 600000, 
             error: function() {
                 $('#payment_list_table').waitMe('hide');
@@ -953,14 +953,11 @@ async function shop_fuel_table(){
 
 
 
+// ... [CÓDIGO ANTERIOR DE SUPPLY.JS SE MANTIENE IGUAL HASTA LA LÍNEA ~1440] ...
 
 // ==========================================
-// DESCARGAR FACTURAS POR UUID
+// DESCARGAR FACTURAS POR UUID - VERSIÓN ÚNICA Y DEFINITIVA
 // ==========================================
-// ==========================================
-// DESCARGAR FACTURAS POR UUID
-// ==========================================
-
 $(document).ready(function() {
     // Solo ejecutar si estamos en la página correcta
     if ($('#formImportarUUIDs').length > 0) {
@@ -993,10 +990,16 @@ $(document).ready(function() {
                 success: function(response) {
                     if (response.success) {
                         $('#barraProgreso').css('width', '100%').text('100%');
-                        $('#textoProgreso').text('UUIDs procesados correctamente');
+                        $('#textoProgreso').text('Procesamiento completado');
                         
-                        // Mostrar opciones de descarga
-                        mostrarOpcionesDescarga(response.facturas, btnProcesar);
+                        // Pasar tanto exitosas como fallidas
+                        setTimeout(() => {
+                            mostrarOpcionesDescarga(
+                                response.facturas || [], 
+                                btnProcesar,
+                                response.facturas_fallidas || []
+                            );
+                        }, 500);
                     } else {
                         btnProcesar.prop('disabled', false);
                         $('#areaProgreso').hide();
@@ -1209,64 +1212,7 @@ function mostrarOpcionesDescarga(facturas, btnProcesar, facturasFallidas = []) {
             descargarFacturasIndividual(facturas);
         });
     }
-}   
-
-// Actualizar la llamada en el success del formulario
-$('#formImportarUUIDs').on('submit', function(e) {
-    e.preventDefault();
-    
-    const formData = new FormData(this);
-    const btnProcesar = $('#btnProcesar');
-    
-    if (!$('#archivo_excel')[0].files[0]) {
-        alertify.error('Debe seleccionar un archivo Excel');
-        return;
-    }
-    
-    btnProcesar.prop('disabled', true);
-    $('#areaProgreso').show();
-    $('#areaResumen').hide();
-    $('#barraProgreso').css('width', '10%').text('10%');
-    $('#textoProgreso').text('Procesando archivo Excel...');
-    
-    $.ajax({
-        url: '/supply/procesar_uuids_facturas',
-        type: 'POST',
-        data: formData,
-        processData: false,
-        contentType: false,
-        success: function(response) {
-            if (response.success) {
-                $('#barraProgreso').css('width', '100%').text('100%');
-                $('#textoProgreso').text('Procesamiento completado');
-                
-                // Pasar tanto exitosas como fallidas
-                setTimeout(() => {
-                    mostrarOpcionesDescarga(
-                        response.facturas || [], 
-                        btnProcesar,
-                        response.facturas_fallidas || []
-                    );
-                }, 500);
-            } else {
-                btnProcesar.prop('disabled', false);
-                $('#areaProgreso').hide();
-                alertify.error(response.message || 'Error al procesar el archivo');
-            }
-        },
-        error: function(xhr) {
-            btnProcesar.prop('disabled', false);
-            $('#areaProgreso').hide();
-            
-            let mensaje = 'Error al procesar el archivo';
-            if (xhr.responseJSON && xhr.responseJSON.message) {
-                mensaje = xhr.responseJSON.message;
-            }
-            
-            alertify.error(mensaje);
-        }
-    });
-});
+}
 
 function descargarFacturasZip(facturas) {
     $('#btnDescargarZip').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Creando ZIP...');
@@ -1372,6 +1318,9 @@ function descargarFacturasIndividual(facturas) {
     );
 }
 
+// ==========================================
+// FIN DE CÓDIGO DE FACTURAS UUID
+// ==========================================
 function descargarFacturas(facturas, btnProcesar) {
     const exitosas = [];
     const fallidas = [];
@@ -1487,3 +1436,167 @@ function mostrarResumen(exitosas, fallidas, btnProcesar) {
         alertify.success(`Proceso completado: ${exitosas.length} descargadas, ${fallidas.length} fallidas`);
     }, 500);
 }
+async function resumen_payment_table() {
+    // Destruir tabla existente si existe
+    if ($.fn.DataTable.isDataTable('#resumen_payment_table')) {
+        $('#resumen_payment_table').DataTable().clear().destroy();
+        $('#resumen_payment_table thead .filter').remove();
+        $('#resumen_payment_table tbody').empty();
+    }
+
+    // Obtener valores de los filtros
+    var fromDate = document.getElementById('from_resumen').value;
+    var untilDate = document.getElementById('until_resumen').value;
+    var codgas = document.getElementById('station_id_resumen').value || '0';
+    var proveedor = document.getElementById('proveedor_resumen').value || '0';
+    var company = document.getElementById('company_resumen').value || '0';
+
+    // Validación de fechas
+    if (!fromDate || !untilDate) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar un rango de fechas para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    // Agregar fila de filtros en el thead
+   $('#resumen_payment_table thead').prepend($('#resumen_payment_table thead tr').clone().addClass('filter'));
+    $('#resumen_payment_table thead tr.filter th').each(function (index) {
+        col = $('#resumen_payment_table thead th').length/2;
+        if (index < col ) {
+            var title = $(this).text(); // Obtiene el nombre de la columna
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#resumen_payment_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index(); // Obtiene el índice de la columna
+        var table = $('#resumen_payment_table').DataTable(); // Obtiene la instancia de DataTable
+        table
+            .column(index)
+            .search(this.value) // Busca el valor del input
+            .draw(); // Redibuja la tabla
+    });
+
+    // Inicializar DataTable
+    let resumen_payment_table = $('#resumen_payment_table').DataTable({
+        order: [[0, "asc"]],
+        scrollY: '700px',
+        colReorder: false, // ← Desactivar para evitar problemas de alineación
+        fixedHeader: false, // ← Desactivar, usaremos CSS sticky
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollX: true,
+        scrollCollapse: true,
+        // responsive: false,
+        paging: false,
+        autoWidth: false, // ← IMPORTANTE: Desactivar auto width
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: ' Excel'
+            },
+            {
+                extend: 'colvis',
+                className: 'btn btn-sm btn-secondary',
+                text: '<i class="bi bi-eye"></i> Columnas'
+            }
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'proveedor': proveedor,
+                'company': company
+            },
+            url: '/supply/resumen_payment_table',
+            timeout: 600000,
+            error: function(xhr, error, thrown) {
+                $('.datatable-wrapper').removeClass('loading');
+                alertify.error('Error al cargar datos: ' + thrown);
+            },
+            beforeSend: function() {
+                $('.datatable-wrapper').addClass('loading');
+            },
+            dataSrc: function(json) {
+                if (json.data && json.data.length > 0) {
+                    $('#table-info').html(
+                        `<i class="bi bi-info-circle"></i> ${json.data.length} registro(s)`
+                    );
+                }
+                return json.data;
+            }
+        },
+        columns: [
+            { data: 'fecha', className: 'text-center text-nowrap' },
+            { data: 'estacion', className: 'text-start text-nowrap' },
+            { data: 'numero_estacion', className: 'text-center  text-nowrap' },
+            { data: 'proveedor_original', className: 'text-start text-nowrap' },
+            { data: 'combustible', className: 'text-start text-nowrap' },
+            { data: 'num_fac_proveedor', className: 'text-start text-nowrap' },
+            { data: 'proveedor_final', className: 'text-start text-nowrap' },
+            {data: 'cantidad_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number(',', '.', 2)},
+            {data: 'monto_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number( ',', '.', 2, '$' )},
+            {data: 'precio_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number(',', '.', 4)},
+            { 
+                data: 'uuid',
+                className: 'text-start text-nowrap',
+                render: function(data) {
+                    if (!data || data === '') {
+                        return '<span class="badge bg-warning text-dark">Sin UUID</span>';
+                    }
+                    return '<small>' + data + '</small>';
+                }
+            },
+            { data: 'proveedor_controlgas', className: 'text-start text-nowrap' },
+            { 
+                data: 'monto_factura_controlgas',
+                className: 'text-end',
+                render: function(data) {
+                    return data ? '$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) : '$0.00';
+                }
+            },
+            { 
+                data: 'cantidad_factura_controlgas',
+                className: 'text-end',
+                render: function(data) {
+                    return data ? parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) : '0.00';
+                }
+            },
+            
+            { data: 'graprd', className: 'text-center' },
+            { data: 'nrotrn', className: 'text-center text-nowrap' },
+
+        ],
+        columnDefs: [
+            { targets: '_all', orderable: true }
+        ],
+        deferRender: true,
+        createdRow: function (row, data, dataIndex) {
+            if (!data.uuid || data.uuid === null || data.uuid === '') {
+                $(row).addClass('table-warning');
+            }
+        },
+        initComplete: function () {
+            $('.datatable-wrapper').removeClass('loading');
+            alertify.success('Tabla cargada exitosamente');
+        },
+        drawCallback: function(settings) {
+            this.api().columns.adjust();
+
+        }
+    });
+}
+

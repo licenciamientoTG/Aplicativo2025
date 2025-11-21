@@ -195,6 +195,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     </div>
                     <div class="col-2 " >
                         <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                        <button onclick="addAllToPayment()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 5px;"><i class="fas fa-angles-right me-1"></i>Agregar Todas</button>
                     </div>
                 </div>
             </div>
@@ -416,7 +417,7 @@ function updatePaymentSummary() {
 // Limpiar todo el pago
 function clearAllPayments() {
     if (paymentItems.length === 0) return;
-    
+
     alertify.confirm(
         '¿Estás seguro?',
         '¿Quieres limpiar todos los documentos del pago?',
@@ -430,6 +431,52 @@ function clearAllPayments() {
             // Cancelado
         }
     );
+}
+
+// Agregar todas las recepciones al pago
+function addAllToPayment() {
+    const table = $('#payment_create_table').DataTable();
+
+    if (!table || table.rows().count() === 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No hay documentos en la tabla para agregar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    // Obtener todas las filas visibles (filtradas)
+    const allData = table.rows({ search: 'applied' }).data().toArray();
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    allData.forEach(rowData => {
+        // Verificar si ya existe
+        const exists = paymentItems.some(item => item.nro === rowData.nro);
+        if (!exists) {
+            paymentItems.push(rowData);
+            addedCount++;
+        } else {
+            skippedCount++;
+        }
+    });
+
+    renderPaymentItems();
+    updatePaymentSummary();
+
+    if (addedCount > 0) {
+        let message = `Se agregaron ${addedCount} documento(s) al pago.`;
+        if (skippedCount > 0) {
+            message += ` (${skippedCount} ya existían)`;
+        }
+        alertify.success(message);
+    } else if (skippedCount > 0) {
+        alertify.warning('Todos los documentos ya están en el pago.');
+    }
 }
 
 // Generar pago

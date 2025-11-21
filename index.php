@@ -71,7 +71,7 @@ spl_autoload_register(function($class) {
 // Si existe el archivo del controlador, lo ejecutamos; si no, 404
 if (file_exists(CONTROLLERS . $controller . '.php')) {
     define('CONTROLLER', $controller . DS);
-    $twig->addGlobal('CONTROLLER', CONTROLLER);
+    $twig->addGlobal('CONTROLLER', $controller);
 
     require CONTROLLERS . $controller . '.php';
     $controllerInstance = new $controller($twig);
