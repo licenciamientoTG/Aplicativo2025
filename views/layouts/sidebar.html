@@ -21,8 +21,8 @@
       <img src="{{ IMAGES }}logos/logo_TotalGas_hor_azul.png" class="img-fluid" alt="...">
     </a>
     <ul class="sidebar-nav">
-      <li class="sidebar-item active">
-        <a class="sidebar-link" href="/home/index">
+      <li class="sidebar-item {{ CONTROLLER == 'home' ? 'active' : '' }}">
+        <a class="sidebar-link {{ CONTROLLER == 'home' ? 'active_item' : '' }}" href="/home/index">
           <i class="align-middle" data-feather="pie-chart"></i> <span class="align-middle">Dashboard</span>
         </a>
       </li>
@@ -50,13 +50,13 @@
 
 
       {% if authorized(7) %} {# Ver módulo de Administración #}
-      <li class="sidebar-header">ADMINISTRACIÓN</li>
+      <li class="sidebar-header {{ CONTROLLER == 'administration' ? 'active_header' : '' }}">ADMINISTRACIÓN</li>
         {% if authorized(8) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'administration' ? 'active' : '' }}">
+          <a data-bs-target="#admin_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'administration' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'administration' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a></li>
           </ul>
           <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
@@ -66,29 +66,29 @@
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/in_process">Anticipos débito</a></li>
           </ul>
         </li>
-        <li class="sidebar-item">
-          <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'administration' ? 'active' : '' }}">
+          <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'administration' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'administration' ? 'true' : 'false' }}">
             <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
           </a>
           {% if authorized(41) %}
-          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a></li>
           </ul>
           {% endif %}
 
           {% if authorized(39) %}
-          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a></li>
           </ul>
-          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a></li>
           </ul>
-          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a></li>
           </ul>
           {% endif %}
           {% if authorized(65) %}
-          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'administration' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a></li>
           </ul>
           {% endif %}
@@ -99,35 +99,35 @@
 
 
       {% if authorized(43) %} {# Ver módulo de Direccion #}
-      <li class="sidebar-header">DIRECCION</li>
-      <li class="sidebar-item">
-        <a class="sidebar-link" href="/direction/monthly_dollar_sales_report"><i data-feather="dollar-sign"></i><span class="align-middle">Venta Dolares Mensual</span></a>
+      <li class="sidebar-header {{ CONTROLLER == 'direction' ? 'active_header' : '' }}">DIRECCION</li>
+      <li class="sidebar-item {{ CONTROLLER == 'direction' ? 'active' : '' }}">
+        <a class="sidebar-link {{ CONTROLLER == 'direction' ? 'active_item' : '' }}" href="/direction/monthly_dollar_sales_report"><i data-feather="dollar-sign"></i><span class="align-middle">Venta Dolares Mensual</span></a>
       </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#tg6" data-bs-toggle="collapse" class="sidebar-link collapsed "  aria-expanded="false">
+      <li class="sidebar-item {{ CONTROLLER == 'direction' ? 'active' : '' }}">
+        <a data-bs-target="#tg6" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'direction' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'direction' ? 'true' : 'false' }}">
           <i data-feather="arrow-down"></i> <span class="align-middle">TG6</span>
         </a>
-        <ul id="tg6" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="tg6" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'direction' ? 'show' : '' }}" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link " href="/direction/tg6 ">Reporte</a></li>
           <li class="sidebar-item"><a class="sidebar-link " href="/direction/consult_consumption ">Consulta consumo</a></li>
           <li class="sidebar-item "><a class="sidebar-link " href="/direction/tg6_product ">Venta Mensual Producto</a></li>
         </ul>
         <!-- <a class="sidebar-link" href="/direction/tg6"><i data-feather="dollar-sign"></i><span class="align-middle">TG6</span></a> -->
       </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#direction_historic_prices" data-bs-toggle="collapse" class="sidebar-link collapsed active" aria-expanded="false">
+      <li class="sidebar-item {{ CONTROLLER == 'direction' ? 'active' : '' }}">
+        <a data-bs-target="#direction_historic_prices" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'direction' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'direction' ? 'true' : 'false' }}">
           <i data-feather="dollar-sign"></i> <span class="align-middle">Historico De Precios</span>
         </a>
-        <ul id="direction_historic_prices" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="direction_historic_prices" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'direction' ? 'show' : '' }}" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link" href="/direction/historic_prices ">Historico</a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/direction/graph_prices">Graficos</a></li>
         </ul>
       </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#direction_shortage_hours" data-bs-toggle="collapse" class="sidebar-link collapsed "  aria-expanded="false">
+      <li class="sidebar-item {{ CONTROLLER == 'direction' ? 'active' : '' }}">
+        <a data-bs-target="#direction_shortage_hours" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'direction' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'direction' ? 'true' : 'false' }}">
           <i data-feather="arrow-down"></i> <span class="align-middle">Horas Sin Combustible</span>
         </a>
-        <ul id="direction_shortage_hours" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="direction_shortage_hours" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'direction' ? 'show' : '' }}" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link " href="/direction/historic_shortage ">Historico</a></li>
           <li class="sidebar-item"><a class="sidebar-link " href="/direction/monthly_summary_shortge ">Resumen Mensual</a></li>
           <li class="sidebar-item "><a class="sidebar-link  " href="/direction/daily_summary_shortge/1 ">T-Máxima</a></li>
@@ -143,13 +143,13 @@
 
 
       {% if authorized(32) %} {# Ver módulo de Abastos #}
-        <li class="sidebar-header">ABASTOS</li>
+        <li class="sidebar-header {{ CONTROLLER == 'supply' ? 'active_header' : '' }}">ABASTOS</li>
         {% if authorized(33) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#supply_reports" data-bs-toggle="collapse" class="sidebar-link collapsed " aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'supply' ? 'active' : '' }}">
+          <a data-bs-target="#supply_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'supply' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'supply' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="supply_reports" class="sidebar-dropdown list-unstyled collapse " data-bs-parent="#sidebar">
+          <ul id="supply_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'supply' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/supply/inventory">Inventario de tanques</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/supply/tgr01">Mermas por estación</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/supply/creProducts">Combustibles por estaciones</a></li>
@@ -159,11 +159,11 @@
         </li>
         {% endif %}
         {% if authorized(40) %}
-          <li class="sidebar-item">
-            <a data-bs-target="#supply_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+          <li class="sidebar-item {{ CONTROLLER == 'supply' ? 'active' : '' }}">
+            <a data-bs-target="#supply_tools" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'supply' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'supply' ? 'true' : 'false' }}">
               <i data-feather="clipboard"></i> <span class="align-middle">Herramientas</span>
             </a>
-            <ul id="supply_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+            <ul id="supply_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'supply' ? 'show' : '' }}" data-bs-parent="#sidebar">
               <li class="sidebar-item"><a class="sidebar-link" href="/supply/fuel_prices">Precios de combustibles</a></li>
               <li class="sidebar-item"><a class="sidebar-link" href="/supply/bulkUpload">Generación XML (Masivo)</a></li>
               <li class="sidebar-item"><a class="sidebar-link" href="/supply/bulkUpload2">Pendiente (Nuevo)</a></li>
@@ -177,12 +177,12 @@
         {% endif %}
       {% endif %}
       {% if authorized(62) %}
-        <li class="sidebar-header">COMERCIAL</li>
-        <li class="sidebar-item">
-          <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link collapsed " aria-expanded="false">
+        <li class="sidebar-header {{ CONTROLLER == 'commercial' ? 'active_header' : '' }}">COMERCIAL</li>
+        <li class="sidebar-item {{ CONTROLLER == 'commercial' ? 'active' : '' }}">
+          <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'commercial' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'commercial' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="commercial_reports" class="sidebar-dropdown list-unstyled collapse " data-bs-parent="#sidebar">
+          <ul id="commercial_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'commercial' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sales_indicators">Indicadores de Venta</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/commercial/sale_month_turn">Vta Mensual x Turno</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/operations/sales_day_turn">Ventas x Dia x Turno </a></li>
@@ -196,21 +196,21 @@
       {% endif %}
 
       {% if authorized(19) %}
-      <li class="sidebar-header">OPERACIONES</li>
+      <li class="sidebar-header {{ CONTROLLER == 'operations' ? 'active_header' : '' }}">OPERACIONES</li>
         {% if authorized(21) %}
-        <li class="sidebar-item">
-          <a class="sidebar-link" href="/operations/tabulator">
+        <li class="sidebar-item {{ CONTROLLER == 'operations' ? 'active' : '' }}">
+          <a class="sidebar-link {{ CONTROLLER == 'operations' ? 'active_item' : '' }}" href="/operations/tabulator">
             <i data-feather="dollar-sign"></i>
             <span class="align-middle">Tabulador</span>
           </a>
         </li>
         {% endif %}
         {% if authorized(37) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#operations_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'operations' ? 'active' : '' }}">
+          <a data-bs-target="#operations_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'operations' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'operations' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="operations_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="operations_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'operations' ? 'show' : '' }}" data-bs-parent="#sidebar">
             {% if authorized(38) %}
             <li class="sidebar-item">
               <a class="sidebar-link" href="/operations/sales">Ventas </a>
@@ -232,13 +232,13 @@
       {% endif %}
 
       {% if authorized(13) %}
-      <li class="sidebar-header">INGRESOS</li>
+      <li class="sidebar-header {{ CONTROLLER == 'income' ? 'active_header' : '' }}">INGRESOS</li>
       {% if authorized(14) %}
-      <li class="sidebar-item">
-        <a data-bs-target="#income_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+      <li class="sidebar-item {{ CONTROLLER == 'income' ? 'active' : '' }}">
+        <a data-bs-target="#income_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'income' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'income' ? 'true' : 'false' }}">
           <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
         </a>
-        <ul id="income_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="income_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'income' ? 'show' : '' }}" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link" href="/income/dolar_sales">Ventas Dolares </a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/income/cash_sales">Ventas Contado </a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/income/clients">Clientes </a></li>
@@ -267,11 +267,11 @@
           
         </ul>
       </li>
-      <li class="sidebar-item">
-        <a data-bs-target="#income_invoice_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+      <li class="sidebar-item {{ CONTROLLER == 'income' ? 'active' : '' }}">
+        <a data-bs-target="#income_invoice_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'income' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'income' ? 'true' : 'false' }}">
           <i data-feather="clipboard"></i> <span class="align-middle">Reportes Facturas</span>
         </a>
-        <ul id="income_invoice_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="income_invoice_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'income' ? 'show' : '' }}" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link" href="/income/invoice_unstamped">Factura sin Timbrar </a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/income/overall_invoice">Factura Global </a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/income/invoiced_dispatched">Despachos facturados</a></li>
@@ -300,14 +300,14 @@
       {% endif %}
 
       {% if authorized(45) %}
-      <li class="sidebar-header">CONTABILIDAD</li>
+      <li class="sidebar-header {{ CONTROLLER == 'accounting' ? 'active_header' : '' }}">CONTABILIDAD</li>
 
         {% if authorized(46) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#accounting_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'accounting' ? 'active' : '' }}">
+          <a data-bs-target="#accounting_tools" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'accounting' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'accounting' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="accounting_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'accounting' ? 'show' : '' }}" data-bs-parent="#sidebar">
             {% if authorized(47) %}
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/tax_stimulus">Estímulo fiscal</a></li>
             {% endif %}
@@ -329,11 +329,11 @@
 
         </li>
         {% endif %}
-        <li class="sidebar-item">
-          <a data-bs-target="#accounting_credit" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'accounting' ? 'active' : '' }}">
+          <a data-bs-target="#accounting_credit" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'accounting' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'accounting' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Cobranza Clientes Credito</span>
           </a>
-          <ul id="accounting_credit" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="accounting_credit" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'accounting' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/movement_analysis">Análisis de Movimientos</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/accounting/analysis_movement">Cobranza Credito</a></li>
           </ul>
@@ -341,15 +341,15 @@
       {% endif %}
 
       {% if authorized(23) %}
-      <li class="sidebar-header">MARKETING</li>
+      <li class="sidebar-header {{ CONTROLLER == 'marketing' ? 'active_header' : '' }}">MARKETING</li>
 
         {% if authorized(24) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#marketing_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'marketing' ? 'active' : '' }}">
+          <a data-bs-target="#marketing_tools" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'marketing' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'marketing' ? 'true' : 'false' }}">
             <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
           </a>
           {% if authorized(26) %}
-          <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="marketing_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'marketing' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/client_cards">Tarjetas y engomados</a>
               <a class="sidebar-link" href="/marketing/client_cards_nexus">Tarjetas nexus</a>
@@ -369,11 +369,11 @@
         </li>
         {% endif %}
         {% if authorized(25) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#marketing_reports" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'marketing' ? 'active' : '' }}">
+          <a data-bs-target="#marketing_reports" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'marketing' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'marketing' ? 'true' : 'false' }}">
             <i data-feather="clipboard"></i> <span class="align-middle">Reportes</span>
           </a>
-          <ul id="marketing_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="marketing_reports" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'marketing' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item">
               <a class="sidebar-link" href="/marketing/r01">R01 Reporte de Sergio Martínez</a>
             </li>
@@ -398,13 +398,13 @@
       {% endif %}
 
       {% if authorized(3) %}
-      <li class="sidebar-header">SISTEMAS</li>
+      <li class="sidebar-header {{ CONTROLLER == 'it' ? 'active_header' : '' }}">SISTEMAS</li>
         {% if authorized(22) %}
-        <li class="sidebar-item">
-          <a data-bs-target="#it_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <li class="sidebar-item {{ CONTROLLER == 'it' ? 'active' : '' }}">
+          <a data-bs-target="#it_tools" data-bs-toggle="collapse" class="sidebar-link {{ CONTROLLER == 'it' ? '' : 'collapsed' }}" aria-expanded="{{ CONTROLLER == 'it' ? 'true' : 'false' }}">
             <i data-feather="tool"></i> <span class="align-middle">Herramientas</span>
           </a>
-          <ul id="it_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <ul id="it_tools" class="sidebar-dropdown list-unstyled collapse {{ CONTROLLER == 'it' ? 'show' : '' }}" data-bs-parent="#sidebar">
             <li class="sidebar-item"><a class="sidebar-link" href="/it/date_to_int">Convertidor de fechas</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/it/release_dispatches">Liberador de despachos</a></li>
             <li class="sidebar-item"><a class="sidebar-link" href="/it/stations">Creador de estaciones</a></li>
@@ -414,8 +414,8 @@
         {% endif %}
 
         {% if  authorized(4) %}
-        <li class="sidebar-item">
-          <a class="sidebar-link" href="/it/users">
+        <li class="sidebar-item {{ CONTROLLER == 'it' ? 'active' : '' }}">
+          <a class="sidebar-link {{ CONTROLLER == 'it' ? 'active_item' : '' }}" href="/it/users">
             <i data-feather="users"></i>
             <span class="align-middle">Usuarios</span>
           </a>
@@ -423,10 +423,10 @@
         {% endif %}
 
         {% if authorized(5) %}
-        <li class="sidebar-item">
-          <a class="sidebar-link" href="/it/permissions">
+        <li class="sidebar-item {{ CONTROLLER == 'it' ? 'active' : '' }}">
+          <a class="sidebar-link {{ CONTROLLER == 'it' ? 'active_item' : '' }}" href="/it/permissions">
             <i data-feather="shield"></i>
-            <span class="align-middle">Permisods</span>
+            <span class="align-middle">Permisos</span>
           </a>
         </li>
         {% endif %}

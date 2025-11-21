@@ -1412,18 +1412,11 @@ class Supply{
         json_output(array("data" => $data));
     }
 
-
-    /**
-     * Vista para descargar facturas por UUID
-     */
     function descargar_facturas() {
         echo $this->twig->render($this->route . 'descargar_facturas.html');
     }
 
-    /**
-     * Procesar Excel con UUIDs y buscar facturas
-     */
-function procesar_uuids_facturas() {
+   function procesar_uuids_facturas() {
     header('Content-Type: application/json');
     
     try {
@@ -1472,9 +1465,8 @@ function procesar_uuids_facturas() {
                 }
             }
         }
-        
+
         $totalSolicitados = count($uuidsValidos) + count($uuidsInvalidos);
-        
         if ($totalSolicitados === 0) {
             json_output(['success' => false, 'message' => 'No se encontraron UUIDs en el archivo']);
             return;
@@ -1485,18 +1477,22 @@ function procesar_uuids_facturas() {
         if (!empty($uuidsValidos)) {
             $facturas = $this->facturasRecibidasModel->buscarPorUUIDs($uuidsValidos);
         }
-        
-        // Crear un array asociativo de facturas encontradas por UUID
-        $facturasEncontradas = [];
+
+        // CAMBIO CLAVE: Usar arrays separados desde el inicio
+        $facturasExitosas = [];
+        $facturasFallidas = [];
         $uuidsEncontrados = [];
-        
+
         if ($facturas) {
             foreach ($facturas as $factura) {
-                $uuidsEncontrados[] = $factura['UUID'];
-                
-                // Verificar que el archivo exista
+                // ✅ SOLUCIÓN: Guardar UUID en MAYÚSCULAS para comparación consistente
+                $uuidBD = strtoupper($factura['UUID']);
+                $uuidsEncontrados[] = $uuidBD;
+
+                // Verificar que el archivo exista ANTES de agregarlo como exitosa
                 if (!empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
-                    $facturasEncontradas[] = [
+                    // ✅ Factura completa y disponible
+                    $facturasExitosas[] = [
                         'id' => $factura['Id'],
                         'uuid' => $factura['UUID'],
                         'nombre_archivo' => $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']),
@@ -1506,21 +1502,23 @@ function procesar_uuids_facturas() {
                         'estado' => 'success'
                     ];
                 } else {
-                    // Factura encontrada en BD pero archivo no existe
-                    $uuidsInvalidos[] = [
+                    // ❌ Factura en BD pero archivo no existe
+                    $facturasFallidas[] = [
                         'uuid' => $factura['UUID'],
                         'folio' => $factura['Folio'],
                         'estado' => 'archivo_no_existe',
-                        'error' => 'Archivo físico no encontrado en el servidor: ' . basename($factura['RutaArchivo'])
+                        'error' => 'Factura encontrada en BD pero archivo físico no existe: ' . 
+                                   ($factura['NombreArchivo'] ?? basename($factura['RutaArchivo'] ?? 'desconocido'))
                     ];
                 }
             }
         }
         
-        // Identificar UUIDs válidos que no se encontraron en la BD
+        // Identificar UUIDs válidos que NO se encontraron en la BD
+        // ✅ SOLUCIÓN: Ahora la comparación es case-insensitive (ambos en MAYÚSCULAS)
         foreach ($uuidsValidos as $uuid) {
             if (!in_array($uuid, $uuidsEncontrados)) {
-                $uuidsInvalidos[] = [
+                $facturasFallidas[] = [
                     'uuid' => $uuid,
                     'folio' => null,
                     'estado' => 'no_encontrado_bd',
@@ -1529,14 +1527,17 @@ function procesar_uuids_facturas() {
             }
         }
         
+        // Agregar UUIDs con formato inválido a fallidas
+        $facturasFallidas = array_merge($facturasFallidas, $uuidsInvalidos);
+        
         // Resultado final
         json_output([
             'success' => true,
-            'facturas' => array_values($facturasEncontradas),
-            'facturas_fallidas' => array_values($uuidsInvalidos),
+            'facturas' => array_values($facturasExitosas),
+            'facturas_fallidas' => array_values($facturasFallidas),
             'total_solicitados' => $totalSolicitados,
-            'total_encontrados' => count($facturasEncontradas),
-            'total_fallidos' => count($uuidsInvalidos)
+            'total_encontrados' => count($facturasExitosas),
+            'total_fallidos' => count($facturasFallidas)
         ]);
         
     } catch (Exception $e) {
@@ -1717,32 +1718,170 @@ function download_zip($zipFileName) {
     }
 }
 
-/**
- * Limpiar archivos ZIP antiguos (ejecutar periódicamente)
- */
-function limpiar_zips_antiguos() {
-    $tempDir = __DIR__ . '/../temp/';
-    
-    if (!is_dir($tempDir)) {
-        return;
+    /**
+     * Limpiar archivos ZIP antiguos (ejecutar periódicamente)
+     */
+    function limpiar_zips_antiguos() {
+        $tempDir = __DIR__ . '/../temp/';
+        
+        if (!is_dir($tempDir)) {
+            return;
+        }
+        
+        $archivos = glob($tempDir . 'facturas_*.zip');
+        $horaLimite = time() - (3600 * 2); // 2 horas
+        $eliminados = 0;
+        
+        foreach ($archivos as $archivo) {
+            if (filemtime($archivo) < $horaLimite) {
+                unlink($archivo);
+                $eliminados++;
+            }
+        }
+        
+        json_output([
+            'success' => true,
+            'archivos_eliminados' => $eliminados
+        ]);
     }
-    
-    $archivos = glob($tempDir . 'facturas_*.zip');
-    $horaLimite = time() - (3600 * 2); // 2 horas
-    $eliminados = 0;
-    
-    foreach ($archivos as $archivo) {
-        if (filemtime($archivo) < $horaLimite) {
-            unlink($archivo);
-            $eliminados++;
+
+
+    public function resumen_payment_table() {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        
+        // Validar y sanitizar entradas
+        $postData = [
+            'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
+            'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
+            'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+            'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+        ];
+
+        // Validación de datos requeridos
+        if (!$postData['from'] || !$postData['until']) {
+            json_output([
+                'error' => true,
+                'message' => 'Fechas requeridas',
+                'data' => []
+            ]);
+            return;
+        }
+
+        try {
+            // Llamada a la API con timeout extendido
+            $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 600); // 10 minutos
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+            // Ejecutar y obtener respuesta
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            if (curl_errno($ch)) {
+                throw new Exception('Error de cURL: ' . curl_error($ch));
+            }
+            
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception("Error HTTP: $httpCode");
+            }
+
+            $apiData = json_decode($response, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+            }
+
+            $data = [];
+
+            if (isset($apiData) && is_array($apiData)) {
+                foreach ($apiData as $row) {
+                    // Filtrar registros sin datos importantes
+                    if (empty($row['nrotrn'])) {
+                        continue;
+                    }
+                    $raw = isset($row['combustible']) ? $row['combustible'] : '';
+                    $raw = trim($raw);
+
+                    // Normalización: pasar a minúsculas, quitar puntos/hyphens múltiples, normalizar tildes y múltiples espacios
+                    $norm = mb_strtolower($raw, 'UTF-8');
+                    $norm = str_replace(['.', '-', '_'], ' ', $norm);
+                    $norm = preg_replace('/\s+/', ' ', $norm);
+
+                    // Reemplazo sencillo de acentos (si quieres puedes usar iconv también)
+                    $norm = strtr($norm, 
+                        "áéíóúÁÉÍÓÚñÑ",
+                        "aeiouAEIOUnN"
+                    );
+
+                    // Ahora buscar por patrones (robusto frente a variaciones)
+                    $combustible = $raw; // valor por defecto (sin perder formato original)
+                    if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
+                        $combustible = 'Regular';
+                    } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
+                        $combustible = 'Diesel';
+                    } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
+                        $combustible = 'Premium';
+                    } else {
+                        // Si quieres devolverlo normalizado con primera letra mayúscula:
+                        $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
+                    }
+                    $proveedor_controlgas = $row['proveedor_controlgas'];
+                    if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.' ){
+                        $proveedor_controlgas = 'TESORO';
+                    }
+                    if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.' ){
+                        $proveedor_controlgas = 'PREMIERGAS';
+                    }
+                    if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.' ){
+                        $proveedor_controlgas = 'MGC';
+                    }
+
+
+                    $data[] = [
+                        'fecha'                       => $row['fecha'] ?? '',
+                        'hora'                        => $row['hora_formateada'] ?? '',
+                        'nrotrn'                      => $row['nrotrn'] ?? '',
+                        'estacion'                    => $row['estacion'] ?? '',
+                        'numero_estacion'             => $row['numero_estacion'] ?? '',
+                        'proveedor_original'          => "proveedor_original",
+                        'num_fac_proveedor'           => "num_fac_proveedor",
+                        'proveedor_final'             => $proveedor_controlgas,
+                        'combustible'                 => $combustible ?? '',
+                        'capmax'                      => $row['capmax'] ?? 0,
+                        'recaudado'                   => $row['recaudado'] ?? 0,
+                        'fac_rec'                     => $row['fac_rec'] ?? 0,
+                        'nro_fac'                     => $row['nro_fac'] ?? '',
+                        'uuid'                        => $row['uuid'] ?? '',
+                        'proveedor_controlgas'        => $proveedor_controlgas ?? '',
+                        'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
+                        'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
+                        'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
+                        'graprd'                      => $row['graprd'] ?? ''
+                    ];
+                }
+            }
+
+            json_output(['data' => $data]);
+
+        } catch (Exception $e) {
+            error_log("Error en resumen_payment_table: " . $e->getMessage());
+            json_output([
+                'error' => true,
+                'message' => $e->getMessage(),
+                'data' => []
+            ]);
         }
     }
-    
-    json_output([
-        'success' => true,
-        'archivos_eliminados' => $eliminados
-    ]);
-}
+
 
 
 

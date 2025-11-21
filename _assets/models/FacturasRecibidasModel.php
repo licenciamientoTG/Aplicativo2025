@@ -27,8 +27,6 @@ class FacturasRecibidasModel extends Model {
                   WHERE UUID IN ($placeholders)
                   AND RutaArchivo IS NOT NULL
                   AND RutaArchivo != ''";
-                 
-        
         return $this->sql->select($query, $uuids) ?: false;
     }
     
