@@ -483,24 +483,43 @@
                 </table>
             </div>
           </div>
+<div class="tab-pane fade" id="tab-tickets" role="tabpanel">
+    <div class="d-flex flex-wrap justify-content-between align-items-end mb-2 gap-2">
+        <div class="d-flex align-items-end gap-2">
+            <div>
+                <label for="tickets-month" class="form-label small text-muted mb-1">Mes a consultar</label>
+                <input type="month" id="tickets-month" class="form-control form-control-sm">
+            </div>
+            <button type="button" id="btn-tickets-month" class="btn btn-sm btn-primary">
+                <i class="fas fa-search me-1"></i> Consultar mes
+            </button>
+            <small id="tickets-month-label" class="text-muted ms-2"></small>
+        </div>
 
-          <div class="tab-pane fade" id="tab-tickets" role="tabpanel">
-            <div class="d-flex justify-content-end mb-2 gap-2">
-              <button type="button" class="btn btn-sm btn-light border" id="btn-collapse-all-tickets"><i class="fas fa-compress-alt me-1"></i> Colapsar Todo</button>
-              <button type="button" class="btn btn-sm btn-light border" id="btn-expand-all-tickets"><i class="fas fa-expand-alt me-1"></i> Expandir Todo</button>
-            </div>
-            <div class="table-responsive rounded border">
-                <table id="client_tickets_table" class="table table-sm table-hover w-100 mb-0" style="width:100% !important;">
-                  <thead class="bg-light">
-                    <tr>
-                      <th>Fecha</th><th>Hora</th><th>Trn</th><th>Fac</th><th>Folio</th><th>Serie</th><th>Concepto</th><th>Estación</th>
-                      <th>Producto</th><th>Cant</th><th>Monto</th><th>Cliente</th><th>Turno</th><th>Isla</th><th>Resp.</th><th>UUID</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-            </div>
-          </div>
+        <div class="d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-sm btn-light border" id="btn-collapse-all-tickets">
+                <i class="fas fa-compress-alt me-1"></i> Colapsar Todo
+            </button>
+            <button type="button" class="btn btn-sm btn-light border" id="btn-expand-all-tickets">
+                <i class="fas fa-expand-alt me-1"></i> Expandir Todo
+            </button>
+        </div>
+    </div>
+
+    <div class="table-responsive rounded border">
+        <table id="client_tickets_table" class="table table-sm table-hover w-100 mb-0" style="width:100% !important;">
+          <thead class="bg-light">
+            <tr>
+              <th>Fecha</th><th>Hora</th><th>Trn</th><th>Fac</th><th>Folio</th><th>Serie</th><th>Concepto</th><th>Estación</th>
+              <th>Producto</th><th>Cant</th><th>Monto</th><th>Cliente</th><th>Turno</th><th>Isla</th><th>Resp.</th><th>UUID</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+
         </div>
       </div>
     </div>
@@ -518,6 +537,8 @@ let filterRegistered = false;
 let dtClientDays = null;
 let dtClientTickets = null;
 let ticketGroupsCollapsed = {};
+let ticketsFilter = { from: null, until: null, codopr: null };
+
 
 // Formateador de hora
 function formatHratrnTo12(data, type) {
@@ -690,6 +711,15 @@ function loadClientDetail(codopr, cliente) {
   const until = $('#until').val();
   ticketGroupsCollapsed = {}; 
 
+  // ⬇ NUEVO: inicializamos el filtro de tickets con el periodo actual
+  ticketsFilter.from   = from;
+  ticketsFilter.until  = until;
+  ticketsFilter.codopr = codopr;
+
+  // limpiamos el selector de mes y la etiqueta
+  $('#tickets-month').val('');
+  $('#tickets-month-label').text('');
+
   $('#mdl-codopr').text(codopr);
   $('#mdl-cliente').text(cliente || '');
 
@@ -716,51 +746,57 @@ function loadClientDetail(codopr, cliente) {
   });
 
   // TAB 2
-  dtClientTickets = $('#client_tickets_table').DataTable({
-    order: [[4, "asc"], [0, "asc"], [1, "asc"]],
-    dom: '<"d-flex justify-content-between mb-2"lBf>rt<"d-flex justify-content-between mt-2"ip>',
-    pageLength: 10,
-    lengthMenu: [[10,25,50,-1],[10,25,50,"Todos"]],
-    buttons: [{ extend: 'excel', className: 'btn btn-sm btn-success', text: 'Excel' }],
-    ajax: {
-      type: 'POST', url: '/income/anomalies_client_tickets',
-      data: { from, until, codopr }
-    },
-    columns: [
-      { data: 'fecha', className: 'text-nowrap' },
-      { data: 'hratrn', className: 'text-nowrap', render: formatHratrnTo12 },
-      { data: 'nrotrn', className: 'text-end' },
-      { data: 'nrofac', className: 'text-end' },
-      { data: 'factura', className: 'text-end' },
-      { data: 'serie', className: 'text-center' },
-      { data: 'conceptofac' },
-      { data: 'estacion' },
-      { data: 'nomPrd' },
-      { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'mto', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
-      { data: 'nombreCliente' },
-      { data: 'turno', className: 'text-center' },
-      { data: 'isla' },
-      { data: 'responsable' },
-      { data: 'satuid' }
-    ],
-    drawCallback: function (settings) {
-      var api  = this.api();
-      var rows = api.rows({ page: 'current' }).nodes();
-      var lastFactura = null;
-      api.column(4, { page: 'current' }).data().each(function (factura, i) {
-        var key = factura == null ? '' : String(factura);
-        if (!(key in ticketGroupsCollapsed)) { ticketGroupsCollapsed[key] = true; }
-        var collapsed = ticketGroupsCollapsed[key] === true;
-        var icon = collapsed ? '<i class="fas fa-caret-right text-muted"></i>' : '<i class="fas fa-caret-down text-primary"></i>';
-        if (lastFactura !== key) {
-          $(rows).eq(i).before('<tr class="group" data-factura="'+ key.replace(/"/g,'&quot;') +'"><td colspan="16" class="py-2"><span class="me-2">'+ icon +'</span><strong>Factura: ' + (key || '(sin folio)') + '</strong></td></tr>');
-          lastFactura = key;
-        }
-        collapsed ? $(rows).eq(i).addClass('d-none') : $(rows).eq(i).removeClass('d-none');
-      });
+ dtClientTickets = $('#client_tickets_table').DataTable({
+  order: [[4, "asc"], [0, "asc"], [1, "asc"]],
+  dom: '<"d-flex justify-content-between mb-2"lBf>rt<"d-flex justify-content-between mt-2"ip>',
+  pageLength: 10,
+  lengthMenu: [[10,25,50,-1],[10,25,50,"Todos"]],
+  buttons: [{ extend: 'excel', className: 'btn btn-sm btn-success', text: 'Excel' }],
+  ajax: {
+    type: 'POST',
+    url: '/income/anomalies_client_tickets',
+    data: function (d) {
+      d.from   = ticketsFilter.from;
+      d.until  = ticketsFilter.until;
+      d.codopr = ticketsFilter.codopr;
     }
-  });
+  },
+  columns: [
+    { data: 'fecha', className: 'text-nowrap' },
+    { data: 'hratrn', className: 'text-nowrap', render: formatHratrnTo12 },
+    { data: 'nrotrn', className: 'text-end' },
+    { data: 'nrofac', className: 'text-end' },
+    { data: 'factura', className: 'text-end' },
+    { data: 'serie', className: 'text-center' },
+    { data: 'conceptofac' },
+    { data: 'estacion' },
+    { data: 'nomPrd' },
+    { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+    { data: 'mto', className: 'text-end', render: $.fn.dataTable.render.number(',','.',2) },
+    { data: 'nombreCliente' },
+    { data: 'turno', className: 'text-center' },
+    { data: 'isla' },
+    { data: 'responsable' },
+    { data: 'satuid' }
+  ],
+  drawCallback: function (settings) {
+    var api  = this.api();
+    var rows = api.rows({ page: 'current' }).nodes();
+    var lastFactura = null;
+    api.column(4, { page: 'current' }).data().each(function (factura, i) {
+      var key = factura == null ? '' : String(factura);
+      if (!(key in ticketGroupsCollapsed)) { ticketGroupsCollapsed[key] = true; }
+      var collapsed = ticketGroupsCollapsed[key] === true;
+      var icon = collapsed ? '<i class="fas fa-caret-right text-muted"></i>' : '<i class="fas fa-caret-down text-primary"></i>';
+      if (lastFactura !== key) {
+        $(rows).eq(i).before('<tr class="group" data-factura="'+ key.replace(/"/g,'&quot;') +'"><td colspan="16" class="py-2"><span class="me-2">'+ icon +'</span><strong>Factura: ' + (key || '(sin folio)') + '</strong></td></tr>');
+        lastFactura = key;
+      }
+      collapsed ? $(rows).eq(i).addClass('d-none') : $(rows).eq(i).removeClass('d-none');
+    });
+  }
+});
+
 
   var modalEl = document.getElementById('modal-client-days');
   var modal = new bootstrap.Modal(modalEl);
@@ -984,6 +1020,27 @@ $('#modal-client-summary').on('shown.bs.modal', function () {
             $(selector).DataTable().columns.adjust();
         }
     });
+  });
+
+    $('#btn-tickets-month').on('click', function () {
+    if (!dtClientTickets) return;
+
+    const ym = $('#tickets-month').val(); // formato YYYY-MM
+    const codopr = $('#mdl-codopr').text();
+
+    const range = getMonthRange(ym);
+    if (!codopr || !range) {
+      console.warn('Cliente o mes inválido para tickets');
+      return;
+    }
+
+    ticketsFilter.from  = range.from;
+    ticketsFilter.until = range.until;
+    ticketGroupsCollapsed = {}; // reseteamos grupos
+
+    $('#tickets-month-label').text(`Periodo: ${range.from} al ${range.until}`);
+
+    dtClientTickets.ajax.reload();
   });
 
   
