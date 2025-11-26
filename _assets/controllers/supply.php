@@ -78,6 +78,7 @@ class Supply{
         $this->paymentRequestsModel                               = new PaymentRequestsModel();
         $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
         $this->proveedores                                       = new ProveedoresModel();
+        $this->proveedores                                       = new ProveedoresModel();
         $this->facturasRecibidasModel = new FacturasRecibidasModel();
 
     }
@@ -1745,142 +1746,1177 @@ function download_zip($zipFileName) {
         ]);
     }
 
+    
+
+
+    // public function resumen_payment_table() {
+    //     ini_set('max_execution_time', 5000);
+    //     ini_set('memory_limit', '1024M');
+    //     set_time_limit(0);
+    //     header('Content-Type: application/json');
+        
+    //     $postData = [
+    //         'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
+    //         'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
+    //         'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+    //         'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+    //         'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+    //     ];
+
+    //     if (!$postData['from'] || !$postData['until']) {
+    //         json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
+    //         return;
+    //     }
+
+    //     try {
+    //         $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
+    //         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    //         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+    //         curl_setopt($ch, CURLOPT_POST, true);
+    //         curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+    //         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+    //         $response = curl_exec($ch);
+    //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+    //         if (curl_errno($ch)) {
+    //             throw new Exception('Error de cURL: ' . curl_error($ch));
+    //         }
+            
+    //         curl_close($ch);
+
+    //         if ($httpCode !== 200) {
+    //             throw new Exception("Error HTTP: $httpCode");
+    //         }
+
+    //         $apiData = json_decode($response, true);
+
+    //         if (json_last_error() !== JSON_ERROR_NONE) {
+    //             throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+    //         }
+
+    //        // ========== NUEVA LÓGICA: Obtener facturas asignadas ==========
+    //         $facturasAsignadas = $this->facturasRecibidasModel->obtener_facturas_asignadas();
+    //         $data = [];
+
+    //         if (isset($apiData) && is_array($apiData)) {
+    //             foreach ($apiData as $row) {
+    //                 if (empty($row['nrotrn'])) {
+    //                     continue;
+    //                 }
+
+    //                 // Normalizar combustible
+    //                 $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
+    //                 $norm = mb_strtolower($raw, 'UTF-8');
+    //                 $norm = str_replace(['.', '-', '_'], ' ', $norm);
+    //                 $norm = preg_replace('/\s+/', ' ', $norm);
+    //                 $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
+
+    //                 $combustible = $raw;
+    //                 if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
+    //                     $combustible = 'Regular';
+    //                 } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
+    //                     $combustible = 'Diesel';
+    //                 } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
+    //                     $combustible = 'Premium';
+    //                 } else {
+    //                     $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
+    //                 }
+
+    //                 // Normalizar proveedor
+    //                 $proveedor_controlgas = $row['proveedor_controlgas'];
+    //                 if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
+    //                     $proveedor_controlgas = 'TESORO';
+    //                 }
+    //                 if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
+    //                     $proveedor_controlgas = 'PREMIERGAS';
+    //                 }
+    //                 if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
+    //                     $proveedor_controlgas = 'MGC';
+    //                 }
+
+    //                 // ========== BUSCAR FACTURA ASIGNADA ==========
+    //                 $nrotrn = $row['nrotrn'];
+    //                 $codgas = $row['numero_estacion']; // Usar numero_estacion como codgas
+                    
+    //                 $facturaAsignada = null;
+    //                 $uuidAsignado = '';
+    //                 $folioAsignado = '';
+    //                 $tieneFactura = false;
+                    
+    //                 // Buscar en el array de facturas asignadas
+    //                 $key = $nrotrn . '_' . $codgas;
+    //                 if (isset($facturasAsignadas[$key])) {
+    //                     $facturaAsignada = $facturasAsignadas[$key];
+    //                     $uuidAsignado = $facturaAsignada['UUID'];
+    //                     $folioAsignado = $facturaAsignada['Folio'];
+    //                     $tieneFactura = true;
+    //                 }
+
+    //                 $data[] = [
+    //                     'fecha'                       => $row['fecha'] ?? '',
+    //                     'hora'                        => $row['hora_formateada'] ?? '',
+    //                     'nrotrn'                      => $nrotrn,
+    //                     'estacion'                    => $row['estacion'] ?? '',
+    //                     'numero_estacion'             => $codgas,
+    //                     'proveedor_original'          => $proveedor_controlgas,
+    //                     'num_fac_proveedor'           => $folioAsignado, // Folio de la factura asignada
+    //                     'proveedor_final'             => $proveedor_controlgas,
+    //                     'combustible'                 => $combustible,
+    //                     'capmax'                      => $row['capmax'] ?? 0,
+    //                     'recaudado'                   => $row['recaudado'] ?? 0,
+    //                     'fac_rec'                     => $row['fac_rec'] ?? 0,
+    //                     'nro_fac'                     => $row['nro_fac'] ?? '',
+    //                     'uuid'                        => $uuidAsignado, // UUID de la factura asignada
+    //                     'proveedor_controlgas'        => $proveedor_controlgas,
+    //                     'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
+    //                     'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
+    //                     'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
+    //                     'graprd'                      => $row['graprd'] ?? '',
+    //                     'tiene_factura'               => $tieneFactura, // Flag para la UI
+    //                     'factura_id'                  => $tieneFactura ? $facturaAsignada['Id'] : null
+    //                 ];
+    //             }
+    //         }
+
+    //         json_output(['data' => $data]);
+
+    //     } catch (Exception $e) {
+    //         error_log("Error en resumen_payment_table: " . $e->getMessage());
+    //         json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
+    //     }
+    // }
 
     public function resumen_payment_table() {
-        ini_set('max_execution_time', 5000);
-        ini_set('memory_limit', '1024M');
-        set_time_limit(0);
+    ini_set('max_execution_time', 5000);
+    ini_set('memory_limit', '1024M');
+    set_time_limit(0);
+    header('Content-Type: application/json');
+
+    $postData = [
+        'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
+        'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
+        'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+        'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+        'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+    ];
+
+    if (!$postData['from'] || !$postData['until']) {
+        json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
+        return;
+    }
+
+    try {
+        $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        
+        if (curl_errno($ch)) {
+            throw new Exception('Error de cURL: ' . curl_error($ch));
+        }
+        
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            throw new Exception("Error HTTP: $httpCode");
+        }
+
+        $apiData = json_decode($response, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+        }
+
+        $data = [];
+
+        if (isset($apiData) && is_array($apiData)) {
+            foreach ($apiData as $row) {
+                if (empty($row['nrotrn'])) {
+                    continue;
+                }
+
+                // Normalizar combustible
+                $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
+                $norm = mb_strtolower($raw, 'UTF-8');
+                $norm = str_replace(['.', '-', '_'], ' ', $norm);
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
+
+                $combustible = $raw;
+                if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
+                    $combustible = 'Regular';
+                } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
+                    $combustible = 'Diesel';
+                } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
+                    $combustible = 'Premium';
+                } else {
+                    $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
+                }
+
+                // Normalizar proveedor
+                $proveedor_controlgas = $row['proveedor_controlgas'];
+                if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
+                    $proveedor_controlgas = 'TESORO';
+                }
+                if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
+                    $proveedor_controlgas = 'PREMIERGAS';
+                }
+                if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
+                    $proveedor_controlgas = 'MGC';
+                }
+
+                // ========== DATOS YA VIENEN CON LA FACTURA ASIGNADA ==========
+                $tieneFactura = (bool)($row['tiene_factura_asignada'] ?? 0);
+                $uuidMostrar = $tieneFactura ? ($row['uuid_asignado'] ?? '') : ($row['uuid_original'] ?? '');
+                $folioMostrar = $tieneFactura ? ($row['folio_asignado'] ?? '') : ($row['nro_fac'] ?? '');
+
+                $data[] = [
+                    'fecha'                       => $row['fecha'] ?? '',
+                    'hora'                        => $row['hora_formateada'] ?? '',
+                    'nrotrn'                      => $row['nrotrn'],
+                    'estacion'                    => $row['estacion'] ?? '',
+                    'numero_estacion'             => $row['numero_estacion'] ?? '',
+                    'proveedor_original'          => $proveedor_controlgas,
+                    'num_fac_proveedor'           => $folioMostrar,
+                    'proveedor_final'             => $proveedor_controlgas,
+                    'combustible'                 => $combustible,
+                    'capmax'                      => $row['capmax'] ?? 0,
+                    'recaudado'                   => $row['recaudado'] ?? 0,
+                    'fac_rec'                     => $row['fac_rec'] ?? 0,
+                    'nro_fac'                     => $row['nro_fac'] ?? '',
+                    'uuid'                        => $uuidMostrar,
+                    'proveedor_controlgas'        => $proveedor_controlgas,
+                    'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
+                    'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
+                    'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
+                    'graprd'                      => $row['graprd'] ?? '',
+                    
+                    // ========== INFORMACIÓN DE LA FACTURA ASIGNADA ==========
+                    'tiene_factura'               => $tieneFactura,
+                    'factura_id'                  => $tieneFactura ? ($row['factura_asignacion_id'] ?? null) : null,
+                    'fecha_asignacion'            => $tieneFactura ? ($row['fecha_asignacion'] ?? null) : null,
+                    'usuario_asignacion'          => $tieneFactura ? ($row['usuario_asignacion'] ?? null) : null,
+                    'observaciones_asignacion'    => $tieneFactura ? ($row['observaciones_asignacion'] ?? null) : null,
+                    'total_factura_asignada'      => $tieneFactura ? ($row['total_factura_asignada'] ?? 0) : 0,
+                    'emisor_factura_asignada'     => $tieneFactura ? ($row['emisor_factura_asignada'] ?? '') : '',
+                    'destino_factura'             => $tieneFactura ? ($row['destino_factura_asignada'] ?? '') : '',
+                    'remision_factura'            => $tieneFactura ? ($row['remision_factura_asignada'] ?? '') : ''
+                ];
+            }
+        }
+
+        json_output(['data' => $data]);
+
+    } catch (Exception $e) {
+        error_log("Error en resumen_payment_table: " . $e->getMessage());
+        json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
+    }
+    }
+
+
+
+    // ========== NUEVO ENDPOINT: Buscar facturas disponibles ==========
+    public function buscar_facturas_disponibles() {
         header('Content-Type: application/json');
         
-        // Validar y sanitizar entradas
-        $postData = [
-            'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
-            'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
-            'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
-            'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
-            'company' => isset($_POST['company']) ? $_POST['company'] : '0'
-        ];
-
-        // Validación de datos requeridos
-        if (!$postData['from'] || !$postData['until']) {
-            json_output([
-                'error' => true,
-                'message' => 'Fechas requeridas',
-                'data' => []
-            ]);
-            return;
-        }
-
+        $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
+        $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
+        $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
+        
         try {
-            // Llamada a la API con timeout extendido
-            $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 600); // 10 minutos
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
-
-            // Ejecutar y obtener respuesta
-            $response = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             
-            if (curl_errno($ch)) {
-                throw new Exception('Error de cURL: ' . curl_error($ch));
-            }
-            
-            curl_close($ch);
 
-            if ($httpCode !== 200) {
-                throw new Exception("Error HTTP: $httpCode");
-            }
+            $facturas_recibidas = $this->facturasRecibidasModel->buscar_facturas_disponibles($searchTerm, $fechaInicio, $fechaFin);
 
-            $apiData = json_decode($response, true);
-
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
-            }
-
-            $data = [];
-
-            if (isset($apiData) && is_array($apiData)) {
-                foreach ($apiData as $row) {
-                    // Filtrar registros sin datos importantes
-                    if (empty($row['nrotrn'])) {
-                        continue;
-                    }
-                    $raw = isset($row['combustible']) ? $row['combustible'] : '';
-                    $raw = trim($raw);
-
-                    // Normalización: pasar a minúsculas, quitar puntos/hyphens múltiples, normalizar tildes y múltiples espacios
-                    $norm = mb_strtolower($raw, 'UTF-8');
-                    $norm = str_replace(['.', '-', '_'], ' ', $norm);
-                    $norm = preg_replace('/\s+/', ' ', $norm);
-
-                    // Reemplazo sencillo de acentos (si quieres puedes usar iconv también)
-                    $norm = strtr($norm, 
-                        "áéíóúÁÉÍÓÚñÑ",
-                        "aeiouAEIOUnN"
-                    );
-
-                    // Ahora buscar por patrones (robusto frente a variaciones)
-                    $combustible = $raw; // valor por defecto (sin perder formato original)
-                    if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
-                        $combustible = 'Regular';
-                    } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
-                        $combustible = 'Diesel';
-                    } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
-                        $combustible = 'Premium';
-                    } else {
-                        // Si quieres devolverlo normalizado con primera letra mayúscula:
-                        $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
-                    }
-                    $proveedor_controlgas = $row['proveedor_controlgas'];
-                    if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.' ){
-                        $proveedor_controlgas = 'TESORO';
-                    }
-                    if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.' ){
-                        $proveedor_controlgas = 'PREMIERGAS';
-                    }
-                    if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.' ){
-                        $proveedor_controlgas = 'MGC';
-                    }
-
-
-                    $data[] = [
-                        'fecha'                       => $row['fecha'] ?? '',
-                        'hora'                        => $row['hora_formateada'] ?? '',
-                        'nrotrn'                      => $row['nrotrn'] ?? '',
-                        'estacion'                    => $row['estacion'] ?? '',
-                        'numero_estacion'             => $row['numero_estacion'] ?? '',
-                        'proveedor_original'          => "proveedor_original",
-                        'num_fac_proveedor'           => "num_fac_proveedor",
-                        'proveedor_final'             => $proveedor_controlgas,
-                        'combustible'                 => $combustible ?? '',
-                        'capmax'                      => $row['capmax'] ?? 0,
-                        'recaudado'                   => $row['recaudado'] ?? 0,
-                        'fac_rec'                     => $row['fac_rec'] ?? 0,
-                        'nro_fac'                     => $row['nro_fac'] ?? '',
-                        'uuid'                        => $row['uuid'] ?? '',
-                        'proveedor_controlgas'        => $proveedor_controlgas ?? '',
-                        'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
-                        'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
-                        'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
-                        'graprd'                      => $row['graprd'] ?? ''
-                    ];
-                }
+            $facturas = [];
+            foreach ($facturas_recibidas as $key => $row) {
+                $facturas[] = [
+                    'id' => $row['Id'],
+                    'uuid' => $row['UUID'],
+                    'folio' => $row['Folio'],
+                    'fecha' => $row['Fecha'],
+                    'total' => $row['Total'],
+                    'emisor_nombre' => $row['EmisorNombre'],
+                    'emisor_rfc' => $row['EmisorRfc'],
+                    'destino' => $row['Destino'],
+                    'remision' => $row['Remision'],
+                    'ya_asignada' => $row['YaAsignada']
+                ];
             }
 
-            json_output(['data' => $data]);
+
+            json_output(['success' => true, 'data' => $facturas]);
 
         } catch (Exception $e) {
-            error_log("Error en resumen_payment_table: " . $e->getMessage());
-            json_output([
-                'error' => true,
-                'message' => $e->getMessage(),
-                'data' => []
-            ]);
+            error_log("Error en buscar_facturas_disponibles: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
         }
     }
+
+    // ========== NUEVO ENDPOINT: Asignar factura a movimiento ==========
+    public function asignar_factura_movimiento() {
+        header('Content-Type: application/json');
+        
+        $facturaId = isset($_POST['factura_id']) ? intval($_POST['factura_id']) : 0;
+        $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
+        $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
+        $observaciones = isset($_POST['observaciones']) ? $_POST['observaciones'] : '';
+        $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Sistema';
+        
+        if ($facturaId == 0 || $nrotrn == 0 || $codgas == 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            // Obtener UUID de la factura
+            $queryUUID = "SELECT UUID FROM FacturasRecibidas WHERE Id = $facturaId";
+            $resultUUID = odbc_exec($conn, $queryUUID);
+            
+            if (!$resultUUID || !($rowUUID = odbc_fetch_array($resultUUID))) {
+                throw new Exception("Factura no encontrada");
+            }
+            
+            $uuid = $rowUUID['UUID'];
+
+            // Verificar si ya existe una asignación
+            $queryCheck = "SELECT Id FROM FacturasMovimientosTanques WHERE nrotrn = $nrotrn AND codgas = $codgas";
+            $resultCheck = odbc_exec($conn, $queryCheck);
+            
+            if ($rowCheck = odbc_fetch_array($resultCheck)) {
+                // Ya existe, actualizar
+                $queryUpdate = "
+                    UPDATE FacturasMovimientosTanques 
+                    SET FacturaId = $facturaId, 
+                        UUID = '$uuid',
+                        FechaAsignacion = GETDATE(),
+                        UsuarioAsignacion = '$usuario',
+                        Observaciones = '$observaciones',
+                        Activo = 1
+                    WHERE nrotrn = $nrotrn AND codgas = $codgas
+                ";
+                
+                if (!odbc_exec($conn, $queryUpdate)) {
+                    throw new Exception("Error al actualizar: " . odbc_errormsg($conn));
+                }
+                
+                $message = "Asignación actualizada correctamente";
+            } else {
+                // No existe, insertar
+                $queryInsert = "
+                    INSERT INTO FacturasMovimientosTanques 
+                    (FacturaId, UUID, nrotrn, codgas, UsuarioAsignacion, Observaciones)
+                    VALUES ($facturaId, '$uuid', $nrotrn, $codgas, '$usuario', '$observaciones')
+                ";
+                
+                if (!odbc_exec($conn, $queryInsert)) {
+                    throw new Exception("Error al insertar: " . odbc_errormsg($conn));
+                }
+                
+                $message = "Factura asignada correctamente";
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'message' => $message]);
+
+        } catch (Exception $e) {
+            error_log("Error en asignar_factura_movimiento: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+
+    // ========== NUEVO ENDPOINT: Buscar facturas de PROVEEDOR (excluir Petrotal) ==========
+    public function buscar_facturas_proveedor() {
+        header('Content-Type: application/json');
+        
+        $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
+        $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
+        $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            $whereClauses = [];
+            
+            // Excluir facturas de Petrotal (emisor)
+            $whereClauses[] = "fr.EmisorNombre NOT LIKE '%PETROTAL%'";
+            
+            if (!empty($searchTerm)) {
+                $whereClauses[] = "(fr.UUID LIKE '%$searchTerm%' OR fr.Folio LIKE '%$searchTerm%' OR fr.EmisorNombre LIKE '%$searchTerm%')";
+            }
+            
+            if (!empty($fechaInicio) && !empty($fechaFin)) {
+                $whereClauses[] = "fr.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
+            }
+            
+            $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
+
+            $query = "
+                SELECT TOP 50
+                    fr.Id,
+                    fr.UUID,
+                    fr.Folio,
+                    fr.Fecha,
+                    fr.Total,
+                    fr.EmisorNombre,
+                    fr.EmisorRfc,
+                    fr.Destino,
+                    fr.Remision,
+                    -- Sumar litros de los conceptos
+                    ISNULL((
+                        SELECT SUM(Cantidad) 
+                        FROM FacturasRecibidasConceptos 
+                        WHERE FacturaId = fr.Id
+                    ), 0) as litros,
+                    CASE 
+                        WHEN fmt.Id IS NOT NULL THEN 1 
+                        ELSE 0 
+                    END AS YaAsignada
+                FROM FacturasRecibidas fr
+                LEFT JOIN FacturasMovimientosTanques fmt 
+                    ON (fr.Id = fmt.FacturaProveedorId OR fr.Id = fmt.FacturaPetrotalId) 
+                    AND fmt.Activo = 1
+                $whereSQL
+                ORDER BY fr.Fecha DESC
+            ";
+            
+            $result = odbc_exec($conn, $query);
+            
+            if (!$result) {
+                throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
+            }
+
+            $facturas = [];
+            while ($row = odbc_fetch_array($result)) {
+                $facturas[] = [
+                    'id' => $row['Id'],
+                    'uuid' => $row['UUID'],
+                    'folio' => $row['Folio'],
+                    'fecha' => $row['Fecha'],
+                    'total' => $row['Total'],
+                    'emisor_nombre' => $row['EmisorNombre'],
+                    'emisor_rfc' => $row['EmisorRfc'],
+                    'destino' => $row['Destino'],
+                    'remision' => $row['Remision'],
+                    'litros' => $row['litros'],
+                    'ya_asignada' => $row['YaAsignada']
+                ];
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'data' => $facturas]);
+
+        } catch (Exception $e) {
+            error_log("Error en buscar_facturas_proveedor: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // ========== NUEVO ENDPOINT: Buscar facturas de PETROTAL específicamente ==========
+    public function buscar_facturas_petrotal() {
+        header('Content-Type: application/json');
+        
+        $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
+        $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
+        $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            $whereClauses = [];
+            
+            // SOLO facturas emitidas por Petrotal
+            $whereClauses[] = "fr.EmisorNombre LIKE '%PETROTAL%'";
+            
+            // Y que sean facturas recibidas por TotalGas (receptor)
+            $whereClauses[] = "fr.ReceptorNombre LIKE '%TOTAL%GAS%'";
+            
+            if (!empty($searchTerm)) {
+                $whereClauses[] = "(fr.UUID LIKE '%$searchTerm%' OR fr.Folio LIKE '%$searchTerm%')";
+            }
+            
+            if (!empty($fechaInicio) && !empty($fechaFin)) {
+                $whereClauses[] = "fr.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
+            }
+            
+            $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
+
+            $query = "
+                SELECT TOP 50
+                    fr.Id,
+                    fr.UUID,
+                    fr.Folio,
+                    fr.Fecha,
+                    fr.Total,
+                    fr.ReceptorNombre,
+                    fr.Destino,
+                    fr.Remision,
+                    -- Sumar litros de los conceptos
+                    ISNULL((
+                        SELECT SUM(Cantidad) 
+                        FROM FacturasRecibidasConceptos 
+                        WHERE FacturaId = fr.Id
+                    ), 0) as litros,
+                    CASE 
+                        WHEN fmt.Id IS NOT NULL THEN 1 
+                        ELSE 0 
+                    END AS YaAsignada
+                FROM FacturasRecibidas fr
+                LEFT JOIN FacturasMovimientosTanques fmt 
+                    ON fr.Id = fmt.FacturaPetrotalId 
+                    AND fmt.Activo = 1
+                $whereSQL
+                ORDER BY fr.Fecha DESC
+            ";
+            
+            $result = odbc_exec($conn, $query);
+            
+            if (!$result) {
+                throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
+            }
+
+            $facturas = [];
+            while ($row = odbc_fetch_array($result)) {
+                $facturas[] = [
+                    'id' => $row['Id'],
+                    'uuid' => $row['UUID'],
+                    'folio' => $row['Folio'],
+                    'fecha' => $row['Fecha'],
+                    'total' => $row['Total'],
+                    'receptor_nombre' => $row['ReceptorNombre'],
+                    'destino' => $row['Destino'],
+                    'remision' => $row['Remision'],
+                    'litros' => $row['litros'],
+                    'ya_asignada' => $row['YaAsignada']
+                ];
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'data' => $facturas]);
+
+        } catch (Exception $e) {
+            error_log("Error en buscar_facturas_petrotal: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // ========== NUEVO ENDPOINT: Guardar asignación completa (directo o con Petrotal) ==========
+    public function guardar_asignacion_completa() {
+        header('Content-Type: application/json');
+        
+        // Obtener datos del POST
+        $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
+        $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
+        $tipoOperacion = isset($_POST['tipo_operacion']) ? intval($_POST['tipo_operacion']) : 1;
+        $observaciones = isset($_POST['observaciones']) ? $_POST['observaciones'] : '';
+        $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Sistema';
+        
+        // Factura Proveedor (obligatoria)
+        $facturaProveedorId = isset($_POST['factura_proveedor_id']) ? intval($_POST['factura_proveedor_id']) : 0;
+        $uuidProveedor = isset($_POST['uuid_proveedor']) ? $_POST['uuid_proveedor'] : '';
+        $folioProveedor = isset($_POST['folio_proveedor']) ? $_POST['folio_proveedor'] : '';
+        $montoProveedor = isset($_POST['monto_proveedor']) ? floatval($_POST['monto_proveedor']) : 0;
+        $litrosProveedor = isset($_POST['litros_proveedor']) ? floatval($_POST['litros_proveedor']) : 0;
+        $precioProveedor = isset($_POST['precio_proveedor']) ? floatval($_POST['precio_proveedor']) : 0;
+        
+        // Factura Petrotal (opcional, solo si tipoOperacion = 2)
+        $facturaPetrotalId = isset($_POST['factura_petrotal_id']) ? intval($_POST['factura_petrotal_id']) : null;
+        $uuidPetrotal = isset($_POST['uuid_petrotal']) ? $_POST['uuid_petrotal'] : null;
+        $folioPetrotal = isset($_POST['folio_petrotal']) ? $_POST['folio_petrotal'] : null;
+        $montoPetrotal = isset($_POST['monto_petrotal']) ? floatval($_POST['monto_petrotal']) : null;
+        $litrosPetrotal = isset($_POST['litros_petrotal']) ? floatval($_POST['litros_petrotal']) : null;
+        $precioPetrotal = isset($_POST['precio_petrotal']) ? floatval($_POST['precio_petrotal']) : null;
+        
+        // Validaciones
+        if ($nrotrn == 0 || $codgas == 0 || $facturaProveedorId == 0) {
+            json_output(['success' => false, 'message' => 'Datos incompletos (nrotrn, codgas o factura proveedor)']);
+            return;
+        }
+        
+        // Si es operación con Petrotal, validar que tenga la factura de Petrotal
+        if ($tipoOperacion == 2 && ($facturaPetrotalId == 0 || empty($facturaPetrotalId))) {
+            json_output(['success' => false, 'message' => 'Para operación con Petrotal debe seleccionar la factura de Petrotal']);
+            return;
+        }
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            // Verificar si ya existe una asignación
+            $queryCheck = "SELECT Id FROM FacturasMovimientosTanques WHERE nrotrn = ? AND codgas = ?";
+            $stmtCheck = odbc_prepare($conn, $queryCheck);
+            
+            if (!odbc_execute($stmtCheck, [$nrotrn, $codgas])) {
+                throw new Exception("Error al verificar asignación existente");
+            }
+            
+            $existeAsignacion = odbc_fetch_array($stmtCheck);
+            
+            if ($existeAsignacion) {
+                // Actualizar asignación existente
+                $queryUpdate = "
+                    UPDATE FacturasMovimientosTanques 
+                    SET 
+                        TipoOperacion = ?,
+                        FacturaProveedorId = ?,
+                        UUIDProveedor = ?,
+                        FolioProveedor = ?,
+                        MontoProveedor = ?,
+                        LitrosProveedor = ?,
+                        PrecioProveedor = ?,
+                        FacturaPetrotalId = ?,
+                        UUIDPetrotal = ?,
+                        FolioPetrotal = ?,
+                        MontoPetrotal = ?,
+                        LitrosPetrotal = ?,
+                        PrecioPetrotal = ?,
+                        FechaAsignacion = GETDATE(),
+                        UsuarioAsignacion = ?,
+                        Observaciones = ?,
+                        Activo = 1
+                    WHERE nrotrn = ? AND codgas = ?
+                ";
+                
+                $stmtUpdate = odbc_prepare($conn, $queryUpdate);
+                
+                $params = [
+                    $tipoOperacion,
+                    $facturaProveedorId,
+                    $uuidProveedor,
+                    $folioProveedor,
+                    $montoProveedor,
+                    $litrosProveedor,
+                    $precioProveedor,
+                    $facturaPetrotalId,
+                    $uuidPetrotal,
+                    $folioPetrotal,
+                    $montoPetrotal,
+                    $litrosPetrotal,
+                    $precioPetrotal,
+                    $usuario,
+                    $observaciones,
+                    $nrotrn,
+                    $codgas
+                ];
+                
+                if (!odbc_execute($stmtUpdate, $params)) {
+                    throw new Exception("Error al actualizar asignación: " . odbc_errormsg($conn));
+                }
+                
+                $message = "Asignación actualizada correctamente";
+                
+            } else {
+                // Insertar nueva asignación
+                $queryInsert = "
+                    INSERT INTO FacturasMovimientosTanques 
+                    (nrotrn, codgas, TipoOperacion, 
+                    FacturaProveedorId, UUIDProveedor, FolioProveedor, MontoProveedor, LitrosProveedor, PrecioProveedor,
+                    FacturaPetrotalId, UUIDPetrotal, FolioPetrotal, MontoPetrotal, LitrosPetrotal, PrecioPetrotal,
+                    UsuarioAsignacion, Observaciones)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ";
+                
+                $stmtInsert = odbc_prepare($conn, $queryInsert);
+                
+                $params = [
+                    $nrotrn,
+                    $codgas,
+                    $tipoOperacion,
+                    $facturaProveedorId,
+                    $uuidProveedor,
+                    $folioProveedor,
+                    $montoProveedor,
+                    $litrosProveedor,
+                    $precioProveedor,
+                    $facturaPetrotalId,
+                    $uuidPetrotal,
+                    $folioPetrotal,
+                    $montoPetrotal,
+                    $litrosPetrotal,
+                    $precioPetrotal,
+                    $usuario,
+                    $observaciones
+                ];
+                
+                if (!odbc_execute($stmtInsert, $params)) {
+                    throw new Exception("Error al insertar asignación: " . odbc_errormsg($conn));
+                }
+                
+                $message = "Asignación guardada correctamente";
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'message' => $message]);
+
+        } catch (Exception $e) {
+            error_log("Error en guardar_asignacion_completa: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // ========== ACTUALIZAR ENDPOINT: Eliminar asignación (ya existente pero actualizado) ==========
+    public function eliminar_asignacion_factura() {
+        header('Content-Type: application/json');
+        
+        $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
+        $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
+        
+        if ($nrotrn == 0 || $codgas == 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            // Marcar como inactivo (soft delete)
+            $query = "
+                UPDATE FacturasMovimientosTanques 
+                SET Activo = 0
+                WHERE nrotrn = ? AND codgas = ?
+            ";
+            
+            $stmt = odbc_prepare($conn, $query);
+            
+            if (!odbc_execute($stmt, [$nrotrn, $codgas])) {
+                throw new Exception("Error al eliminar: " . odbc_errormsg($conn));
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'message' => 'Asignación eliminada correctamente']);
+
+        } catch (Exception $e) {
+            error_log("Error en eliminar_asignacion_factura: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // ========== ENDPOINT ADICIONAL: Obtener detalle de asignación ==========
+    public function obtener_detalle_asignacion() {
+        header('Content-Type: application/json');
+        
+        $nrotrn = isset($_GET['nrotrn']) ? intval($_GET['nrotrn']) : 0;
+        $codgas = isset($_GET['codgas']) ? intval($_GET['codgas']) : 0;
+        
+        if ($nrotrn == 0 || $codgas == 0) {
+            json_output(['success' => false, 'message' => 'Parámetros inválidos']);
+            return;
+        }
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            $query = "
+                SELECT 
+                    fmt.*,
+                    frProv.Folio as FolioProveedorCompleto,
+                    frProv.EmisorNombre as EmisorProveedor,
+                    frProv.Total as TotalProveedor,
+                    frPetro.Folio as FolioPetrotalCompleto,
+                    frPetro.Total as TotalPetrotal
+                FROM FacturasMovimientosTanques fmt
+                LEFT JOIN FacturasRecibidas frProv ON fmt.FacturaProveedorId = frProv.Id
+                LEFT JOIN FacturasRecibidas frPetro ON fmt.FacturaPetrotalId = frPetro.Id
+                WHERE fmt.nrotrn = ? AND fmt.codgas = ? AND fmt.Activo = 1
+            ";
+            
+            $stmt = odbc_prepare($conn, $query);
+            
+            if (!odbc_execute($stmt, [$nrotrn, $codgas])) {
+                throw new Exception("Error al consultar detalle");
+            }
+            
+            $detalle = odbc_fetch_array($stmt);
+            
+            if (!$detalle) {
+                json_output(['success' => false, 'message' => 'No se encontró asignación']);
+                return;
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'data' => $detalle]);
+
+        } catch (Exception $e) {
+            error_log("Error en obtener_detalle_asignacion: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // ========== ENDPOINT ADICIONAL: Reporte de márgenes Petrotal ==========
+    public function reporte_margenes_petrotal() {
+        header('Content-Type: application/json');
+        
+        $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
+        $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
+        
+        try {
+            $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
+            $conn = odbc_connect($conn_str, '', '');
+            
+            if (!$conn) {
+                throw new Exception("Error al conectar con la base de datos");
+            }
+
+            $whereSQL = "";
+            if (!empty($fechaInicio) && !empty($fechaFin)) {
+                $whereSQL = "AND frProv.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
+            }
+
+            $query = "
+                SELECT 
+                    fmt.nrotrn,
+                    fmt.codgas,
+                    frProv.Folio as FolioProveedor,
+                    frProv.EmisorNombre as ProveedorOriginal,
+                    frProv.Fecha as FechaCompra,
+                    fmt.LitrosProveedor,
+                    fmt.PrecioProveedor,
+                    fmt.MontoProveedor,
+                    frPetro.Folio as FolioPetrotal,
+                    frPetro.Fecha as FechaVenta,
+                    fmt.LitrosPetrotal,
+                    fmt.PrecioPetrotal,
+                    fmt.MontoPetrotal,
+                    -- Cálculos de margen
+                    (fmt.PrecioPetrotal - fmt.PrecioProveedor) as DiferenciaPrecio,
+                    ((fmt.PrecioPetrotal - fmt.PrecioProveedor) / fmt.PrecioProveedor * 100) as MargenPorcentual,
+                    (fmt.MontoPetrotal - fmt.MontoProveedor) as GananciaNeta
+                FROM FacturasMovimientosTanques fmt
+                INNER JOIN FacturasRecibidas frProv ON fmt.FacturaProveedorId = frProv.Id
+                INNER JOIN FacturasRecibidas frPetro ON fmt.FacturaPetrotalId = frPetro.Id
+                WHERE fmt.TipoOperacion = 2 
+                    AND fmt.Activo = 1
+                    $whereSQL
+                ORDER BY frProv.Fecha DESC
+            ";
+            
+            $result = odbc_exec($conn, $query);
+            
+            if (!$result) {
+                throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
+            }
+
+            $reportes = [];
+            while ($row = odbc_fetch_array($result)) {
+                $reportes[] = $row;
+            }
+
+            odbc_close($conn);
+            json_output(['success' => true, 'data' => $reportes]);
+
+        } catch (Exception $e) {
+            error_log("Error en reporte_margenes_petrotal: " . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    // public function compras_facturas_table() {
+    //     ini_set('max_execution_time', 5000);
+    //     ini_set('memory_limit', '1024M');
+    //     set_time_limit(0);
+    //     header('Content-Type: application/json');
+        
+    //     $postData = [
+    //         'from' => isset($_POST['fromDate']) ? $_POST['fromDate'] : null,
+    //         'until' => isset($_POST['untilDate']) ? $_POST['untilDate'] : null,
+    //         'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+    //         'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+    //         'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+    //     ];
+
+    //     if (!$postData['from'] || !$postData['until']) {
+    //         json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
+    //         return;
+    //     }
+    //     try {
+    //         $ch = curl_init('http://192.168.0.109:82/api/compras_facturas_base/');
+    //         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    //         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+    //         curl_setopt($ch, CURLOPT_POST, true);
+    //         curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+    //         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+    //         $response = curl_exec($ch);
+    //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+    //         if (curl_errno($ch)) {
+    //             throw new Exception('Error de cURL: ' . curl_error($ch));
+    //         }
+            
+    //         curl_close($ch);
+
+    //         if ($httpCode !== 200) {
+    //             throw new Exception("Error HTTP: $httpCode");
+    //         }
+
+    //         $apiData = json_decode($response, true);
+    //         // echo '<pre>';
+    //         // var_dump($apiData);
+    //         // var_dump($response);
+
+    //         if (json_last_error() !== JSON_ERROR_NONE) {
+    //             throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+    //         }
+
+    //         // Los datos ya vienen procesados desde la API
+    //         json_output(['data' => $apiData]);
+
+    //     } catch (Exception $e) {
+    //         error_log("Error en compras_facturas_table: " . $e->getMessage());
+    //         json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
+    //     }
+    // }
+
+    public function compras_facturas_table() {
+        if ($rows = $this->facturasRecibidasModel->compras_facturas_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas'], $_POST['proveedor'], $_POST['company'])) {
+            $data = [];
+            foreach ($rows as $row) {
+
+                $litros = is_numeric($row['LitrosDocumentoSoporte'] ?? null) ? floatval($row['LitrosDocumentoSoporte']) : 0.0;
+                $monto = is_numeric($row['MontoFactura'] ?? null) ? floatval($row['MontoFactura']) : 0.0;
+                $precioPorLitro = ($litros > 0) ? $monto / $litros : 0.0;
+                $producto = $this->normalizarProducto((string) ($row['Producto'] ?? ''));
+                $proveedor = $this->normalizarProveedor((string) ($row['ProveedorOriginal'] ?? ''));
+                $numeroEstacion = $row['numero_estacion'] ?? str_pad((string) ($row['CodigoEstacion'] ?? '0'), 2, '0', STR_PAD_LEFT);
+                $saldoFactura = is_numeric($row['SaldoFactura'] ?? null) ? floatval($row['SaldoFactura']) : 0.0;
+
+                // Número de estación
+                $numeroEstacion = $row['numero_estacion'] ?? '00';
+                if ($numeroEstacion == '00' && !empty($row['CodigoEstacion'])) {
+                    $numeroEstacion = str_pad($row['CodigoEstacion'], 2, '0', STR_PAD_LEFT);
+                }
+            
+                // Nombre de estación
+                $nombreEstacion = $row['estacion_control_gas'] ?? '';
+                $data[] = array(
+                    'FacturaId'                      => $row['FacturaId'],
+                    'FechaRecepcion'                 => $row['FechaRecepcion'],
+                    'NumeroEstacion'                 => $numeroEstacion,
+                    'NombreEstacion'                 => $nombreEstacion,
+                    'Empresa'                        => $row['Empresa'],
+                    'ProveedorOriginal'              => $row['ProveedorOriginal'],
+                    'ProveedorNormalizado'           => $proveedor,
+                    'ProductoNormalizado'            => $producto,
+                    'NumeroFacturaProveedorOriginal' => $row['NumeroFacturaProveedorOriginal'],
+                    'LitrosDocumentoSoporte'         => round($litros, 4),
+                    'MontoFactura'                   => round($monto, 2),
+                    'SaldoFactura'                   => round($saldoFactura, 2),
+                    'PrecioPorLitro'                 => round($precioPorLitro, 6),
+                    'PrecioCotizado'                 => 'PENDIENTE',
+                    'Diferencia'                     => 0,
+                    'PrecioFacturaCotizadoPetrotal'  => 0,
+                    'NumeroFacturaPetrotal'          => $row['NumeroFacturaPetrotal'] ?? '',
+                    'EstadoAsignacion'               => $row['EstadoAsignacion'],
+                    'UUID'                           => $row['UUID'],
+                    'RutaArchivo'                    => $row['RutaArchivo'],
+                    'NombreArchivo'                  => $row['NombreArchivo'],
+                    'TipoOperacion'                  => $row['TipoOperacion'],
+                    'NumeroTransaccion'              => $row['NumeroTransaccion'],
+                    'CodigoEstacion'                 => $row['CodigoEstacion'],
+
+                );
+            }
+            echo json_encode(['data' => $data]);
+        } else {
+            echo json_encode(['data' => []]);
+        }
+    }
+    private function normalizarProducto($producto) {
+        if (empty($producto)) return 'N/A';
+        
+        $prod = strtoupper($producto);
+        
+        if (preg_match('/\b(REGULAR|MAGNA|87)\b/i', $prod)) {
+            return 'Regular';
+        } elseif (preg_match('/\b(PREMIUM|SUPER|91|93)\b/i', $prod)) {
+            return 'Premium';
+        } elseif (preg_match('/\b(DIESEL)\b/i', $prod)) {
+            return 'Diesel';
+        }
+        
+        return substr($producto, 0, 50);
+    }
+
+    private function normalizarProveedor($proveedor) {
+        if (empty($proveedor)) return 'N/A';
+        
+        $prov = strtoupper($proveedor);
+        
+        if (strpos($prov, 'TESORO') !== false) return 'TESORO';
+        if (strpos($prov, 'MGC') !== false) return 'MGC';
+        if (strpos($prov, 'LOBO') !== false) return 'LOBO';
+        if (strpos($prov, 'PETROTAL') !== false) return 'PETROTAL';
+        if (strpos($prov, 'ESSAFUEL') !== false || strpos($prov, 'ESSA') !== false) return 'ESSAFUEL';
+        if (strpos($prov, 'PREMIER') !== false) return 'PREMIERGAS';
+        if (strpos($prov, 'ENEREY') !== false) return 'ENEREY';
+        if (strpos($prov, 'AEMSA') !== false || strpos($prov, 'ALTOS') !== false) return 'AEMSA';
+        
+        return substr($proveedor, 0, 30);
+    }
+    public function ver_factura_pdf() {
+        // Cambiar a POST
+        $facturaId = $_POST['id'] ?? null;
+        
+        if (!$facturaId) {
+            header('HTTP/1.1 400 Bad Request');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'ID de factura requerido']);
+            return;
+        }
+        
+        // Obtener ruta del archivo
+        $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
+        $result = $this->sql->select($query, [$facturaId]);
+        
+        if (empty($result)) {
+            header('HTTP/1.1 404 Not Found');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Factura no encontrada']);
+            return;
+        }
+        
+        $rutaArchivo = $result[0]['RutaArchivo'];
+        $nombreArchivo = $result[0]['NombreArchivo'] ?? 'factura.pdf';
+        
+        // Verificar que el archivo existe
+        if (!file_exists($rutaArchivo)) {
+            header('HTTP/1.1 404 Not Found');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Archivo PDF no encontrado en el servidor', 'ruta' => $rutaArchivo]);
+            return;
+        }
+        
+        // Leer el archivo y convertirlo a base64
+        $pdfContent = file_get_contents($rutaArchivo);
+        $pdfBase64 = base64_encode($pdfContent);
+        
+        // Devolver JSON con el PDF en base64
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'pdf' => $pdfBase64,
+            'nombre' => $nombreArchivo,
+            'folio' => $result[0]['Folio'],
+            'size' => filesize($rutaArchivo)
+        ]);
+    }
+
+    public function descargar_factura_pdf() {
+        $facturaId = $_POST['id'] ?? null;
+        
+        if (!$facturaId) {
+            header('HTTP/1.1 400 Bad Request');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'ID de factura requerido']);
+            return;
+        }
+        
+        // Obtener ruta del archivo
+        $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
+        $result = $this->sql->select($query, [$facturaId]);
+        
+        if (empty($result)) {
+            header('HTTP/1.1 404 Not Found');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Factura no encontrada']);
+            return;
+        }
+        
+        $rutaArchivo = $result[0]['RutaArchivo'];
+        $folio = $result[0]['Folio'] ?? 'sin_folio';
+        
+        // Verificar que el archivo existe
+        if (!file_exists($rutaArchivo)) {
+            header('HTTP/1.1 404 Not Found');
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Archivo PDF no encontrado']);
+            return;
+        }
+        
+        // Nombre de archivo amigable
+        $nombreDescarga = 'Factura_' . $folio . '_' . date('Ymd') . '.pdf';
+        
+        // Headers para forzar descarga
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $nombreDescarga . '"');
+        header('Content-Length: ' . filesize($rutaArchivo));
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        header('Pragma: public');
+        
+        readfile($rutaArchivo);
+        exit;
+    }
+public function buscar_movimiento_por_nrotrn() {
+    $nrotrn = $_POST['nrotrn'] ?? null;
+    $codgas = $_POST['codgas'] ?? null;
+    
+    if (!$nrotrn || !$codgas) {
+        json_output(['success' => false, 'message' => 'Parámetros incompletos']);
+        return;
+    }
+    
+    // Buscar en sg12 (o donde tengas los movimientos)
+    $query = "
+        SELECT 
+            nrotrn,
+            codgas,
+            fecha,
+            producto,
+            litros,
+            -- otros campos necesarios
+        FROM sg12.dbo.MovimientosTanques 
+        WHERE nrotrn = ? AND codgas = ?
+    ";
+    
+    $result = $this->sql->select($query, [$nrotrn, $codgas]);
+    
+    if (!empty($result)) {
+        json_output(['success' => true, 'data' => $result[0]]);
+    } else {
+        json_output(['success' => false, 'message' => 'Movimiento no encontrado']);
+    }
+}
+
+
 
 
 

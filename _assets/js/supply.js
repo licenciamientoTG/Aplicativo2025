@@ -1463,8 +1463,6 @@ async function resumen_payment_table() {
         );
         return;
     }
-
-    // Agregar fila de filtros en el thead
    $('#resumen_payment_table thead').prepend($('#resumen_payment_table thead tr').clone().addClass('filter'));
     $('#resumen_payment_table thead tr.filter th').each(function (index) {
         col = $('#resumen_payment_table thead th').length/2;
@@ -1481,6 +1479,7 @@ async function resumen_payment_table() {
             .search(this.value) // Busca el valor del input
             .draw(); // Redibuja la tabla
     });
+    let movimientoActual = {};
 
     // Inicializar DataTable
     let resumen_payment_table = $('#resumen_payment_table').DataTable({
@@ -1534,13 +1533,67 @@ async function resumen_payment_table() {
             }
         },
         columns: [
+            { 
+                data: null,
+                className: 'text-center',
+                orderable: false,   
+                width: '120px',
+                render: function(data, type, row) {
+                    let icono = '';
+                    let tooltipTexto = '';
+                    
+                    if (row.tiene_facturas_asignadas) {
+                        if (row.tipo_operacion == 2) {
+                            // Operación con Petrotal
+                            icono = '<i class="fas fa-layer-group text-warning" title="Vía Petrotal"></i>';
+                            tooltipTexto = `Proveedor → Petrotal → TotalGas\nUsuario: ${row.usuario_asignacion}\nFecha: ${row.fecha_asignacion}`;
+                        } else {
+                            // Operación directa
+                            icono = '<i class="fas fa-check-circle text-success" title="Compra Directa"></i>';
+                            tooltipTexto = `Compra Directa\nUsuario: ${row.usuario_asignacion}\nFecha: ${row.fecha_asignacion}`;
+                        }
+                    } else {
+                        icono = '<i class="fas fa-exclamation-circle text-danger" title="Sin asignar"></i>';
+                        tooltipTexto = 'Sin factura asignada';
+                    }
+                    
+                    const btnAsignar = row.tiene_facturas_asignadas
+                        ? `<button class="btn btn-sm btn-info" 
+                                onclick='abrirModalAsignacion(${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                title="Editar asignación">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger" 
+                                onclick='eliminarAsignacion(${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>`
+                        : `<button class="btn btn-sm btn-primary" 
+                                onclick='abrirModalAsignacion(${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                title="Asignar facturas">
+                            <i class="fas fa-link"></i>
+                        </button>`;
+                    
+                    return `<div class="btn-group btn-group-sm" title="${tooltipTexto}">${icono} ${btnAsignar}</div>`;
+                }
+            },
             { data: 'fecha', className: 'text-center text-nowrap' },
             { data: 'estacion', className: 'text-start text-nowrap' },
             { data: 'numero_estacion', className: 'text-center  text-nowrap' },
             { data: 'proveedor_original', className: 'text-start text-nowrap' },
             { data: 'combustible', className: 'text-start text-nowrap' },
-            { data: 'num_fac_proveedor', className: 'text-start text-nowrap' },
-            { data: 'proveedor_final', className: 'text-start text-nowrap' },
+            { 
+                data: 'num_fac_proveedor', 
+                className: 'text-start text-nowrap',
+                render: function(data, type, row) {
+                    if (row.tiene_facturas_asignadas && row.tipo_operacion == 2) {
+                        // Mostrar ambos folios si es operación Petrotal
+                        return `<small>Prov: ${row.folio_proveedor || 'N/A'}<br>Petrotal: ${row.folio_petrotal || 'N/A'}</small>`;
+                    }
+                    return data || 'N/A';
+                }
+        },            
+        { data: 'proveedor_final', className: 'text-start text-nowrap' },
             {data: 'cantidad_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number(',', '.', 2)},
             {data: 'monto_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number( ',', '.', 2, '$' )},
             {data: 'precio_factura_controlgas',className: 'text-end',render: $.fn.dataTable.render.number(',', '.', 4)},
@@ -1585,9 +1638,13 @@ async function resumen_payment_table() {
         ],
         deferRender: true,
         createdRow: function (row, data, dataIndex) {
-            if (!data.uuid || data.uuid === null || data.uuid === '') {
+           if (!data.tiene_factura) {
                 $(row).addClass('table-warning');
             }
+            
+            // Agregar atributos de datos para fácil acceso
+            $(row).attr('data-nrotrn', data.nrotrn);
+            $(row).attr('data-codgas', data.numero_estacion);
         },
         initComplete: function () {
             $('.datatable-wrapper').removeClass('loading');
@@ -1600,3 +1657,1319 @@ async function resumen_payment_table() {
     });
 }
 
+// ==========================================
+// SISTEMA DE ASIGNACIÓN DE FACTURAS (DIRECTO Y PETROTAL)
+// ==========================================
+
+let movimientoActual = {};
+let facturaProveedorSeleccionada = null;
+let facturaPetrotalSeleccionada = null;
+
+// Evento para cambio de tipo de operación
+$(document).ready(function() {
+    $('input[name="tipoOperacion"]').on('change', function() {
+        const tipoPetrotal = $(this).val() === '2';
+        
+        // Mostrar/ocultar elementos según el tipo
+        if (tipoPetrotal) {
+            $('#paso2').fadeIn();
+            $('#flecha2').fadeIn();
+            $('#petrotal-tab-item').fadeIn();
+            $('#paso3_directo').removeClass('col-md-3').addClass('col-md-3');
+        } else {
+            $('#paso2').fadeOut();
+            $('#flecha2').fadeOut();
+            $('#petrotal-tab-item').fadeOut();
+            $('#paso3_directo').removeClass('col-md-3').addClass('col-md-3');
+            
+            // Limpiar selección de Petrotal
+            facturaPetrotalSeleccionada = null;
+            $('#info_petrotal').html('<span class="text-muted">Sin asignar</span>');
+            $('#badge-petrotal').removeClass('bg-success').addClass('bg-danger').text('Requerida');
+        }
+        
+        validarAsignacionCompleta();
+    });
+});
+
+function abrirModalAsignacion(movimiento) {
+    movimientoActual = movimiento;
+    facturaProveedorSeleccionada = null;
+    facturaPetrotalSeleccionada = null;
+    
+    // Llenar información del movimiento
+    $('#modal_nrotrn').text(movimiento.nrotrn);
+    $('#modal_estacion').text(movimiento.estacion);
+    $('#modal_fecha').text(movimiento.fecha);
+    $('#modal_combustible').text(movimiento.combustible);
+    $('#modal_litros').text(parseFloat(movimiento.recaudado || 0).toLocaleString('es-MX', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }));
+    
+    // Determinar tipo de operación si ya está asignada
+    if (movimiento.tiene_facturas_asignadas) {
+        const tipoOp = movimiento.tipo_operacion || 1;
+        $(`input[name="tipoOperacion"][value="${tipoOp}"]`).prop('checked', true).trigger('change');
+        
+        // Pre-cargar facturas asignadas
+        if (movimiento.factura_proveedor_id) {
+            facturaProveedorSeleccionada = {
+                id: movimiento.factura_proveedor_id,
+                uuid: movimiento.uuid_proveedor,
+                folio: movimiento.folio_proveedor,
+                total: movimiento.total_factura_proveedor,
+                emisor: movimiento.emisor_factura_proveedor,
+                litros: movimiento.litros_proveedor,
+                precio: movimiento.precio_proveedor
+            };
+            actualizarInfoProveedor();
+        }
+        
+        if (movimiento.factura_petrotal_id) {
+            facturaPetrotalSeleccionada = {
+                id: movimiento.factura_petrotal_id,
+                uuid: movimiento.uuid_petrotal,
+                folio: movimiento.folio_petrotal,
+                total: movimiento.total_factura_petrotal,
+                litros: movimiento.litros_petrotal,
+                precio: movimiento.precio_petrotal
+            };
+            actualizarInfoPetrotal();
+        }
+    } else {
+        // Nueva asignación - por defecto directo
+        $('#tipoDirecto').prop('checked', true).trigger('change');
+    }
+    
+    // Limpiar formularios
+    $('#search_factura_proveedor, #fecha_inicio_proveedor, #fecha_fin_proveedor').val('');
+    $('#search_factura_petrotal, #fecha_inicio_petrotal, #fecha_fin_petrotal').val('');
+    $('#observaciones_asignacion').val(movimiento.observaciones || '');
+    
+    // Limpiar tablas
+    $('#tbody_facturas_proveedor').html(`
+        <tr><td colspan="8" class="text-center text-muted">
+            <i class="fas fa-search"></i> Utilice los filtros para buscar facturas
+        </td></tr>
+    `);
+    $('#tbody_facturas_petrotal').html(`
+        <tr><td colspan="7" class="text-center text-muted">
+            <i class="fas fa-search"></i> Utilice los filtros para buscar facturas
+        </td></tr>
+    `);
+    
+    $('#resumenAsignacion').hide();
+    $('#btnGuardarAsignacion').prop('disabled', true);
+    
+    // Abrir modal
+    $('#modalAsignarFactura').modal('show');
+}
+
+// ==========================================
+// BÚSQUEDA DE FACTURAS PROVEEDOR
+// ==========================================
+function buscarFacturasProveedor() {
+    const searchTerm = $('#search_factura_proveedor').val();
+    const fechaInicio = $('#fecha_inicio_proveedor').val();
+    const fechaFin = $('#fecha_fin_proveedor').val();
+    
+    if (!searchTerm && (!fechaInicio || !fechaFin)) {
+        alertify.warning('Debe ingresar al menos un criterio de búsqueda');
+        return;
+    }
+    
+    $('#tbody_facturas_proveedor').html(`
+        <tr><td colspan="8" class="text-center">
+            <i class="fas fa-spinner fa-spin"></i> Buscando facturas...
+        </td></tr>
+    `);
+    
+    $.ajax({
+        url: '/supply/buscar_facturas_proveedor',
+        type: 'POST',
+        data: {
+            search: searchTerm,
+            fecha_inicio: fechaInicio,
+            fecha_fin: fechaFin,
+            tipo: 'proveedor' // Excluir facturas de Petrotal
+        },
+        success: function(response) {
+            if (response.success && response.data.length > 0) {
+                let html = '';
+                
+                response.data.forEach(factura => {
+                    // Calcular litros y precio por litro desde conceptos si existen
+                    const litros = factura.litros || 0;
+                    const precioLitro = litros > 0 ? (factura.total / litros) : 0;
+                    
+                    const btnSeleccionar = `
+                        <button class="btn btn-sm btn-success" 
+                                onclick='seleccionarFacturaProveedor(${JSON.stringify(factura)})' 
+                                title="Seleccionar esta factura">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    `;
+                    
+                    html += `
+                        <tr>
+                            <td>${btnSeleccionar}</td>
+                            <td><strong>${factura.folio || 'N/A'}</strong></td>
+                            <td>${factura.fecha}</td>
+                            <td><small>${factura.emisor_nombre}</small></td>
+                            <td class="text-end"><strong>$${parseFloat(factura.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                            <td class="text-end">${litros > 0 ? litros.toLocaleString('es-MX', {minimumFractionDigits: 2}) : 'N/A'}</td>
+                            <td class="text-end">${precioLitro > 0 ? '$' + precioLitro.toFixed(4) : 'N/A'}</td>
+                            <td><small class="font-monospace">${factura.uuid.substring(0,8)}...</small></td>
+                        </tr>
+                    `;
+                });
+                
+                $('#tbody_facturas_proveedor').html(html);
+            } else {
+                $('#tbody_facturas_proveedor').html(`
+                    <tr><td colspan="8" class="text-center text-muted">
+                        <i class="fas fa-inbox"></i> No se encontraron facturas
+                    </td></tr>
+                `);
+            }
+        },
+        error: function() {
+            alertify.error('Error al buscar facturas');
+        }
+    });
+}
+
+function seleccionarFacturaProveedor(factura) {
+    facturaProveedorSeleccionada = factura;
+    actualizarInfoProveedor();
+    validarAsignacionCompleta();
+    
+    // Cambiar al tab de Petrotal si es operación con intermediario
+    if ($('input[name="tipoOperacion"]:checked').val() === '2') {
+        $('#petrotal-tab').click();
+    }
+}
+
+function actualizarInfoProveedor() {
+    if (facturaProveedorSeleccionada) {
+        const litros = facturaProveedorSeleccionada.litros || 0;
+        const precio = facturaProveedorSeleccionada.precio || 
+                       (litros > 0 ? (facturaProveedorSeleccionada.total / litros) : 0);
+        
+        $('#info_proveedor').html(`
+            <strong class="text-success">${facturaProveedorSeleccionada.emisor_nombre || facturaProveedorSeleccionada.emisor}</strong><br>
+            <small>Folio: ${facturaProveedorSeleccionada.folio}</small><br>
+            <small>Total: $${parseFloat(facturaProveedorSeleccionada.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}</small><br>
+            <small>Precio/L: $${precio.toFixed(4)}</small>
+        `);
+        
+        $('#badge-proveedor').removeClass('bg-danger').addClass('bg-success').text('Asignada');
+        
+        $('#resumen_proveedor').html(`
+            <strong>Folio:</strong> ${facturaProveedorSeleccionada.folio}<br>
+            <strong>UUID:</strong> ${facturaProveedorSeleccionada.uuid}<br>
+            <strong>Total:</strong> $${parseFloat(facturaProveedorSeleccionada.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+            <strong>Litros:</strong> ${litros.toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+            <strong>Precio/L:</strong> $${precio.toFixed(4)}
+        `);
+        
+        $('#resumenAsignacion').show();
+    }
+}
+
+// ==========================================
+// BÚSQUEDA DE FACTURAS PETROTAL
+// ==========================================
+function buscarFacturasPetrotal() {
+    const searchTerm = $('#search_factura_petrotal').val();
+    const fechaInicio = $('#fecha_inicio_petrotal').val();
+    const fechaFin = $('#fecha_fin_petrotal').val();
+    
+    if (!searchTerm && (!fechaInicio || !fechaFin)) {
+        alertify.warning('Debe ingresar al menos un criterio de búsqueda');
+        return;
+    }
+    
+    $('#tbody_facturas_petrotal').html(`
+        <tr><td colspan="7" class="text-center">
+            <i class="fas fa-spinner fa-spin"></i> Buscando facturas...
+        </td></tr>
+    `);
+    
+    $.ajax({
+        url: '/supply/buscar_facturas_petrotal',
+        type: 'POST',
+        data: {
+            search: searchTerm,
+            fecha_inicio: fechaInicio,
+            fecha_fin: fechaFin
+        },
+        success: function(response) {
+            if (response.success && response.data.length > 0) {
+                let html = '';
+                
+                response.data.forEach(factura => {
+                    const litros = factura.litros || 0;
+                    const precioLitro = litros > 0 ? (factura.total / litros) : 0;
+                    
+                    const btnSeleccionar = `
+                        <button class="btn btn-sm btn-warning" 
+                                onclick='seleccionarFacturaPetrotal(${JSON.stringify(factura)})' 
+                                title="Seleccionar esta factura">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    `;
+                    
+                    html += `
+                        <tr>
+                            <td>${btnSeleccionar}</td>
+                            <td><strong>${factura.folio || 'N/A'}</strong></td>
+                            <td>${factura.fecha}</td>
+                            <td class="text-end"><strong>$${parseFloat(factura.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                            <td class="text-end">${litros > 0 ? litros.toLocaleString('es-MX', {minimumFractionDigits: 2}) : 'N/A'}</td>
+                            <td class="text-end">${precioLitro > 0 ? '$' + precioLitro.toFixed(4) : 'N/A'}</td>
+                            <td><small class="font-monospace">${factura.uuid.substring(0,8)}...</small></td>
+                        </tr>
+                    `;
+                });
+                
+                $('#tbody_facturas_petrotal').html(html);
+            } else {
+                $('#tbody_facturas_petrotal').html(`
+                    <tr><td colspan="7" class="text-center text-muted">
+                        <i class="fas fa-inbox"></i> No se encontraron facturas de Petrotal
+                    </td></tr>
+                `);
+            }
+        },
+        error: function() {
+            alertify.error('Error al buscar facturas');
+        }
+    });
+}
+
+function seleccionarFacturaPetrotal(factura) {
+    facturaPetrotalSeleccionada = factura;
+    actualizarInfoPetrotal();
+    validarAsignacionCompleta();
+    calcularMargen();
+}
+
+function actualizarInfoPetrotal() {
+    if (facturaPetrotalSeleccionada) {
+        const litros = facturaPetrotalSeleccionada.litros || 0;
+        const precio = facturaPetrotalSeleccionada.precio || 
+                       (litros > 0 ? (facturaPetrotalSeleccionada.total / litros) : 0);
+        
+        $('#info_petrotal').html(`
+            <strong class="text-warning">PETROTAL</strong><br>
+            <small>Folio: ${facturaPetrotalSeleccionada.folio}</small><br>
+            <small>Total: $${parseFloat(facturaPetrotalSeleccionada.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}</small><br>
+            <small>Precio/L: $${precio.toFixed(4)}</small>
+        `);
+        
+        $('#badge-petrotal').removeClass('bg-danger').addClass('bg-success').text('Asignada');
+        
+        $('#resumen_petrotal_container').show();
+        $('#resumen_petrotal').html(`
+            <strong>Folio:</strong> ${facturaPetrotalSeleccionada.folio}<br>
+            <strong>UUID:</strong> ${facturaPetrotalSeleccionada.uuid}<br>
+            <strong>Total:</strong> $${parseFloat(facturaPetrotalSeleccionada.total).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+            <strong>Litros:</strong> ${litros.toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+            <strong>Precio/L:</strong> $${precio.toFixed(4)}
+        `);
+    }
+}
+
+// ==========================================
+// VALIDACIÓN Y CÁLCULOS
+// ==========================================
+function validarAsignacionCompleta() {
+    const tipoOperacion = $('input[name="tipoOperacion"]:checked').val();
+    let esValido = false;
+    
+    if (tipoOperacion === '1') {
+        // Operación directa: solo necesita factura proveedor
+        esValido = facturaProveedorSeleccionada !== null;
+    } else {
+        // Operación con Petrotal: necesita ambas facturas
+        esValido = facturaProveedorSeleccionada !== null && 
+                   facturaPetrotalSeleccionada !== null;
+    }
+    
+    $('#btnGuardarAsignacion').prop('disabled', !esValido);
+    
+    return esValido;
+}
+
+function calcularMargen() {
+    if (facturaProveedorSeleccionada && facturaPetrotalSeleccionada) {
+        const litrosProv = facturaProveedorSeleccionada.litros || 0;
+        const litrosPetro = facturaPetrotalSeleccionada.litros || 0;
+        
+        if (litrosProv > 0 && litrosPetro > 0) {
+            const precioProveedor = facturaProveedorSeleccionada.total / litrosProv;
+            const precioPetrotal = facturaPetrotalSeleccionada.total / litrosPetro;
+            
+            const diferencia = precioPetrotal - precioProveedor;
+            const margen = (diferencia / precioProveedor) * 100;
+            
+            $('#diferencia_precio').text(diferencia.toFixed(4));
+            $('#margen_porcentual').text(margen.toFixed(2));
+            
+            $('#analisis_margen').show();
+        }
+    }
+}
+
+// ==========================================
+// GUARDAR ASIGNACIÓN
+// ==========================================
+function guardarAsignacionCompleta() {
+    if (!validarAsignacionCompleta()) {
+        alertify.error('Debe seleccionar todas las facturas requeridas');
+        return;
+    }
+    
+    const tipoOperacion = $('input[name="tipoOperacion"]:checked').val();
+    const observaciones = $('#observaciones_asignacion').val();
+    
+    // Preparar datos para enviar
+    const datosAsignacion = {
+        nrotrn: movimientoActual.nrotrn,
+        codgas: movimientoActual.numero_estacion,
+        tipo_operacion: tipoOperacion,
+        observaciones: observaciones,
+        
+        // Factura Proveedor (siempre presente)
+        factura_proveedor_id: facturaProveedorSeleccionada.id,
+        uuid_proveedor: facturaProveedorSeleccionada.uuid,
+        folio_proveedor: facturaProveedorSeleccionada.folio,
+        monto_proveedor: facturaProveedorSeleccionada.total,
+        litros_proveedor: facturaProveedorSeleccionada.litros || 0,
+        precio_proveedor: facturaProveedorSeleccionada.litros > 0 
+            ? (facturaProveedorSeleccionada.total / facturaProveedorSeleccionada.litros) 
+            : 0
+    };
+    
+    // Agregar factura Petrotal si aplica
+    if (tipoOperacion === '2' && facturaPetrotalSeleccionada) {
+        datosAsignacion.factura_petrotal_id = facturaPetrotalSeleccionada.id;
+        datosAsignacion.uuid_petrotal = facturaPetrotalSeleccionada.uuid;
+        datosAsignacion.folio_petrotal = facturaPetrotalSeleccionada.folio;
+        datosAsignacion.monto_petrotal = facturaPetrotalSeleccionada.total;
+        datosAsignacion.litros_petrotal = facturaPetrotalSeleccionada.litros || 0;
+        datosAsignacion.precio_petrotal = facturaPetrotalSeleccionada.litros > 0 
+            ? (facturaPetrotalSeleccionada.total / facturaPetrotalSeleccionada.litros) 
+            : 0;
+    }
+    
+    // Deshabilitar botón mientras guarda
+    $('#btnGuardarAsignacion').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+    
+    $.ajax({
+        url: '/supply/guardar_asignacion_completa',
+        type: 'POST',
+        data: datosAsignacion,
+        success: function(response) {
+            if (response.success) {
+                alertify.success(response.message);
+                $('#modalAsignarFactura').modal('hide');
+                
+                // Recargar tabla
+                $('#resumen_payment_table').DataTable().ajax.reload(null, false);
+            } else {
+                alertify.error(response.message);
+                $('#btnGuardarAsignacion').prop('disabled', false).html('<i class="fas fa-save"></i> Guardar Asignación');
+            }
+        },
+        error: function() {
+            alertify.error('Error al guardar la asignación');
+            $('#btnGuardarAsignacion').prop('disabled', false).html('<i class="fas fa-save"></i> Guardar Asignación');
+        }
+    });
+}
+
+// ==========================================
+// ELIMINAR ASIGNACIÓN
+// ==========================================
+function eliminarAsignacion(movimiento) {
+    alertify.confirm(
+        'Eliminar Asignación',
+        '¿Está seguro de eliminar la asignación de facturas de este movimiento? Esta acción no se puede deshacer.',
+        function() {
+            $.ajax({
+                url: '/supply/eliminar_asignacion_factura',
+                type: 'POST',
+                data: {
+                    nrotrn: movimiento.nrotrn,
+                    codgas: movimiento.numero_estacion
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alertify.success(response.message);
+                        $('#resumen_payment_table').DataTable().ajax.reload(null, false);
+                    } else {
+                        alertify.error(response.message);
+                    }
+                },
+                error: function() {
+                    alertify.error('Error al eliminar asignación');
+                }
+            });
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    );
+}
+
+async function compras_facturas_table() {
+    if ($.fn.DataTable.isDataTable('#payment_control_table')) {
+        $('#payment_control_table').DataTable().destroy();
+        $('#payment_control_table thead .filter').remove();
+    }
+    // OBTENER TODOS LOS FILTROS
+    var fromDate = document.getElementById('from_compras').value;
+    var untilDate = document.getElementById('until_compras').value;
+    var codgas = document.getElementById('codgas_compras').value;
+    var proveedor = document.getElementById('proveedor_compras').value;
+    var company = document.getElementById('company_compras').value;
+
+    if (!fromDate || !untilDate) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar las fechas para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    // Agregar fila de filtros en el thead
+    $('#payment_control_table thead').prepend($('#payment_control_table thead tr').clone().addClass('filter'));
+    $('#payment_control_table thead tr.filter th').each(function (index) {
+        var col = $('#payment_control_table thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
+        }
+    });
+    
+    $('#payment_control_table thead tr.filter th input').on('keyup change', function () {
+        var index = $(this).parent().index();
+        var table = $('#payment_control_table').DataTable();
+        table.column(index).search(this.value).draw();
+    });
+
+    let payment_control_table = $('#payment_control_table').DataTable({
+        order: [[0, "desc"]],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollX: true,
+        paging: true,
+        pageLength: 50,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                title: 'Compras_Facturas_' + fromDate + '_' + untilDate,
+                exportOptions: {
+                    columns: ':visible:not(:last-child)'
+                }
+            },
+            {
+                extend: 'print',
+                className: 'btn btn-secondary',
+                text: '<i class="fas fa-print"></i> Imprimir',
+                exportOptions: {
+                    columns: ':visible:not(:last-child)'
+                }
+            },
+            {
+                extend: 'colvis',
+                className: 'btn btn-info',
+                text: '<i class="fas fa-columns"></i> Columnas'
+            },
+            {
+                className: 'btn btn-secondary',
+                text: '<i class="fas fa-list-ol"></i> Registros',
+                action: function () {
+                    verResumenCompras()
+                }
+            }
+        ],
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'proveedor': proveedor,
+                'company': company
+            },
+            url: '/supply/compras_facturas_table',
+            timeout: 600000,
+            error: function(xhr, error, thrown) {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No se pudieron cargar las facturas.</p>
+                        <small>${thrown}</small>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            dataSrc: function(json) {
+                if (json.error) {
+                    alertify.error(json.message);
+                    return [];
+                }
+                // Actualizar contadores
+                $('#contador_facturas').text(json.data.length + ' facturas');
+                // Calcular total
+                var totalMonto = json.data.reduce((sum, item) => sum + parseFloat(item.MontoFactura || 0), 0);
+                $('#total_monto_facturas').text('$' + totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+                return json.data;
+            }
+        },
+        columns: [
+            { data: 'FechaRecepcion', className: 'text-center text-nowrap' },
+            { 
+                data: 'NumeroEstacion',
+                className: 'text-center',
+                render: function(data) {
+                    if (data === '00' || data === 'PENDIENTE') {
+                        return '<span class="badge bg-warning text-dark">PENDIENTE</span>';
+                    }
+                    return '<span class="bg-controlgas">' + data + '</span>';
+                }
+            },
+            { 
+                data: 'NombreEstacion',
+                className: 'text-start text-nowrap',
+                render: function(data) {
+                    return data ? '<span class="bg-controlgas">' + data + '</span>' : '<span class="text-muted">N/A</span>';
+                }
+            },
+            { data: 'ProveedorNormalizado', className: 'text-start text-nowrap' },
+            { data: 'ProductoNormalizado', className: 'text-start' },
+            { 
+                data: 'NumeroFacturaProveedorOriginal',
+                className: 'text-start text-nowrap',
+                render: function(data, type, row) {
+                    // Hacer el folio clickeable para abrir el PDF en modal
+                    if (row.RutaArchivo) {
+                        return `<a href="javascript:void(0);" 
+                                onclick='abrirFacturaPDF(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                class="text-primary fw-bold" 
+                                title="Click para ver la factura PDF">
+                                    <i class="fas fa-file-pdf text-danger"></i> ${data}
+                                </a>`;
+                    }
+                    return data;
+                }
+            },
+            { 
+                data: 'LitrosDocumentoSoporte',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2)
+            },
+            { 
+                data: 'MontoFactura',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
+            },
+            { 
+                data: 'SaldoFactura',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
+            },
+            { 
+                data: 'PrecioPorLitro',
+                className: 'text-end',
+                render: function(data) {
+                    return '$' + parseFloat(data).toFixed(4);
+                }
+            },
+            { 
+                data: 'PrecioCotizado',
+                className: 'text-center',
+                render: function(data) {
+                    return data === 'PENDIENTE' 
+                        ? '<span class="badge bg-secondary">PENDIENTE</span>'
+                        : '$' + parseFloat(data).toFixed(4);
+                }
+            },
+            { 
+                data: 'Diferencia',
+                className: 'text-end',
+                render: function(data) {
+                    var val = parseFloat(data);
+                    var color = val > 0 ? 'text-success' : val < 0 ? 'text-danger' : '';
+                    return '<span class="' + color + '">' + val.toFixed(4) + '</span>';
+                }
+            },
+            { 
+                data: 'PrecioFacturaCotizadoPetrotal',
+                className: 'text-end',
+                render: function(data) {
+                    return data > 0 ? '$' + parseFloat(data).toFixed(4) : '-';
+                }
+            },
+            { 
+                data: 'NumeroFacturaPetrotal',
+                className: 'text-start',
+                render: function(data) {
+                    return data || '<span class="text-muted">N/A</span>';
+                }
+            },
+            { 
+                data: 'EstadoAsignacion',
+                className: 'text-center',
+                render: function(data, type, row) {
+                    if (data === 'ASIGNADA') {
+                        if (row.TipoOperacion === 2) {
+                            return '<span class="badge bg-info"><i class="fas fa-layer-group"></i> PETROTAL</span>';
+                        }
+                        return '<span class="badge bg-success"><i class="fas fa-check-circle"></i> ASIGNADA</span>';
+                    } else {
+                        return '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle"></i> PENDIENTE</span>';
+                    }
+                }
+            },
+            { 
+                data: 'UUID',
+                className: 'text-start',
+                render: function(data) {
+                    if (!data) return '<span class="text-muted">N/A</span>';
+                    return '<small class="font-monospace" style="cursor:pointer;" title="' + data + '" onclick="copiarUUID(\'' + data + '\')">' + 
+                           data.substring(0, 8) + '...' + 
+                           '</small>';
+                }
+            },
+           {
+            data: null,
+            orderable: false,
+            className: 'text-center',
+            render: function(data, type, row) {
+                const rowJson = JSON.stringify(row).replace(/'/g, "&apos;");
+                
+                // Botón para ver PDF (solo si existe RutaArchivo)
+                const btnPDF = row.RutaArchivo 
+                    ? `<button class="btn btn-sm btn-danger" 
+                            onclick='abrirFacturaPDF(${row.FacturaId}, ${rowJson})' 
+                            title="Ver PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>`
+                    : '';
+                
+                const btnVer = `<button class="btn btn-sm btn-info" 
+                                    onclick='verDetalleFactura(${rowJson})' 
+                                    title="Ver detalle completo">
+                                    <i class="fas fa-eye"></i>
+                                </button>`;
+                
+                const btnAsignar = row.EstadoAsignacion === 'PENDIENTE'
+                    ? `<button class="btn btn-sm btn-primary" 
+                            onclick='abrirModalAsignarFactura(${rowJson})' 
+                            title="Asignar a movimiento">
+                        <i class="fas fa-link"></i>
+                    </button>`
+                    : `<button class="btn btn-sm btn-secondary" 
+                            onclick='editarAsignacion(${rowJson})' 
+                            title="Ver/Editar asignación">
+                        <i class="fas fa-edit"></i>
+                    </button>`;
+                
+                return `<div class="btn-group btn-group-sm">${btnPDF}${btnVer}${btnAsignar}</div>`;
+            }
+        }
+        ],
+        createdRow: function (row, data, dataIndex) {
+            // // Resaltar filas según estado
+            // if (data.NombreEstacion != '' && data.EstadoAsignacion === 'PENDIENTE') {
+            //     $(row).addClass('table-warning');
+            // } else if (data.TipoOperacion === 2) {
+            //     $(row).addClass('table-info');
+            // }
+            if (data.EstadoAsignacion === 'PENDIENTE' && data.NumeroEstacion !== '00') {
+                $(row).addClass('table-warning');
+            }
+        },
+        initComplete: function () {
+            $('.table-responsive').removeClass('loading');
+            alertify.success('Tabla cargada exitosamente');
+        },
+        footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            
+            // Calcular totales
+            var totalLitros = api.column(6, {page: 'current'}).data().reduce(function (a, b) {
+                return parseFloat(a) + parseFloat(b || 0);
+            }, 0);
+            
+            var totalFacturas = api.column(7, {page: 'current'}).data().reduce(function (a, b) {
+                return parseFloat(a) + parseFloat(b || 0);
+            }, 0);
+            
+            // Actualizar footer
+            $('#footer_litros').html('<strong>' + totalLitros.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</strong>');
+            $('#footer_monto').html('<strong>$' + totalFacturas.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</strong>');
+        }
+    });
+}
+
+// FUNCIONES AUXILIARES
+
+function limpiarFiltrosCompras() {
+    document.getElementById('from_compras').value = new Date().toISOString().split('T')[0];
+    document.getElementById('until_compras').value = new Date().toISOString().split('T')[0];
+    $('#codgas_compras').selectpicker('val', '0');
+    $('#proveedor_compras').selectpicker('val', '0');
+    $('#company_compras').selectpicker('val', '0');
+    
+    if ($.fn.DataTable.isDataTable('#payment_control_table')) {
+        $('#payment_control_table').DataTable().clear().draw();
+    }
+    
+    alertify.message('Filtros limpiados');
+}
+
+function exportarComprasExcel() {
+    if ($.fn.DataTable.isDataTable('#payment_control_table')) {
+        $('#payment_control_table').DataTable().button('.buttons-excel').trigger();
+    }
+}
+
+function verResumenCompras() {
+    if (!$.fn.DataTable.isDataTable('#payment_control_table')) {
+        alertify.warning('Debe generar el reporte primero');
+        return;
+    }
+    
+    var api = $('#payment_control_table').DataTable();
+    var data = api.rows().data();
+    
+    var totalFacturas = data.length;
+    var totalLitros = 0;
+    var totalMonto = 0;
+    var porProveedor = {};
+    var porProducto = {};
+    
+    data.each(function(row) {
+        totalLitros += parseFloat(row.LitrosDocumentoSoporte || 0);
+        totalMonto += parseFloat(row.MontoFactura || 0);
+        
+        // Por proveedor
+        var prov = row.ProveedorNormalizado;
+        if (!porProveedor[prov]) {
+            porProveedor[prov] = { cantidad: 0, litros: 0, monto: 0 };
+        }
+        porProveedor[prov].cantidad++;
+        porProveedor[prov].litros += parseFloat(row.LitrosDocumentoSoporte || 0);
+        porProveedor[prov].monto += parseFloat(row.MontoFactura || 0);
+        
+        // Por producto
+        var prod = row.ProductoNormalizado;
+        if (!porProducto[prod]) {
+            porProducto[prod] = { cantidad: 0, litros: 0, monto: 0 };
+        }
+        porProducto[prod].cantidad++;
+        porProducto[prod].litros += parseFloat(row.LitrosDocumentoSoporte || 0);
+        porProducto[prod].monto += parseFloat(row.MontoFactura || 0);
+    });
+    
+    var htmlProveedor = '<table class="table table-sm table-bordered"><thead><tr><th>Proveedor</th><th>Facturas</th><th>Litros</th><th>Monto</th></tr></thead><tbody>';
+    for (var prov in porProveedor) {
+        htmlProveedor += '<tr>' +
+            '<td>' + prov + '</td>' +
+            '<td class="text-center">' + porProveedor[prov].cantidad + '</td>' +
+            '<td class="text-end">' + porProveedor[prov].litros.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>' +
+            '<td class="text-end">$' + porProveedor[prov].monto.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>' +
+            '</tr>';
+    }
+    htmlProveedor += '</tbody></table>';
+    
+    var htmlProducto = '<table class="table table-sm table-bordered"><thead><tr><th>Producto</th><th>Facturas</th><th>Litros</th><th>Monto</th></tr></thead><tbody>';
+    for (var prod in porProducto) {
+        htmlProducto += '<tr>' +
+            '<td>' + prod + '</td>' +
+            '<td class="text-center">' + porProducto[prod].cantidad + '</td>' +
+            '<td class="text-end">' + porProducto[prod].litros.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>' +
+            '<td class="text-end">$' + porProducto[prod].monto.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</td>' +
+            '</tr>';
+    }
+    htmlProducto += '</tbody></table>';
+    
+    alertify.alert(
+        'Resumen de Compras',
+        `<div class="container-fluid">
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <h5>Totales Generales</h5>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Total Facturas:</strong>
+                            <span class="badge bg-primary">${totalFacturas}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Total Litros:</strong>
+                            <span>${totalLitros.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between">
+                            <strong>Monto Total:</strong>
+                            <span class="text-success fw-bold">$${totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="col-12 mb-3">
+                    <h5>Por Proveedor</h5>
+                    ${htmlProveedor}
+                </div>
+                <div class="col-12">
+                    <h5>Por Producto</h5>
+                    ${htmlProducto}
+                </div>
+            </div>
+        </div>`
+    ).set('maximizable', true);
+}
+
+function copiarUUID(uuid) {
+    navigator.clipboard.writeText(uuid).then(function() {
+        alertify.success('UUID copiado al portapapeles');
+    }, function() {
+        alertify.error('No se pudo copiar el UUID');
+    });
+}
+
+// Funciones auxiliares
+function verDetalleFactura(factura) {
+    alertify.alert(
+        'Detalle de Factura',
+        `<div class="row">
+            <div class="col-6"><strong>Folio:</strong> ${factura.NumeroFacturaProveedorOriginal}</div>
+            <div class="col-6"><strong>Fecha:</strong> ${factura.FechaRecepcion}</div>
+            <div class="col-6"><strong>Proveedor:</strong> ${factura.ProveedorOriginalizado}</div>
+            <div class="col-6"><strong>RFC:</strong> ${factura.RfcProveedorOriginal}</div>
+            <div class="col-6"><strong>Producto:</strong> ${factura.ProductoNormalizado}</div>
+            <div class="col-6"><strong>Litros:</strong> ${factura.LitrosDocumentoSoporte}</div>
+            <div class="col-6"><strong>Total:</strong> $${parseFloat(factura.MontoFactura).toLocaleString('es-MX', {minimumFractionDigits: 2})}</div>
+            <div class="col-6"><strong>Precio/L:</strong> $${parseFloat(factura.PrecioPorLitro).toFixed(4)}</div>
+            <div class="col-12 mt-2"><strong>UUID:</strong><br><small class="font-monospace">${factura.UUID}</small></div>
+        </div>`
+    );
+}
+
+function asignarFacturaAMovimiento(factura) {
+    // Esta función abrirá un modal para buscar el movimiento correspondiente
+    alertify.prompt(
+        'Asignar a Movimiento',
+        'Ingrese el número de transacción (nrotrn) al que desea asignar esta factura:',
+        '',
+        function(evt, nrotrn) {
+            if (nrotrn) {
+                // Aquí implementarás la lógica de asignación
+                alertify.success('Función en desarrollo: asignar factura ' + factura.NumeroFacturaProveedorOriginal + ' a transacción ' + nrotrn);
+            }
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    );
+}
+
+function editarAsignacionFactura(factura) {
+    alertify.message('Función en desarrollo: editar asignación de factura ' + factura.NumeroFacturaProveedorOriginal);
+}
+let facturaActualPDF = null;
+let pdfBlobUrl = null; // URL temporal del blob
+
+/**
+ * Abre el modal con el visor de PDF usando POST
+ * @param {number} facturaId - ID de la factura
+ * @param {object} facturaData - Datos adicionales de la factura (opcional)
+ */
+function abrirFacturaPDF(facturaId, facturaData = null) {
+    // Guardar información de la factura
+    facturaActualPDF = {
+        id: facturaId,
+        data: facturaData
+    };
+    console.log('Abriendo PDF para factura ID:', facturaId, facturaData);
+    // Limpiar estado anterior
+    $('#iframe_pdf').hide();
+    $('#pdf-error').hide();
+    $('#pdf-loading').show();
+    
+    // Limpiar blob URL anterior si existe
+    if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        pdfBlobUrl = null;
+    }
+    
+    // Actualizar título si hay datos
+    if (facturaData) {
+        $('#info_factura_pdf').text(
+            `Folio: ${facturaData.NumeroFacturaProveedorOriginal || 'N/A'} | ` +
+            `Proveedor: ${facturaData.ProveedorNormalizado || 'N/A'} | ` +
+            `Monto: $${parseFloat(facturaData.MontoFactura || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`
+        );
+    } else {
+        $('#info_factura_pdf').text(`ID Factura: ${facturaId}`);
+    }
+    
+    // Abrir modal
+    $('#modalVisorPDF').modal('show');
+    
+    // Cargar PDF mediante POST
+    cargarPDFPorPost(facturaId);
+}
+
+/**
+ * Carga el PDF mediante petición POST y lo muestra en el iframe
+ */
+function cargarPDFPorPost(facturaId) {
+    $.ajax({
+        url: '/supply/ver_factura_pdf',
+        method: 'POST',
+        data: { id: facturaId },
+        dataType: 'json',
+        timeout: 30000, // 30 segundos
+        success: function(response) {
+            if (response.success && response.pdf) {
+                try {
+                    // Convertir base64 a blob
+                    const binaryString = atob(response.pdf);
+                    const bytes = new Uint8Array(binaryString.length);
+                    
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    
+                    const blob = new Blob([bytes], { type: 'application/pdf' });
+                    
+                    // Crear URL temporal del blob
+                    pdfBlobUrl = URL.createObjectURL(blob);
+                    
+                    // Asignar al iframe
+                    const iframe = document.getElementById('iframe_pdf');
+                    iframe.src = pdfBlobUrl;
+                    
+                    // Mostrar iframe
+                    $('#pdf-loading').hide();
+                    $('#iframe_pdf').fadeIn();
+                    
+                    // Mostrar información del archivo
+                    const sizeKB = (response.size / 1024).toFixed(2);
+                    console.log(`PDF cargado: ${response.nombre} (${sizeKB} KB)`);
+                    
+                } catch (error) {
+                    console.error('Error al procesar el PDF:', error);
+                    mostrarErrorPDF('Error al procesar el archivo PDF. El archivo podría estar corrupto.');
+                }
+            } else {
+                mostrarErrorPDF(response.error || 'No se pudo obtener el PDF del servidor');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error AJAX:', status, error);
+            
+            let mensaje = 'Error al cargar el PDF del servidor.';
+            
+            if (xhr.status === 404) {
+                mensaje = 'Archivo PDF no encontrado.';
+            } else if (xhr.status === 500) {
+                mensaje = 'Error en el servidor al procesar el PDF.';
+            } else if (status === 'timeout') {
+                mensaje = 'El servidor tardó demasiado en responder.';
+            }
+            
+            try {
+                const response = JSON.parse(xhr.responseText);
+                if (response.error) {
+                    mensaje = response.error;
+                }
+            } catch (e) {
+                // No se pudo parsear la respuesta
+            }
+            
+            mostrarErrorPDF(mensaje);
+        }
+    });
+}
+
+function mostrarErrorPDF(mensaje) {
+    $('#pdf-loading').hide();
+    $('#pdf-error-message').text(mensaje);
+    $('#pdf-error').show();
+}
+/**
+ * Descarga el PDF directamente
+ */
+function descargarPDFDirecto() {
+    if (!facturaActualPDF) {
+        alertify.error('No hay factura seleccionada');
+        return;
+    }
+    
+    // Crear un formulario temporal para hacer POST y descargar
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/supply/descargar_factura_pdf';
+    form.target = '_blank'; // Abrir en nueva pestaña
+    
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'id';
+    input.value = facturaActualPDF.id;
+    
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+    
+    alertify.success('Descargando PDF...');
+}
+
+/**
+ * Abre el PDF en una nueva ventana/pestaña
+ */
+function abrirPDFNuevaVentana() {
+    if (!pdfBlobUrl) {
+        alertify.error('No hay PDF cargado');
+        return;
+    }
+    
+    // Abrir el blob URL en nueva ventana
+    window.open(pdfBlobUrl, '_blank');
+}
+/**
+ * Imprime el PDF
+ */
+function imprimirPDF() {
+    const iframe = document.getElementById('iframe_pdf');
+    
+    if (iframe && iframe.contentWindow) {
+        try {
+            iframe.contentWindow.print();
+        } catch (e) {
+            alertify.warning('No se pudo imprimir directamente. Intente desde el botón de nueva pestaña.');
+            abrirPDFNuevaVentana();
+        }
+    } else {
+        alertify.error('No hay PDF cargado para imprimir');
+    }
+}
+
+/**
+ * Cierra el modal y limpia el iframe
+ */
+$('#modalVisorPDF').on('hidden.bs.modal', function () {
+    // Limpiar iframe
+    document.getElementById('iframe_pdf').src = 'about:blank';
+    
+    // Revocar blob URL para liberar memoria
+    if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        pdfBlobUrl = null;
+    }
+    
+    facturaActualPDF = null;
+});
+$('#modalVisorPDF').on('shown.bs.modal', function () {
+    $(document).on('keydown.pdfmodal', function(e) {
+        // ESC para cerrar
+        if (e.key === 'Escape') {
+            $('#modalVisorPDF').modal('hide');
+        }
+        // Ctrl+P para imprimir
+        if (e.ctrlKey && e.key === 'p') {
+            e.preventDefault();
+            imprimirPDF();
+        }
+        // Ctrl+S para descargar
+        if (e.ctrlKey && e.key === 's') {
+            e.preventDefault();
+            descargarPDFDirecto();
+        }
+    });
+});
+
+$('#modalVisorPDF').on('hidden.bs.modal', function () {
+    // Remover event listener de teclas
+    $(document).off('keydown.pdfmodal');
+});
+
+function abrirModalAsignarFactura(factura) {
+    // Si ya está asignada, mostrar la info del movimiento
+    if (factura.EstadoAsignacion === 'ASIGNADA' && factura.NumeroTransaccion) {
+        // Cargar datos del movimiento desde la asignación existente
+        $('#modal_nrotrn').text(factura.NumeroTransaccion);
+        $('#modal_estacion').text(factura.NombreEstacion || 'N/A');
+        $('#modal_fecha').text(factura.FechaRecepcion);
+        $('#modal_combustible').text(factura.ProductoNormalizado);
+        $('#modal_litros').text(parseFloat(factura.LitrosDocumentoSoporte).toLocaleString('es-MX', {minimumFractionDigits: 2}));
+        
+        // Determinar tipo de operación
+        if (factura.TipoOperacion === 2) {
+            $('#tipoPetrotal').prop('checked', true);
+            $('#tipoDirecto').prop('checked', false);
+            mostrarSeccionPetrotal();
+        } else {
+            $('#tipoDirecto').prop('checked', true);
+            $('#tipoPetrotal').prop('checked', false);
+            ocultarSeccionPetrotal();
+        }
+        
+        // Pre-cargar las facturas seleccionadas
+        // ... (código para mostrar facturas ya asignadas)
+        
+    } else {
+        // Nueva asignación - mostrar modal para buscar movimiento
+        alertify.prompt(
+            'Asignar a Movimiento',
+            'Ingrese el número de transacción (nrotrn) y código de estación (codgas) separados por coma:',
+            '',
+            function(evt, value) {
+                if (value) {
+                    const [nrotrn, codgas] = value.split(',').map(v => v.trim());
+                    if (nrotrn && codgas) {
+                        // Buscar datos del movimiento
+                        buscarMovimientoParaAsignar(nrotrn, codgas, factura);
+                    } else {
+                        alertify.error('Formato incorrecto. Use: nrotrn,codgas');
+                    }
+                }
+            },
+            function() {
+                alertify.message('Operación cancelada');
+            }
+        ).set('labels', {ok: 'Buscar', cancel: 'Cancelar'});
+    }
+}
+
+// FUNCIÓN AUXILIAR PARA BUSCAR MOVIMIENTO
+function buscarMovimientoParaAsignar(nrotrn, codgas, factura) {
+    $.ajax({
+        url: '/supply/buscar_movimiento_por_nrotrn',
+        method: 'POST',
+        data: { nrotrn: nrotrn, codgas: codgas },
+        success: function(response) {
+            if (response.success && response.data) {
+                const movimiento = response.data;
+                
+                // Llenar modal con datos del movimiento
+                $('#modal_nrotrn').text(movimiento.nrotrn);
+                $('#modal_estacion').text(movimiento.nombre_estacion);
+                $('#modal_fecha').text(movimiento.fecha);
+                $('#modal_combustible').text(movimiento.producto);
+                $('#modal_litros').text(parseFloat(movimiento.litros).toLocaleString('es-MX', {minimumFractionDigits: 2}));
+                
+                // Guardar movimiento actual y factura pre-seleccionada
+                movimientoActual = movimiento;
+                facturaProveedorSeleccionada = factura;
+                
+                // Actualizar diagrama
+                actualizarDiagramaProveedor(factura);
+                
+                // Abrir modal
+                $('#modalAsignarFactura').modal('show');
+            } else {
+                alertify.error('Movimiento no encontrado');
+            }
+        },
+        error: function() {
+            alertify.error('Error al buscar movimiento');
+        }
+    });
+}
+
+// Función para verificar si el navegador soporta PDFs en iframe
+function navegadorSoportaPDF() {
+    const userAgent = navigator.userAgent.toLowerCase();
+    
+    // Navegadores que típicamente soportan PDF en iframe
+    if (userAgent.includes('chrome') || 
+        userAgent.includes('firefox') || 
+        userAgent.includes('safari') && !userAgent.includes('android')) {
+        return true;
+    }
+    
+    return false;
+}
+
+// Verificar soporte al abrir el modal
+// function abrirFacturaPDF(facturaId, facturaData = null) {
+//     facturaActualPDF = {
+//         id: facturaId,
+//         data: facturaData
+//     };
+    
+//     // Si el navegador no soporta bien los PDFs, ofrecer alternativa
+//     if (!navegadorSoportaPDF()) {
+//         alertify.confirm(
+//             'Visualización de PDF',
+//             'Su navegador podría no mostrar PDFs correctamente en esta vista. ¿Desea abrir en nueva pestaña?',
+//             function() {
+//                 window.open(`/supply/ver_factura_pdf?id=${facturaId}`, '_blank');
+//             },
+//             function() {
+//                 // Continuar con el modal de todas formas
+//                 cargarPDFEnModal(facturaId, facturaData);
+//             }
+//         ).set('labels', {ok: 'Nueva pestaña', cancel: 'Ver aquí'});
+//     } else {
+//         cargarPDFEnModal(facturaId, facturaData);
+//     }
+// }
+
+function cargarPDFEnModal(facturaId, facturaData) {
+    $('#iframe_pdf').hide();
+    $('#pdf-error').hide();
+    $('#pdf-loading').show();
+    
+    if (facturaData) {
+        $('#info_factura_pdf').text(
+            `Folio: ${facturaData.NumeroFacturaProveedorOriginal || 'N/A'} | ` +
+            `Proveedor: ${facturaData.ProveedorNormalizado || 'N/A'} | ` +
+            `Monto: $${parseFloat(facturaData.MontoFactura || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}`
+        );
+    }
+    
+    $('#modalVisorPDF').modal('show');
+    
+    const pdfUrl = `/supply/ver_factura_pdf?id=${facturaId}&t=${Date.now()}`;
+    const iframe = document.getElementById('iframe_pdf');
+    
+    iframe.onload = function() {
+        $('#pdf-loading').hide();
+        $('#iframe_pdf').fadeIn();
+    };
+    
+    iframe.onerror = function() {
+        $('#pdf-loading').hide();
+        $('#pdf-error-message').text('No se pudo cargar el archivo PDF.');
+        $('#pdf-error').show();
+    };
+    
+    iframe.src = pdfUrl;
+    
+    setTimeout(function() {
+        if ($('#pdf-loading').is(':visible')) {
+            $('#pdf-loading').hide();
+            $('#pdf-error-message').text('El PDF está tardando mucho en cargar.');
+            $('#pdf-error').show();
+        }
+    }, 10000);
+}
