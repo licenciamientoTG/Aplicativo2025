@@ -1,0 +1,286 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Reconciliación de Facturas y Recepciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Reconciliación de Facturas y Recepciones{% endblock %}
+{% block content %}
+
+<style>
+table.dataTable thead th, table.dataTable thead td {
+    padding: 10px 18px;
+    border-bottom: 1px solid #dee2e6;
+    background-color: #3485a8 !important;
+    color: #ffffff !important;
+}
+
+.reconciliation-container {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.reconciliation-left {
+    flex: 0 0 33.333%;
+    max-width: 33.333%;
+}
+
+.reconciliation-right {
+    flex: 0 0 66.667%;
+    max-width: 66.667%;
+}
+
+.card-body {
+    padding: 15px;
+}
+
+.table-responsive {
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+}
+
+.selected-row {
+    background-color: #d1ecf1 !important;
+    border: 2px solid #0c5460;
+}
+
+.btn-relacionar {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 1000;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 1200px) {
+    .reconciliation-container {
+        flex-direction: column;
+    }
+
+    .reconciliation-left,
+    .reconciliation-right {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}
+</style>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-filter"></i> Filtros de Búsqueda
+        </h5>
+        <button onclick="regresarACompras()" class="btn btn-sm btn-secondary">
+            <i class="fas fa-arrow-left"></i> Regresar a Compras
+        </button>
+    </div>
+    <div class="card-body">
+        <div class="row" style="align-items: flex-end;">
+            <div class="col-2">
+                <label class="col-form-label-sm" for="from_reconciliation">Desde:</label>
+                <input type="date" class="form-control form-control-sm" name="from_reconciliation" id="from_reconciliation"
+                    value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+            </div>
+            <div class="col-2">
+                <label class="col-form-label-sm" for="until_reconciliation">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" name="until_reconciliation" id="until_reconciliation"
+                    value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+            </div>
+
+            <!-- FILTRO DE ESTACIÓN -->
+            <div class="col-2">
+                <label class="col-form-label-sm">Estación:</label>
+                <select class="selectpicker w-100" data-live-search="true"
+                        name="codgas_reconciliation" id="codgas_reconciliation">
+                    <option value="0" selected>Todas las estaciones</option>
+                    {% for station in stations %}
+                    <option value="{{ station.codgas }}"
+                            data-content="<span class='text-muted'>#{{ station.codgas }}</span> {{ station.den }}">
+                        #{{ station.codgas }} - {{ station.nomgas }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- FILTRO DE PROVEEDOR -->
+            <div class="col-2">
+                <label class="col-form-label-sm">Proveedor:</label>
+                <select class="selectpicker w-100" data-live-search="true"
+                        name="proveedor_reconciliation" id="proveedor_reconciliation">
+                    <option value="0" selected>Todos los proveedores</option>
+                    <option value="TESORO">TESORO</option>
+                    <option value="MGC">MGC</option>
+                    <option value="LOBO">LOBO</option>
+                    <option value="PETROTAL">PETROTAL</option>
+                    <option value="ESSAFUEL">ESSAFUEL</option>
+                    <option value="PREMIERGAS">PREMIERGAS</option>
+                    <option value="ENEREY">ENEREY</option>
+                    <option value="AEMSA">AEMSA</option>
+                </select>
+            </div>
+
+            <!-- FILTRO DE EMPRESA -->
+            <div class="col-2">
+                <label class="col-form-label-sm">Empresa:</label>
+                <select class="selectpicker w-100" name="company_reconciliation" id="company_reconciliation">
+                    <option value="0" selected>Ambas empresas</option>
+                    <option value="1">TotalGas</option>
+                    <option value="2">Petrotal</option>
+                </select>
+            </div>
+
+            <div class="col-2">
+                <button onclick="loadReconciliationData()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">
+                    <i class="fas fa-search"></i> Generar Reporte
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="reconciliation-container">
+    <!-- TABLA IZQUIERDA: FACTURAS RECIBIDAS (1/3) -->
+    <div class="reconciliation-left">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Facturas Recibidas</h5>
+                <div>
+                    <span class="badge bg-info me-2" id="contador_facturas_reconciliation">0 facturas</span>
+                    <span class="badge bg-success" id="total_monto_facturas_reconciliation">$0.00</span>
+                </div>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="facturas_reconciliation_table" class="table table-hover table-sm w-100" style="font-size: 11px;">
+                    <thead>
+                        <tr>
+                            <th>Fecha Recepción</th>
+                            <th>Proveedor Original</th>
+                            <th>Num. Factura Prov.</th>
+                            <th>Monto Factura</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr class="table-secondary fw-bold">
+                            <td colspan="3" class="text-end">TOTAL:</td>
+                            <td class="text-end" id="footer_monto_facturas">$0.00</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- TABLA DERECHA: RECEPCIONES DE COMBUSTIBLE (2/3) -->
+    <div class="reconciliation-right">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Recepciones de Combustible</h5>
+                <div id="table-info-reconciliation" class="text-muted small"></div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive datatable-wrapper">
+                    <table id="recepciones_reconciliation_table" class="table table-hover table-sm table-striped w-100" style="min-width: 2000px;">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Estación</th>
+                                <th>Número Estación</th>
+                                <th>Proveedor Original</th>
+                                <th>Producto</th>
+                                <th>Num Factura Proveedor original</th>
+                                <th>Proveedor Factura Final</th>
+                                <th>Litros en Documento</th>
+                                <th>Monto Factura</th>
+                                <th>Precio Factura</th>
+                                <th>UUID</th>
+                                <th>Proveedor ControlGas</th>
+                                <th>Monto Factura</th>
+                                <th>Cantidad Factura</th>
+                                <th>Grupo Producto</th>
+                                <th>Nro. Transacción</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Botón flotante para relacionar -->
+<button id="btnRelacionar" class="btn btn-primary btn-lg btn-relacionar" onclick="relacionarFacturaRecepcion()" style="display: none;">
+    <i class="fas fa-link"></i> Relacionar Factura con Recepción
+</button>
+
+<!-- Modal de confirmación -->
+<div class="modal fade" id="modalConfirmRelacion" tabindex="-1" aria-labelledby="modalConfirmRelacionLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalConfirmRelacionLabel">
+                    <i class="fas fa-link"></i> Confirmar Relación
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Factura Seleccionada:</h6>
+                <div id="infoFacturaSeleccionada" class="alert alert-info"></div>
+
+                <h6>Recepción Seleccionada:</h6>
+                <div id="infoRecepcionSeleccionada" class="alert alert-success"></div>
+
+                <div class="form-group mt-3">
+                    <div class="card border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <h6 class="mb-0"><i class="fas fa-exchange-alt"></i> Tipo de Operación</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="checkPetrotal" onchange="actualizarTipoOperacion()">
+                                <label class="form-check-label" for="checkPetrotal">
+                                    <strong>Esta operación lleva Petrotal como intermediario</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-info-circle"></i>
+                                        Si activas esta opción, se marcará que falta asignar la factura de Petrotal posteriormente.
+                                    </small>
+                                </label>
+                            </div>
+                            <div id="diagrama-operacion" class="mt-3 p-2 bg-light rounded">
+                                <small>
+                                    <strong>Flujo:</strong>
+                                    <span id="flujo-texto">Proveedor → TotalGas (Compra Directa)</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group mt-3">
+                    <label for="observacionesRelacion">Observaciones (opcional):</label>
+                    <textarea class="form-control" id="observacionesRelacion" rows="3" placeholder="Ingrese observaciones adicionales sobre esta relación..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-success" onclick="confirmarRelacion()">
+                    <i class="fas fa-check"></i> Confirmar Relación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+// Inicializar selectpickers cuando carga la página
+$(document).ready(function() {
+    $('.selectpicker').selectpicker();
+});
+</script>
+{% endblock %}

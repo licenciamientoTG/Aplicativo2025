@@ -2174,6 +2174,13 @@ async function compras_facturas_table() {
         pageLength: 50,
         buttons: [
             {
+                className: 'btn btn-warning',
+                text: '<i class="fas fa-exchange-alt"></i> Reconciliar',
+                action: function () {
+                    abrirVistaReconciliacion()
+                }
+            },
+            {
                 extend: 'excel',
                 className: 'btn btn-success',
                 text: '<i class="fas fa-file-excel"></i> Excel',
@@ -2266,11 +2273,23 @@ async function compras_facturas_table() {
             { 
                 data: 'NumeroFacturaProveedorOriginal',
                 className: 'text-start text-nowrap',
-                render: function(data, type, row) {
+                // render: function(data, type, row) {
+                //     // Hacer el folio clickeable para abrir el PDF en modal
+                //     if (row.RutaArchivo) {
+                //         return `<a href="javascript:void(0);" 
+                //                 onclick='abrirFacturaPDF(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                //                 class="text-primary fw-bold" 
+                //                 title="Click para ver la factura PDF">
+                //                     <i class="fas fa-file-pdf text-danger"></i> ${data}
+                //                 </a>`;
+                //     }
+                //     return data;
+                // }
+                 render: function(data, type, row) {
                     // Hacer el folio clickeable para abrir el PDF en modal
                     if (row.RutaArchivo) {
                         return `<a href="javascript:void(0);" 
-                                onclick='abrirFacturaPDF(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                onclick='ModalinvoicePdf(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
                                 class="text-primary fw-bold" 
                                 title="Click para ver la factura PDF">
                                     <i class="fas fa-file-pdf text-danger"></i> ${data}
@@ -2358,42 +2377,25 @@ async function compras_facturas_table() {
                 }
             },
            {
-            data: null,
-            orderable: false,
-            className: 'text-center',
-            render: function(data, type, row) {
-                const rowJson = JSON.stringify(row).replace(/'/g, "&apos;");
-                
-                // Botón para ver PDF (solo si existe RutaArchivo)
-                const btnPDF = row.RutaArchivo 
-                    ? `<button class="btn btn-sm btn-danger" 
-                            onclick='abrirFacturaPDF(${row.FacturaId}, ${rowJson})' 
-                            title="Ver PDF">
-                        <i class="fas fa-file-pdf"></i>
-                    </button>`
-                    : '';
-                
-                const btnVer = `<button class="btn btn-sm btn-info" 
-                                    onclick='verDetalleFactura(${rowJson})' 
-                                    title="Ver detalle completo">
-                                    <i class="fas fa-eye"></i>
-                                </button>`;
-                
-                const btnAsignar = row.EstadoAsignacion === 'PENDIENTE'
-                    ? `<button class="btn btn-sm btn-primary" 
-                            onclick='abrirModalAsignarFactura(${rowJson})' 
-                            title="Asignar a movimiento">
-                        <i class="fas fa-link"></i>
-                    </button>`
-                    : `<button class="btn btn-sm btn-secondary" 
-                            onclick='editarAsignacion(${rowJson})' 
-                            title="Ver/Editar asignación">
-                        <i class="fas fa-edit"></i>
-                    </button>`;
-                
-                return `<div class="btn-group btn-group-sm">${btnPDF}${btnVer}${btnAsignar}</div>`;
-            }
-        }
+    data: null,
+    orderable: false,
+    className: 'text-center',
+    render: function(data, type, row) {
+        const btnRelacionar = row.EstadoAsignacion === 'PENDIENTE'
+            ? `<button class="btn btn-sm btn-primary" 
+                      onclick='abrirRelacionarFactura(${row.FacturaId})' 
+                      title="Relacionar con recepción">
+                   <i class="fas fa-link"></i>
+               </button>`
+            : `<button class="btn btn-sm btn-secondary" 
+                      onclick='verRelacionFactura(${row.FacturaId})' 
+                      title="Ver relación">
+                   <i class="fas fa-eye"></i>
+               </button>`;
+        
+        return `<div class="btn-group btn-group-sm">${btnRelacionar}</div>`;
+    }
+}
         ],
         createdRow: function (row, data, dataIndex) {
             // // Resaltar filas según estado
@@ -2428,7 +2430,9 @@ async function compras_facturas_table() {
         }
     });
 }
-
+function abrirRelacionarFactura(facturaId) {
+    window.open('/supply/relacionar_factura/' + facturaId, '_blank');
+}
 // FUNCIONES AUXILIARES
 
 function limpiarFiltrosCompras() {
@@ -2972,4 +2976,428 @@ function cargarPDFEnModal(facturaId, facturaData) {
             $('#pdf-error').show();
         }
     }, 10000);
+}
+
+// ==================== FUNCIONES PARA VISTA DE RECONCILIACIÓN ====================
+
+function regresarACompras() {
+    // Redirigir a la vista de compras/facturas recibidas
+    window.location.href = '/supply/fuel_payments';
+}
+
+function abrirVistaReconciliacion() {
+    // Guardar los filtros actuales en localStorage para pasarlos a la nueva vista
+    var filtros = {
+        fromDate: document.getElementById('from_compras').value,
+        untilDate: document.getElementById('until_compras').value,
+        codgas: document.getElementById('codgas_compras').value,
+        proveedor: document.getElementById('proveedor_compras').value,
+        company: document.getElementById('company_compras').value
+    };
+
+    localStorage.setItem('reconciliation_filters', JSON.stringify(filtros));
+
+    // Redirigir a la nueva vista
+    window.location.href = '/supply/fuel_reconciliation';
+}
+
+async function loadReconciliationData() {
+    var fromDate = document.getElementById('from_reconciliation').value;
+    var untilDate = document.getElementById('until_reconciliation').value;
+    var codgas = document.getElementById('codgas_reconciliation').value;
+    var proveedor = document.getElementById('proveedor_reconciliation').value;
+    var company = document.getElementById('company_reconciliation').value;
+
+    if (!fromDate || !untilDate) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar las fechas para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+
+    // Cargar ambas tablas en paralelo
+    await Promise.all([
+        loadFacturasReconciliationTable(fromDate, untilDate, codgas, proveedor, company),
+        loadRecepcionesReconciliationTable(fromDate, untilDate, codgas, proveedor, company)
+    ]);
+}
+
+async function loadFacturasReconciliationTable(fromDate, untilDate, codgas, proveedor, company) {
+    if ($.fn.DataTable.isDataTable('#facturas_reconciliation_table')) {
+        $('#facturas_reconciliation_table').DataTable().destroy();
+    }
+
+    let facturas_reconciliation_table = $('#facturas_reconciliation_table').DataTable({
+        order: [[0, "desc"]],
+        dom: '<"top"f>rt<"bottom"ip>',
+        scrollY: 'calc(100vh - 350px)',
+        scrollCollapse: true,
+        paging: false,
+        pageLength: 100,
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'proveedor': proveedor,
+                'company': company
+            },
+            url: '/supply/compras_facturas_table',
+            timeout: 600000,
+            error: function(xhr, error, thrown) {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No se pudieron cargar las facturas.</p>
+                        <small>${thrown}</small>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            dataSrc: function(json) {
+                if (json.error) {
+                    alertify.error(json.message);
+                    return [];
+                }
+                // Actualizar contadores
+                $('#contador_facturas_reconciliation').text(json.data.length + ' facturas');
+                // Calcular total
+                var totalMonto = json.data.reduce((sum, item) => sum + parseFloat(item.MontoFactura || 0), 0);
+                $('#total_monto_facturas_reconciliation').text('$' + totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+                $('#footer_monto_facturas').text('$' + totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+                return json.data;
+            }
+        },
+        columns: [
+            {
+                data: 'FechaRecepcion',
+                className: 'text-center text-nowrap'
+            },
+            {
+                data: 'ProveedorNormalizado',
+                className: 'text-start text-nowrap'
+            },
+            {
+                data: 'NumeroFacturaProveedorOriginal',
+                className: 'text-start text-nowrap'
+            },
+            {
+                data: 'MontoFactura',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
+            }
+        ],
+        deferRender: true,
+        initComplete: function() {
+            $('.table-responsive').removeClass('loading');
+        },
+        createdRow: function(row, data, dataIndex) {
+            // Agregar atributos de datos para facilitar la selección
+            $(row).attr('data-factura-id', data.FacturaId);
+            $(row).attr('data-uuid', data.UUID);
+        }
+    });
+
+    // Agregar evento de clic para seleccionar factura
+    $('#facturas_reconciliation_table tbody').on('click', 'tr', function() {
+        if ($(this).hasClass('selected-row')) {
+            $(this).removeClass('selected-row');
+            facturaSeleccionada = null;
+        } else {
+            $('#facturas_reconciliation_table tbody tr').removeClass('selected-row');
+            $(this).addClass('selected-row');
+            facturaSeleccionada = facturas_reconciliation_table.row(this).data();
+        }
+        actualizarBotonRelacionar();
+    });
+}
+
+async function loadRecepcionesReconciliationTable(fromDate, untilDate, codgas, proveedor, company) {
+    if ($.fn.DataTable.isDataTable('#recepciones_reconciliation_table')) {
+        $('#recepciones_reconciliation_table').DataTable().clear().destroy();
+        $('#recepciones_reconciliation_table thead .filter').remove();
+        $('#recepciones_reconciliation_table tbody').empty();
+    }
+
+    let movimientoActual = {};
+
+    let recepciones_reconciliation_table = $('#recepciones_reconciliation_table').DataTable({
+        order: [[1, "asc"]],
+        scrollY: 'calc(100vh - 350px)',
+        colReorder: false,
+        fixedHeader: false,
+        dom: '<"top"f>rt<"bottom"ip>',
+        scrollX: true,
+        scrollCollapse: true,
+        paging: false,
+        autoWidth: false,
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'proveedor': proveedor,
+                'company': company
+            },
+            url: '/supply/resumen_payment_table',
+            timeout: 600000,
+            error: function(xhr, error, thrown) {
+                $('.datatable-wrapper').removeClass('loading');
+                alertify.error('Error al cargar datos: ' + thrown);
+            },
+            beforeSend: function() {
+                $('.datatable-wrapper').addClass('loading');
+            },
+            dataSrc: function(json) {
+                if (json.data && json.data.length > 0) {
+                    $('#table-info-reconciliation').html(
+                        `<i class="bi bi-info-circle"></i> ${json.data.length} registro(s)`
+                    );
+                }
+                return json.data;
+            }
+        },
+        columns: [
+            { data: 'fecha', className: 'text-center text-nowrap' },
+            { data: 'estacion', className: 'text-start text-nowrap' },
+            { data: 'numero_estacion', className: 'text-center text-nowrap' },
+            { data: 'proveedor_original', className: 'text-start text-nowrap' },
+            { data: 'combustible', className: 'text-start text-nowrap' },
+            {
+                data: 'num_fac_proveedor',
+                className: 'text-start text-nowrap',
+                render: function(data) {
+                    return data || '<span class="text-muted">Sin asignar</span>';
+                }
+            },
+            { data: 'proveedor_final', className: 'text-start text-nowrap' },
+            {
+                data: 'fac_rec',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2)
+            },
+            {
+                data: 'monto_factura_controlgas',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
+            },
+            {
+                data: 'precio_factura_controlgas',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 4, '$')
+            },
+            { data: 'uuid', className: 'text-start text-nowrap' },
+            { data: 'proveedor_controlgas', className: 'text-start text-nowrap' },
+            {
+                data: 'monto_factura_controlgas',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2, '$')
+            },
+            {
+                data: 'cantidad_factura_controlgas',
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2)
+            },
+            { data: 'graprd', className: 'text-start text-nowrap' },
+            { data: 'nrotrn', className: 'text-center' }
+        ],
+        deferRender: true,
+        initComplete: function() {
+            $('.datatable-wrapper').removeClass('loading');
+        },
+        createdRow: function(row, data, dataIndex) {
+            // Agregar atributos de datos para facilitar la selección
+            $(row).attr('data-nrotrn', data.nrotrn);
+            $(row).attr('data-codgas', data.codgas);
+        }
+    });
+
+    // Agregar evento de clic para seleccionar recepción
+    $('#recepciones_reconciliation_table tbody').on('click', 'tr', function() {
+        if ($(this).hasClass('selected-row')) {
+            $(this).removeClass('selected-row');
+            recepcionSeleccionada = null;
+        } else {
+            $('#recepciones_reconciliation_table tbody tr').removeClass('selected-row');
+            $(this).addClass('selected-row');
+            recepcionSeleccionada = recepciones_reconciliation_table.row(this).data();
+        }
+        actualizarBotonRelacionar();
+    });
+}
+
+// Variables globales para almacenar las selecciones
+let facturaSeleccionada = null;
+let recepcionSeleccionada = null;
+
+// Función para actualizar la visibilidad del botón de relacionar
+function actualizarBotonRelacionar() {
+    if (facturaSeleccionada && recepcionSeleccionada) {
+        $('#btnRelacionar').fadeIn();
+    } else {
+        $('#btnRelacionar').fadeOut();
+    }
+}
+
+// Función para abrir el modal de confirmación
+function relacionarFacturaRecepcion() {
+    if (!facturaSeleccionada || !recepcionSeleccionada) {
+        alertify.error('Debe seleccionar una factura y una recepción');
+        return;
+    }
+
+    // Mostrar información de la factura seleccionada
+    $('#infoFacturaSeleccionada').html(`
+        <strong>Fecha:</strong> ${facturaSeleccionada.FechaRecepcion}<br>
+        <strong>Proveedor:</strong> ${facturaSeleccionada.ProveedorNormalizado}<br>
+        <strong>Número de Factura:</strong> ${facturaSeleccionada.NumeroFacturaProveedorOriginal}<br>
+        <strong>Monto:</strong> $${parseFloat(facturaSeleccionada.MontoFactura).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+        <strong>UUID:</strong> ${facturaSeleccionada.UUID}
+    `);
+
+    // Mostrar información de la recepción seleccionada
+    $('#infoRecepcionSeleccionada').html(`
+        <strong>Fecha:</strong> ${recepcionSeleccionada.fecha}<br>
+        <strong>Estación:</strong> ${recepcionSeleccionada.estacion} (${recepcionSeleccionada.numero_estacion})<br>
+        <strong>Nro. Transacción:</strong> ${recepcionSeleccionada.nrotrn}<br>
+        <strong>Combustible:</strong> ${recepcionSeleccionada.combustible}<br>
+        <strong>Litros:</strong> ${parseFloat(recepcionSeleccionada.fac_rec).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+    `);
+
+    // Limpiar observaciones y checkbox
+    $('#observacionesRelacion').val('');
+    $('#checkPetrotal').prop('checked', false);
+    actualizarTipoOperacion();
+
+    // Mostrar modal
+    $('#modalConfirmRelacion').modal('show');
+}
+
+// Función para actualizar el diagrama según el tipo de operación
+function actualizarTipoOperacion() {
+    var conPetrotal = $('#checkPetrotal').is(':checked');
+
+    if (conPetrotal) {
+        $('#flujo-texto').html('Proveedor → <span class="text-warning fw-bold">PETROTAL</span> → TotalGas (Con Intermediario)');
+        $('#diagrama-operacion').removeClass('bg-light').addClass('bg-warning bg-opacity-10');
+    } else {
+        $('#flujo-texto').html('Proveedor → TotalGas (Compra Directa)');
+        $('#diagrama-operacion').removeClass('bg-warning bg-opacity-10').addClass('bg-light');
+    }
+}
+
+// Función para confirmar la relación
+function confirmarRelacion() {
+    if (!facturaSeleccionada || !recepcionSeleccionada) {
+        alertify.error('Debe seleccionar una factura y una recepción');
+        return;
+    }
+
+    var observaciones = $('#observacionesRelacion').val();
+    var conPetrotal = $('#checkPetrotal').is(':checked');
+
+    // Preparar datos para enviar
+    var datos = {
+        nrotrn: recepcionSeleccionada.nrotrn,
+        codgas: recepcionSeleccionada.codgas,
+        factura_proveedor_id: facturaSeleccionada.FacturaId,
+        uuid_proveedor: facturaSeleccionada.UUID,
+        folio_proveedor: facturaSeleccionada.NumeroFacturaProveedorOriginal,
+        monto_proveedor: facturaSeleccionada.MontoFactura,
+        litros_proveedor: facturaSeleccionada.LitrosDocumentoSoporte,
+        precio_proveedor: facturaSeleccionada.PrecioPorLitro,
+        observaciones: observaciones,
+        tipo_operacion: conPetrotal ? 2 : 1, // 1 = Compra directa, 2 = Con Petrotal
+        petrotal: conPetrotal ? 1 : 0 // Campo BIT: 1 = lleva Petrotal, 0 = no lleva
+    };
+
+    // Enviar al servidor
+    $.ajax({
+        url: '/supply/relacionar_factura_movimiento',
+        type: 'POST',
+        data: datos,
+        beforeSend: function() {
+            $('.modal-footer button').prop('disabled', true);
+        },
+        success: function(response) {
+            if (response.success) {
+                toastr.success('Factura relacionada exitosamente', '¡Éxito!');
+                $('#modalConfirmRelacion').modal('hide');
+
+                // Limpiar selecciones
+                $('#facturas_reconciliation_table tbody tr').removeClass('selected-row');
+                $('#recepciones_reconciliation_table tbody tr').removeClass('selected-row');
+                facturaSeleccionada = null;
+                recepcionSeleccionada = null;
+                actualizarBotonRelacionar();
+
+                // Recargar las tablas
+                loadReconciliationData();
+            } else {
+                toastr.error(response.message || 'Error al relacionar factura', '¡Error!');
+            }
+        },
+        error: function(xhr, status, error) {
+            toastr.error('Error al comunicarse con el servidor', '¡Error!');
+        },
+        complete: function() {
+            $('.modal-footer button').prop('disabled', false);
+        }
+    });
+}
+
+// Cargar filtros guardados al cargar la página de reconciliación
+$(document).ready(function() {
+    if (window.location.pathname.includes('fuel_reconciliation')) {
+        var filtrosGuardados = localStorage.getItem('reconciliation_filters');
+        if (filtrosGuardados) {
+            filtrosGuardados = JSON.parse(filtrosGuardados);
+            document.getElementById('from_reconciliation').value = filtrosGuardados.fromDate || '';
+            document.getElementById('until_reconciliation').value = filtrosGuardados.untilDate || '';
+            $('#codgas_reconciliation').val(filtrosGuardados.codgas || '0').selectpicker('refresh');
+            $('#proveedor_reconciliation').val(filtrosGuardados.proveedor || '0').selectpicker('refresh');
+            $('#company_reconciliation').val(filtrosGuardados.company || '0').selectpicker('refresh');
+
+            // Cargar datos automáticamente si hay filtros
+            if (filtrosGuardados.fromDate && filtrosGuardados.untilDate) {
+                loadReconciliationData();
+            }
+        }
+    }
+});
+
+
+async function ModalinvoicePdf(id, data){
+    try {
+        $('#ModalinvoicePdf').modal('show'); // Abre el modal
+        const response = await fetch('/supply/ModalinvoicePdf', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+            body: `FacturaId=${id}&data=${encodeURIComponent(JSON.stringify(data))}`
+        });
+
+        const content = await response.text();
+        // Inserta el contenido en el modal
+        $('#ModalinvoicePdf').find('#ModalinvoicePdfContent').html(content);
+
+    } catch (error) {
+        console.error(error);
+    }
+
 }
