@@ -136,7 +136,8 @@ $('#station_select').on('change', function() {
 $('#btn_consultar_volumen').on('click', function() {
     const codgas = $('#station_select').val();
     const codtan = $('#tank_select').val();
-    const limit = $('#limit_records').val();
+    const from_date = $('#from_date').val();
+    const until_date = $('#until_date').val();
     const stationName = $('#station_select option:selected').text();
     const tankName = $('#tank_select option:selected').text();
     const producto = $('#tank_select option:selected').data('producto');
@@ -145,11 +146,17 @@ $('#btn_consultar_volumen').on('click', function() {
         alertify.error('Por favor seleccione una estación y un tanque');
         return;
     }
-    
-    if (!limit || limit < 10 || limit > 100000) {
-        alertify.error('El número de registros debe estar entre 10 y 100000');
+    if (!from_date || !until_date) {
+        alertify.error('Por favor seleccione ambas fechas');
         return;
     }
+    
+    if (new Date(from_date) > new Date(until_date)) {
+        alertify.error('La fecha inicial debe ser menor a la fecha final');
+        return;
+    }
+    
+    
     
     $('#progress_container_volume').removeClass('d-none');
     $('#progress_bar_volume').css('width', '30%');
@@ -166,7 +173,8 @@ $('#btn_consultar_volumen').on('click', function() {
         data: {
             codgas: codgas,
             codtan: codtan,
-            limit: limit
+            from_date: from_date,
+            until_date: until_date
         },
         beforeSend: function() {
             $('#progress_bar_volume').css('width', '50%');
@@ -483,3 +491,16 @@ $('#refresh_volume_table').on('click', function(e) {
     $('#limit_records').val('100');
     alertify.success('Datos limpiados');
 });
+
+function prepararDatosGrafica(datos) {
+    // Si hay más de 1000 puntos, agregar por día
+    if (datos.length > 1000) {
+        return agregarPorDia(datos);
+    }
+    // Si hay más de 200 puntos, agregar por hora
+    if (datos.length > 200) {
+        return agregarPorHora(datos);
+    }
+    return datos;
+}
+

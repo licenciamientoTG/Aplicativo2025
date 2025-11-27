@@ -5,36 +5,47 @@
 {% block content %}
 
 <style>
-    tr.group,
-tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.1) !important;
-}
- 
-:root.dark tr.group,
-:root.dark tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.75) !important;
-}
-.column_estation{
-    background-color: #add5e6 !important;
-    color: white !important;
-}
-.total_bg{
-    background-color: #48A1C7 !important;
-    color: white !important;
-}
-.total_bg2{
-    background-color:#48A1C7 !important;
-    color: white !important;
 
+/* Estilos para el modal de PDF */
+#modalVisorPDF .modal-body {
+    overflow: hidden;
 }
 
-.border_center{
-    border-top: 1px dotted  #358f92 !important;
-    border-bottom: 1px dotted  #358f92 !important;
-    border-left: 1px dotted #358f92 !important;
-    border-right: 1px dotted  #358f92 !important;
+#iframe_pdf {
+    background-color: #525659;
 }
 
+.pdf-toolbar {
+    background: #f8f9fa;
+    padding: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Animación para el spinner */
+#pdf-loading .spinner-border {
+    animation: spinner-border .75s linear infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #modalVisorPDF .modal-body {
+        height: 70vh;
+    }
+    
+    #modalVisorPDF .modal-footer {
+        flex-wrap: wrap;
+    }
+    
+    #modalVisorPDF .modal-footer .btn-group {
+        width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    #modalVisorPDF .modal-footer .btn-group .btn {
+        font-size: 0.85rem;
+        padding: 0.5rem;
+    }
+}
 
 table.dataTable thead th, table.dataTable thead td {
     padding: 10px 18px;
@@ -43,26 +54,37 @@ table.dataTable thead th, table.dataTable thead td {
     color: #ffffff !important;
 
 }
-
-table.dataTable tfoot th, table.dataTable tfoot td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
+/* Estilos para el sistema de asignación de facturas */
+.table-warning {
+    background-color: #fff3cd !important;
 }
-.border_OG{
-    border: 0.5px solid #0c202091 !important;
-    background-color: #6d7277e8;
+
+.modal-xl {
+    max-width: 1200px;
+}
+
+#tabla_facturas_disponibles thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.badge {
+    font-size: 0.75rem;
+}
+
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
 }
 </style>
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link  active " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
+        <button class="nav-link   " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link   " id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
+        <button class="nav-link active" id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
@@ -70,7 +92,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 </ul>
 
 <div class="tab-content" >
-    <div class="tab-pane active " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
+    <div class="tab-pane  " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
@@ -121,195 +143,540 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
         </div>
     </div>
-    <div class="tab-pane  " id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
+    <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="from1">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="from_compras">Desde:</label>
+                        <input type="date" class="form-control form-control-sm" name="from_compras" id="from_compras" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                     </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="until1">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="until_compras">Hasta:</label>
+                        <input type="date" class="form-control form-control-sm" name="until_compras" id="until_compras" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                     <div class="col-2 ">
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
+                    
+                    <!-- FILTRO DE ESTACIÓN -->
+                    <div class="col-2">
+                        <label class="col-form-label-sm">Estación:</label>
+                        <select class="selectpicker w-100" data-live-search="true" 
+                                name="codgas_compras" id="codgas_compras">
+                            <option value="0" selected>Todas las estaciones</option>
                             {% for station in stations %}
-                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
+                            <option value="{{ station.codgas }}" 
+                                    data-content="<span class='text-muted'>#{{ station.codgas }}</span> {{ station.den }}">
+                                #{{ station.codgas }} - {{ station.nomgas }}
+                            </option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-2 " >
-                        <button onclick="payment_control_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    
+                    <!-- FILTRO DE PROVEEDOR -->
+                    <div class="col-2">
+                        <label class="col-form-label-sm">Proveedor:</label>
+                        <select class="selectpicker w-100" data-live-search="true" 
+                                name="proveedor_compras" id="proveedor_compras">
+                            <option value="0" selected>Todos los proveedores</option>
+                            <option value="TESORO">TESORO</option>
+                            <option value="MGC">MGC</option>
+                            <option value="LOBO">LOBO</option>
+                            <option value="PETROTAL">PETROTAL</option>
+                            <option value="ESSAFUEL">ESSAFUEL</option>
+                            <option value="PREMIERGAS">PREMIERGAS</option>
+                            <option value="ENEREY">ENEREY</option>
+                            <option value="AEMSA">AEMSA</option>
+                        </select>
+                    </div>
+                    
+                    <!-- FILTRO DE EMPRESA -->
+                    <div class="col-2">
+                        <label class="col-form-label-sm">Empresa:</label>
+                        <select class="selectpicker w-100" name="company_compras" id="company_compras">
+                            <option value="0" selected>Ambas empresas</option>
+                            <option value="1">TotalGas</option>
+                            <option value="2">Petrotal</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-2">
+                        <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar Reporte</button>
                     </div>
                 </div>
+                
+                <!-- SEGUNDA FILA CON FILTROS ADICIONALES (OPCIONAL) -->
+                <!-- <div class="row mt-2">
+                    <div class="col-12">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary" onclick="limpiarFiltrosCompras()">
+                                <i class="fas fa-eraser"></i> Limpiar Filtros
+                            </button>
+                            <button type="button" class="btn btn-outline-info" onclick="exportarComprasExcel()">
+                                <i class="fas fa-file-excel"></i> Exportar a Excel
+                            </button>
+                            <button type="button" class="btn btn-outline-success" onclick="verResumenCompras()">
+                                <i class="fas fa-chart-bar"></i> Ver Resumen
+                            </button>
+                        </div>
+                    </div>
+                </div> -->
             </div>
         </div>
+        
         <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Compras </h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Compras - Base desde Facturas Recibidas</h5>
+                <div>
+                    <span class="badge bg-info me-2" id="contador_facturas">0 facturas</span>
+                    <span class="badge bg-success" id="total_monto_facturas">$0.00</span>
+                </div>
             </div>
-            <div class="card-body table-responsive" >
-                <table id="payment_control_table" class="table table-hover table-sm w-100">
-                   <thead>
-                         <tr>
-                            <th></th>
-                            <th>Estacion</th>
-                            <th>Folio</th>
-                            <th>Factura</th>
-                            <th>Remisión</th>
-                            <th>Fecha</th>
-                            <th>Fecha Vto</th>
+            <div class="card-body table-responsive">
+                <table id="payment_control_table" class="table table-hover table-sm w-100" style="font-size: 11px;">
+                    <thead>
+                        <tr>
+                            <th>Fecha Recepción</th>
+                            <th>Num. Estación</th>
+                            <th>Nombre Estación</th>
+                            <!-- <th>Empresa</th> -->
+                            <th>Proveedor Original</th>
                             <th>Producto</th>
-                            <th>Proveedor</th>
-                            <th>Volumen Recibido</th>
-                            <th>Cantidad</th>
-                            <th>Precio</th>
-                            <th>Monto</th>
-                            <th>Monto IIE</th>
-                            <th>IVA 8%</th>
-                            <th>IVA Extra</th>
-                            <th>IVA Total</th>
-                            <th>Servicio</th>
-                            <th>IVA Servicio</th>
-                            <th>Total Factura</th>
-                            <th>UID SAT</th>
+                            <th>Num. Factura Prov.</th>
+                            <th>Litros Documento</th>
+                            <th>Monto Factura</th>
+                            <th>Saldo Factura</th>
+                            <th>Precio x Litro</th>
+                            <th>Precio Cotizado</th>
+                            <th>Diferencia</th>
+                            <th>Precio Petrotal</th>
+                            <th>Num. Fac. Petrotal</th>
+                            <th>Estado</th>
+                            <th>UUID</th>
+                            <th>Acciones</th>
                         </tr>
-                        </thead>
+                    </thead>
                     <tbody></tbody>
                     <tfoot>
+                        <tr class="table-secondary fw-bold">
+                            <td colspan="6" class="text-end">TOTALES:</td>
+                            <td class="text-end" id="footer_litros">0.00</td>
+                            <td class="text-end" id="footer_monto">$0.00</td>
+                            <td colspan="9"></td>
+                        </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
     </div>
-    <div class="tab-pane  " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
+   <div class="tab-pane " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
         <div class="card">
             <div class="card-body">
-                <div class="row">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from" id="from" value="{{  first_date }}" required>
+                <div class="row" style="align-items: flex-end;">
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="from_resumen">Desde:</label>
+                        <input type="date" class="form-control form-control-sm" name="from_resumen" id="from_resumen" 
+                            value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                     </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until"  id="until" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="until_resumen">Hasta:</label>
+                        <input type="date" class="form-control form-control-sm" name="until_resumen" id="until_resumen" 
+                            value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                    <div class="col-2 ">
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id" id="station_id" placeholder="Seleccione una estación">
-                        {% for station in stations %}
-                            <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
-                        {% endfor %}
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="station_id_resumen">Estación:</label>
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id_resumen" 
+                                id="station_id_resumen" placeholder="Seleccione una estación">
+                            <option value="0" selected>Todas las estaciones</option>
+                            {% for station in stations %}
+                                <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
                         </select>
                     </div>
-                    <div class="col-2 " >
-                        <button id="seach_payments_table" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="proveedor_resumen">Proveedor:</label>
+                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_resumen" 
+                                id="proveedor_resumen">
+                            <option value="0" selected>Todos los proveedores</option>
+                            {% for proveedor in proveedores %}
+                                <option value="{{ proveedor.cod }}">{{ proveedor.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <label class="col-form-label-sm" for="company_resumen">Empresa:</label>
+                        <select class="selectpicker w-100" name="company_resumen" id="company_resumen">
+                            <option value="0" selected>Todas las empresas</option>
+                            {% for empresa in empresas %}
+                                <option value="{{ empresa.cod }}">{{ empresa.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <button onclick="resumen_payment_table()" class="btn btn-sm btn-primary" 
+                                style="width: 100%; margin-top: 15px;">
+                            Generar Reporte
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+        
         <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Resumen </h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">Resumen de Pagos - Movimientos de Tanques</h5>
+                <div id="table-info" class="text-muted small"></div>
             </div>
-            <div class="card-body table-responsive" >
-                <table id="payments_table" class="table table-hover table-sm w-100">
-                   <thead>
-                        <tr>
-                            <th>FECHA DE DESCARGA</th>
-                            <th>NUMERO DE ESTACION</th>
-                            <th>PROVEEDOR ORIGINAL</th>
-                            <th>PRODUCTO</th>
-                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
-                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
-                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
-                            <th>MONTO FACTURA</th>
-                            <th>SALDO FACTURA</th>
-                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
-                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
-                            <th>DIFERENCIA</th>
-                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
-                            <th>PRECIO VENTA EN ESTACION</th>
-                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
-                            <th>% IVA FACTURADO</th>
-                            <th>COSTO ALMACENAMIENTO</th>
-                            <th>UTILIDAD POR LITRO</th>
-                            <th>UTILIDAD LITRO FACTURA</th>
-                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
-                            <th>PRECIO PEMEX AL 16 %</th>
-                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
-                            <th>NUMERO DE FACTURA PETROTAL</th>
-                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
-                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
-                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
-                            <th>BOL NUMBER O NO. EMBARQUE</th>
-                            <th>RAZON SOCIAL FACTURADA</th>
-                            <th>IEPS</th>
-                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
-                            <th>Menos IEPS</th>
-                            <th>Precio sin IVA 16%</th>
-                            <th>Por IVA ,08</th>
-                            <th>Precio C/IVA 8% Y C/IEPS</th>
-                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
-                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
-                            <th>UTILIDAD PETROTAL</th>
-                            <th>OBSERVACIONES</th>
-                        </tr>
-                        </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                        <tr>
-                            <th>FECHA DE DESCARGA</th>
-                            <th>NUMERO DE ESTACION</th>
-                            <th>PROVEEDOR ORIGINAL</th>
-                            <th>PRODUCTO</th>
-                            <th>NUMERO DE FACTURA PROVEEDOR ORIGINAL</th>
-                            <th>PROVEEDOR QUE REALIZA LA FACTURA FINAL</th>
-                            <th>LITROS EN DOCUMENTOS SOPORTE</th>
-                            <th>MONTO FACTURA</th>
-                            <th>SALDO FACTURA</th>
-                            <th>PRECIO X LITRO FACTURA POR PROVEEDOR</th>
-                            <th>PRECIO COTIZADO POR PROVEEDOR ENTREGA</th>
-                            <th>DIFERENCIA</th>
-                            <th>PRECIO EN FACTURA COTIZADO CON PROVEEDOR</th>
-                            <th>PRECIO VENTA EN ESTACION</th>
-                            <th>ESTIMULO (SOLO CD JUAREZ)</th>
-                            <th>% IVA FACTURADO</th>
-                            <th>COSTO ALMACENAMIENTO</th>
-                            <th>UTILIDAD POR LITRO</th>
-                            <th>UTILIDAD LITRO FACTURA</th>
-                            <th>PRECIO AL 8 % COMPRA PROVEEDOR</th>
-                            <th>PRECIO PEMEX AL 16 %</th>
-                            <th>DIFERENCIA VS TAR PEMEX 16%</th>
-                            <th>NUMERO DE FACTURA PETROTAL</th>
-                            <th>PRECIO POR LITRO SIN IVA FACTURADO POR PETROTAL A CLIENTE FINAL</th>
-                            <th>LITROS CAPTURADOS EN CONTROL GAS</th>
-                            <th>LITROS PENDIENTES DE CAPTURAR EN CONTROL GAS</th>
-                            <th>BOL NUMBER O NO. EMBARQUE</th>
-                            <th>RAZON SOCIAL FACTURADA</th>
-                            <th>IEPS</th>
-                            <th>IEPS TOTAL FACTURA PROVEEDOR</th>
-                            <th>Menos IEPS</th>
-                            <th>Precio sin IVA 16%</th>
-                            <th>Por IVA ,08</th>
-                            <th>Precio C/IVA 8% Y C/IEPS</th>
-                            <th>MONTO FACTURA PROVEEDOR ORIGINAL SIN IVA</th>
-                            <th>MONTO FACTURA PETROTAL SIN IVA</th>
-                            <th>UTILIDAD PETROTAL</th>
-                            <th>OBSERVACIONES</th>
+            <!-- IMPORTANTE: Agregar clase datatable-wrapper para scroll horizontal -->
+            <div class="card-body p-0">
+                <div class="table-responsive datatable-wrapper" >
+                    <table id="resumen_payment_table" class="table table-hover table-sm table-striped w-100" style="min-width: 2000px;">
+                        <thead >
+                            <tr>
+                                                                <th width="50">Acción</th>
 
-                        </tr>
-                    </tfoot>
-                </table>
+                                <th >Fecha</th>
+                                <th >Estación</th>
+                                <th >Número Estación</th>
+                                <th >Proveedor Original</th>
+                                <th >Producto</th>
+                                <th >Num Factura Proveedor original</th>
+                                <th >Proveedor Factura Final</th>
+                                <th >Litros en Documento</th>
+                                <th >Monto Factura</th>
+                                <th >Precio Factura</th>
+                                <th >UUID</th>
+                                <th >Proveedor ControlGas</th>
+                                <th >Monto Factura</th>
+                                <th >Cantidad Factura</th>
+                                <th >Grupo Producto</th>
+                                <th >Nro. Transacción</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot >
+                                <!-- <th >Fecha</th>
+                                <th >Nro. Transacción</th>
+                                <th >Estación</th>
+                                <th >Número Estación</th>
+                                <th >Proveedor Original</th>
+                                <th >Productro</th>
+                                <th >Vol. Recaudado</th>
+                                <th >Vol. Factura Rec.</th>
+                                <th >Nro. Factura</th>
+                                <th >UUID</th>
+                                <th >Proveedor ControlGas</th>
+                                <th >Monto Factura</th>
+                                <th >Cantidad Factura</th>
+                                <th >Precio Factura</th>
+                                <th >Grupo Producto</th> -->
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 
+<!-- Modal para asignar facturas -->
+<!-- Modal para asignar facturas (Directo o con Petrotal) -->
+<div class="modal fade" id="modalAsignarFactura" tabindex="-1" aria-labelledby="modalAsignarFacturaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalAsignarFacturaLabel">
+                    <i class="fas fa-link"></i> Asignar Facturas a Movimiento
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Información del movimiento -->
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-info-circle"></i> Información del Movimiento</h6>
+                    <div class="row">
+                        <div class="col-md-2"><strong>Nro. Transacción:</strong> <span id="modal_nrotrn"></span></div>
+                        <div class="col-md-3"><strong>Estación:</strong> <span id="modal_estacion"></span></div>
+                        <div class="col-md-2"><strong>Fecha:</strong> <span id="modal_fecha"></span></div>
+                        <div class="col-md-2"><strong>Combustible:</strong> <span id="modal_combustible"></span></div>
+                        <div class="col-md-3"><strong>Litros:</strong> <span id="modal_litros"></span></div>
+                    </div>
+                </div>
+
+                <!-- SELECCIÓN DE TIPO DE OPERACIÓN -->
+                <div class="card mb-3 border-primary">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0"><i class="fas fa-random"></i> Tipo de Operación</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="tipoOperacion" 
+                                           id="tipoDirecto" value="1" checked>
+                                    <label class="form-check-label" for="tipoDirecto">
+                                        <strong>Compra Directa</strong><br>
+                                        <small class="text-muted">Proveedor → TotalGas (1 factura)</small>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="tipoOperacion" 
+                                           id="tipoPetrotal" value="2">
+                                    <label class="form-check-label" for="tipoPetrotal">
+                                        <strong>Con Intermediario (Petrotal)</strong><br>
+                                        <small class="text-muted">Proveedor → Petrotal → TotalGas (2 facturas)</small>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DIAGRAMA DE FLUJO VISUAL -->
+                <div class="card mb-3" id="diagramaFlujo">
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-md-4" id="paso1">
+                                <div class="border border-success rounded p-3 bg-light">
+                                    <h6 class="text-success"><i class="fas fa-industry"></i> PROVEEDOR ORIGINAL</h6>
+                                    <div id="info_proveedor" class="small text-muted">Sin asignar</div>
+                                </div>
+                            </div>
+                            <div class="col-md-1 d-flex align-items-center justify-content-center">
+                                <i class="fas fa-arrow-right fa-2x text-primary"></i>
+                            </div>
+                            <div class="col-md-3" id="paso2" style="display:none;">
+                                <div class="border border-warning rounded p-3 bg-light">
+                                    <h6 class="text-warning"><i class="fas fa-building"></i> PETROTAL</h6>
+                                    <div id="info_petrotal" class="small text-muted">Sin asignar</div>
+                                </div>
+                            </div>
+                            <div class="col-md-1 d-flex align-items-center justify-content-center" id="flecha2" style="display:none;">
+                                <i class="fas fa-arrow-right fa-2x text-primary"></i>
+                            </div>
+                            <div class="col-md-3" id="paso3_directo">
+                                <div class="border border-info rounded p-3 bg-light">
+                                    <h6 class="text-info"><i class="fas fa-gas-pump"></i> TOTALGAS</h6>
+                                    <div id="info_totalgas" class="small">Estación Destino</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TABS PARA ASIGNAR FACTURAS -->
+                <ul class="nav nav-tabs" id="facturasTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="proveedor-tab" data-bs-toggle="tab" 
+                                data-bs-target="#tab-proveedor" type="button">
+                            <i class="fas fa-file-invoice"></i> Factura Proveedor Original
+                            <span class="badge bg-danger ms-2" id="badge-proveedor">Requerida</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation" id="petrotal-tab-item" style="display:none;">
+                        <button class="nav-link" id="petrotal-tab" data-bs-toggle="tab" 
+                                data-bs-target="#tab-petrotal" type="button">
+                            <i class="fas fa-file-invoice-dollar"></i> Factura Petrotal
+                            <span class="badge bg-danger ms-2" id="badge-petrotal">Requerida</span>
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content border border-top-0 p-3" id="facturasTabContent">
+                    <!-- TAB 1: FACTURA PROVEEDOR -->
+                    <div class="tab-pane fade show active" id="tab-proveedor" role="tabpanel">
+                        <h6 class="mb-3">Buscar Factura del Proveedor Original</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control form-control-sm" 
+                                       id="search_factura_proveedor" 
+                                       placeholder="UUID, Folio, Emisor...">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="date" class="form-control form-control-sm" id="fecha_inicio_proveedor">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="date" class="form-control form-control-sm" id="fecha_fin_proveedor">
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-sm btn-primary w-100" onclick="buscarFacturasProveedor()">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm table-hover" id="tabla_facturas_proveedor">
+                                <thead class="table-success sticky-top">
+                                    <tr>
+                                        <th width="50">Acción</th>
+                                        <th>Folio</th>
+                                        <th>Fecha</th>
+                                        <th>Emisor</th>
+                                        <th>Total</th>
+                                        <th>Litros</th>
+                                        <th>Precio/L</th>
+                                        <th>UUID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody_facturas_proveedor">
+                                    <tr><td colspan="8" class="text-center text-muted">Utilice los filtros para buscar</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: FACTURA PETROTAL -->
+                    <div class="tab-pane fade" id="tab-petrotal" role="tabpanel">
+                        <h6 class="mb-3">Buscar Factura de Petrotal → TotalGas</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control form-control-sm" 
+                                       id="search_factura_petrotal" 
+                                       placeholder="UUID, Folio...">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="date" class="form-control form-control-sm" id="fecha_inicio_petrotal">
+                            </div>
+                            <div class="col-md-3">
+                                <input type="date" class="form-control form-control-sm" id="fecha_fin_petrotal">
+                            </div>
+                            <div class="col-md-2">
+                                <button class="btn btn-sm btn-primary w-100" onclick="buscarFacturasPetrotal()">
+                                    <i class="fas fa-search"></i> Buscar
+                                </button>
+                            </div>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> 
+                            Busque facturas emitidas por <strong>PETROTAL</strong> 
+                            a nombre de <strong>TotalGas</strong>
+                        </div>
+                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm table-hover" id="tabla_facturas_petrotal">
+                                <thead class="table-warning sticky-top">
+                                    <tr>
+                                        <th width="50">Acción</th>
+                                        <th>Folio</th>
+                                        <th>Fecha</th>
+                                        <th>Total</th>
+                                        <th>Litros</th>
+                                        <th>Precio/L</th>
+                                        <th>UUID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody_facturas_petrotal">
+                                    <tr><td colspan="7" class="text-center text-muted">Utilice los filtros para buscar</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RESUMEN DE ASIGNACIÓN -->
+                <div class="card mt-3 border-primary" id="resumenAsignacion" style="display:none;">
+                    <div class="card-header bg-primary text-white">
+                        <h6 class="mb-0"><i class="fas fa-check-circle"></i> Resumen de Asignación</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-success">Factura Proveedor:</h6>
+                                <div id="resumen_proveedor" class="small"></div>
+                            </div>
+                            <div class="col-md-6" id="resumen_petrotal_container" style="display:none;">
+                                <h6 class="text-warning">Factura Petrotal:</h6>
+                                <div id="resumen_petrotal" class="small"></div>
+                            </div>
+                        </div>
+                        <div class="row mt-3" id="analisis_margen" style="display:none;">
+                            <div class="col-12">
+                                <div class="alert alert-success">
+                                    <strong>Análisis de Margen:</strong><br>
+                                    Diferencia: $<span id="diferencia_precio"></span> por litro<br>
+                                    Margen: <span id="margen_porcentual"></span>%
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Observaciones -->
+                <div class="mt-3">
+                    <label class="form-label">Observaciones</label>
+                    <textarea class="form-control" id="observaciones_asignacion" rows="2"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-success" id="btnGuardarAsignacion" 
+                        onclick="guardarAsignacionCompleta()" disabled>
+                    <i class="fas fa-save"></i> Guardar Asignación
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 
+<!-- Modal para visualizar PDF de factura -->
+<div class="modal fade" id="modalVisorPDF" tabindex="-1" aria-labelledby="modalVisorPDFLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="modalVisorPDFLabel">
+                    <i class="fas fa-file-pdf"></i> Visor de Factura PDF
+                </h5>
+                <div class="ms-auto me-3">
+                    <span id="info_factura_pdf" class="badge bg-light text-dark"></span>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0" style="height: 90vh;">
+                <!-- Spinner de carga -->
+                <div id="pdf-loading" class="text-center p-5">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Cargando PDF...</span>
+                    </div>
+                    <p class="mt-3 text-muted">Cargando factura...</p>
+                </div>
+                
+                <!-- Iframe para mostrar el PDF -->
+                <iframe id="iframe_pdf" 
+                        style="width: 100%; height: 100%; border: none; display: none;"
+                        title="Visor de PDF">
+                </iframe>
+                
+                <!-- Mensaje de error si no se puede cargar -->
+                <div id="pdf-error" class="alert alert-danger m-4" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Error al cargar el PDF</strong>
+                    <p id="pdf-error-message"></p>
+                    <button class="btn btn-sm btn-primary" onclick="descargarPDFDirecto()">
+                        <i class="fas fa-download"></i> Descargar PDF
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-primary" onclick="descargarPDFDirecto()">
+                        <i class="fas fa-download"></i> Descargar PDF
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="abrirPDFNuevaVentana()">
+                        <i class="fas fa-external-link-alt"></i> Abrir en nueva pestaña
+                    </button>
+                    <button type="button" class="btn btn-info" onclick="imprimirPDF()">
+                        <i class="fas fa-print"></i> Imprimir
+                    </button>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>

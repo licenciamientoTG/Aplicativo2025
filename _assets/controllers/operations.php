@@ -2481,17 +2481,17 @@ class Operations{
         ini_set('memory_limit', '512M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        
+
         $data = [];
-        
+
         try {
             $postData = [
-                'codgas' => $_POST['codgas'],
-                'codtan' => $_POST['codtan'],
-                'limit' => $_POST['limit'] ?? 100
-            ];
-            
-            $ch = curl_init('http://192.168.0.109:82/api/tanques/volumen/');
+                'codgas'    => $_POST['codgas'],
+                'codtan'    => $_POST['codtan'],
+                'from_date' => dateToInt($_POST['from_date']),
+                'until_date'=> dateToInt($_POST['until_date']),
+                ];
+            $ch = curl_init('http://192.168.0.109:82/api/tanques/volumen_date/');
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
             curl_setopt($ch, CURLOPT_POST, true);

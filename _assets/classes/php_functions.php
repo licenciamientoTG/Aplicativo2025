@@ -169,6 +169,9 @@ function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, 
         return $mail->send();
 
     } catch (Exception $e) {
+
+        var_dump($mail->ErrorInfo);var_dump($e);
+        die();
         // Si estás devolviendo JSON desde el endpoint, no hagas echo aquí.
         error_log("Mailer Error: {$mail->ErrorInfo}");
         return false;
