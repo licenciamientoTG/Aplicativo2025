@@ -3086,11 +3086,26 @@ async function loadFacturasReconciliationTable(fromDate, untilDate, codgas, prov
             },
             {
                 data: 'ProveedorNormalizado',
-                className: 'text-start text-nowrap'
+                className: 'text-start text-nowrap',
+                
+
             },
+
             {
                 data: 'NumeroFacturaProveedorOriginal',
-                className: 'text-start text-nowrap'
+                className: 'text-start text-nowrap',
+                render: function(data, type, row) {
+                    // Hacer el folio clickeable para abrir el PDF en modal
+                    if (row.RutaArchivo) {
+                        return `<a href="javascript:void(0);" 
+                                onclick='ModalinvoicePdf(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                class="text-primary fw-bold" 
+                                title="Click para ver la factura PDF">
+                                    <i class="fas fa-file-pdf text-danger"></i> ${data}
+                                </a>`;
+                    }
+                    return data;
+                }
             },
             {
                 data: 'MontoFactura',

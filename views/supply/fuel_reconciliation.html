@@ -19,13 +19,13 @@ table.dataTable thead th, table.dataTable thead td {
 }
 
 .reconciliation-left {
-    flex: 0 0 33.333%;
-    max-width: 33.333%;
+    flex: 0 0 40%;
+    max-width: 40%;
 }
 
 .reconciliation-right {
-    flex: 0 0 66.667%;
-    max-width: 66.667%;
+    flex: 0 0 60%;
+    max-width: 60%;
 }
 
 .card-body {
@@ -274,6 +274,19 @@ table.dataTable thead th, table.dataTable thead td {
     </div>
 </div>
 
+
+<div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="ModalinvoicePdfLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="ModalinvoicePdfContent">
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
