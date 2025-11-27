@@ -51,6 +51,7 @@ class Supply{
     public PaymentRequestsModel $paymentRequestsModel;
     public PaymentRequestInvoicesModel $paymentRequestInvoicesModel;
     public ProveedoresModel $proveedores;
+    public FacturasMovimientosTanquesModel $facturasMovimientosTanquesModel;
     /**
      * @param $twig
      */
@@ -79,7 +80,8 @@ class Supply{
         $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
         $this->proveedores                                       = new ProveedoresModel();
         $this->proveedores                                       = new ProveedoresModel();
-        $this->facturasRecibidasModel = new FacturasRecibidasModel();
+        $this->facturasRecibidasModel                            = new FacturasRecibidasModel();
+        $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
 
     }
 
@@ -1127,6 +1129,25 @@ class Supply{
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
     }
 
+    function fuel_reconciliation() {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        $proveedores = [
+            ['cod' => 'TESORO', 'den' => 'TESORO'],
+            ['cod' => 'MGC', 'den' => 'MGC'],
+            ['cod' => 'LOBO', 'den' => 'LOBO'],
+            ['cod' => 'PETROTAL', 'den' => 'PETROTAL'],
+            ['cod' => 'ESSAFUEL', 'den' => 'ESSAFUEL'],
+            ['cod' => 'PREMIERGAS', 'den' => 'PREMIERGAS'],
+            ['cod' => 'ENEREY', 'den' => 'ENEREY'],
+            ['cod' => 'AEMSA', 'den' => 'AEMSA']
+        ];
+        $empresas = [
+            ['cod' => '1', 'den' => 'TotalGas'],
+            ['cod' => '2', 'den' => 'Petrotal']
+        ];
+        echo $this->twig->render($this->route . 'fuel_reconciliation.html', compact('stations', 'proveedores', 'empresas'));
+    }
+
 
     function prices_xml() {
         echo $this->twig->render($this->route . 'prices_xml.html');
@@ -1980,6 +2001,7 @@ function download_zip($zipFileName) {
                     'fecha'                       => $row['fecha'] ?? '',
                     'hora'                        => $row['hora_formateada'] ?? '',
                     'nrotrn'                      => $row['nrotrn'],
+                    'codgas'                      => $row['codgas'] ?? '',
                     'estacion'                    => $row['estacion'] ?? '',
                     'numero_estacion'             => $row['numero_estacion'] ?? '',
                     'proveedor_original'          => $proveedor_controlgas,
@@ -2138,6 +2160,47 @@ function download_zip($zipFileName) {
         }
     }
 
+
+    /**
+     * Relacionar factura con movimiento de tanque
+     * Endpoint que utiliza el modelo FacturasMovimientosTanquesModel
+     */
+    public function relacionar_factura_movimiento() {
+        header('Content-Type: application/json');
+
+        // Obtener parámetros del POST
+        $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
+        $codgas = isset($_POST['codgas']) ? $_POST['codgas'] : '';
+        $facturaProveedorId = isset($_POST['factura_proveedor_id']) ? intval($_POST['factura_proveedor_id']) : 0;
+        $uuidProveedor = isset($_POST['uuid_proveedor']) ? $_POST['uuid_proveedor'] : '';
+        $folioProveedor = isset($_POST['folio_proveedor']) ? $_POST['folio_proveedor'] : '';
+        $montoProveedor = isset($_POST['monto_proveedor']) ? floatval($_POST['monto_proveedor']) : 0;
+        $litrosProveedor = isset($_POST['litros_proveedor']) ? floatval($_POST['litros_proveedor']) : 0;
+        $precioProveedor = isset($_POST['precio_proveedor']) ? floatval($_POST['precio_proveedor']) : 0;
+        $observaciones = isset($_POST['observaciones']) ? $_POST['observaciones'] : '';
+        $tipoOperacion = isset($_POST['tipo_operacion']) ? intval($_POST['tipo_operacion']) : 1;
+        $petrotal = isset($_POST['petrotal']) ? intval($_POST['petrotal']) : 0;
+        $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Sistema';
+
+        // Llamar al modelo para relacionar la factura
+        $resultado = $this->facturasMovimientosTanquesModel->relacionarFacturaMovimiento(
+            $nrotrn,
+            $codgas,
+            $facturaProveedorId,
+            $uuidProveedor,
+            $folioProveedor,
+            $montoProveedor,
+            $litrosProveedor,
+            $precioProveedor,
+            $observaciones,
+            $tipoOperacion,
+            $petrotal,
+            $usuario
+        );
+
+        // Retornar resultado como JSON
+        json_output($resultado);
+    }
 
     // ========== NUEVO ENDPOINT: Buscar facturas de PROVEEDOR (excluir Petrotal) ==========
     public function buscar_facturas_proveedor() {
@@ -2792,130 +2855,195 @@ function download_zip($zipFileName) {
         
         return substr($proveedor, 0, 30);
     }
-    public function ver_factura_pdf() {
-        // Cambiar a POST
-        $facturaId = $_POST['id'] ?? null;
+    // public function ver_factura_pdf() {
+    //     // Cambiar a POST
+    //     $facturaId = $_POST['id'] ?? null;
         
-        if (!$facturaId) {
-            header('HTTP/1.1 400 Bad Request');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'ID de factura requerido']);
-            return;
-        }
+    //     if (!$facturaId) {
+    //         header('HTTP/1.1 400 Bad Request');
+    //         header('Content-Type: application/json');
+    //         echo json_encode(['error' => 'ID de factura requerido']);
+    //         return;
+    //     }
         
-        // Obtener ruta del archivo
-        $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
-        $result = $this->sql->select($query, [$facturaId]);
+    //     // Obtener ruta del archivo
+    //     $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
+    //     $result = $this->sql->select($query, [$facturaId]);
         
-        if (empty($result)) {
-            header('HTTP/1.1 404 Not Found');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Factura no encontrada']);
-            return;
-        }
+    //     if (empty($result)) {
+    //         header('HTTP/1.1 404 Not Found');
+    //         header('Content-Type: application/json');
+    //         echo json_encode(['error' => 'Factura no encontrada']);
+    //         return;
+    //     }
         
-        $rutaArchivo = $result[0]['RutaArchivo'];
-        $nombreArchivo = $result[0]['NombreArchivo'] ?? 'factura.pdf';
+    //     $rutaArchivo = $result[0]['RutaArchivo'];
+    //     $nombreArchivo = $result[0]['NombreArchivo'] ?? 'factura.pdf';
         
-        // Verificar que el archivo existe
-        if (!file_exists($rutaArchivo)) {
-            header('HTTP/1.1 404 Not Found');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Archivo PDF no encontrado en el servidor', 'ruta' => $rutaArchivo]);
-            return;
-        }
+    //     // Verificar que el archivo existe
+    //     if (!file_exists($rutaArchivo)) {
+    //         header('HTTP/1.1 404 Not Found');
+    //         header('Content-Type: application/json');
+    //         echo json_encode(['error' => 'Archivo PDF no encontrado en el servidor', 'ruta' => $rutaArchivo]);
+    //         return;
+    //     }
         
-        // Leer el archivo y convertirlo a base64
-        $pdfContent = file_get_contents($rutaArchivo);
-        $pdfBase64 = base64_encode($pdfContent);
+    //     // Leer el archivo y convertirlo a base64
+    //     $pdfContent = file_get_contents($rutaArchivo);
+    //     $pdfBase64 = base64_encode($pdfContent);
         
-        // Devolver JSON con el PDF en base64
-        header('Content-Type: application/json');
-        echo json_encode([
-            'success' => true,
-            'pdf' => $pdfBase64,
-            'nombre' => $nombreArchivo,
-            'folio' => $result[0]['Folio'],
-            'size' => filesize($rutaArchivo)
-        ]);
-    }
+    //     // Devolver JSON con el PDF en base64
+    //     header('Content-Type: application/json');
+    //     echo json_encode([
+    //         'success' => true,
+    //         'pdf' => $pdfBase64,
+    //         'nombre' => $nombreArchivo,
+    //         'folio' => $result[0]['Folio'],
+    //         'size' => filesize($rutaArchivo)
+    //     ]);
+    // }
 
-    public function descargar_factura_pdf() {
-        $facturaId = $_POST['id'] ?? null;
+//     public function descargar_factura_pdf() {
+//         $facturaId = $_POST['id'] ?? null;
         
+//         if (!$facturaId) {
+//             header('HTTP/1.1 400 Bad Request');
+//             header('Content-Type: application/json');
+//             echo json_encode(['error' => 'ID de factura requerido']);
+//             return;
+//         }
+        
+//         // Obtener ruta del archivo
+//         $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
+//         $result = $this->sql->select($query, [$facturaId]);
+        
+//         if (empty($result)) {
+//             header('HTTP/1.1 404 Not Found');
+//             header('Content-Type: application/json');
+//             echo json_encode(['error' => 'Factura no encontrada']);
+//             return;
+//         }
+        
+//         $rutaArchivo = $result[0]['RutaArchivo'];
+//         $folio = $result[0]['Folio'] ?? 'sin_folio';
+        
+//         // Verificar que el archivo existe
+//         if (!file_exists($rutaArchivo)) {
+//             header('HTTP/1.1 404 Not Found');
+//             header('Content-Type: application/json');
+//             echo json_encode(['error' => 'Archivo PDF no encontrado']);
+//             return;
+//         }
+        
+//         // Nombre de archivo amigable
+//         $nombreDescarga = 'Factura_' . $folio . '_' . date('Ymd') . '.pdf';
+        
+//         // Headers para forzar descarga
+//         header('Content-Type: application/pdf');
+//         header('Content-Disposition: attachment; filename="' . $nombreDescarga . '"');
+//         header('Content-Length: ' . filesize($rutaArchivo));
+//         header('Cache-Control: private, max-age=0, must-revalidate');
+//         header('Pragma: public');
+        
+//         readfile($rutaArchivo);
+//         exit;
+//     }
+// public function buscar_movimiento_por_nrotrn() {
+//     $nrotrn = $_POST['nrotrn'] ?? null;
+//     $codgas = $_POST['codgas'] ?? null;
+    
+//     if (!$nrotrn || !$codgas) {
+//         json_output(['success' => false, 'message' => 'Parámetros incompletos']);
+//         return;
+//     }
+    
+//     // Buscar en sg12 (o donde tengas los movimientos)
+//     $query = "
+//         SELECT 
+//             nrotrn,
+//             codgas,
+//             fecha,
+//             producto,
+//             litros,
+//             -- otros campos necesarios
+//         FROM sg12.dbo.MovimientosTanques 
+//         WHERE nrotrn = ? AND codgas = ?
+//     ";
+    
+//     $result = $this->sql->select($query, [$nrotrn, $codgas]);
+    
+//     if (!empty($result)) {
+//         json_output(['success' => true, 'data' => $result[0]]);
+//     } else {
+//         json_output(['success' => false, 'message' => 'Movimiento no encontrado']);
+//     }
+// }
+
+
+    public function ModalinvoicePdf(){
+        $facturaId = $_POST['FacturaId'] ?? null;
         if (!$facturaId) {
-            header('HTTP/1.1 400 Bad Request');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'ID de factura requerido']);
+            echo '<div class="modal-body">Factura no especificada.</div>';
             return;
         }
-        
-        // Obtener ruta del archivo
-        $query = "SELECT RutaArchivo, NombreArchivo, Folio FROM TG.dbo.FacturasRecibidas WHERE Id = ?";
-        $result = $this->sql->select($query, [$facturaId]);
-        
-        if (empty($result)) {
-            header('HTTP/1.1 404 Not Found');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Factura no encontrada']);
+
+        $factura = $this->facturasRecibidasModel->obtenerPorId($facturaId);
+        if (!$factura) {
+            echo '<div class="modal-body">Factura no encontrada.</div>';
             return;
         }
-        
-        $rutaArchivo = $result[0]['RutaArchivo'];
-        $folio = $result[0]['Folio'] ?? 'sin_folio';
-        
-        // Verificar que el archivo existe
-        if (!file_exists($rutaArchivo)) {
-            header('HTTP/1.1 404 Not Found');
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Archivo PDF no encontrado']);
-            return;
+
+        // Renderiza un partial twig que contiene el iframe
+        echo $this->twig->render($this->route . 'modals/invoice_pdf.html', compact('factura'));
+    }
+    public function invoiceFile(){
+        // Acepta GET o POST según tu preferencia
+        $facturaId = $_GET['FacturaId'] ?? $_POST['FacturaId'] ?? null;
+        if (!$facturaId) {
+            header("HTTP/1.1 400 Bad Request");
+            echo "FacturaId requerido";
+            exit;
         }
-        
-        // Nombre de archivo amigable
-        $nombreDescarga = 'Factura_' . $folio . '_' . date('Ymd') . '.pdf';
-        
-        // Headers para forzar descarga
+
+        $factura = $this->facturasRecibidasModel->obtenerPorId($facturaId);
+        if (!$factura) {
+            header("HTTP/1.1 404 Not Found");
+            echo "Factura no encontrada";
+            exit;
+        }
+
+        $ruta = $factura['RutaArchivo']; // ruta almacenada en DB
+
+        // Normaliza separadores (Windows)
+        $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
+        // opcional: si la DB almacena con barras invertidas dobles, limpiarlas:
+        $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
+
+        // Seguridad: restringir a un directorio base permitido
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores'); // ajusta si hace falta
+        $real = realpath($ruta);
+
+        if ($real === false || strpos($real, $baseAllowed) !== 0) {
+            header("HTTP/1.1 403 Forbidden");
+            echo "Acceso al archivo denegado.";
+            exit;
+        }
+
+        if (!file_exists($real) || !is_readable($real)) {
+            header("HTTP/1.1 404 Not Found");
+            echo "Archivo no encontrado o no legible.";
+            exit;
+        }
+
+        // Enviar headers para visualizar inline en el navegador
         header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="' . $nombreDescarga . '"');
-        header('Content-Length: ' . filesize($rutaArchivo));
-        header('Cache-Control: private, max-age=0, must-revalidate');
-        header('Pragma: public');
-        
-        readfile($rutaArchivo);
+        // inline para mostrar en el navegador; attachment para forzar descarga
+        header('Content-Disposition: inline; filename="' . basename($real) . '"');
+        header('Content-Length: ' . filesize($real));
+        // Evitar que PHP añada buffering adicional
+        readfile($real);
         exit;
     }
-public function buscar_movimiento_por_nrotrn() {
-    $nrotrn = $_POST['nrotrn'] ?? null;
-    $codgas = $_POST['codgas'] ?? null;
-    
-    if (!$nrotrn || !$codgas) {
-        json_output(['success' => false, 'message' => 'Parámetros incompletos']);
-        return;
-    }
-    
-    // Buscar en sg12 (o donde tengas los movimientos)
-    $query = "
-        SELECT 
-            nrotrn,
-            codgas,
-            fecha,
-            producto,
-            litros,
-            -- otros campos necesarios
-        FROM sg12.dbo.MovimientosTanques 
-        WHERE nrotrn = ? AND codgas = ?
-    ";
-    
-    $result = $this->sql->select($query, [$nrotrn, $codgas]);
-    
-    if (!empty($result)) {
-        json_output(['success' => true, 'data' => $result[0]]);
-    } else {
-        json_output(['success' => false, 'message' => 'Movimiento no encontrado']);
-    }
-}
-
 
 
 

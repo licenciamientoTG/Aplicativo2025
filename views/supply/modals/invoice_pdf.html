@@ -1,0 +1,13 @@
+<div class="modal-body" style="padding:0;">
+  <div class="container-fluid" style="height:80vh;">
+    <iframe
+      src="/supply/invoiceFile?FacturaId={{ factura.Id }}"
+      style="width:100%; height:100%; border:0;"
+      allowfullscreen
+    ></iframe>
+  </div>
+</div>
+<div class="modal-footer">
+  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+  <a href="/supply/invoiceFile?FacturaId={{ factura.Id }}" target="_blank" class="btn btn-primary">Abrir en nueva pestaña</a>
+</div>
