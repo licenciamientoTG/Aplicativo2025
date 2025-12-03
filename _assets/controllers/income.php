@@ -1955,4 +1955,150 @@ public function anomalies_client_tickets()
         $writer->save('php://output');
         exit;
     }
+// Vista principal
+    public function conc_test() {
+        echo $this->twig->render($this->route . 'test.html');
+    }
+
+  // --- VERSIÓN COMPATIBLE CON PDO ---
+    public function get_tesoreria_data() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $serverName = "192.168.0.6"; 
+        $database = "TG";
+        $uid = "cguser";
+        $pwd = "sahei1712";
+
+        try {
+            // Conexión usando PDO (más universal si tienes drivers ODBC)
+            $conn = new PDO("sqlsrv:Server=$serverName;Database=$database", $uid, $pwd);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            
+            $sql = "SELECT Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
+                    FROM Tesoreria_0956 
+                    ORDER BY Fecha DESC";
+            
+            $stmt = $conn->query($sql);
+            $data = [];
+
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                // Formatear fecha (PDO a veces devuelve strings directos, a veces objetos)
+                // En SQL Server suele devolver string YYYY-MM-DD directo si es tipo DATE
+                if (isset($row['Fecha'])) {
+                    // Si viene como objeto DateTime (raro en PDO puro pero posible)
+                    if ($row['Fecha'] instanceof DateTime) {
+                        $row['Fecha'] = $row['Fecha']->format('Y-m-d');
+                    } 
+                    // Si es string, asegurar formato (opcional)
+                    else {
+                        $row['Fecha'] = substr($row['Fecha'], 0, 10); 
+                    }
+                }
+                
+                // Asegurar numéricos
+                $row['Depositos'] = (float)$row['Depositos'];
+                $row['Retiros']   = (float)$row['Retiros'];
+                $row['Saldo']     = (float)$row['Saldo'];
+                
+                $data[] = $row;
+            }
+
+            echo json_encode(["status" => "success", "data" => $data]);
+
+        } catch (PDOException $e) {
+            // Si falla la conexión o consulta
+            echo json_encode([
+                "status" => "error", 
+                "message" => "Error conexión PDO", 
+                "details" => $e->getMessage()
+            ]);
+        }
+        exit;
+    }
+
+// --- NUEVA FUNCIÓN: Reporte Agrupado Banorte ---
+// --- API 2: Agrupado Banorte ---
+    public function get_tesoreria_banorte() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // 1. Obtener catálogo de afiliaciones Banorte (ID 4)
+            // Devuelve: '07404317' => '05 Lopez Mateos'
+            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+                        FROM Tesoreria_afil A
+                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        WHERE A.entidad_id = 4";
+            
+            $stmtAfil = $conn->query($sqlAfil);
+            $mapa = [];
+            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+                $mapa[trim($r['afiliacion'])] = $r['Estacion'];
+            }
+
+            // 2. Obtener solo depósitos positivos
+            $sqlMovs = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_0956 WHERE Depositos > 0";
+            $stmtMovs = $conn->query($sqlMovs);
+            
+            $agrupado = [];
+
+            while($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)){
+                $desc = $row['Descripcion'];
+                $fecha = substr($row['Fecha'] ?? '', 0, 10); // YYYY-MM-DD
+                $monto = (float)$row['Depositos'];
+
+                // 3. Buscar afiliación en el texto (7 u 8 dígitos)
+                // Ej: "TOTAL GAS 07397254D" captura "07397254"
+                if(preg_match('/\d{7,8}/', $desc, $matches)){
+                    $numEncontrado = $matches[0];
+                    $afiliacionReal = null;
+                    $estacionNombre = "";
+
+                    // Intentar coincidencia directa o agregando ceros
+                    if(isset($mapa[$numEncontrado])) {
+                        $afiliacionReal = $numEncontrado;
+                    } elseif (isset($mapa['0'.$numEncontrado])) {
+                         $afiliacionReal = '0'.$numEncontrado;
+                    }
+
+                    // Si es de Banorte, sumamos
+                    if($afiliacionReal) {
+                        $estacionNombre = $mapa[$afiliacionReal];
+                        $key = $fecha . '_' . $afiliacionReal;
+
+                        if(!isset($agrupado[$key])) {
+                            $agrupado[$key] = [
+                                'Fecha' => $fecha,
+                                'Afiliacion' => $afiliacionReal,
+                                'Estacion' => $estacionNombre,
+                                'Total' => 0
+                            ];
+                        }
+                        $agrupado[$key]['Total'] += $monto;
+                    }
+                }
+            }
+
+            // Ordenar por fecha
+            $resultado = array_values($agrupado);
+            usort($resultado, function($a, $b) {
+                return strcmp($a['Fecha'], $b['Fecha']);
+            });
+
+            echo json_encode(["status" => "success", "data" => $resultado]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
 }
