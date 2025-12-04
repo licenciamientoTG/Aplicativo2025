@@ -4,6 +4,17 @@
 {% block menutitle %}Conciliación Global{% endblock %}
 
 {% block content %}
+<style>
+    .table-responsive thead.sticky-top th {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 5 !important;
+        box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1);
+    }
+    .thead-dark.sticky-top th { background-color: #343a40 !important; color: #fff; }
+    .thead-light.sticky-top th { background-color: #e9ecef !important; color: #495057; }
+</style>
+
 <div class="container-fluid">
     <div class="row mb-4">
         <div class="col-12">
@@ -69,6 +80,11 @@
                         <i class="fas fa-credit-card"></i> Acumulado Banorte
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link text-danger fw-bold" data-toggle="tab" href="#sub-santander" onclick="cargarSantander()">
+                        <i class="fas fa-university"></i> Acumulado Santander
+                    </a>
+                </li>
             </ul>
 
             <div class="tab-content">
@@ -80,7 +96,7 @@
                         <div class="card-body p-0">
                             <div class="table-responsive" style="max-height: 600px; overflow:auto;">
                                 <table class="table table-sm table-striped table-bordered mb-0">
-                                    <thead class="thead-dark sticky-top" style="top:0; z-index:2;">
+                                    <thead class="thead-dark sticky-top">
                                         <tr><th>Fecha</th><th>Ref</th><th>Descripción</th><th>Sucursal</th><th class="text-end">Depósitos</th><th class="text-end">Retiros</th><th class="text-end">Saldo</th></tr>
                                     </thead>
                                     <tbody id="body-tesoreria"></tbody>
@@ -91,38 +107,66 @@
                 </div>
 
                 <div class="tab-pane fade" id="sub-banorte">
-                    <div class="d-flex justify-content-end mb-2">
-                        <button onclick="cargarBanorte(true)" class="btn btn-sm btn-danger text-white"><i class="fas fa-sync"></i> Actualizar</button>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-danger m-0"><i class="fas fa-university"></i> Acumulado Banorte por Estación</h5>
+                        <button onclick="cargarBanorte(true)" class="btn btn-sm btn-danger text-white shadow-sm">
+                            <i class="fas fa-sync"></i> Actualizar Datos
+                        </button>
                     </div>
-                    <div id="loading-banorte" class="alert alert-info py-2" style="display:none;">Procesando datos...</div>
                     
-                    <div class="card shadow border-left-danger">
-                        <div class="card-body p-0">
-                            <div class="table-responsive" style="max-height: 600px; overflow:auto;">
-                                <table class="table table-sm table-hover table-bordered mb-0">
-                                    <thead class="bg-danger text-white sticky-top" style="top:0; z-index:2;">
-                                        <tr>
-                                            <th>Fecha</th>
-                                            <th>Afiliación</th>
-                                            <th>Estación (BD)</th>
-                                            <th class="text-end">Total Depositado</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="body-banorte"></tbody>
-                                    <tfoot class="bg-light font-weight-bold">
-                                        <tr>
-                                            <td colspan="3" class="text-end">TOTAL:</td>
-                                            <td class="text-end" id="total-banorte">$0.00</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                    <div id="loading-banorte" class="alert alert-info py-2 shadow-sm" style="display:none;">
+                        <i class="fas fa-circle-notch fa-spin"></i> Procesando conciliación Banorte...
+                    </div>
+                    
+                    <div class="card shadow-sm border-top-danger">
+                        <div class="card-header bg-white p-0">
+                            <ul class="nav nav-tabs card-header-tabs m-0" id="banorte-station-tabs" role="tablist" style="border-bottom:0;"></ul>
+                        </div>
+                        <div class="card-body p-3 bg-light">
+                            <div class="tab-content" id="banorte-station-content">
+                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos" para cargar.</div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white">
+                            <div class="d-flex justify-content-end align-items-center">
+                                <span class="mr-2 text-muted">Gran Total:</span>
+                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-banorte">$0.00</h4>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-        </div>
+                <div class="tab-pane fade" id="sub-santander">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-danger m-0"><i class="fas fa-university"></i> Acumulado Santander (5117 y 8973)</h5>
+                        <button onclick="cargarSantander(true)" class="btn btn-sm btn-danger text-white shadow-sm">
+                            <i class="fas fa-sync"></i> Actualizar Datos
+                        </button>
+                    </div>
+                    
+                    <div id="loading-santander" class="alert alert-info py-2 shadow-sm" style="display:none;">
+                        <i class="fas fa-circle-notch fa-spin"></i> Procesando Santander...
+                    </div>
+                    
+                    <div class="card shadow-sm border-top-danger">
+                        <div class="card-header bg-white p-0">
+                            <ul class="nav nav-tabs card-header-tabs m-0" id="santander-station-tabs" role="tablist" style="border-bottom:0;"></ul>
+                        </div>
+                        <div class="card-body p-3 bg-light">
+                            <div class="tab-content" id="santander-station-content">
+                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos" para cargar.</div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white">
+                            <div class="d-flex justify-content-end align-items-center">
+                                <span class="mr-2 text-muted">Gran Total:</span>
+                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-santander">$0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div> </div>
 
     </div>
 </div>
@@ -130,17 +174,18 @@
 
 {% block myjs %}
 <script>
-    // URLS
     const URL_ESTACIONES = 'http://201.174.170.236:99/api/Gasolinera/GetEstaciones';
     const URL_VENTAS = 'http://201.174.170.236:99/api/Ventas/GetConceptosValores';
     
-    // Rutas internas (MVC)
     const URL_TESORERIA_GENERAL = '/income/get_tesoreria_data'; 
     const URL_TESORERIA_BANORTE = '/income/get_tesoreria_banorte'; 
+    const URL_TESORERIA_SANTANDER = '/income/get_tesoreria_santander';
 
     const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    
     let generalCargado = false;
     let banorteCargado = false;
+    let santanderCargado = false;
 
     $(document).ready(function() {
         const hoy = new Date().toISOString().split('T')[0];
@@ -180,41 +225,200 @@
         }).fail(function() { $tbody.html('<tr><td colspan="7" class="text-danger text-center">Error de conexión</td></tr>'); });
     }
 
-    // --- BANORTE ---
+    // --- BANORTE (Una pestaña por Afiliación) ---
     function cargarBanorte(force = false) {
         if(banorteCargado && !force) return;
+        
         $('#loading-banorte').show();
-        const $tbody = $('#body-banorte');
-        $tbody.html('');
-        $('#total-banorte').text('$0.00');
+        const $tabsContainer = $('#banorte-station-tabs');
+        const $contentContainer = $('#banorte-station-content');
+        const $granTotal = $('#gran-total-banorte');
+        
+        $tabsContainer.empty();
+        $contentContainer.empty();
+        $granTotal.text('$0.00');
 
         $.get(URL_TESORERIA_BANORTE, function(resp){
             $('#loading-banorte').hide();
-            if(resp.status === 'error') {
-                $tbody.html(`<tr><td colspan="4" class="text-danger text-center">${resp.message}</td></tr>`);
-            } else {
-                let html = '';
-                let total = 0;
-                (resp.data || []).forEach(r => {
-                    total += parseFloat(r.Total);
-                    html += `<tr>
-                        <td>${r.Fecha}</td>
-                        <td class="fw-bold">${r.Afiliacion}</td>
-                        <td>${r.Estacion}</td>
-                        <td class="text-end text-success fw-bold">${formatter.format(r.Total)}</td>
-                    </tr>`;
-                });
-                $tbody.html(html || '<tr><td colspan="4" class="text-center py-4">No se encontraron coincidencias.</td></tr>');
-                $('#total-banorte').text(formatter.format(total));
-                banorteCargado = true;
+
+            const datos = resp.data || [];
+            // catalogo ahora es array de objetos: [{afiliacion: '...', Estacion: '...'}, ...]
+            const catalogo = resp.catalog || []; 
+
+            if(catalogo.length === 0) {
+                $contentContainer.html('<div class="alert alert-warning m-3">No hay afiliaciones Banorte configuradas.</div>');
+                return;
             }
-        }).fail(function() { 
-            $('#loading-banorte').hide();
-            $tbody.html('<tr><td colspan="4" class="text-danger text-center">Error de conexión.</td></tr>'); 
-        });
+
+            // 1. Inicializar grupos usando la AFILIACIÓN como clave única
+            const grupos = {};
+            catalogo.forEach(item => {
+                grupos[item.afiliacion] = [];
+            });
+
+            // 2. Llenar datos
+            let granTotal = 0;
+            datos.forEach(r => {
+                // r.Afiliacion viene del controlador con el número exacto
+                if(grupos[r.Afiliacion] !== undefined) {
+                    grupos[r.Afiliacion].push(r);
+                    granTotal += parseFloat(r.Total);
+                }
+            });
+
+            // 3. Generar Pestañas (Iteramos sobre el catálogo de afiliaciones)
+            catalogo.forEach((item, index) => {
+                const afilNum = item.afiliacion;
+                const estNombre = item.Estacion;
+                
+                const tabId = `tab-banorte-${index}`;
+                const isActive = index === 0 ? 'active show' : '';
+                const activeLink = index === 0 ? 'active' : '';
+                
+                const listaMovimientos = grupos[afilNum] || [];
+                const cantidad = listaMovimientos.length;
+                const badgeColor = cantidad > 0 ? 'badge-primary' : 'badge-light border';
+
+                // Header: Mostramos "Estacion (Afiliacion)"
+                $tabsContainer.append(`
+                    <li class="nav-item">
+                        <a class="nav-link ${activeLink}" data-toggle="tab" href="#${tabId}" title="Afiliación: ${afilNum}">
+                            ${estNombre} <small class="text-muted">(${afilNum})</small> 
+                            <span class="badge ${badgeColor} ml-1">${cantidad}</span>
+                        </a>
+                    </li>
+                `);
+
+                // Content
+                let filas = '';
+                let totalEst = 0;
+                
+                if(cantidad > 0) {
+                    listaMovimientos.forEach(f => {
+                        totalEst += parseFloat(f.Total);
+                        filas += `<tr><td>${f.Fecha}</td><td>${f.Afiliacion}</td><td>${f.Descripcion || ''}</td><td class="text-right text-dark font-weight-bold">${formatter.format(f.Total)}</td></tr>`;
+                    });
+                } else {
+                    filas = '<tr><td colspan="4" class="text-center text-muted py-5">Sin movimientos</td></tr>';
+                }
+
+                $contentContainer.append(`
+                    <div class="tab-pane fade ${isActive}" id="${tabId}">
+                        <div class="table-responsive bg-white border rounded shadow-sm" style="max-height:500px; overflow-y:auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light sticky-top"><tr><th>Fecha</th><th>Afiliación</th><th>Descripción</th><th class="text-right">Importe</th></tr></thead>
+                                <tbody>${filas}</tbody>
+                                <tfoot class="bg-white border-top">
+                                    <tr><td colspan="3" class="text-right text-muted">Total:</td><td class="text-right text-success font-weight-bold">${formatter.format(totalEst)}</td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                `);
+            });
+
+            $granTotal.text(formatter.format(granTotal));
+            banorteCargado = true;
+        }).fail(() => { $('#loading-banorte').hide(); $contentContainer.html('<div class="alert alert-danger">Error de red.</div>'); });
     }
 
-    // --- CONTROLGAS ---
+    // --- SANTANDER (Una pestaña por Afiliación) ---
+    function cargarSantander(force = false) {
+        if(santanderCargado && !force) return;
+        
+        $('#loading-santander').show();
+        const $tabsContainer = $('#santander-station-tabs');
+        const $contentContainer = $('#santander-station-content');
+        const $granTotal = $('#gran-total-santander');
+        
+        $tabsContainer.empty();
+        $contentContainer.empty();
+        $granTotal.text('$0.00');
+
+        $.get(URL_TESORERIA_SANTANDER, function(resp){
+            $('#loading-santander').hide();
+
+            const datos = resp.data || [];
+            // catalogo: [{afiliacion: '...', Estacion: '...'}, ...]
+            const catalogo = resp.catalog || []; 
+
+            if(catalogo.length === 0) {
+                $contentContainer.html('<div class="alert alert-warning m-3">No hay afiliaciones Santander configuradas.</div>');
+                return;
+            }
+
+            // 1. Inicializar
+            const grupos = {};
+            catalogo.forEach(item => {
+                grupos[item.afiliacion] = [];
+            });
+
+            // 2. Llenar
+            let granTotal = 0;
+            datos.forEach(r => {
+                if(grupos[r.Afiliacion] !== undefined) {
+                    grupos[r.Afiliacion].push(r);
+                    granTotal += parseFloat(r.Total);
+                }
+            });
+
+            // 3. Renderizar
+            catalogo.forEach((item, index) => {
+                const afilNum = item.afiliacion;
+                const estNombre = item.Estacion;
+
+                const tabId = `tab-santander-${index}`;
+                const isActive = index === 0 ? 'active show' : '';
+                const activeLink = index === 0 ? 'active' : '';
+                
+                const listaMovimientos = grupos[afilNum] || [];
+                const cantidad = listaMovimientos.length;
+                const badgeColor = cantidad > 0 ? 'badge-primary' : 'badge-light border';
+
+                // Header: "Estacion (Afiliacion)"
+                $tabsContainer.append(`
+                    <li class="nav-item">
+                        <a class="nav-link ${activeLink}" data-toggle="tab" href="#${tabId}" title="Afiliación: ${afilNum}">
+                            ${estNombre} <small class="text-muted">(${afilNum})</small>
+                            <span class="badge ${badgeColor} ml-1">${cantidad}</span>
+                        </a>
+                    </li>
+                `);
+
+                // Content
+                let filas = '';
+                let totalEst = 0;
+
+                if (cantidad > 0) {
+                    listaMovimientos.forEach(f => {
+                        totalEst += parseFloat(f.Total);
+                        filas += `<tr><td>${f.Fecha}</td><td class="text-primary font-weight-bold">${f.Referencia}</td><td class="text-muted small">${f.Descripcion}</td><td class="text-right font-weight-bold text-dark">${formatter.format(f.Total)}</td></tr>`;
+                    });
+                } else {
+                    filas = '<tr><td colspan="4" class="text-center text-muted py-5">Sin movimientos</td></tr>';
+                }
+
+                $contentContainer.append(`
+                    <div class="tab-pane fade ${isActive}" id="${tabId}">
+                        <div class="table-responsive bg-white border rounded shadow-sm" style="max-height:500px; overflow-y:auto;">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light sticky-top"><tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th class="text-right">Importe</th></tr></thead>
+                                <tbody>${filas}</tbody>
+                                <tfoot class="bg-white border-top">
+                                    <tr><td colspan="3" class="text-right text-muted">Total:</td><td class="text-right text-success font-weight-bold">${formatter.format(totalEst)}</td></tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                `);
+            });
+
+            $granTotal.text(formatter.format(granTotal));
+            santanderCargado = true;
+        }).fail(() => { $('#loading-santander').hide(); $contentContainer.html('<div class="alert alert-danger">Error de red.</div>'); });
+    }
+
+    // --- CONTROLGAS (Sin cambios) ---
     async function cargarEstaciones() {
         try{
             const res = await fetch(URL_ESTACIONES, {method:'POST',headers:{'Content-Type':'application/json'}});
@@ -224,6 +428,7 @@
             $('#estacionSelect').html(html);
         }catch(e){console.error(e);}
     }
+    
     async function consultarDatos() {
         const eid = $('#estacionSelect').val(), fi = $('#fechaInicio').val(), ff = $('#fechaFin').val();
         if(!eid||!fi||!ff) return alert('Faltan datos');
@@ -240,6 +445,7 @@
         } catch(e){console.error(e);}
         finally{ $('#loading-cg').hide(); }
     }
+
     function generarPestanas(datos) {
         const keys = Object.keys(datos[0]);
         const kCon = keys.find(k=>k.toLowerCase()==='concepto')||'Concepto';
