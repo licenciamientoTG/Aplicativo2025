@@ -17,6 +17,7 @@ class Income{
     public IngresosModel $ingresosModel;
     public ValesRModel $valesR;
     public DocumentosModel $documentosModel;
+    Public FacturasModel $FacturasModel;
 
     /**
      * @param $twig
@@ -31,6 +32,7 @@ class Income{
         $this->valesR           = new ValesRModel;
         $this->documentosModel  = new DocumentosModel;
         $this->clientesModel    = new ClientesModel;
+        $this->FacturasModel    = new FacturasModel;
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -1955,6 +1957,8 @@ public function anomalies_client_tickets()
         $writer->save('php://output');
         exit;
     }
+
+
 // Vista principal
     public function conc_test() {
         echo $this->twig->render($this->route . 'test.html');
@@ -2208,4 +2212,204 @@ public function anomalies_client_tickets()
         }
         exit;
     }
+
+
+
+public function stamped_invoices(): void
+{
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+        return;
+    }
+
+    // ¿Es llamada Ajax (DataTables)?
+    $isAjax = (
+        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+    ) || isset($_GET['ajax']);
+
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $fromMonth  = $_GET['from']  ?? null; // formato esperado: YYYY-MM
+        $untilMonth = $_GET['until'] ?? null;
+
+        if ($fromMonth === null || $fromMonth === '' || $untilMonth === null || $untilMonth === '') {
+            echo json_encode([
+                'error' => 'Selecciona el mes inicial y final.'
+            ]);
+            return;
+        }
+
+        $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
+        $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
+
+        if (!$fromDateObj || !$untilDateObj) {
+            echo json_encode([
+                'error' => 'Formato de mes inválido.'
+            ]);
+            return;
+        }
+
+        // Aseguramos orden
+        if ($fromDateObj > $untilDateObj) {
+            [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj];
+            [$fromMonth, $untilMonth] = [$untilMonth, $fromMonth];
+        }
+
+        $fromDateObj->modify('first day of this month');
+        $untilDateObj->modify('last day of this month');
+
+        $fechaInicio = $fromDateObj->format('Y-m-d');
+        $fechaFin    = $untilDateObj->format('Y-m-d');
+
+        // Datos crudos del modelo: por estación + año + mes + conteo
+        $rows = $this->FacturasModel->get_concentrado_ventas($fechaInicio, $fechaFin);
+
+        // 1) Lista de meses en el rango
+        $months = [];
+        $period = new \DatePeriod(
+            (clone $fromDateObj)->modify('first day of this month'),
+            new \DateInterval('P1M'),
+            (clone $untilDateObj)->modify('first day of next month')
+        );
+
+        foreach ($period as $dt) {
+            $key   = $dt->format('Y-m'); // 2025-01
+            $label = $this->getMonthNameEs((int)$dt->format('n')) . ' ' . $dt->format('Y');
+            $months[$key] = [
+                'key'   => $key,
+                'label' => $label,
+            ];
+        }
+
+        // 2) Pivot por estación
+        $dataByStation = [];
+
+        foreach ($rows as $r) {
+            $stationKey = $r['CodigoEstacion'];
+
+            if (!isset($dataByStation[$stationKey])) {
+                $dataByStation[$stationKey] = [
+                    'CodigoEstacion' => $r['CodigoEstacion'],
+                    'Estacion'       => $r['Estacion'],
+                    'EstacionNombre' => $r['EstacionNombre'],
+                    'meses'          => [],
+                    'TotalPeriodo'   => 0,
+                ];
+
+                // Inicializar todos los meses del rango en 0
+                foreach ($months as $mKey => $mMeta) {
+                    $dataByStation[$stationKey]['meses'][$mKey] = 0;
+                }
+            }
+
+            $monthKey = sprintf('%04d-%02d', $r['Anio'], $r['Mes']);
+
+            if (isset($dataByStation[$stationKey]['meses'][$monthKey])) {
+                $conteo = (float)$r['Conteo'];
+                $dataByStation[$stationKey]['meses'][$monthKey] += $conteo;
+                $dataByStation[$stationKey]['TotalPeriodo']    += $conteo;
+            }
+        }
+
+        // 3) Formatear a 2 decimales (como string) para que la tabla no se desordene
+        foreach ($dataByStation as &$row) {
+            foreach ($row['meses'] as $mKey => $valor) {
+                $row['meses'][$mKey] = number_format((float)$valor, 2, '.', '');
+            }
+            $row['TotalPeriodo'] = number_format((float)$row['TotalPeriodo'], 2, '.', '');
+        }
+        unset($row);
+
+        // Array indexado para el JSON
+        $data = array_values($dataByStation);
+
+        echo json_encode([
+            'months' => array_values($months),
+            'data'   => $data,
+        ]);
+        return;
+    }
+
+    // *** Llamada normal (no Ajax): pintamos la vista con los inputs de meses ***
+    $from  = '2025-01';
+    $until = '2025-11';
+
+    echo $this->twig->render(
+        $this->route . 'stamped_invoices.html',
+        compact('from', 'until')
+    );
+}
+
+
+private function getMonthNameEs(int $month): string
+    {
+        $nombres = [
+            1 => 'Enero',
+            2 => 'Febrero',
+            3 => 'Marzo',
+            4 => 'Abril',
+            5 => 'Mayo',
+            6 => 'Junio',
+            7 => 'Julio',
+            8 => 'Agosto',
+            9 => 'Septiembre',
+            10 => 'Octubre',
+            11 => 'Noviembre',
+            12 => 'Diciembre'
+        ];
+
+        return $nombres[$month] ?? (string)$month;
+    }
+
+
+
+public function stamped_invoices_detail(): void
+{
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+        return;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    $codgas = $_GET['codgas'] ?? null;
+    $month  = $_GET['month']  ?? null; // formato esperado: YYYY-MM
+
+    // Ojo: codgas=0 es válido, así que no usamos !$codgas
+    if ($codgas === null || $codgas === '' || $month === null || $month === '') {
+        echo json_encode(['error' => 'Faltan parámetros codgas o month.']);
+        return;
+    }
+
+    $dt = \DateTime::createFromFormat('Y-m', $month);
+    if (!$dt) {
+        echo json_encode(['error' => 'Formato de mes inválido.']);
+        return;
+    }
+
+    $fromDateObj  = (clone $dt)->modify('first day of this month');
+    $untilDateObj = (clone $dt)->modify('last day of this month');
+
+    $fechaInicio = $fromDateObj->format('Y-m-d');
+    $fechaFin    = $untilDateObj->format('Y-m-d');
+
+    // Query de detalle basado en el CTE que me pasaste
+    $rows = $this->FacturasModel->get_detalle_facturas_estacion_mes($codgas, $fechaInicio, $fechaFin);
+
+    // Formatear campos numéricos a 2 decimales (string)
+    foreach ($rows as &$r) {
+        $r['Cantidad'] = number_format((float)($r['Cantidad'] ?? 0), 2, '.', '');
+        $r['Subtotal'] = number_format((float)($r['Subtotal'] ?? 0), 2, '.', '');
+        $r['IVA']      = number_format((float)($r['IVA'] ?? 0), 2, '.', '');
+        $r['IEPS']     = number_format((float)($r['IEPS'] ?? 0), 2, '.', '');
+        $r['Total']    = number_format((float)($r['Total'] ?? 0), 2, '.', '');
+    }
+    unset($r);
+
+    echo json_encode([
+        'data' => $rows
+    ]);
+}
+
+
 }
