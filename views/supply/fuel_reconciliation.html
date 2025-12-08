@@ -68,34 +68,26 @@ table.dataTable thead th, table.dataTable thead td {
         <h5 class="card-title mb-0">
             <i class="fas fa-filter"></i> Filtros de Búsqueda
         </h5>
-        <button onclick="regresarACompras()" class="btn btn-sm btn-secondary">
-            <i class="fas fa-arrow-left"></i> Regresar a Compras
-        </button>
+        <button onclick="regresarACompras()" class="btn btn-sm btn-secondary"><i class="fas fa-arrow-left"></i> Regresar a Compras</button>
     </div>
     <div class="card-body">
         <div class="row" style="align-items: flex-end;">
             <div class="col-2">
                 <label class="col-form-label-sm" for="from_reconciliation">Desde:</label>
-                <input type="date" class="form-control form-control-sm" name="from_reconciliation" id="from_reconciliation"
-                    value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                <input type="date" class="form-control form-control-sm" name="from_reconciliation" id="from_reconciliation" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
             </div>
             <div class="col-2">
                 <label class="col-form-label-sm" for="until_reconciliation">Hasta:</label>
-                <input type="date" class="form-control form-control-sm" name="until_reconciliation" id="until_reconciliation"
-                    value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                <input type="date" class="form-control form-control-sm" name="until_reconciliation" id="until_reconciliation" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
             </div>
 
             <!-- FILTRO DE ESTACIÓN -->
             <div class="col-2">
                 <label class="col-form-label-sm">Estación:</label>
-                <select class="selectpicker w-100" data-live-search="true"
-                        name="codgas_reconciliation" id="codgas_reconciliation">
+                <select class="selectpicker w-100" data-live-search="true" name="codgas_reconciliation" id="codgas_reconciliation">
                     <option value="0" selected>Todas las estaciones</option>
                     {% for station in stations %}
-                    <option value="{{ station.codgas }}"
-                            data-content="<span class='text-muted'>#{{ station.codgas }}</span> {{ station.den }}">
-                        #{{ station.codgas }} - {{ station.nomgas }}
-                    </option>
+                    <option value="{{ station.codgas }}" data-content="<span class='text-muted'>#{{ station.codgas }}</span> {{ station.den }}">#{{ station.codgas }} - {{ station.nomgas }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -103,8 +95,7 @@ table.dataTable thead th, table.dataTable thead td {
             <!-- FILTRO DE PROVEEDOR -->
             <div class="col-2">
                 <label class="col-form-label-sm">Proveedor:</label>
-                <select class="selectpicker w-100" data-live-search="true"
-                        name="proveedor_reconciliation" id="proveedor_reconciliation">
+                <select class="selectpicker w-100" data-live-search="true" name="proveedor_reconciliation" id="proveedor_reconciliation">
                     <option value="0" selected>Todos los proveedores</option>
                     <option value="TESORO">TESORO</option>
                     <option value="MGC">MGC</option>
@@ -276,7 +267,7 @@ table.dataTable thead th, table.dataTable thead td {
 
 
 <div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-dialog modal-dialog-centered modal-xl" >
         <div class="modal-content">
             <div class="modal-header">
                 <h1 class="modal-title fs-5" id="ModalinvoicePdfLabel"></h1>
@@ -292,8 +283,30 @@ table.dataTable thead th, table.dataTable thead td {
 <script src="{{ JS }}supply.js"></script>
 <script>
 // Inicializar selectpickers cuando carga la página
+// $(document).ready(function() {
+// });
+
+
 $(document).ready(function() {
+
     $('.selectpicker').selectpicker();
+
+    if (window.location.pathname.includes('fuel_reconciliation')) {
+        var filtrosGuardados = localStorage.getItem('reconciliation_filters');
+        if (filtrosGuardados) {
+            filtrosGuardados = JSON.parse(filtrosGuardados);
+            document.getElementById('from_reconciliation').value = filtrosGuardados.fromDate || '';
+            document.getElementById('until_reconciliation').value = filtrosGuardados.untilDate || '';
+            $('#codgas_reconciliation').val(filtrosGuardados.codgas || '0').selectpicker('refresh');
+            $('#proveedor_reconciliation').val(filtrosGuardados.proveedor || '0').selectpicker('refresh');
+            $('#company_reconciliation').val(filtrosGuardados.company || '0').selectpicker('refresh');
+
+            // Cargar datos automáticamente si hay filtros
+            if (filtrosGuardados.fromDate && filtrosGuardados.untilDate) {
+                loadReconciliationData();
+            }
+        }
+    }
 });
 </script>
 {% endblock %}

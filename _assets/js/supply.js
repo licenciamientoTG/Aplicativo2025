@@ -3374,24 +3374,7 @@ function confirmarRelacion() {
 }
 
 // Cargar filtros guardados al cargar la página de reconciliación
-$(document).ready(function() {
-    if (window.location.pathname.includes('fuel_reconciliation')) {
-        var filtrosGuardados = localStorage.getItem('reconciliation_filters');
-        if (filtrosGuardados) {
-            filtrosGuardados = JSON.parse(filtrosGuardados);
-            document.getElementById('from_reconciliation').value = filtrosGuardados.fromDate || '';
-            document.getElementById('until_reconciliation').value = filtrosGuardados.untilDate || '';
-            $('#codgas_reconciliation').val(filtrosGuardados.codgas || '0').selectpicker('refresh');
-            $('#proveedor_reconciliation').val(filtrosGuardados.proveedor || '0').selectpicker('refresh');
-            $('#company_reconciliation').val(filtrosGuardados.company || '0').selectpicker('refresh');
 
-            // Cargar datos automáticamente si hay filtros
-            if (filtrosGuardados.fromDate && filtrosGuardados.untilDate) {
-                loadReconciliationData();
-            }
-        }
-    }
-});
 
 
 async function ModalinvoicePdf(id, data){

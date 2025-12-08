@@ -17,6 +17,7 @@ class Income{
     public IngresosModel $ingresosModel;
     public ValesRModel $valesR;
     public DocumentosModel $documentosModel;
+    Public FacturasModel $FacturasModel;
 
     /**
      * @param $twig
@@ -31,6 +32,7 @@ class Income{
         $this->valesR           = new ValesRModel;
         $this->documentosModel  = new DocumentosModel;
         $this->clientesModel    = new ClientesModel;
+        $this->FacturasModel    = new FacturasModel;
         $this->twig             = $twig;
         $this->route            = 'views/income/';
 
@@ -1955,4 +1957,462 @@ public function anomalies_client_tickets()
         $writer->save('php://output');
         exit;
     }
+
+
+// Vista principal
+    public function conc_test() {
+        echo $this->twig->render($this->route . 'test.html');
+    }
+
+// =========================================================================
+    // 1. TESORERIA GENERAL
+    // =========================================================================
+    public function get_tesoreria_data() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $sql = "SELECT TOP 4000 Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
+                    FROM Tesoreria_0956 
+                    ORDER BY Fecha ASC";
+            
+            $stmt = $conn->query($sql);
+            $result = [];
+
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $fechaVal = $row['Fecha'];
+                if ($fechaVal instanceof DateTime) {
+                    $row['Fecha'] = $fechaVal->format('Y-m-d');
+                } else {
+                    $row['Fecha'] = substr((string)$fechaVal, 0, 10);
+                }
+
+                $row['Depositos'] = (float)$row['Depositos'];
+                $row['Retiros']   = (float)$row['Retiros'];
+                $row['Saldo']     = (float)$row['Saldo'];
+                
+                $result[] = $row;
+            }
+
+            echo json_encode(["status" => "success", "data" => $result]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+    // 2. TESORERIA BANORTE (Una pestaña por Afiliación)
+    // =========================================================================
+    public function get_tesoreria_banorte() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // 1. CATALOGO: Traer TODAS las afiliaciones de Banorte (ID 4)
+            // NO usamos DISTINCT de nombre, queremos cada afiliación individual.
+            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+                        FROM Tesoreria_afil A
+                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        WHERE A.entidad_id = 4 AND A.afiliacion IS NOT NULL AND LEN(A.afiliacion) > 0";
+            
+            $stmtAfil = $conn->query($sqlAfil);
+            $catalogo = [];
+            
+            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+                $catalogo[] = [
+                    'afiliacion' => trim($r['afiliacion']),
+                    'Estacion'   => $r['Estacion']
+                ];
+            }
+
+            // Ordenar catálogo por Nombre Estacion y luego Afiliación
+            usort($catalogo, function($a, $b) {
+                $res = strcmp($a['Estacion'], $b['Estacion']);
+                if ($res == 0) {
+                    return strcmp($a['afiliacion'], $b['afiliacion']);
+                }
+                return $res;
+            });
+
+            // 2. MOVIMIENTOS
+            $sqlMovs = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_0956 WHERE Depositos > 0";
+            $stmtMovs = $conn->query($sqlMovs);
+            
+            $agrupado = [];
+
+            while($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)){
+                $desc = trim($row['Descripcion']);
+                
+                if (stripos($desc, 'TOTAL GAS') !== 0 && stripos($desc, 'TotalGas') !== 0 && stripos($desc, 'DIAZ GAS') !== 0) {
+                    continue;
+                }
+
+                $fechaVal = $row['Fecha'];
+                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                $monto = (float)$row['Depositos'];
+
+                // Match
+                foreach ($catalogo as $afilItem) {
+                    $afiliacionStr = $afilItem['afiliacion']; // Ya viene sin espacios del while arriba
+                    
+                    if (strpos($desc, $afiliacionStr) !== false) {
+                        $key = $fecha . '_' . $afiliacionStr;
+
+                        if (!isset($agrupado[$key])) {
+                            $agrupado[$key] = [
+                                'Fecha'      => $fecha,
+                                'Afiliacion' => $afiliacionStr, // CLAVE PARA AGRUPAR EN JS
+                                'Estacion'   => $afilItem['Estacion'],
+                                'Total'      => 0
+                            ];
+                        }
+                        $agrupado[$key]['Total'] += $monto;
+                        break; 
+                    }
+                }
+            }
+
+            $resultado = array_values($agrupado);
+            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
+
+            echo json_encode([
+                "status" => "success", 
+                "data" => $resultado,
+                "catalog" => $catalogo // Enviamos la lista completa de objetos {afiliacion, Estacion}
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
+// =========================================================================
+    // 3. TESORERIA SANTANDER (Agrupado por Fecha y Afiliación)
+    // =========================================================================
+    public function get_tesoreria_santander() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // 1. CATALOGO: Traer TODAS las afiliaciones Santander (ID 1)
+            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+                        FROM Tesoreria_afil A
+                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        WHERE A.entidad_id = 1 AND A.afiliacion IS NOT NULL AND LEN(A.afiliacion) > 0";
+            
+            $stmtAfil = $conn->query($sqlAfil);
+            $catalogo = [];
+            
+            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+                $catalogo[] = [
+                    'afiliacion' => trim($r['afiliacion']),
+                    'Estacion'   => $r['Estacion']
+                ];
+            }
+
+            // Ordenar catálogo
+            usort($catalogo, function($a, $b) {
+                $res = strcmp($a['Estacion'], $b['Estacion']);
+                if ($res == 0) {
+                    return strcmp($a['afiliacion'], $b['afiliacion']);
+                }
+                return $res;
+            });
+
+            // 2. MOVIMIENTOS
+            $tablas = ['Tesoreria_5117', 'Tesoreria_8973'];
+            $movimientosRaw = [];
+
+            foreach ($tablas as $tabla) {
+                $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
+                if($check->fetchColumn() > 0) {
+                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tabla WHERE Depositos > 0";
+                    $stmt = $conn->query($sql);
+                    while($r = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $movimientosRaw[] = $r;
+                    }
+                }
+            }
+            
+            $agrupado = [];
+
+            foreach($movimientosRaw as $row){
+                $ref  = trim($row['Referencia']);
+                $desc = trim($row['Descripcion']);
+                $fechaVal = $row['Fecha'];
+                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                $monto = (float)$row['Depositos'];
+
+                // Match en Referencia
+                foreach ($catalogo as $afilItem) {
+                    $afiliacionStr = $afilItem['afiliacion'];
+                    
+                    if (stripos($ref, $afiliacionStr) !== false) {
+                        
+                        // --- CORRECCIÓN: AGRUPAR SOLO POR FECHA Y AFILIACIÓN ---
+                        $key = $fecha . '_' . $afiliacionStr;
+                        
+                        if (!isset($agrupado[$key])) {
+                            $agrupado[$key] = [
+                                'Fecha'      => $fecha,
+                                'Afiliacion' => $afiliacionStr,
+                                'Referencia' => $afiliacionStr, // Mostramos la afiliación como referencia común
+                                'Descripcion'=> $desc,          // Guardamos la primera descripción encontrada
+                                'Estacion'   => $afilItem['Estacion'],
+                                'Total'      => 0
+                            ];
+                        }
+                        
+                        // Sumamos el monto al día
+                        $agrupado[$key]['Total'] += $monto;
+                        
+                        break; 
+                    }
+                }
+            }
+
+            $resultado = array_values($agrupado);
+            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
+
+            echo json_encode([
+                "status" => "success", 
+                "data" => $resultado, 
+                "catalog" => $catalogo 
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
+
+
+public function stamped_invoices(): void
+{
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+        return;
+    }
+
+    // ¿Es llamada Ajax (DataTables)?
+    $isAjax = (
+        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+    ) || isset($_GET['ajax']);
+
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $fromMonth  = $_GET['from']  ?? null; // formato esperado: YYYY-MM
+        $untilMonth = $_GET['until'] ?? null;
+
+        if ($fromMonth === null || $fromMonth === '' || $untilMonth === null || $untilMonth === '') {
+            echo json_encode([
+                'error' => 'Selecciona el mes inicial y final.'
+            ]);
+            return;
+        }
+
+        $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
+        $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
+
+        if (!$fromDateObj || !$untilDateObj) {
+            echo json_encode([
+                'error' => 'Formato de mes inválido.'
+            ]);
+            return;
+        }
+
+        // Aseguramos orden
+        if ($fromDateObj > $untilDateObj) {
+            [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj];
+            [$fromMonth, $untilMonth] = [$untilMonth, $fromMonth];
+        }
+
+        $fromDateObj->modify('first day of this month');
+        $untilDateObj->modify('last day of this month');
+
+        $fechaInicio = $fromDateObj->format('Y-m-d');
+        $fechaFin    = $untilDateObj->format('Y-m-d');
+
+        // Datos crudos del modelo: por estación + año + mes + conteo
+        $rows = $this->FacturasModel->get_concentrado_ventas($fechaInicio, $fechaFin);
+
+        // 1) Lista de meses en el rango
+        $months = [];
+        $period = new \DatePeriod(
+            (clone $fromDateObj)->modify('first day of this month'),
+            new \DateInterval('P1M'),
+            (clone $untilDateObj)->modify('first day of next month')
+        );
+
+        foreach ($period as $dt) {
+            $key   = $dt->format('Y-m'); // 2025-01
+            $label = $this->getMonthNameEs((int)$dt->format('n')) . ' ' . $dt->format('Y');
+            $months[$key] = [
+                'key'   => $key,
+                'label' => $label,
+            ];
+        }
+
+        // 2) Pivot por estación
+        $dataByStation = [];
+
+        foreach ($rows as $r) {
+            $stationKey = $r['CodigoEstacion'];
+
+            if (!isset($dataByStation[$stationKey])) {
+                $dataByStation[$stationKey] = [
+                    'CodigoEstacion' => $r['CodigoEstacion'],
+                    'Estacion'       => $r['Estacion'],
+                    'EstacionNombre' => $r['EstacionNombre'],
+                    'meses'          => [],
+                    'TotalPeriodo'   => 0,
+                ];
+
+                // Inicializar todos los meses del rango en 0
+                foreach ($months as $mKey => $mMeta) {
+                    $dataByStation[$stationKey]['meses'][$mKey] = 0;
+                }
+            }
+
+            $monthKey = sprintf('%04d-%02d', $r['Anio'], $r['Mes']);
+
+            if (isset($dataByStation[$stationKey]['meses'][$monthKey])) {
+                $conteo = (float)$r['Conteo'];
+                $dataByStation[$stationKey]['meses'][$monthKey] += $conteo;
+                $dataByStation[$stationKey]['TotalPeriodo']    += $conteo;
+            }
+        }
+
+        // 3) Formatear a 2 decimales (como string) para que la tabla no se desordene
+        foreach ($dataByStation as &$row) {
+            foreach ($row['meses'] as $mKey => $valor) {
+                $row['meses'][$mKey] = number_format((float)$valor, 2, '.', '');
+            }
+            $row['TotalPeriodo'] = number_format((float)$row['TotalPeriodo'], 2, '.', '');
+        }
+        unset($row);
+
+        // Array indexado para el JSON
+        $data = array_values($dataByStation);
+
+        echo json_encode([
+            'months' => array_values($months),
+            'data'   => $data,
+        ]);
+        return;
+    }
+
+    // *** Llamada normal (no Ajax): pintamos la vista con los inputs de meses ***
+    $from  = '2025-01';
+    $until = '2025-11';
+
+    echo $this->twig->render(
+        $this->route . 'stamped_invoices.html',
+        compact('from', 'until')
+    );
+}
+
+
+private function getMonthNameEs(int $month): string
+    {
+        $nombres = [
+            1 => 'Enero',
+            2 => 'Febrero',
+            3 => 'Marzo',
+            4 => 'Abril',
+            5 => 'Mayo',
+            6 => 'Junio',
+            7 => 'Julio',
+            8 => 'Agosto',
+            9 => 'Septiembre',
+            10 => 'Octubre',
+            11 => 'Noviembre',
+            12 => 'Diciembre'
+        ];
+
+        return $nombres[$month] ?? (string)$month;
+    }
+
+
+
+public function stamped_invoices_detail(): void
+{
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+        return;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    $codgas = $_GET['codgas'] ?? null;
+    $month  = $_GET['month']  ?? null; // formato esperado: YYYY-MM
+
+    // Ojo: codgas=0 es válido, así que no usamos !$codgas
+    if ($codgas === null || $codgas === '' || $month === null || $month === '') {
+        echo json_encode(['error' => 'Faltan parámetros codgas o month.']);
+        return;
+    }
+
+    $dt = \DateTime::createFromFormat('Y-m', $month);
+    if (!$dt) {
+        echo json_encode(['error' => 'Formato de mes inválido.']);
+        return;
+    }
+
+    $fromDateObj  = (clone $dt)->modify('first day of this month');
+    $untilDateObj = (clone $dt)->modify('last day of this month');
+
+    $fechaInicio = $fromDateObj->format('Y-m-d');
+    $fechaFin    = $untilDateObj->format('Y-m-d');
+
+    // Query de detalle
+    $rows = $this->FacturasModel->get_detalle_facturas_estacion_mes($codgas, $fechaInicio, $fechaFin);
+
+    // Formatear campos numéricos
+    foreach ($rows as &$r) {
+        // Cantidad: Solo formato (generalmente no es monetario)
+        $r['Cantidad'] = number_format((float)($r['Cantidad'] ?? 0), 2, '.', ',');
+
+        // CORRECCIÓN: Dividir Subtotal, IVA, IEPS y Total entre 100 y formatear
+        $r['Subtotal'] = number_format((float)($r['Subtotal'] ?? 0) / 100, 2, '.', ',');
+        $r['IVA']      = number_format((float)($r['IVA'] ?? 0) / 100, 2, '.', ',');
+        $r['IEPS']     = number_format((float)($r['IEPS'] ?? 0) / 100, 2, '.', ',');
+        $r['Total']    = number_format((float)($r['Total'] ?? 0) / 100, 2, '.', ',');
+    }
+    unset($r);
+
+    echo json_encode([
+        'data' => $rows
+    ]);
+}
+
+
 }
