@@ -1637,6 +1637,10 @@ class DocumentosModel extends Model{
                 ORDER BY c.Fecha DESC, c.NumeroDocumento DESC
             ";
 
+            echo '<pre>';
+            var_dump($query);
+            die();
+
             return $this->sql->select($query, $params) ?: false;
     }
     /**
