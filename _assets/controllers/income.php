@@ -2393,16 +2393,19 @@ public function stamped_invoices_detail(): void
     $fechaInicio = $fromDateObj->format('Y-m-d');
     $fechaFin    = $untilDateObj->format('Y-m-d');
 
-    // Query de detalle basado en el CTE que me pasaste
+    // Query de detalle
     $rows = $this->FacturasModel->get_detalle_facturas_estacion_mes($codgas, $fechaInicio, $fechaFin);
 
-    // Formatear campos numéricos a 2 decimales (string)
+    // Formatear campos numéricos
     foreach ($rows as &$r) {
-        $r['Cantidad'] = number_format((float)($r['Cantidad'] ?? 0), 2, '.', '');
-        $r['Subtotal'] = number_format((float)($r['Subtotal'] ?? 0), 2, '.', '');
-        $r['IVA']      = number_format((float)($r['IVA'] ?? 0), 2, '.', '');
-        $r['IEPS']     = number_format((float)($r['IEPS'] ?? 0), 2, '.', '');
-        $r['Total']    = number_format((float)($r['Total'] ?? 0), 2, '.', '');
+        // Cantidad: Solo formato (generalmente no es monetario)
+        $r['Cantidad'] = number_format((float)($r['Cantidad'] ?? 0), 2, '.', ',');
+
+        // CORRECCIÓN: Dividir Subtotal, IVA, IEPS y Total entre 100 y formatear
+        $r['Subtotal'] = number_format((float)($r['Subtotal'] ?? 0) / 100, 2, '.', ',');
+        $r['IVA']      = number_format((float)($r['IVA'] ?? 0) / 100, 2, '.', ',');
+        $r['IEPS']     = number_format((float)($r['IEPS'] ?? 0) / 100, 2, '.', ',');
+        $r['Total']    = number_format((float)($r['Total'] ?? 0) / 100, 2, '.', ',');
     }
     unset($r);
 

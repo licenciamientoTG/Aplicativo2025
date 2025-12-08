@@ -52,11 +52,18 @@
         color: var(--primary-blue) !important;
         font-weight: 700 !important;
         border-bottom: 2px solid var(--accent-blue) !important;
+        white-space: nowrap;
     }
 
-    /* Alineación de botones de exportación */
+    /* --- ESTILOS DE TABLA DETALLE (MODAL) --- */
+    #tablaDetalle tbody td {
+        white-space: nowrap !important; /* Fuerza una sola linea siempre */
+        vertical-align: middle;
+    }
+
+    /* Alineación de botones de exportación y controles */
     .dt-buttons {
-        margin-bottom: 1rem;
+        margin-bottom: 0 !important; 
     }
     .dt-button {
         border-radius: 6px !important;
@@ -66,15 +73,24 @@
         margin-right: 5px !important;
     }
     .buttons-excel {
-        background-color: #198754 !important; /* Bootstrap Success Green */
+        background-color: #198754 !important; 
         color: white !important;
     }
     .buttons-pdf {
-        background-color: #dc3545 !important; /* Bootstrap Danger Red */
+        background-color: #dc3545 !important; 
         color: white !important;
     }
+    
+    /* Ajuste para el selector de longitud (Show entries) */
+    div.dataTables_wrapper div.dataTables_length select {
+        width: auto;
+        display: inline-block;
+        margin: 0 5px;
+        border-radius: 6px;
+        border: 1px solid #ced4da;
+        padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+    }
 
-    /* Celdas clickables */
     .col-mes {
         color: var(--accent-blue);
         font-weight: 600;
@@ -220,9 +236,12 @@
         var tablaDetalle = null;
         var currentMonths = [];
 
+        // Ajuste de columnas modal con delay
         $('#detalleModal').on('shown.bs.modal', function () {
             if (tablaDetalle) {
-                tablaDetalle.columns.adjust().draw();
+                setTimeout(function(){
+                    tablaDetalle.columns.adjust().draw();
+                }, 200); 
             }
         });
 
@@ -252,7 +271,6 @@
 
                     // Columnas base
                     var columns = [
-                        // AQUÍ: visible: false para ocultar Cód y Estación
                         { data: 'CodigoEstacion', title: 'Cód.', className: 'text-muted fw-bold', visible: false },
                         { data: 'Estacion',       title: 'Estación', visible: false },
                         { data: 'EstacionNombre', title: 'Nombre Estación' }
@@ -262,14 +280,18 @@
                         columns.push({
                             data: m.key,
                             title: m.label,
-                            className: 'col-mes text-end cursor-pointer' 
+                            className: 'col-mes text-end cursor-pointer',
+                            // Formato entero
+                            render: $.fn.dataTable.render.number(',', '.', 0)
                         });
                     });
 
                     columns.push({
                         data: 'TotalPeriodo',
                         title: 'Total Periodo',
-                        className: 'text-end fw-bold bg-light'
+                        className: 'text-end fw-bold bg-light',
+                        // Formato entero
+                        render: $.fn.dataTable.render.number(',', '.', 0)
                     });
 
                     var data = rawData.map(function (row) {
@@ -303,8 +325,18 @@
                         info: true,
                         ordering: true,
                         scrollX: true,
-                        // Configuración de botones de exportación
-                        dom: 'Bfrtip',
+                        
+                        // CAMBIO AQUÍ: DOM PARA MOSTRAR SELECTOR DE 100
+                        dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
+                        
+                        // Opciones de longitud
+                        lengthMenu: [
+                            [25, 50, 100, 200, -1],
+                            [25, 50, 100, 200, "Todos"]
+                        ],
+                        // Por defecto 100
+                        pageLength: 100,
+
                         buttons: [
                             {
                                 extend: 'excelHtml5',
@@ -391,10 +423,38 @@
                     var rows = resp.data || [];
 
                     var cols = [
-                        { data: 'FacturaFormateada', title: 'Factura', className: 'fw-bold' },
-                        { data: 'Fecha',             title: 'Fecha' },
+                        // Columna Factura con DIV forzado
+                        { 
+                            data: 'FacturaFormateada', 
+                            title: 'Factura', 
+                            className: 'fw-bold',
+                            render: function(data, type, row) {
+                                return '<div style="width: 140px; min-width: 140px;">' + (data ? data : '') + '</div>';
+                            }
+                        },
+                        { 
+                            data: 'Fecha', 
+                            title: 'Fecha',
+                            render: function(data) {
+                                return '<div style="width: 90px; min-width: 90px;">' + (data ? data : '') + '</div>';
+                            }
+                        },
                         { data: 'Vencimiento',       title: 'Vencimiento' },
-                        { data: 'Producto',          title: 'Producto' },
+                        
+                        // Producto con Render personalizado
+                        { 
+                            data: 'Producto',
+                            title: 'Producto',
+                            render: function (data, type, row) {
+                                if (type === 'display' && data && data.length > 40) {
+                                    var textoCorto = data.substr(0, 40) + '...';
+                                    var textoSeguro = data.replace(/"/g, '&quot;');
+                                    return '<span title="' + textoSeguro + '" style="cursor:help;">' + textoCorto + '</span>';
+                                }
+                                return data;
+                            }
+                        },
+
                         { data: 'Cantidad',          title: 'Cantidad', className: 'text-end' },
                         { data: 'Subtotal',          title: 'Subtotal', className: 'text-end' },
                         { data: 'IVA',               title: 'IVA', className: 'text-end' },
@@ -418,9 +478,17 @@
                         searching: false,
                         info: true,
                         ordering: true,
-                        scrollX: true,
-                        // Botones para el detalle
-                        dom: 'Bfrtip',
+                        scrollX: true, 
+                        autoWidth: false,
+                        
+                        dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
+                        
+                        lengthMenu: [
+                            [50, 100, 150, 200, 500, -1],
+                            [50, 100, 150, 200, 500, "Todas"]
+                        ],
+                        pageLength: 50,
+
                         buttons: [
                             {
                                 extend: 'excelHtml5',
