@@ -153,6 +153,9 @@ public function get_concentrado_ventas(string $fechaInicio, string $fechaFin): a
                 t1.fch BETWEEN (DATEDIFF(DAY, '1900-01-01', @FechaInicio) + 1) 
                            AND (DATEDIFF(DAY, '1900-01-01', @FechaFin) + 1)
                 AND t1.tip IN (1,3,4,6)
+                -- FILTRO AGREGADO: Solo contar si tiene UUID
+                AND t1.satuid IS NOT NULL 
+                AND LEN(t1.satuid) > 0
         )
         SELECT
             c.CodigoEstacion,
@@ -188,7 +191,6 @@ public function get_concentrado_ventas(string $fechaInicio, string $fechaFin): a
 }
 
 
-
 public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaInicio, string $fechaFin): array
 {
     try {
@@ -196,7 +198,7 @@ public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaI
 
         DECLARE @FechaInicio DATE = ?;
         DECLARE @FechaFin    DATE = ?;
-        DECLARE @CodGas      INT  = ?;  -- ajusta a tipo correcto si no es INT
+        DECLARE @CodGas      INT  = ?;
 
         ;WITH cab AS (
             SELECT
@@ -226,7 +228,8 @@ public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaI
                     ELSE 'Tipo ' + CAST(t1.tip AS varchar(10))
                 END AS TipoDocumento,
                 COALESCE(t5.den, t6.den, 'N/A') AS EntidadNombre,
-                COALESCE(t1.satuid, 'N/A') AS UUID
+                -- Aquí ya no necesitamos COALESCE 'N/A' porque filtramos los nulos abajo
+                t1.satuid AS UUID
             FROM SG12.dbo.DocumentosC AS t1 WITH (NOLOCK)
             LEFT JOIN SG12.dbo.Gasolineras AS t3 WITH (NOLOCK) ON t1.codgas = t3.cod
             LEFT JOIN SG12.dbo.Proveedores AS t5 WITH (NOLOCK) ON t1.codopr = t5.cod AND t1.tip = 1
@@ -236,6 +239,9 @@ public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaI
                            AND (DATEDIFF(DAY, '1900-01-01', @FechaFin) + 1)
               AND t1.tip IN (1,3,4,6)
               AND t1.codgas = @CodGas
+              -- FILTRO AGREGADO: Solo traer registros que tengan UUID
+              AND t1.satuid IS NOT NULL 
+              AND LEN(t1.satuid) > 0
         ),
         productos_agrupados AS (
             SELECT
@@ -305,7 +311,6 @@ public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaI
         return [];
     }
 }
-
 
 
 

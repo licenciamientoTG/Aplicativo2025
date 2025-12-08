@@ -61,6 +61,12 @@
         vertical-align: middle;
     }
 
+    /* Estilo para que el UUID se vea técnico */
+    .text-monospace {
+        font-family: 'Courier New', Courier, monospace;
+        letter-spacing: -0.5px;
+    }
+
     /* Alineación de botones de exportación y controles */
     .dt-buttons {
         margin-bottom: 0 !important; 
@@ -81,7 +87,6 @@
         color: white !important;
     }
     
-    /* Ajuste para el selector de longitud (Show entries) */
     div.dataTables_wrapper div.dataTables_length select {
         width: auto;
         display: inline-block;
@@ -140,7 +145,7 @@
         
         <div class="card-header-custom d-flex justify-content-between align-items-center">
             <div>
-                <h2 class="h4 mb-0 fw-bold" style="color: white;"><i class="fa fa-chart-line me-2"></i>Concentrado de Ventas, Compras, notas de credito</h2>
+                <h2 class="h4 mb-0 fw-bold" style="color: white;"><i class="fa fa-chart-line me-2"></i>Concentrado de Ventas</h2>
                 <small class="opacity-75">Visualización por meses y estaciones</small>
             </div>
         </div>
@@ -326,7 +331,6 @@
                         ordering: true,
                         scrollX: true,
                         
-                        // CAMBIO AQUÍ: DOM PARA MOSTRAR SELECTOR DE 100
                         dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
                         
                         // Opciones de longitud
@@ -462,7 +466,13 @@
                         { data: 'Total',             title: 'Total', className: 'text-end fw-bold text-success' },
                         { data: 'TipoDocumento',     title: 'Tipo Doc.' },
                         { data: 'EntidadNombre',     title: 'Cliente / Prov.' },
-                        { data: 'UUID',              title: 'UUID', visible: false }
+                        
+                        // UUID VISIBLE
+                        { 
+                            data: 'UUID', 
+                            title: 'UUID', 
+                            className: 'text-monospace small text-muted' // Estilo tecnico
+                        }
                     ];
 
                     if (tablaDetalle) {
