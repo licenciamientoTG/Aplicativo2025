@@ -452,9 +452,47 @@ function download_format(){
  }
 
 
- async function upload_file() {
+//  async function upload_file() {
+//     const fileInput = document.getElementById('file_to_upload');
+//     const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+
+//     if (!file) {
+//         toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
+//         return;
+//     }
+
+//     $('.heather_historic').addClass('loading');
+//     const formData = new FormData();
+//     formData.append('file_to_upload', file);
+
+//     try {
+//         const response = await fetch('/direction/import_file_historic_price', {
+//             method: 'POST',
+//             body: formData
+//         });
+
+//         const data = await response.json();
+//         console.log('Respuesta del servidor:', data);
+
+//         if (data == 1) {
+//             toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+//             setTimeout(() => {
+//                 window.location.reload();
+//             }, 2000);
+//         } else if (data == 2) {
+//             toastr.error('Documento sin Fecha.', '¡Error!', { timeOut: 3000 });
+//             $('.heather_historic').removeClass('loading');
+//             fileInput.value = '';
+//         }
+//     } catch (error) {
+//         console.error('Error al subir el archivo:', error);
+//         $('.heather_historic').removeClass('loading');
+//         toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+//     }
+// }
+async function upload_file() {
     const fileInput = document.getElementById('file_to_upload');
-    const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+    const file = fileInput.files[0];
 
     if (!file) {
         toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
@@ -466,7 +504,7 @@ function download_format(){
     formData.append('file_to_upload', file);
 
     try {
-        const response = await fetch('/direction/import_file_historic_price', {
+        const response = await fetch('/direction/import_file_historic_price_horizontal', {  // ← CAMBIO AQUÍ
             method: 'POST',
             body: formData
         });
@@ -474,20 +512,37 @@ function download_format(){
         const data = await response.json();
         console.log('Respuesta del servidor:', data);
 
-        if (data == 1) {
-            toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+        if (data.status === 1) {  // ← CAMBIO AQUÍ: ahora es un objeto
+            // Construir mensaje con detalles
+            let mensaje = 'Archivo importado exitosamente';
+            if (data.details) {
+                mensaje += `<br><strong>${data.details.total_registros}</strong> registros de <strong>${data.details.total_fechas}</strong> fechas`;
+            }
+            
+            toastr.success(mensaje, '¡Éxito!', { 
+                timeOut: 4000,
+                enableHtml: true  // ← Permitir HTML en el mensaje
+            });
+            
             setTimeout(() => {
                 window.location.reload();
             }, 2000);
-        } else if (data == 2) {
-            toastr.error('Documento sin Fecha.', '¡Error!', { timeOut: 3000 });
+            
+        } else {
+            // Mostrar el mensaje de error que viene del servidor
+            toastr.error(data.message || 'Error al importar el archivo', '¡Error!', { 
+                timeOut: 5000,
+                enableHtml: true
+            });
             $('.heather_historic').removeClass('loading');
             fileInput.value = '';
         }
+        
     } catch (error) {
         console.error('Error al subir el archivo:', error);
         $('.heather_historic').removeClass('loading');
         toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+        fileInput.value = '';
     }
 }
 

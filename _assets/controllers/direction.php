@@ -1108,6 +1108,118 @@ class Direction{
     }
 
 
+    public function import_file_historic_price_horizontal(){
+        if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file_to_upload'])) {
+            $response = ['status' => 0, 'message' => ''];
+            
+            try {
+                $file = $_FILES['file_to_upload']['tmp_name'];
+                $spreadsheet = IOFactory::load($file);
+                $sheet = $spreadsheet->getActiveSheet();
+                
+                $highestRow = (int) $sheet->getHighestRow();
+                $highestColumn = $sheet->getHighestColumn();
+                $highestColumnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($highestColumn);
+                
+                $data = [];
+                $registros_por_fecha = [];
+                
+                // Detectar columnas de fechas (G, K, O, S, W, AA...)
+                $columnas_fechas = [];
+                for ($col = 7; $col <= $highestColumnIndex; $col += 4) {
+                    $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
+                    $fecha_valor = $sheet->getCell("{$columnLetter}1")->getValue();
+                    
+                    if (!empty($fecha_valor)) {
+                        if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($sheet->getCell("{$columnLetter}1"))) {
+                            $fecha = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($fecha_valor)->format('Y-m-d');
+                        } else {
+                            $fecha = date('Y-m-d', strtotime($fecha_valor));
+                        }
+                        
+                        // Convertir índices de columna a letras
+                        $col_regular_letter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col - 2);
+                        $col_91oct_letter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col - 1);
+                        $col_diesel_letter = $columnLetter;
+                        
+                        $columnas_fechas[] = [
+                            'fecha' => $fecha,
+                            'col_regular' => $col_regular_letter,   // Letra: E, I, M, Q...
+                            'col_91oct' => $col_91oct_letter,       // Letra: F, J, N, R...
+                            'col_diesel' => $col_diesel_letter      // Letra: G, K, O, S...
+                        ];
+                        
+                        $registros_por_fecha[$fecha] = 0;
+                    }
+                }
+                
+                if (empty($columnas_fechas)) {
+                    throw new Exception("No se encontraron fechas válidas en el archivo");
+                }
+                
+                // Procesar filas
+                for ($row = 4; $row <= min($highestRow, 500); $row++) {
+                    $idGrupo = trim((string) $sheet->getCell("B{$row}")->getValue());
+                    $idPlaza = $sheet->getCell("C{$row}")->getValue();
+                    
+                    if ($idGrupo === '' || empty($idPlaza)) {
+                        continue;
+                    }
+                    
+                    foreach ($columnas_fechas as $col_info) {
+                        // Usar getCell() con coordenadas de letras (compatible con todas las versiones)
+                        $precios = [
+                            1 => $sheet->getCell($col_info['col_regular'] . $row)->getValue(),  // Regular
+                            2 => $sheet->getCell($col_info['col_91oct'] . $row)->getValue(),    // 91 Octanos
+                            3 => $sheet->getCell($col_info['col_diesel'] . $row)->getValue()    // Diesel
+                        ];
+                        
+                        foreach ($precios as $id_producto => $precio) {
+                            if ($precio !== NULL && $precio !== '' && $precio !== '-' && 
+                                is_numeric($precio) && $precio > 0) {
+                                
+                                $data[] = [
+                                    'fecha' => $col_info['fecha'],
+                                    'id_grupo' => $idGrupo,
+                                    'Id_plaza' => $idPlaza,
+                                    'precios' => round($precio, 2),
+                                    'id_productos' => $id_producto,
+                                ];
+                                
+                                $registros_por_fecha[$col_info['fecha']]++;
+                            }
+                        }
+                    }
+                }
+                
+                if (empty($data)) {
+                    throw new Exception("No se encontraron datos válidos para importar");
+                }
+                
+                if ($this->HistoricoPreciosModel->insert_prices_with_transaction($data)) {
+                    $response = [
+                        'status' => 1,
+                        'message' => "✓ Importación exitosa: " . count($data) . " registros",
+                        'details' => [
+                            'total_fechas' => count($columnas_fechas),
+                            'total_registros' => count($data),
+                            'fechas' => array_keys($registros_por_fecha),
+                            'registros_por_fecha' => $registros_por_fecha
+                        ]
+                    ];
+                } else {
+                    throw new Exception("Error al guardar en base de datos");
+                }
+                
+            } catch (Exception $e) {
+                $response = ['status' => 0, 'message' => "✗ Error: " . $e->getMessage()];
+            }
+            
+            echo json_encode($response);
+        }
+    }
+
+
     // public function import_file_historic_price(){
     //     if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file_to_upload'])) {
     //         $response =0;
