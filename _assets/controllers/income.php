@@ -2374,7 +2374,7 @@ public function get_tesoreria_amex() {
         $pass = "sahei1712";
 
         // ID DE LA ENTIDAD AFIRME (¡VERIFICAR ESTE ID EN TU BD!)
-        $id_afirme = 5; 
+        $id_afirme = 13; 
 
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
@@ -2403,8 +2403,8 @@ public function get_tesoreria_amex() {
             });
 
             // 2. OBTENER MOVIMIENTOS
-            // Filtro SQL: Traemos solo lo que diga "VENTA" en Concepto y tenga depósitos
-            // Esto cumple la primera condición: %VENTA%
+            // Filtro SQL: Traemos solo lo que diga "VENTA" en Descripcion y tenga depósitos
+            // NOTA: Usamos el campo 'Descripcion' tal como está en la BD SQL Server
             $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
                     FROM Tesoreria_Afirme 
                     WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%'";
@@ -2413,17 +2413,18 @@ public function get_tesoreria_amex() {
             $agrupado = [];
 
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                // Obtenemos el valor de la columna Descripcion
                 $descripcion = trim($row['Descripcion'] ?? '');
                 
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
-                // 3. MATCHING: Buscar la Afiliación dentro del Concepto
-                // Esto cumple la segunda condición: %ndeafiliacion%
+                // 3. MATCHING: Buscar la Afiliación dentro de la Descripción
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
                     
+                    // Buscamos si el número de afiliación existe dentro del texto de la descripción
                     if (stripos($descripcion, $afiliacionStr) !== false) {
                         
                         $key = $fecha . '_' . $afiliacionStr;
@@ -2433,13 +2434,13 @@ public function get_tesoreria_amex() {
                                 'Fecha'      => $fecha,
                                 'Afiliacion' => $afiliacionStr,
                                 'Referencia' => $row['Referencia'], 
-                                'Descripcion'=> $concepto, // Mostramos el concepto completo
+                                'Descripcion'=> $descripcion, // <--- CORREGIDO: Usamos la variable $descripcion
                                 'Estacion'   => $afilItem['Estacion'],
                                 'Total'      => 0
                             ];
                         }
                         $agrupado[$key]['Total'] += $monto;
-                        break; // Encontrado, pasar al siguiente movimiento
+                        break; // Encontrado, pasar al siguiente movimiento para no duplicar sumas
                     }
                 }
             }
