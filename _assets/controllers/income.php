@@ -2213,6 +2213,255 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    // =========================================================================
+    // 4. TESORERIA AMEX (Busca en 0956 y 5117)
+    // =========================================================================
+public function get_tesoreria_amex() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // 1. OBTENER CATÁLOGO AMEX (ID 3)
+            // Traemos todas las afiliaciones configuradas
+            $sqlAfil = "SELECT afiliacion, S.Nombre as Estacion 
+                        FROM Tesoreria_afil A
+                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        WHERE A.entidad_id = 3 AND LEN(ISNULL(A.afiliacion,'')) > 0";
+            
+            $stmtAfil = $conn->query($sqlAfil);
+            $catalogo = [];
+            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+                $catalogo[] = [
+                    'afiliacion' => trim($r['afiliacion']),
+                    'Estacion'   => $r['Estacion']
+                ];
+            }
+
+            // Ordenamos el catálogo para las pestañas
+            usort($catalogo, function($a, $b) {
+                $res = strcmp($a['Estacion'], $b['Estacion']);
+                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
+            });
+
+            $agrupado = [];
+
+            // -----------------------------------------------------------------
+            // FUENTE 1: Tesoreria_5117
+            // Regla: Concepto like '%afiliacion%'
+            // Sin filtrar por montos > 0, traemos todo lo que coincida.
+            // -----------------------------------------------------------------
+            try {
+                $sql5117 = "SELECT Fecha, Referencia, Descripcion, Concepto, Depositos FROM Tesoreria_5117";
+                $stmt = $conn->query($sql5117);
+                
+                while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                    $concepto = trim($row['Concepto'] ?? '');
+                    
+                    // Si el concepto está vacío, pasamos
+                    if ($concepto === '') continue;
+
+                    $monto = (float)$row['Depositos'];
+                    $fechaVal = $row['Fecha'];
+                    $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+
+                    // Buscar coincidencia exacta de texto (LIKE '%...%')
+                    foreach ($catalogo as $afilItem) {
+                        $afiliacionStr = $afilItem['afiliacion'];
+                        
+                        // stripos es equivalente a LIKE '%...%' insensible a mayúsculas
+                        if (stripos($concepto, $afiliacionStr) !== false) {
+                            
+                            $key = $fecha . '_' . $afiliacionStr;
+                            
+                            if (!isset($agrupado[$key])) {
+                                $agrupado[$key] = [
+                                    'Fecha'      => $fecha,
+                                    'Afiliacion' => $afiliacionStr,
+                                    'Referencia' => $row['Referencia'] ?? '',
+                                    'Descripcion'=> $concepto, // Mostramos el concepto donde se halló el dato
+                                    'Estacion'   => $afilItem['Estacion'],
+                                    'Total'      => 0
+                                ];
+                            }
+                            $agrupado[$key]['Total'] += $monto;
+                            break; // Ya encontramos a quién pertenece, siguiente fila
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                // Si la tabla no existe o falla algo específico de SQL, continuamos con la siguiente fuente
+            }
+
+            // -----------------------------------------------------------------
+            // FUENTE 2: Tesoreria_0956
+            // Regla: DescripcionDetallada like '%afiliacion%'
+            // -----------------------------------------------------------------
+            try {
+                $sql0956 = "SELECT Fecha, Referencia, Descripcion, DescripcionDetallada, Depositos 
+                            FROM Tesoreria_0956 WHERE DescripcionDetallada IS NOT NULL";
+                $stmt = $conn->query($sql0956);
+                
+                while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                    $detalle = trim($row['DescripcionDetallada']);
+                    if ($detalle === '') continue;
+
+                    $monto = (float)$row['Depositos'];
+                    $fechaVal = $row['Fecha'];
+                    $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+
+                    foreach ($catalogo as $afilItem) {
+                        $afiliacionStr = $afilItem['afiliacion'];
+                        
+                        if (stripos($detalle, $afiliacionStr) !== false) {
+                            $key = $fecha . '_' . $afiliacionStr;
+                            
+                            if (!isset($agrupado[$key])) {
+                                $agrupado[$key] = [
+                                    'Fecha'      => $fecha,
+                                    'Afiliacion' => $afiliacionStr,
+                                    'Referencia' => $row['Referencia'] ?? '',
+                                    'Descripcion'=> $detalle,
+                                    'Estacion'   => $afilItem['Estacion'],
+                                    'Total'      => 0
+                                ];
+                            }
+                            $agrupado[$key]['Total'] += $monto;
+                            break; 
+                        }
+                    }
+                }
+            } catch (Exception $e) {}
+
+            // Preparar respuesta
+            $resultado = array_values($agrupado);
+            
+            // Ordenar por fecha
+            usort($resultado, function($a, $b) {
+                return strcmp($a['Fecha'], $b['Fecha']);
+            });
+
+            echo json_encode([
+                "status" => "success", 
+                "data" => $resultado, 
+                "catalog" => $catalogo 
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
+
+    // =========================================================================
+    // 5. TESORERIA AFIRME (Busca 'VENTA' y Afiliación en Concepto)
+    // =========================================================================
+    public function get_tesoreria_afirme() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        // ID DE LA ENTIDAD AFIRME (¡VERIFICAR ESTE ID EN TU BD!)
+        $id_afirme = 5; 
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // 1. CATÁLOGO AFIRME
+            // Traemos todas las afiliaciones configuradas para Afirme
+            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+                        FROM Tesoreria_afil A
+                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        WHERE A.entidad_id = $id_afirme AND LEN(ISNULL(A.afiliacion,'')) > 0";
+            
+            $stmtAfil = $conn->query($sqlAfil);
+            $catalogo = [];
+            while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
+                $catalogo[] = [
+                    'afiliacion' => trim($r['afiliacion']),
+                    'Estacion'   => $r['Estacion']
+                ];
+            }
+
+            // Ordenar Catálogo para las pestañas
+            usort($catalogo, function($a, $b) {
+                $res = strcmp($a['Estacion'], $b['Estacion']);
+                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
+            });
+
+            // 2. OBTENER MOVIMIENTOS
+            // Filtro SQL: Traemos solo lo que diga "VENTA" en Concepto y tenga depósitos
+            // Esto cumple la primera condición: %VENTA%
+            $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
+                    FROM Tesoreria_Afirme 
+                    WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%'";
+            
+            $stmt = $conn->query($sql);
+            $agrupado = [];
+
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $descripcion = trim($row['Descripcion'] ?? '');
+                
+                $fechaVal = $row['Fecha'];
+                $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                $monto = (float)$row['Depositos'];
+
+                // 3. MATCHING: Buscar la Afiliación dentro del Concepto
+                // Esto cumple la segunda condición: %ndeafiliacion%
+                foreach ($catalogo as $afilItem) {
+                    $afiliacionStr = $afilItem['afiliacion'];
+                    
+                    if (stripos($descripcion, $afiliacionStr) !== false) {
+                        
+                        $key = $fecha . '_' . $afiliacionStr;
+                        
+                        if (!isset($agrupado[$key])) {
+                            $agrupado[$key] = [
+                                'Fecha'      => $fecha,
+                                'Afiliacion' => $afiliacionStr,
+                                'Referencia' => $row['Referencia'], 
+                                'Descripcion'=> $concepto, // Mostramos el concepto completo
+                                'Estacion'   => $afilItem['Estacion'],
+                                'Total'      => 0
+                            ];
+                        }
+                        $agrupado[$key]['Total'] += $monto;
+                        break; // Encontrado, pasar al siguiente movimiento
+                    }
+                }
+            }
+
+            $resultado = array_values($agrupado);
+            
+            // Ordenar por fecha
+            usort($resultado, function($a, $b) {
+                return strcmp($a['Fecha'], $b['Fecha']);
+            });
+
+            echo json_encode([
+                "status" => "success", 
+                "data" => $resultado, 
+                "catalog" => $catalogo 
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
+        }
+        exit;
+    }
 
 
 public function stamped_invoices(): void
