@@ -145,7 +145,7 @@
         
         <div class="card-header-custom d-flex justify-content-between align-items-center">
             <div>
-                <h2 class="h4 mb-0 fw-bold" style="color: white;"><i class="fa fa-chart-line me-2"></i>Concentrado de Ventas, Compras, Notas de credito</h2>
+                <h2 class="h4 mb-0 fw-bold" style="color: white;"><i class="fa fa-chart-line me-2"></i>Concentrado de Ventas</h2>
                 <small class="opacity-75">Visualización por meses y estaciones</small>
             </div>
         </div>
@@ -157,16 +157,14 @@
                     <label for="from" class="form-label fw-bold text-secondary">Desde (Mes Inicial)</label>
                     <div class="input-group">
                         <span class="input-group-text bg-white border-end-0"><i class="fa fa-calendar text-primary"></i></span>
-                        <input type="month" id="from" name="from" class="form-control border-start-0 ps-0"
-                               value="{{ from|default('2025-01') }}">
+                        <select id="from" name="from" class="form-select border-start-0 ps-2"></select>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <label for="until" class="form-label fw-bold text-secondary">Hasta (Mes Final)</label>
                     <div class="input-group">
                         <span class="input-group-text bg-white border-end-0"><i class="fa fa-calendar text-primary"></i></span>
-                        <input type="month" id="until" name="until" class="form-control border-start-0 ps-0"
-                               value="{{ until|default('2025-11') }}">
+                        <select id="until" name="until" class="form-select border-start-0 ps-2"></select>
                     </div>
                 </div>
                 <div class="col-md-3">
@@ -236,6 +234,42 @@
 
 <script>
     $(document).ready(function () {
+
+        // --- GENERADOR DE MESES EN ESPAÑOL ---
+        function llenarSelectorMeses(selectorId, defaultVal) {
+            const meses = [
+                "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+            ];
+            
+            // Rango de años: desde hace 3 años hasta el próximo año
+            const anioActual = new Date().getFullYear();
+            const anioInicio = anioActual - 3;
+            const anioFin = anioActual + 1;
+
+            let $select = $('#' + selectorId);
+            $select.empty();
+
+            // Generamos las opciones en orden descendente (más reciente primero)
+            for (let y = anioFin; y >= anioInicio; y--) {
+                for (let m = 11; m >= 0; m--) { // De Diciembre a Enero
+                    let mesNum = (m + 1).toString().padStart(2, '0');
+                    let valor = `${y}-${mesNum}`;
+                    let texto = `${meses[m]} ${y}`;
+                    $select.append(`<option value="${valor}">${texto}</option>`);
+                }
+            }
+
+            // Seleccionamos el valor por defecto si existe
+            if (defaultVal) {
+                $select.val(defaultVal);
+            }
+        }
+
+        // Inicializamos los selectores con los valores que vengan de Twig
+        llenarSelectorMeses('from', "{{ from|default('2025-01') }}");
+        llenarSelectorMeses('until', "{{ until|default('2025-11') }}");
+
 
         var tabla = null;
         var tablaDetalle = null;
@@ -309,7 +343,7 @@
                         var obj = {
                             CodigoEstacion: row.CodigoEstacion,
                             Estacion:       row.Estacion,
-                            EstacionNombre: nombreReal, // Usamos la variable modificada
+                            EstacionNombre: nombreReal,
                             TotalPeriodo:   row.TotalPeriodo
                         };
                         months.forEach(function (m) {
