@@ -490,7 +490,7 @@ function download_format(){
 //         toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
 //     }
 // }
- async function upload_file() {
+async function upload_file() {
     const fileInput = document.getElementById('file_to_upload');
     const file = fileInput.files[0];
 
