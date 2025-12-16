@@ -75,13 +75,11 @@ class PaymentRequestInvoicesModel extends Model
             SELECT 
                 t1.*,
                 t2.abr as estacion_nombre,
-                --t3.*,
                 t4.den as proveedor_nombre
             FROM [TG].[dbo].[payment_request_invoices] t1
             LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
             left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
             LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
-            --LEFT JOIN sg12.[dbo].[Proveedores] p ON t1.cod = p.cod
             WHERE t1.payment_request_id = ?
             ORDER BY t1.date_added DESC
         ';

@@ -1,7 +1,14 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Pagos Proveedores{% endblock %}
+{% block title %}Facturas de combustible{% endblock %}
 {% block mycss %}{% endblock %}
-{% block menutitle %}Pagos Proveedores{% endblock %}
+{% block menutitle %}
+<div style="display: flex;justify-content: space-between;" >
+
+    Facturas de combustible 
+    <a onclick="ReturnListPayment()" class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i> Regresar</a>
+
+</div>
+{% endblock %}
 {% block content %}
 
 <style>
@@ -164,6 +171,11 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     border: none !important;
     background: transparent !important;
 }
+
+.bg_send{
+    background-color: #beebc2 !important;
+    color: #000000 !important;
+}
 </style>
 
 <div class="row">
@@ -244,6 +256,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Vencimiento</th>
                             <th>Total</th>
                             <th>Producto</th>
+                            <th>Estatus</th>
                         </tr>
                     </thead>
                     <tbody></tbody>

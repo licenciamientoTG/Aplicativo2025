@@ -272,7 +272,7 @@
                             {% if authorization_status.tesoreria %}
                                 {% set progress = progress + 34 %}
                             {% endif %}
-                            
+
                             <div class="progress-bar bg-success progress-bar-striped {% if not authorization_status.completed %}progress-bar-animated{% endif %}" 
                                  role="progressbar" 
                                  style="width: {{ progress }}%"
@@ -345,6 +345,7 @@
                         <tr>
                             <th>Folio</th>
                             <th>Factura</th>
+                            <th>Proveedor</th>
                             <th>Estación</th>
                             <th class="text-end">Monto</th>
                             <th class="text-end">Pagado</th>
@@ -357,6 +358,7 @@
                         <tr>
                             <td>{{ invoice.folio }}</td>
                             <td>{{ invoice.invoice_number }}</td>
+                            <td>{{invoice.proveedor_nombre}}</td>
                             <td>{{ invoice.estacion_nombre }}</td>
                             <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
                             <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>

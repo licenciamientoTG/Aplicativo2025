@@ -391,31 +391,10 @@ async function payment_create_table(){
         return;
     }
 
-    // ✅ CREAR TABLA POR PRIMERA VEZ (USAR VARIABLE GLOBAL)
     console.log('🆕 Creando tabla por primera vez...');
 
-    // // ✅ CLONAR SOLO LA FILA ORIGINAL (sin .filter)
-    // const originalRow = $('#payment_create_table thead tr:not(.filter)').first().clone();
-    // $('#payment_create_table thead').prepend(originalRow.addClass('filter'));
-    
-    // // Agregar inputs a la fila de filtros
-    // $('#payment_create_table thead tr.filter th').each(function (index) {
-    //     var title = $(this).text().trim();
-    //     if (title && index > 0) {  // Omitir la primera columna (checkbox)
-    //         $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
-    //     } else if (index === 0) {
-    //         $(this).html('');  // Columna de checkbox sin filtro
-    //     }
-    // });
-    
-    // // Event listener para los filtros
-    // $('#payment_create_table thead tr.filter th input').on('keyup change', function () {
-    //     var index = $(this).parent().index();
-    //     var table = $('#payment_create_table').DataTable();
-    //     table.column(index).search(this.value).draw();
-    // });
     paymentTable = $('#payment_create_table').DataTable({
-        order: [[0, "asc"], [1, "desc"]],
+        order: [[0, "desc"], [1, "desc"]],
         colReorder: false,
         dom: '<"top"f>rt<"bottom"lip>',
         paging: true,
@@ -471,20 +450,17 @@ async function payment_create_table(){
                             onchange="updateSelectedCount()">
                     `;
                 }
-            },                      // Folio del documento
-            { data: 'nro' },                                // Folio del documento
-            { data: 'Factura' },                            // Texto extraído de @F:
-            { data: 'gasolinera', className: 'text-center text-nowrap' },                                // Folio del documento
-            { data: 'proveedor', className: 'text-center text-nowrap' },                          // Proveedor (t4.den)
-            { data: 'fecha', className: 'text-center text-nowrap' },                              // Fecha (fch - 1)
-            { data: 'fechaVto', className: 'text-center text-nowrap' },                           // Vencimiento (vto - 1)
-            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
+            },
+            { data: 'nro' },
+            { data: 'Factura' },
+            { data: 'gasolinera', className: 'text-center text-nowrap' },
+            { data: 'proveedor', className: 'text-center text-nowrap' },
+            { data: 'fecha', className: 'text-center text-nowrap' },
+            { data: 'fechaVto', className: 'text-center text-nowrap' },
+            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'producto', className: 'text-center text-nowrap' },
+            {data :'statusLabel'},
             {data: 'satuid',visible: false,searchable: false    }
-            // { data: 'Remision' },                           // Texto extraído de @R:
-            // { data: 'producto' },                           // Producto (t3.den)
-            // { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
-            // { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
         ],
          columnDefs: [
                     { orderable: false, targets: 0 }
@@ -493,13 +469,29 @@ async function payment_create_table(){
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
             if (data.en_orden_pago != 0) {
-                $(row).addClass('bg-warning text-white');
-            }
-            $(row).addClass('draggable-row');
-            $(row).attr('draggable', 'true');
-            $(row).data('rowData', data);
-            $(row).find('td:first').prepend('<i class="fas fa-grip-vertical drag-handle me-2" style="color: #6c757d; cursor: move;"></i>');
+                $(row).addClass('bg_send');
+            }else{
 
+                $(row).addClass('draggable-row');
+                $(row).attr('draggable', 'true');
+                $(row).data('rowData', data);
+                $(row).find('td:first').prepend('<i class="fas fa-grip-vertical drag-handle me-2" style="color: #6c757d; cursor: move;"></i>');
+
+                // data.fechaVto = 'YYYY-MM-DD'
+                const partes = data.fechaVto.split('-');
+                const fechaVto = new Date(
+                    parseInt(partes[0]),
+                    parseInt(partes[1]) - 1,
+                    parseInt(partes[2])
+                );
+
+                const hoy = new Date();
+                hoy.setHours(0, 0, 0, 0);
+
+                if (fechaVto < hoy) {
+                    $('td', row).eq(6).addClass('bg-danger text-white text-center');
+                }
+            }
         },
         initComplete: function () {
             const api = this.api();
@@ -3541,3 +3533,6 @@ $(document).ready(function() {
         updateSelectedCount();
     });
 });
+function ReturnListPayment(){
+    window.location.href = '/supply/payment_list';
+}

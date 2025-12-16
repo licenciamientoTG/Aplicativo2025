@@ -1298,6 +1298,14 @@ class Supply{
                 if (empty($row['satuid'])) {
                     continue; // Skip rows with empty 'nro'
                 }
+                $statusLabel = 'Pendiente';
+                if ($row['payment_status'] == '0') {
+                    $statusLabel = '<span class="badge bg-light text-dark">Enviado</span>';
+                } elseif ($row['payment_status'] == '1') {
+                    $statusLabel = '<span class="badge bg-secondary">Autorizado</span>';
+                } elseif ($row['payment_status'] == '2') {
+                    $statusLabel = '<span class="badge bg-success">Pagado</span>';
+                }
                 $data[] = array(
                     'nro'          => $row['nro'],
                     'Factura'      => $row['Factura'],
@@ -1322,6 +1330,7 @@ class Supply{
                     'codgas'       => $row['codgas'],
                     'en_orden_pago' => $row['en_orden_pago'],
                     'payment_status' => $row['payment_status'],
+                    'statusLabel'    => $statusLabel
                 );
             }
         }
@@ -3108,33 +3117,26 @@ function download_zip($zipFileName) {
      */
     function payment_detail($payment_id) {
         try {
-            // Obtener información del pago
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-            
             if (!$payment) {
                 setFlashMessage('error', 'Pago no encontrado');
                 redirect('/supply/payment_list');
                 return;
             }
-            
             $payment = $payment[0];
-            
             // Obtener facturas asociadas
             $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request($payment_id);
-            
             // Obtener autorizaciones
             $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
-            
             // Obtener estado de autorizaciones
             $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
-            
+
             // Crear array con información de cada autorización para el template
             $auth_info = [
                 'abastos' => null,
                 'admin_finanzas' => null,
                 'tesoreria' => null
             ];
-            
             if ($authorizations) {
                 foreach ($authorizations as $auth) {
                     if ($auth['permission_number'] == 66) {
@@ -3146,10 +3148,8 @@ function download_zip($zipFileName) {
                     }
                 }
             }
-            
             // Obtener resumen
             $summary = $this->paymentRequestInvoicesModel->get_payment_summary($payment_id);
-            
             echo $this->twig->render($this->route . 'payment_detail.html', compact(
                 'payment',
                 'invoices',
