@@ -1,0 +1,143 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Pagos Programados{% endblock %}
+{% block menutitle %}Pagos Programados{% endblock %}
+{% block content %}
+
+<style>
+table.dataTable thead th {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+}
+
+
+.auth-box {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.auth-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.auth-box i {
+    font-size: 16px;
+}
+
+/* Colores específicos */
+.auth-box.bg-success {
+    background-color: #28a745 !important;
+}
+
+.auth-box.bg-warning {
+    background-color: #ffc107 !important;
+}
+
+.auth-box.bg-info {
+    background-color: #17a2b8 !important;
+}
+
+.auth-box.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+/* Espaciado entre cuadros */
+.d-flex.gap-1 {
+    gap: 0.5rem;
+}
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row" style="align-items: flex-end;">
+            <div class="col-2">
+                <label class="col-form-label-sm" for="from_payments">Desde:</label>
+                <input type="date" class="form-control form-control-sm" id="from_payments" 
+                       value="{{ 'first day of this month'|date('Y-m-d') }}">
+            </div>
+            <div class="col-2">
+                <label class="col-form-label-sm" for="until_payments">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" id="until_payments" 
+                       value="{{ 'now'|date('Y-m-d') }}">
+            </div>
+            <div class="col-2">
+                <label class="col-form-label-sm">Estado:</label>
+                <select class="form-control form-control-sm" id="status_filter">
+                    <option value="all">Todos</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="authorized">Autorizado</option>
+                    <option value="paid">Pagado</option>
+                    <option value="cancelled">Cancelado</option>
+                </select>
+            </div>
+            <div class="col-2">
+                <button onclick="loadPaymentList()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">
+                    <i class="fas fa-search"></i> Buscar
+                </button>
+            </div>
+            <div class="col-2">
+                <a href="/supply/add_payment" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;">
+                    <i class="fas fa-plus"></i> Nuevo Pago
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Lista de Pagos Programados</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="payment_list_table" class="table table-hover table-sm w-100">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Fecha Solicitud</th>
+                    <th>Usuario</th>
+                    <th>Facturas</th>
+                    <th>Monto Total</th>
+                    <th>Pagado</th>
+                    <th>Estado</th>
+                    <th>Autorizaciones</th>
+                    <th>Comentario</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+
+let paymentListTable;
+
+$(document).ready(function() {
+    loadPaymentList();
+});
+
+$(document).ready(function() {
+    // Inicializar tooltips cuando se dibuja la tabla
+    $('#payment_list_table').on('draw.dt', function() {
+        $('[data-bs-toggle="tooltip"]').tooltip({
+            html: true,
+            placement: 'top'
+        });
+    });
+});
+
+
+</script>
+{% endblock %}

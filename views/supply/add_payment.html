@@ -1,10 +1,34 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Pagos Proveedores{% endblock %}
+{% block title %}Facturas de combustible{% endblock %}
 {% block mycss %}{% endblock %}
-{% block menutitle %}Pagos Proveedores{% endblock %}
+{% block menutitle %}
+<div style="display: flex;justify-content: space-between;" >
+
+    Facturas de combustible 
+    <a onclick="ReturnListPayment()" class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i> Regresar</a>
+
+</div>
+{% endblock %}
 {% block content %}
 
 <style>
+
+    .invoice-checkbox {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+#selectAllCheckbox {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+#selected-count {
+    font-size: 0.9rem;
+    padding: 0.5rem 1rem;
+}
 tr.group,
 tr.group:hover {
     background-color: rgba(0, 0, 0, 0.1) !important;
@@ -147,6 +171,11 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     border: none !important;
     background: transparent !important;
 }
+
+.bg_send{
+    background-color: #beebc2 !important;
+    color: #000000 !important;
+}
 </style>
 
 <div class="row">
@@ -186,7 +215,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <div class="col-2 ">
                         <label class="col-form-label-sm" for="until1">Proveedor: </label>
                         <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
-                            <option value="0" >Todos los proveedores</option>
+                            <option value="0"  selected>Todos los proveedores</option>
                             {% for proveedor in proveedores %}
                                 <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
                             {% endfor %}
@@ -200,25 +229,37 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             </div>
 
             <div class="card-body table-responsive" >
-                <table id="payment_create_table" class="table table-hover table-sm table-bordered table-striped w-100">
+                 <!-- Agregar esto justo antes de la tabla payment_create_table -->
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="addSelectedInvoices()">
+                            <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
+                            <i class="fas fa-check-square"></i> Seleccionar Todo
+                        </button>
+                    </div>
+                    <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
+                </div>
+
+                <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
                     <thead>
                         <tr>
-                            <th>Estacion</th>
+                            <th>
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                            </th>
                             <th>Folio</th>
                             <th>Factura</th>
-                            <th>Remisión</th>
-                            <th>Fecha</th>
-                            <th>Fecha Vto</th>
-                            <th>Producto</th>
+                            <th>Estación</th>
                             <th>Proveedor</th>
-                            <th>Volumen Recibido</th>
-                            <th>Cantidad</th>
-                            <th>Total Factura</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th>Total</th>
+                            <th>Producto</th>
+                            <th>Estatus</th>
                         </tr>
-                        </thead>
+                    </thead>
                     <tbody></tbody>
-                    <tfoot>
-                    </tfoot>
                 </table>
             </div>
         </div>
@@ -233,7 +274,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
             <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
                 <div style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
 
-                    <button id="generar-pago" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " disabled> <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
+                    <button id="generar-pago" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " > <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
                     <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;" class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i class="fas fa-trash me-2"></i>Limpiar Todo </button>
                 </div>
                  <div id="payment-summary" class="payment-summary" style="display: none;">
@@ -320,8 +361,20 @@ function setupDragAndDrop() {
 
 // Añadir elemento al pago
 function addToPayment(rowData) {
-    // Verificar si ya existe (usando el número de folio)
-    const exists = paymentItems.some(item => item.nro === rowData.nro);
+    console.log('rowData completo:', rowData);
+    console.log('UUID (satuid):', rowData.satuid);
+    
+    if (!rowData.satuid) {
+        alertify.error('⚠️ Esta factura no tiene UUID válido. No se puede agregar.');
+        return;
+    }
+    // Verificar si ya existe (usando nro en lugar de folio)
+    const exists = paymentItems.some(item => 
+        item.nro === rowData.nro && 
+        item.Factura === rowData.Factura && 
+        item.codgas === rowData.codgas
+    );
+    
     if (exists) {
         alertify.myAlert(
             `<div class="container text-center text-warning">
@@ -478,52 +531,6 @@ function addAllToPayment() {
     }
 }
 
-// Generar pago
-async function generatePayment() {
-    if (paymentItems.length === 0) {
-        alertify.myAlert(
-            `<div class="container text-center text-warning">
-                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">No hay documentos en el pago.</p>
-            </div>`
-        );
-        return;
-    }
-
-    // Preparar datos para enviar al servidorz
-    const paymentData = {
-        documentos: paymentItems,
-        total_documentos: paymentItems.length,
-        total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
-        fecha_pago: new Date().toISOString().split('T')[0]
-    };
-
-    // console.log('Datos del pago a generar:', paymentData);
-    try {
-        const response = await fetch('/supply/generate_payment', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(paymentData)
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-            alertify.success('Pago generado exitosamente');
-            paymentItems = [];
-            renderPaymentItems();
-            updatePaymentSummary();
-        } else {
-            alertify.error('Error al generar el pago: ' + (data.detail || 'Error desconocido'));
-        }
-    } catch (error) {
-        alertify.error('Error de conexión');
-        console.error(error);
-    }
-}
 
 // Inicializar sistema al cargar la página
 $(document).ready(function() {
