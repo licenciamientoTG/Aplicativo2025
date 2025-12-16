@@ -42,8 +42,8 @@ class PaymentRequestsModel extends Model
             // 2. Insertar facturas asociadas directamente
             $query2 = '
                 INSERT INTO [TG].[dbo].[payment_request_invoices] 
-                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date,uuid)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ';
 
             foreach ($documents as $doc) {
@@ -53,6 +53,7 @@ class PaymentRequestsModel extends Model
                 $amount = $doc['total_fac'] ?? 0;
                 $expiration_date = $doc['fechaVto'] ?? null;
                 $status = self::STATUS_PENDING; // 0
+                $uuid = $doc['satuid'] ?? null;
 
                 $params = [
                     $payment_id,
@@ -61,7 +62,8 @@ class PaymentRequestsModel extends Model
                     $codgas,
                     $amount,
                     $status,
-                    $expiration_date
+                    $expiration_date,
+                    $uuid
                 ];
 
                 if (!$this->sql->insert($query2, $params)) {

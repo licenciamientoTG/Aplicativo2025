@@ -1287,8 +1287,10 @@ class Supply{
         $response = curl_exec($ch);
         curl_close($ch);
         $apiData = json_decode($response, true);
-
         $data = [];
+        // echo '<pre>';
+        // var_dump($apiData);
+        // die();
 
 
         if (isset($apiData) && is_array($apiData)) {
@@ -1317,7 +1319,9 @@ class Supply{
                     'total_fac'    => $row['total_fac'],
                     'satuid'       => $row['satuid'],
                     'gasolinera'       => $row['gasolinera'],
-                    'codgas'       => $row['codgas']
+                    'codgas'       => $row['codgas'],
+                    'en_orden_pago' => $row['en_orden_pago'],
+                    'payment_status' => $row['payment_status'],
                 );
             }
         }

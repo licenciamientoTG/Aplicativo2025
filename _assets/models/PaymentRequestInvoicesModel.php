@@ -11,6 +11,7 @@ class PaymentRequestInvoicesModel extends Model
     public $status;
     public $date_added;
     public $expiration_date;
+    public $uuid;  // Agregar esta propiedad
 
     const STATUS_PENDING = 0;      // Pendiente de pago
     const STATUS_AUTHORIZED = 1;   // Autorizado pero no pagado
@@ -87,16 +88,17 @@ class PaymentRequestInvoicesModel extends Model
         return ($this->sql->select($query, [$payment_request_id])) ?: false;
     }
 
-    /**
-     * Inserta facturas en lote (bulk insert)
-     */
+
     public function insertInvoicesBulk($documents, $payment_request_id) : bool {
         try {
             $query = '
                 INSERT INTO [TG].[dbo].[payment_request_invoices] 
-                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date, uuid)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ';
+
+            $inserted = 0;
+            $skipped = 0;
 
             foreach ($documents as $doc) {
                 $folio = $doc['nro'] ?? null;
@@ -104,8 +106,22 @@ class PaymentRequestInvoicesModel extends Model
                 $codgas = $doc['codgas'] ?? null;
                 $amount = $doc['total_fac'] ?? 0;
                 $expiration_date = $doc['fechaVto'] ?? null;
+                $uuid = $doc['satuid'] ?? null;
 
-                // CAMBIO CLAVE: Usar STATUS_PENDING (0) en lugar de 'pending'
+                // Validación 1: UUID obligatorio
+                if (empty($uuid)) {
+                    error_log("Factura sin UUID (Folio: $folio, Factura: $invoice_number) - OMITIDA");
+                    $skipped++;
+                    continue;
+                }
+
+                // Validación 2: Verificar duplicados
+                if ($this->invoice_exists_by_uuid($uuid)) {
+                    error_log("UUID duplicado: $uuid (Factura: $invoice_number) - OMITIDA");
+                    $skipped++;
+                    continue;
+                }
+
                 $status = self::STATUS_PENDING;
 
                 $params = [
@@ -114,21 +130,52 @@ class PaymentRequestInvoicesModel extends Model
                     $invoice_number,
                     $codgas,
                     $amount,
-                    $status,  // Ahora es un número
-                    $expiration_date
+                    $status,
+                    $expiration_date,
+                    $uuid
                 ];
 
-                if (!$this->sql->insert($query, $params)) {
+                if ($this->sql->insert($query, $params)) {
+                    $inserted++;
+                } else {
+                    error_log("Error insertando factura UUID: $uuid");
                     return false;
                 }
             }
 
-            return true;
+            error_log("InsertInvoicesBulk completado: $inserted insertadas, $skipped omitidas");
+            return $inserted > 0;
 
         } catch (Exception $e) {
             error_log("Error en insertInvoicesBulk: " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Verifica si una factura ya existe en alguna orden de pago (por UUID)
+     */
+    public function invoice_exists_by_uuid($uuid) : bool {
+        $query = 'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ?';
+        $result = $this->sql->select($query, [$uuid]);
+        return !empty($result);
+    }
+
+    public function get_by_uuid($uuid) : array|false {
+        $query = '
+            SELECT 
+                pri.*,
+                pr.id as payment_request_id,
+                pr.status as payment_status,
+                pr.request_date,
+                u.Nombre as usuario_nombre
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            LEFT JOIN [TG].[dbo].[payment_requests] pr ON pri.payment_request_id = pr.id
+            LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
+            WHERE pri.uuid = ?
+        ';
+        $result = $this->sql->select($query, [$uuid]);
+        return $result ? $result[0] : false;
     }
 
     /**
@@ -226,9 +273,9 @@ class PaymentRequestInvoicesModel extends Model
                     FROM [TG].[dbo].[payment_request_invoices] 
                     WHERE id = ?
                 ";
-                
+
                 $current = $this->sql->select($query_select, [$invoice_id]);
-                
+
                 if (!$current) {
                     return [
                         'success' => false,

@@ -348,6 +348,13 @@ function setupDragAndDrop() {
 
 // Añadir elemento al pago
 function addToPayment(rowData) {
+    console.log('rowData completo:', rowData);
+    console.log('UUID (satuid):', rowData.satuid);
+    
+    if (!rowData.satuid) {
+        alertify.error('⚠️ Esta factura no tiene UUID válido. No se puede agregar.');
+        return;
+    }
     // Verificar si ya existe (usando nro en lugar de folio)
     const exists = paymentItems.some(item => 
         item.nro === rowData.nro && 
@@ -511,52 +518,6 @@ function addAllToPayment() {
     }
 }
 
-// Generar pago
-async function generatePayment() {
-    if (paymentItems.length === 0) {
-        alertify.myAlert(
-            `<div class="container text-center text-warning">
-                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">No hay documentos en el pago.</p>
-            </div>`
-        );
-        return;
-    }
-
-    // Preparar datos para enviar al servidorz
-    const paymentData = {
-        documentos: paymentItems,
-        total_documentos: paymentItems.length,
-        total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
-        fecha_pago: new Date().toISOString().split('T')[0]
-    };
-
-    // console.log('Datos del pago a generar:', paymentData);
-    try {
-        const response = await fetch('/supply/generate_payment', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(paymentData)
-        });
-
-        const data = await response.json();
-        if (response.ok) {
-            alertify.success('Pago generado exitosamente');
-            paymentItems = [];
-            renderPaymentItems();
-            updatePaymentSummary();
-        } else {
-            alertify.error('Error al generar el pago: ' + (data.detail || 'Error desconocido'));
-        }
-    } catch (error) {
-        alertify.error('Error de conexión');
-        console.error(error);
-    }
-}
 
 // Inicializar sistema al cargar la página
 $(document).ready(function() {

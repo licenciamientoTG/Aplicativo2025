@@ -324,232 +324,9 @@ $('.refresh_datatable_creProducts').on('click', function () {
 });
 
 
-async function payment_control_table(){
-    if ($.fn.DataTable.isDataTable('#payment_control_table')) {
-        $('#payment_control_table').DataTable().destroy();
-        $('#payment_control_table thead .filter').remove();
-    }
-    var fromDate = document.getElementById('from1').value;
-    var untilDate = document.getElementById('until1').value;
-    var codgas = document.getElementById('station_id1').value;
-    if(!codgas){
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Debe seleccionar una estación para continuar.</p>
-            </div>`
-        );
-        return;
-    }
 
-    $('#payment_control_table thead').prepend($('#payment_control_table thead tr').clone().addClass('filter'));
-    $('#payment_control_table thead tr.filter th').each(function (index) {
-        col = $('#payment_control_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#payment_control_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#payment_control_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let payment_control_table =$('#payment_control_table').DataTable({
-        order: [[1, "asc"], [2, "desc"]],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        // scrollY: '700px',
-        // scrollX: true,
-        // scrollCollapse: true,
-        paging: true,
-        pageLength: 100,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'codgas':codgas
-            },
-            url: '/supply/payment_control_table',
-            timeout: 600000, 
-            error: function() {
-                $('#payment_control_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
 
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            { data: 'check_box' },                                // Folio del documento
-            { data: 'gasolinera' },                                // Folio del documento
-            { data: 'nro' },                                // Folio del documento
-            { data: 'Factura' },                            // Texto extraído de @F:
-            { data: 'Remision' },                           // Texto extraído de @R:
-            { data: 'fecha' },                              // Fecha (fch - 1)
-            { data: 'fechaVto' },                           // Vencimiento (vto - 1)
-            { data: 'producto' },                           // Producto (t3.den)
-            { data: 'proveedor' },                          // Proveedor (t4.den)
-            { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
-            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
-            { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 4) },    // Precio unitario
-            { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },    // Monto
-            { data: 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto IIE
-            { data: 'iva8', render: $.fn.dataTable.render.number(',', '.', 2) },   // IVA 8%
-            { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },    // IVA Extra
-            { data: 'iva_total', render: $.fn.dataTable.render.number(',', '.', 2) }, // Total IVA
-            { data: 'servicio', render: $.fn.dataTable.render.number(',', '.', 2) },  // Servicio
-            { data: 'iva_servicio', render: $.fn.dataTable.render.number(',', '.', 2) }, // IVA Servicio
-            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
-            { data: 'satuid', className: 'text-nowrap' }   // UID SAT
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-            // $('td:eq(19)', row)
-            //   .addClass(cls)
-            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-        footerCallback: function (row, data, start, end, display) {
-        }
-    });
-}
-
-// async function payment_list_table(){
-//     if ($.fn.DataTable.isDataTable('#payment_list_table')) {
-//         $('#payment_list_table').DataTable().destroy();
-//         $('#payment_list_table thead .filter').remove();
-//     }
-//     var fromDate = document.getElementById('from1').value;
-//     var untilDate = document.getElementById('until1').value;
-//     if(!codgas){
-//         alertify.myAlert(
-//             `<div class="container text-center text-danger">
-//                 <h4 class="mt-2 text-danger">¡Error!</h4>
-//             </div>
-//             <div class="text-dark">
-//                 <p class="text-center">Debe seleccionar una estación para continuar.</p>
-//             </div>`
-//         );
-//         return;
-//     }
-
-//     $('#payment_list_table thead').prepend($('#payment_list_table thead tr').clone().addClass('filter'));
-//     $('#payment_list_table thead tr.filter th').each(function (index) {
-//         col = $('#payment_list_table thead th').length/2;
-//         if (index < col ) {
-//             var title = $(this).text(); // Obtiene el nombre de la columna
-//             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-//         }
-//     });
-//     $('#payment_list_table thead tr.filter th input').on('keyup change', function () {
-//         var index = $(this).parent().index(); // Obtiene el índice de la columna
-//         var table = $('#payment_list_table').DataTable(); // Obtiene la instancia de DataTable
-//         table
-//             .column(index)
-//             .search(this.value) // Busca el valor del input
-//             .draw(); // Redibuja la tabla
-//     });
-//     let payment_list_table =$('#payment_list_table').DataTable({
-//         order: [[1, "asc"], [2, "desc"]],
-//         colReorder: true,
-//         dom: '<"top"Bf>rt<"bottom"lip>',
-//         // scrollY: '700px',
-//         // scrollX: true,
-//         // scrollCollapse: true,
-//         paging: true,
-//         pageLength: 100,
-//         // processing: true,  // Agregar esta línea
-//         // serverSide: true,  // Agregar esta línea
-//         buttons: [
-//             {
-//                 extend: 'excel',
-//                 className: 'btn btn-success',
-//                 text: ' Excel'
-//             },
-//         ],
-//         ajax: {
-//             method: 'POST',
-//             data: {
-//                 'fromDate':fromDate,
-//                 'untilDate':untilDate,
-//                 'codgas':codgas
-//             },
-//             url: '/supply/  ',
-//             timeout: 600000, 
-//             error: function() {
-//                 $('#payment_list_table').waitMe('hide');
-//                 $('.table-responsive').removeClass('loading');
-
-//                 alertify.myAlert(
-//                     `<div class="container text-center text-danger">
-//                         <h4 class="mt-2 text-danger">¡Error!</h4>
-//                     </div>
-//                     <div class="text-dark">
-//                         <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-//                     </div>`
-//                 );
-
-//             },
-//             beforeSend: function() {
-//                 $('.table-responsive').addClass('loading');
-//             }
-//         },
-//         columns: [
-//             { data: 'check_box' },                                // Folio del documento
-//             { data: 'gasolinera' },                                // Folio del documento
-//             { data: 'nro' },                                // Folio del documento
-//             { data: 'Factura' },                            // Texto extraído de @F:
-//             { data: 'Remision' },                           // Texto extraído de @R:
-//         ],
-//         deferRender: true,
-//         // destroy: true, 
-//         createdRow: function (row, data, dataIndex) {
-//             var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-//             // $('td:eq(19)', row)
-//             //   .addClass(cls)
-//             //   .text(data.control); // muestra “12345 SI” o “12345 NO”
-//         },
-//         initComplete: function () {
-//             $('.table-responsive').removeClass('loading');
-//             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-//         },
-//         footerCallback: function (row, data, start, end, display) {
-//         }
-//     });
-// }
 
 function add_payment() {
     // Redirigir a la página de agregar pago
@@ -558,12 +335,23 @@ function add_payment() {
 let selectedInvoices = new Set();
 
 
+let paymentTable = null;
 
 async function payment_create_table(){
-    if ($.fn.DataTable.isDataTable('#payment_create_table')) {
-        $('#payment_create_table').DataTable().destroy();
-        $('#payment_create_table thead .filter').remove();
-    }
+    // console.log('🔍 Estado antes de limpiar:');
+    // console.log('- Filas filter:', $('#payment_create_table thead .filter').length);
+    // console.log('- Es DataTable:', $.fn.DataTable.isDataTable('#payment_create_table'));
+    
+    // // ✅ LIMPIEZA COMPLETA
+    // if ($.fn.DataTable.isDataTable('#payment_create_table')) {
+    //     const table = $('#payment_create_table').DataTable();
+    //     table.clear();
+    //     table.destroy(true); // 🔴 IMPORTANTE: true
+    //     // ✅ VERIFICAR LIMPIEZA
+    //     console.log('🧹 Después de limpiar:');
+    //     console.log('- Filas filter:', $('#payment_create_table thead .filter').length);
+    //     console.log('- Es DataTable:', $.fn.DataTable.isDataTable('#payment_create_table'));
+    // }
     var fromDate = document.getElementById('from1').value;
     var untilDate = document.getElementById('until1').value;
     var codgas = document.getElementById('station_id1').value;
@@ -580,26 +368,55 @@ async function payment_create_table(){
         );
         return;
     }
+     if (paymentTable) {
+        console.log('♻️ Recargando datos existentes...');
+        
+        // Actualizar parámetros AJAX
+        paymentTable.settings()[0].ajax.data = {
+            'fromDate': fromDate,
+            'untilDate': untilDate,
+            'codgas': codgas,
+            'company': company,
+            'proveedor': proveedor
+        };
+        
+        // Recargar datos
+        paymentTable.ajax.reload(function() {
+            // Este callback se ejecuta DESPUÉS de cargar los datos
+            $('.table-responsive').removeClass('loading');
+            updateSelectedCount();
+            console.log('✅ Datos recargados correctamente');
+        }, false); // false = mantener página actual
+        
+        return;
+    }
 
-    $('#payment_create_table thead').prepend($('#payment_create_table thead tr').clone().addClass('filter'));
-    $('#payment_create_table thead tr.filter th').each(function (index) {
-        col = $('#payment_create_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#payment_create_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#payment_create_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let payment_create_table =$('#payment_create_table').DataTable({
+    // ✅ CREAR TABLA POR PRIMERA VEZ (USAR VARIABLE GLOBAL)
+    console.log('🆕 Creando tabla por primera vez...');
+
+    // // ✅ CLONAR SOLO LA FILA ORIGINAL (sin .filter)
+    // const originalRow = $('#payment_create_table thead tr:not(.filter)').first().clone();
+    // $('#payment_create_table thead').prepend(originalRow.addClass('filter'));
+    
+    // // Agregar inputs a la fila de filtros
+    // $('#payment_create_table thead tr.filter th').each(function (index) {
+    //     var title = $(this).text().trim();
+    //     if (title && index > 0) {  // Omitir la primera columna (checkbox)
+    //         $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
+    //     } else if (index === 0) {
+    //         $(this).html('');  // Columna de checkbox sin filtro
+    //     }
+    // });
+    
+    // // Event listener para los filtros
+    // $('#payment_create_table thead tr.filter th input').on('keyup change', function () {
+    //     var index = $(this).parent().index();
+    //     var table = $('#payment_create_table').DataTable();
+    //     table.column(index).search(this.value).draw();
+    // });
+    paymentTable = $('#payment_create_table').DataTable({
         order: [[0, "asc"], [1, "desc"]],
-        colReorder: true,
+        colReorder: false,
         dom: '<"top"f>rt<"bottom"lip>',
         paging: true,
         pageLength: 100,
@@ -637,12 +454,22 @@ async function payment_create_table(){
                 data: null,
                 orderable: false,
                 className: 'text-center text-nowrap',
-                render: function(data, type, row) {
-                    return `<input type="checkbox" class="invoice-checkbox" 
-                            data-nro="${row.nro}" 
-                            data-factura="${row.Factura}" 
+                render: function (data, type, row) {
+
+                    // ❌ No mostrar checkbox si ya está en orden de pago
+                    if (row.en_orden_pago != 0) {
+                        return ''; // o un ícono si quieres
+                    }
+
+                    // ✅ Mostrar checkbox solo si es seleccionable
+                    return `
+                        <input type="checkbox"
+                            class="invoice-checkbox"
+                            data-nro="${row.nro}"
+                            data-factura="${row.Factura}"
                             data-codgas="${row.codgas}"
-                            onchange="updateSelectedCount()">`;
+                            onchange="updateSelectedCount()">
+                    `;
                 }
             },                      // Folio del documento
             { data: 'nro' },                                // Folio del documento
@@ -653,6 +480,7 @@ async function payment_create_table(){
             { data: 'fechaVto', className: 'text-center text-nowrap' },                           // Vencimiento (vto - 1)
             { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
             { data: 'producto', className: 'text-center text-nowrap' },
+            {data: 'satuid',visible: false,searchable: false    }
             // { data: 'Remision' },                           // Texto extraído de @R:
             // { data: 'producto' },                           // Producto (t3.den)
             // { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
@@ -664,6 +492,9 @@ async function payment_create_table(){
         deferRender: true,
         // destroy: true, 
         createdRow: function (row, data, dataIndex) {
+            if (data.en_orden_pago != 0) {
+                $(row).addClass('bg-warning text-white');
+            }
             $(row).addClass('draggable-row');
             $(row).attr('draggable', 'true');
             $(row).data('rowData', data);
@@ -671,9 +502,40 @@ async function payment_create_table(){
 
         },
         initComplete: function () {
+            const api = this.api();
+
+            if ($('#payment_create_table thead tr.filter').length === 0) {
+                const filterRow = $('<tr class="filter"></tr>');
+
+                $('#payment_create_table thead tr:first th').each(function (index) {
+                    filterRow.append(
+                        `<th>
+                            <input type="text"
+                                   class="form-control form-control-sm"
+                                   placeholder="${$(this).text().trim()}">
+                         </th>`
+                    );
+                });
+
+                $('#payment_create_table thead').prepend(filterRow);
+
+                // Eventos de búsqueda
+                $('#payment_create_table thead tr.filter input')
+                    .on('keyup change', function () {
+                        const colIndex = $(this).parent().index();
+                        api.column(colIndex).search(this.value).draw();
+                    });
+            }
             $('.table-responsive').removeClass('loading');
             setupDragAndDrop();
+            updateSelectedCount();
             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+            console.log('🎯 Filtros agregados:', $('#payment_create_table thead tr.filter').length);
+
+        },
+         drawCallback: function(settings) {
+            // ✅ ACTUALIZAR CONTADOR DESPUÉS DE CADA REDIBUJADO
+            updateSelectedCount();
         },
         footerCallback: function (row, data, start, end, display) {
         }
@@ -3411,8 +3273,15 @@ async function ModalinvoicePdf(id, data){
 
 // Mejorar generate_payment() existente
 async function generatePayment() {
-    if (paymentItems.length === 0) {
-        alertify.warning('No hay documentos en el pago');
+   if (paymentItems.length === 0) {
+        alertify.myAlert(
+            `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No hay documentos en el pago.</p>
+            </div>`
+        );
         return;
     }
     
@@ -3587,6 +3456,12 @@ async function addSelectedInvoices() {
         
         if (!rowData) {
             console.warn('No se pudo obtener datos de la fila');
+            return;
+        }
+         // ✅ VALIDAR UUID ANTES DE AGREGAR
+        if (!rowData.satuid || rowData.satuid.trim() === '') {
+            console.warn('Factura sin UUID:', rowData.nro, rowData.Factura);
+            sinUuidCount++;
             return;
         }
         
