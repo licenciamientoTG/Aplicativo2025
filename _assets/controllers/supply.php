@@ -657,7 +657,7 @@ class Supply{
 
         // Fechas
         $yesterday = (new DateTime('yesterday'))->format('Y-m-d');
-        $tenDaysAgo = (new DateTime('-10 days'))->format('Y-m-d');
+        $tenDaysAgo = (new DateTime('-40 days'))->format('Y-m-d');
 
         // Datos iniciales
         $companies = $this->estacionesModel->getCompanies();
