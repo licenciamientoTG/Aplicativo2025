@@ -5,241 +5,520 @@
 
 {% block content %}
 <style>
-    .table-responsive thead.sticky-top th {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 5 !important;
-        box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1);
+    :root {
+        --primary-color: #2c3e50;
+        --secondary-color: #34495e;
+        --accent-color: #3498db;
+        --accent-hover: #2980b9;
+        --bg-light: #f8f9fa;
+        --text-muted: #6c757d;
+        --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.08);
+        --border-radius: 12px;
     }
-    .thead-dark.sticky-top th { background-color: #343a40 !important; color: #fff; }
-    .thead-light.sticky-top th { background-color: #e9ecef !important; color: #495057; }
+
+    body {
+        background-color: #f4f6f9;
+        font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    /* --- ENCABEZADO --- */
+    .page-header-container {
+        text-align: center;
+        margin-bottom: 2.5rem;
+        position: relative;
+    }
+
+    .page-title {
+        font-size: 1.8rem;
+        font-weight: 800;
+        color: var(--primary-color);
+        margin-bottom: 1.5rem;
+        letter-spacing: -0.5px;
+    }
+
+.date-widget-wrapper {
+    position: relative;
+    display: inline-block;
+    z-index: 2000;
+}
+
+    /* El botón/pill principal que parece un input */
+    .date-widget-trigger {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 50px;
+        padding: 8px 10px 8px 25px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        box-shadow: var(--shadow-soft);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        min-width: 320px;
+        justify-content: space-between;
+    }
+
+    .date-widget-trigger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+        border-color: var(--accent-color);
+    }
+
+    .date-text-group {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1.2;
+    }
+
+    .date-label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #b0b0b0;
+        letter-spacing: 1px;
+    }
+
+    .date-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--primary-color);
+    }
+
+    .btn-widget-search {
+        background-color: var(--accent-color);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 42px;
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+        box-shadow: 0 2px 5px rgba(52, 152, 219, 0.4);
+    }
+
+    .btn-widget-search:hover {
+        background-color: var(--accent-hover);
+        transform: scale(1.05);
+    }
+
+    /* El popup desplegable (Calendario Custom) */
+    .date-widget-dropdown {
+        position: absolute;
+        top: 110%; /* Debajo del trigger */
+        left: 50%;
+        transform: translateX(-50%);
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        padding: 20px;
+        width: 300px;
+        display: none; /* Oculto por defecto */
+        border: 1px solid #f0f0f0;
+        animation: fadeIn 0.2s ease-out;
+    }
+
+    .date-widget-dropdown.active {
+        display: block;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+    /* Año Selector dentro del dropdown */
+    .widget-year-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .btn-year-nav {
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 1.2rem;
+        padding: 5px;
+    }
+    .btn-year-nav:hover { color: var(--accent-color); }
+
+    .widget-year-display {
+        font-size: 1.2rem;
+        font-weight: 800;
+        color: var(--primary-color);
+    }
+
+    /* Grid de Meses */
+    .widget-months-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+    }
+
+    .month-option {
+        padding: 8px 5px;
+        text-align: center;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--secondary-color);
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+
+    .month-option:hover {
+        background-color: #f0f7fc;
+        color: var(--accent-color);
+    }
+
+    .month-option.selected {
+        background-color: var(--accent-color);
+        color: white;
+        box-shadow: 0 2px 5px rgba(52, 152, 219, 0.4);
+    }
+
+    /* --- TABS ESTILIZADOS (Manteniendo tu estilo) --- */
+    .nav-pills-custom {
+        background: #fff;
+        padding: 0.5rem;
+        border-radius: 50rem;
+        box-shadow: var(--shadow-soft);
+        display: inline-flex;
+        margin-bottom: 2rem !important;
+    }
+    .nav-pills-custom .nav-link {
+        color: var(--text-muted);
+        font-weight: 600;
+        border-radius: 50rem;
+        padding: 0.6rem 2.5rem;
+        transition: all 0.3s;
+    }
+    .nav-pills-custom .nav-link.active {
+        background-color: var(--primary-color);
+        color: #fff;
+        box-shadow: 0 4px 10px rgba(44, 62, 80, 0.3);
+    }
+
+    /* --- TABS SECUNDARIOS --- */
+    .nav-tabs-banks {
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 1.5rem;
+        justify-content: center;
+    }
+    .nav-tabs-banks .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: var(--text-muted);
+        font-weight: 600;
+        padding: 10px 20px;
+        transition: color 0.3s, border-color 0.3s;
+        background: transparent;
+    }
+    .nav-tabs-banks .nav-link:hover { color: var(--primary-color); }
+    .nav-tabs-banks .nav-link.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+    .nav-tabs-banks .nav-link.text-danger.active { border-bottom-color: #dc3545; color: #dc3545; }
+    .nav-tabs-banks .nav-link.text-primary.active { border-bottom-color: #0d6efd; color: #0d6efd; }
+    .nav-tabs-banks .nav-link.text-success.active { border-bottom-color: #198754; color: #198754; }
+
+    /* --- UTILS --- */
+    .content-card {
+        background: #fff;
+        border-radius: var(--border-radius);
+        box-shadow: var(--shadow-soft);
+        border: none;
+        overflow: hidden;
+    }
+    .content-card .card-header { background-color: #fff; border-bottom: 1px solid #f0f0f0; padding: 1rem 1.5rem; }
+    
+    .table-custom { font-size: 0.9rem; }
+    .table-custom thead th {
+        background-color: var(--secondary-color);
+        color: #fff;
+        border: none;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        padding: 12px 15px;
+    }
+    .table-custom tbody td { padding: 12px 15px; vertical-align: middle; border-top: 1px solid #f1f1f1; }
+    .font-numeric { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
+
+    /* Overlay invisible para cerrar el dropdown al dar click fuera */
+    .dropdown-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99; display: none;
+    }
+    .dropdown-overlay.active { display: block; }
+
 </style>
 
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h2 class="text-dark">Conciliación de Movimientos</h2>
-            <p class="text-muted">Ventas (ControlGas) vs Tesorería (SQL Server).</p>
+<div class="container-fluid pb-5">
+
+    <div class="dropdown-overlay" id="pickerOverlay" onclick="closeDatePicker()"></div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-12">
+            <div class="page-header-container">
+                <h2 class="page-title">Conciliación de Movimientos</h2>
+                
+                <div class="date-widget-wrapper">
+                    <input type="hidden" id="hiddenYear">
+                    <input type="hidden" id="hiddenMonth">
+
+                    <div class="date-widget-trigger" onclick="toggleDatePicker()">
+                        <div class="d-flex align-items-center">
+                         <i class="far fa-calendar-alt text-primary" style="font-size: 1.5rem; margin-right: 20px;"></i>
+                            <div class="date-text-group">
+                                <span class="date-label">Periodo Seleccionado</span>
+                                <span class="date-value" id="displayFullDate">Cargando...</span>
+                            </div>
+                        </div>
+                        <div class="btn-widget-search" onclick="event.stopPropagation(); globalRefresh();" title="Cargar Datos">
+                            <i class="fas fa-search"></i>
+                        </div>
+                    </div>
+
+                    <div class="date-widget-dropdown" id="dateDropdown">
+                        <div class="widget-year-header">
+                            <button class="btn-year-nav" onclick="changeWidgetYear(-1)"><i class="fas fa-chevron-left"></i></button>
+                            <span class="widget-year-display" id="widgetYearDisplay">2025</span>
+                            <button class="btn-year-nav" onclick="changeWidgetYear(1)"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                        <div class="widget-months-grid">
+                            <div class="month-option" onclick="selectWidgetMonth('01', this)">Ene</div>
+                            <div class="month-option" onclick="selectWidgetMonth('02', this)">Feb</div>
+                            <div class="month-option" onclick="selectWidgetMonth('03', this)">Mar</div>
+                            <div class="month-option" onclick="selectWidgetMonth('04', this)">Abr</div>
+                            <div class="month-option" onclick="selectWidgetMonth('05', this)">May</div>
+                            <div class="month-option" onclick="selectWidgetMonth('06', this)">Jun</div>
+                            <div class="month-option" onclick="selectWidgetMonth('07', this)">Jul</div>
+                            <div class="month-option" onclick="selectWidgetMonth('08', this)">Ago</div>
+                            <div class="month-option" onclick="selectWidgetMonth('09', this)">Sep</div>
+                            <div class="month-option" onclick="selectWidgetMonth('10', this)">Oct</div>
+                            <div class="month-option" onclick="selectWidgetMonth('11', this)">Nov</div>
+                            <div class="month-option" onclick="selectWidgetMonth('12', this)">Dic</div>
+                        </div>
+                    </div>
+                </div>
+                </div>
         </div>
     </div>
 
-    <ul class="nav nav-pills mb-4 shadow-sm bg-white p-2 rounded" id="mainTab" role="tablist">
-        <li class="nav-item">
-            <a class="nav-link active font-weight-bold" id="controlgas-tab" data-toggle="pill" href="#pills-controlgas" role="tab">
-                <i class="fas fa-gas-pump"></i> ControlGas (Ventas)
-            </a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link font-weight-bold" id="tesoreria-tab" data-toggle="pill" href="#pills-tesoreria" role="tab" onclick="initTesoreria()">
-                <i class="fas fa-university"></i> Tesorería (Banco)
-            </a>
-        </li>
-    </ul>
+    <div class="text-center">
+        <ul class="nav nav-pills nav-pills-custom" id="mainTab" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="controlgas-tab" data-toggle="pill" href="#pills-controlgas" role="tab">
+                    <i class="fas fa-gas-pump mr-2"></i> Ventas (ControlGas)
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="tesoreria-tab" data-toggle="pill" href="#pills-tesoreria" role="tab" onclick="initTesoreria()">
+                    <i class="fas fa-university mr-2"></i> Tesorería (Banco)
+                </a>
+            </li>
+        </ul>
+    </div>
 
     <div class="tab-content" id="pills-tabContent">
         
         <div class="tab-pane fade show active" id="pills-controlgas" role="tabpanel">
-            <div class="card shadow mb-3 border-left-primary">
-                <div class="card-body py-3">
-                    <div class="row align-items-end">
-                        <div class="col-md-4 mb-2">
-                            <label class="fw-bold mb-1">Gasolinera:</label>
-                            <select id="estacionSelect" class="form-control form-control-sm"><option value="">Cargando...</option></select>
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="fw-bold mb-1">Fecha Inicial:</label>
-                            <input type="date" id="fechaInicio" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="fw-bold mb-1">Fecha Final:</label>
-                            <input type="date" id="fechaFin" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-2 mb-2">
-                            <button onclick="consultarDatos()" class="btn btn-primary btn-sm w-100"><i class="fas fa-search"></i> Buscar</button>
+            <div class="row justify-content-center">
+                <div class="col-lg-8">
+                    
+                    <div class="content-card mb-4">
+                        <div class="card-body py-4 px-5">
+                            <div class="text-center">
+                                <label class="text-muted text-uppercase small font-weight-bold mb-3 d-block">
+                                    Seleccionar Estación
+                                </label>
+                                <select id="estacionSelect" class="form-control form-control-lg text-center" onchange="consultarDatos()" 
+                                        style="border-radius: 50px; background-color: #f1f3f5; border: 1px solid #ced4da;">
+                                    <option value="">-- Seleccione una opción --</option>
+                                </select>
+                                <small class="text-muted mt-3 d-block">
+                                    <i class="fas fa-info-circle mr-1"></i> Datos del periodo seleccionado arriba.
+                                </small>
+                            </div>
                         </div>
                     </div>
+
+                    <div id="loading-cg" class="text-center py-5" style="display:none;">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <p class="mt-2 text-primary font-weight-bold">Consultando información...</p>
+                    </div>
+
+                    <div class="content-card" id="card-resultados" style="display:none;">
+                        <div class="card-header bg-light">
+                            <ul class="nav nav-tabs card-header-tabs m-0" id="tabsConceptos"></ul>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="tab-content p-3" id="contenidoConceptos"></div>
+                        </div>
+                    </div>
+
                 </div>
-            </div>
-            <div id="loading-cg" class="alert alert-info py-2" style="display:none;"><i class="fas fa-spinner fa-spin"></i> Procesando...</div>
-            <div class="card shadow" id="card-resultados" style="display:none;">
-                <div class="card-header bg-light p-2"><ul class="nav nav-tabs card-header-tabs m-0" id="tabsConceptos"></ul></div>
-                <div class="card-body p-3"><div class="tab-content" id="contenidoConceptos"></div></div>
             </div>
         </div>
 
         <div class="tab-pane fade" id="pills-tesoreria" role="tabpanel">
-            
-            <ul class="nav nav-tabs mb-3" id="subTabsTesoreria">
-                <li class="nav-item">
-                    <a class="nav-link active" data-toggle="tab" href="#sub-general" onclick="cargarDatosTesoreriaBD()">
-                        <i class="fas fa-list"></i> General
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link text-danger fw-bold" data-toggle="tab" href="#sub-banorte" onclick="cargarBanorte()">
-                        <i class="fas fa-credit-card"></i> Acumulado Banorte
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link text-danger fw-bold" data-toggle="tab" href="#sub-santander" onclick="cargarSantander()">
-                        <i class="fas fa-university"></i> Acumulado Santander
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link text-primary fw-bold" data-toggle="tab" href="#sub-amex" onclick="cargarAmex()">
-                        <i class="fab fa-cc-amex"></i> Acumulado Amex
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link text-success fw-bold" data-toggle="tab" href="#sub-afirme" onclick="cargarAfirme()">
-                        <i class="fas fa-money-check-alt"></i> Acumulado Afirme
-                    </a>
-                </li>
-            </ul>
+            <div class="row justify-content-center">
+                <div class="col-lg-12">
+                    <ul class="nav nav-tabs nav-tabs-banks" id="subTabsTesoreria">
+                        <li class="nav-item"><a class="nav-link active mx-2" data-toggle="tab" href="#sub-general" onclick="cargarDatosTesoreriaBD()"><i class="fas fa-list mr-1"></i> General (0956)</a></li>
+                        <li class="nav-item"><a class="nav-link mx-2 text-danger" data-toggle="tab" href="#sub-banorte" onclick="cargarBanorte()"><i class="fas fa-credit-card mr-1"></i> Banorte</a></li>
+                        <li class="nav-item"><a class="nav-link mx-2 text-danger" data-toggle="tab" href="#sub-santander" onclick="cargarSantander()"><i class="fas fa-university mr-1"></i> Santander</a></li>
+                        <li class="nav-item"><a class="nav-link mx-2 text-primary" data-toggle="tab" href="#sub-amex" onclick="cargarAmex()"><i class="fab fa-cc-amex mr-1"></i> Amex</a></li>
+                        <li class="nav-item"><a class="nav-link mx-2 text-success" data-toggle="tab" href="#sub-afirme" onclick="cargarAfirme()"><i class="fas fa-money-check-alt mr-1"></i> Afirme</a></li>
+                    </ul>
 
-            <div class="tab-content">
-                <div class="tab-pane fade show active" id="sub-general">
-                    <div class="d-flex justify-content-end mb-2">
-                        <button onclick="cargarDatosTesoreriaBD(true)" class="btn btn-sm btn-secondary"><i class="fas fa-sync"></i> Recargar</button>
-                    </div>
-                    <div class="card shadow">
-                        <div class="card-body p-0">
-                            <div class="table-responsive" style="max-height: 600px; overflow:auto;">
-                                <table class="table table-sm table-striped table-bordered mb-0">
-                                    <thead class="thead-dark sticky-top">
-                                        <tr><th>Fecha</th><th>Ref</th><th>Descripción</th><th>Sucursal</th><th class="text-end">Depósitos</th><th class="text-end">Retiros</th><th class="text-end">Saldo</th></tr>
-                                    </thead>
-                                    <tbody id="body-tesoreria"></tbody>
-                                </table>
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="sub-general">
+                            <div class="content-card">
+                                <div class="card-header d-flex justify-content-between">
+                                    <h5 class="m-0 text-dark font-weight-bold">Movimientos Generales</h5>
+                                    <button onclick="cargarDatosTesoreriaBD(true)" class="btn btn-sm btn-light border rounded-pill"><i class="fas fa-sync-alt"></i> Recargar</button>
+                                </div>
+                                <div class="table-responsive" style="max-height:600px;">
+                                    <table class="table table-hover table-custom mb-0">
+                                        <thead class="thead-dark sticky-top">
+                                            <tr><th>Fecha</th><th>Ref</th><th>Descripción</th><th>Sucursal</th><th class="text-end">Depósitos</th><th class="text-end">Retiros</th><th class="text-end">Saldo</th></tr>
+                                        </thead>
+                                        <tbody id="body-tesoreria"></tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
+                        
+                        <div class="tab-pane fade" id="sub-banorte">
+                            <div class="d-flex justify-content-end mb-2"><button onclick="cargarBanorte(true)" class="btn btn-danger btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
+                            <div id="loading-banorte" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-danger"></i></div>
+                            <div class="content-card border-top border-danger" style="border-top-width: 4px !important;">
+                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="banorte-station-tabs"></ul></div>
+                                <div class="card-body bg-light"><div class="tab-content" id="banorte-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
+                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-danger font-weight-bold font-numeric" id="gran-total-banorte">$0.00</h3></div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sub-santander">
+                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarSantander(true)" class="btn btn-danger btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
+                            <div id="loading-santander" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-danger"></i></div>
+                            <div class="content-card border-top border-danger" style="border-top-width: 4px !important;">
+                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="santander-station-tabs"></ul></div>
+                                <div class="card-body bg-light"><div class="tab-content" id="santander-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
+                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-danger font-weight-bold font-numeric" id="gran-total-santander">$0.00</h3></div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="sub-amex">
+                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarAmex(true)" class="btn btn-primary btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
+                            <div id="loading-amex" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-primary"></i></div>
+                            <div class="content-card border-top border-primary" style="border-top-width: 4px !important;">
+                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="amex-station-tabs"></ul></div>
+                                <div class="card-body bg-light"><div class="tab-content" id="amex-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
+                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-primary font-weight-bold font-numeric" id="gran-total-amex">$0.00</h3></div>
+                            </div>
+                        </div>
+
+                         <div class="tab-pane fade" id="sub-afirme">
+                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarAfirme(true)" class="btn btn-success btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
+                            <div id="loading-afirme" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-success"></i></div>
+                            <div class="content-card border-top border-success" style="border-top-width: 4px !important;">
+                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="afirme-station-tabs"></ul></div>
+                                <div class="card-body bg-light"><div class="tab-content" id="afirme-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
+                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-success font-weight-bold font-numeric" id="gran-total-afirme">$0.00</h3></div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
-
-                <div class="tab-pane fade" id="sub-banorte">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="text-danger m-0"><i class="fas fa-university"></i> Acumulado Banorte</h5>
-                        <button onclick="cargarBanorte(true)" class="btn btn-sm btn-danger text-white shadow-sm">
-                            <i class="fas fa-sync"></i> Actualizar Datos
-                        </button>
-                    </div>
-                    <div id="loading-banorte" class="alert alert-info py-2 shadow-sm" style="display:none;">
-                        <i class="fas fa-circle-notch fa-spin"></i> Procesando Banorte...
-                    </div>
-                    <div class="card shadow-sm border-top-danger">
-                        <div class="card-header bg-white p-0">
-                            <ul class="nav nav-tabs card-header-tabs m-0" id="banorte-station-tabs" role="tablist" style="border-bottom:0;"></ul>
-                        </div>
-                        <div class="card-body p-3 bg-light">
-                            <div class="tab-content" id="banorte-station-content">
-                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos".</div>
-                            </div>
-                        </div>
-                        <div class="card-footer bg-white">
-                            <div class="d-flex justify-content-end align-items-center">
-                                <span class="mr-2 text-muted">Gran Total:</span>
-                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-banorte">$0.00</h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tab-pane fade" id="sub-santander">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="text-danger m-0"><i class="fas fa-university"></i> Acumulado Santander</h5>
-                        <button onclick="cargarSantander(true)" class="btn btn-sm btn-danger text-white shadow-sm">
-                            <i class="fas fa-sync"></i> Actualizar Datos
-                        </button>
-                    </div>
-                    <div id="loading-santander" class="alert alert-info py-2 shadow-sm" style="display:none;">
-                        <i class="fas fa-circle-notch fa-spin"></i> Procesando Santander...
-                    </div>
-                    <div class="card shadow-sm border-top-danger">
-                        <div class="card-header bg-white p-0">
-                            <ul class="nav nav-tabs card-header-tabs m-0" id="santander-station-tabs" role="tablist" style="border-bottom:0;"></ul>
-                        </div>
-                        <div class="card-body p-3 bg-light">
-                            <div class="tab-content" id="santander-station-content">
-                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos".</div>
-                            </div>
-                        </div>
-                        <div class="card-footer bg-white">
-                            <div class="d-flex justify-content-end align-items-center">
-                                <span class="mr-2 text-muted">Gran Total:</span>
-                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-santander">$0.00</h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tab-pane fade" id="sub-amex">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="text-primary m-0"><i class="fab fa-cc-amex"></i> Acumulado American Express</h5>
-                        <button onclick="cargarAmex(true)" class="btn btn-sm btn-primary text-white shadow-sm">
-                            <i class="fas fa-sync"></i> Actualizar Datos
-                        </button>
-                    </div>
-                    <div id="loading-amex" class="alert alert-info py-2 shadow-sm" style="display:none;">
-                        <i class="fas fa-circle-notch fa-spin"></i> Procesando AMEX...
-                    </div>
-                    <div class="card shadow-sm border-top-primary">
-                        <div class="card-header bg-white p-0">
-                            <ul class="nav nav-tabs card-header-tabs m-0" id="amex-station-tabs" role="tablist" style="border-bottom:0;"></ul>
-                        </div>
-                        <div class="card-body p-3 bg-light">
-                            <div class="tab-content" id="amex-station-content">
-                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos".</div>
-                            </div>
-                        </div>
-                        <div class="card-footer bg-white">
-                            <div class="d-flex justify-content-end align-items-center">
-                                <span class="mr-2 text-muted">Gran Total:</span>
-                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-amex">$0.00</h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tab-pane fade" id="sub-afirme">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="text-success m-0"><i class="fas fa-money-check-alt"></i> Acumulado Afirme</h5>
-                        <button onclick="cargarAfirme(true)" class="btn btn-sm btn-success text-white shadow-sm">
-                            <i class="fas fa-sync"></i> Actualizar Datos
-                        </button>
-                    </div>
-                    <div id="loading-afirme" class="alert alert-info py-2 shadow-sm" style="display:none;">
-                        <i class="fas fa-circle-notch fa-spin"></i> Procesando Afirme...
-                    </div>
-                    <div class="card shadow-sm border-top-success">
-                        <div class="card-header bg-white p-0">
-                            <ul class="nav nav-tabs card-header-tabs m-0" id="afirme-station-tabs" role="tablist" style="border-bottom:0;"></ul>
-                        </div>
-                        <div class="card-body p-3 bg-light">
-                            <div class="tab-content" id="afirme-station-content">
-                                <div class="text-center text-muted py-5">Pulse "Actualizar Datos".</div>
-                            </div>
-                        </div>
-                        <div class="card-footer bg-white">
-                            <div class="d-flex justify-content-end align-items-center">
-                                <span class="mr-2 text-muted">Gran Total:</span>
-                                <h4 class="text-success m-0 font-weight-bold" id="gran-total-afirme">$0.00</h4>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div> </div>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
 
 {% block myjs %}
 <script>
-    // --- CONFIGURACIÓN ---
+    // --- LÓGICA DEL COMPONENTE DE FECHA (WIDGET) ---
+    const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    let widgetState = {
+        year: new Date().getFullYear(),
+        month: (new Date().getMonth() + 1).toString().padStart(2, '0') // 01-12
+    };
+
+    function initDateWidget() {
+        renderWidgetDisplay();
+        
+        // Cerrar al dar clic fuera
+        document.addEventListener('click', function(event) {
+            const wrapper = document.querySelector('.date-widget-wrapper');
+            const dropdown = document.getElementById('dateDropdown');
+            const overlay = document.getElementById('pickerOverlay');
+            
+            if (!wrapper.contains(event.target) && dropdown.classList.contains('active')) {
+                closeDatePicker();
+            }
+        });
+    }
+
+    function toggleDatePicker() {
+        const dropdown = document.getElementById('dateDropdown');
+        const overlay = document.getElementById('pickerOverlay');
+        dropdown.classList.toggle('active');
+        overlay.classList.toggle('active');
+        
+        // Sincronizar año visual al abrir
+        document.getElementById('widgetYearDisplay').innerText = widgetState.year;
+        highlightSelectedMonth();
+    }
+    
+    function closeDatePicker() {
+        document.getElementById('dateDropdown').classList.remove('active');
+        document.getElementById('pickerOverlay').classList.remove('active');
+    }
+
+    function changeWidgetYear(delta) {
+        widgetState.year += delta;
+        document.getElementById('widgetYearDisplay').innerText = widgetState.year;
+    }
+
+    function selectWidgetMonth(monthVal, element) {
+        widgetState.month = monthVal;
+        
+        document.querySelectorAll('.month-option').forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+        
+        renderWidgetDisplay();
+        closeDatePicker();
+    }
+
+    function highlightSelectedMonth() {
+        document.querySelectorAll('.month-option').forEach(el => {
+            el.classList.remove('selected');
+            if(el.getAttribute('onclick').includes(`'${widgetState.month}'`)) {
+                el.classList.add('selected');
+            }
+        });
+    }
+
+    function renderWidgetDisplay() {
+        $('#hiddenYear').val(widgetState.year);
+        $('#hiddenMonth').val(widgetState.month);
+        
+        const mName = monthNames[parseInt(widgetState.month) - 1];
+        document.getElementById('displayFullDate').innerText = `${mName} ${widgetState.year}`;
+    }
+
+    // --- FIN LÓGICA WIDGET ---
+
+    // --- CONFIGURACIÓN EXISTENTE ---
     const URL_ESTACIONES = 'http://201.174.170.236:99/api/Gasolinera/GetEstaciones';
     const URL_VENTAS = 'http://201.174.170.236:99/api/Ventas/GetConceptosValores';
     
-    // --- ENDPOINTS BACKEND ---
     const URL_TESORERIA_GENERAL   = '/income/get_tesoreria_data'; 
     const URL_TESORERIA_BANORTE   = '/income/get_tesoreria_banorte'; 
     const URL_TESORERIA_SANTANDER = '/income/get_tesoreria_santander';
@@ -248,7 +527,6 @@
 
     const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
     
-    // Flags
     let generalCargado = false;
     let banorteCargado = false;
     let santanderCargado = false;
@@ -256,41 +534,100 @@
     let afirmeCargado = false;
 
     $(document).ready(function() {
-        const hoy = new Date().toISOString().split('T')[0];
-        $('#fechaInicio').val(hoy);
-        $('#fechaFin').val(hoy);
+        initDateWidget(); // Iniciar Widget
         cargarEstaciones();
     });
+
+    // Función modificada para leer del Widget Custom
+    function getPeriodParams() {
+        const year = $('#hiddenYear').val();
+        const month = $('#hiddenMonth').val();
+        return { year: year, month: month };
+    }
+
+   function globalRefresh() {
+        // 1. Resetear banderas para que el sistema sepa que debe volver a pedir datos
+        generalCargado = false;
+        banorteCargado = false;
+        santanderCargado = false;
+        amexCargado = false;
+        afirmeCargado = false;
+
+        // 2. Limpiar visualmente todas las tablas para dar feedback de "recarga"
+        $('#body-tesoreria').empty();
+        $('#banorte-station-tabs, #banorte-station-content').empty();
+        $('#santander-station-tabs, #santander-station-content').empty();
+        $('#amex-station-tabs, #amex-station-content').empty();
+        $('#afirme-station-tabs, #afirme-station-content').empty();
+        
+        // Poner totales en cero visualmente
+        $('#gran-total-banorte, #gran-total-santander, #gran-total-amex, #gran-total-afirme').text('$0.00');
+
+        // 3. Cargar ControlGas (Ventas) si hay estación seleccionada
+        if($('#estacionSelect').val()) {
+            consultarDatos();
+        }
+
+        // 4. --- CORRECCIÓN AQUÍ ---
+        // Verificamos si estamos en la pestaña principal de Tesorería
+        if($('#tesoreria-tab').hasClass('active')) {
+            
+            // Buscamos cuál es el sub-tab (banco) que está activo actualmente
+            const activeSubId = $('#subTabsTesoreria .nav-link.active').attr('href');
+
+            // Cargamos solo el banco que el usuario está viendo
+            switch(activeSubId) {
+                case '#sub-banorte':
+                    cargarBanorte();
+                    break;
+                case '#sub-santander':
+                    cargarSantander();
+                    break;
+                case '#sub-amex':
+                    cargarAmex();
+                    break;
+                case '#sub-afirme':
+                    cargarAfirme();
+                    break;
+                default:
+                    // Si es '#sub-general' o cualquier otro, cargamos General
+                    cargarDatosTesoreriaBD();
+                    break;
+            }
+        }
+    }
 
     function initTesoreria() {
         if(!generalCargado) cargarDatosTesoreriaBD();
     }
 
-    // 1. GENERAL
+    // 1. GENERAL (0956)
     function cargarDatosTesoreriaBD(force = false) {
         if(generalCargado && !force) return;
         const $tbody = $('#body-tesoreria');
-        $tbody.html('<tr><td colspan="7" class="text-center">Cargando...</td></tr>');
+        $tbody.html('<tr><td colspan="7" class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div> Cargando...</td></tr>');
         
-        $.get(URL_TESORERIA_GENERAL, function(resp){
+        const params = getPeriodParams();
+        $.get(URL_TESORERIA_GENERAL, params, function(resp){
             if(resp.status === 'error') {
-                $tbody.html(`<tr><td colspan="7" class="text-danger text-center">${resp.message}</td></tr>`);
+                $tbody.html(`<tr><td colspan="7" class="text-danger text-center p-3"><i class="fas fa-exclamation-circle"></i> ${resp.message}</td></tr>`);
             } else {
                 let html = '';
                 (resp.data || []).forEach(r => {
                     html += `<tr>
-                        <td>${r.Fecha}</td><td>${r.Referencia}</td>
+                        <td class="font-numeric">${r.Fecha}</td>
+                        <td class="font-numeric text-muted">${r.Referencia}</td>
                         <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.Descripcion}">${r.Descripcion}</td>
-                        <td>${r.Sucursal}</td>
-                        <td class="text-end text-success">${r.Depositos > 0 ? formatter.format(r.Depositos) : '-'}</td>
-                        <td class="text-end text-danger">${r.Retiros > 0 ? formatter.format(r.Retiros) : '-'}</td>
-                        <td class="text-end fw-bold">${formatter.format(r.Saldo)}</td>
+                        <td><span class="badge badge-light border">${r.Sucursal}</span></td>
+                        <td class="text-end text-success font-numeric">${r.Depositos > 0 ? formatter.format(r.Depositos) : '-'}</td>
+                        <td class="text-end text-danger font-numeric">${r.Retiros > 0 ? formatter.format(r.Retiros) : '-'}</td>
+                        <td class="text-end font-weight-bold font-numeric text-dark">${formatter.format(r.Saldo)}</td>
                     </tr>`;
                 });
-                $tbody.html(html || '<tr><td colspan="7" class="text-center">Sin datos</td></tr>');
+                $tbody.html(html || '<tr><td colspan="7" class="text-center text-muted py-4"><i>Sin movimientos registrados en este periodo</i></td></tr>');
                 generalCargado = true;
             }
-        }).fail(function() { $tbody.html('<tr><td colspan="7" class="text-danger text-center">Error de conexión</td></tr>'); });
+        }).fail(function() { $tbody.html('<tr><td colspan="7" class="text-danger text-center py-4">Error de conexión con el servidor.</td></tr>'); });
     }
 
     // 2. BANORTE
@@ -302,7 +639,8 @@
         const $granTotal = $('#gran-total-banorte');
         $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
 
-        $.get(URL_TESORERIA_BANORTE, function(resp){
+        const params = getPeriodParams();
+        $.get(URL_TESORERIA_BANORTE, params, function(resp){
             $('#loading-banorte').hide();
             procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'banorte');
             banorteCargado = true;
@@ -318,7 +656,8 @@
         const $granTotal = $('#gran-total-santander');
         $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
 
-        $.get(URL_TESORERIA_SANTANDER, function(resp){
+        const params = getPeriodParams();
+        $.get(URL_TESORERIA_SANTANDER, params, function(resp){
             $('#loading-santander').hide();
             procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'santander');
             santanderCargado = true;
@@ -334,14 +673,15 @@
         const $granTotal = $('#gran-total-amex');
         $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
 
-        $.get(URL_TESORERIA_AMEX, function(resp){
+        const params = getPeriodParams();
+        $.get(URL_TESORERIA_AMEX, params, function(resp){
             $('#loading-amex').hide();
             procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'amex');
             amexCargado = true;
         }).fail(() => errorLoad($('#loading-amex'), $contentContainer));
     }
 
-    // 5. AFIRME (NUEVO)
+    // 5. AFIRME
     function cargarAfirme(force = false) {
         if(afirmeCargado && !force) return;
         $('#loading-afirme').show();
@@ -350,7 +690,8 @@
         const $granTotal = $('#gran-total-afirme');
         $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
 
-        $.get(URL_TESORERIA_AFIRME, function(resp){
+        const params = getPeriodParams();
+        $.get(URL_TESORERIA_AFIRME, params, function(resp){
             $('#loading-afirme').hide();
             procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'afirme');
             afirmeCargado = true;
@@ -359,13 +700,13 @@
 
     function errorLoad($loader, $container) {
         $loader.hide();
-        $container.html('<div class="alert alert-danger m-3">Error de comunicación con el servidor.</div>');
+        $container.html('<div class="alert alert-danger m-4 shadow-sm border-0"><i class="fas fa-exclamation-triangle mr-2"></i> Error de comunicación con el servidor.</div>');
     }
 
-    // --- RENDERIZADO GENÉRICO DE PESTAÑAS ---
+    // --- RENDERIZADO GENÉRICO DE PESTAÑAS (SOLO FECHA E IMPORTE) ---
     function procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, prefix) {
         if(resp.status === 'error') {
-            $contentContainer.html(`<div class="alert alert-danger m-3">${resp.message}</div>`);
+            $contentContainer.html(`<div class="alert alert-danger m-4 shadow-sm border-0">${resp.message}</div>`);
             return;
         }
 
@@ -373,15 +714,13 @@
         const catalogo = resp.catalog || []; 
 
         if(catalogo.length === 0) {
-            $contentContainer.html('<div class="alert alert-warning m-3 text-center">No hay afiliaciones configuradas para este banco.</div>');
+            $contentContainer.html('<div class="text-center py-5 text-muted"><i class="far fa-folder-open fa-3x mb-3"></i><br>No hay afiliaciones configuradas para este banco.</div>');
             return;
         }
 
-        // 1. Inicializar grupos
         const grupos = {};
         catalogo.forEach(item => { grupos[item.afiliacion] = []; });
 
-        // 2. Llenar datos
         let granTotal = 0;
         datos.forEach(r => {
             if(grupos[r.Afiliacion] !== undefined) {
@@ -390,7 +729,6 @@
             }
         });
 
-        // 3. Renderizar
         catalogo.forEach((item, index) => {
             const afilNum = item.afiliacion;
             const estNombre = item.Estacion;
@@ -400,19 +738,17 @@
             
             const listaMovimientos = grupos[afilNum] || [];
             const cantidad = listaMovimientos.length;
-            const badgeColor = cantidad > 0 ? 'badge-primary' : 'badge-light border';
+            const badgeColor = cantidad > 0 ? 'badge-primary' : 'badge-light border text-muted';
 
-            // Pestaña
             $tabsContainer.append(`
                 <li class="nav-item">
                     <a class="nav-link ${activeLink}" data-toggle="tab" href="#${tabId}" title="Afiliación: ${afilNum}">
-                        ${estNombre} <small class="text-muted">(${afilNum})</small>
+                        ${estNombre} <small class="text-muted d-none d-md-inline">(${afilNum})</small>
                         <span class="badge ${badgeColor} ml-1">${cantidad}</span>
                     </a>
                 </li>
             `);
 
-            // Tabla
             let filas = '';
             let totalEst = 0;
 
@@ -421,28 +757,29 @@
                     totalEst += parseFloat(f.Total);
                     filas += `
                         <tr>
-                            <td style="width:110px;">${f.Fecha}</td>
-                            <td class="text-primary font-weight-bold">${f.Referencia || '-'}</td>
-                            <td class="text-muted small">${f.Descripcion || '-'}</td>
-                            <td class="text-right font-weight-bold text-dark">${formatter.format(f.Total)}</td>
+                            <td class="font-numeric pl-4">${f.Fecha}</td>
+                            <td class="text-right font-weight-bold text-dark font-numeric pr-4">${formatter.format(f.Total)}</td>
                         </tr>`;
                 });
             } else {
-                filas = '<tr><td colspan="4" class="text-center text-muted py-5"><i>Sin movimientos registrados</i></td></tr>';
+                filas = '<tr><td colspan="2" class="text-center text-muted py-5"><i>Sin movimientos registrados en este periodo</i></td></tr>';
             }
 
             $contentContainer.append(`
                 <div class="tab-pane fade ${isActive}" id="${tabId}">
-                    <div class="table-responsive bg-white border rounded shadow-sm" style="max-height:500px; overflow-y:auto;">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead class="thead-light sticky-top">
-                                <tr><th>Fecha</th><th>Referencia</th><th>Descripción</th><th class="text-right">Importe</th></tr>
+                    <div class="table-responsive bg-white" style="max-height:500px; overflow-y:auto;">
+                        <table class="table table-hover table-custom mb-0">
+                            <thead class="sticky-top thead-light">
+                                <tr>
+                                    <th class="pl-4 border-top-0">Fecha</th>
+                                    <th class="text-right pr-4 border-top-0">Importe</th>
+                                </tr>
                             </thead>
                             <tbody>${filas}</tbody>
-                            <tfoot class="bg-white border-top">
+                            <tfoot class="bg-light border-top">
                                 <tr>
-                                    <td colspan="3" class="text-right text-muted pr-3">Total:</td>
-                                    <td class="text-right text-success font-weight-bold" style="font-size:1.1em;">${formatter.format(totalEst)}</td>
+                                    <td class="text-right text-muted pr-3 text-uppercase font-weight-bold small">Total Estación:</td>
+                                    <td class="text-right text-success font-weight-bold font-numeric pr-4" style="font-size:1.1em;">${formatter.format(totalEst)}</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -466,18 +803,33 @@
     }
     
     async function consultarDatos() {
-        const eid = $('#estacionSelect').val(), fi = $('#fechaInicio').val(), ff = $('#fechaFin').val();
-        if(!eid||!fi||!ff) return alert('Faltan datos');
+        const eid = $('#estacionSelect').val();
+        
+        // USAR PARAMS DEL NUEVO WIDGET
+        const params = getPeriodParams(); 
+
+        if(!eid || !params.year || !params.month) return; 
+
+        // Calcular último día del mes
+        const lastDay = new Date(params.year, params.month, 0).getDate();
+        
+        // Formato para ControlGas: YYYYMMDD
+        const fi = `${params.year}${params.month}01`;
+        const ff = `${params.year}${params.month}${lastDay}`;
+
         $('#loading-cg').show(); $('#card-resultados').hide(); $('#tabsConceptos, #contenidoConceptos').empty();
         try {
             const res = await fetch(URL_VENTAS, {
                 method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({Datos:{FechaInicial:fi.replace(/-/g,''),FechaFinal:ff.replace(/-/g,''),Gasolinera:parseInt(eid)}})
+                body:JSON.stringify({Datos:{FechaInicial:fi, FechaFinal:ff, Gasolinera:parseInt(eid)}})
             });
             const json = await res.json();
             const filas = json.respuesta || [];
             if(filas.length){ generarPestanas(filas); $('#card-resultados').show(); }
-            else alert('Sin datos');
+            else { 
+                $('#contenidoConceptos').html('<div class="p-5 text-center text-muted"><i class="fas fa-search fa-2x mb-3 text-secondary"></i><br>No hay ventas registradas para este periodo.</div>');
+                $('#card-resultados').show();
+            }
         } catch(e){console.error(e);}
         finally{ $('#loading-cg').hide(); }
     }
@@ -503,8 +855,8 @@
                 acc[f]=(acc[f]||0)+v; return acc;
             },{});
             let rows='', gt=0;
-            Object.keys(agr).sort().forEach(f=>{ gt+=agr[f]; rows+=`<tr><td>${f}</td><td class="text-end">${formatter.format(agr[f])}</td></tr>`; });
-            $('#contenidoConceptos').append(`<div class="tab-pane fade show ${active}" id="${id}"><table class="table table-sm table-bordered mt-3"><thead class="thead-light"><tr><th>Fecha</th><th class="text-end">Total</th></tr></thead><tbody>${rows}</tbody><tfoot class="fw-bold"><tr><td class="text-end">TOTAL:</td><td class="text-end">${formatter.format(gt)}</td></tr></tfoot></table></div>`);
+            Object.keys(agr).sort().forEach(f=>{ gt+=agr[f]; rows+=`<tr><td class="font-numeric pl-4">${f}</td><td class="text-end font-numeric font-weight-bold pr-4">${formatter.format(agr[f])}</td></tr>`; });
+            $('#contenidoConceptos').append(`<div class="tab-pane fade show ${active}" id="${id}"><div class="table-responsive"><table class="table table-hover table-custom mt-3 mb-0"><thead class="thead-light"><tr><th class="pl-4">Fecha</th><th class="text-end pr-4">Total</th></tr></thead><tbody>${rows}</tbody><tfoot class="bg-light"><tr><td class="text-end font-weight-bold pr-3 text-uppercase">TOTAL:</td><td class="text-end text-primary font-weight-bold font-numeric pr-4" style="font-size:1.1em;">${formatter.format(gt)}</td></tr></tfoot></table></div></div>`);
         });
     }
 </script>

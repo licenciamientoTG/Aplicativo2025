@@ -1959,13 +1959,15 @@ public function anomalies_client_tickets()
     }
 
 
-// Vista principal
+// =========================================================================
+    // VISTA PRINCIPAL
+    // =========================================================================
     public function conc_test() {
         echo $this->twig->render($this->route . 'test.html');
     }
 
-// =========================================================================
-    // 1. TESORERIA GENERAL
+    // =========================================================================
+    // 1. TESORERIA GENERAL (0956) - FILTRADO POR MES
     // =========================================================================
     public function get_tesoreria_data() {
         ob_clean();
@@ -1976,15 +1978,23 @@ public function anomalies_client_tickets()
         $user = "cguser";
         $pass = "sahei1712";
 
+        // Recibir parámetros
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $sql = "SELECT TOP 4000 Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
+            // Filtramos por año y mes
+            $sql = "SELECT Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
                     FROM Tesoreria_0956 
+                    WHERE YEAR(Fecha) = ? AND MONTH(Fecha) = ?
                     ORDER BY Fecha ASC";
             
-            $stmt = $conn->query($sql);
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$year, $month]);
+            
             $result = [];
 
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
@@ -2011,7 +2021,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 2. TESORERIA BANORTE (Una pestaña por Afiliación)
+    // 2. TESORERIA BANORTE - FILTRADO POR MES
     // =========================================================================
     public function get_tesoreria_banorte() {
         ob_clean();
@@ -2022,16 +2032,22 @@ public function anomalies_client_tickets()
         $user = "cguser";
         $pass = "sahei1712";
 
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATALOGO: Traer TODAS las afiliaciones de Banorte (ID 4)
-            // NO usamos DISTINCT de nombre, queremos cada afiliación individual.
-            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+            // 1. CATALOGO BANORTE (ID 4)
+            $sqlAfil = "SELECT A.afiliacion, 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion 
                         FROM Tesoreria_afil A
-                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        WHERE A.entidad_id = 4 AND A.afiliacion IS NOT NULL AND LEN(A.afiliacion) > 0";
+                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                        WHERE A.entidad_id = 4 
+                        AND LEN(ISNULL(A.afiliacion,'')) > 0
+                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
@@ -2043,18 +2059,18 @@ public function anomalies_client_tickets()
                 ];
             }
 
-            // Ordenar catálogo por Nombre Estacion y luego Afiliación
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
-                if ($res == 0) {
-                    return strcmp($a['afiliacion'], $b['afiliacion']);
-                }
-                return $res;
+                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. MOVIMIENTOS
-            $sqlMovs = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_0956 WHERE Depositos > 0";
-            $stmtMovs = $conn->query($sqlMovs);
+            // 2. MOVIMIENTOS FILTRADOS
+            $sqlMovs = "SELECT Fecha, Descripcion, Depositos 
+                        FROM Tesoreria_0956 
+                        WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+            
+            $stmtMovs = $conn->prepare($sqlMovs);
+            $stmtMovs->execute([$year, $month]);
             
             $agrupado = [];
 
@@ -2069,17 +2085,14 @@ public function anomalies_client_tickets()
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
-                // Match
                 foreach ($catalogo as $afilItem) {
-                    $afiliacionStr = $afilItem['afiliacion']; // Ya viene sin espacios del while arriba
-                    
+                    $afiliacionStr = $afilItem['afiliacion'];
                     if (strpos($desc, $afiliacionStr) !== false) {
                         $key = $fecha . '_' . $afiliacionStr;
-
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
                                 'Fecha'      => $fecha,
-                                'Afiliacion' => $afiliacionStr, // CLAVE PARA AGRUPAR EN JS
+                                'Afiliacion' => $afiliacionStr,
                                 'Estacion'   => $afilItem['Estacion'],
                                 'Total'      => 0
                             ];
@@ -2096,7 +2109,7 @@ public function anomalies_client_tickets()
             echo json_encode([
                 "status" => "success", 
                 "data" => $resultado,
-                "catalog" => $catalogo // Enviamos la lista completa de objetos {afiliacion, Estacion}
+                "catalog" => $catalogo
             ]);
 
         } catch (PDOException $e) {
@@ -2105,8 +2118,8 @@ public function anomalies_client_tickets()
         exit;
     }
 
-// =========================================================================
-    // 3. TESORERIA SANTANDER (Agrupado por Fecha y Afiliación)
+    // =========================================================================
+    // 3. TESORERIA SANTANDER - FILTRADO POR MES
     // =========================================================================
     public function get_tesoreria_santander() {
         ob_clean();
@@ -2117,19 +2130,21 @@ public function anomalies_client_tickets()
         $user = "cguser";
         $pass = "sahei1712";
 
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATALOGO: Traer TODAS las afiliaciones Santander (ID 1)
+            // 1. CATALOGO
             $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
                         FROM Tesoreria_afil A
                         INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        WHERE A.entidad_id = 1 AND A.afiliacion IS NOT NULL AND LEN(A.afiliacion) > 0";
+                        WHERE A.entidad_id = 1 AND LEN(ISNULL(A.afiliacion,'')) > 0";
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
-            
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 $catalogo[] = [
                     'afiliacion' => trim($r['afiliacion']),
@@ -2137,24 +2152,25 @@ public function anomalies_client_tickets()
                 ];
             }
 
-            // Ordenar catálogo
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
-                if ($res == 0) {
-                    return strcmp($a['afiliacion'], $b['afiliacion']);
-                }
-                return $res;
+                return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. MOVIMIENTOS
+            // 2. MOVIMIENTOS FILTRADOS
             $tablas = ['Tesoreria_5117', 'Tesoreria_8973'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
+                // Verificar si existe tabla
                 $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
                 if($check->fetchColumn() > 0) {
-                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tabla WHERE Depositos > 0";
-                    $stmt = $conn->query($sql);
+                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
+                            FROM $tabla 
+                            WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $stmt = $conn->prepare($sql);
+                    $stmt->execute([$year, $month]);
+                    
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)){
                         $movimientosRaw[] = $r;
                     }
@@ -2170,29 +2186,21 @@ public function anomalies_client_tickets()
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
-                // Match en Referencia
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
-                    
                     if (stripos($ref, $afiliacionStr) !== false) {
-                        
-                        // --- CORRECCIÓN: AGRUPAR SOLO POR FECHA Y AFILIACIÓN ---
                         $key = $fecha . '_' . $afiliacionStr;
-                        
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
                                 'Fecha'      => $fecha,
                                 'Afiliacion' => $afiliacionStr,
-                                'Referencia' => $afiliacionStr, // Mostramos la afiliación como referencia común
-                                'Descripcion'=> $desc,          // Guardamos la primera descripción encontrada
+                                'Referencia' => $afiliacionStr,
+                                'Descripcion'=> $desc,
                                 'Estacion'   => $afilItem['Estacion'],
                                 'Total'      => 0
                             ];
                         }
-                        
-                        // Sumamos el monto al día
                         $agrupado[$key]['Total'] += $monto;
-                        
                         break; 
                     }
                 }
@@ -2214,9 +2222,9 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 4. TESORERIA AMEX (Busca en 0956 y 5117)
+    // 4. TESORERIA AMEX - FILTRADO POR MES
     // =========================================================================
-public function get_tesoreria_amex() {
+    public function get_tesoreria_amex() {
         ob_clean();
         header('Content-Type: application/json');
 
@@ -2225,16 +2233,22 @@ public function get_tesoreria_amex() {
         $user = "cguser";
         $pass = "sahei1712";
 
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             // 1. OBTENER CATÁLOGO AMEX (ID 3)
-            // Traemos todas las afiliaciones configuradas
-            $sqlAfil = "SELECT afiliacion, S.Nombre as Estacion 
+            $sqlAfil = "SELECT A.afiliacion, 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion 
                         FROM Tesoreria_afil A
-                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        WHERE A.entidad_id = 3 AND LEN(ISNULL(A.afiliacion,'')) > 0";
+                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                        WHERE A.entidad_id = 3 
+                        AND LEN(ISNULL(A.afiliacion,'')) > 0
+                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
@@ -2245,7 +2259,6 @@ public function get_tesoreria_amex() {
                 ];
             }
 
-            // Ordenamos el catálogo para las pestañas
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
@@ -2253,61 +2266,50 @@ public function get_tesoreria_amex() {
 
             $agrupado = [];
 
-            // -----------------------------------------------------------------
             // FUENTE 1: Tesoreria_5117
-            // Regla: Concepto like '%afiliacion%'
-            // Sin filtrar por montos > 0, traemos todo lo que coincida.
-            // -----------------------------------------------------------------
             try {
-                $sql5117 = "SELECT Fecha, Referencia, Descripcion, Concepto, Depositos FROM Tesoreria_5117";
-                $stmt = $conn->query($sql5117);
+                $sql5117 = "SELECT Fecha, Referencia, Descripcion, Concepto, Depositos 
+                            FROM Tesoreria_5117 
+                            WHERE YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $stmt = $conn->prepare($sql5117);
+                $stmt->execute([$year, $month]);
                 
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $concepto = trim($row['Concepto'] ?? '');
-                    
-                    // Si el concepto está vacío, pasamos
                     if ($concepto === '') continue;
 
                     $monto = (float)$row['Depositos'];
                     $fechaVal = $row['Fecha'];
                     $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
 
-                    // Buscar coincidencia exacta de texto (LIKE '%...%')
                     foreach ($catalogo as $afilItem) {
                         $afiliacionStr = $afilItem['afiliacion'];
-                        
-                        // stripos es equivalente a LIKE '%...%' insensible a mayúsculas
                         if (stripos($concepto, $afiliacionStr) !== false) {
-                            
                             $key = $fecha . '_' . $afiliacionStr;
-                            
                             if (!isset($agrupado[$key])) {
                                 $agrupado[$key] = [
                                     'Fecha'      => $fecha,
                                     'Afiliacion' => $afiliacionStr,
                                     'Referencia' => $row['Referencia'] ?? '',
-                                    'Descripcion'=> $concepto, // Mostramos el concepto donde se halló el dato
+                                    'Descripcion'=> $concepto, 
                                     'Estacion'   => $afilItem['Estacion'],
                                     'Total'      => 0
                                 ];
                             }
                             $agrupado[$key]['Total'] += $monto;
-                            break; // Ya encontramos a quién pertenece, siguiente fila
+                            break; 
                         }
                     }
                 }
-            } catch (Exception $e) {
-                // Si la tabla no existe o falla algo específico de SQL, continuamos con la siguiente fuente
-            }
+            } catch (Exception $e) {}
 
-            // -----------------------------------------------------------------
             // FUENTE 2: Tesoreria_0956
-            // Regla: DescripcionDetallada like '%afiliacion%'
-            // -----------------------------------------------------------------
             try {
                 $sql0956 = "SELECT Fecha, Referencia, Descripcion, DescripcionDetallada, Depositos 
-                            FROM Tesoreria_0956 WHERE DescripcionDetallada IS NOT NULL";
-                $stmt = $conn->query($sql0956);
+                            FROM Tesoreria_0956 
+                            WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $stmt = $conn->prepare($sql0956);
+                $stmt->execute([$year, $month]);
                 
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $detalle = trim($row['DescripcionDetallada']);
@@ -2319,10 +2321,8 @@ public function get_tesoreria_amex() {
 
                     foreach ($catalogo as $afilItem) {
                         $afiliacionStr = $afilItem['afiliacion'];
-                        
                         if (stripos($detalle, $afiliacionStr) !== false) {
                             $key = $fecha . '_' . $afiliacionStr;
-                            
                             if (!isset($agrupado[$key])) {
                                 $agrupado[$key] = [
                                     'Fecha'      => $fecha,
@@ -2340,13 +2340,8 @@ public function get_tesoreria_amex() {
                 }
             } catch (Exception $e) {}
 
-            // Preparar respuesta
             $resultado = array_values($agrupado);
-            
-            // Ordenar por fecha
-            usort($resultado, function($a, $b) {
-                return strcmp($a['Fecha'], $b['Fecha']);
-            });
+            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
 
             echo json_encode([
                 "status" => "success", 
@@ -2360,9 +2355,8 @@ public function get_tesoreria_amex() {
         exit;
     }
 
-
     // =========================================================================
-    // 5. TESORERIA AFIRME (Busca 'VENTA' y Afiliación en Concepto)
+    // 5. TESORERIA AFIRME - FILTRADO POR MES
     // =========================================================================
     public function get_tesoreria_afirme() {
         ob_clean();
@@ -2373,19 +2367,27 @@ public function get_tesoreria_amex() {
         $user = "cguser";
         $pass = "sahei1712";
 
-        // ID DE LA ENTIDAD AFIRME (¡VERIFICAR ESTE ID EN TU BD!)
-        $id_afirme = 13; 
+        // ID DE LA ENTIDAD AFIRME
+        $id_afirme = 13;
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m'); 
 
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATÁLOGO AFIRME
-            // Traemos todas las afiliaciones configuradas para Afirme
-            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+            // 1. CATÁLOGO AFIRME (Usando LEFT JOIN para Estaciones Virtuales si hiciera falta, 
+            // aunque aquí dejaremos el query original si no tienes virtuales para afirme, 
+            // si las tienes usa la misma lógica que Banorte)
+            // Asumo que Afirme puede tener virtuales también por consistencia:
+            $sqlAfil = "SELECT A.afiliacion, 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion 
                         FROM Tesoreria_afil A
-                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        WHERE A.entidad_id = $id_afirme AND LEN(ISNULL(A.afiliacion,'')) > 0";
+                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                        WHERE A.entidad_id = $id_afirme 
+                        AND LEN(ISNULL(A.afiliacion,'')) > 0
+                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
@@ -2396,61 +2398,51 @@ public function get_tesoreria_amex() {
                 ];
             }
 
-            // Ordenar Catálogo para las pestañas
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. OBTENER MOVIMIENTOS
-            // Filtro SQL: Traemos solo lo que diga "VENTA" en Descripcion y tenga depósitos
-            // NOTA: Usamos el campo 'Descripcion' tal como está en la BD SQL Server
+            // 2. OBTENER MOVIMIENTOS FILTRADOS
             $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
                     FROM Tesoreria_Afirme 
-                    WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%'";
+                    WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%' 
+                    AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
             
-            $stmt = $conn->query($sql);
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$year, $month]);
             $agrupado = [];
 
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                // Obtenemos el valor de la columna Descripcion
                 $descripcion = trim($row['Descripcion'] ?? '');
                 
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
-                // 3. MATCHING: Buscar la Afiliación dentro de la Descripción
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
                     
-                    // Buscamos si el número de afiliación existe dentro del texto de la descripción
                     if (stripos($descripcion, $afiliacionStr) !== false) {
-                        
                         $key = $fecha . '_' . $afiliacionStr;
-                        
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
                                 'Fecha'      => $fecha,
                                 'Afiliacion' => $afiliacionStr,
                                 'Referencia' => $row['Referencia'], 
-                                'Descripcion'=> $descripcion, // <--- CORREGIDO: Usamos la variable $descripcion
+                                'Descripcion'=> $descripcion, 
                                 'Estacion'   => $afilItem['Estacion'],
                                 'Total'      => 0
                             ];
                         }
                         $agrupado[$key]['Total'] += $monto;
-                        break; // Encontrado, pasar al siguiente movimiento para no duplicar sumas
+                        break; 
                     }
                 }
             }
 
             $resultado = array_values($agrupado);
-            
-            // Ordenar por fecha
-            usort($resultado, function($a, $b) {
-                return strcmp($a['Fecha'], $b['Fecha']);
-            });
+            usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
 
             echo json_encode([
                 "status" => "success", 
@@ -2463,7 +2455,6 @@ public function get_tesoreria_amex() {
         }
         exit;
     }
-
 
 public function stamped_invoices(): void
 {
