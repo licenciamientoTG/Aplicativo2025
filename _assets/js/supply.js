@@ -446,115 +446,118 @@ async function payment_control_table(){
     });
 }
 
-async function payment_list_table(){
-    if ($.fn.DataTable.isDataTable('#payment_list_table')) {
-        $('#payment_list_table').DataTable().destroy();
-        $('#payment_list_table thead .filter').remove();
-    }
-    var fromDate = document.getElementById('from1').value;
-    var untilDate = document.getElementById('until1').value;
-    if(!codgas){
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Debe seleccionar una estación para continuar.</p>
-            </div>`
-        );
-        return;
-    }
+// async function payment_list_table(){
+//     if ($.fn.DataTable.isDataTable('#payment_list_table')) {
+//         $('#payment_list_table').DataTable().destroy();
+//         $('#payment_list_table thead .filter').remove();
+//     }
+//     var fromDate = document.getElementById('from1').value;
+//     var untilDate = document.getElementById('until1').value;
+//     if(!codgas){
+//         alertify.myAlert(
+//             `<div class="container text-center text-danger">
+//                 <h4 class="mt-2 text-danger">¡Error!</h4>
+//             </div>
+//             <div class="text-dark">
+//                 <p class="text-center">Debe seleccionar una estación para continuar.</p>
+//             </div>`
+//         );
+//         return;
+//     }
 
-    $('#payment_list_table thead').prepend($('#payment_list_table thead tr').clone().addClass('filter'));
-    $('#payment_list_table thead tr.filter th').each(function (index) {
-        col = $('#payment_list_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#payment_list_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#payment_list_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let payment_list_table =$('#payment_list_table').DataTable({
-        order: [[1, "asc"], [2, "desc"]],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        // scrollY: '700px',
-        // scrollX: true,
-        // scrollCollapse: true,
-        paging: true,
-        pageLength: 100,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'codgas':codgas
-            },
-            url: '/supply/  ',
-            timeout: 600000, 
-            error: function() {
-                $('#payment_list_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
+//     $('#payment_list_table thead').prepend($('#payment_list_table thead tr').clone().addClass('filter'));
+//     $('#payment_list_table thead tr.filter th').each(function (index) {
+//         col = $('#payment_list_table thead th').length/2;
+//         if (index < col ) {
+//             var title = $(this).text(); // Obtiene el nombre de la columna
+//             $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+//         }
+//     });
+//     $('#payment_list_table thead tr.filter th input').on('keyup change', function () {
+//         var index = $(this).parent().index(); // Obtiene el índice de la columna
+//         var table = $('#payment_list_table').DataTable(); // Obtiene la instancia de DataTable
+//         table
+//             .column(index)
+//             .search(this.value) // Busca el valor del input
+//             .draw(); // Redibuja la tabla
+//     });
+//     let payment_list_table =$('#payment_list_table').DataTable({
+//         order: [[1, "asc"], [2, "desc"]],
+//         colReorder: true,
+//         dom: '<"top"Bf>rt<"bottom"lip>',
+//         // scrollY: '700px',
+//         // scrollX: true,
+//         // scrollCollapse: true,
+//         paging: true,
+//         pageLength: 100,
+//         // processing: true,  // Agregar esta línea
+//         // serverSide: true,  // Agregar esta línea
+//         buttons: [
+//             {
+//                 extend: 'excel',
+//                 className: 'btn btn-success',
+//                 text: ' Excel'
+//             },
+//         ],
+//         ajax: {
+//             method: 'POST',
+//             data: {
+//                 'fromDate':fromDate,
+//                 'untilDate':untilDate,
+//                 'codgas':codgas
+//             },
+//             url: '/supply/  ',
+//             timeout: 600000, 
+//             error: function() {
+//                 $('#payment_list_table').waitMe('hide');
+//                 $('.table-responsive').removeClass('loading');
 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
+//                 alertify.myAlert(
+//                     `<div class="container text-center text-danger">
+//                         <h4 class="mt-2 text-danger">¡Error!</h4>
+//                     </div>
+//                     <div class="text-dark">
+//                         <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+//                     </div>`
+//                 );
 
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            { data: 'check_box' },                                // Folio del documento
-            { data: 'gasolinera' },                                // Folio del documento
-            { data: 'nro' },                                // Folio del documento
-            { data: 'Factura' },                            // Texto extraído de @F:
-            { data: 'Remision' },                           // Texto extraído de @R:
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-            var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-            // $('td:eq(19)', row)
-            //   .addClass(cls)
-            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+//             },
+//             beforeSend: function() {
+//                 $('.table-responsive').addClass('loading');
+//             }
+//         },
+//         columns: [
+//             { data: 'check_box' },                                // Folio del documento
+//             { data: 'gasolinera' },                                // Folio del documento
+//             { data: 'nro' },                                // Folio del documento
+//             { data: 'Factura' },                            // Texto extraído de @F:
+//             { data: 'Remision' },                           // Texto extraído de @R:
+//         ],
+//         deferRender: true,
+//         // destroy: true, 
+//         createdRow: function (row, data, dataIndex) {
+//             var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+//             // $('td:eq(19)', row)
+//             //   .addClass(cls)
+//             //   .text(data.control); // muestra “12345 SI” o “12345 NO”
+//         },
+//         initComplete: function () {
+//             $('.table-responsive').removeClass('loading');
+//             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
 
-        },
-        footerCallback: function (row, data, start, end, display) {
-        }
-    });
-}
+//         },
+//         footerCallback: function (row, data, start, end, display) {
+//         }
+//     });
+// }
 
 function add_payment() {
     // Redirigir a la página de agregar pago
     window.location.href = '/supply/add_payment';
 }
+let selectedInvoices = new Set();
+
+
 
 async function payment_create_table(){
     if ($.fn.DataTable.isDataTable('#payment_create_table')) {
@@ -566,8 +569,7 @@ async function payment_create_table(){
     var codgas = document.getElementById('station_id1').value;
     var company = document.getElementById('company').value;
     var proveedor = document.getElementById('proveedor_id').value;
-
-    if(!codgas || !company || !proveedor){
+    if(!codgas || !company || !proveedor || codgas == 'Seleccione' || company == 'Seleccione' || proveedor == 'Seleccione'){
         alertify.myAlert(
             `<div class="container text-center text-danger">
                 <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -631,19 +633,30 @@ async function payment_create_table(){
             }
         },
         columns: [
-            
-            // { data: 'check_box' },                                // Folio del documento
-            { data: 'gasolinera' },                                // Folio del documento
+            {
+                data: null,
+                orderable: false,
+                className: 'text-center text-nowrap',
+                render: function(data, type, row) {
+                    return `<input type="checkbox" class="invoice-checkbox" 
+                            data-nro="${row.nro}" 
+                            data-factura="${row.Factura}" 
+                            data-codgas="${row.codgas}"
+                            onchange="updateSelectedCount()">`;
+                }
+            },                      // Folio del documento
             { data: 'nro' },                                // Folio del documento
             { data: 'Factura' },                            // Texto extraído de @F:
-            { data: 'Remision' },                           // Texto extraído de @R:
-            { data: 'fecha' },                              // Fecha (fch - 1)
-            { data: 'fechaVto' },                           // Vencimiento (vto - 1)
-            { data: 'producto' },                           // Producto (t3.den)
-            { data: 'proveedor' },                          // Proveedor (t4.den)
-            { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
-            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
+            { data: 'gasolinera', className: 'text-center text-nowrap' },                                // Folio del documento
+            { data: 'proveedor', className: 'text-center text-nowrap' },                          // Proveedor (t4.den)
+            { data: 'fecha', className: 'text-center text-nowrap' },                              // Fecha (fch - 1)
+            { data: 'fechaVto', className: 'text-center text-nowrap' },                           // Vencimiento (vto - 1)
             { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },    // Total Factura
+            { data: 'producto', className: 'text-center text-nowrap' },
+            // { data: 'Remision' },                           // Texto extraído de @R:
+            // { data: 'producto' },                           // Producto (t3.den)
+            // { data: 'volrec', render: $.fn.dataTable.render.number(',', '.', 2) }, // Volumen recibido
+            // { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },    // Cantidad
         ],
          columnDefs: [
                     { orderable: false, targets: 0 }
@@ -2167,11 +2180,12 @@ async function compras_facturas_table() {
 
     let payment_control_table = $('#payment_control_table').DataTable({
         order: [[0, "desc"]],
-        colReorder: true,
+        colReorder: false,
         dom: '<"top"Bf>rt<"bottom"lip>',
         scrollX: true,
-        paging: true,
-        pageLength: 50,
+        scrollY: 'calc(100vh - 350px)',
+        scrollCollapse: true,
+        paging: false,
         buttons: [
             {
                 className: 'btn btn-warning',
@@ -2250,17 +2264,8 @@ async function compras_facturas_table() {
             }
         },
         columns: [
-            { data: 'FechaRecepcion', className: 'text-center text-nowrap' },
-            { 
-                data: 'NumeroEstacion',
-                className: 'text-center',
-                render: function(data) {
-                    if (data === '00' || data === 'PENDIENTE') {
-                        return '<span class="badge bg-warning text-dark">PENDIENTE</span>';
-                    }
-                    return '<span class="bg-controlgas">' + data + '</span>';
-                }
-            },
+            { data: 'FechaRecepcion', className: 'text-left text-nowrap' },
+            {data: 'NumeroEstacion',className: 'text-left text-nowrap'},
             { 
                 data: 'NombreEstacion',
                 className: 'text-start text-nowrap',
@@ -2377,25 +2382,25 @@ async function compras_facturas_table() {
                 }
             },
            {
-    data: null,
-    orderable: false,
-    className: 'text-center',
-    render: function(data, type, row) {
-        const btnRelacionar = row.EstadoAsignacion === 'PENDIENTE'
-            ? `<button class="btn btn-sm btn-primary" 
-                      onclick='abrirRelacionarFactura(${row.FacturaId})' 
-                      title="Relacionar con recepción">
-                   <i class="fas fa-link"></i>
-               </button>`
-            : `<button class="btn btn-sm btn-secondary" 
-                      onclick='verRelacionFactura(${row.FacturaId})' 
-                      title="Ver relación">
-                   <i class="fas fa-eye"></i>
-               </button>`;
-        
-        return `<div class="btn-group btn-group-sm">${btnRelacionar}</div>`;
-    }
-}
+                data: null,
+                orderable: false,
+                className: 'text-center',
+                render: function(data, type, row) {
+                    const btnRelacionar = row.EstadoAsignacion === 'PENDIENTE'
+                        ? `<button class="btn btn-sm btn-primary" 
+                                onclick='abrirRelacionarFactura(${row.FacturaId})' 
+                                title="Relacionar con recepción">
+                            <i class="fas fa-link"></i>
+                        </button>`
+                        : `<button class="btn btn-sm btn-secondary" 
+                                onclick='verRelacionFactura(${row.FacturaId})' 
+                                title="Ver relación">
+                            <i class="fas fa-eye"></i>
+                        </button>`;
+                    
+                    return `<div class="btn-group btn-group-sm">${btnRelacionar}</div>`;
+                }
+            }
         ],
         createdRow: function (row, data, dataIndex) {
             // // Resaltar filas según estado
@@ -2404,9 +2409,9 @@ async function compras_facturas_table() {
             // } else if (data.TipoOperacion === 2) {
             //     $(row).addClass('table-info');
             // }
-            if (data.EstadoAsignacion === 'PENDIENTE' && data.NumeroEstacion !== '00') {
-                $(row).addClass('table-warning');
-            }
+            // if (data.EstadoAsignacion === 'PENDIENTE' && data.NumeroEstacion !== '00') {
+            //     $(row).addClass('table-warning');
+            // }
         },
         initComplete: function () {
             $('.table-responsive').removeClass('loading');
@@ -3399,3 +3404,265 @@ async function ModalinvoicePdf(id, data){
     }
 
 }
+
+// ==========================================
+// FUNCIONES PARA GESTIÓN DE PAGOS
+// ==========================================
+
+// Mejorar generate_payment() existente
+async function generatePayment() {
+    if (paymentItems.length === 0) {
+        alertify.warning('No hay documentos en el pago');
+        return;
+    }
+    
+    // Solicitar comentario
+    alertify.prompt(
+        'Comentario del Pago',
+        'Ingrese un comentario o descripción para este pago:',
+        '',
+        async function(evt, comment) {
+            const paymentData = {
+                documentos: paymentItems,
+                total_documentos: paymentItems.length,
+                total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
+                fecha_pago: new Date().toISOString().split('T')[0],
+                comment: comment || 'Pago programado'
+            };
+            
+            try {
+                const response = await fetch('/supply/generate_payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(paymentData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alertify.success('Pago creado exitosamente: ID #' + data.payment_id);
+                    
+                    // Limpiar carrito
+                    paymentItems = [];
+                    renderPaymentItems();
+                    updatePaymentSummary();
+                    
+                    // Preguntar si desea ver el detalle
+                    alertify.confirm(
+                        '¿Ver detalle del pago?',
+                        '¿Desea ver el detalle del pago creado?',
+                        function() {
+                            window.location.href = '/supply/payment_detail/' + data.payment_id;
+                        },
+                        function() {
+                            // Recargar tabla
+                            if ($.fn.DataTable.isDataTable('#payment_create_table')) {
+                                $('#payment_create_table').DataTable().ajax.reload();
+                            }
+                        }
+                    );
+                } else {
+                    alertify.error('Error: ' + data.detail);
+                }
+            } catch (error) {
+                alertify.error('Error de conexión');
+                console.error(error);
+            }
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    );
+}
+
+
+function loadPaymentList() {
+    if ($.fn.DataTable.isDataTable('#payment_list_table')) {
+        $('#payment_list_table').DataTable().destroy();
+    }
+    
+    const fromDate = $('#from_payments').val();
+    const untilDate = $('#until_payments').val();
+    const status = $('#status_filter').val();
+    
+    paymentListTable = $('#payment_list_table').DataTable({
+        ajax: {
+            url: '/supply/payment_list_table',
+            type: 'POST',
+            data: {
+                fromDate: fromDate,
+                untilDate: untilDate,
+                status: status
+            },
+            error: function(xhr, error, thrown) {
+                alertify.error('Error al cargar datos: ' + thrown);
+            }
+        },
+        columns: [
+            { data: 'id' },
+            { data: 'request_date' },
+            { data: 'usuario' },
+            { data: 'total_invoices', className: 'text-center' },
+            { data: 'total_amount', className: 'text-end' },
+            { data: 'total_paid', className: 'text-end' },
+            { data: 'status', className: 'text-center' },
+            { data: 'authorizations', className: 'text-center' },
+            { data: 'comment' },
+            { data: 'actions', orderable: false, className: 'text-center' }
+        ],
+        order: [[0, 'desc']],
+        // language: {
+        //     url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
+        // }
+    });
+}
+
+function editPayment(paymentId) {
+    window.location.href = '/supply/payment_detail/' + paymentId;
+}
+
+function deletePayment(paymentId) {
+    alertify.confirm(
+        'Eliminar Pago',
+        '¿Está seguro de eliminar este pago programado? Esta acción no se puede deshacer.',
+        function() {
+            $.ajax({
+                url: '/supply/delete_payment',
+                type: 'POST',
+                data: { payment_id: paymentId },
+                success: function(response) {
+                    if (response.success) {
+                        alertify.success(response.message);
+                        loadPaymentList();
+                    } else {
+                        alertify.error(response.message);
+                    }
+                },
+                error: function() {
+                    alertify.error('Error al eliminar el pago');
+                }
+            });
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    );
+}
+
+function toggleSelectAll() {
+    const selectAllCheckbox = $('#selectAllCheckbox');
+    const isChecked = selectAllCheckbox.prop('checked');
+    
+    $('.invoice-checkbox:visible').prop('checked', isChecked);
+    updateSelectedCount();
+}
+
+// Actualizar contador de facturas seleccionadas
+function updateSelectedCount() {
+    const count = $('.invoice-checkbox:checked').length;
+    $('#selected-count').text(count + ' seleccionada' + (count !== 1 ? 's' : ''));
+    
+    const totalVisible = $('.invoice-checkbox:visible').length;
+    const totalChecked = $('.invoice-checkbox:checked').length;
+    $('#selectAllCheckbox').prop('checked', totalVisible > 0 && totalVisible === totalChecked);
+}
+
+// Función para agregar facturas seleccionadas
+async function addSelectedInvoices() {
+    const selectedCheckboxes = $('.invoice-checkbox:checked');
+    
+    if (selectedCheckboxes.length === 0) {
+        alertify.warning('No hay facturas seleccionadas');
+        return;
+    }
+    
+    const table = $('#payment_create_table').DataTable();
+    let addedCount = 0;
+    let skippedCount = 0;
+    
+    selectedCheckboxes.each(function() {
+        // Obtener la fila completa del DataTable
+        const row = $(this).closest('tr');
+        const rowData = table.row(row).data();
+        
+        if (!rowData) {
+            console.warn('No se pudo obtener datos de la fila');
+            return;
+        }
+        
+        // Verificar si ya existe en el carrito
+        const exists = paymentItems.some(item => 
+            item.nro === rowData.nro && 
+            item.Factura === rowData.Factura && 
+            item.codgas === rowData.codgas
+        );
+        
+        if (!exists) {
+            paymentItems.push(rowData);
+            addedCount++;
+        } else {
+            skippedCount++;
+        }
+    });
+    
+    // Actualizar UI
+    renderPaymentItems();
+    updatePaymentSummary();
+    
+    // Desmarcar checkboxes
+    selectedCheckboxes.prop('checked', false);
+    updateSelectedCount();
+    
+    // Mensajes
+    if (addedCount > 0) {
+        let message = `${addedCount} factura(s) agregada(s) al pago`;
+        if (skippedCount > 0) {
+            message += ` (${skippedCount} ya existían)`;
+        }
+        alertify.success(message);
+    } else if (skippedCount > 0) {
+        alertify.warning('Todas las facturas seleccionadas ya están en el pago');
+    }
+}
+
+
+// Función auxiliar para agregar factura al carrito
+async function addInvoiceToPayment(nro, factura, codgas) {
+    try {
+        console.log(nro, factura, codgas);
+        const response = await fetch('/supply/get_invoice_detail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ folio: nro, factura: factura, codgas: codgas })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.invoice) {
+            // Verificar si ya existe
+            const exists = paymentItems.some(item => 
+                item.nro === nro && item.Factura === factura && item.codgas === codgas
+            );
+            
+            if (!exists) {
+                paymentItems.push(data.invoice);
+                renderPaymentItems();
+                updatePaymentSummary();
+                alertify.success('Factura agregada');
+            } else {
+                alertify.warning('Esta factura ya está en el pago');
+            }
+        } else {
+            alertify.error(data.message || 'Error al obtener factura');
+        }
+    } catch (error) {
+        console.error('Error agregando factura:', error);
+        alertify.error('Error de conexión al agregar factura');
+    }
+}
+
+$(document).ready(function() {
+    $('#payment_create_table').on('draw.dt', function() {
+        updateSelectedCount();
+    });
+});

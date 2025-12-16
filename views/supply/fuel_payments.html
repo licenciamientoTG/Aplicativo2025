@@ -50,7 +50,7 @@
 table.dataTable thead th, table.dataTable thead td {
     padding: 10px 18px;
     border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
+    background-color:  #000000 !important;
     color: #ffffff !important;
 
 }
@@ -93,55 +93,7 @@ table.dataTable thead th, table.dataTable thead td {
 
 <div class="tab-content" >
     <div class="tab-pane  " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
-        <div class="card">
-            <div class="card-body">
-                <div class="row" style="align-items: flex-end;">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="from1">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="until1">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
-                    </div>
-                     <div class="col-2 ">
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación">
-                            <option value="0" {% if not station_id or station_id == 0 %}selected{% endif %}>Todas las estaciones</option>
-                            {% for station in stations %}
-                                <option value="{{ station.cod }}" {{ station_id == station.cod ? 'selected' : '' }}>{{ station.abr }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2 " >
-                        <button onclick="payment_list()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Compras </h5>
-            </div>
-            <div>
-                <button id="add_payment" class="btn btn-sm btn-primary" onclick="add_payment()" style="padding: 10px 10px ; margin-left: 15px; margin-top: 10px; border-radius: 15px;">Agregar Pago</button>
-            </div>
-            <div class="card-body table-responsive" >
-                <table id="payment_list_table" class="table table-hover table-sm w-100">
-                   <thead>
-                         <tr>
-                            <th>id</th>
-                            <th>Fecha</th>
-                            <th>Estatus</th>
-                            <th>Cantidad</th>
-                            <th>Comentario</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                    <tfoot>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
+       {% include 'views/supply/payment_list.html' %}
     </div>
     <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
