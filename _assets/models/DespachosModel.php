@@ -3261,6 +3261,361 @@ function cfdi_comparison_advance($from, $until, $codgas, $bd, $server)
     return $this->sql->select($query, $params);
 }
 
+
+
+
+
+
+
+
+
+public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini, $hist_i_fin, $visual_fin)
+{
+    $cod_eval_i_ini = $this->dateToInt($eval_i_ini);
+    $cod_eval_i_fin = $this->dateToInt($eval_i_fin);
+    $cod_hist_i_ini = $this->dateToInt($hist_i_ini);
+    $cod_hist_i_fin = $this->dateToInt($hist_i_fin);
+    $visual_fin_int = $this->dateToInt($visual_fin);
+
+    $sql = "
+    DECLARE @eval_i_ini int = ?;
+    DECLARE @eval_i_fin int = ?;
+    DECLARE @hist_i_ini int = ?;
+    DECLARE @hist_i_fin int = ?;
+    DECLARE @visual_fin int = ?;
+
+    DECLARE @k_sigma float = 4.0;
+    DECLARE @min_hist_avg float = 0.5;
+    DECLARE @min_mto_exceso float = 5000;
+    DECLARE @min_incr_abs int = 5;
+
+    ;WITH 
+    -- 1. HISTÓRICO: Contamos DESPACHOS por día
+    HistData AS (
+        SELECT [codopr (F)] as codopr, fchtrn, COUNT(*) as cnt
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @hist_i_ini AND @hist_i_fin
+        GROUP BY [codopr (F)], fchtrn
+    ),
+    HistStats AS (
+        SELECT 
+            codopr,
+            AVG(CAST(cnt AS float)) AS media_hist,
+            STDEV(CAST(cnt AS float)) AS desv_hist,
+            COUNT(*) AS dias_base_promedio -- <--- NUEVO: Días usados para el promedio
+        FROM HistData
+        GROUP BY codopr
+    ),
+    -- 2. EVALUACIÓN: Contamos DESPACHOS reales del día
+    EvalData AS (
+        SELECT 
+            [codopr (F)] as codopr, 
+            fchtrn, 
+            COUNT(*) as cnt,
+            SUM(mto) as suma_mto,
+            CASE WHEN COUNT(*) > 0 THEN SUM(mto) / COUNT(*) ELSE 0 END as ticket_promedio
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
+        GROUP BY [codopr (F)], fchtrn
+    ),
+    -- 3. VISUAL: Gráficas (sin cambios en lógica visual)
+    VisualData AS (
+        SELECT [codopr (F)] as codopr, 
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 2 THEN 1 END) as M02,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 3 THEN 1 END) as M03,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 4 THEN 1 END) as M04,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 5 THEN 1 END) as M05,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 6 THEN 1 END) as M06,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 7 THEN 1 END) as M07,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 8 THEN 1 END) as M08,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 9 THEN 1 END) as M09,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 10 THEN 1 END) as M10,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 11 THEN 1 END) as M11,
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 12 THEN 1 END) as M12,
+            
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 2 THEN mto ELSE 0 END) as Money02,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 3 THEN mto ELSE 0 END) as Money03,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 4 THEN mto ELSE 0 END) as Money04,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 5 THEN mto ELSE 0 END) as Money05,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 6 THEN mto ELSE 0 END) as Money06,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 7 THEN mto ELSE 0 END) as Money07,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 8 THEN mto ELSE 0 END) as Money08,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 9 THEN mto ELSE 0 END) as Money09,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 10 THEN mto ELSE 0 END) as Money10,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 11 THEN mto ELSE 0 END) as Money11,
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 12 THEN mto ELSE 0 END) as Money12
+
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE fchtrn BETWEEN @hist_i_ini AND @visual_fin
+        GROUP BY [codopr (F)]
+    ),
+    StatsCalculator AS (
+        SELECT 
+            v.*, h.media_hist, h.desv_hist, h.dias_base_promedio, -- <--- NUEVO: Pasamos el dato
+            (h.media_hist + (@k_sigma * ISNULL(h.desv_hist,0))) as umbral_sigma
+        FROM VisualData v
+        JOIN HistStats h ON v.codopr = h.codopr
+    ),
+   DailyFlags AS (
+        SELECT 
+            sc.codopr,
+            ed.cnt,
+            -- Banderas de Anomalía Estadística
+            CASE 
+                WHEN (ed.cnt > sc.umbral_sigma) AND (ed.cnt - sc.media_hist) >= @min_incr_abs 
+                THEN 1 ELSE 0 
+            END as is_suspicious,
+            CASE 
+                WHEN (ed.cnt > sc.umbral_sigma) AND (ed.cnt - sc.media_hist) >= @min_incr_abs 
+                THEN (ed.suma_mto - (sc.media_hist * ed.ticket_promedio)) 
+                ELSE 0 
+            END as daily_excess_money,
+            
+            -- Banderas de Patrones (NUEVO)
+            -- Nota: Esto es aproximado a nivel diario. Para precisión exacta usamos el detalle.
+            -- Aquí marcamos si el DÍA tuvo volumen alto (>10)
+            CASE WHEN ed.cnt > 10 THEN 1 ELSE 0 END as flag_volumen_alto
+        FROM StatsCalculator sc
+        JOIN EvalData ed ON sc.codopr = ed.codopr
+    ),
+    -- Necesitamos una subconsulta extra para detectar Patrones de Factura (Prod/Montos mixtos)
+    -- Esto es pesado, así que lo hacemos resumido
+    InvoicePatterns AS (
+         SELECT 
+            [codopr (F)] as codopr,
+            MAX(CASE WHEN cnt_prods > 1 THEN 1 ELSE 0 END) as has_mixed_products,
+            MAX(CASE WHEN cnt_mtos > 1 THEN 1 ELSE 0 END) as has_mixed_amounts
+         FROM (
+             SELECT [codopr (F)], nrofac, 
+                    COUNT(DISTINCT codprd) as cnt_prods,
+                    COUNT(DISTINCT mto) as cnt_mtos
+             FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+             WHERE fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
+             GROUP BY [codopr (F)], nrofac
+         ) sub
+         GROUP BY [codopr (F)]
+    ),
+    EvalLogic AS (
+        SELECT 
+            df.codopr,
+            MAX(df.cnt) as Max_Pico_Ago,
+            SUM(df.is_suspicious) as Dias_4Sigma,
+            SUM(df.daily_excess_money) as Exceso_Dinero,
+            COUNT(*) as Dias_Con_Venta,
+            MAX(df.flag_volumen_alto) as Has_High_Vol
+        FROM DailyFlags df
+        GROUP BY df.codopr
+    )
+    SELECT TOP 100
+        sc.codopr AS [Codigo],
+        LEFT(c.den, 40) AS [Cliente],
+        
+        -- ... (Tus columnas de Meses M01..M12 y Money01...Money12 siguen igual) ...
+        sc.M02, sc.M03, sc.M04, sc.M05, sc.M06, sc.M07, sc.M08, sc.M09, sc.M10, sc.M11, sc.M12,
+        sc.Money02, sc.Money03, sc.Money04, sc.Money05, sc.Money06, sc.Money07, sc.Money08, sc.Money09, sc.Money10, sc.Money11, sc.Money12,
+
+        CAST(sc.media_hist AS DECIMAL(10,1)) AS [Promedio_Normal],
+        el.Max_Pico_Ago AS [Pico_Agosto],
+        sc.dias_base_promedio AS [dias_base_promedio],
+        el.Dias_Con_Venta AS [dias_con_venta],
+        el.Dias_4Sigma AS [Dias_Alerta],
+        CAST((el.Max_Pico_Ago - sc.media_hist) AS DECIMAL(10,1)) AS [Diferencia_Absoluta],
+        CAST(el.Exceso_Dinero AS DECIMAL(12,2)) AS [Monto_Exceso],
+        CAST(CASE WHEN sc.media_hist > 0 THEN ((el.Max_Pico_Ago - sc.media_hist) / sc.media_hist) * 100 ELSE 0 END AS DECIMAL(10,0)) AS [Porcentaje_Aumento],
+
+        -- NUEVAS BANDERAS PARA EL FRONTEND
+        ISNULL(ip.has_mixed_products, 0) as [has_mixed_products],
+        ISNULL(ip.has_mixed_amounts, 0) as [has_mixed_amounts],
+        ISNULL(el.Has_High_Vol, 0) as [has_high_vol]
+
+    FROM StatsCalculator sc
+    JOIN EvalLogic el ON el.codopr = sc.codopr
+    LEFT JOIN InvoicePatterns ip ON ip.codopr = sc.codopr -- Join nuevo
+    LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = sc.codopr
+    WHERE 
+        el.Dias_4Sigma > 0             
+        AND el.Exceso_Dinero > @min_mto_exceso
+    ORDER BY el.Exceso_Dinero DESC;
+    ";
+
+    return $this->sql->select($sql, [$cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin, $visual_fin_int]);
+}
+
+
+private function dateToInt($dateStr)
+    {
+        if (!$dateStr) return 0;
+        
+        try {
+            $baseDate = new DateTime('1900-01-01');
+            $targetDate = new DateTime($dateStr);
+            
+            // Calculamos la diferencia en días
+            $interval = $baseDate->diff($targetDate);
+            $days = $interval->days;
+            
+            // Retornamos días + 1 (según la lógica de tu SQL original)
+            // Si $days es negativo (fechas antes de 1900), esto podría fallar, 
+            // pero para fechas actuales funciona perfecto.
+            return ($interval->invert ? -$days : $days) + 1;
+            
+        } catch (Exception $e) {
+            return 0;
+        }
+    }
+
+public function get_suspicious_tickets_details($target_month_ini, $target_month_fin, $hist_ini, $hist_fin, $codopr)
+{
+    $eval_i_ini = $this->dateToInt($target_month_ini);
+    $eval_i_fin = $this->dateToInt($target_month_fin);
+    $hist_i_ini = $this->dateToInt($hist_ini);
+    $hist_i_fin = $this->dateToInt($hist_fin);
+
+    $sql = "
+    DECLARE @codopr int = ?;
+    DECLARE @eval_i_ini int = ?;
+    DECLARE @eval_i_fin int = ?;
+    DECLARE @hist_i_ini int = ?;
+    DECLARE @hist_i_fin int = ?;
+
+    ;WITH 
+    -- 1. DETALLE CRUDO (TODO EL PERIODO)
+    -- Ya no filtramos por 'SuspiciousDates' aquí, traemos todo el rango de fechas
+    RawDetails AS (
+        SELECT
+            d.nrotrn, d.codgas, d.nrobom, d.fchtrn, d.hratrn, d.fchcor, d.nrotur,
+            d.codprd, d.can, d.mto, d.codcli, d.codisl, d.codres, d.nrofac, d.tiptrn, d.datref, d.satuid, d.satrfc
+        FROM SG12.dbo.Despachos d WITH (NOLOCK)
+        WHERE d.nrofac > 0 
+          AND d.codcli = @codopr  -- OJO: Asegúrate que d.codcli o la relación sea correcta con tu esquema
+          AND d.fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
+    ),
+    -- 2. ESTADÍSTICAS POR FACTURA (Para los filtros)
+    FacStats AS (
+        SELECT 
+            nrofac, codgas,
+            COUNT(DISTINCT codprd) as cnt_prods,
+            COUNT(DISTINCT mto) as cnt_mtos,
+            COUNT(*) as cnt_tickets
+        FROM RawDetails
+        GROUP BY nrofac, codgas
+    ),
+    C AS ( SELECT cod, den FROM SG12.dbo.Clientes WITH (NOLOCK) )
+    
+    SELECT
+          t1.nrotrn
+        , t1.codgas
+        , g.abr AS estacion
+        , t1.nrobom
+        , CAST(DATEADD(DAY, t1.fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha
+        , t1.hratrn
+        , t1.nrotur
+        , p.den AS nomPrd
+        , t1.can
+        , t1.mto
+        , c.den AS nombreCliente
+        , i.den AS isla
+        , CASE WHEN t1.codres = 0 THEN 'No encontrado' ELSE r.den END AS responsable
+        , t1.nrofac
+        , calc.Factura AS factura
+        , calc.serie
+        , calc.conceptofac
+        , ISNULL(dc.satuid, '⚠️ SIN TIMBRAR / NO ENCONTRADO') as satuid 
+
+        -- BANDERAS PARA FILTROS
+        , CASE WHEN fs.cnt_prods > 1 THEN 1 ELSE 0 END as is_mixed_prod
+        , CASE WHEN fs.cnt_mtos > 1 THEN 1 ELSE 0 END as is_mixed_mto
+        , CASE WHEN fs.cnt_tickets > 10 THEN 1 ELSE 0 END as is_high_vol
+
+    FROM RawDetails AS t1
+    INNER JOIN FacStats fs ON t1.nrofac = fs.nrofac AND t1.codgas = fs.codgas
+    LEFT JOIN SG12.dbo.DocumentosC dc WITH(NOLOCK) ON t1.nrofac = dc.nro AND t1.codgas = dc.codgas
+    LEFT JOIN C  AS c  ON ISNULL(dc.codopr, @codopr) = c.cod 
+    LEFT JOIN SG12.dbo.Gasolineras AS g ON t1.codgas = g.cod
+    LEFT JOIN SG12.dbo.Productos   AS p ON t1.codprd = p.cod
+    LEFT JOIN SG12.dbo.Responsables AS r ON t1.codres = r.cod
+    LEFT JOIN SG12.dbo.Islas        AS i ON t1.codisl = i.cod
+    CROSS APPLY ( SELECT n2 = (t1.nrofac / 100000000) ) k
+    CROSS APPLY (
+        SELECT
+            Factura = CASE WHEN t1.nrofac BETWEEN 1000000000 AND 2499999999 THEN t1.nrofac - ((t1.nrofac / 100000000) * 100000000) ELSE t1.nrofac END,
+            serie = CASE k.n2 WHEN 10 THEN 'B' WHEN 11 THEN 'C' WHEN 12 THEN 'D' WHEN 13 THEN 'E' WHEN 14 THEN 'F' WHEN 15 THEN 'G' WHEN 16 THEN 'H' WHEN 17 THEN 'I' WHEN 18 THEN 'J' WHEN 19 THEN 'K' WHEN 20 THEN 'T' WHEN 21 THEN 'Z' WHEN 22 THEN 'Z' WHEN 23 THEN 'Z' WHEN 24 THEN 'Z' ELSE 'Unknown' END,
+            conceptofac = CASE k.n2 WHEN 10 THEN 'Contado Independencia' WHEN 11 THEN 'Contado' WHEN 12 THEN 'Anticipos' WHEN 13 THEN 'Consumos' WHEN 14 THEN 'Notas de crédito' WHEN 15 THEN 'Notas de crédito' WHEN 16 THEN 'Web' WHEN 17 THEN 'Crédito' WHEN 18 THEN 'Crédito' WHEN 19 THEN 'Web' WHEN 20 THEN 'Terminales' WHEN 21 THEN 'Global' ELSE '' END
+    ) calc
+    ORDER BY fecha DESC, t1.hratrn ASC
+    OPTION (RECOMPILE);
+    ";
+
+    // Nota: Como quitamos el cálculo de sigma en este query para hacerlo más ligero (ya que traemos todo el mes), 
+    // solo necesitamos los parámetros de evaluación. Los históricos ya no se usan en este query específico.
+    return $this->sql->select($sql, [$codopr, $eval_i_ini, $eval_i_fin]);
+}
+
+
+public function get_client_anomaly_breakdown($codopr, $target_month_ini, $target_month_fin, $hist_ini, $hist_fin)
+{
+    $cod_eval_i_ini = $this->dateToInt($target_month_ini);
+    $cod_eval_i_fin = $this->dateToInt($target_month_fin);
+    $cod_hist_i_ini = $this->dateToInt($hist_ini);
+    $cod_hist_i_fin = $this->dateToInt($hist_fin);
+
+    $sql = "
+    DECLARE @codopr int = ?;
+    DECLARE @eval_i_ini int = ?;
+    DECLARE @eval_i_fin int = ?;
+    DECLARE @hist_i_ini int = ?;
+    DECLARE @hist_i_fin int = ?;
+
+    DECLARE @k_sigma float = 4.0;
+    DECLARE @min_incr_abs int = 5;
+
+    ;WITH 
+    -- 1. HISTÓRICO
+    HistData AS (
+        SELECT fchtrn, COUNT(*) as cnt
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE [codopr (F)] = @codopr AND fchtrn BETWEEN @hist_i_ini AND @hist_i_fin
+        GROUP BY fchtrn
+    ),
+    HistStats AS (
+        SELECT AVG(CAST(cnt AS float)) AS media_hist, STDEV(CAST(cnt AS float)) AS desv_hist
+        FROM HistData
+    ),
+    -- 2. DATOS DIARIOS DEL MES ACTUAL
+    EvalDays AS (
+        SELECT 
+            fchtrn, 
+            COUNT(*) as cnt, 
+            SUM(mto) as mto_real,
+            CASE WHEN COUNT(*) > 0 THEN SUM(mto)/COUNT(*) ELSE 0 END as ticket_prom
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE [codopr (F)] = @codopr AND fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
+        GROUP BY fchtrn
+    )
+    -- 3. SELECCIONAR DETALLE DÍA POR DÍA
+    SELECT 
+        CAST(DATEADD(DAY, e.fchtrn - 1, CONVERT(date,'1900-01-01')) AS date) AS fecha,
+        e.cnt as despachos_reales,
+        e.mto_real,
+        
+        -- Estadísticas
+        CAST(h.media_hist as decimal(10,2)) as media_historica,
+        CAST((h.media_hist + (@k_sigma * ISNULL(h.desv_hist,0))) as decimal(10,2)) as limite_sigma,
+        
+        -- Cálculo del Exceso Monetario
+        -- Exceso = Lo que vendí HOY - (Lo que suelo vender en cant. * ticket promedio de hoy)
+        CAST((e.cnt * e.ticket_prom) as decimal(12,2)) as dinero_total_real,
+        CAST((h.media_hist * e.ticket_prom) as decimal(12,2)) as dinero_esperado_teorico,
+        CAST((e.mto_real - (h.media_hist * e.ticket_prom)) as decimal(12,2)) as dinero_excedente,
+
+        -- Banderas
+        CASE WHEN (e.cnt > (h.media_hist + (@k_sigma * ISNULL(h.desv_hist,0)))) AND (e.cnt - h.media_hist) >= @min_incr_abs THEN 1 ELSE 0 END as is_critical
+    FROM EvalDays e, HistStats h
+    ORDER BY e.cnt DESC -- Ordenar por pico más alto primero
+    ";
+
+    return $this->sql->select($sql, [$codopr, $cod_eval_i_ini, $cod_eval_i_fin, $cod_hist_i_ini, $cod_hist_i_fin]);
+}
     
     
 }   

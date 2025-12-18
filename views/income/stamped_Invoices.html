@@ -13,9 +13,7 @@
         --hover-bg: #e2e8f0;
     }
 
-    body {
-        background-color: var(--bg-light);
-    }
+    body { background-color: var(--bg-light); }
 
     /* --- TARJETA PRINCIPAL --- */
     .card-dashboard {
@@ -44,182 +42,113 @@
     }
     .btn-custom-green:hover {
         background-color: #059669;
-        border-color: #059669;
-        color: white;
         transform: translateY(-2px);
         box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
-    }
-
-    /* --- CUSTOM DATE PICKER (CORREGIDO ALINEACIÓN) --- */
-    .date-picker-wrapper {
-        position: relative;
-        /* El wrapper debe comportarse como un input-group normal */
-    }
-
-    /* Icono del calendario */
-    .input-group-text-custom {
-        background-color: white;
-        border: 1px solid #cbd5e1;
-        border-right: none; /* Quitamos borde derecho para unir con el botón */
-        border-radius: 8px 0 0 8px;
-        color: var(--accent-blue);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0.375rem 0.75rem;
-        z-index: 2; /* Asegura que el borde quede bien */
-    }
-
-    /* Botón que muestra el mes */
-    .date-picker-btn {
-        position: relative;
-        flex: 1 1 auto; /* ESTO ES LA CLAVE: Ocupa el espacio restante, no el 100% fijo */
-        width: 1%;      /* Truco de Bootstrap para inputs flexibles */
-        min-width: 0;
-        text-align: left;
-        background: white;
-        border: 1px solid #cbd5e1;
-        border-left: none; /* Quitamos borde izquierdo para unir con el icono */
-        color: #334155;
-        padding: 0.5rem 1rem;
-        border-radius: 0 8px 8px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        height: 42px; /* Altura fija para alinearse con el icono */
-    }
-    
-    .date-picker-btn:focus {
-        outline: none;
-        box-shadow: none;
-        border-color: #cbd5e1; /* Mantiene el borde gris al foco */
-    }
-
-    /* Dropdown de los meses */
-    .date-picker-dropdown {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        z-index: 1000;
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        padding: 15px;
-        width: 280px;
-        margin-top: 5px;
-    }
-    
-    /* Header del año (Flechas) */
-    .year-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-        font-weight: bold;
-        color: var(--primary-blue);
-    }
-    .year-btn {
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--accent-blue);
-        font-size: 1.2rem;
-        padding: 0 10px;
-    }
-    .year-btn:hover {
-        color: var(--primary-blue);
-    }
-
-    /* Grilla de meses */
-    .month-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-    }
-    .month-item {
-        text-align: center;
-        padding: 8px 4px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        border: 1px solid transparent;
-        transition: all 0.2s;
-        font-weight: 500;
-        color: #64748b;
-    }
-    .month-item:hover {
-        background-color: #f1f5f9;
-        color: var(--accent-blue);
-        border-color: #cbd5e1;
-    }
-    .month-item.selected {
-        background-color: var(--accent-blue);
         color: white;
-        font-weight: bold;
-        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
     }
+
+    /* --- TAGS EMPRESAS (FILTRO) --- */
+    .empresa-tags-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .empresa-tag {
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 6px 14px;
+        border-radius: 50px;
+        border: 1px solid #cbd5e1;
+        background-color: #fff;
+        color: #64748b;
+        transition: all 0.2s ease;
+        user-select: none;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+    }
+    .empresa-tag:hover {
+        background-color: #f8fafc;
+        border-color: var(--accent-blue);
+        color: var(--accent-blue);
+    }
+    .empresa-tag.active {
+        background-color: var(--primary-blue);
+        color: white;
+        border-color: var(--primary-blue);
+        box-shadow: 0 4px 6px rgba(15, 23, 42, 0.2);
+    }
+    .empresa-count-badge {
+        background: #e2e8f0;
+        color: #475569;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75em;
+        margin-left: 8px;
+        font-weight: 700;
+    }
+    .empresa-tag.active .empresa-count-badge {
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+    }
+
+    /* --- CUSTOM DATE PICKER --- */
+    .date-picker-wrapper { position: relative; }
+    .input-group-text-custom {
+        background-color: white; border: 1px solid #cbd5e1; border-right: none;
+        border-radius: 8px 0 0 8px; color: var(--accent-blue); padding: 0.375rem 0.75rem;
+    }
+    .date-picker-btn {
+        flex: 1 1 auto; width: 1%; min-width: 0; text-align: left; background: white;
+        border: 1px solid #cbd5e1; border-left: none; color: #334155; padding: 0.5rem 1rem;
+        border-radius: 0 8px 8px 0; display: flex; justify-content: space-between; align-items: center; height: 42px;
+    }
+    .date-picker-dropdown {
+        display: none; position: absolute; top: 100%; left: 0; z-index: 1000;
+        background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 15px; width: 280px; margin-top: 5px;
+    }
+    .year-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; color: var(--primary-blue); }
+    .year-btn { background: none; border: none; cursor: pointer; color: var(--accent-blue); font-size: 1.2rem; }
+    .month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .month-item {
+        text-align: center; padding: 8px 4px; border-radius: 6px; cursor: pointer;
+        font-size: 0.9rem; border: 1px solid transparent; transition: all 0.2s; color: #64748b;
+    }
+    .month-item:hover { background-color: #f1f5f9; color: var(--accent-blue); border-color: #cbd5e1; }
+    .month-item.selected { background-color: var(--accent-blue); color: white; font-weight: bold; }
 
     /* --- TABLAS --- */
-    table.dataTable thead th {
-        background-color: #f8fafc !important;
-        color: var(--primary-blue) !important;
-        font-weight: 700 !important;
-        border-bottom: 2px solid var(--accent-blue) !important;
-        white-space: nowrap;
+    table.dataTable thead th { background-color: #f8fafc !important; color: var(--primary-blue) !important; font-weight: 700 !important; border-bottom: 2px solid var(--accent-blue) !important; white-space: nowrap; }
+    table.dataTable tfoot th { background-color: #e2e8f0 !important; font-weight: 800 !important; border-top: 2px solid #94a3b8 !important; white-space: nowrap; }
+    
+    .cursor-pointer { cursor: pointer; }
+    /* Hover effects for clickable cells */
+    .col-mes:hover, .col-total-row:hover, .clickable-footer:hover {
+        background-color: #f0fdf4 !important; color: var(--accent-green) !important; text-decoration: underline;
+    }
+
+    /* --- CORRECCIÓN WRAPPING TABLA DETALLE --- */
+    #tablaDetalle th, #tablaDetalle td {
+        white-space: nowrap !important;
     }
     
-    /* Footer de totales */
-    table.dataTable tfoot th {
-        background-color: #e2e8f0 !important;
-        color: var(--primary-blue) !important;
-        font-weight: 800 !important;
-        border-top: 2px solid #94a3b8 !important;
-        text-align: right;
-        white-space: nowrap;
-    }
-
-    #tablaDetalle tbody td {
-        white-space: nowrap !important;
-        vertical-align: middle;
-    }
-
-    .col-mes {
-        color: var(--accent-blue);
-        font-weight: 600;
-        transition: color 0.2s;
-    }
-    .col-mes:hover {
-        color: var(--accent-green) !important;
-        background-color: #f0fdf4 !important;
-        text-decoration: underline;
-    }
-    .cursor-pointer { cursor: pointer; }
-    .text-monospace { font-family: monospace; letter-spacing: -0.5px; }
-
     /* Loader Overlay */
     #global-loader {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(255, 255, 255, 0.8);
-        z-index: 9999;
-        display: none;
-        justify-content: center; align-items: center; flex-direction: column;
-        backdrop-filter: blur(2px);
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.8);
+        z-index: 9999; display: none; justify-content: center; align-items: center; flex-direction: column; backdrop-filter: blur(2px);
     }
     .loader-spinner {
-        width: 3rem; height: 3rem;
-        border: 4px solid var(--bg-light);
-        border-top: 4px solid var(--accent-green);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+        width: 3rem; height: 3rem; border: 4px solid var(--bg-light); border-top: 4px solid var(--accent-green);
+        border-radius: 50%; animation: spin 1s linear infinite;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 
 <div id="global-loader">
     <div class="loader-spinner mb-3"></div>
-    <h5 class="text-secondary fw-bold">Calculando datos...</h5>
+    <h5 class="text-secondary fw-bold">Procesando información...</h5>
 </div>
 
 <div class="container-fluid mt-4 px-4">
@@ -229,7 +158,7 @@
         <div class="card-header-custom d-flex justify-content-between align-items-center">
             <div>
                 <h2 class="h4 mb-0 fw-bold" style="color: white;"><i class="fa fa-chart-line me-2"></i>Concentrado de Ventas</h2>
-                <small class="opacity-75">Visualización por meses y estaciones</small>
+                <small class="opacity-75">Visualización por meses, estaciones y empresas</small>
             </div>
         </div>
 
@@ -239,17 +168,12 @@
                 
                 <div class="col-md-3">
                     <label class="form-label fw-bold text-secondary text-uppercase small">Desde (Mes Inicial)</label>
-                    
                     <div class="input-group shadow-sm date-picker-wrapper" id="wrapper-from">
                         <span class="input-group-text input-group-text-custom"><i class="fa fa-calendar-alt"></i></span>
-                        
                         <input type="hidden" id="from" name="from" value="{{ from|default('2025-01') }}">
-                        
                         <button type="button" class="btn date-picker-btn" id="btn-display-from">
-                            <span class="text-dark fw-bold">Cargando...</span>
-                            <i class="fa fa-chevron-down small text-muted"></i>
+                            <span class="text-dark fw-bold">Cargando...</span> <i class="fa fa-chevron-down small text-muted"></i>
                         </button>
-
                         <div class="date-picker-dropdown">
                             <div class="year-header">
                                 <button type="button" class="year-btn prev-year"><i class="fa fa-chevron-left"></i></button>
@@ -263,17 +187,12 @@
 
                 <div class="col-md-3">
                     <label class="form-label fw-bold text-secondary text-uppercase small">Hasta (Mes Final)</label>
-                    
                     <div class="input-group shadow-sm date-picker-wrapper" id="wrapper-until">
                         <span class="input-group-text input-group-text-custom"><i class="fa fa-calendar-alt"></i></span>
-                        
                         <input type="hidden" id="until" name="until" value="{{ until|default('2025-11') }}">
-                        
                         <button type="button" class="btn date-picker-btn" id="btn-display-until">
-                            <span class="text-dark fw-bold">Cargando...</span>
-                            <i class="fa fa-chevron-down small text-muted"></i>
+                            <span class="text-dark fw-bold">Cargando...</span> <i class="fa fa-chevron-down small text-muted"></i>
                         </button>
-
                         <div class="date-picker-dropdown">
                             <div class="year-header">
                                 <button type="button" class="year-btn prev-year"><i class="fa fa-chevron-left"></i></button>
@@ -292,11 +211,28 @@
                 </div>
             </form>
 
-            <div class="alert alert-info border-0 bg-opacity-10 bg-primary d-flex align-items-center" role="alert">
+            <div class="mb-2 d-flex align-items-center justify-content-between">
+                <small class="text-uppercase text-secondary fw-bold ls-1"><i class="fa fa-filter me-1"></i> Filtrar por Grupo (Empresa)</small>
+                <small class="text-muted fst-italic">Grupos con más de 1 estación</small>
+            </div>
+            
+            <div class="empresa-tags-container">
+                {% if empresasDisponibles is not empty %}
+                    {% for item in empresasDisponibles %}
+                        <div class="empresa-tag" data-cod="{{ item.CodigoEmpresa }}" data-label="{{ item.RazonSocial }}">
+                            {{ item.RazonSocial }} 
+                            <span class="empresa-count-badge" title="{{ item.CantidadEstaciones }} estaciones">{{ item.CantidadEstaciones }}</span>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <span class="text-muted small">No hay grupos de empresas disponibles.</span>
+                {% endif %}
+            </div>
+
+            <div class="alert alert-info border-0 bg-opacity-10 bg-primary d-flex align-items-center mt-3" role="alert">
                 <i class="fa fa-info-circle fs-4 me-3 text-primary"></i>
                 <div>
-                    Selecciona el rango. Haz clic en los <strong class="text-success">números verdes</strong> para ver detalle.
-                    <br><small>La fila final muestra el <strong>Total General</strong> de todas las estaciones.</small>
+                    <strong>Interacción:</strong> Haz clic en los <strong class="text-success">números de la tabla</strong> o en los <strong class="text-primary">totales (fila/columna)</strong> para ver el detalle de facturas.
                 </div>
             </div>
 
@@ -314,9 +250,8 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title fw-bold text-white" id="detalleTitulo">
-                    <i class="fa fa-file-invoice me-2"></i> Detalle de facturas
-                </h5>
+                <h5 class="modal-title fw-bold text-white d-flex align-items-center" id="detalleTitulo">
+                    </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
             </div>
             <div class="modal-body bg-light">
@@ -333,7 +268,7 @@
     </div>
 </div>
 
-{# LINKS PARA DATATABLES + EXPORT BUTTONS #}
+{# LIBRERÍAS CSS Y JS #}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.bootstrap5.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -344,17 +279,18 @@
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.bootstrap5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/pdfmake.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.1.53/vfs_fonts.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.print.min.js"></script>
 
 <script>
+    // --- VARIABLES GLOBALES ---
+    var activeCodEmp = null;
+    var activeLabel  = null;
+    var tabla = null;
+    var tablaDetalle = null;
+
     $(document).ready(function () {
 
-        // ==========================================
-        // 1. LÓGICA DEL DATE PICKER PERSONALIZADO
-        // ==========================================
+        // ... (CÓDIGO DE DATE PICKER IGUAL QUE ANTES) ...
         const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
         const mesesFull    = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -366,315 +302,228 @@
             let $yearDisp= $wrapper.find('.year-display');
             let $grid    = $wrapper.find('.month-grid');
 
-            // Leer valor inicial
-            let initialVal = $input.val(); // "2025-01"
+            let initialVal = $input.val(); 
             let [initYear, initMonth] = initialVal.split('-').map(Number);
-            
-            // Estado local del picker
             let currentYear = initYear;
 
             function render() {
                 $yearDisp.text(currentYear);
                 $grid.empty();
-                
                 mesesNombres.forEach((nombre, index) => {
                     let mNum = index + 1;
                     let isSelected = (currentYear === parseInt(initialVal.split('-')[0]) && mNum === parseInt(initialVal.split('-')[1]));
-                    
                     let $item = $(`<div class="month-item ${isSelected ? 'selected' : ''}" data-month="${mNum}">${nombre}</div>`);
-                    
                     $item.on('click', function(e) {
                         e.stopPropagation();
                         let newMonth = $(this).data('month');
-                        let newMonthStr = newMonth.toString().padStart(2, '0');
-                        let newVal = `${currentYear}-${newMonthStr}`;
+                        let newVal = `${currentYear}-${newMonth.toString().padStart(2, '0')}`;
                         $input.val(newVal);
-                        
                         initialVal = newVal; 
                         updateBtnText();
                         $dropdown.hide();
                     });
-                    
                     $grid.append($item);
                 });
             }
-
             function updateBtnText() {
                 let parts = $input.val().split('-');
-                let y = parts[0];
                 let m = parseInt(parts[1]) - 1;
-                $btn.find('span').text(`${mesesFull[m]} ${y}`);
+                $btn.find('span').text(`${mesesFull[m]} ${parts[0]}`);
             }
-
-            // Eventos Año
-            $wrapper.find('.prev-year').on('click', function(e) {
-                e.stopPropagation();
-                currentYear--;
-                render();
-            });
-            $wrapper.find('.next-year').on('click', function(e) {
-                e.stopPropagation();
-                currentYear++;
-                render();
-            });
-
-            // Abrir/Cerrar
-            $btn.on('click', function(e) {
-                e.stopPropagation();
-                $('.date-picker-dropdown').not($dropdown).hide();
-                $dropdown.toggle();
-                currentYear = parseInt($input.val().split('-')[0]);
-                render();
-            });
-
-            $(document).on('click', function() {
-                $dropdown.hide();
-            });
-
-            $dropdown.on('click', function(e) {
-                e.stopPropagation();
-            });
-
-            // Init
+            $wrapper.find('.prev-year').on('click', function(e) { e.stopPropagation(); currentYear--; render(); });
+            $wrapper.find('.next-year').on('click', function(e) { e.stopPropagation(); currentYear++; render(); });
+            $btn.on('click', function(e) { e.stopPropagation(); $('.date-picker-dropdown').not($dropdown).hide(); $dropdown.toggle(); currentYear = parseInt($input.val().split('-')[0]); render(); });
+            $(document).on('click', function() { $dropdown.hide(); });
+            $dropdown.on('click', function(e) { e.stopPropagation(); });
             updateBtnText();
         }
-
         initCustomDatePicker('wrapper-from', 'from');
         initCustomDatePicker('wrapper-until', 'until');
 
-
-        // ==========================================
-        // 2. LÓGICA DE DATATABLES
-        // ==========================================
-        var tabla = null;
-        var tablaDetalle = null;
-
-        $('#detalleModal').on('shown.bs.modal', function () {
-            if (tablaDetalle) {
-                setTimeout(function(){
-                    tablaDetalle.columns.adjust().draw();
-                }, 200); 
+        // ... (CÓDIGO DE TAGS IGUAL QUE ANTES) ...
+        $('.empresa-tag').on('click', function() {
+            var codClicked = $(this).data('cod');
+            var labelClicked = $(this).data('label');
+            if (activeCodEmp === codClicked) {
+                activeCodEmp = null; activeLabel = null; $('.empresa-tag').removeClass('active');
+            } else {
+                activeCodEmp = codClicked; activeLabel = labelClicked; $('.empresa-tag').removeClass('active'); $(this).addClass('active');
             }
+            cargarTabla();
         });
 
+        // 3. CARGA DE TABLA
         function cargarTabla() {
             var btnOriginal = $('#btnBuscar').html();
             $('#btnBuscar').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Procesando...');
-
-            var from  = $('#from').val();
-            var until = $('#until').val();
 
             $.ajax({
                 url: '/income/stamped_invoices',
                 type: 'GET',
                 dataType: 'json',
-                data: { from: from, until: until, ajax: 1 },
+                data: { from: $('#from').val(), until: $('#until').val(), codemp: activeCodEmp, ajax: 1 },
                 success: function (resp) {
                     $('#btnBuscar').prop('disabled', false).html(btnOriginal);
-
-                    if (resp.error) {
-                        alert(resp.error);
-                        return;
-                    }
+                    if (resp.error) { alert(resp.error); return; }
 
                     var months  = resp.months || [];
-                    var rawData = resp.data   || [];
-
-                    // --- 3. CÁLCULO DE TOTALES GENERALES (FOOTER) ---
-                    var totalPorMes = {}; 
-                    var totalPeriodoGeneral = 0;
-
+                    var rawData = resp.data || [];
+                    var totalPorMes = {}, totalPeriodoGeneral = 0;
                     months.forEach(function(m) { totalPorMes[m.key] = 0; });
 
                     var data = rawData.map(function (row) {
+                        // Visualización: Si es 0 es CORPORATIVO
                         var nombreReal = row.EstacionNombre;
                         if (row.CodigoEstacion == 0 || row.CodigoEstacion == '0') {
                             nombreReal = 'CORPORATIVO';
                         }
 
                         var obj = {
-                            CodigoEstacion: row.CodigoEstacion,
+                            CodigoEstacion: row.CodigoEstacion, // Aquí viaja el 0 real
                             Estacion:       row.Estacion,
-                            EstacionNombre: nombreReal,
-                            TotalPeriodo:   parseInt(row.TotalPeriodo || 0)
+                            EstacionNombre: nombreReal, 
+                            EmpresaNombre:  row.EmpresaNombre,
+                            TotalPeriodo:   parseFloat(row.TotalPeriodo || 0)
                         };
-
                         totalPeriodoGeneral += obj.TotalPeriodo;
-
                         months.forEach(function (m) {
-                            var valor = 0;
-                            if (row.meses && typeof row.meses[m.key] !== 'undefined') {
-                                valor = parseInt(row.meses[m.key] || 0);
-                            }
-                            obj[m.key] = valor;
-                            totalPorMes[m.key] += valor;
+                            var val = (row.meses && typeof row.meses[m.key] !== 'undefined') ? parseFloat(row.meses[m.key]) : 0;
+                            obj[m.key] = val;
+                            totalPorMes[m.key] += val;
                         });
                         return obj;
                     });
 
-                    // Construcción Footer HTML
-                    var footerHtml = '<tr>';
-                    footerHtml += '<th colspan="3" class="text-end">TOTAL GENERAL:</th>';
+                    // Footer
+                    var footerHtml = '<tr><th colspan="3" class="text-end text-muted text-uppercase">Totales Generales:</th>';
                     months.forEach(function(m) {
-                        var valFmt = totalPorMes[m.key].toLocaleString('en-US'); 
-                        footerHtml += '<th class="text-end">' + valFmt + '</th>';
+                        footerHtml += '<th class="text-end text-primary cursor-pointer clickable-footer" data-month="'+m.key+'" title="Ver todas las estaciones">'+totalPorMes[m.key].toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})+'</th>';
                     });
-                    footerHtml += '<th class="text-end text-success">' + totalPeriodoGeneral.toLocaleString('en-US') + '</th>';
-                    footerHtml += '</tr>';
+                    footerHtml += '<th class="text-end text-success cursor-pointer clickable-footer" data-month="all" title="Ver todo global">'+totalPeriodoGeneral.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})+'</th></tr>';
 
                     $('#tablaConcentrado tfoot').html(footerHtml);
 
-                    // Definición Columnas
                     var columns = [
-                        { data: 'CodigoEstacion', title: 'Cód.', className: 'text-muted fw-bold', visible: false },
-                        { data: 'Estacion',       title: 'Estación', visible: false },
-                        { data: 'EstacionNombre', title: 'Nombre Estación' }
+                        { data: 'CodigoEstacion', title: 'Cód.', visible: false },
+                        { data: 'Estacion',       title: 'Est.', visible: false },
+                        { 
+                            data: 'EstacionNombre', title: 'Estación',
+                            render: function(d,t,r) { return '<div>'+d+'</div><div class="small text-muted fst-italic">'+(r.EmpresaNombre||'')+'</div>'; }
+                        }
                     ];
-
                     months.forEach(function (m) {
-                        columns.push({
-                            data: m.key,
-                            title: m.label,
-                            className: 'col-mes text-end cursor-pointer',
-                            render: $.fn.dataTable.render.number(',', '.', 0)
-                        });
+                        columns.push({ data: m.key, title: m.label, className: 'col-mes text-end cursor-pointer', render: $.fn.dataTable.render.number(',', '.', 0) });
                     });
+                    columns.push({ data: 'TotalPeriodo', title: 'Total Periodo', className: 'text-end fw-bold bg-light col-total-row cursor-pointer', render: $.fn.dataTable.render.number(',', '.', 0) });
 
-                    columns.push({
-                        data: 'TotalPeriodo',
-                        title: 'Total Periodo',
-                        className: 'text-end fw-bold bg-light',
-                        render: $.fn.dataTable.render.number(',', '.', 0)
-                    });
-
-                    if (tabla) {
-                        tabla.destroy();
-                        $('#tablaConcentrado').empty();
-                        $('#tablaConcentrado').append('<tfoot>'+footerHtml+'</tfoot>'); 
-                    }
+                    if ($.fn.DataTable.isDataTable('#tablaConcentrado')) { $('#tablaConcentrado').DataTable().destroy(); }
+                    $('#tablaConcentrado').empty().append('<tfoot>'+footerHtml+'</tfoot>'); 
 
                     tabla = $('#tablaConcentrado').DataTable({
-                        data: data,
-                        columns: columns,
-                        paging: true,
-                        searching: false,
-                        info: true,
-                        ordering: true,
-                        scrollX: true,
+                        data: data, columns: columns, paging: true, pageLength: 50,
                         dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
-                        lengthMenu: [[25, 50, 100, 200, -1], [25, 50, 100, 200, "Todos"]],
-                        pageLength: 100,
-                        buttons: [
-                            { extend: 'excelHtml5', className: 'btn btn-success', text: '<i class="fa fa-file-excel"></i> Excel', title: 'Concentrado Ventas', footer: true }, 
-                            { extend: 'pdfHtml5', className: 'btn btn-danger', text: '<i class="fa fa-file-pdf"></i> PDF', title: 'Concentrado Ventas', orientation: 'landscape', pageSize: 'LEGAL', footer: true }
-                        ],
+                        lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "Todos"]],
+                        buttons: [ { extend: 'excelHtml5', className: 'btn btn-success btn-sm', footer: true }, { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', footer: true } ],
                         language: { url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json" },
-                        createdRow: function(row, data, dataIndex){ $(row).addClass('align-middle'); }
+                        createdRow: function(row) { $(row).addClass('align-middle'); }
                     });
+                    
+                    bindTableClicks();
                 },
-                error: function () {
-                    $('#btnBuscar').prop('disabled', false).html(btnOriginal);
-                    alert('Error al obtener información.');
-                }
+                error: function () { $('#btnBuscar').prop('disabled', false).html(btnOriginal); alert('Error al obtener información.'); }
             });
         }
 
-        $('#filtro-fechas').on('submit', function (e) {
-            e.preventDefault();
-            cargarTabla();
-        });
+        function bindTableClicks() {
+            // Clic Body (Celdas individuales o Total Fila)
+            $('#tablaConcentrado tbody').off('click').on('click', 'td', function () {
+                var cell = tabla.cell(this);
+                if (!cell.index()) return;
+                var colIdx = cell.index().column, colDef = tabla.settings()[0].aoColumns[colIdx];
+                var rowData = tabla.row(this).data(), valor = cell.data();
+                if (!valor || parseFloat(valor) === 0) return;
 
-        cargarTabla();
+                var codgas = rowData.CodigoEstacion; // Si es Corporativo, esto es 0
 
-        // Click Logic
-        $('#tablaConcentrado').on('click', 'tbody td', function () {
-            if (!tabla) return;
-            var cell = tabla.cell(this);
-            var colIdx = cell.index().column;
-            var colDef = tabla.settings()[0].aoColumns[colIdx];
-            if (!colDef) return;
-            var dataProp = colDef.data;
+                if ($(this).hasClass('col-mes')) {
+                    abrirModalDetalle(codgas, rowData.EstacionNombre, colDef.data, colDef.title);
+                } 
+                else if ($(this).hasClass('col-total-row')) {
+                    abrirModalDetalle(codgas, rowData.EstacionNombre, 'all', 'Todo el periodo');
+                }
+            });
+
+            // Clic Footer (Totales Generales)
+            $('#tablaConcentrado tfoot').off('click').on('click', 'th.clickable-footer', function () {
+                var monthKey = $(this).data('month');
+                if (!monthKey) return;
+                var label = (monthKey === 'all') ? 'Gran Total Global' : monthKey;
+                
+                // CORRECCIÓN: Usamos -1 para indicar "TODAS LAS ESTACIONES" y dejar el 0 libre
+                abrirModalDetalle('-1', 'TODAS LAS ESTACIONES', monthKey, label);
+            });
+        }
+
+        // 4. ABRIR MODAL
+        function abrirModalDetalle(codgas, nombreEstacion, monthKey, labelSub) {
             
-            var isMonthCol = typeof dataProp === 'string' && /^\d{4}-\d{2}$/.test(dataProp);
-            if (!isMonthCol) return;
-
-            var rowData = tabla.row(this).data();
-            var codgas  = rowData.CodigoEstacion;
-            var monthKey = dataProp;
-            var monthLabel = colDef.sTitle || monthKey;
-            var estacion = rowData.EstacionNombre;
-            var valorCelda = cell.data();
-
-            if (!valorCelda || valorCelda === 0) return;
-
+            var htmlTitulo = '<i class="fa fa-list"></i> ' + nombreEstacion + ' <span class="badge bg-success ms-2">' + labelSub + '</span>';
+            if (activeLabel) htmlTitulo += ' <span class="badge bg-primary ms-1">Empresa: ' + activeLabel + '</span>';
+            $('#detalleTitulo').html(htmlTitulo);
             $('#global-loader').css('display', 'flex').hide().fadeIn(200);
-            $('#detalleTitulo').html('<i class="fa fa-list"></i> ' + estacion + ' <span class="badge bg-success ms-2">' + monthLabel + '</span>');
 
             $.ajax({
                 url: '/income/stamped_invoices_detail',
-                type: 'GET',
-                dataType: 'json',
-                data: { codgas: codgas, month: monthKey },
+                type: 'GET', dataType: 'json',
+                data: { codgas: codgas, month: monthKey, from: $('#from').val(), until: $('#until').val(), codemp: activeCodEmp },
                 success: function (resp) {
                     $('#global-loader').fadeOut(200);
                     if (resp.error) { alert(resp.error); return; }
 
-                    var rows = resp.data || [];
-                    var cols = [
-                        { 
-                            data: 'FacturaFormateada', title: 'Factura', className: 'fw-bold',
-                            render: function(data) { return '<div style="width: 140px; min-width: 140px;">' + (data ? data : '') + '</div>'; }
-                        },
-                        { 
-                            data: 'Fecha', title: 'Fecha',
-                            render: function(data) { return '<div style="width: 90px; min-width: 90px;">' + (data ? data : '') + '</div>'; }
-                        },
-                        { data: 'Vencimiento', title: 'Vencimiento' },
-                        { 
-                            data: 'Producto', title: 'Producto',
-                            render: function (data, type) {
-                                if (type === 'display' && data && data.length > 40) {
-                                    return '<span title="' + data.replace(/"/g, '&quot;') + '" style="cursor:help;">' + data.substr(0, 40) + '...</span>';
-                                }
-                                return data;
-                            }
-                        },
-                        { data: 'Cantidad', title: 'Cant.', className: 'text-end' },
-                        { data: 'Subtotal', title: 'Subtotal', className: 'text-end' },
-                        { data: 'IVA', title: 'IVA', className: 'text-end' },
-                        { data: 'IEPS', title: 'IEPS', className: 'text-end' },
-                        { data: 'Total', title: 'Total', className: 'text-end fw-bold text-success' },
-                        { data: 'TipoDocumento', title: 'Tipo' },
-                        { data: 'EntidadNombre', title: 'Cliente / Prov.' },
-                        { data: 'UUID', title: 'UUID', className: 'text-monospace small text-muted' }
-                    ];
+                    var rows = resp.data || [], sumaTotal = 0;
+                    rows.forEach(function(r) { sumaTotal += (parseFloat(String(r.Total).replace(/,/g, '')) || 0); });
+                    var sumaFmt = sumaTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+                    
+                    $('#detalleTitulo').html(htmlTitulo + ' <span class="badge bg-white text-dark ms-3 shadow-sm border" style="font-size:0.9rem;">Total: '+sumaFmt+'</span>');
 
-                    if (tablaDetalle) {
-                        tablaDetalle.destroy();
-                        $('#tablaDetalle').empty();
-                    }
+                    if ($.fn.DataTable.isDataTable('#tablaDetalle')) { $('#tablaDetalle').DataTable().destroy(); }
+                    $('#tablaDetalle').empty();
 
                     tablaDetalle = $('#tablaDetalle').DataTable({
-                        data: rows, columns: cols, paging: true, searching: false, info: true, ordering: true, scrollX: true, autoWidth: false,
-                        dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
-                        lengthMenu: [[50, 100, 200, 500, "Todas"], [50, 100, 200, 500, "Todas"]],
-                        pageLength: 50,
-                        buttons: [
-                            { extend: 'excelHtml5', text: '<i class="fa fa-file-excel"></i> Excel', className: 'btn btn-success', title: 'Detalle - ' + estacion },
-                            { extend: 'pdfHtml5', text: '<i class="fa fa-file-pdf"></i> PDF', className: 'btn btn-danger', orientation: 'landscape', pageSize: 'LEGAL', title: 'Detalle - ' + estacion }
+                        data: rows,
+                        columns: [
+                            { data: 'FacturaFormateada', title: 'Factura', className: 'fw-bold text-nowrap', render: d=>'<span class="text-nowrap">'+(d||'')+'</span>' },
+                            { data: 'Fecha', title: 'Fecha', className: 'text-nowrap' },
+                            // Mostrar columna estación si codgas es -1 (Todas)
+                            { data: 'EstacionNombre', title: 'Estación', visible: (codgas == '-1'), className: 'text-nowrap' },
+                            { data: 'EmpresaNombre', title: 'Empresa', visible: (codgas == '-1'), className: 'text-nowrap' }, 
+                            { data: 'Producto', title: 'Producto', className: 'text-nowrap', render: d=>(d&&d.length>35)?'<span title="'+d+'">'+d.substr(0,35)+'...</span>':d },
+                            { data: 'Cantidad', title: 'Cant.', className: 'text-end text-nowrap' },
+                            { data: 'Subtotal', title: 'Subtotal', className: 'text-end text-nowrap' },
+                            { data: 'IVA', title: 'IVA', className: 'text-end text-nowrap' },
+                            { data: 'IEPS', title: 'IEPS', className: 'text-end text-nowrap' },
+                            { data: 'Total', title: 'Total', className: 'text-end fw-bold text-success text-nowrap' },
+                            { data: 'EntidadNombre', title: 'Cliente', className: 'text-nowrap' },
+                            { data: 'UUID', title: 'UUID', className: 'small text-muted text-nowrap' }
                         ],
+                        paging: true, info: true, ordering: true, scrollX: true, autoWidth: false, pageLength: 50,
+                        dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
+                        buttons: [ { extend: 'excelHtml5', className: 'btn btn-success btn-sm', title: 'Detalle '+nombreEstacion }, { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', orientation: 'landscape', pageSize: 'LEGAL' } ],
                         language: { url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json" }
                     });
 
-                    var modal = new bootstrap.Modal(document.getElementById('detalleModal'));
+                    var modalEl = document.getElementById('detalleModal');
+                    $(modalEl).off('shown.bs.modal');
+                    $(modalEl).on('shown.bs.modal', function () { if (tablaDetalle) tablaDetalle.columns.adjust().draw(); });
+                    var modal = new bootstrap.Modal(modalEl);
                     modal.show();
                 },
-                error: function () {
-                    $('#global-loader').fadeOut(200);
-                    alert('Error al cargar detalle.');
-                }
+                error: function (xhr) { $('#global-loader').fadeOut(200); alert('Error al cargar detalle (Timeout).'); }
             });
-        });
+        }
+
+        $('#filtro-fechas').on('submit', function (e) { e.preventDefault(); cargarTabla(); });
+        cargarTabla();
     });
 </script>
 
