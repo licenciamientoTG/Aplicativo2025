@@ -36,11 +36,11 @@
         letter-spacing: -0.5px;
     }
 
-.date-widget-wrapper {
-    position: relative;
-    display: inline-block;
-    z-index: 2000;
-}
+    .date-widget-wrapper {
+        position: relative;
+        display: inline-block;
+        z-index: 2000;
+    }
 
     /* El botón/pill principal que parece un input */
     .date-widget-trigger {
@@ -182,7 +182,7 @@
         box-shadow: 0 2px 5px rgba(52, 152, 219, 0.4);
     }
 
-    /* --- TABS ESTILIZADOS (Manteniendo tu estilo) --- */
+    /* --- TABS ESTILIZADOS --- */
     .nav-pills-custom {
         background: #fff;
         padding: 0.5rem;
@@ -248,11 +248,14 @@
     .table-custom tbody td { padding: 12px 15px; vertical-align: middle; border-top: 1px solid #f1f1f1; }
     .font-numeric { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
 
-    /* Overlay invisible para cerrar el dropdown al dar click fuera */
     .dropdown-overlay {
         position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99; display: none;
     }
     .dropdown-overlay.active { display: block; }
+    
+    /* Estilos para selector de RS */
+    .rs-switch-label { cursor: pointer; font-weight: 600; min-width: 100px; }
+    .rs-switch-label.active { box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-weight: 700; }
 
 </style>
 
@@ -304,7 +307,22 @@
                         </div>
                     </div>
                 </div>
+
+                <div class="mt-4">
+                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
+                        <label class="btn btn-outline-dark rs-switch-label active" onclick="setRS('DIAZ GAS')">
+                            <input type="radio" name="rs_option" autocomplete="off" checked> DIAZ GAS
+                        </label>
+                        <label class="btn btn-outline-dark rs-switch-label" onclick="setRS('GASOMEX')">
+                            <input type="radio" name="rs_option" autocomplete="off"> GASOMEX
+                        </label>
+                        <label class="btn btn-outline-dark rs-switch-label" onclick="setRS('FORANEAS')">
+                            <input type="radio" name="rs_option" autocomplete="off"> FORANEAS
+                        </label>
+                    </div>
                 </div>
+
+            </div>
         </div>
     </div>
 
@@ -337,10 +355,10 @@
                                 </label>
                                 <select id="estacionSelect" class="form-control form-control-lg text-center" onchange="consultarDatos()" 
                                         style="border-radius: 50px; background-color: #f1f3f5; border: 1px solid #ced4da;">
-                                    <option value="">-- Seleccione una opción --</option>
+                                    <option value="">-- Cargando estaciones... --</option>
                                 </select>
                                 <small class="text-muted mt-3 d-block">
-                                    <i class="fas fa-info-circle mr-1"></i> Datos del periodo seleccionado arriba.
+                                    <i class="fas fa-filter mr-1"></i> Filtrado por: <strong id="lbl-rs-actual">DIAZ GAS</strong>
                                 </small>
                             </div>
                         </div>
@@ -515,8 +533,9 @@
 
     // --- FIN LÓGICA WIDGET ---
 
-    // --- CONFIGURACIÓN EXISTENTE ---
-    const URL_ESTACIONES = 'http://201.174.170.236:99/api/Gasolinera/GetEstaciones';
+    // --- CONFIGURACIÓN DE ENDPOINTS ---
+    // El endpoint de estaciones ahora es el local, unificado con Tesorería
+    const URL_ESTACIONES_LOCAL = '/income/get_estaciones_catalogo'; 
     const URL_VENTAS = 'http://201.174.170.236:99/api/Ventas/GetConceptosValores';
     
     const URL_TESORERIA_GENERAL   = '/income/get_tesoreria_data'; 
@@ -533,66 +552,118 @@
     let amexCargado = false;
     let afirmeCargado = false;
 
+    // DATA CACHE
+    let banorteData = null;
+    let santanderData = null;
+    let amexData = null;
+    let afirmeData = null;
+
+    // RAZÓN SOCIAL LOGIC
+    const RS_MAPPING = {
+        'DGA930823KD3': 'DIAZ GAS',
+        'DGM880621FU5': 'GASOMEX',
+        'FORANEAS': 'FORANEAS'
+    };
+    let currentRS = 'DIAZ GAS';
+    let todasLasEstaciones = [];
+
     $(document).ready(function() {
-        initDateWidget(); // Iniciar Widget
-        cargarEstaciones();
+        initDateWidget(); 
+        cargarEstacionesLocales();
     });
 
-    // Función modificada para leer del Widget Custom
     function getPeriodParams() {
         const year = $('#hiddenYear').val();
         const month = $('#hiddenMonth').val();
         return { year: year, month: month };
     }
 
-   function globalRefresh() {
-        // 1. Resetear banderas para que el sistema sepa que debe volver a pedir datos
+    // --- FUNCIONES DE FILTRADO Y RS ---
+    function setRS(rs) {
+        currentRS = rs;
+        $('#lbl-rs-actual').text(rs);
+        
+        filtrarDropdownEstaciones();
+        
+        // Refrescar pestañas Tesorería si ya hay datos
+        if(banorteData) renderTabs(banorteData, 'banorte');
+        if(santanderData) renderTabs(santanderData, 'santander');
+        if(amexData) renderTabs(amexData, 'amex');
+        if(afirmeData) renderTabs(afirmeData, 'afirme');
+    }
+
+    function getRSType(rfc) {
+        if(!rfc || rfc === 'NULL') return 'FORANEAS';
+        return RS_MAPPING[rfc] || 'FORANEAS';
+    }
+
+    function cargarEstacionesLocales() {
+        $.get(URL_ESTACIONES_LOCAL, function(resp){
+            if(resp.status === 'success'){
+                todasLasEstaciones = resp.respuesta;
+                filtrarDropdownEstaciones();
+            } else {
+                $('#estacionSelect').html('<option>Error al cargar</option>');
+            }
+        });
+    }
+
+    function filtrarDropdownEstaciones() {
+        const $select = $('#estacionSelect');
+        $select.empty();
+        $select.append('<option value="">-- Seleccione una opción --</option>');
+
+        let count = 0;
+        todasLasEstaciones.forEach(e => {
+            // El campo RFC viene ahora unificado desde Tesoreria_afil en el controlador
+            if (getRSType(e.RFC) === currentRS) {
+                $select.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
+                count++;
+            }
+        });
+
+        if(count === 0) {
+            $select.append('<option disabled>No hay estaciones disponibles</option>');
+        }
+    }
+
+    // --- REFRESH GLOBAL ---
+    function globalRefresh() {
+        // Reset flags & data
         generalCargado = false;
         banorteCargado = false;
         santanderCargado = false;
         amexCargado = false;
         afirmeCargado = false;
 
-        // 2. Limpiar visualmente todas las tablas para dar feedback de "recarga"
+        banorteData = null;
+        santanderData = null;
+        amexData = null;
+        afirmeData = null;
+
+        // Limpiar visual
         $('#body-tesoreria').empty();
         $('#banorte-station-tabs, #banorte-station-content').empty();
         $('#santander-station-tabs, #santander-station-content').empty();
         $('#amex-station-tabs, #amex-station-content').empty();
         $('#afirme-station-tabs, #afirme-station-content').empty();
         
-        // Poner totales en cero visualmente
         $('#gran-total-banorte, #gran-total-santander, #gran-total-amex, #gran-total-afirme').text('$0.00');
 
-        // 3. Cargar ControlGas (Ventas) si hay estación seleccionada
+        // Cargar ControlGas
         if($('#estacionSelect').val()) {
             consultarDatos();
         }
 
-        // 4. --- CORRECCIÓN AQUÍ ---
-        // Verificamos si estamos en la pestaña principal de Tesorería
+        // Cargar Tesorería activa
         if($('#tesoreria-tab').hasClass('active')) {
-            
-            // Buscamos cuál es el sub-tab (banco) que está activo actualmente
             const activeSubId = $('#subTabsTesoreria .nav-link.active').attr('href');
-
-            // Cargamos solo el banco que el usuario está viendo
             switch(activeSubId) {
-                case '#sub-banorte':
-                    cargarBanorte();
-                    break;
-                case '#sub-santander':
-                    cargarSantander();
-                    break;
-                case '#sub-amex':
-                    cargarAmex();
-                    break;
-                case '#sub-afirme':
-                    cargarAfirme();
-                    break;
-                default:
-                    // Si es '#sub-general' o cualquier otro, cargamos General
-                    cargarDatosTesoreriaBD();
-                    break;
+                case '#sub-banorte': cargarBanorte(); break;
+                case '#sub-santander': cargarSantander(); break;
+                case '#sub-amex': cargarAmex(); break;
+                case '#sub-afirme': cargarAfirme(); break;
+                default: cargarDatosTesoreriaBD(); break;
             }
         }
     }
@@ -634,102 +705,96 @@
     function cargarBanorte(force = false) {
         if(banorteCargado && !force) return;
         $('#loading-banorte').show();
-        const $tabsContainer = $('#banorte-station-tabs');
-        const $contentContainer = $('#banorte-station-content');
-        const $granTotal = $('#gran-total-banorte');
-        $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
-
         const params = getPeriodParams();
         $.get(URL_TESORERIA_BANORTE, params, function(resp){
             $('#loading-banorte').hide();
-            procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'banorte');
+            banorteData = resp; 
+            renderTabs(resp, 'banorte');
             banorteCargado = true;
-        }).fail(() => errorLoad($('#loading-banorte'), $contentContainer));
+        });
     }
 
     // 3. SANTANDER
     function cargarSantander(force = false) {
         if(santanderCargado && !force) return;
         $('#loading-santander').show();
-        const $tabsContainer = $('#santander-station-tabs');
-        const $contentContainer = $('#santander-station-content');
-        const $granTotal = $('#gran-total-santander');
-        $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
-
         const params = getPeriodParams();
         $.get(URL_TESORERIA_SANTANDER, params, function(resp){
             $('#loading-santander').hide();
-            procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'santander');
+            santanderData = resp;
+            renderTabs(resp, 'santander');
             santanderCargado = true;
-        }).fail(() => errorLoad($('#loading-santander'), $contentContainer));
+        });
     }
 
     // 4. AMEX
     function cargarAmex(force = false) {
         if(amexCargado && !force) return;
         $('#loading-amex').show();
-        const $tabsContainer = $('#amex-station-tabs');
-        const $contentContainer = $('#amex-station-content');
-        const $granTotal = $('#gran-total-amex');
-        $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
-
         const params = getPeriodParams();
         $.get(URL_TESORERIA_AMEX, params, function(resp){
             $('#loading-amex').hide();
-            procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'amex');
+            amexData = resp;
+            renderTabs(resp, 'amex');
             amexCargado = true;
-        }).fail(() => errorLoad($('#loading-amex'), $contentContainer));
+        });
     }
 
     // 5. AFIRME
     function cargarAfirme(force = false) {
         if(afirmeCargado && !force) return;
         $('#loading-afirme').show();
-        const $tabsContainer = $('#afirme-station-tabs');
-        const $contentContainer = $('#afirme-station-content');
-        const $granTotal = $('#gran-total-afirme');
-        $tabsContainer.empty(); $contentContainer.empty(); $granTotal.text('$0.00');
-
         const params = getPeriodParams();
         $.get(URL_TESORERIA_AFIRME, params, function(resp){
             $('#loading-afirme').hide();
-            procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, 'afirme');
+            afirmeData = resp;
+            renderTabs(resp, 'afirme');
             afirmeCargado = true;
-        }).fail(() => errorLoad($('#loading-afirme'), $contentContainer));
+        });
     }
 
-    function errorLoad($loader, $container) {
-        $loader.hide();
-        $container.html('<div class="alert alert-danger m-4 shadow-sm border-0"><i class="fas fa-exclamation-triangle mr-2"></i> Error de comunicación con el servidor.</div>');
-    }
+    // --- RENDERIZADO GENÉRICO DE PESTAÑAS (FILTRADO POR RS) ---
+    function renderTabs(resp, prefix) {
+        const $tabsContainer = $(`#${prefix}-station-tabs`);
+        const $contentContainer = $(`#${prefix}-station-content`);
+        const $granTotal = $(`#gran-total-${prefix}`);
 
-    // --- RENDERIZADO GENÉRICO DE PESTAÑAS (SOLO FECHA E IMPORTE) ---
-    function procesarRespuestaPorAfiliacion(resp, $tabsContainer, $contentContainer, $granTotal, prefix) {
+        $tabsContainer.empty();
+        $contentContainer.empty();
+        $granTotal.text('$0.00');
+
         if(resp.status === 'error') {
             $contentContainer.html(`<div class="alert alert-danger m-4 shadow-sm border-0">${resp.message}</div>`);
             return;
         }
 
         const datos = resp.data || [];
-        const catalogo = resp.catalog || []; 
+        const catalogoCompleto = resp.catalog || [];
 
-        if(catalogo.length === 0) {
-            $contentContainer.html('<div class="text-center py-5 text-muted"><i class="far fa-folder-open fa-3x mb-3"></i><br>No hay afiliaciones configuradas para este banco.</div>');
+        // --- FILTRADO CLAVE ---
+        // Filtramos el catálogo según la RS seleccionada y el RFC que viene del servidor
+        const catalogoFiltrado = catalogoCompleto.filter(item => getRSType(item.RFC) === currentRS);
+
+        if(catalogoFiltrado.length === 0) {
+            $contentContainer.html(`<div class="text-center py-5 text-muted"><i class="far fa-folder-open fa-3x mb-3"></i><br>No hay estaciones de <b>${currentRS}</b> para este banco.</div>`);
             return;
         }
 
+        // Agrupar
         const grupos = {};
-        catalogo.forEach(item => { grupos[item.afiliacion] = []; });
+        catalogoFiltrado.forEach(item => { grupos[item.afiliacion] = []; });
 
         let granTotal = 0;
         datos.forEach(r => {
+            // Solo sumamos si la afiliación pertenece al catálogo filtrado
             if(grupos[r.Afiliacion] !== undefined) {
                 grupos[r.Afiliacion].push(r);
                 granTotal += parseFloat(r.Total);
             }
         });
 
-        catalogo.forEach((item, index) => {
+        // Generar HTML
+        catalogoFiltrado.forEach((item, index) => {
             const afilNum = item.afiliacion;
             const estNombre = item.Estacion;
             const tabId = `tab-${prefix}-${index}`;
@@ -791,29 +856,14 @@
         $granTotal.text(formatter.format(granTotal));
     }
 
-    // --- CONTROLGAS ---
-    async function cargarEstaciones() {
-        try{
-            const res = await fetch(URL_ESTACIONES, {method:'POST',headers:{'Content-Type':'application/json'}});
-            const json = await res.json();
-            let html = '<option value="">-- Seleccione --</option>';
-            (json.respuesta||[]).forEach(e=>html+=`<option value="${e.Codigo}">${e.Nombre}</option>`);
-            $('#estacionSelect').html(html);
-        }catch(e){console.error(e);}
-    }
-    
+    // --- CONTROLGAS: CONSULTA DE VENTAS ---
     async function consultarDatos() {
         const eid = $('#estacionSelect').val();
-        
-        // USAR PARAMS DEL NUEVO WIDGET
         const params = getPeriodParams(); 
 
         if(!eid || !params.year || !params.month) return; 
 
-        // Calcular último día del mes
         const lastDay = new Date(params.year, params.month, 0).getDate();
-        
-        // Formato para ControlGas: YYYYMMDD
         const fi = `${params.year}${params.month}01`;
         const ff = `${params.year}${params.month}${lastDay}`;
 
