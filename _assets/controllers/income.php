@@ -756,6 +756,153 @@ function invoice_client_desp(){
         ]);
     }
 
+
+
+    // En tu Controller (IncomeController.php o similar)
+
+public function anomalies_clients_visual()
+{
+    set_time_limit(300);
+    ini_set('memory_limit', '512M'); 
+    header('Content-Type: application/json');
+
+    // RECIBIR DATOS DEL FRONTEND
+    $mode  = $_POST['mode'] ?? 'month';
+    $value = $_POST['target_value'] ?? date('Y-m');
+
+    $fechaTargetInicio = '';
+    $fechaTargetFin    = '';
+
+    // LÓGICA DE FECHAS
+    if ($mode === 'week') {
+        // Formato esperado: "2025-W35"
+        // Usamos DateTime para obtener el Lunes y Domingo de esa semana ISO
+        try {
+            $parts = explode('-W', $value);
+            $year = $parts[0];
+            $week = $parts[1];
+            
+            $dto = new DateTime();
+            $dto->setISODate($year, $week); // Pone la fecha en el Lunes de esa semana
+            
+            $fechaTargetInicio = $dto->format('Y-m-d');
+            $dto->modify('+6 days'); // Mueve al Domingo
+            $fechaTargetFin    = $dto->format('Y-m-d');
+
+        } catch (Exception $e) {
+            // Fallback por si falla
+            $fechaTargetInicio = date('Y-m-d');
+            $fechaTargetFin    = date('Y-m-d');
+        }
+
+    } else {
+        // MODO MENSUAL (Lógica original)
+        $fechaTargetInicio = $value . '-01';
+        $fechaTargetFin    = date("Y-m-t", strtotime($fechaTargetInicio));
+    }
+
+    // CALCULAR HISTÓRICO (Siempre 6 meses atrás desde el inicio del periodo evaluado)
+    $fechaHistInicio = date("Y-m-01", strtotime("-6 months", strtotime($fechaTargetInicio)));
+    $fechaHistFin    = date("Y-m-t", strtotime("-1 month", strtotime($fechaTargetInicio)));
+    
+    // Visualización fin de año
+    $yearStr = date("Y", strtotime($fechaTargetInicio));
+    $fechaVisualFin = $yearStr . '-12-31';
+
+    try {
+        $data = $this->despachosModel->get_anomalies_visual_data(
+            $fechaTargetInicio, 
+            $fechaTargetFin, 
+            $fechaHistInicio, 
+            $fechaHistFin,
+            $fechaVisualFin
+        );
+        echo json_encode(['data' => $data]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage(), 'data' => []]);
+    }
+}
+
+
+/**
+     * Endpoint NUEVO para los modales de detalle (Pico, Días Críticos, Exceso).
+     * Recibe el rango seleccionado y calcula automáticamente el rango histórico (6 meses atrás)
+     * para enviárselo al modelo y que este pueda comparar (Media vs Real).
+     */
+    public function get_breakdown_ajax()
+    {
+        // 1. Validar sesión (opcional según tu framework)
+        // if (!Auth::validate()) { header('Content-Type: application/json'); echo json_encode(['error' => 'Auth']); return; }
+
+        // 2. Recibir parámetros del Frontend
+        $codopr = $_POST['codopr'] ?? 0;
+        $fini   = $_POST['fini'] ?? date('Y-m-01'); // Fecha inicio del periodo analizado
+        $ffin   = $_POST['ffin'] ?? date('Y-m-t');  // Fecha fin del periodo analizado
+
+        // 3. CALCULAR CONTEXTO HISTÓRICO (La clave de la detección)
+        // Para saber si un día es crítico, necesitamos compararlo contra la media de los 6 meses previos.
+        
+        // Fecha Inicio Histórico = Fecha Inicio Análisis - 6 Meses
+        $hist_ini = date("Y-m-01", strtotime("-6 months", strtotime($fini)));
+        
+        // Fecha Fin Histórico = El día anterior al inicio del análisis
+        $hist_fin = date("Y-m-d", strtotime("-1 day", strtotime($fini)));
+
+        // 4. Llamar al Modelo
+        // Se asume que cargaste el modelo como $this->despachosModel
+        $data = $this->despachosModel->get_client_anomaly_breakdown(
+            $codopr, 
+            $fini, 
+            $ffin, 
+            $hist_ini, 
+            $hist_fin
+        );
+
+        // 5. Retornar JSON
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'data' => $data]);
+    }
+
+    /**
+     * Endpoint ACTUALIZADO para obtener tickets.
+     * Ahora calcula también el histórico para que el modelo pueda filtrar 
+     * únicamente los tickets de los días que superaron 4 sigmas.
+     */
+    public function get_suspicious_details_ajax()
+    {
+        $codopr     = $_POST['codopr'] ?? 0;
+        $month_date = $_POST['month_date'] ?? date('Y-m-01'); // Viene como '2025-11-01'
+
+        // 1. Definir rango del mes seleccionado (Target)
+        $t_ini = date("Y-m-01", strtotime($month_date));
+        $t_fin = date("Y-m-t", strtotime($month_date));
+
+        // 2. Definir rango histórico (6 meses atrás) para el cálculo de Sigma
+        $h_ini = date("Y-m-01", strtotime("-6 months", strtotime($t_ini)));
+        $h_fin = date("Y-m-t", strtotime("-1 month", strtotime($t_ini)));
+
+        // 3. Llamar al modelo
+        // Nota: Esta función del modelo ahora espera 5 parámetros para hacer el filtrado inteligente
+        $data = $this->despachosModel->get_suspicious_tickets_details(
+            $t_ini, 
+            $t_fin, 
+            $h_ini, 
+            $h_fin, 
+            $codopr
+        );
+
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'data' => $data]);
+    }
+
+
+
+
+
+
+
+
     public function anomalies_top_station()
 {
     header('Content-Type: application/json; charset=UTF-8');
@@ -1967,7 +2114,52 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 1. TESORERIA GENERAL (0956) - FILTRADO POR MES
+    // 1. OBTENER CATÁLOGO DE ESTACIONES (Para ControlGas) - UNIFICADO CON AFIL
+    // =========================================================================
+    public function get_estaciones_catalogo() {
+        ob_clean();
+        header('Content-Type: application/json');
+        
+        $server = "192.168.0.6"; 
+        $db = "TG"; 
+        $user = "cguser"; 
+        $pass = "sahei1712";
+        
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            
+            // JOIN con Tesoreria_afil para usar EL MISMO criterio de RFC que los bancos
+            $sql = "SELECT DISTINCT 
+                        T1.Codigo, 
+                        T1.Nombre, 
+                        ISNULL(T2.rfc, 'FORANEAS') as RFC 
+                    FROM Estaciones T1
+                    LEFT JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
+                    ORDER BY T1.Nombre";
+
+            $stmt = $conn->query($sql);
+            $result = [];
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $rfc = trim($row['RFC']);
+                // Normalizar valores vacíos
+                if($rfc === '' || $rfc === 'NULL') {
+                    $rfc = 'FORANEAS';
+                }
+                $row['RFC'] = $rfc;
+                $result[] = $row;
+            }
+            
+            echo json_encode(["status" => "success", "respuesta" => $result]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+    // TESORERIA GENERAL (0956)
     // =========================================================================
     public function get_tesoreria_data() {
         ob_clean();
@@ -1977,8 +2169,7 @@ public function anomalies_client_tickets()
         $db = "TG";
         $user = "cguser";
         $pass = "sahei1712";
-
-        // Recibir parámetros
+        
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m');
 
@@ -1986,8 +2177,7 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // Filtramos por año y mes
-            $sql = "SELECT Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
+            $sql = "SELECT TOP 4000 Fecha, Referencia, Descripcion, Sucursal, Depositos, Retiros, Saldo 
                     FROM Tesoreria_0956 
                     WHERE YEAR(Fecha) = ? AND MONTH(Fecha) = ?
                     ORDER BY Fecha ASC";
@@ -2021,17 +2211,12 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 2. TESORERIA BANORTE - FILTRADO POR MES
+    // 2. TESORERIA BANORTE
     // =========================================================================
     public function get_tesoreria_banorte() {
         ob_clean();
         header('Content-Type: application/json');
-
-        $server = "192.168.0.6";
-        $db = "TG";
-        $user = "cguser";
-        $pass = "sahei1712";
-
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m');
 
@@ -2039,9 +2224,10 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATALOGO BANORTE (ID 4)
+            // Traemos A.rfc
             $sqlAfil = "SELECT A.afiliacion, 
-                               ISNULL(S.Nombre, V.Nombre) as Estacion 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion,
+                               ISNULL(A.rfc, 'FORANEAS') as RFC 
                         FROM Tesoreria_afil A
                         LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
                         LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
@@ -2055,7 +2241,8 @@ public function anomalies_client_tickets()
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 $catalogo[] = [
                     'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion']
+                    'Estacion'   => $r['Estacion'],
+                    'RFC'        => trim($r['RFC'])
                 ];
             }
 
@@ -2064,22 +2251,15 @@ public function anomalies_client_tickets()
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. MOVIMIENTOS FILTRADOS
-            $sqlMovs = "SELECT Fecha, Descripcion, Depositos 
-                        FROM Tesoreria_0956 
+            $sqlMovs = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_0956 
                         WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-            
             $stmtMovs = $conn->prepare($sqlMovs);
             $stmtMovs->execute([$year, $month]);
             
             $agrupado = [];
-
             while($row = $stmtMovs->fetch(PDO::FETCH_ASSOC)){
                 $desc = trim($row['Descripcion']);
-                
-                if (stripos($desc, 'TOTAL GAS') !== 0 && stripos($desc, 'TotalGas') !== 0 && stripos($desc, 'DIAZ GAS') !== 0) {
-                    continue;
-                }
+                if (stripos($desc, 'TOTAL GAS') !== 0 && stripos($desc, 'TotalGas') !== 0 && stripos($desc, 'DIAZ GAS') !== 0) continue;
 
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
@@ -2091,10 +2271,7 @@ public function anomalies_client_tickets()
                         $key = $fecha . '_' . $afiliacionStr;
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
-                                'Fecha'      => $fecha,
-                                'Afiliacion' => $afiliacionStr,
-                                'Estacion'   => $afilItem['Estacion'],
-                                'Total'      => 0
+                                'Fecha' => $fecha, 'Afiliacion' => $afiliacionStr, 'Estacion' => $afilItem['Estacion'], 'Total' => 0
                             ];
                         }
                         $agrupado[$key]['Total'] += $monto;
@@ -2106,11 +2283,7 @@ public function anomalies_client_tickets()
             $resultado = array_values($agrupado);
             usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
 
-            echo json_encode([
-                "status" => "success", 
-                "data" => $resultado,
-                "catalog" => $catalogo
-            ]);
+            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
 
         } catch (PDOException $e) {
             echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
@@ -2119,17 +2292,12 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 3. TESORERIA SANTANDER - FILTRADO POR MES
+    // 3. TESORERIA SANTANDER
     // =========================================================================
     public function get_tesoreria_santander() {
         ob_clean();
         header('Content-Type: application/json');
-
-        $server = "192.168.0.6";
-        $db = "TG";
-        $user = "cguser";
-        $pass = "sahei1712";
-
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m');
 
@@ -2137,8 +2305,7 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATALOGO
-            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion 
+            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion, ISNULL(A.rfc, 'FORANEAS') as RFC 
                         FROM Tesoreria_afil A
                         INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
                         WHERE A.entidad_id = 1 AND LEN(ISNULL(A.afiliacion,'')) > 0";
@@ -2148,40 +2315,31 @@ public function anomalies_client_tickets()
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 $catalogo[] = [
                     'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion']
+                    'Estacion'   => $r['Estacion'],
+                    'RFC'        => trim($r['RFC'])
                 ];
             }
-
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. MOVIMIENTOS FILTRADOS
             $tablas = ['Tesoreria_5117', 'Tesoreria_8973'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
-                // Verificar si existe tabla
                 $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
                 if($check->fetchColumn() > 0) {
-                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
-                            FROM $tabla 
-                            WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
-                    
-                    while($r = $stmt->fetch(PDO::FETCH_ASSOC)){
-                        $movimientosRaw[] = $r;
-                    }
+                    while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
                 }
             }
             
             $agrupado = [];
-
             foreach($movimientosRaw as $row){
-                $ref  = trim($row['Referencia']);
-                $desc = trim($row['Descripcion']);
+                $ref = trim($row['Referencia']);
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
@@ -2192,12 +2350,7 @@ public function anomalies_client_tickets()
                         $key = $fecha . '_' . $afiliacionStr;
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
-                                'Fecha'      => $fecha,
-                                'Afiliacion' => $afiliacionStr,
-                                'Referencia' => $afiliacionStr,
-                                'Descripcion'=> $desc,
-                                'Estacion'   => $afilItem['Estacion'],
-                                'Total'      => 0
+                                'Fecha' => $fecha, 'Afiliacion' => $afiliacionStr, 'Estacion' => $afilItem['Estacion'], 'Total' => 0
                             ];
                         }
                         $agrupado[$key]['Total'] += $monto;
@@ -2209,12 +2362,7 @@ public function anomalies_client_tickets()
             $resultado = array_values($agrupado);
             usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
 
-            echo json_encode([
-                "status" => "success", 
-                "data" => $resultado, 
-                "catalog" => $catalogo 
-            ]);
-
+            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
         } catch (PDOException $e) {
             echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
         }
@@ -2222,17 +2370,12 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 4. TESORERIA AMEX - FILTRADO POR MES
+    // 4. TESORERIA AMEX
     // =========================================================================
     public function get_tesoreria_amex() {
         ob_clean();
         header('Content-Type: application/json');
-
-        $server = "192.168.0.6";
-        $db = "TG";
-        $user = "cguser";
-        $pass = "sahei1712";
-
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m');
 
@@ -2240,9 +2383,9 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. OBTENER CATÁLOGO AMEX (ID 3)
             $sqlAfil = "SELECT A.afiliacion, 
-                               ISNULL(S.Nombre, V.Nombre) as Estacion 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion,
+                               ISNULL(A.rfc, 'FORANEAS') as RFC 
                         FROM Tesoreria_afil A
                         LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
                         LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
@@ -2255,119 +2398,72 @@ public function anomalies_client_tickets()
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 $catalogo[] = [
                     'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion']
+                    'Estacion'   => $r['Estacion'],
+                    'RFC'        => trim($r['RFC'])
                 ];
             }
-
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
             $agrupado = [];
-
-            // FUENTE 1: Tesoreria_5117
+            
+            // Fuente 5117
             try {
-                $sql5117 = "SELECT Fecha, Referencia, Descripcion, Concepto, Depositos 
-                            FROM Tesoreria_5117 
-                            WHERE YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-                $stmt = $conn->prepare($sql5117);
-                $stmt->execute([$year, $month]);
-                
+                $sql5117 = "SELECT Fecha, Concepto, Depositos FROM Tesoreria_5117 WHERE YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $stmt = $conn->prepare($sql5117); $stmt->execute([$year, $month]);
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $concepto = trim($row['Concepto'] ?? '');
                     if ($concepto === '') continue;
-
                     $monto = (float)$row['Depositos'];
-                    $fechaVal = $row['Fecha'];
-                    $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
-
+                    $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                     foreach ($catalogo as $afilItem) {
-                        $afiliacionStr = $afilItem['afiliacion'];
-                        if (stripos($concepto, $afiliacionStr) !== false) {
-                            $key = $fecha . '_' . $afiliacionStr;
-                            if (!isset($agrupado[$key])) {
-                                $agrupado[$key] = [
-                                    'Fecha'      => $fecha,
-                                    'Afiliacion' => $afiliacionStr,
-                                    'Referencia' => $row['Referencia'] ?? '',
-                                    'Descripcion'=> $concepto, 
-                                    'Estacion'   => $afilItem['Estacion'],
-                                    'Total'      => 0
-                                ];
-                            }
+                        if (stripos($concepto, $afilItem['afiliacion']) !== false) {
+                            $key = $fecha . '_' . $afilItem['afiliacion'];
+                            if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
                             $agrupado[$key]['Total'] += $monto;
-                            break; 
+                            break;
                         }
                     }
                 }
-            } catch (Exception $e) {}
+            } catch(Exception $e){}
 
-            // FUENTE 2: Tesoreria_0956
+            // Fuente 0956
             try {
-                $sql0956 = "SELECT Fecha, Referencia, Descripcion, DescripcionDetallada, Depositos 
-                            FROM Tesoreria_0956 
-                            WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-                $stmt = $conn->prepare($sql0956);
-                $stmt->execute([$year, $month]);
-                
+                $sql0956 = "SELECT Fecha, DescripcionDetallada, Depositos FROM Tesoreria_0956 WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $stmt = $conn->prepare($sql0956); $stmt->execute([$year, $month]);
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $detalle = trim($row['DescripcionDetallada']);
                     if ($detalle === '') continue;
-
                     $monto = (float)$row['Depositos'];
-                    $fechaVal = $row['Fecha'];
-                    $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
-
+                    $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                     foreach ($catalogo as $afilItem) {
-                        $afiliacionStr = $afilItem['afiliacion'];
-                        if (stripos($detalle, $afiliacionStr) !== false) {
-                            $key = $fecha . '_' . $afiliacionStr;
-                            if (!isset($agrupado[$key])) {
-                                $agrupado[$key] = [
-                                    'Fecha'      => $fecha,
-                                    'Afiliacion' => $afiliacionStr,
-                                    'Referencia' => $row['Referencia'] ?? '',
-                                    'Descripcion'=> $detalle,
-                                    'Estacion'   => $afilItem['Estacion'],
-                                    'Total'      => 0
-                                ];
-                            }
+                        if (stripos($detalle, $afilItem['afiliacion']) !== false) {
+                            $key = $fecha . '_' . $afilItem['afiliacion'];
+                            if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
                             $agrupado[$key]['Total'] += $monto;
-                            break; 
+                            break;
                         }
                     }
                 }
-            } catch (Exception $e) {}
+            } catch(Exception $e){}
 
             $resultado = array_values($agrupado);
             usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
+            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
 
-            echo json_encode([
-                "status" => "success", 
-                "data" => $resultado, 
-                "catalog" => $catalogo 
-            ]);
-
-        } catch (PDOException $e) {
-            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
-        }
+        } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
         exit;
     }
 
     // =========================================================================
-    // 5. TESORERIA AFIRME - FILTRADO POR MES
+    // 5. TESORERIA AFIRME
     // =========================================================================
     public function get_tesoreria_afirme() {
         ob_clean();
         header('Content-Type: application/json');
-
-        $server = "192.168.0.6";
-        $db = "TG";
-        $user = "cguser";
-        $pass = "sahei1712";
-
-        // ID DE LA ENTIDAD AFIRME
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
         $id_afirme = 13;
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m'); 
@@ -2376,12 +2472,9 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. CATÁLOGO AFIRME (Usando LEFT JOIN para Estaciones Virtuales si hiciera falta, 
-            // aunque aquí dejaremos el query original si no tienes virtuales para afirme, 
-            // si las tienes usa la misma lógica que Banorte)
-            // Asumo que Afirme puede tener virtuales también por consistencia:
             $sqlAfil = "SELECT A.afiliacion, 
-                               ISNULL(S.Nombre, V.Nombre) as Estacion 
+                               ISNULL(S.Nombre, V.Nombre) as Estacion,
+                               ISNULL(A.rfc, 'FORANEAS') as RFC 
                         FROM Tesoreria_afil A
                         LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
                         LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
@@ -2394,47 +2487,30 @@ public function anomalies_client_tickets()
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 $catalogo[] = [
                     'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion']
+                    'Estacion'   => $r['Estacion'],
+                    'RFC'        => trim($r['RFC'])
                 ];
             }
-
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            // 2. OBTENER MOVIMIENTOS FILTRADOS
-            $sql = "SELECT Fecha, Referencia, Descripcion, Depositos 
-                    FROM Tesoreria_Afirme 
-                    WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%' 
-                    AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
-            
+            $sql = "SELECT Fecha, Descripcion, Depositos FROM Tesoreria_Afirme WHERE Depositos > 0 AND Descripcion LIKE '%VENTA%' AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$year, $month]);
             $agrupado = [];
 
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                 $descripcion = trim($row['Descripcion'] ?? '');
-                
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
                 foreach ($catalogo as $afilItem) {
-                    $afiliacionStr = $afilItem['afiliacion'];
-                    
-                    if (stripos($descripcion, $afiliacionStr) !== false) {
-                        $key = $fecha . '_' . $afiliacionStr;
-                        if (!isset($agrupado[$key])) {
-                            $agrupado[$key] = [
-                                'Fecha'      => $fecha,
-                                'Afiliacion' => $afiliacionStr,
-                                'Referencia' => $row['Referencia'], 
-                                'Descripcion'=> $descripcion, 
-                                'Estacion'   => $afilItem['Estacion'],
-                                'Total'      => 0
-                            ];
-                        }
+                    if (stripos($descripcion, $afilItem['afiliacion']) !== false) {
+                        $key = $fecha . '_' . $afilItem['afiliacion'];
+                        if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
                         $agrupado[$key]['Total'] += $monto;
                         break; 
                     }
@@ -2443,144 +2519,14 @@ public function anomalies_client_tickets()
 
             $resultado = array_values($agrupado);
             usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
+            echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
 
-            echo json_encode([
-                "status" => "success", 
-                "data" => $resultado, 
-                "catalog" => $catalogo 
-            ]);
-
-        } catch (PDOException $e) {
-            echo json_encode(["status" => "error", "message" => "Error BD: " . $e->getMessage()]);
-        }
+        } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
         exit;
     }
 
-public function stamped_invoices(): void
-{
-    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-        return;
-    }
 
-    // ¿Es llamada Ajax (DataTables)?
-    $isAjax = (
-        !empty($_SERVER['HTTP_X_REQUESTED_WITH']) &&
-        strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
-    ) || isset($_GET['ajax']);
 
-    if ($isAjax) {
-        header('Content-Type: application/json; charset=utf-8');
-
-        $fromMonth  = $_GET['from']  ?? null; // formato esperado: YYYY-MM
-        $untilMonth = $_GET['until'] ?? null;
-
-        if ($fromMonth === null || $fromMonth === '' || $untilMonth === null || $untilMonth === '') {
-            echo json_encode([
-                'error' => 'Selecciona el mes inicial y final.'
-            ]);
-            return;
-        }
-
-        $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
-        $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
-
-        if (!$fromDateObj || !$untilDateObj) {
-            echo json_encode([
-                'error' => 'Formato de mes inválido.'
-            ]);
-            return;
-        }
-
-        // Aseguramos orden
-        if ($fromDateObj > $untilDateObj) {
-            [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj];
-            [$fromMonth, $untilMonth] = [$untilMonth, $fromMonth];
-        }
-
-        $fromDateObj->modify('first day of this month');
-        $untilDateObj->modify('last day of this month');
-
-        $fechaInicio = $fromDateObj->format('Y-m-d');
-        $fechaFin    = $untilDateObj->format('Y-m-d');
-
-        // Datos crudos del modelo: por estación + año + mes + conteo
-        $rows = $this->FacturasModel->get_concentrado_ventas($fechaInicio, $fechaFin);
-
-        // 1) Lista de meses en el rango
-        $months = [];
-        $period = new \DatePeriod(
-            (clone $fromDateObj)->modify('first day of this month'),
-            new \DateInterval('P1M'),
-            (clone $untilDateObj)->modify('first day of next month')
-        );
-
-        foreach ($period as $dt) {
-            $key   = $dt->format('Y-m'); // 2025-01
-            $label = $this->getMonthNameEs((int)$dt->format('n')) . ' ' . $dt->format('Y');
-            $months[$key] = [
-                'key'   => $key,
-                'label' => $label,
-            ];
-        }
-
-        // 2) Pivot por estación
-        $dataByStation = [];
-
-        foreach ($rows as $r) {
-            $stationKey = $r['CodigoEstacion'];
-
-            if (!isset($dataByStation[$stationKey])) {
-                $dataByStation[$stationKey] = [
-                    'CodigoEstacion' => $r['CodigoEstacion'],
-                    'Estacion'       => $r['Estacion'],
-                    'EstacionNombre' => $r['EstacionNombre'],
-                    'meses'          => [],
-                    'TotalPeriodo'   => 0,
-                ];
-
-                // Inicializar todos los meses del rango en 0
-                foreach ($months as $mKey => $mMeta) {
-                    $dataByStation[$stationKey]['meses'][$mKey] = 0;
-                }
-            }
-
-            $monthKey = sprintf('%04d-%02d', $r['Anio'], $r['Mes']);
-
-            if (isset($dataByStation[$stationKey]['meses'][$monthKey])) {
-                $conteo = (float)$r['Conteo'];
-                $dataByStation[$stationKey]['meses'][$monthKey] += $conteo;
-                $dataByStation[$stationKey]['TotalPeriodo']    += $conteo;
-            }
-        }
-
-        // 3) Formatear a 2 decimales (como string) para que la tabla no se desordene
-        foreach ($dataByStation as &$row) {
-            foreach ($row['meses'] as $mKey => $valor) {
-                $row['meses'][$mKey] = number_format((float)$valor, 2, '.', '');
-            }
-            $row['TotalPeriodo'] = number_format((float)$row['TotalPeriodo'], 2, '.', '');
-        }
-        unset($row);
-
-        // Array indexado para el JSON
-        $data = array_values($dataByStation);
-
-        echo json_encode([
-            'months' => array_values($months),
-            'data'   => $data,
-        ]);
-        return;
-    }
-
-    // *** Llamada normal (no Ajax): pintamos la vista con los inputs de meses ***
-    $from  = '2025-01';
-    $until = '2025-11';
-
-    echo $this->twig->render(
-        $this->route . 'stamped_invoices.html',
-        compact('from', 'until')
-    );
-}
 
 
 private function getMonthNameEs(int $month): string
@@ -2605,55 +2551,144 @@ private function getMonthNameEs(int $month): string
 
 
 
-public function stamped_invoices_detail(): void
+public function stamped_invoices(): void
 {
-    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+
+    set_time_limit(300); 
+    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) { return; }
+
+    $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_GET['ajax']);
+
+    // --- MODO AJAX (JSON) ---
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+
+        $fromMonth  = $_GET['from']   ?? null;
+        $untilMonth = $_GET['until']  ?? null;
+        $codEmp     = $_GET['codemp'] ?? null; // Recibimos ID de empresa
+
+        // Conversión a entero o null
+        $codEmp = ($codEmp !== null && $codEmp !== '') ? (int)$codEmp : null;
+
+        if (!$fromMonth || !$untilMonth) { echo json_encode(['error' => 'Faltan fechas.']); return; }
+
+        $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
+        $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
+
+        if (!$fromDateObj || !$untilDateObj) { echo json_encode(['error' => 'Fecha inválida.']); return; }
+        if ($fromDateObj > $untilDateObj) { [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj]; }
+
+        $fromDateObj->modify('first day of this month');
+        $untilDateObj->modify('last day of this month');
+
+        // Consulta al modelo
+        $rows = $this->FacturasModel->get_concentrado_ventas(
+            $fromDateObj->format('Y-m-d'), 
+            $untilDateObj->format('Y-m-d'), 
+            $codEmp
+        );
+
+        // Generar columnas de meses
+        $months = [];
+        $period = new \DatePeriod((clone $fromDateObj)->modify('first day of this month'), new \DateInterval('P1M'), (clone $untilDateObj)->modify('first day of next month'));
+
+        foreach ($period as $dt) {
+            $key = $dt->format('Y-m');
+            $months[$key] = ['key' => $key, 'label' => $this->getMonthNameEs((int)$dt->format('n')) . ' ' . $dt->format('Y')];
+        }
+
+        // Pivotear datos
+        $dataByStation = [];
+        foreach ($rows as $r) {
+            $stationKey = $r['CodigoEstacion'];
+            if (!isset($dataByStation[$stationKey])) {
+                $dataByStation[$stationKey] = [
+                    'CodigoEstacion' => $r['CodigoEstacion'],
+                    'Estacion'       => $r['Estacion'],
+                    'EstacionNombre' => $r['EstacionNombre'],
+                    'EmpresaNombre'  => $r['EmpresaNombre'], // Razon social
+                    'TotalPeriodo'   => 0,
+                    'meses'          => array_fill_keys(array_keys($months), 0)
+                ];
+            }
+            $monthKey = sprintf('%04d-%02d', $r['Anio'], $r['Mes']);
+            if (isset($dataByStation[$stationKey]['meses'][$monthKey])) {
+                $val = (float)$r['Conteo'];
+                $dataByStation[$stationKey]['meses'][$monthKey] += $val;
+                $dataByStation[$stationKey]['TotalPeriodo'] += $val;
+            }
+        }
+
+        foreach ($dataByStation as &$row) {
+            foreach ($row['meses'] as $k => $v) $row['meses'][$k] = number_format($v, 2, '.', '');
+            $row['TotalPeriodo'] = number_format($row['TotalPeriodo'], 2, '.', '');
+        }
+
+        echo json_encode(['months' => array_values($months), 'data' => array_values($dataByStation)]);
         return;
     }
 
-    header('Content-Type: application/json; charset=utf-8');
+    // --- MODO VISTA (HTML) ---
+    // Obtenemos los Tags de Empresas
+    $empresasDisponibles = $this->FacturasModel->get_empresas_tags();
 
-    $codgas = $_GET['codgas'] ?? null;
-    $month  = $_GET['month']  ?? null; // formato esperado: YYYY-MM
+    $from  = '2025-01';
+    $until = '2025-11';
 
-    // Ojo: codgas=0 es válido, así que no usamos !$codgas
-    if ($codgas === null || $codgas === '' || $month === null || $month === '') {
-        echo json_encode(['error' => 'Faltan parámetros codgas o month.']);
-        return;
-    }
-
-    $dt = \DateTime::createFromFormat('Y-m', $month);
-    if (!$dt) {
-        echo json_encode(['error' => 'Formato de mes inválido.']);
-        return;
-    }
-
-    $fromDateObj  = (clone $dt)->modify('first day of this month');
-    $untilDateObj = (clone $dt)->modify('last day of this month');
-
-    $fechaInicio = $fromDateObj->format('Y-m-d');
-    $fechaFin    = $untilDateObj->format('Y-m-d');
-
-    // Query de detalle
-    $rows = $this->FacturasModel->get_detalle_facturas_estacion_mes($codgas, $fechaInicio, $fechaFin);
-
-    // Formatear campos numéricos
-    foreach ($rows as &$r) {
-        // Cantidad: Solo formato (generalmente no es monetario)
-        $r['Cantidad'] = number_format((float)($r['Cantidad'] ?? 0), 2, '.', ',');
-
-        // CORRECCIÓN: Dividir Subtotal, IVA, IEPS y Total entre 100 y formatear
-        $r['Subtotal'] = number_format((float)($r['Subtotal'] ?? 0) / 100, 2, '.', ',');
-        $r['IVA']      = number_format((float)($r['IVA'] ?? 0) / 100, 2, '.', ',');
-        $r['IEPS']     = number_format((float)($r['IEPS'] ?? 0) / 100, 2, '.', ',');
-        $r['Total']    = number_format((float)($r['Total'] ?? 0) / 100, 2, '.', ',');
-    }
-    unset($r);
-
-    echo json_encode([
-        'data' => $rows
-    ]);
+    echo $this->twig->render($this->route . 'stamped_invoices.html', compact('from', 'until', 'empresasDisponibles'));
 }
 
+public function stamped_invoices_detail(): void
+{
+
+    set_time_limit(300); 
+    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+
+    if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) return;
+    header('Content-Type: application/json; charset=utf-8');
+
+    $codgas = $_GET['codgas'] ?? '0';
+    $month  = $_GET['month']  ?? null;
+    $from   = $_GET['from']   ?? null;
+    $until  = $_GET['until']  ?? null;
+    $codEmp = $_GET['codemp'] ?? null; // Filtro por empresa
+
+    $codEmp = ($codEmp !== null && $codEmp !== '') ? (int)$codEmp : null;
+
+    $fechaInicio = ''; $fechaFin = '';
+
+    if ($month === 'all') {
+        if ($from && $until) {
+            $dtFrom = \DateTime::createFromFormat('Y-m', $from);
+            $dtUntil= \DateTime::createFromFormat('Y-m', $until);
+            if($dtFrom && $dtUntil) {
+                $fechaInicio = $dtFrom->modify('first day of this month')->format('Y-m-d');
+                $fechaFin    = $dtUntil->modify('last day of this month')->format('Y-m-d');
+            }
+        }
+    } else if ($month) {
+        $dt = \DateTime::createFromFormat('Y-m', $month);
+        if ($dt) {
+            $fechaInicio = $dt->modify('first day of this month')->format('Y-m-d');
+            $fechaFin    = $dt->modify('last day of this month')->format('Y-m-d');
+        }
+    }
+
+    if (!$fechaInicio) { echo json_encode(['error' => 'Fechas error']); return; }
+
+    $rows = $this->FacturasModel->get_detalle_facturas_estacion_mes($codgas, $fechaInicio, $fechaFin, $codEmp);
+
+    foreach ($rows as &$r) {
+        $r['Cantidad'] = number_format((float)($r['Cantidad']??0), 2, '.', ',');
+        $r['Subtotal'] = number_format((float)($r['Subtotal']??0), 2, '.', ',');
+        $r['IVA']      = number_format((float)($r['IVA']??0), 2, '.', ',');
+        $r['IEPS']     = number_format((float)($r['IEPS']??0), 2, '.', ',');
+        $r['Total']    = number_format((float)($r['Total']??0), 2, '.', ',');
+    }
+
+    echo json_encode(['data' => $rows]);
+}
 
 }
