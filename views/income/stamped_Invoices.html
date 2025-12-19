@@ -283,14 +283,16 @@
 
 <script>
     // --- VARIABLES GLOBALES ---
-    var activeCodEmp = null;
-    var activeLabel  = null;
-    var tabla = null;
-    var tablaDetalle = null;
+    var activeCodEmp = null;  // Almacena el ID de la empresa seleccionada (filtro)
+    var activeLabel  = null;  // Almacena el nombre de la empresa seleccionada
+    var tabla = null;         // Instancia DataTable Principal
+    var tablaDetalle = null;  // Instancia DataTable Detalle
 
     $(document).ready(function () {
 
-        // ... (CÓDIGO DE DATE PICKER IGUAL QUE ANTES) ...
+        // ==========================================
+        // 1. DATE PICKER PERSONALIZADO
+        // ==========================================
         const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
         const mesesFull    = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -313,6 +315,7 @@
                     let mNum = index + 1;
                     let isSelected = (currentYear === parseInt(initialVal.split('-')[0]) && mNum === parseInt(initialVal.split('-')[1]));
                     let $item = $(`<div class="month-item ${isSelected ? 'selected' : ''}" data-month="${mNum}">${nombre}</div>`);
+                    
                     $item.on('click', function(e) {
                         e.stopPropagation();
                         let newMonth = $(this).data('month');
@@ -325,34 +328,59 @@
                     $grid.append($item);
                 });
             }
+
             function updateBtnText() {
                 let parts = $input.val().split('-');
                 let m = parseInt(parts[1]) - 1;
                 $btn.find('span').text(`${mesesFull[m]} ${parts[0]}`);
             }
+
             $wrapper.find('.prev-year').on('click', function(e) { e.stopPropagation(); currentYear--; render(); });
             $wrapper.find('.next-year').on('click', function(e) { e.stopPropagation(); currentYear++; render(); });
-            $btn.on('click', function(e) { e.stopPropagation(); $('.date-picker-dropdown').not($dropdown).hide(); $dropdown.toggle(); currentYear = parseInt($input.val().split('-')[0]); render(); });
+            
+            $btn.on('click', function(e) {
+                e.stopPropagation();
+                $('.date-picker-dropdown').not($dropdown).hide();
+                $dropdown.toggle();
+                currentYear = parseInt($input.val().split('-')[0]);
+                render();
+            });
+
             $(document).on('click', function() { $dropdown.hide(); });
             $dropdown.on('click', function(e) { e.stopPropagation(); });
             updateBtnText();
         }
+
         initCustomDatePicker('wrapper-from', 'from');
         initCustomDatePicker('wrapper-until', 'until');
 
-        // ... (CÓDIGO DE TAGS IGUAL QUE ANTES) ...
+
+        // ==========================================
+        // 2. LÓGICA DE FILTRADO POR EMPRESA (TAGS)
+        // ==========================================
         $('.empresa-tag').on('click', function() {
             var codClicked = $(this).data('cod');
             var labelClicked = $(this).data('label');
+            
             if (activeCodEmp === codClicked) {
-                activeCodEmp = null; activeLabel = null; $('.empresa-tag').removeClass('active');
+                // Desactivar (Toggle Off)
+                activeCodEmp = null;
+                activeLabel  = null;
+                $('.empresa-tag').removeClass('active');
             } else {
-                activeCodEmp = codClicked; activeLabel = labelClicked; $('.empresa-tag').removeClass('active'); $(this).addClass('active');
+                // Activar (Toggle On)
+                activeCodEmp = codClicked;
+                activeLabel  = labelClicked;
+                $('.empresa-tag').removeClass('active');
+                $(this).addClass('active');
             }
             cargarTabla();
         });
 
-        // 3. CARGA DE TABLA
+
+        // ==========================================
+        // 3. CARGA DE TABLA CONCENTRADO
+        // ==========================================
         function cargarTabla() {
             var btnOriginal = $('#btnBuscar').html();
             $('#btnBuscar').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Procesando...');
@@ -361,18 +389,27 @@
                 url: '/income/stamped_invoices',
                 type: 'GET',
                 dataType: 'json',
-                data: { from: $('#from').val(), until: $('#until').val(), codemp: activeCodEmp, ajax: 1 },
+                data: { 
+                    from: $('#from').val(), 
+                    until: $('#until').val(), 
+                    codemp: activeCodEmp, // Enviamos el ID de empresa
+                    ajax: 1 
+                },
                 success: function (resp) {
                     $('#btnBuscar').prop('disabled', false).html(btnOriginal);
+
                     if (resp.error) { alert(resp.error); return; }
 
                     var months  = resp.months || [];
                     var rawData = resp.data || [];
-                    var totalPorMes = {}, totalPeriodoGeneral = 0;
+
+                    // --- CALCULAR TOTALES ---
+                    var totalPorMes = {}; 
+                    var totalPeriodoGeneral = 0;
                     months.forEach(function(m) { totalPorMes[m.key] = 0; });
 
                     var data = rawData.map(function (row) {
-                        // Visualización: Si es 0 es CORPORATIVO
+                        // === CORRECCIÓN: Si codigo es 0, mostrar CORPORATIVO ===
                         var nombreReal = row.EstacionNombre;
                         if (row.CodigoEstacion == 0 || row.CodigoEstacion == '0') {
                             nombreReal = 'CORPORATIVO';
@@ -386,74 +423,119 @@
                             TotalPeriodo:   parseFloat(row.TotalPeriodo || 0)
                         };
                         totalPeriodoGeneral += obj.TotalPeriodo;
+
                         months.forEach(function (m) {
-                            var val = (row.meses && typeof row.meses[m.key] !== 'undefined') ? parseFloat(row.meses[m.key]) : 0;
-                            obj[m.key] = val;
-                            totalPorMes[m.key] += val;
+                            var valor = 0;
+                            if (row.meses && typeof row.meses[m.key] !== 'undefined') {
+                                valor = parseFloat(row.meses[m.key]);
+                            }
+                            obj[m.key] = valor;
+                            totalPorMes[m.key] += valor;
                         });
                         return obj;
                     });
 
-                    // Footer
+                    // --- FOOTER ---
                     var footerHtml = '<tr><th colspan="3" class="text-end text-muted text-uppercase">Totales Generales:</th>';
+                    
                     months.forEach(function(m) {
-                        footerHtml += '<th class="text-end text-primary cursor-pointer clickable-footer" data-month="'+m.key+'" title="Ver todas las estaciones">'+totalPorMes[m.key].toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})+'</th>';
+                        var valFmt = totalPorMes[m.key].toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); 
+                        // Clase 'clickable-footer' para clic en columna
+                        footerHtml += '<th class="text-end text-primary cursor-pointer clickable-footer" data-month="'+m.key+'" title="Ver detalle de TODAS las estaciones">' + valFmt + '</th>';
                     });
-                    footerHtml += '<th class="text-end text-success cursor-pointer clickable-footer" data-month="all" title="Ver todo global">'+totalPeriodoGeneral.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2})+'</th></tr>';
+                    
+                    var grandTotalFmt = totalPeriodoGeneral.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                    footerHtml += '<th class="text-end text-success cursor-pointer clickable-footer" data-month="all" title="Ver detalle GLOBAL">' + grandTotalFmt + '</th></tr>';
 
                     $('#tablaConcentrado tfoot').html(footerHtml);
 
+                    // --- COLUMNAS ---
                     var columns = [
-                        { data: 'CodigoEstacion', title: 'Cód.', visible: false },
+                        { data: 'CodigoEstacion', title: 'Cód.', className: 'text-muted fw-bold small', visible: false },
                         { data: 'Estacion',       title: 'Est.', visible: false },
                         { 
-                            data: 'EstacionNombre', title: 'Estación',
-                            render: function(d,t,r) { return '<div>'+d+'</div><div class="small text-muted fst-italic">'+(r.EmpresaNombre||'')+'</div>'; }
+                            data: 'EstacionNombre', 
+                            title: 'Estación',
+                            render: function(data, type, row) {
+                                // Muestra nombre estación + nombre empresa
+                                return '<div>' + data + '</div><div class="small text-muted fst-italic">' + (row.EmpresaNombre || '') + '</div>';
+                            }
                         }
                     ];
-                    months.forEach(function (m) {
-                        columns.push({ data: m.key, title: m.label, className: 'col-mes text-end cursor-pointer', render: $.fn.dataTable.render.number(',', '.', 0) });
-                    });
-                    columns.push({ data: 'TotalPeriodo', title: 'Total Periodo', className: 'text-end fw-bold bg-light col-total-row cursor-pointer', render: $.fn.dataTable.render.number(',', '.', 0) });
 
-                    if ($.fn.DataTable.isDataTable('#tablaConcentrado')) { $('#tablaConcentrado').DataTable().destroy(); }
+                    months.forEach(function (m) {
+                        columns.push({
+                            data: m.key, 
+                            title: m.label,
+                            className: 'col-mes text-end cursor-pointer',
+                            render: $.fn.dataTable.render.number(',', '.', 0)
+                        });
+                    });
+
+                    columns.push({
+                        data: 'TotalPeriodo',
+                        title: 'Total Periodo',
+                        className: 'text-end fw-bold bg-light col-total-row cursor-pointer',
+                        render: $.fn.dataTable.render.number(',', '.', 0)
+                    });
+
+                    // --- RENDERIZAR ---
+                    if ($.fn.DataTable.isDataTable('#tablaConcentrado')) {
+                        $('#tablaConcentrado').DataTable().destroy();
+                    }
                     $('#tablaConcentrado').empty().append('<tfoot>'+footerHtml+'</tfoot>'); 
 
                     tabla = $('#tablaConcentrado').DataTable({
-                        data: data, columns: columns, paging: true, pageLength: 50,
+                        data: data,
+                        columns: columns,
+                        paging: true,
+                        pageLength: 50,
                         dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
                         lengthMenu: [[25, 50, 100, -1], [25, 50, 100, "Todos"]],
-                        buttons: [ { extend: 'excelHtml5', className: 'btn btn-success btn-sm', footer: true }, { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', footer: true } ],
+                        buttons: [
+                            { extend: 'excelHtml5', className: 'btn btn-success btn-sm', text: '<i class="fa fa-file-excel"></i> Excel', footer: true, title: 'Reporte Facturas' },
+                            { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', text: '<i class="fa fa-file-pdf"></i> PDF', footer: true, orientation: 'landscape', pageSize: 'LEGAL' }
+                        ],
                         language: { url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json" },
                         createdRow: function(row) { $(row).addClass('align-middle'); }
                     });
                     
                     bindTableClicks();
+
                 },
-                error: function () { $('#btnBuscar').prop('disabled', false).html(btnOriginal); alert('Error al obtener información.'); }
+                error: function () {
+                    $('#btnBuscar').prop('disabled', false).html(btnOriginal);
+                    alert('Error al obtener información.');
+                }
             });
         }
 
+        // --- MANEJO DE CLICS ---
         function bindTableClicks() {
-            // Clic Body (Celdas individuales o Total Fila)
+            // Clic en celda o total fila
             $('#tablaConcentrado tbody').off('click').on('click', 'td', function () {
                 var cell = tabla.cell(this);
                 if (!cell.index()) return;
-                var colIdx = cell.index().column, colDef = tabla.settings()[0].aoColumns[colIdx];
-                var rowData = tabla.row(this).data(), valor = cell.data();
+                
+                var colIdx = cell.index().column;
+                var colDef = tabla.settings()[0].aoColumns[colIdx];
+                var rowData = tabla.row(this).data();
+                var valor = cell.data();
+
                 if (!valor || parseFloat(valor) === 0) return;
 
-                var codgas = rowData.CodigoEstacion; // Si es Corporativo, esto es 0
-
+                var codgas   = rowData.CodigoEstacion;
+                var estacion = rowData.EstacionNombre;
+                
                 if ($(this).hasClass('col-mes')) {
-                    abrirModalDetalle(codgas, rowData.EstacionNombre, colDef.data, colDef.title);
+                    abrirModalDetalle(codgas, estacion, colDef.data, colDef.title);
                 } 
                 else if ($(this).hasClass('col-total-row')) {
-                    abrirModalDetalle(codgas, rowData.EstacionNombre, 'all', 'Todo el periodo');
+                    abrirModalDetalle(codgas, estacion, 'all', 'Todo el periodo');
                 }
             });
 
-            // Clic Footer (Totales Generales)
+            // Clic en footer (total columna)
             $('#tablaConcentrado tfoot').off('click').on('click', 'th.clickable-footer', function () {
                 var monthKey = $(this).data('month');
                 if (!monthKey) return;
@@ -464,35 +546,66 @@
             });
         }
 
-        // 4. ABRIR MODAL
-        function abrirModalDetalle(codgas, nombreEstacion, monthKey, labelSub) {
+        // ==========================================
+        // 4. ABRIR MODAL DETALLE (CON SUMA TOTAL)
+        // ==========================================
+        function abrirModalDetalle(codgas, nombreEstacion, monthKey, labelSubtitulo) {
             
-            var htmlTitulo = '<i class="fa fa-list"></i> ' + nombreEstacion + ' <span class="badge bg-success ms-2">' + labelSub + '</span>';
+            // Título inicial
+            var htmlTitulo = '<i class="fa fa-list"></i> ' + nombreEstacion + 
+                             ' <span class="badge bg-success ms-2">' + labelSubtitulo + '</span>';
             if (activeLabel) htmlTitulo += ' <span class="badge bg-primary ms-1">Empresa: ' + activeLabel + '</span>';
+
             $('#detalleTitulo').html(htmlTitulo);
             $('#global-loader').css('display', 'flex').hide().fadeIn(200);
 
+            // AJAX Detalle
             $.ajax({
                 url: '/income/stamped_invoices_detail',
-                type: 'GET', dataType: 'json',
-                data: { codgas: codgas, month: monthKey, from: $('#from').val(), until: $('#until').val(), codemp: activeCodEmp },
+                type: 'GET',
+                dataType: 'json',
+                data: { 
+                    codgas: codgas, 
+                    month: monthKey, 
+                    from: $('#from').val(), 
+                    until: $('#until').val(),
+                    codemp: activeCodEmp
+                },
                 success: function (resp) {
                     $('#global-loader').fadeOut(200);
                     if (resp.error) { alert(resp.error); return; }
 
-                    var rows = resp.data || [], sumaTotal = 0;
-                    rows.forEach(function(r) { sumaTotal += (parseFloat(String(r.Total).replace(/,/g, '')) || 0); });
-                    var sumaFmt = sumaTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
-                    
-                    $('#detalleTitulo').html(htmlTitulo + ' <span class="badge bg-white text-dark ms-3 shadow-sm border" style="font-size:0.9rem;">Total: '+sumaFmt+'</span>');
+                    var rows = resp.data || [];
 
-                    if ($.fn.DataTable.isDataTable('#tablaDetalle')) { $('#tablaDetalle').DataTable().destroy(); }
+                    // --- CALCULAR SUMA TOTAL DEL MODAL ---
+                    var sumaTotal = 0;
+                    rows.forEach(function(row) {
+                        // Quitamos comas para sumar
+                        var monto = parseFloat(String(row.Total).replace(/,/g, '')) || 0;
+                        sumaTotal += monto;
+                    });
+                    var sumaFormateada = sumaTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+
+                    // --- AGREGAR BADGE CON SUMA TOTAL AL TÍTULO ---
+                    var htmlConSuma = htmlTitulo + 
+                        ' <span class="badge bg-white text-dark ms-3 shadow-sm border" style="font-size:0.9rem;">' +
+                        'Total: ' + sumaFormateada + '</span>';
+                    
+                    $('#detalleTitulo').html(htmlConSuma);
+
+                    // Inicializar DataTable
+                    if ($.fn.DataTable.isDataTable('#tablaDetalle')) {
+                        $('#tablaDetalle').DataTable().destroy();
+                    }
                     $('#tablaDetalle').empty();
 
                     tablaDetalle = $('#tablaDetalle').DataTable({
                         data: rows,
                         columns: [
-                            { data: 'FacturaFormateada', title: 'Factura', className: 'fw-bold text-nowrap', render: d=>'<span class="text-nowrap">'+(d||'')+'</span>' },
+                            { 
+                                data: 'FacturaFormateada', title: 'Factura', className: 'fw-bold text-nowrap',
+                                render: function(d) { return '<span class="text-nowrap">' + (d||'') + '</span>'; }
+                            },
                             { data: 'Fecha', title: 'Fecha', className: 'text-nowrap' },
                             // Mostrar columna estación si codgas es -1 (Todas)
                             { data: 'EstacionNombre', title: 'Estación', visible: (codgas == '-1'), className: 'text-nowrap' },
@@ -503,15 +616,31 @@
                             { data: 'IVA', title: 'IVA', className: 'text-end text-nowrap' },
                             { data: 'IEPS', title: 'IEPS', className: 'text-end text-nowrap' },
                             { data: 'Total', title: 'Total', className: 'text-end fw-bold text-success text-nowrap' },
+                            { data: 'TipoDocumento', title: 'Tipo', className: 'text-nowrap' },
                             { data: 'EntidadNombre', title: 'Cliente', className: 'text-nowrap' },
                             { data: 'UUID', title: 'UUID', className: 'small text-muted text-nowrap' }
                         ],
-                        paging: true, info: true, ordering: true, scrollX: true, autoWidth: false, pageLength: 50,
+                        paging: true,
+                        info: true,
+                        ordering: true,
+                        scrollX: true,
+                        autoWidth: false,
+                        pageLength: 50,
                         dom: "<'d-flex justify-content-between align-items-center mb-2'Bl>frtip",
-                        buttons: [ { extend: 'excelHtml5', className: 'btn btn-success btn-sm', title: 'Detalle '+nombreEstacion }, { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', orientation: 'landscape', pageSize: 'LEGAL' } ],
+                        buttons: [
+                            { 
+                                extend: 'excelHtml5', 
+                                className: 'btn btn-success btn-sm', 
+                                text: '<i class="fa fa-file-excel"></i> Excel', 
+                                title: 'Detalle: '+nombreEstacion+' - Total: '+sumaFormateada,
+                                exportOptions: { columns: ':visible' } // CORRECCIÓN EXCEL
+                            },
+                            { extend: 'pdfHtml5', className: 'btn btn-danger btn-sm', text: '<i class="fa fa-file-pdf"></i> PDF', orientation: 'landscape', pageSize: 'LEGAL', title: 'Detalle: '+nombreEstacion }
+                        ],
                         language: { url: "//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json" }
                     });
 
+                    // --- CORRECCIÓN DE ALINEACIÓN ---
                     var modalEl = document.getElementById('detalleModal');
                     $(modalEl).off('shown.bs.modal');
                     $(modalEl).on('shown.bs.modal', function () { if (tablaDetalle) tablaDetalle.columns.adjust().draw(); });
@@ -526,5 +655,4 @@
         cargarTabla();
     });
 </script>
-
 {% endblock %}
