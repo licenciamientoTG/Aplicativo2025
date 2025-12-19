@@ -53,6 +53,8 @@ class Supply{
     public ProveedoresModel $proveedores;
     public FacturasMovimientosTanquesModel $facturasMovimientosTanquesModel;
     public PaymentRequestAuthorizationsModel  $paymentRequestAuthorizationsModel;
+    public PaymentTransactionsModel $paymentTransactionsModel;
+    public CuentasBancariasModel $CuentasBancariasModel;
     /**
      * @param $twig
      */
@@ -84,6 +86,9 @@ class Supply{
         $this->facturasRecibidasModel                            = new FacturasRecibidasModel();
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
         $this->paymentRequestAuthorizationsModel                = new PaymentRequestAuthorizationsModel ();
+        $this->CuentasBancariasModel                            = new CuentasBancariasModel();
+        $this->paymentTransactionsModel = new PaymentTransactionsModel();
+
 
     }
 
@@ -3112,9 +3117,7 @@ function download_zip($zipFileName) {
             ]);
         }
     }
-    /**
-     * Vista de detalle de un pago
-     */
+
     function payment_detail($payment_id) {
         try {
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
@@ -3124,14 +3127,15 @@ function download_zip($zipFileName) {
                 return;
             }
             $payment = $payment[0];
-            // Obtener facturas asociadas
-            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request($payment_id);
+            
+            // ✅ Obtener facturas con cálculos desde el modelo
+            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+            
             // Obtener autorizaciones
             $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
-            // Obtener estado de autorizaciones
             $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
 
-            // Crear array con información de cada autorización para el template
+            // Crear array con información de cada autorización
             $auth_info = [
                 'abastos' => null,
                 'admin_finanzas' => null,
@@ -3148,15 +3152,19 @@ function download_zip($zipFileName) {
                     }
                 }
             }
-            // Obtener resumen
-            $summary = $this->paymentRequestInvoicesModel->get_payment_summary($payment_id);
+            $transactions = $this->paymentTransactionsModel->get_by_payment_request($payment_id);
+
+            // ✅ Obtener resumen desde el modelo
+            $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
+            
             echo $this->twig->render($this->route . 'payment_detail.html', compact(
                 'payment',
                 'invoices',
                 'authorizations',
                 'authorization_status',
                 'auth_info',
-                'summary'
+                'summary',
+                'transactions'
             ));
             
         } catch (Exception $e) {
@@ -3164,24 +3172,19 @@ function download_zip($zipFileName) {
             redirect('/supply/payment_list');
         }
     }
-
    
     function delete_payment() {
         header('Content-Type: application/json');
-        
+
         try {
             $payment_id = $_POST['payment_id'] ?? null;
-            
             if (!$payment_id) {
                 json_output(['success' => false, 'message' => 'ID de pago requerido']);
                 return;
             }
-            
             // Llamar al modelo para eliminar con transacción
             $result = $this->PaymentRequestsModel->delete_payment_complete($payment_id);
-            
             json_output($result);
-            
         } catch (Exception $e) {
             json_output(['success' => false, 'message' => $e->getMessage()]);
         }
@@ -3290,68 +3293,67 @@ function download_zip($zipFileName) {
      */
     function process_payment() {
         header('Content-Type: application/json');
-        
+
         try {
             // Obtener datos JSON
             $json = file_get_contents('php://input');
             $data = json_decode($json, true);
-            
+
             if ($data === null) {
                 json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
                 return;
             }
-            
+
             $payment_id = $data['payment_id'] ?? null;
             $facturas = $data['facturas'] ?? [];
             $observaciones = $data['observaciones'] ?? '';
             $referencia = $data['referencia'] ?? '';
             $fecha_pago = $data['fecha_pago'] ?? date('Y-m-d');
             $user_id = $_SESSION['tg_user']['Id'] ?? null;
-            
+
             // Validaciones
             if (!$payment_id || !$user_id) {
                 json_output(['success' => false, 'message' => 'Datos incompletos']);
                 return;
             }
-            
+
             if (empty($facturas)) {
                 json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
                 return;
             }
-            
+
             // Verificar que el pago esté autorizado
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment || $payment[0]['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
                 json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
                 return;
             }
-            
+
             // Verificar que el usuario tenga permiso de Tesorería
             if (!authorized(68)) {
                 json_output(['success' => false, 'message' => 'Solo Tesorería puede procesar pagos']);
                 return;
             }
-            
+
             // Procesar pago usando el modelo
-            $result = $this->paymentRequestInvoicesModel->process_payment(
+            $result = $this->paymentTransactionsModel->process_bulk_payment(
                 $payment_id,
                 $facturas,
                 $user_id,
+                $fecha_pago,
                 $observaciones,
-                $referencia,
-                $fecha_pago
+                $referencia
             );
-            
+
             if ($result['success']) {
                 // Si todas las facturas están completamente pagadas, cambiar estado del pago
-                $summary = $this->paymentRequestInvoicesModel->get_payment_summary($payment_id);
-                if ($summary['total_pending'] <= 0) {
+                if ($result['all_paid']) {
                     $this->PaymentRequestsModel->update_request_status(
                         $payment_id,
                         PaymentRequestsModel::STATUS_PAID
                     );
                 }
-                
+
                 json_output([
                     'success' => true,
                     'message' => $result['message'],
@@ -3361,10 +3363,207 @@ function download_zip($zipFileName) {
             } else {
                 json_output(['success' => false, 'message' => $result['message']]);
             }
-            
+
         } catch (Exception $e) {
             error_log("Error en process_payment: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+    function generate_payment_layout(){
+        try {
+            $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+                if (!$payment_id) {
+                json_output(['success' => false, 'message' => 'ID de pago requerido']);
+                return;
+            }
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+            if (!$payment) {
+                json_output(['success' => false, 'message' => 'Pago no encontrado']);
+                return;
+            }
+            $payment = $payment[0];
+            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+            if (!$invoices || count($invoices) === 0) {
+                json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
+                return;
+            }
+            $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
+            if (!$cuenta_cargo_data) {
+                json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
+                return;
+            }
+            $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
+            $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
+
+
+            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+
+            if (!$proveedor) {
+                json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
+                return;
+            }
+            $cuenta_bancaria = $this->CuentasBancariasModel->get_by_name($proveedor['den']);
+            if (!$cuenta_bancaria) {
+                json_output([
+                    'success' => false, 
+                    'message' => 'No se encontró cuenta bancaria para el proveedor: ' . $proveedor['den']
+                ]);
+                return;
+            }
+            $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
+
+            // $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+            $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+            if (!file_exists($templatePath)) {
+                json_output([
+                    'success' => false, 
+                    'message' => 'Template no encontrado',
+                    'error' => 'Ruta: ' . $templatePath
+                ]);
+                return;
+            }
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
+            $spreadsheet = $reader->load($templatePath);
+
+            // 6. Seleccionar hoja "Santander sin comp fiscal"
+            $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
+
+            if (!$sheet) {
+                json_output([
+                    'success' => false, 
+                    'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
+                ]);
+                return;
+            }
+
+            // 7. Fecha de pago en formato DDMMYYYY
+            $fecha_pago = date('dmY'); // Hoy
+            $concepto = '88400000001'; // Código fijo
+            $email_beneficiario = 'susana.pantoja@totalgas.com';
+
+            // 8. Fila inicial (después de encabezados)
+            $fila = 7;
+
+            $facturas_procesadas = 0;
+            $total_layout = 0;
+            $warnings = [
+                'sin_cuenta' => [],
+                'sin_email' => []
+            ];
+
+            // 9. Procesar cada factura
+            foreach ($invoices as $invoice) {
+                $folio = $invoice['folio'];
+                $monto = floatval($invoice['amount']);
+                if ($monto <= 0) {
+                    continue; // Saltar facturas con monto 0
+                }
+
+                // Validar que tenga cuenta de abono
+                if (empty($cuenta_abono)) {
+                    $warnings['sin_cuenta'][] = "Folio $folio";
+                    continue;
+                }
+
+                // Validar email (solo warning, no bloquea)
+                if (empty($email_beneficiario)) {
+                    $warnings['sin_email'][] = "Folio $folio";
+                }
+
+                // 10. Llenar datos en Excel
+                $sheet->setCellValue('A' . $fila, $cuenta_cargo);           // CUENTA DE CARGO
+                $sheet->setCellValue('B' . $fila, $cuenta_abono);          // CUENTA DE ABONO
+                $sheet->setCellValue('C' . $fila, $monto);                 // IMPORTE
+                $sheet->setCellValue('D' . $fila, $concepto);              // CONCEPTO
+                $sheet->setCellValue('E' . $fila, $fecha_pago);            // FECHA
+                $sheet->setCellValue('F' . $fila, $email_beneficiario);   // EMAIL BENEFICIARIO
+
+                $fila++;
+                $facturas_procesadas++;
+                $total_importe  += $monto;
+            }
+
+            // 11. Validar que se procesaron facturas
+            if ($facturas_procesadas === 0) {
+                json_output([
+                    'success' => false, 
+                    'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
+                    'warnings' => $warnings
+                ]);
+                return;
+            }
+
+            $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0777, true);
+            }
+
+            // 13. Nombre del archivo
+            $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
+            $outputPath = $outputDir . $filename;
+
+            // 14. Guardar archivo
+            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
+            $writer->save($outputPath);
+
+            // 15. URL para descarga
+            $file_url = '/supply/download_layout/' . $filename;
+
+            // 16. Respuesta exitosa
+            json_output([
+                'success' => true,
+                'message' => 'Archivo generado exitosamente',
+                'file_name' => $filename,
+                'file_url' => $file_url,
+                'registros_procesados' => $facturas_procesadas,
+                'total_registros' => count($invoices),
+                'total_importe' => $total_importe,
+                'cuenta_cargo' => $cuenta_cargo,
+                'banco_cargo' => $banco_cargo,
+                'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
+            ]);
+
+        } catch (Exception $e) {
+            error_log("Error en generate_payment_layout: " . $e->getMessage());
+            json_output([
+                'success' => false,
+                'message' => 'Error al generar layout',
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+    function get_payment_history() {
+        header('Content-Type: application/json');
+        
+        $invoice_id = $_GET['invoice_id'] ?? null;
+        
+        if (!$invoice_id) {
+            json_output(['success' => false, 'message' => 'ID de factura requerido']);
+            return;
+        }
+        
+        try {
+            $transactions = $this->paymentTransactionsModel->get_payment_history($invoice_id);
+            
+            if ($transactions) {
+                json_output([
+                    'success' => true,
+                    'data' => $transactions
+                ]);
+            } else {
+                json_output([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'No hay pagos registrados'
+                ]);
+            }
+            
+        } catch (Exception $e) {
+            json_output([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ]);
         }
     }
 

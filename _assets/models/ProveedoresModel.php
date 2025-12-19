@@ -22,6 +22,14 @@ class ProveedoresModel extends Model{
         $params = [];
         return ($this->sql->select($query,$params)) ?: false ;
     }
+    public function get_by_id($id){
+        $query = 'SELECT t1.*,t2.den   
+                    FROM [TG].[dbo].[Proveedores] t1
+                    left join SG12.dbo.Proveedores t2 on t1.id_control_gas = t2.cod WHERE t1.id_control_gas = ?';
+        $params = [$id];
+        $rs = $this->sql->select($query,$params);
+        return ($rs[0]) ?: false;
+    }
 
     /**
      * @return array|false

@@ -97,7 +97,7 @@ class PaymentRequestsModel extends Model
      * @return array|false
      */
     public function get_request_by_id($id) : array|false {
-        $query = 'SELECT id, request_date, user_id, comment, status, date_added FROM [TG].[dbo].[payment_requests] WHERE id = ?;';
+        $query = 'SELECT id, request_date, user_id, comment, status, date_added, provider_cod FROM [TG].[dbo].[payment_requests] WHERE id = ?;';
         return ($this->sql->select($query, [$id])) ?: false;
     }
 

@@ -1,7 +1,23 @@
+{# payment_detail.html #}
 {% extends "views/layouts/base.html" %}
 {% block title %}Detalle de Pago #{{ payment.id }}{% endblock %}
 {% block content %}
 
+<style>
+.table-success th {
+    background-color: #198754 !important;
+    color: white !important;
+}
+
+.transaction-row:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+
+.badge {
+    font-size: 0.75rem;
+}
+</style>
 <div class="row">
     <div class="col-12">
         <div class="card">
@@ -104,15 +120,13 @@
                                         <i class="fas fa-box fa-4x text-muted"></i>
                                     {% endif %}
                                 </div>
-                                
                                 <h5 class="card-title">
                                     <span class="badge bg-primary">Nivel 1</span>
                                 </h5>
                                 <h6>Abastos</h6>
-                                
                                 {% if authorization_status.abastos %}
                                     <!-- Ya autorizado -->
-                                    <div class="alert alert-success mb-0 mt-3">
+                                    <div class="alert alert-success mb-0 mt-3" style="display: flex;flex-direction: column;">
                                         <i class="fas fa-check"></i> Autorizado
                                         {% if auth_info.abastos %}
                                             <br><small>{{ auth_info.abastos.autorizador_nombre }}</small>
@@ -162,7 +176,7 @@
                                 
                                 {% if authorization_status.admin_finanzas %}
                                     <!-- Ya autorizado -->
-                                    <div class="alert alert-success mb-0 mt-3">
+                                    <div class="alert alert-success mb-0 mt-3" style="display: flex;flex-direction: column;">
                                         <i class="fas fa-check"></i> Autorizado
                                         {% if auth_info.admin_finanzas %}
                                             <br><small>{{ auth_info.admin_finanzas.autorizador_nombre }}</small>
@@ -208,24 +222,31 @@
                                         <i class="fas fa-money-check-alt fa-4x text-muted"></i>
                                     {% endif %}
                                 </div>
-                                
+
                                 <h5 class="card-title">
                                     <span class="badge bg-info">Nivel 3</span>
                                 </h5>
                                 <h6>Tesorería</h6>
-                                
+
                                 {% if authorization_status.tesoreria %}
                                     <!-- Ya autorizado -->
-                                    <div class="alert alert-success mb-0 mt-3">
+                                    <div class="alert alert-success mb-0 mt-3" style="display: flex;flex-direction: column;" >
                                         <i class="fas fa-check"></i> Autorizado - Listo para Pagar
                                         {% if auth_info.tesoreria %}
                                             <br><small>{{ auth_info.tesoreria.autorizador_nombre }}</small>
                                             <br><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
                                         {% endif %}
                                     </div>
-                                    
+                                    <div class="btn-group w-100" role="group" style="margin-top: 1rem;">
+                                        <button type="button" id="btnGenerarTransferencias" class="btn btn-outline-danger"
+                                            onclick="generarTransferenciasBancarias({{ payment.id }})"
+                                            {% if payment_status == 'CANCELLED' %}disabled{% endif %}
+                                            title="Generar archivo de transferencias bancarias Santander"><i class="fas fa-university"></i> Transferencias Santander
+                                        </button>
+                                    </div>
+
                                     {% if payment.status == 1 and authorized(68) %}
-                                        <button class="btn btn-primary btn-lg mt-3 w-100" 
+                                        <button class="btn btn-primary  mt-3 w-100" 
                                                 onclick="procesarPago()">
                                             <i class="fas fa-dollar-sign"></i> Procesar Pago
                                         </button>
@@ -331,7 +352,166 @@
         </div>
     </div>
 </div>
+{% if transactions and transactions|length > 0 %}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0">
+                    <i class="fas fa-money-check-alt"></i> Transacciones de Pago Realizadas
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Resumen de transacciones -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted d-block">Total Transacciones</small>
+                                <h5 class="mb-0 text-primary">{{ transactions|length }}</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted d-block">Monto Total Pagado</small>
+                                {% set total_pagado = 0 %}
+                                {% for tx in transactions %}
+                                    {% set total_pagado = total_pagado + tx.payment_amount %}
+                                {% endfor %}
+                                <h5 class="mb-0 text-success">${{ total_pagado|number_format(2) }}</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted d-block">Primera Transacción</small>
+                                <h6 class="mb-0 text-info">
+                                    {% set first_date = transactions|first %}
+                                    {{ first_date.payment_date|date('d/m/Y') }}
+                                </h6>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted d-block">Última Transacción</small>
+                                <h6 class="mb-0 text-info">
+                                    {% set last_date = transactions|last %}
+                                    {{ last_date.payment_date|date('d/m/Y') }}
+                                </h6>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
+                <!-- Tabla de transacciones -->
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover table-bordered">
+                        <thead class="table-success">
+                            <tr>
+                                <th width="50">#</th>
+                                <th>Folio Factura</th>
+                                <th>Factura</th>
+                                <th>Fecha Pago</th>
+                                <th class="text-end">Monto</th>
+                                <th>Método</th>
+                                <th>Referencia</th>
+                                <th>Cuenta Beneficiario</th>
+                                <th>Procesado Por</th>
+                                <th>Estado</th>
+                                <th width="80">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in transactions %}
+                            <tr>
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td><strong>{{ tx.folio }}</strong></td>
+                                <td>{{ tx.invoice_number }}</td>
+                                <td>{{ tx.payment_date|date('d/m/Y') }}</td>
+                                <td class="text-end">
+                                    <strong class="text-success">${{ tx.payment_amount|number_format(2) }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ tx.payment_method }}</span>
+                                </td>
+                                <td>
+                                    {% if tx.payment_reference %}
+                                        <small>{{ tx.payment_reference }}</small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if tx.beneficiary_account %}
+                                        <small>
+                                            {{ tx.beneficiary_account }}<br>
+                                            <span class="text-muted">{{ tx.beneficiary_name }}</span>
+                                        </small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <small>
+                                        <i class="fas fa-user"></i> {{ tx.created_by_name }}<br>
+                                        <span class="text-muted">{{ tx.created_at|date('d/m/Y H:i') }}</span>
+                                    </small>
+                                </td>
+                                <td class="text-center">
+                                    {% if tx.status == 0 %}
+                                        <span class="badge bg-warning text-dark">Pendiente</span>
+                                    {% elseif tx.status == 1 %}
+                                        <span class="badge bg-info">Procesado</span>
+                                    {% elseif tx.status == 2 %}
+                                        <span class="badge bg-success">Confirmado</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Rechazado</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if tx.notes %}
+                                    <button class="btn btn-sm btn-outline-secondary" 
+                                            onclick="verNotasPago({{ tx.id }}, '{{ tx.notes|e('js') }}')"
+                                            title="Ver notas">
+                                        <i class="fas fa-sticky-note"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="4" class="text-end">TOTAL PAGADO:</th>
+                                <th class="text-end">
+                                    <h5 class="mb-0 text-success">${{ total_pagado|number_format(2) }}</h5>
+                                </th>
+                                <th colspan="6"></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Notas adicionales -->
+                {% if transactions|length > 0 %}
+                <div class="alert alert-info mt-3 mb-0">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Información:</strong> Se han registrado {{ transactions|length }} transacción(es) de pago 
+                    por un total de <strong>${{ total_pagado|number_format(2) }}</strong>.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 <!-- Facturas -->
 <div class="row mt-3">
     <div class="col-12">
@@ -349,19 +529,29 @@
                             <th>Estación</th>
                             <th class="text-end">Monto</th>
                             <th class="text-end">Pagado</th>
+                            <th class="text-end">Saldo</th>
                             <th>Estado</th>
                             <th>Vencimiento</th>
+                            <th>Acciones</th> <!-- ✅ NUEVO -->
                         </tr>
                     </thead>
                     <tbody>
                         {% for invoice in invoices %}
+                        {% set saldo = invoice.amount - invoice.paid_amount %}
                         <tr>
                             <td>{{ invoice.folio }}</td>
                             <td>{{ invoice.invoice_number }}</td>
-                            <td>{{invoice.proveedor_nombre}}</td>
+                            <td>{{ invoice.proveedor_nombre }}</td>
                             <td>{{ invoice.estacion_nombre }}</td>
                             <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
                             <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>
+                            <td class="text-end">
+                                {% if saldo > 0 %}
+                                    <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
+                                {% else %}
+                                    <span class="text-success">$0.00</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if invoice.status == 2 %}
                                     <span class="badge bg-success">Pagado</span>
@@ -372,6 +562,14 @@
                                 {% endif %}
                             </td>
                             <td>{{ invoice.expiration_date|date('d/m/Y') }}</td>
+                            <td>
+                                <!-- ✅ NUEVO: Botón para ver historial de pagos -->
+                                <button class="btn btn-sm btn-outline-info" 
+                                        onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')"
+                                        title="Ver historial de pagos">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -381,6 +579,54 @@
     </div>
 </div>
 
+<!-- ✅ NUEVO: Modal de Historial de Pagos -->
+<div class="modal fade" id="modalHistorialPagos" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-history"></i> Historial de Pagos - Folio <span id="folioHistorial"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="historialContent">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p class="mt-2">Cargando historial...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="modal fade" id="modalNotasPago" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-sticky-note"></i> Notas del Pago
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="notasPagoContent" class="mb-0"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Modal de Autorización -->
 <div class="modal fade" id="authModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -574,6 +820,8 @@
 {% endblock %}
 
 {% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+
 <script>
 const paymentId = {{ payment.id }};
 let currentPermission = null;
@@ -778,5 +1026,123 @@ $('#modalProcesarPago').on('hidden.bs.modal', function() {
     $('#selectAllFacturas').prop('checked', false);
     updatePagoSummary();
 });
+
+
+
+
+
+function verHistorialPagos(invoiceId, folio) {
+    $('#folioHistorial').text(folio);
+    $('#modalHistorialPagos').modal('show');
+    
+    // Cargar historial
+    $.ajax({
+        url: '/supply/get_payment_history',
+        type: 'GET',
+        data: { invoice_id: invoiceId },
+        success: function(response) {
+            if (response.success) {
+                renderHistorial(response.data, invoiceId);
+            } else {
+                $('#historialContent').html(`
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle"></i> No hay pagos registrados para esta factura
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            $('#historialContent').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error al cargar el historial
+                </div>
+            `);
+        }
+    });
+}
+
+function renderHistorial(transactions, invoiceId) {
+    if (!transactions || transactions.length === 0) {
+        $('#historialContent').html(`
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> No hay pagos registrados para esta factura
+            </div>
+        `);
+        return;
+    }
+    
+    let totalPagado = 0;
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Fecha Pago</th>
+                        <th class="text-end">Monto</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th>Pagado Por</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    transactions.forEach((tx, index) => {
+        totalPagado += parseFloat(tx.payment_amount);
+        
+        let statusBadge = '';
+        switch(parseInt(tx.status)) {
+            case 0: statusBadge = '<span class="badge bg-warning text-dark">Pendiente</span>'; break;
+            case 1: statusBadge = '<span class="badge bg-info">Procesado</span>'; break;
+            case 2: statusBadge = '<span class="badge bg-success">Confirmado</span>'; break;
+            case 3: statusBadge = '<span class="badge bg-danger">Rechazado</span>'; break;
+        }
+        
+        html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${formatDate(tx.payment_date)}</td>
+                <td class="text-end"><strong>$${parseFloat(tx.payment_amount).toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                <td>${tx.payment_method || 'N/A'}</td>
+                <td>${tx.payment_reference || '-'}</td>
+                <td><small>${tx.created_by_name || 'N/A'}</small></td>
+                <td>${statusBadge}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th colspan="2" class="text-end">TOTAL PAGADO:</th>
+                        <th class="text-end text-success">$${totalPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})}</th>
+                        <th colspan="4"></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+    
+    $('#historialContent').html(html);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit' 
+    });
+}
+
+
+function verNotasPago(transactionId, notes) {
+    $('#notasPagoContent').text(notes);
+    $('#modalNotasPago').modal('show');
+}
 </script>
 {% endblock %}
