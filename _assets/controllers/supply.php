@@ -21,6 +21,7 @@ use PhpOffice\PhpSpreadsheet\Helper\Sample;
 use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
+use PhpOffice\PhpSpreadsheet\Collection\CellsFactory;
 
 
 class Supply{
@@ -3369,170 +3370,6 @@ function download_zip($zipFileName) {
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
     }
-
-    function generate_payment_layout(){
-        try {
-            $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-                if (!$payment_id) {
-                json_output(['success' => false, 'message' => 'ID de pago requerido']);
-                return;
-            }
-            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-            if (!$payment) {
-                json_output(['success' => false, 'message' => 'Pago no encontrado']);
-                return;
-            }
-            $payment = $payment[0];
-            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-            if (!$invoices || count($invoices) === 0) {
-                json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
-                return;
-            }
-            $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
-            if (!$cuenta_cargo_data) {
-                json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
-                return;
-            }
-            $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
-            $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
-
-
-            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
-
-            if (!$proveedor) {
-                json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
-                return;
-            }
-            $cuenta_bancaria = $this->CuentasBancariasModel->get_by_name($proveedor['den']);
-            if (!$cuenta_bancaria) {
-                json_output([
-                    'success' => false, 
-                    'message' => 'No se encontró cuenta bancaria para el proveedor: ' . $proveedor['den']
-                ]);
-                return;
-            }
-            $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
-
-            // $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
-            $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
-            if (!file_exists($templatePath)) {
-                json_output([
-                    'success' => false, 
-                    'message' => 'Template no encontrado',
-                    'error' => 'Ruta: ' . $templatePath
-                ]);
-                return;
-            }
-            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
-            $spreadsheet = $reader->load($templatePath);
-
-            // 6. Seleccionar hoja "Santander sin comp fiscal"
-            $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
-
-            if (!$sheet) {
-                json_output([
-                    'success' => false, 
-                    'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
-                ]);
-                return;
-            }
-
-            // 7. Fecha de pago en formato DDMMYYYY
-            $fecha_pago = date('dmY'); // Hoy
-            $concepto = '88400000001'; // Código fijo
-            $email_beneficiario = 'susana.pantoja@totalgas.com';
-
-            // 8. Fila inicial (después de encabezados)
-            $fila = 7;
-
-            $facturas_procesadas = 0;
-            $total_layout = 0;
-            $warnings = [
-                'sin_cuenta' => [],
-                'sin_email' => []
-            ];
-
-            // 9. Procesar cada factura
-            foreach ($invoices as $invoice) {
-                $folio = $invoice['folio'];
-                $monto = floatval($invoice['amount']);
-                if ($monto <= 0) {
-                    continue; // Saltar facturas con monto 0
-                }
-
-                // Validar que tenga cuenta de abono
-                if (empty($cuenta_abono)) {
-                    $warnings['sin_cuenta'][] = "Folio $folio";
-                    continue;
-                }
-
-                // Validar email (solo warning, no bloquea)
-                if (empty($email_beneficiario)) {
-                    $warnings['sin_email'][] = "Folio $folio";
-                }
-
-                // 10. Llenar datos en Excel
-                $sheet->setCellValue('A' . $fila, $cuenta_cargo);           // CUENTA DE CARGO
-                $sheet->setCellValue('B' . $fila, $cuenta_abono);          // CUENTA DE ABONO
-                $sheet->setCellValue('C' . $fila, $monto);                 // IMPORTE
-                $sheet->setCellValue('D' . $fila, $concepto);              // CONCEPTO
-                $sheet->setCellValue('E' . $fila, $fecha_pago);            // FECHA
-                $sheet->setCellValue('F' . $fila, $email_beneficiario);   // EMAIL BENEFICIARIO
-
-                $fila++;
-                $facturas_procesadas++;
-                $total_importe  += $monto;
-            }
-
-            // 11. Validar que se procesaron facturas
-            if ($facturas_procesadas === 0) {
-                json_output([
-                    'success' => false, 
-                    'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
-                    'warnings' => $warnings
-                ]);
-                return;
-            }
-
-            $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
-            if (!is_dir($outputDir)) {
-                mkdir($outputDir, 0777, true);
-            }
-
-            // 13. Nombre del archivo
-            $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
-            $outputPath = $outputDir . $filename;
-
-            // 14. Guardar archivo
-            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
-            $writer->save($outputPath);
-
-            // 15. URL para descarga
-            $file_url = '/supply/download_layout/' . $filename;
-
-            // 16. Respuesta exitosa
-            json_output([
-                'success' => true,
-                'message' => 'Archivo generado exitosamente',
-                'file_name' => $filename,
-                'file_url' => $file_url,
-                'registros_procesados' => $facturas_procesadas,
-                'total_registros' => count($invoices),
-                'total_importe' => $total_importe,
-                'cuenta_cargo' => $cuenta_cargo,
-                'banco_cargo' => $banco_cargo,
-                'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
-            ]);
-
-        } catch (Exception $e) {
-            error_log("Error en generate_payment_layout: " . $e->getMessage());
-            json_output([
-                'success' => false,
-                'message' => 'Error al generar layout',
-                'error' => $e->getMessage()
-            ]);
-        }
-    }
     function get_payment_history() {
         header('Content-Type: application/json');
         
@@ -3566,5 +3403,274 @@ function download_zip($zipFileName) {
             ]);
         }
     }
+
+function generate_payment_layout() {
+    ini_set('memory_limit', '1024M');
+    header('Content-Type: application/json');
+
+    try {
+        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+        if (!$payment_id) {
+            json_output(['success' => false, 'message' => 'ID de pago requerido']);
+            return;
+        }
+
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        if (!$payment) {
+            json_output(['success' => false, 'message' => 'Pago no encontrado']);
+            return;
+        }
+        $payment = $payment[0];
+        $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+        if (!$invoices || count($invoices) === 0) {
+            json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
+            return;
+        }
+        $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
+        if (!$cuenta_cargo_data) {
+            json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
+            return;
+        }
+        $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
+        $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
+
+        $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+
+        if (!$proveedor) {
+            json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
+            return;
+        }
+
+        $cuenta_bancaria = $this->CuentasBancariasModel->get_by_name($proveedor['den']);
+
+        if (!$cuenta_bancaria) {
+            json_output([
+                'success' => false, 
+                'message' => 'No se encontró cuenta bancaria para el proveedor: ' . $proveedor['den']
+            ]);
+            return;
+        }
+
+        $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
+        $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
+
+        // ✅ CORRECCIÓN 1: Template XLSX
+        $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+        // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
+
+        if (!file_exists($templatePath)) {
+            error_log("ERROR: Template NO existe en: $templatePath");
+            json_output([
+                'success' => false, 
+                'message' => 'Template no encontrado',
+                'error' => 'Ruta: ' . $templatePath
+            ]);
+            return;
+        }
+        
+
+        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
+        $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
+        $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
+
+        $spreadsheet = $reader->load($templatePath);
+        $spreadsheet->getCalculationEngine()->disableCalculationCache();
+
+        $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
+        if (!$sheet) {
+            error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
+            // Liberar memoria
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+            json_output([
+                'success' => false, 
+                'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
+            ]);
+            return;
+        }
+
+        $fecha_pago = date('dmY');
+        $concepto = '88400000001';
+        $fila = 8;
+
+        $facturas_procesadas = 0;
+        $total_importe = 0;
+        $warnings = [
+            'sin_cuenta' => [],
+            'sin_email' => []
+        ];
+
+
+        foreach ($invoices as $invoice) {
+            $folio = $invoice['folio'];
+            $monto = floatval($invoice['amount']);
+            if ($monto <= 0) {
+                continue;
+            }
+
+            if (empty($cuenta_abono)) {
+                $warnings['sin_cuenta'][] = "Folio $folio";
+                continue;
+            }
+
+            if (empty($email_beneficiario)) {
+                $warnings['sin_email'][] = "Folio $folio";
+            }
+
+            // Escribir datos
+            $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('C' . $fila, $monto);
+            $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
+            $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+            $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
+
+            $fila++;
+            $facturas_procesadas++;
+            $total_importe += $monto;
+        }
+
+
+        if ($facturas_procesadas === 0) {
+
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+
+            json_output([
+                'success' => false, 
+                'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
+                'warnings' => $warnings
+            ]);
+            return;
+        }
+        $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
+        if (!is_dir($outputDir)) {
+            if (!mkdir($outputDir, 0777, true)) {
+                json_output([
+                    'success' => false,
+                    'message' => 'No se pudo crear el directorio de salida',
+                    'error' => 'Directorio: ' . $outputDir
+                ]);
+                return;
+            }
+        }
+        while (ob_get_level()) { ob_end_clean(); }
+        $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
+        $outputPath = $outputDir . $filename;
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
+        $spreadsheet->getCalculationEngine()->disableCalculationCache();
+        $writer->setPreCalculateFormulas(false);
+        $writer->save($outputPath);
+       
+        // Liberar memoria
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+        unset($writer);
+        gc_collect_cycles();
+
+        $file_url = '/supply/download_layout/' . $filename;
+
+
+        $response = [
+            'success' => true,
+            'message' => 'Archivo generado exitosamente',
+            'file_name' => $filename,
+            'file_url' => $file_url,
+            'registros_procesados' => $facturas_procesadas,
+            'total_registros' => count($invoices),
+            'total_importe' => $total_importe,
+            'cuenta_cargo' => $cuenta_cargo,
+            'banco_cargo' => $banco_cargo,
+            'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
+        ];
+        
+        
+        json_output($response);
+
+    } catch (Exception $e) {
+        $errorMsg = $e->getMessage();
+        $errorTrace = $e->getTraceAsString();
+        
+        
+        // Liberar memoria
+        if (isset($spreadsheet)) {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+        }
+        gc_collect_cycles();
+        
+        // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
+        json_output([
+            'success' => false,
+            'message' => 'Error al generar layout',
+            'error' => $errorMsg,
+            'trace' => $errorTrace // ← Traza completa para debug
+        ]);
+    }
+}
+
+function download_layout($filename) {
+    // ✅ Sanitizar filename (seguridad básica)
+    $filename = basename($filename); // Elimina path traversal
+    $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $filename); // Solo caracteres seguros
+    
+    // ✅ Verificar extensión
+    if (!str_ends_with($filename, '.xls')) {
+        http_response_code(400);
+        exit('Extensión no permitida');
+    }
+    
+    $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
+    
+    if (file_exists($file)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment; filename=' . basename($file));
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($file));
+        ob_clean();
+        flush();
+        readfile($file);
+        exit;
+    } else {
+        http_response_code(404);
+        exit('Archivo no encontrado');
+    }
+}
+function delete_layout() {
+    header('Content-Type: application/json');
+    
+    $filename = $_POST['filename'] ?? '';
+    $filename = basename($filename); // Seguridad
+    
+    if (empty($filename)) {
+        json_output(['success' => false, 'message' => 'Filename requerido']);
+        return;
+    }
+    
+    if (pathinfo($filename, PATHINFO_EXTENSION) !== 'xls') {
+        json_output(['success' => false, 'message' => 'Extensión no válida']);
+        return;
+    }
+    
+    $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
+    
+    if (file_exists($file)) {
+        if (unlink($file)) {
+            error_log("Archivo eliminado: $filename");
+            json_output(['success' => true, 'message' => 'Archivo eliminado']);
+        } else {
+            error_log("ERROR: No se pudo eliminar: $filename");
+            json_output(['success' => false, 'message' => 'Error al eliminar']);
+        }
+    } else {
+        json_output(['success' => false, 'message' => 'Archivo no existe']);
+    }
+}
+
+    
 
 }

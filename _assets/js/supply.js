@@ -3563,109 +3563,79 @@ function generarTransferenciasBancarias(paymentId) {
     ).set('labels', {ok: 'Generar', cancel: 'Cancelar'});
 }
 
-/**
- * Función interna que hace la petición AJAX
- */
 function generarArchivoTransferencias(paymentId) {
-    // Mostrar loading
-    alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando archivo de transferencias...');
-    // Deshabilitar botón mientras procesa
+    alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando archivo...');
+    
     const btnTransfer = $('#btnGenerarTransferencias');
     const btnOriginalText = btnTransfer.html();
     btnTransfer.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
+    
     $.ajax({
         url: '/supply/generate_payment_layout',
         type: 'POST',
-        data: {
-            payment_id: paymentId
-        },
-        timeout: 60000, // 60 segundos
+        data: { payment_id: paymentId },
+        timeout: 300000,
         success: function(response) {
+            
             if (response.success) {
-                // Mostrar información del archivo generado
-                let mensaje = `<div class="alert alert-success">
-                    <h5><i class="fas fa-check-circle"></i> Archivo Generado Exitosamente</h5>
-                    <hr>
-                    <p><strong>Archivo:</strong> ${response.file_name}</p>
-                    <p><strong>Registros procesados:</strong> ${response.registros_procesados} de ${response.total_registros}</p>
-                    <p><strong>Total:</strong> $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
-                    <p><strong>Cuenta de cargo:</strong> ${response.cuenta_cargo} (${response.banco_cargo})</p>
-                `;
-
-                // Mostrar advertencias si hay
-                if (response.warnings) {
-                    if (response.warnings.sin_cuenta && response.warnings.sin_cuenta.length > 0) {
-                        mensaje += `<div class="alert alert-warning mt-2">
-                            <i class="fas fa-exclamation-triangle"></i> 
-                            <strong>Facturas sin cuenta bancaria (${response.warnings.sin_cuenta.length}):</strong><br>
-                            <small>${response.warnings.sin_cuenta.join(', ')}</small>
-                        </div>`;
-                    }
-
-                    if (response.warnings.sin_email && response.warnings.sin_email.length > 0) {
-                        mensaje += `<div class="alert alert-warning mt-2">
-                            <i class="fas fa-exclamation-triangle"></i> 
-                            <strong>Facturas sin email de proveedor (${response.warnings.sin_email.length}):</strong><br>
-                            <small>${response.warnings.sin_email.join(', ')}</small>
-                        </div>`;
-                    }
-                }
-
-                mensaje += `</div>`;
-                // Mostrar modal con información y botón de descarga
-                alertify.alert(
-                    'Archivo de Transferencias',
-                    mensaje,
-                    function() {
-                        // Descargar automáticamente cuando se cierra el modal
-                        window.location.href = response.file_url;
-                    }
-                ).set({
-                    maximizable: false,
-                    closable: true,
-                    movable: true
-                });
-
-                // También mostrar toastr
-                toastr.success(
-                    `Archivo generado: ${response.registros_procesados} transferencias`,
-                    'Éxito',
-                    { timeOut: 5000 }
-                );
-
+                // Descargar archivo
+                fetch(response.file_url)
+                    .then(res => {
+                        if (!res.ok) throw new Error('Error en la descarga');
+                        return res.blob();
+                    })
+                    .then(blob => {
+                        const url = window.URL.createObjectURL(new Blob([blob]));
+                        const a = document.createElement('a');
+                        a.style.display = 'none';
+                        a.href = url;
+                        a.download = response.file_name;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                        
+                        // ✅ Mostrar modal y eliminar archivo AL CERRARLO
+                        alertify.alert(
+                            'Layout Generado',
+                            `<div class="text-center">
+                                <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
+                                <h5 class="mt-3">Archivo Descargado</h5>
+                                <p class="mb-2"><strong>${response.file_name}</strong></p>
+                                <p class="text-muted">
+                                    ${response.registros_procesados} transferencias<br>
+                                    Total: $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                                </p>
+                            </div>`,
+                            function() {
+                                // ✅ Eliminar archivo CUANDO EL USUARIO CIERRE EL MODAL
+                                $.post('/supply/delete_layout', {
+                                    filename: response.file_name
+                                }, function(deleteResponse) {
+                                    console.log('Archivo eliminado:', deleteResponse);
+                                }).fail(function(error) {
+                                    console.error('Error al eliminar:', error);
+                                });
+                            }
+                        ).set({
+                            maximizable: false,
+                            closable: true
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alertify.error('Error al descargar el archivo');
+                    });
+                
             } else {
-                // Error en la generación
-                let errorMsg = response.message || 'Error desconocido';
-
-                if (response.error) {
-                    errorMsg += `<br><br><small class="text-muted">Detalle: ${response.error}</small>`;
-                }
-
-                alertify.alert(
-                    '<i class="fas fa-times-circle text-danger"></i> Error',
-                    `<div class="alert alert-danger">${errorMsg}</div>`,
-                    function() {}
-                );
-
-                toastr.error(errorMsg, 'Error', { timeOut: 5000 });
+                alertify.error(response.message);
             }
         },
-        error: function(xhr, status, error) {
-            console.error('Error AJAX:', status, error);
-
-            let errorMsg = 'Error de conexión al generar el archivo';
-
-            if (xhr.responseJSON && xhr.responseJSON.message) {
-                errorMsg = xhr.responseJSON.message;
-            } else if (status === 'timeout') {
-                errorMsg = 'El servidor tardó demasiado en responder';
-            }
-
-            alertify.error(errorMsg);
-            toastr.error(errorMsg, 'Error', { timeOut: 5000 });
+        error: function(xhr, status) {
+            console.error('Error AJAX:', { status, xhr });
+            alertify.error(status === 'timeout' ? 'Timeout' : 'Error al generar');
         },
         complete: function() {
-            // Restaurar botón
             btnTransfer.prop('disabled', false).html(btnOriginalText);
         }
     });

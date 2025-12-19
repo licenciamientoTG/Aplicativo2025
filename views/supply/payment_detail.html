@@ -352,6 +352,75 @@
         </div>
     </div>
 </div>
+
+<!-- Facturas -->
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Facturas Incluidas</h6>
+            </div>
+            <div class="card-body table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Proveedor</th>
+                            <th>Estación</th>
+                            <th class="text-end">Monto</th>
+                            <th class="text-end">Pagado</th>
+                            <th class="text-end">Saldo</th>
+                            <th>Estado</th>
+                            <th>Vencimiento</th>
+                            <th>Acciones</th> <!-- ✅ NUEVO -->
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for invoice in invoices %}
+                        {% set saldo = invoice.amount - invoice.paid_amount %}
+                        <tr>
+                            <td>{{ invoice.folio }}</td>
+                            <td>{{ invoice.invoice_number }}</td>
+                            <td>{{ invoice.proveedor_nombre }}</td>
+                            <td>{{ invoice.estacion_nombre }}</td>
+                            <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
+                            <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>
+                            <td class="text-end">
+                                {% if saldo > 0 %}
+                                    <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
+                                {% else %}
+                                    <span class="text-success">$0.00</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if invoice.status == 2 %}
+                                    <span class="badge bg-success">Pagado</span>
+                                {% elseif invoice.status == 3 %}
+                                    <span class="badge bg-primary">Pago Parcial</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ invoice.expiration_date|date('d/m/Y') }}</td>
+                            <td>
+                                <!-- ✅ NUEVO: Botón para ver historial de pagos -->
+                                <button class="btn btn-sm btn-outline-info" 
+                                        onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')"
+                                        title="Ver historial de pagos">
+                                    <i class="fas fa-history"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 {% if transactions and transactions|length > 0 %}
 <div class="row mt-3">
     <div class="col-12">
@@ -512,73 +581,6 @@
     </div>
 </div>
 {% endif %}
-<!-- Facturas -->
-<div class="row mt-3">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Facturas Incluidas</h6>
-            </div>
-            <div class="card-body table-responsive">
-                <table class="table table-sm table-hover">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Folio</th>
-                            <th>Factura</th>
-                            <th>Proveedor</th>
-                            <th>Estación</th>
-                            <th class="text-end">Monto</th>
-                            <th class="text-end">Pagado</th>
-                            <th class="text-end">Saldo</th>
-                            <th>Estado</th>
-                            <th>Vencimiento</th>
-                            <th>Acciones</th> <!-- ✅ NUEVO -->
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for invoice in invoices %}
-                        {% set saldo = invoice.amount - invoice.paid_amount %}
-                        <tr>
-                            <td>{{ invoice.folio }}</td>
-                            <td>{{ invoice.invoice_number }}</td>
-                            <td>{{ invoice.proveedor_nombre }}</td>
-                            <td>{{ invoice.estacion_nombre }}</td>
-                            <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
-                            <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>
-                            <td class="text-end">
-                                {% if saldo > 0 %}
-                                    <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
-                                {% else %}
-                                    <span class="text-success">$0.00</span>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if invoice.status == 2 %}
-                                    <span class="badge bg-success">Pagado</span>
-                                {% elseif invoice.status == 3 %}
-                                    <span class="badge bg-primary">Pago Parcial</span>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark">Pendiente</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ invoice.expiration_date|date('d/m/Y') }}</td>
-                            <td>
-                                <!-- ✅ NUEVO: Botón para ver historial de pagos -->
-                                <button class="btn btn-sm btn-outline-info" 
-                                        onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')"
-                                        title="Ver historial de pagos">
-                                    <i class="fas fa-history"></i>
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- ✅ NUEVO: Modal de Historial de Pagos -->
 <div class="modal fade" id="modalHistorialPagos" tabindex="-1">
     <div class="modal-dialog modal-lg">
