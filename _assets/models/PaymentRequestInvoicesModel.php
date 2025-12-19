@@ -68,25 +68,6 @@ class PaymentRequestInvoicesModel extends Model
         return $this->sql->update($query, [$paid_amount, $status, $id]);
     }
 
-   
-
-    public function get_by_payment_request($payment_request_id) : array|false {
-        $query = '
-            SELECT 
-                t1.*,
-                t2.abr as estacion_nombre,
-                t4.den as proveedor_nombre
-            FROM [TG].[dbo].[payment_request_invoices] t1
-            LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
-            left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
-            LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
-            WHERE t1.payment_request_id = ?
-            ORDER BY t1.date_added DESC
-        ';
-        return ($this->sql->select($query, [$payment_request_id])) ?: false;
-    }
-
-
     public function insertInvoicesBulk($documents, $payment_request_id) : bool {
         try {
             $query = '
@@ -233,135 +214,6 @@ class PaymentRequestInvoicesModel extends Model
                 return 'Desconocido';
         }
     }
-
-    /**
-     * Procesar pago de facturas (con pagos parciales)
-     * @param int $payment_request_id - ID de la solicitud de pago
-     * @param array $facturas - Array de facturas a pagar con sus montos
-     * @param int $user_id - ID del usuario que procesa el pago
-     * @param string $observaciones - Observaciones del pago
-     * @param string $referencia - Referencia/folio del pago
-     * @param string $fecha_pago - Fecha del pago
-     * @return array - ['success' => bool, 'message' => string, 'facturas_procesadas' => int, 'total_pagado' => float]
-     */
-    public function process_payment($payment_request_id, $facturas, $user_id, $observaciones = '', $referencia = '', $fecha_pago = null) : array {
-        try {
-            if (empty($facturas)) {
-                return [
-                    'success' => false,
-                    'message' => 'No se proporcionaron facturas para procesar'
-                ];
-            }
-
-            $total_pagado = 0;
-            $facturas_procesadas = 0;
-            $fecha_pago = $fecha_pago ?: date('Y-m-d H:i:s');
-
-            foreach ($facturas as $factura) {
-                $invoice_id = $factura['invoice_id'] ?? null;
-                $monto_pagar = floatval($factura['monto_pagar'] ?? 0);
-
-                if (!$invoice_id || $monto_pagar <= 0) {
-                    continue;
-                }
-
-                // Obtener datos actuales de la factura
-                $query_select = "
-                    SELECT amount, paid_amount, status 
-                    FROM [TG].[dbo].[payment_request_invoices] 
-                    WHERE id = ?
-                ";
-
-                $current = $this->sql->select($query_select, [$invoice_id]);
-
-                if (!$current) {
-                    return [
-                        'success' => false,
-                        'message' => "Factura con ID $invoice_id no encontrada"
-                    ];
-                }
-
-                $amount = floatval($current[0]['amount']);
-                $paid_amount = floatval($current[0]['paid_amount'] ?? 0);
-                $saldo = $amount - $paid_amount;
-
-                // Validar que el monto a pagar no exceda el saldo
-                if ($monto_pagar > $saldo) {
-                    return [
-                        'success' => false,
-                        'message' => "El monto a pagar ($" . number_format($monto_pagar, 2) . ") excede el saldo disponible ($" . number_format($saldo, 2) . ") de la factura ID: $invoice_id"
-                    ];
-                }
-
-                // Calcular nuevo monto pagado
-                $nuevo_paid_amount = $paid_amount + $monto_pagar;
-
-                // Determinar nuevo estado
-                // Si el nuevo monto pagado es igual o mayor al monto total, está PAGADO
-                // Si es menor pero mayor a 0, está PARCIAL
-                if ($nuevo_paid_amount >= $amount) {
-                    $nuevo_status = self::STATUS_PAID;
-                } else {
-                    $nuevo_status = self::STATUS_PARTIAL;
-                }
-
-                // Actualizar la factura
-                $query_update = "
-                    UPDATE [TG].[dbo].[payment_request_invoices] 
-                    SET 
-                        paid_amount = ?,
-                        status = ?,
-                        paid_date = ?,
-                        paid_by = ?,
-                        payment_reference = ?,
-                        payment_notes = ?
-                    WHERE id = ?
-                ";
-
-                $params = [
-                    $nuevo_paid_amount,
-                    $nuevo_status,
-                    $fecha_pago,
-                    $user_id,
-                    $referencia,
-                    $observaciones,
-                    $invoice_id
-                ];
-
-                if (!$this->sql->update($query_update, $params)) {
-                    return [
-                        'success' => false,
-                        'message' => "Error al actualizar la factura ID: $invoice_id"
-                    ];
-                }
-
-                $total_pagado += $monto_pagar;
-                $facturas_procesadas++;
-            }
-
-            if ($facturas_procesadas === 0) {
-                return [
-                    'success' => false,
-                    'message' => 'No se procesó ninguna factura válida'
-                ];
-            }
-
-            return [
-                'success' => true,
-                'message' => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
-                'facturas_procesadas' => $facturas_procesadas,
-                'total_pagado' => $total_pagado
-            ];
-
-        } catch (Exception $e) {
-            error_log("Error en process_payment: " . $e->getMessage());
-            return [
-                'success' => false,
-                'message' => 'Error al procesar el pago: ' . $e->getMessage()
-            ];
-        }
-    }
-
     /**
      * Obtiene el badge HTML para mostrar el estado
      */
@@ -380,6 +232,82 @@ class PaymentRequestInvoicesModel extends Model
             default:
                 return '<span class="badge bg-secondary">Desconocido</span>';
         }
+    }
+
+    public function get_by_payment_request_with_transactions($payment_request_id) : array|false {
+        $query = '
+           SELECT 
+                t1.id,
+                t1.payment_request_id,
+                t1.folio,
+                t1.invoice_number,
+                t1.codgas,
+                t1.amount,
+                --t1.[status],
+                t1.expiration_date,
+                t1.date_added,
+                t1.uuid,
+                t4.den as proveedor_nombre,
+                t2.abr as estacion_nombre,
+                -- Calcular paid_amount desde payment_transactions
+                 ISNULL((
+                    SELECT SUM(payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] t5
+                    WHERE t5.invoice_id = t1.id
+                    AND t1.status IN (1, 2)
+                ), 0) as paid_amount,
+                -- Calcular status dinámicamente
+                CASE 
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                        AND t1.status IN (1, 2)
+                    ), 0) = 0 THEN 0  -- Pendiente
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                        AND t1.status IN (1, 2)
+                    ), 0) < t1.amount THEN 3  -- Parcial
+                    ELSE 2  -- Pagado
+                END as status
+                FROM [TG].[dbo].[payment_request_invoices] t1
+                LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
+                left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
+                LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
+                WHERE t1.payment_request_id = ?
+                ORDER BY t1.date_added DESC
+        ';
+        return ($this->sql->select($query, [$payment_request_id])) ?: false;
+    }
+
+    /**
+     * Obtiene resumen de facturas con cálculos desde payment_transactions
+     */
+    public function get_payment_summary_from_transactions($payment_request_id) : array|false {
+        $query = '
+             WITH InvoicePayments AS (
+            SELECT 
+                pri.id,
+                pri.amount,
+                ISNULL(SUM(pt.payment_amount), 0) as paid_amount
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            LEFT JOIN [TG].[dbo].[payment_transactions] pt 
+                ON pt.invoice_id = pri.id 
+                AND pt.status IN (1, 2)
+            WHERE pri.payment_request_id = ?
+            GROUP BY pri.id, pri.amount
+        )
+        SELECT 
+            COUNT(*) as total_invoices,
+            SUM(amount) as total_amount,
+            SUM(paid_amount) as total_paid,
+            SUM(amount - paid_amount) as total_pending
+        FROM InvoicePayments
+        ';
+        $result = $this->sql->select($query, [$payment_request_id]);
+        return $result ? $result[0] : false;
     }
 
 
