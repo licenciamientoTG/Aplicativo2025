@@ -3373,40 +3373,54 @@ function download_zip($zipFileName) {
     function generate_payment_layout(){
         try {
             $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-            if (!$payment_id) {
-                setFlashMessage('error', 'ID de pago requerido');
-                redirect('/supply/payment_list');
+                if (!$payment_id) {
+                json_output(['success' => false, 'message' => 'ID de pago requerido']);
                 return;
             }
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
-                setFlashMessage('error', 'Pago no encontrado');
-                redirect('/supply/payment_list');
+                json_output(['success' => false, 'message' => 'Pago no encontrado']);
                 return;
             }
             $payment = $payment[0];
             $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
             if (!$invoices || count($invoices) === 0) {
-                setFlashMessage('error', 'No hay facturas en este pago');
-                redirect('/supply/payment_detail/' . $payment_id);
+                json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
                 return;
             }
             $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
             if (!$cuenta_cargo_data) {
-                setFlashMessage('error', 'No se encontró la cuenta de cargo de TotalGas');
-                redirect('/supply/payment_detail/' . $payment_id);
+                json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
                 return;
             }
             $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
+            $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
 
-            $proveedor = $this->proveedores->get_by_id($payment[0]['provider_cod']);
+
+            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+
+            if (!$proveedor) {
+                json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
+                return;
+            }
             $cuenta_bancaria = $this->CuentasBancariasModel->get_by_name($proveedor['den']);
+            if (!$cuenta_bancaria) {
+                json_output([
+                    'success' => false, 
+                    'message' => 'No se encontró cuenta bancaria para el proveedor: ' . $proveedor['den']
+                ]);
+                return;
+            }
             $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
 
-            $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+            // $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+            $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
             if (!file_exists($templatePath)) {
-                setFlashMessage('error', 'Template no encontrado: ' . $templatePath);
-                redirect('/supply/payment_detail/' . $payment_id);
+                json_output([
+                    'success' => false, 
+                    'message' => 'Template no encontrado',
+                    'error' => 'Ruta: ' . $templatePath
+                ]);
                 return;
             }
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
@@ -3416,8 +3430,10 @@ function download_zip($zipFileName) {
             $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
 
             if (!$sheet) {
-                setFlashMessage('error', 'Hoja "Santander sin comp fiscal" no encontrada');
-                redirect('/supply/payment_detail/' . $payment_id);
+                json_output([
+                    'success' => false, 
+                    'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
+                ]);
                 return;
             }
 
@@ -3431,11 +3447,29 @@ function download_zip($zipFileName) {
 
             $facturas_procesadas = 0;
             $total_layout = 0;
+            $warnings = [
+                'sin_cuenta' => [],
+                'sin_email' => []
+            ];
 
             // 9. Procesar cada factura
             foreach ($invoices as $invoice) {
                 $folio = $invoice['folio'];
                 $monto = floatval($invoice['amount']);
+                if ($monto <= 0) {
+                    continue; // Saltar facturas con monto 0
+                }
+
+                // Validar que tenga cuenta de abono
+                if (empty($cuenta_abono)) {
+                    $warnings['sin_cuenta'][] = "Folio $folio";
+                    continue;
+                }
+
+                // Validar email (solo warning, no bloquea)
+                if (empty($email_beneficiario)) {
+                    $warnings['sin_email'][] = "Folio $folio";
+                }
 
                 // 10. Llenar datos en Excel
                 $sheet->setCellValue('A' . $fila, $cuenta_cargo);           // CUENTA DE CARGO
@@ -3447,38 +3481,56 @@ function download_zip($zipFileName) {
 
                 $fila++;
                 $facturas_procesadas++;
-                $total_layout += $monto;
+                $total_importe  += $monto;
             }
 
             // 11. Validar que se procesaron facturas
             if ($facturas_procesadas === 0) {
-                setFlashMessage('error', 'No se pudieron procesar facturas. Verifica que los proveedores tengan cuenta bancaria registrada.');
-                redirect('/supply/payment_detail/' . $payment_id);
+                json_output([
+                    'success' => false, 
+                    'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
+                    'warnings' => $warnings
+                ]);
                 return;
             }
 
-            // 12. Generar archivo temporal
-            $tempFile = tempnam(sys_get_temp_dir(), 'santander_');
-
-            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
-            $writer->save($tempFile);
+            $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
+            if (!is_dir($outputDir)) {
+                mkdir($outputDir, 0777, true);
+            }
 
             // 13. Nombre del archivo
             $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
+            $outputPath = $outputDir . $filename;
 
-            // 14. Enviar archivo al navegador
-            header('Content-Type: application/vnd.ms-excel');
-            header('Content-Disposition: attachment; filename="' . $filename . '"');
-            header('Cache-Control: max-age=0');
+            // 14. Guardar archivo
+            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
+            $writer->save($outputPath);
 
-            readfile($tempFile);
-            unlink($tempFile); // Eliminar archivo temporal
-            exit;
+            // 15. URL para descarga
+            $file_url = '/supply/download_layout/' . $filename;
+
+            // 16. Respuesta exitosa
+            json_output([
+                'success' => true,
+                'message' => 'Archivo generado exitosamente',
+                'file_name' => $filename,
+                'file_url' => $file_url,
+                'registros_procesados' => $facturas_procesadas,
+                'total_registros' => count($invoices),
+                'total_importe' => $total_importe,
+                'cuenta_cargo' => $cuenta_cargo,
+                'banco_cargo' => $banco_cargo,
+                'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
+            ]);
 
         } catch (Exception $e) {
             error_log("Error en generate_payment_layout: " . $e->getMessage());
-            setFlashMessage('error', 'Error al generar layout: ' . $e->getMessage());
-            redirect('/supply/payment_list');
+            json_output([
+                'success' => false,
+                'message' => 'Error al generar layout',
+                'error' => $e->getMessage()
+            ]);
         }
     }
     function get_payment_history() {
