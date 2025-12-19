@@ -42,9 +42,10 @@ class XsdEstacionServicioVolumenVendidoInventariosModel extends Model{
         if (empty($controlGasStationId)) {
             return false;
         } else {
-            $inventarioInicial = $this->clampInt($inventarioInicial);
-            $volumenVendido = $this->clampInt($volumenVendido);
-            $inventarioFinal = $this->clampInt($inventarioFinal);
+            // Por esto (Asegura que el valor sea al menos 0):
+            $inventarioInicial = max(0, $this->clampInt($inventarioInicial));
+            $volumenVendido    = max(0, $this->clampInt($volumenVendido));
+            $inventarioFinal   = max(0, $this->clampInt($inventarioFinal));
 
             // Vamos a verificar si existe un registro con el xsdEstacionServicioVolumenId, productoId y subProductoId
             if ($row = $this->sql->select("SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumenVendidoInventarios] WHERE xsdEstacionServicioVolumenId = ? AND productoId = ? AND subProductoId = ?", [$xsdEstacionServicioVolumenId, $productoId, $subProductoId])) {
