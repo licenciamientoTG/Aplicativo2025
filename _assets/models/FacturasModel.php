@@ -228,84 +228,119 @@ class FacturasModel extends Model {
     }
 
 public function get_detalle_facturas_estacion_mes(string $codgas, string $fechaInicio, string $fechaFin, ?int $codEmp = null): array
-    {
-        try {
-            $query = "SET LANGUAGE Spanish;
-            DECLARE @FechaInicio DATE = ?;
-            DECLARE @FechaFin    DATE = ?;
-            DECLARE @CodGas      INT  = ?;
-            DECLARE @CodEmp      INT  = ?;
+{
+    try {
+        $query = "SET LANGUAGE Spanish;
+        DECLARE @FechaInicio DATE = ?;
+        DECLARE @FechaFin    DATE = ?;
+        DECLARE @CodGas      INT  = ?;
+        DECLARE @CodEmp      INT  = ?;
 
-            DECLARE @FchIniInt INT = DATEDIFF(DAY, '1900-01-01', @FechaInicio) + 1;
-            DECLARE @FchFinInt INT = DATEDIFF(DAY, '1900-01-01', @FechaFin) + 1;
+        DECLARE @FchIniInt INT = DATEDIFF(DAY, '1900-01-01', @FechaInicio) + 1;
+        DECLARE @FchFinInt INT = DATEDIFF(DAY, '1900-01-01', @FechaFin) + 1;
 
-            ;WITH cab AS (
-                SELECT
-                    t1.tip, t1.nro AS NumeroDocumento, t1.codgas AS CodigoEstacion, 
-                    t3.abr AS Estacion, t3.den AS EstacionNombre, 
-                    e.den AS EmpresaNombre,
-                    CONVERT(varchar(10), DATEADD(DAY, -1, t1.fch), 23) AS Fecha,
-                    CONVERT(varchar(10), DATEADD(DAY, -1, t1.vto), 23) AS Vencimiento,
+        ;WITH cab AS (
+            SELECT
+                t1.tip, t1.nro AS NumeroDocumento, t1.codgas AS CodigoEstacion, 
+                t3.abr AS Estacion, t3.den AS EstacionNombre, 
+                e.den AS EmpresaNombre,
+                CONVERT(varchar(10), DATEADD(DAY, -1, t1.fch), 23) AS Fecha,
+                CONVERT(varchar(10), DATEADD(DAY, -1, t1.vto), 23) AS Vencimiento,
+                CASE 
+                    WHEN t1.tip = 6 THEN 'W' 
+                    WHEN t1.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z' 
+                    WHEN t1.nro BETWEEN 2000000000 AND 2099999999 THEN 'T'
+                    ELSE '' 
+                END AS Serie, 
+                CASE 
+                    WHEN t1.tip = 1 THEN 'Compra' 
+                    WHEN t1.tip = 3 THEN 'Venta'
+                    WHEN t1.tip IN (4,6) THEN 'Nota de Crédito'
+                    ELSE 'Otro'
+                END AS TipoDocumento,
+                COALESCE(t5.den, t6.den, 'N/A') AS EntidadNombre,
+                t1.satuid AS UUID
+            FROM SG12.dbo.DocumentosC AS t1 WITH (NOLOCK)
+            LEFT JOIN SG12.dbo.Gasolineras AS t3 WITH (NOLOCK) ON t1.codgas = t3.cod
+            LEFT JOIN SG12.dbo.Empresas    AS e  WITH (NOLOCK) ON t3.codemp = e.cod
+            LEFT JOIN SG12.dbo.Proveedores AS t5 WITH (NOLOCK) ON t1.codopr = t5.cod AND t1.tip = 1
+            LEFT JOIN SG12.dbo.Clientes    AS t6 WITH (NOLOCK) ON t1.codopr = t6.cod AND t1.tip IN (3,4,6)
+            WHERE 
+                t1.fch BETWEEN @FchIniInt AND @FchFinInt
+                AND t1.tip IN (1,3,4,6)
+                AND t1.satuid IS NOT NULL AND LEN(t1.satuid) > 0
+                AND (@CodGas = -1 OR t1.codgas = @CodGas)
+                AND (@CodEmp IS NULL OR @CodEmp = 0 OR t3.codemp = @CodEmp)
+        ),
+        productos_agrupados AS ( 
+            SELECT d.nro, d.codgas, STRING_AGG(CAST(p.den AS NVARCHAR(MAX)), N', ') WITHIN GROUP (ORDER BY p.den) AS Producto 
+            FROM SG12.dbo.Documentos d 
+            INNER JOIN cab ON d.nro=cab.NumeroDocumento AND d.codgas=cab.CodigoEstacion AND d.tip=cab.tip 
+            LEFT JOIN SG12.dbo.Productos p ON d.codprd=p.cod WHERE d.nroitm>0 GROUP BY d.nro, d.codgas 
+        ),
+        det AS ( 
+            SELECT d.nro, d.codgas, 
+                -- 1. CANTIDAD: Si es Venta (tip=3) aplicamos ABS, sino valor original
+                ROUND(SUM(
+                    CASE WHEN cab.tip = 3 THEN ABS(d.can) ELSE d.can END
+                ), 3) AS Cantidad, 
+                
+                -- 2. SUBTOTAL: Aplicamos ABS al 'd.mto' si es venta
+                ROUND(SUM(
                     CASE 
-                        WHEN t1.tip = 6 THEN 'W' 
-                        WHEN t1.nro BETWEEN 2100000000 AND 2499999999 THEN 'Z' 
-                        WHEN t1.nro BETWEEN 2000000000 AND 2099999999 THEN 'T'
-                        ELSE '' 
-                    END AS Serie, 
-                    CASE WHEN t1.tip = 1 THEN 'Compra' ELSE 'Venta' END AS TipoDocumento,
-                    COALESCE(t5.den, t6.den, 'N/A') AS EntidadNombre,
-                    t1.satuid AS UUID
-                FROM SG12.dbo.DocumentosC AS t1 WITH (NOLOCK)
-                LEFT JOIN SG12.dbo.Gasolineras AS t3 WITH (NOLOCK) ON t1.codgas = t3.cod
-                LEFT JOIN SG12.dbo.Empresas    AS e  WITH (NOLOCK) ON t3.codemp = e.cod
-                LEFT JOIN SG12.dbo.Proveedores AS t5 WITH (NOLOCK) ON t1.codopr = t5.cod AND t1.tip = 1
-                LEFT JOIN SG12.dbo.Clientes    AS t6 WITH (NOLOCK) ON t1.codopr = t6.cod AND t1.tip IN (3,4,6)
-                WHERE 
-                    t1.fch BETWEEN @FchIniInt AND @FchFinInt
-                    AND t1.tip IN (1,3,4,6)
-                    AND t1.satuid IS NOT NULL AND LEN(t1.satuid) > 0
+                        WHEN d.codcpt NOT IN (2, 21, 22, 23) THEN 
+                             CASE WHEN cab.tip = 3 THEN ABS(d.mto) ELSE d.mto END
+                        ELSE 0 
+                    END
+                ) / 100.0, 2) AS Subtotal, 
 
-                    -- CORRECCIÓN AQUÍ: Usamos -1 como comodín para 'Todas', así el 0 se respeta como estación
-                    AND (@CodGas = -1 OR t1.codgas = @CodGas)
+                -- 3. IVA: Aplicamos ABS tanto al 'mtoiva' como al 'mto' de los conceptos especiales
+                ROUND((
+                    SUM(CASE WHEN cab.tip = 3 THEN ABS(d.mtoiva) ELSE d.mtoiva END) + 
+                    SUM(
+                        CASE WHEN d.codcpt IN (2, 21, 22, 23) THEN 
+                             CASE WHEN cab.tip = 3 THEN ABS(d.mto) ELSE d.mto END
+                        ELSE 0 END
+                    )
+                ) / 100.0, 2) AS IVA, 
 
-                    AND (@CodEmp IS NULL OR @CodEmp = 0 OR t3.codemp = @CodEmp)
-            ),
-            productos_agrupados AS ( 
-                SELECT d.nro, d.codgas, STRING_AGG(CAST(p.den AS NVARCHAR(MAX)), N', ') WITHIN GROUP (ORDER BY p.den) AS Producto 
-                FROM SG12.dbo.Documentos d 
-                INNER JOIN cab ON d.nro=cab.NumeroDocumento AND d.codgas=cab.CodigoEstacion AND d.tip=cab.tip 
-                LEFT JOIN SG12.dbo.Productos p ON d.codprd=p.cod WHERE d.nroitm>0 GROUP BY d.nro, d.codgas 
-            ),
-            det AS ( 
-                SELECT d.nro, d.codgas, 
-                    ROUND(SUM(d.can), 3) AS Cantidad, 
-                    ROUND(SUM(d.mto)/100.0, 2) AS Subtotal, 
-                    ROUND(SUM(d.mtoiva)/100.0, 2) AS IVA, 
-                    ROUND(SUM(d.mtoiie)/100.0, 2) AS IEPS, 
-                    ROUND(SUM(d.mto+d.mtoiva+d.mtoiie)/100.0, 2) AS Total 
-                FROM SG12.dbo.Documentos d 
-                INNER JOIN cab ON d.nro=cab.NumeroDocumento AND d.codgas=cab.CodigoEstacion AND d.tip=cab.tip 
-                WHERE d.nroitm>0 GROUP BY d.codgas, d.nro 
-            )
+                -- 4. IEPS: ABS si es venta
+                ROUND(SUM(
+                    CASE WHEN cab.tip = 3 THEN ABS(d.mtoiie) ELSE d.mtoiie END
+                )/100.0, 2) AS IEPS, 
+                
+                -- 5. TOTAL: Sumatoria de los componentes ya convertidos
+                ROUND(SUM(
+                    (CASE WHEN cab.tip = 3 THEN ABS(d.mto) ELSE d.mto END) + 
+                    (CASE WHEN cab.tip = 3 THEN ABS(d.mtoiva) ELSE d.mtoiva END) + 
+                    (CASE WHEN cab.tip = 3 THEN ABS(d.mtoiie) ELSE d.mtoiie END)
+                )/100.0, 2) AS Total 
 
-            SELECT 
-                c.*, 
-                c.Serie + ' ' + SUBSTRING(CAST(c.NumeroDocumento AS varchar(10)), 4, 10) AS FacturaFormateada,
-                COALESCE(p.Producto, 'Sin producto') AS Producto, 
-                COALESCE(d.Cantidad, 0) AS Cantidad,
-                COALESCE(d.Subtotal, 0) AS Subtotal,
-                COALESCE(d.IVA, 0) AS IVA,
-                COALESCE(d.IEPS, 0) AS IEPS,
-                COALESCE(d.Total, 0) AS Total
-            FROM cab c
-            LEFT JOIN det d ON d.codgas = c.CodigoEstacion AND d.nro = c.NumeroDocumento
-            LEFT JOIN productos_agrupados p ON p.codgas = c.CodigoEstacion AND p.nro = c.NumeroDocumento
-            ORDER BY c.Fecha DESC, c.NumeroDocumento DESC
-            OPTION (RECOMPILE);";
+            FROM SG12.dbo.Documentos d 
+            INNER JOIN cab ON d.nro=cab.NumeroDocumento AND d.codgas=cab.CodigoEstacion AND d.tip=cab.tip 
+            WHERE d.nroitm>0 
+            -- Agregamos cab.tip al Group By para poder usarlo en el CASE sin problemas
+            GROUP BY d.codgas, d.nro, cab.tip 
+        )
 
-            $params = [$fechaInicio, $fechaFin, $codgas, $codEmp];
-            return $this->sql->select($query, $params) ?: [];
-        } catch (\Exception $e) { return []; }
-    }
+        SELECT 
+            c.*, 
+            c.Serie + ' ' + SUBSTRING(CAST(c.NumeroDocumento AS varchar(10)), 4, 10) AS FacturaFormateada,
+            COALESCE(p.Producto, 'Sin producto') AS Producto, 
+            COALESCE(d.Cantidad, 0) AS Cantidad,
+            COALESCE(d.Subtotal, 0) AS Subtotal,
+            COALESCE(d.IVA, 0) AS IVA,
+            COALESCE(d.IEPS, 0) AS IEPS,
+            COALESCE(d.Total, 0) AS Total
+        FROM cab c
+        LEFT JOIN det d ON d.codgas = c.CodigoEstacion AND d.nro = c.NumeroDocumento
+        LEFT JOIN productos_agrupados p ON p.codgas = c.CodigoEstacion AND p.nro = c.NumeroDocumento
+        ORDER BY c.Fecha DESC, c.NumeroDocumento DESC
+        OPTION (RECOMPILE);";
+
+        $params = [$fechaInicio, $fechaFin, $codgas, $codEmp];
+        return $this->sql->select($query, $params) ?: [];
+    } catch (\Exception $e) { return []; }
+}
 
 }
