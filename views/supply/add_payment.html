@@ -1,4 +1,4 @@
-<!-- add_payment.html -->
+{# add_payment.html #}
 {% extends "views/layouts/base.html" %}
 {% block title %}Facturas de combustible{% endblock %}
 {% block mycss %}{% endblock %}
@@ -313,7 +313,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
 <script>
-
+let currentProvider = null;
 let paymentItems = [];
 
 function setupDragAndDrop() {
@@ -362,11 +362,32 @@ function setupDragAndDrop() {
 
 // Añadir elemento al pago
 function addToPayment(rowData) {
-    console.log('rowData completo:', rowData);
-    console.log('UUID (satuid):', rowData.satuid);
-    
+    provider_name = rowData.proveedor;
     if (!rowData.satuid) {
         alertify.error('⚠️ Esta factura no tiene UUID válido. No se puede agregar.');
+        return;
+    }
+    // ✅ VALIDACIÓN: Solo un proveedor por pago
+    if (currentProvider && currentProvider !== rowData.proveedor) {
+        alertify.alert(
+            '<i class="fas fa-exclamation-triangle text-warning"></i> Proveedor Diferente',
+            `<div class="text-center">
+                <p class="mb-3">No puedes agregar facturas de diferentes proveedores en el mismo pago.</p>
+                <div class="alert alert-info mb-0">
+                    <strong>Proveedor actual del pago:</strong><br>
+                    <span class="text-primary">${currentProvider}</span>
+                </div>
+                <div class="alert alert-warning mb-0 mt-2">
+                    <strong>Proveedor que intentas agregar:</strong><br>
+                    <span class="text-danger">${rowData.proveedor}</span>
+                </div>
+                <hr>
+                <small class="text-muted">Debes crear un pago separado para este proveedor.</small>
+            </div>`
+        ).set({
+            maximizable: false,
+            closable: true
+        });
         return;
     }
     // Verificar si ya existe (usando nro en lugar de folio)
@@ -386,6 +407,10 @@ function addToPayment(rowData) {
             </div>`
         );
         return;
+    }
+    if (paymentItems.length === 0) {
+        currentProvider = rowData.proveedor;
+        console.log('✅ Proveedor establecido:', currentProvider);
     }
 
     paymentItems.push(rowData);
@@ -434,6 +459,11 @@ function renderPaymentItems() {
 // Remover elemento del pago
 function removeFromPayment(index) {
     paymentItems.splice(index, 1);
+    if (paymentItems.length === 0) {
+        currentProvider = null;
+        console.log('✅ Proveedor reseteado');
+
+    }
     renderPaymentItems();
     updatePaymentSummary();
 }
@@ -454,7 +484,20 @@ function updatePaymentSummary() {
     // Actualizar resumen
     $('#total-docs').text(totalDocs);
     $('#total-amount').text(`$${totalAmount.toLocaleString('es-MX', {minimumFractionDigits: 2})}`);
-    
+    // ✅ Mostrar proveedor actual
+    if (currentProvider && totalDocs > 0) {
+        // Agregar badge de proveedor si no existe
+        if ($('#current-provider-badge').length === 0) {
+            $('#payment-summary').prepend(`
+                <div id="current-provider-badge" class="alert alert-light mb-3 py-2">
+                    <small class="d-block text-muted mb-1">Proveedor del pago:</small>
+                    <strong class="text-primary">${currentProvider}</strong>
+                </div>
+            `);
+        }
+    } else {
+        $('#current-provider-badge').remove();
+    }
     // Mostrar/ocultar elementos según si hay documentos
     if (totalDocs > 0) {
         $('#payment-summary').show();
@@ -468,7 +511,7 @@ function updatePaymentSummary() {
 }
 
 // Limpiar todo el pago
-function clearAllPayments() {
+{# function clearAllPayments() {
     if (paymentItems.length === 0) return;
 
     alertify.confirm(
@@ -484,10 +527,10 @@ function clearAllPayments() {
             // Cancelado
         }
     );
-}
+} #}
 
 // Agregar todas las recepciones al pago
-function addAllToPayment() {
+{# function addAllToPayment() {
     const table = $('#payment_create_table').DataTable();
 
     if (!table || table.rows().count() === 0) {
@@ -547,8 +590,164 @@ $(document).ready(function() {
     
     // Inicializar estado
     updatePaymentSummary();
-}); 
+});  #}
+function addAllToPayment() {
+    const table = $('#payment_create_table').DataTable();
 
+    if (!table || table.rows().count() === 0) {
+        alertify.warning('No hay documentos en la tabla para agregar.');
+        return;
+    }
+
+    const allData = table.rows({ search: 'applied' }).data().toArray();
+    
+    // ✅ Si ya hay un proveedor establecido, filtrar solo ese proveedor
+    let dataToAdd = allData;
+    if (currentProvider) {
+        dataToAdd = allData.filter(row => row.proveedor === currentProvider);
+        
+        const otherProviders = allData.filter(row => row.proveedor !== currentProvider);
+        if (otherProviders.length > 0) {
+            alertify.warning(
+                `Solo se agregarán ${dataToAdd.length} facturas del proveedor actual: ${currentProvider}<br>` +
+                `<small>Se omitieron ${otherProviders.length} facturas de otros proveedores.</small>`
+            );
+        }
+    } else if (allData.length > 0) {
+        // ✅ Si no hay proveedor, tomar el del primer registro
+        const firstProvider = allData[0].proveedor;
+        dataToAdd = allData.filter(row => row.proveedor === firstProvider);
+        
+        if (dataToAdd.length < allData.length) {
+            alertify.confirm(
+                '¿Múltiples Proveedores Detectados?',
+                `Se detectaron facturas de diferentes proveedores.<br><br>` +
+                `<strong>¿Quieres agregar solo las ${dataToAdd.length} facturas de "${firstProvider}"?</strong><br><br>` +
+                `<small class="text-muted">Las ${allData.length - dataToAdd.length} facturas de otros proveedores se omitirán.</small>`,
+                function() {
+                    // Agregar solo del primer proveedor
+                    addFilteredDataToPayment(dataToAdd);
+                },
+                function() {
+                    // Cancelado
+                }
+            );
+            return;
+        }
+    }
+
+    addFilteredDataToPayment(dataToAdd);
+}
+
+// ✅ NUEVA FUNCIÓN AUXILIAR
+function addFilteredDataToPayment(dataToAdd) {
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    dataToAdd.forEach(rowData => {
+        // Verificar UUID
+        if (!rowData.satuid) {
+            skippedCount++;
+            return;
+        }
+
+        // Verificar si ya existe
+        const exists = paymentItems.some(item => item.nro === rowData.nro);
+        if (!exists) {
+            // Establecer proveedor si es el primero
+            if (paymentItems.length === 0) {
+                currentProvider = rowData.proveedor;
+            }
+            paymentItems.push(rowData);
+            addedCount++;
+        } else {
+            skippedCount++;
+        }
+    });
+
+    renderPaymentItems();
+    updatePaymentSummary();
+
+    if (addedCount > 0) {
+        let message = `✓ Se agregaron ${addedCount} documento(s) al pago.`;
+        if (skippedCount > 0) {
+            message += ` (${skippedCount} omitidos)`;
+        }
+        alertify.success(message);
+    } else if (skippedCount > 0) {
+        alertify.warning('No se agregaron documentos nuevos.');
+    }
+}
+
+function clearAllPayments() {
+    if (paymentItems.length === 0) return;
+
+    alertify.confirm(
+        '¿Estás seguro?',
+        '¿Quieres limpiar todos los documentos del pago?',
+        function() {
+            paymentItems = [];
+            currentProvider = null; // ✅ Resetear proveedor
+            renderPaymentItems();
+            updatePaymentSummary();
+            alertify.success('Pago limpiado correctamente');
+        },
+        function() {
+            // Cancelado
+        }
+    );
+}
+
+// ✅ NUEVA FUNCIÓN: Agregar facturas seleccionadas (checkbox)
+function addSelectedInvoices() {
+    const table = $('#payment_create_table').DataTable();
+    const selectedRows = [];
+
+    // Obtener todas las filas con checkbox marcado
+    table.$('input[type="checkbox"].invoice-checkbox:checked').each(function() {
+        const row = table.row($(this).closest('tr'));
+        selectedRows.push(row.data());
+    });
+
+    if (selectedRows.length === 0) {
+        alertify.warning('No has seleccionado ninguna factura.');
+        return;
+    }
+
+    // Filtrar por proveedor si ya hay uno establecido
+    let dataToAdd = selectedRows;
+    if (currentProvider) {
+        dataToAdd = selectedRows.filter(row => row.proveedor === currentProvider);
+        
+        if (dataToAdd.length < selectedRows.length) {
+            alertify.warning(
+                `Solo se agregarán ${dataToAdd.length} facturas del proveedor actual: ${currentProvider}<br>` +
+                `<small>Se omitieron ${selectedRows.length - dataToAdd.length} facturas de otros proveedores.</small>`
+            );
+        }
+    }
+
+    addFilteredDataToPayment(dataToAdd);
+
+    // Desmarcar checkboxes
+    table.$('input[type="checkbox"].invoice-checkbox:checked').prop('checked', false);
+    $('#selectAllCheckbox').prop('checked', false);
+    updateSelectedCount();
+}
+
+
+$(document).ready(function() {
+    window.originalStationOptions = $('#station_id1').html();
+    var company = document.getElementById('company');
+    company.addEventListener('change', function() {
+        filtrarEstacionesPorEmpresa();
+    });
+
+    $('#generar-pago').on('click', generatePayment);
+    $('#clear-basket').on('click', clearAllPayments);
+    
+    updatePaymentSummary();
+}); 
 </script>
 
 {% endblock %}

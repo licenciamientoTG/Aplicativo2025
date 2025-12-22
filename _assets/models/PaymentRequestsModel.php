@@ -6,6 +6,7 @@ class PaymentRequestsModel extends Model
     public $user_id;
     public $comment;
     public $status;
+    public $provider_cod;
     public $date_added;
 
     const STATUS_PENDING = 0;
@@ -14,7 +15,7 @@ class PaymentRequestsModel extends Model
     const STATUS_CANCELLED = 3;
 
 
-    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado') : array {
+    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null) : array {
         if (empty($documents) || !is_array($documents)) {
             return [
                 'success' => false,
@@ -30,10 +31,10 @@ class PaymentRequestsModel extends Model
             $status = self::STATUS_PENDING;
             
             $query = 'INSERT INTO [TG].[dbo].[payment_requests] 
-                    (request_date, user_id, comment, [status])
-                    VALUES (?, ?, ?, ?);';
+                    (request_date, user_id, comment, [status], provider_cod)
+                    VALUES (?, ?, ?, ?, ?);';
             
-            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status]);
+            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status, $provider_cod]);
 
             if (!$payment_id) {
                 throw new Exception('Error al crear la solicitud de pago');

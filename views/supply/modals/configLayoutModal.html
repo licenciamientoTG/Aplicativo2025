@@ -1,0 +1,200 @@
+{# views/supply/modals/configLayoutModal.html #}
+<style>
+    #tabla_facturas_layout thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.invoice-layout-checkbox {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+#info_cuenta_seleccionada {
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+<!-- Información del Proveedor -->
+<div class="alert alert-info mb-3"style="font-size: 1.1em; width: 100%; padding: 15px;">
+    <div class="row align-items-center" style="width: 100%;">
+        <div class="col-md-10">
+            <strong><i class="fas fa-building"></i> Proveedor:</strong>
+            <span id="layout_proveedor_nombre" class="fs-5 fw-bold ms-2">{{ proveedor.nombre }}</span>
+        </div>
+        <div class="col-md-2">
+            <strong><i class="fas fa-hashtag"></i> Código:</strong>
+            <span id="layout_proveedor_codigo" class="ms-2">{{ proveedor.codigo }}</span>
+        </div>
+    </div>
+</div>
+<div style="display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: space-around;">
+
+    <div class="card col-4" style="margin-right: 10px;">
+        <div class="card-header bg-success text-white">
+            <i class="fas fa-university"></i> Seleccionar Cuenta Bancaria
+        </div>
+        <div class="card-body">
+            <div class="row" >
+                <div class="col-md-12">
+                    <label for="select_cuenta_bancaria" class="form-label">
+                        <i class="fas fa-search"></i> Buscar y seleccionar cuenta:
+                    </label>
+                    <select id="select_cuenta_bancaria" class="selectpicker form-control" 
+                            data-live-search="true" 
+                            data-size="8"
+                            data-width="100%"
+                            title="Escribe para buscar...">
+                        <option value="">Seleccione una cuenta...</option>
+                        {% for cuenta in cuentas_bancarias %}
+                        <option value="{{ cuenta.Id }}" 
+                                data-cuenta="{{ cuenta.CuentaLocal }}"
+                                data-banco="{{ cuenta.Banco }}"
+                                data-email="{{ cuenta.EmailCuenta }}"
+                                data-Descripcion="{{ cuenta.Descripcion }}">                          >
+                            {{ cuenta.CuentaLocal }} - {{ cuenta.Descripcion }} {{ cuenta.Banco }} 
+                            {% if cuenta.TipoCuenta %}({{ cuenta.TipoCuenta }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Información de la Cuenta Seleccionada -->
+            <div id="info_cuenta_seleccionada" style="display: none;" class="mt-3">
+                <div class="alert alert-success">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <strong>Cuenta:</strong> <span id="cuenta_numero">-</span>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Banco:</strong> <span id="cuenta_banco">-</span>
+                        </div>
+                        <div class="col-md-4">
+                            <strong>Email:</strong> <span id="cuenta_email">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tabla de Facturas con Checkboxes -->
+    <div class="card col">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <span><i class="fas fa-file-invoice"></i> Seleccionar Facturas para el Layout</span>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-dark" onclick="toggleAllInvoicesLayout()">
+                    <i class="fas fa-check-square"></i> Seleccionar Todas
+                </button>
+                <span id="count_selected_layout" class="badge bg-primary ms-2">0 seleccionadas</span>
+            </div>
+        </div>
+        <div class="card-body">
+            {% if facturas|length > 0 %}
+            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <table id="tabla_facturas_layout" class="table table-sm table-hover table-bordered">
+                    <thead class="table-dark sticky-top">
+                        <tr>
+                            <th width="40">
+                                <input type="checkbox" id="selectAllLayoutCheckbox" onchange="toggleAllInvoicesLayout()">
+                            </th>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Estación</th>
+                            <th class="text-end">Monto</th>
+                            <th>UUID</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for factura in facturas %}
+                        <tr>
+                            <td class="text-center">
+                                <input type="checkbox" 
+                                       class="invoice-layout-checkbox" 
+                                       data-factura-id="{{ factura.id }}"
+                                       data-monto="{{ factura.amount }}"
+                                       onchange="updateCountSelectedLayout()">
+                            </td>
+                            <td>{{ factura.folio }}</td>
+                            <td>{{ factura.invoice_number|default('N/A') }}</td>
+                            <td>{{ factura.station_name|default('N/A') }}</td>
+                            <td class="text-end">
+                                <strong>${{ factura.amount|number_format(2, '.', ',') }}</strong>
+                            </td>
+                            <td>
+                                {% if factura.uuid %}
+                                <small class="font-monospace" title="{{ factura.uuid }}">
+                                    {{ factura.uuid[:8] }}...
+                                </small>
+                                {% else %}
+                                <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if factura.paid_status == 1 %}
+                                <span class="badge bg-success">Pagada</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Pendiente</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="alert alert-warning text-center">
+                <i class="fas fa-exclamation-triangle"></i>
+                No hay facturas disponibles para este pago
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<!-- Selector de Cuenta Bancaria -->
+
+<script>
+// ✅ Inicializar selectpicker después de cargar el contenido
+$(document).ready(function() {
+    $('#select_cuenta_bancaria').selectpicker({
+        liveSearch: true,
+        size: 8
+    });
+    
+    // Evento de cambio de cuenta
+    $('#select_cuenta_bancaria').on('change', function() {
+        const selectedOption = $(this).find('option:selected');
+        if (selectedOption.val()) {
+            selectedCuentaBancaria = {
+                id: selectedOption.val(),
+                CuentaLocal: selectedOption.data('cuenta'),
+                Banco: selectedOption.data('banco'),
+                EmailCuenta: selectedOption.data('email')
+            };
+            
+            $('#cuenta_numero').text(selectedCuentaBancaria.CuentaLocal);
+            $('#cuenta_banco').text(selectedCuentaBancaria.Banco);
+            $('#cuenta_email').text(selectedCuentaBancaria.EmailCuenta || 'No especificado');
+            $('#info_cuenta_seleccionada').slideDown();
+        } else {
+            selectedCuentaBancaria = null;
+            $('#info_cuenta_seleccionada').hide();
+        }
+        validarGeneracionLayout();
+    });
+    
+    // Inicializar contador
+    updateCountSelectedLayout();
+});
+</script>

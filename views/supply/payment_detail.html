@@ -640,7 +640,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
+                <div class="alert alert-info" style="display: flex; align-items: center; flex-direction: column;">
                     <i class="fas fa-info-circle"></i>
                     <strong>Importante:</strong> Al autorizar este pago, confirmas que has revisado:
                     <ul class="mb-0 mt-2">
@@ -814,6 +814,37 @@
                         onclick="confirmarProcesarPago()"
                         disabled>
                     <i class="fas fa-check"></i> Confirmar Pago
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+<!-- Modal para Configurar Layout de Santander (Base vacía) -->
+<div class="modal fade" id="modalConfigLayout" tabindex="-1" aria-labelledby="modalConfigLayoutLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalConfigLayoutLabel">
+                    <i class="fas fa-file-invoice-dollar"></i> Configurar Layout de Santander
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalConfigLayoutContent">
+                <!-- Contenido cargado dinámicamente -->
+                <div class="text-center py-5">
+                    <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+                    <p class="mt-3">Cargando configuración...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarLayout" disabled onclick="confirmarGeneracionLayout()">
+                    <i class="fas fa-file-download"></i> Generar Layout
                 </button>
             </div>
         </div>
