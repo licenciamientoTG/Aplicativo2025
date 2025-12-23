@@ -178,7 +178,7 @@
 
         <input type="checkbox" class="btn-check filter-toggle" id="filter-high-vol" autocomplete="off">
         <label class="btn btn-outline-secondary btn-sm rounded-pill px-3" for="filter-high-vol">
-            <i class="fas fa-layer-group me-1"></i> >10 Tickets
+            <i class="fas fa-layer-group me-1"></i> >10 Tickets/Día
         </label>
     </div>
 
@@ -221,7 +221,20 @@
                 <div class="table-responsive">
                     <table id="suspicious_tickets_table" class="table table-sm table-hover w-100 mb-0 align-middle">
                         <thead class="table-light">
-                            <tr><th>Fecha</th><th>Hora</th><th class="text-center">Turno</th><th>Estación</th><th>Producto</th><th class="text-end">Cant</th><th class="text-end">Monto</th><th>Factura</th><th>Resp.</th><th>UUID</th></tr>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th class="text-center">Etiquetas</th> 
+                                <th class="text-center">Turno</th>
+                                <th class="text-center">Isla</th> 
+                                <th>Estación</th>
+                                <th>Producto</th>
+                                <th class="text-end">Cant</th>
+                                <th class="text-end">Monto</th>
+                                <th>Factura</th>
+                                <th>Resp.</th>
+                                <th>UUID</th>
+                            </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -312,13 +325,16 @@
 
 {% block myjs %}
 <script>
-// --- VARIABLES ---
+// --- VARIABLES GLOBALES ---
 let globalData = [];
 let bigChartInstance = null;
 let dtSuspicious = null;
 let dtExcess = null;
 
-// Banderas de estado de los filtros
+// CORRECCIÓN: Usamos 'var'
+var moneyFmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
+
+// Estado de los filtros
 let activeFilters = {
     mixedProd: false,
     mixedMto: false,
@@ -328,72 +344,14 @@ let activeFilters = {
 $(document).ready(function() {
     $('#btn-run-grid').on('click', loadClientCards);
 
-    // Listener para los filtros Switch
+    // Event Listener para switches (Re-pintar tarjetas)
     $('.filter-toggle').on('change', function() {
         activeFilters.mixedProd = $('#filter-mixed-prod').is(':checked');
         activeFilters.mixedMto  = $('#filter-mixed-mto').is(':checked');
         activeFilters.highVol   = $('#filter-high-vol').is(':checked');
-        
-        // Repintar tarjetas sin llamar al backend
-        renderGrid();
+        renderGrid(); // Repintar tarjetas con la misma lógica
     });
 });
-
-// --- AJAX CARGA ---
-function loadClientCards() {
-    const mode = $('input[name="time_mode"]:checked').val();
-    let val = mode === 'month' ? $('#target_month').val() : $('#target_week').val();
-    if(!val) { alert("Selecciona fecha"); return; }
-    
-    $('#period-display').text(mode==='month'? getMonthName(val) : "Semana: "+val);
-    $('#grid-loader').css('display','flex'); 
-    
-    $.ajax({
-        url: '/income/anomalies_clients_visual',
-        method: 'POST', dataType: 'json', data: { mode: mode, target_value: val }, timeout: 60000,
-        success: function(resp) {
-            $('#grid-loader').fadeOut();
-            if(!resp.data || !resp.data.length) {
-                globalData = [];
-                renderGrid(); // Renderiza mensaje vacío
-            } else { 
-                globalData = resp.data; 
-                renderGrid(); // Renderiza tarjetas
-            }
-        },
-        error: () => { $('#grid-loader').fadeOut(); alert("Error al cargar datos."); }
-    });
-}
-
-// --- RENDERIZADO DEL GRID (Con lógica de Filtros) ---
-function renderGrid() {
-    $('#cards-grid').empty();
-
-    // 1. Aplicar filtros al array global
-    const filteredData = globalData.filter(item => {
-        // Si el filtro está activo, el item debe tener la bandera correspondiente.
-        if (activeFilters.mixedProd && item.has_mixed_products != 1) return false;
-        if (activeFilters.mixedMto  && item.has_mixed_amounts  != 1) return false;
-        if (activeFilters.highVol   && item.has_high_vol       != 1) return false;
-        return true;
-    });
-
-    if (filteredData.length === 0) {
-        if(globalData.length === 0) {
-            $('#cards-grid').html('<div class="col-12 text-center py-5 text-muted"><h4>Sin Hallazgos</h4></div>');
-        } else {
-            $('#cards-grid').html('<div class="col-12 text-center py-5 text-muted"><h4>No hay clientes que cumplan los filtros seleccionados</h4></div>');
-        }
-        return;
-    }
-
-    // 2. Crear tarjetas
-    filteredData.forEach((c) => {
-        // Buscamos el índice real para que el chart use los datos correctos del array global
-        const realIndex = globalData.indexOf(c); 
-        createCard(c, realIndex, $('input[name="time_mode"]:checked').val());
-    });
-}
 
 // --- HELPER GRÁFICAS ---
 function getDynamicChartData(data, targetDateStr, isWeekly) {
@@ -434,17 +392,74 @@ function getDynamicChartData(data, targetDateStr, isWeekly) {
 
 // --- UTILS ---
 function formatHratrnTo12(d) { if(!d)return''; var n=parseInt(d,10); if(isNaN(n))return d; var h=Math.floor(n/100), m=n%100, ap=h>=12?'PM':'AM'; h=h%12||12; return h.toString().padStart(2,'0')+':'+m.toString().padStart(2,'0')+' '+ap; }
-const moneyFmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 2 });
+
 function getWeekDates(w){ const [y,we]=w.split('-W'); const s=new Date(y,0,1+(we-1)*7); const d=s.getDay(); if(d<=4)s.setDate(s.getDate()-s.getDay()+1); else s.setDate(s.getDate()+8-s.getDay()); const e=new Date(s); e.setDate(e.getDate()+6); const f=d=>d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0')+'/'+d.getFullYear(); return {start:f(s),end:f(e)}; }
 function getMonthName(v){ const ms=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']; const p=v.split('-'); return ms[parseInt(p[1])-1]+' '+p[0]; }
 function toggleTimeMode(){ const m=$('input[name="time_mode"]:checked').val(); $('#target_month').toggle(m==='month'); $('#target_week').toggle(m==='week'); }
+
+// --- AJAX CARGA (TIMEOUT 0) ---
+function loadClientCards() {
+    const mode = $('input[name="time_mode"]:checked').val();
+    let val = mode === 'month' ? $('#target_month').val() : $('#target_week').val();
+    if(!val) { alert("Selecciona fecha"); return; }
+    
+    $('#period-display').text(mode==='month'? getMonthName(val) : "Semana: "+val);
+    $('#grid-loader').css('display','flex'); 
+    
+    $.ajax({
+        url: '/income/anomalies_clients_visual',
+        method: 'POST', dataType: 'json', data: { mode: mode, target_value: val }, 
+        timeout: 0, // Timeout infinito para evitar errores de red
+        success: function(resp) {
+            $('#grid-loader').fadeOut();
+            if(!resp.data || !resp.data.length) {
+                globalData = [];
+                renderGrid();
+            } else { 
+                globalData = resp.data; 
+                renderGrid();
+            }
+        },
+        error: () => { $('#grid-loader').fadeOut(); alert("Error al cargar datos."); }
+    });
+}
+
+// --- RENDERIZADO DEL GRID (LÓGICA STRICT AND) ---
+function renderGrid() {
+    $('#cards-grid').empty();
+
+    // 1. Filtrar globalData según switches (Lógica AND estricta)
+    const filteredData = globalData.filter(item => {
+        // Si Productos Mixtos está activo, el cliente DEBE tenerlo
+        if (activeFilters.mixedProd && item.has_mixed_products != 1) return false;
+
+        // Si Montos Mixtos está activo, el cliente DEBE tenerlo
+        if (activeFilters.mixedMto && item.has_mixed_amounts != 1) return false;
+
+        // Si Volumen Alto está activo, el cliente DEBE tenerlo
+        if (activeFilters.highVol && item.has_high_vol != 1) return false;
+
+        return true;
+    });
+
+    if (filteredData.length === 0) {
+        const msg = globalData.length === 0 ? "Sin Hallazgos" : "No hay clientes que cumplan estrictamente todos los filtros seleccionados";
+        $('#cards-grid').html(`<div class="col-12 text-center py-5 text-muted"><h4>${msg}</h4></div>`);
+        return;
+    }
+
+    // 2. Crear Tarjetas
+    filteredData.forEach((c) => {
+        const realIndex = globalData.indexOf(c); 
+        createCard(c, realIndex, $('input[name="time_mode"]:checked').val());
+    });
+}
 
 // --- CREACION DE TARJETA ---
 function createCard(data, index, mode) {
     let tVal = mode === 'month' ? $('#target_month').val() : $('#target_week').val();
     const chartData = getDynamicChartData(data, tVal, mode === 'week');
     
-    // Cálculos y Formatos
     const prom = parseFloat(data.Promedio_Normal).toFixed(0);
     const pico = parseFloat(data.Pico_Agosto).toFixed(0);
     const dif = parseFloat(data.Diferencia_Absoluta).toFixed(0);
@@ -562,7 +577,146 @@ function createCard(data, index, mode) {
     });
 }
 
-// --- LOGICA MODALES ---
+// --- LOGICA MODAL TICKETS (Lógica Híbrida: (F1 AND F2) OR F3) ---
+function openSuspiciousModal(codopr, cliente, idx) {
+    const mode = $('input[name="time_mode"]:checked').val();
+    const rawVal = (mode === 'month') ? $('#target_month').val() : $('#target_week').val();
+    const isWeekly = (mode === 'week');
+
+    $('#mdl-susp-subtitle').text(`${cliente} (${codopr})`);
+    
+    // Badges visuales de filtros activos en el modal
+    let filterBadges = '';
+    if(activeFilters.mixedProd) filterBadges += '<span class="badge bg-secondary me-1 ms-2">Prod. Mixtos</span>';
+    if(activeFilters.mixedMto)  filterBadges += '<span class="badge bg-secondary me-1">Montos Mixtos</span>';
+    if(activeFilters.highVol)   filterBadges += '<span class="badge bg-secondary me-1">>10 Tickets</span>';
+    
+    $('#mdl-susp-subtitle').find('.badge').remove();
+    if(filterBadges !== '') $('#mdl-susp-subtitle').append(filterBadges);
+
+    new bootstrap.Modal(document.getElementById('modal-suspicious-tickets')).show();
+    if(dtSuspicious) { dtSuspicious.destroy(); dtSuspicious=null; }
+    $('#suspicious_tickets_table tbody').html('<tr><td colspan="12" class="text-center"><div class="spinner-border text-primary"></div><div class="small mt-1">Cargando tickets...</div></td></tr>');
+
+    // 1. OBTENER FECHAS CRÍTICAS (Para escenario sin filtros)
+    fetchBreakdown(codopr, rawVal, isWeekly, (rows) => {
+        const criticalDates = rows.filter(r => r.is_critical == 1).map(r => String(r.fecha).trim());
+        
+        let dateStrForTickets = isWeekly 
+            ? `${getWeekDates(rawVal).start.split('/')[2]}-${getWeekDates(rawVal).start.split('/')[1]}-${getWeekDates(rawVal).start.split('/')[0]}`
+            : rawVal + '-01';
+
+        // 2. OBTENER TICKETS DEL MES COMPLETO (Base de datos)
+        $.post('/income/get_suspicious_details_ajax', { codopr: codopr, month_date: dateStrForTickets }, function(resp) {
+            if(!resp.data || !resp.data.length) { 
+                $('#suspicious_tickets_table tbody').html('<tr><td colspan="12" class="text-center">Sin datos disponibles.</td></tr>'); return; 
+            }
+
+            let finalData = resp.data;
+            const isAnySwitchActive = activeFilters.mixedProd || activeFilters.mixedMto || activeFilters.highVol;
+
+            // --- LÓGICA DE FILTRADO ---
+            if (!isAnySwitchActive) {
+                // ESCENARIO A: SIN SWITCHES -> Solo Días Críticos
+                console.log("Modo: Días Críticos solamente");
+                if (criticalDates.length > 0) {
+                     finalData = finalData.filter(t => criticalDates.includes(String(t.fecha).trim()));
+                     // Etiqueta visual para modo default
+                     finalData = finalData.map(t => ({...t, display_tags: '<span class="badge bg-danger bg-opacity-10 text-danger">Crítico (4σ)</span>'}));
+                } else {
+                     finalData = []; 
+                }
+            } else {
+                // ESCENARIO B: CON SWITCHES (Híbrido)
+                // Lógica: ( (F1 activado -> cumple F1) AND (F2 activado -> cumple F2) ) OR (F3 activado -> cumple F3)
+                console.log("Modo: Filtros Activos ((F1 & F2) OR F3)");
+                
+                let filteredList = [];
+                
+                resp.data.forEach(t => {
+                    let passesPatterns = false;
+                    let passesHighVol = false;
+                    let tags = [];
+
+                    // 1. Evaluar Bloque de Patrones (F1 y F2) - Es restrictivo (AND)
+                    const patternsActive = activeFilters.mixedProd || activeFilters.mixedMto;
+                    
+                    if (patternsActive) {
+                        let cumple = true;
+                        if (activeFilters.mixedProd && t.is_mixed_prod != 1) cumple = false;
+                        if (activeFilters.mixedMto && t.is_mixed_mto != 1) cumple = false;
+                        
+                        if (cumple) {
+                            passesPatterns = true;
+                            if (activeFilters.mixedProd) tags.push('<span class="badge bg-info text-dark me-1">Prod.Mix</span>');
+                            if (activeFilters.mixedMto) tags.push('<span class="badge bg-warning text-dark me-1">Mto.Mix</span>');
+                        }
+                    }
+
+                    // 2. Evaluar Bloque de Volumen (F3) - Es el "Comodín" (OR)
+                    if (activeFilters.highVol && t.is_high_vol_day == 1) {
+                        passesHighVol = true;
+                        tags.push('<span class="badge bg-dark me-1">Vol>10</span>');
+                    }
+
+                    // 3. Decisión Final: Pasa si cumple Patrones O Pasa si cumple Volumen
+                    if (passesPatterns || passesHighVol) {
+                        t.display_tags = [...new Set(tags)].join(''); 
+                        filteredList.push(t);
+                    }
+                });
+                
+                finalData = filteredList;
+            }
+            
+            if (finalData.length === 0) {
+                 const msg = isAnySwitchActive 
+                    ? 'No hay tickets que cumplan con la combinación de filtros seleccionada.'
+                    : 'No se encontraron tickets en los días marcados como críticos.';
+                 $('#suspicious_tickets_table tbody').html(`<tr><td colspan="12" class="text-center text-muted py-4">${msg}</td></tr>`);
+                 return;
+            }
+
+            // --- RENDERIZAR TABLA ---
+            dtSuspicious = $('#suspicious_tickets_table').DataTable({
+                data: finalData,
+                columns: [
+                    { data: 'fecha', className: 'text-nowrap' },
+                    { data: 'hratrn', render: (d)=> formatHratrnTo12(d) },
+                    { data: 'display_tags', className: 'text-center' }, // Etiquetas
+                    { data: 'nrotur', className: 'text-center', render: d => d ? Math.floor(d/10) : '' },
+                    { data: 'isla', className: 'text-center' }, // Isla
+                    { data: 'estacion' },
+                    { data: 'nomPrd' },
+                    { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                    { data: 'mto', className: 'text-end fw-bold', render: $.fn.dataTable.render.number(',', '.', 2) },
+                    { data: 'factura' }, 
+                    { data: 'responsable' },
+                    { data: 'satuid', visible: true, className: 'uuid-cell' }
+                ],
+                order: [[9,'asc']], // Ordenar por Factura
+                dom: 'Bfrtip', buttons: ['excel'], pageLength: 50,
+                drawCallback: function (settings) {
+                    var api = this.api(); 
+                    var rows = api.rows({ page: 'current' }).nodes(); 
+                    var last = null;
+                    api.column(9, { page: 'current' }).data().each(function (group, i) {
+                        var rowData = api.row(i).data();
+                        var serie = rowData.serie || ''; 
+                        if (last !== group + serie) {
+                            $(rows).eq(i).before(
+                                `<tr class="group bg-light"><td colspan="12" class="fw-bold text-dark border-top border-bottom py-1"><small>${group} (${serie})</small></td></tr>`
+                            );
+                            last = group + serie;
+                        }
+                    });
+                }
+            });
+        }, 'json');
+    });
+}
+
+// --- HELPER GRÁFICAS Y UTILS ---
 function fetchBreakdown(codopr, dateStr, isWeekly, callback) {
     let dStart, dEnd;
     if(isWeekly) {
@@ -579,7 +733,6 @@ function fetchBreakdown(codopr, dateStr, isWeekly, callback) {
     }, 'json');
 }
 
-// 1. PICO
 function showPeakDetail(codopr, dateStr, isWeekly) {
     fetchBreakdown(codopr, dateStr, isWeekly, (rows) => {
         if(!rows.length) return;
@@ -591,7 +744,6 @@ function showPeakDetail(codopr, dateStr, isWeekly) {
     });
 }
 
-// 2. DIAS CRITICOS
 function showCriticalDays(codopr, dateStr, isWeekly) {
     fetchBreakdown(codopr, dateStr, isWeekly, (rows) => {
         const tbody = $('#critical-days-body'); tbody.empty();
@@ -606,7 +758,6 @@ function showCriticalDays(codopr, dateStr, isWeekly) {
     });
 }
 
-// 3. EXCESO
 function showExcessCalc(codopr, dateStr, isWeekly) {
     const modal = new bootstrap.Modal(document.getElementById('modal-excess-calc'));
     modal.show();
@@ -652,121 +803,6 @@ function showExcessCalc(codopr, dateStr, isWeekly) {
             } else {
                 $('#excess-tickets-table tbody').html('<tr><td colspan="9" class="text-center text-muted">No hay tickets.</td></tr>');
             }
-        }, 'json');
-    });
-}
-
-// 4. MODAL TICKETS (LISTA) - FILTRADA Y CON AGRUPACIÓN RESTAURADA
-function openSuspiciousModal(codopr, cliente, idx) {
-    const mode = $('input[name="time_mode"]:checked').val();
-    const rawVal = (mode === 'month') ? $('#target_month').val() : $('#target_week').val();
-    const isWeekly = (mode === 'week');
-
-    $('#mdl-susp-subtitle').text(`${cliente} (${codopr})`);
-    
-    // Indicador visual de filtros en el modal
-    let filterBadges = '';
-    if(activeFilters.mixedProd) filterBadges += '<span class="badge bg-secondary me-1 ms-2">Prod. Mixtos</span>';
-    if(activeFilters.mixedMto)  filterBadges += '<span class="badge bg-secondary me-1">Montos Mixtos</span>';
-    if(activeFilters.highVol)   filterBadges += '<span class="badge bg-secondary me-1">>10 Tickets</span>';
-    
-    // Limpiamos badges anteriores si los hubiera
-    $('#mdl-susp-subtitle').find('.badge').remove();
-    if(filterBadges !== '') $('#mdl-susp-subtitle').append(filterBadges);
-
-    new bootstrap.Modal(document.getElementById('modal-suspicious-tickets')).show();
-    if(dtSuspicious) { dtSuspicious.destroy(); dtSuspicious=null; }
-    $('#suspicious_tickets_table tbody').html('<tr><td colspan="11" class="text-center"><div class="spinner-border"></div></td></tr>');
-
-    // 1. OBTENEMOS LAS FECHAS CRÍTICAS (Para el modo "Default")
-    fetchBreakdown(codopr, rawVal, isWeekly, (rows) => {
-        const critDates = rows.filter(r => r.is_critical == 1).map(r => r.fecha);
-        
-        let dateStrForTickets;
-        if(isWeekly) { 
-            const d=getWeekDates(rawVal); const p=d.start.split('/'); 
-            dateStrForTickets=`${p[2]}-${p[1]}-${p[0]}`; 
-        } else { 
-            dateStrForTickets = rawVal + '-01'; 
-        }
-
-        // 2. OBTENEMOS LOS TICKETS (AHORA TRAE TODO EL MES)
-        $.post('/income/get_suspicious_details_ajax', { codopr: codopr, month_date: dateStrForTickets }, function(resp) {
-            if(!resp.data || !resp.data.length) { 
-                $('#suspicious_tickets_table tbody').html('<tr><td colspan="11" class="text-center">Sin datos</td></tr>'); return; 
-            }
-
-            let finalData = resp.data;
-            
-            // --- LÓGICA DE FILTRADO CONDICIONAL ---
-            const isAnySwitchActive = activeFilters.mixedProd || activeFilters.mixedMto || activeFilters.highVol;
-
-            if (!isAnySwitchActive) {
-                // CASO 1: NINGÚN SWITCH ACTIVO -> COMPORTAMIENTO ORIGINAL
-                // Solo mostramos tickets que correspondan a los Días Críticos detectados por estadística
-                if (critDates.length > 0) {
-                     finalData = finalData.filter(t => critDates.includes(t.fecha));
-                } else {
-                     // Si no hubo días críticos y no hay switches, no mostramos nada (o todo, depende tu gusto, aquí asumo nada pq es monitor de anomalías)
-                     finalData = []; 
-                }
-            } else {
-                // CASO 2: SWITCHES ACTIVOS -> IGNORAMOS FECHAS CRÍTICAS
-                // Buscamos en todo el mes los tickets que cumplan los switches activos
-                finalData = finalData.filter(t => {
-                    let match = true;
-                    if (activeFilters.mixedProd && t.is_mixed_prod != 1) match = false;
-                    if (activeFilters.mixedMto  && t.is_mixed_mto != 1)  match = false;
-                    if (activeFilters.highVol   && t.is_high_vol != 1)   match = false;
-                    return match;
-                });
-            }
-            
-            if (finalData.length === 0) {
-                 const msg = isAnySwitchActive 
-                    ? 'No se encontraron tickets con los filtros especiales seleccionados en este periodo.'
-                    : 'No hay tickets en días críticos.';
-                 $('#suspicious_tickets_table tbody').html(`<tr><td colspan="11" class="text-center text-muted">${msg}</td></tr>`);
-                 return;
-            }
-
-            // --- INICIALIZAMOS DATATABLE ---
-            dtSuspicious = $('#suspicious_tickets_table').DataTable({
-                data: finalData,
-                columns: [
-                    { data: 'fecha', className: 'text-nowrap' },
-                    { data: 'hratrn', render: (d)=> formatHratrnTo12(d) },
-                    { data: 'nrotur', className: 'text-center', render: d => d ? Math.floor(d/10) : '' },
-                    { data: 'estacion' },
-                    { data: 'nomPrd' },
-                    { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-                    { data: 'mto', className: 'text-end fw-bold', render: $.fn.dataTable.render.number(',', '.', 2) },
-                    { data: 'factura' }, 
-                    { data: 'responsable' },
-                    { data: 'satuid', visible: true, className: 'uuid-cell' }
-                ],
-                order: [[7,'asc']], 
-                dom: 'Bfrtip', buttons: ['excel'], pageLength: 20,
-                
-                // AGRUPACIÓN ORIGINAL
-                drawCallback: function (settings) {
-                    var api = this.api(); 
-                    var rows = api.rows({ page: 'current' }).nodes(); 
-                    var last = null;
-                    
-                    api.column(7, { page: 'current' }).data().each(function (group, i) {
-                        var rowData = api.row(i).data();
-                        var serie = rowData.serie || ''; 
-                        
-                        if (last !== group + serie) {
-                            $(rows).eq(i).before(
-                                `<tr class="group bg-light"><td colspan="11" class="fw-bold text-dark border-top border-bottom py-1"><small>${group} (${serie})</small></td></tr>`
-                            );
-                            last = group + serie;
-                        }
-                    });
-                }
-            });
         }, 'json');
     });
 }
