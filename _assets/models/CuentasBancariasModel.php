@@ -104,4 +104,23 @@ class CuentasBancariasModel extends Model {
         $query = 'UPDATE [TG].[dbo].[CatalogosCuentasBancarias] SET [Activo] = 0 WHERE Id = ?;';
         return (bool)$this->sql->update($query, [$id]);
     }
+
+    public function get_by_provider_name($provider_name) {
+         $baseName = strtoupper(trim($provider_name));
+        $baseName = str_replace('.', '', $baseName);
+        $baseName = preg_split('/\s+/', $baseName)[0]; // ← SOLO "PREMIERGAS"
+        $query = "
+            SELECT 
+               *
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE [Descripcion] LIKE ?
+            AND Activo = 1
+            ORDER BY Banco, CuentaLocal
+        ";
+        
+        $params = ['%' . $baseName . '%'];
+    $result = $this->sql->select($query, $params);
+
+        return $result ?: false;
+    }
 }

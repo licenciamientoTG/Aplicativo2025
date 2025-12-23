@@ -309,6 +309,62 @@ class PaymentRequestInvoicesModel extends Model
         $result = $this->sql->select($query, [$payment_request_id]);
         return $result ? $result[0] : false;
     }
+    public function get_by_ids($ids) {
+        if (empty($ids)) {
+            return [];
+        }
+        $ids = array_map('intval', $ids);
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        
+        $query = "
+            SELECT 
+                t1.id,
+                t1.payment_request_id,
+                t1.folio,
+                t1.invoice_number,
+                t1.codgas,
+                t1.amount,
+                --t1.[status],
+                t1.expiration_date,
+                t1.date_added,
+                t1.uuid,
+                t4.den as proveedor_nombre,
+                t2.abr as estacion_nombre,
+                -- Calcular paid_amount desde payment_transactions
+                 ISNULL((
+                    SELECT SUM(payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] t5
+                    WHERE t5.invoice_id = t1.id
+                    AND t1.status IN (1, 2)
+                ), 0) as paid_amount,
+                -- Calcular status dinámicamente
+                CASE 
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                        AND t1.status IN (1, 2)
+                    ), 0) = 0 THEN 0  -- Pendiente
+                    WHEN ISNULL((
+                        SELECT SUM(payment_amount)
+                        FROM [TG].[dbo].[payment_transactions] t5
+                        WHERE t5.invoice_id = t1.id
+                        AND t1.status IN (1, 2)
+                    ), 0) < t1.amount THEN 3  -- Parcial
+                    ELSE 2  -- Pagado
+                END as status
+                FROM [TG].[dbo].[payment_request_invoices] t1
+                LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
+                left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
+                LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
+                WHERE t1.Id IN ($placeholders)
+                ORDER BY t1.date_added DESC
+        ";
+        $result = $this->sql->select($query, $ids);
+        return $result ?: false;
+
+    }
 
 
 }

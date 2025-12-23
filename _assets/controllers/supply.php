@@ -1294,11 +1294,6 @@ class Supply{
         curl_close($ch);
         $apiData = json_decode($response, true);
         $data = [];
-        // echo '<pre>';
-        // var_dump($apiData);
-        // die();
-
-
         if (isset($apiData) && is_array($apiData)) {
             foreach ($apiData as $row) {
                 if (empty($row['satuid'])) {
@@ -1313,30 +1308,31 @@ class Supply{
                     $statusLabel = '<span class="badge bg-success">Pagado</span>';
                 }
                 $data[] = array(
-                    'nro'          => $row['nro'],
-                    'Factura'      => $row['Factura'],
-                    'Remision'     => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
-                    'fecha'        => $row['fecha'],
-                    'fechaVto'     => $row['fechaVto'],
-                    'producto'     => $row['producto'],
-                    'proveedor'    => $row['proveedor'],
-                    'volrec'       => $row['volrec'],
-                    'can'          => $row['can'],
-                    'pre'          => $row['pre'],
-                    'mto'          => $row['mto'],
-                    'mtoiie'       => $row['mtoiie'],
-                    'iva8'         => $row['iva8'],
-                    'iva'          => $row['iva'],
-                    'iva_total'    => $row['iva_total'],
-                    'servicio'     => $row['servicio'],
-                    'iva_servicio' => $row['iva_servicio'],
-                    'total_fac'    => $row['total_fac'],
-                    'satuid'       => $row['satuid'],
+                    'nro'              => $row['nro'],
+                    'Factura'          => $row['Factura'],
+                    'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
+                    'fecha'            => $row['fecha'],
+                    'fechaVto'         => $row['fechaVto'],
+                    'producto'         => $row['producto'],
+                    'proveedor'        => $row['proveedor'],
+                    'proveedor_codigo' => $row['proveedor_codigo'],
+                    'volrec'           => $row['volrec'],
+                    'can'              => $row['can'],
+                    'pre'              => $row['pre'],
+                    'mto'              => $row['mto'],
+                    'mtoiie'           => $row['mtoiie'],
+                    'iva8'             => $row['iva8'],
+                    'iva'              => $row['iva'],
+                    'iva_total'        => $row['iva_total'],
+                    'servicio'         => $row['servicio'],
+                    'iva_servicio'     => $row['iva_servicio'],
+                    'total_fac'        => $row['total_fac'],
+                    'satuid'           => $row['satuid'],
                     'gasolinera'       => $row['gasolinera'],
-                    'codgas'       => $row['codgas'],
-                    'en_orden_pago' => $row['en_orden_pago'],
-                    'payment_status' => $row['payment_status'],
-                    'statusLabel'    => $statusLabel
+                    'codgas'           => $row['codgas'],
+                    'en_orden_pago'    => $row['en_orden_pago'],
+                    'payment_status'   => $row['payment_status'],
+                    'statusLabel'      => $statusLabel
                 );
             }
         }
@@ -1405,7 +1401,7 @@ class Supply{
                     
                     $data[] = array(
                         'id'               => $row['id'],
-                        'id_control_gas'               => $row['id_control_gas'],
+                        'id_control_gas'   => $row['id_control_gas'],
                         'proveedor'        => $row['den'],
                         'dias_credito'     => $row['dias_credito'],
                         'limite_credito'   => is_null($row['limite_credito']) ? 0 : $row['limite_credito'],
@@ -3081,6 +3077,8 @@ function download_zip($zipFileName) {
             $documents = $data['documentos'] ?? null;
             $user = $_SESSION['tg_user']['Id'] ?? null;
             $comment = $data['comment'] ?? 'Pago programado';
+            $provider_cod = $data['provider_cod'] ?? null; // ✅ RECIBIR
+            $provider_name = $data['provider_name'] ?? null; // ✅ OPCIONAL
 
             if (!$user) {
                 json_output(['success' => false, 'detail' => 'Usuario no autenticado']);
@@ -3091,9 +3089,13 @@ function download_zip($zipFileName) {
                 json_output(['success' => false, 'detail' => 'No hay documentos para procesar']);
                 return;
             }
+            if (!$provider_cod) {
+                json_output(['success' => false, 'detail' => 'Código de proveedor requerido']);
+                return;
+            }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment,$provider_cod);
 
             if ($result['success']) {
                 json_output([
@@ -3372,17 +3374,17 @@ function download_zip($zipFileName) {
     }
     function get_payment_history() {
         header('Content-Type: application/json');
-        
+
         $invoice_id = $_GET['invoice_id'] ?? null;
-        
+
         if (!$invoice_id) {
             json_output(['success' => false, 'message' => 'ID de factura requerido']);
             return;
         }
-        
+
         try {
             $transactions = $this->paymentTransactionsModel->get_payment_history($invoice_id);
-            
+
             if ($transactions) {
                 json_output([
                     'success' => true,
@@ -3395,7 +3397,7 @@ function download_zip($zipFileName) {
                     'message' => 'No hay pagos registrados'
                 ]);
             }
-            
+
         } catch (Exception $e) {
             json_output([
                 'success' => false,
@@ -3410,10 +3412,25 @@ function generate_payment_layout() {
 
     try {
         $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+        $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
+        $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
+
         if (!$payment_id) {
             json_output(['success' => false, 'message' => 'ID de pago requerido']);
             return;
         }
+        $facturas_ids = json_decode($facturas_ids_json, true);
+        if (empty($facturas_ids)) {
+            json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+            return;
+        }
+        $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
+        if (!$cuenta_bancaria) {
+            json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
+            return;
+        }
+        $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
+        $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
 
         $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
         if (!$payment) {
@@ -3421,7 +3438,9 @@ function generate_payment_layout() {
             return;
         }
         $payment = $payment[0];
-        $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+        // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+        $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
+
         if (!$invoices || count($invoices) === 0) {
             json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
             return;
@@ -3440,19 +3459,6 @@ function generate_payment_layout() {
             json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
             return;
         }
-
-        $cuenta_bancaria = $this->CuentasBancariasModel->get_by_name($proveedor['den']);
-
-        if (!$cuenta_bancaria) {
-            json_output([
-                'success' => false, 
-                'message' => 'No se encontró cuenta bancaria para el proveedor: ' . $proveedor['den']
-            ]);
-            return;
-        }
-
-        $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
-        $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
 
         // ✅ CORRECCIÓN 1: Template XLSX
         $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
@@ -3671,6 +3677,61 @@ function delete_layout() {
     }
 }
 
-    
+    public function configLayoutModal() {
+    try {
+        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+        
+        if (!$payment_id) {
+            echo '<div class="alert alert-danger">ID de pago requerido</div>';
+            return;
+        }
+        
+        // Obtener datos del pago
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        if (!$payment || count($payment) === 0) {
+            echo '<div class="alert alert-danger">Pago no encontrado</div>';
+            return;
+        }
+        $payment = $payment[0];
+        
+        // Obtener datos del proveedor
+        $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+        if (!$proveedor) {
+            echo '<div class="alert alert-danger">Proveedor no encontrado</div>';
+            return;
+        }
+        
+        // Obtener TODAS las cuentas bancarias del proveedor
+        $cuentas_bancarias = $this->CuentasBancariasModel->get_cuentas($proveedor['den']);
+        
+        if (!$cuentas_bancarias || count($cuentas_bancarias) === 0) {
+            echo '<div class="alert alert-warning">' .
+                 '<i class="fas fa-exclamation-triangle"></i> ' .
+                 'No se encontraron cuentas bancarias para el proveedor: <strong>' . htmlspecialchars($proveedor['den']) . '</strong>' .
+                 '</div>';
+            return;
+        }
+        
+        // Obtener facturas del pago
+        $facturas = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+
+        // Renderizar vista Twig
+        echo $this->twig->render($this->route . 'modals/configLayoutModal.html', [
+            'proveedor' => [
+                'codigo' => $payment['provider_cod'],
+                'nombre' => $proveedor['den']
+            ],
+            'cuentas_bancarias' => $cuentas_bancarias,
+            'facturas' => $facturas
+        ]);
+        
+    } catch (Exception $e) {
+        error_log('Error en configLayoutModal: ' . $e->getMessage());
+        echo '<div class="alert alert-danger">' .
+             '<i class="fas fa-exclamation-circle"></i> ' .
+             'Error al cargar la configuración: ' . htmlspecialchars($e->getMessage()) .
+             '</div>';
+    }
+}
 
 }

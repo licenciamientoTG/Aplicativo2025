@@ -325,9 +325,6 @@ $('.refresh_datatable_creProducts').on('click', function () {
 
 
 
-
-
-
 function add_payment() {
     // Redirigir a la página de agregar pago
     window.location.href = '/supply/add_payment';
@@ -338,20 +335,6 @@ let selectedInvoices = new Set();
 let paymentTable = null;
 
 async function payment_create_table(){
-    // console.log('🔍 Estado antes de limpiar:');
-    // console.log('- Filas filter:', $('#payment_create_table thead .filter').length);
-    // console.log('- Es DataTable:', $.fn.DataTable.isDataTable('#payment_create_table'));
-    
-    // // ✅ LIMPIEZA COMPLETA
-    // if ($.fn.DataTable.isDataTable('#payment_create_table')) {
-    //     const table = $('#payment_create_table').DataTable();
-    //     table.clear();
-    //     table.destroy(true); // 🔴 IMPORTANTE: true
-    //     // ✅ VERIFICAR LIMPIEZA
-    //     console.log('🧹 Después de limpiar:');
-    //     console.log('- Filas filter:', $('#payment_create_table thead .filter').length);
-    //     console.log('- Es DataTable:', $.fn.DataTable.isDataTable('#payment_create_table'));
-    // }
     var fromDate = document.getElementById('from1').value;
     var untilDate = document.getElementById('until1').value;
     var codgas = document.getElementById('station_id1').value;
@@ -369,8 +352,7 @@ async function payment_create_table(){
         return;
     }
      if (paymentTable) {
-        console.log('♻️ Recargando datos existentes...');
-        
+
         // Actualizar parámetros AJAX
         paymentTable.settings()[0].ajax.data = {
             'fromDate': fromDate,
@@ -379,7 +361,7 @@ async function payment_create_table(){
             'company': company,
             'proveedor': proveedor
         };
-        
+
         // Recargar datos
         paymentTable.ajax.reload(function() {
             // Este callback se ejecuta DESPUÉS de cargar los datos
@@ -387,7 +369,7 @@ async function payment_create_table(){
             updateSelectedCount();
             console.log('✅ Datos recargados correctamente');
         }, false); // false = mantener página actual
-        
+
         return;
     }
 
@@ -434,19 +416,15 @@ async function payment_create_table(){
                 orderable: false,
                 className: 'text-center text-nowrap',
                 render: function (data, type, row) {
-
-                    // ❌ No mostrar checkbox si ya está en orden de pago
                     if (row.en_orden_pago != 0) {
                         return ''; // o un ícono si quieres
                     }
-
-                    // ✅ Mostrar checkbox solo si es seleccionable
                     return `
                         <input type="checkbox"
                             class="invoice-checkbox"
                             data-nro="${row.nro}"
                             data-factura="${row.Factura}"
-                            data-codgas="${row.codgas}"
+                            data-codgas="${row.codgas}" data-proveedor_codigo="${row.proveedor_codigo}"
                             onchange="updateSelectedCount()">
                     `;
                 }
@@ -3276,6 +3254,14 @@ async function generatePayment() {
         );
         return;
     }
+
+    const primerItem = paymentItems[0];
+    const proveedorCodigo = primerItem.proveedor_codigo || primerItem.id_control_gas || null;
+    
+    if (!proveedorCodigo) {
+        alertify.error('Error: No se pudo obtener el código del proveedor');
+        return;
+    }
     
     // Solicitar comentario
     alertify.prompt(
@@ -3288,26 +3274,32 @@ async function generatePayment() {
                 total_documentos: paymentItems.length,
                 total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
                 fecha_pago: new Date().toISOString().split('T')[0],
-                comment: comment || 'Pago programado'
+                comment: comment || 'Pago programado',
+                provider_cod: proveedorCodigo,  // ✅ AGREGADO
+                provider_name: currentProvider  // ✅ OPCIO
             };
-            
+
+            console.log('📤 Datos enviados:', paymentData); // Debug
+
+
             try {
                 const response = await fetch('/supply/generate_payment', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(paymentData)
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alertify.success('Pago creado exitosamente: ID #' + data.payment_id);
-                    
+
                     // Limpiar carrito
                     paymentItems = [];
+                    currentProvider = null; // ✅ Resetear proveedor
                     renderPaymentItems();
                     updatePaymentSummary();
-                    
+
                     // Preguntar si desea ver el detalle
                     alertify.confirm(
                         '¿Ver detalle del pago?',
@@ -3538,24 +3530,332 @@ function ReturnListPayment(){
 }
 
 
+let currentPaymentId = null;
+let availableInvoices = [];
+let selectedCuentaBancaria = null;
 
+async function generarTransferenciasBancarias(paymentId) {
+    try {
+        currentPaymentId = paymentId;
+        
+        // Abrir modal inmediatamente
+        $('#modalConfigLayout').modal('show');
+        
+        // Mostrar loader
+        $('#modalConfigLayoutContent').html(`
+            <div class="text-center py-5">
+                <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+                <p class="mt-3">Cargando configuración...</p>
+            </div>
+        `);
+        
+        // Cargar contenido del modal
+        const response = await fetch('/supply/configLayoutModal', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+            body: `payment_id=${paymentId}`
+        });
+        
+        if (!response.ok) {
+            throw new Error('Error al cargar el modal');
+        }
+        
+        const content = await response.text();
+        
+        // Insertar contenido en el modal
+        $('#modalConfigLayoutContent').html(content);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alertify.error('Error al cargar la configuración del layout');
+        $('#modalConfigLayout').modal('hide');
+    }
+}
 
-function generarTransferenciasBancarias(paymentId) {
-    console.log('Iniciando generación de transferencias para payment ID:', paymentId);
-    // Validar payment_id
-    if (!paymentId || paymentId <= 0) {
-        alertify.error('ID de pago inválido');
+// function generarArchivoTransferencias(paymentId) {
+//     alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando archivo...');
+    
+//     const btnTransfer = $('#btnGenerarTransferencias');
+//     const btnOriginalText = btnTransfer.html();
+//     btnTransfer.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
+    
+//     $.ajax({
+//         url: '/supply/generate_payment_layout',
+//         type: 'POST',
+//         data: { payment_id: paymentId },
+//         timeout: 300000,
+//         success: function(response) {
+            
+//             if (response.success) {
+//                 // Descargar archivo
+//                 fetch(response.file_url)
+//                     .then(res => {
+//                         if (!res.ok) throw new Error('Error en la descarga');
+//                         return res.blob();
+//                     })
+//                     .then(blob => {
+//                         const url = window.URL.createObjectURL(new Blob([blob]));
+//                         const a = document.createElement('a');
+//                         a.style.display = 'none';
+//                         a.href = url;
+//                         a.download = response.file_name;
+//                         document.body.appendChild(a);
+//                         a.click();
+//                         window.URL.revokeObjectURL(url);
+//                         document.body.removeChild(a);
+                        
+//                         // ✅ Mostrar modal y eliminar archivo AL CERRARLO
+//                         alertify.alert(
+//                             'Layout Generado',
+//                             `<div class="text-center">
+//                                 <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
+//                                 <h5 class="mt-3">Archivo Descargado</h5>
+//                                 <p class="mb-2"><strong>${response.file_name}</strong></p>
+//                                 <p class="text-muted">
+//                                     ${response.registros_procesados} transferencias<br>
+//                                     Total: $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+//                                 </p>
+//                             </div>`,
+//                             function() {
+//                                 // ✅ Eliminar archivo CUANDO EL USUARIO CIERRE EL MODAL
+//                                 $.post('/supply/delete_layout', {
+//                                     filename: response.file_name
+//                                 }, function(deleteResponse) {
+//                                     console.log('Archivo eliminado:', deleteResponse);
+//                                 }).fail(function(error) {
+//                                     console.error('Error al eliminar:', error);
+//                                 });
+//                             }
+//                         ).set({
+//                             maximizable: false,
+//                             closable: true
+//                         });
+//                     })
+//                     .catch(error => {
+//                         console.error('Error:', error);
+//                         alertify.error('Error al descargar el archivo');
+//                     });
+                
+//             } else {
+//                 alertify.error(response.message);
+//             }
+//         },
+//         error: function(xhr, status) {
+//             console.error('Error AJAX:', { status, xhr });
+//             alertify.error(status === 'timeout' ? 'Timeout' : 'Error al generar');
+//         },
+//         complete: function() {
+//             btnTransfer.prop('disabled', false).html(btnOriginalText);
+//         }
+//     });
+// }
+
+function cargarDatosParaLayout(paymentId) {
+    $.ajax({
+        url: '/supply/get_payment_layout_data',
+        type: 'POST',
+        data: { payment_id: paymentId },
+        success: function(response) {
+            if (response.success) {
+                // Mostrar información del proveedor
+                $('#layout_proveedor_nombre').text(response.proveedor.nombre);
+                $('#layout_proveedor_codigo').text(response.proveedor.codigo);
+                
+                // Cargar cuentas bancarias en el select
+                cargarCuentasBancarias(response.cuentas_bancarias);
+                
+                // Guardar y mostrar facturas
+                availableInvoices = response.facturas;
+                renderizarFacturasLayout(response.facturas);
+                
+            } else {
+                alertify.error(response.message || 'Error al cargar datos');
+                $('#modalConfigLayout').modal('hide');
+            }
+        },
+        error: function() {
+            alertify.error('Error de conexión al cargar datos');
+            $('#modalConfigLayout').modal('hide');
+        }
+    });
+}
+
+// ==========================================
+// CARGAR CUENTAS BANCARIAS EN SELECT
+// ==========================================
+function cargarCuentasBancarias(cuentas) {
+    const $select = $('#select_cuenta_bancaria');
+    
+    // Limpiar opciones anteriores
+    $select.find('option:not(:first)').remove();
+    
+    if (!cuentas || cuentas.length === 0) {
+        alertify.warning('No se encontraron cuentas bancarias para este proveedor');
         return;
     }
-    // Confirmar acción
+    
+    // Agregar opciones
+    cuentas.forEach(cuenta => {
+        const opcionTexto = `${cuenta.CuentaLocal} - ${cuenta.Banco} (${cuenta.TipoCuenta || 'N/A'})`;
+        $select.append(new Option(opcionTexto, cuenta.id));
+    });
+    
+    // Reinicializar selectpicker
+    $select.selectpicker('refresh');
+    
+    // Evento de cambio
+    $select.off('change').on('change', function() {
+        const cuentaId = $(this).val();
+        if (cuentaId) {
+            const cuenta = cuentas.find(c => c.id == cuentaId);
+            if (cuenta) {
+                selectedCuentaBancaria = cuenta;
+                mostrarInfoCuentaSeleccionada(cuenta);
+                validarGeneracionLayout();
+            }
+        } else {
+            selectedCuentaBancaria = null;
+            $('#info_cuenta_seleccionada').hide();
+            validarGeneracionLayout();
+        }
+    });
+}
+
+// ==========================================
+// MOSTRAR INFO DE CUENTA SELECCIONADA
+// ==========================================
+function mostrarInfoCuentaSeleccionada(cuenta) {
+    $('#cuenta_numero').text(cuenta.CuentaLocal);
+    $('#cuenta_banco').text(cuenta.Banco);
+    $('#cuenta_email').text(cuenta.EmailCuenta || 'No especificado');
+    $('#info_cuenta_seleccionada').slideDown();
+}
+
+// ==========================================
+// RENDERIZAR TABLA DE FACTURAS
+// ==========================================
+function renderizarFacturasLayout(facturas) {
+    const $tbody = $('#tabla_facturas_layout tbody');
+    $tbody.empty();
+    
+    if (!facturas || facturas.length === 0) {
+        $tbody.html(`
+            <tr>
+                <td colspan="7" class="text-center text-muted">
+                    <i class="fas fa-inbox"></i> No hay facturas disponibles
+                </td>
+            </tr>
+        `);
+        return;
+    }
+    
+    facturas.forEach(factura => {
+        const monto = parseFloat(factura.amount || 0);
+        const uuidShort = factura.uuid ? factura.uuid.substring(0, 8) + '...' : 'N/A';
+        
+        const estadoBadge = factura.paid_status == 1 
+            ? '<span class="badge bg-success">Pagada</span>'
+            : '<span class="badge bg-warning text-dark">Pendiente</span>';
+        
+        const row = `
+            <tr>
+                <td class="text-center">
+                    <input type="checkbox" 
+                           class="invoice-layout-checkbox" 
+                           data-factura-id="${factura.id}"
+                           onchange="updateCountSelectedLayout()">
+                </td>
+                <td>${factura.folio}</td>
+                <td>${factura.invoice_number || 'N/A'}</td>
+                <td>${factura.station_name || 'N/A'}</td>
+                <td class="text-end"><strong>$${monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                <td><small class="font-monospace">${uuidShort}</small></td>
+                <td>${estadoBadge}</td>
+            </tr>
+        `;
+        
+        $tbody.append(row);
+    });
+    
+    updateCountSelectedLayout();
+}
+
+// ==========================================
+// TOGGLE TODAS LAS FACTURAS
+// ==========================================
+function toggleAllInvoicesLayout() {
+    const isChecked = $('#selectAllLayoutCheckbox').prop('checked');
+    $('.invoice-layout-checkbox').prop('checked', isChecked);
+    updateCountSelectedLayout();
+}
+
+// ==========================================
+// ACTUALIZAR CONTADOR DE SELECCIONADAS
+// ==========================================
+function updateCountSelectedLayout() {
+    const count = $('.invoice-layout-checkbox:checked').length;
+    $('#count_selected_layout').text(count + ' seleccionada' + (count !== 1 ? 's' : ''));
+    
+    // Actualizar checkbox "Seleccionar Todas"
+    const total = $('.invoice-layout-checkbox').length;
+    $('#selectAllLayoutCheckbox').prop('checked', count === total && total > 0);
+    
+    validarGeneracionLayout();
+}
+
+// ==========================================
+// VALIDAR SI SE PUEDE GENERAR LAYOUT
+// ==========================================
+function validarGeneracionLayout() {
+    const tieneCuenta = selectedCuentaBancaria !== null;
+    const tieneFacturas = $('.invoice-layout-checkbox:checked').length > 0;
+    
+    const esValido = tieneCuenta && tieneFacturas;
+    
+    $('#btnConfirmarLayout').prop('disabled', !esValido);
+    
+    if (!tieneCuenta && tieneFacturas) {
+        alertify.warning('Debes seleccionar una cuenta bancaria');
+    } else if (tieneCuenta && !tieneFacturas) {
+        alertify.warning('Debes seleccionar al menos una factura');
+    }
+}
+
+// ==========================================
+// CONFIRMAR Y GENERAR LAYOUT
+// ==========================================
+function confirmarGeneracionLayout() {
+    if (!selectedCuentaBancaria) {
+        alertify.error('Debe seleccionar una cuenta bancaria');
+        return;
+    }
+    
+    const facturasSeleccionadas = [];
+    $('.invoice-layout-checkbox:checked').each(function() {
+        facturasSeleccionadas.push($(this).data('factura-id'));
+    });
+    
+    if (facturasSeleccionadas.length === 0) {
+        alertify.error('Debe seleccionar al menos una factura');
+        return;
+    }
+    
+    // Confirmar con el usuario
     alertify.confirm(
-        'Generar Archivo de Transferencias',
-        '¿Desea generar el archivo de transferencias bancarias para Santander?<br><br>' +
-        '<small class="text-muted">El archivo se generará en formato Excel (.xls) ' +
-        'con los datos de todas las facturas del pago.</small>',
+        'Confirmar Generación',
+        `¿Generar layout de Santander con:<br><br>` +
+        `<strong>Cuenta:</strong> ${selectedCuentaBancaria.CuentaLocal}<br>` +
+        `<strong>Banco:</strong> ${selectedCuentaBancaria.Banco}<br>` +
+        `<strong>Facturas:</strong> ${facturasSeleccionadas.length}<br><br>` +
+        `<small class="text-muted">Esta operación no se puede deshacer.</small>`,
         function() {
-            // Usuario confirmó
-            generarArchivoTransferencias(paymentId);
+            // Cerrar modal y generar
+            $('#modalConfigLayout').modal('hide');
+            ejecutarGeneracionLayout(facturasSeleccionadas);
         },
         function() {
             alertify.message('Operación cancelada');
@@ -3563,7 +3863,10 @@ function generarTransferenciasBancarias(paymentId) {
     ).set('labels', {ok: 'Generar', cancel: 'Cancelar'});
 }
 
-function generarArchivoTransferencias(paymentId) {
+// ==========================================
+// EJECUTAR GENERACIÓN DEL LAYOUT
+// ==========================================
+function ejecutarGeneracionLayout(facturasIds) {
     alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando archivo...');
     
     const btnTransfer = $('#btnGenerarTransferencias');
@@ -3573,10 +3876,13 @@ function generarArchivoTransferencias(paymentId) {
     $.ajax({
         url: '/supply/generate_payment_layout',
         type: 'POST',
-        data: { payment_id: paymentId },
+        data: { 
+            payment_id: currentPaymentId,
+            cuenta_bancaria_id: selectedCuentaBancaria.id,
+            facturas_ids: JSON.stringify(facturasIds)
+        },
         timeout: 300000,
         success: function(response) {
-            
             if (response.success) {
                 // Descargar archivo
                 fetch(response.file_url)
@@ -3595,40 +3901,33 @@ function generarArchivoTransferencias(paymentId) {
                         window.URL.revokeObjectURL(url);
                         document.body.removeChild(a);
                         
-                        // ✅ Mostrar modal y eliminar archivo AL CERRARLO
+                        // Mostrar resumen
                         alertify.alert(
                             'Layout Generado',
                             `<div class="text-center">
                                 <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
                                 <h5 class="mt-3">Archivo Descargado</h5>
                                 <p class="mb-2"><strong>${response.file_name}</strong></p>
-                                <p class="text-muted">
-                                    ${response.registros_procesados} transferencias<br>
-                                    Total: $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-                                </p>
+                                <div class="alert alert-info">
+                                    <strong>Transferencias:</strong> ${response.registros_procesados}<br>
+                                    <strong>Total:</strong> $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+                                    <strong>Cuenta:</strong> ${selectedCuentaBancaria.CuentaLocal}
+                                </div>
                             </div>`,
                             function() {
-                                // ✅ Eliminar archivo CUANDO EL USUARIO CIERRE EL MODAL
+                                // Eliminar archivo temporal
                                 $.post('/supply/delete_layout', {
                                     filename: response.file_name
-                                }, function(deleteResponse) {
-                                    console.log('Archivo eliminado:', deleteResponse);
-                                }).fail(function(error) {
-                                    console.error('Error al eliminar:', error);
                                 });
                             }
-                        ).set({
-                            maximizable: false,
-                            closable: true
-                        });
+                        );
                     })
                     .catch(error => {
                         console.error('Error:', error);
                         alertify.error('Error al descargar el archivo');
                     });
-                
             } else {
-                alertify.error(response.message);
+                alertify.error(response.message || 'Error al generar layout');
             }
         },
         error: function(xhr, status) {
