@@ -200,6 +200,7 @@ class Accounting{
                     'FechaTimbrado'             => date('Y-m-d H:I:s', strtotime($invoice['FechaTimbrado'])),
                     'MetodoPago'                => $invoice['MetodoPago'],
                     'UUID'                      => $uuid,
+                    'Descripcion'               => $invoice['Descripcion'],
                 );
             }
         }

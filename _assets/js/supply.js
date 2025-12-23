@@ -4000,3 +4000,105 @@ async function crearAnticipo() {
         }
     ).set('labels', {ok: 'Crear', cancel: 'Cancelar'});
 }
+
+function cargarProveedoresAnticipo() {
+    $.ajax({
+        url: '/supply/get_proveedores_combustible',
+        type: 'GET',
+        success: function(response) {
+            const $select = $('#anticipo_proveedor');
+            $select.find('option:not(:first)').remove();
+            
+            if (response.success && response.proveedores) {
+                response.proveedores.forEach(prov => {
+                    $select.append(new Option(prov.nombre, prov.codigo));
+                });
+                $select.selectpicker('refresh');
+            }
+        }
+    });
+}
+
+async function cargarAnticiposDisponibles(proveedor_cod) {
+    try {
+        const response = await fetch('/supply/get_anticipos_disponibles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ provider_cod: proveedor_cod })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.anticipos.length > 0) {
+            mostrarAnticiposDisponibles(data.anticipos);
+        } else {
+            $('#anticipos_disponibles_section').hide();
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+function mostrarAnticiposDisponibles(anticipos) {
+    const $tbody = $('#tabla_anticipos_aplicables tbody');
+    $tbody.empty();
+    
+    anticipos.forEach(ant => {
+        const row = `
+            <tr>
+                <td class="text-center">
+                    <input type="checkbox" 
+                           class="anticipo-checkbox" 
+                           data-anticipo-id="${ant.id}"
+                           data-saldo="${ant.saldo_disponible}">
+                </td>
+                <td>${ant.id}</td>
+                <td>${ant.request_date}</td>
+                <td class="text-end"><strong>$${parseFloat(ant.saldo_disponible).toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                <td>
+                    <input type="number" 
+                           class="form-control form-control-sm anticipo-monto"
+                           data-anticipo-id="${ant.id}"
+                           step="0.01"
+                           min="0.01"
+                           max="${ant.saldo_disponible}"
+                           placeholder="0.00"
+                           disabled>
+                </td>
+            </tr>
+        `;
+        $tbody.append(row);
+    });
+    
+    $('#anticipos_disponibles_section').show();
+    
+    // Eventos
+    $('.anticipo-checkbox').on('change', function() {
+        const $input = $(`.anticipo-monto[data-anticipo-id="${$(this).data('anticipo-id')}"]`);
+        $input.prop('disabled', !$(this).is(':checked'));
+        if (!$(this).is(':checked')) {
+            $input.val('');
+        }
+        calcularTotalConAnticipos();
+    });
+    
+    $('.anticipo-monto').on('input', calcularTotalConAnticipos);
+}
+
+function calcularTotalConAnticipos() {
+    const totalFacturas = paymentItems.reduce((sum, item) => 
+        sum + (parseFloat(item.total_fac) || 0), 0);
+    
+    let totalAnticipos = 0;
+    $('.anticipo-checkbox:checked').each(function() {
+        const anticipoId = $(this).data('anticipo-id');
+        const monto = parseFloat($(`.anticipo-monto[data-anticipo-id="${anticipoId}"]`).val()) || 0;
+        totalAnticipos += monto;
+    });
+    
+    const totalAPagar = Math.max(0, totalFacturas - totalAnticipos);
+    
+    $('#total_factura_original').text('$' + totalFacturas.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#total_anticipos_aplicados').text('$' + totalAnticipos.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#total_con_anticipos').text('$' + totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+}

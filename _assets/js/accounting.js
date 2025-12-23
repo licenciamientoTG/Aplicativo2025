@@ -304,6 +304,7 @@ function actualizarDataTableInvoce() {
                {'data': 'FechaTimbrado'},
                {'data': 'MetodoPago'},
                {'data': 'UUID'},
+               {'data': 'Descripcion'},
            ],
            rowId: 'Folio',
            createdRow: function (row, data, dataIndex) {

@@ -60,11 +60,45 @@ class FacturasModel extends Model {
 
 
     public function filter_facturas_by_date_range( $startDate,  $endDate,$rfc): array|false {
-        $query = "SELECT * 
-                    FROM [TGV2].[dbo].[Facturas]
-                    WHERE EmisorRfc = ?
-                    AND Fecha BETWEEN CONVERT(datetime, '{$startDate}', 102) AND CONVERT(datetime, '{$endDate}', 102)
-                    order by Fecha asc";
+        $query = "SELECT 
+                        t1.Id,
+                        t1.Folio,
+                        t1.Serie,
+                        t1.Fecha,
+                        t1.FormaPago,
+                        t1.MetodoPago,
+                        t1.TipoCambio,
+                        t1.Moneda,
+                        t1.SubTotal,
+                        t1.Total,
+                        t1.Exportacion,
+                        t1.TipoDeComprobante,
+                        t1.EmisorNombre,
+                        t1.EmisorRfc,
+                        t1.EmisorRegimenFiscal,
+                        t1.ReceptorNombre,
+                        t1.ReceptorRfc,
+                        t1.ReceptorRegimenFiscal,
+                        t1.DomicilioFiscalReceptor,
+                        t1.FechaTimbrado,
+                        t1.UUID,
+                        t1.TotalImpuestosTrasladados,
+                        c.Descripcion
+                    FROM [TGV2].[dbo].[Facturas] t1
+                    OUTER APPLY (
+                        SELECT TOP 1
+                            CASE
+                                WHEN CHARINDEX('(', t2.Descripcion) > 0
+                                    THEN RTRIM(LEFT(t2.Descripcion, CHARINDEX('(', t2.Descripcion) - 1))
+                                ELSE t2.Descripcion
+                            END AS Descripcion
+                        FROM TGV2.dbo.FacturasConceptos t2
+                        WHERE t2.FacturaId = t1.Id
+                        ORDER BY t2.Id ASC   -- Ajusta si tienes otro campo de orden (Linea, Orden, etc.)
+                    ) c
+                    WHERE t1.EmisorRfc = ?
+                    AND t1.Fecha BETWEEN CONVERT(datetime, '{$startDate}', 102) AND CONVERT(datetime, '{$endDate}', 102)
+                    order by t1.Fecha asc";
         $params = [$rfc];
 
         return ($this->sql->select($query, $params)) ?: false;
