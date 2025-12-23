@@ -201,6 +201,7 @@ class Accounting{
                     'MetodoPago'                => $invoice['MetodoPago'],
                     'UUID'                      => $uuid,
                     'Descripcion'               => $invoice['Descripcion'],
+                    'FormaPago'               => $invoice['FormaPago'],
                 );
             }
         }

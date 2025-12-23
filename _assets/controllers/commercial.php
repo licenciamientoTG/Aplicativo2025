@@ -399,6 +399,7 @@ class Commercial{
                 "Travel Center" => 33,
                 "Picachos" => 34,
                 "Ventanas" => 35,
+                "Venatanas" => 35,
                 "San Rafael" => 36,
                 "Puertecito" => 37,
                 "Jesus Maria" => 38,
