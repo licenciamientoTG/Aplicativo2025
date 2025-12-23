@@ -2123,7 +2123,7 @@ public function anomalies_client_tickets()
         $server = "192.168.0.6"; 
         $db = "TG"; 
         $user = "cguser"; 
-        $pass = "sahei1712";
+        $pass = "sahei1712"; 
         
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);

@@ -3271,6 +3271,13 @@ function cfdi_comparison_advance($from, $until, $codgas, $bd, $server)
 
 public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini, $hist_i_fin, $visual_fin)
 {
+
+    set_time_limit(0);
+
+    ini_set('memory_limit', '1024M'); 
+
+    header('Content-Type: application/json');
+
     $cod_eval_i_ini = $this->dateToInt($eval_i_ini);
     $cod_eval_i_fin = $this->dateToInt($eval_i_fin);
     $cod_hist_i_ini = $this->dateToInt($hist_i_ini);
@@ -3468,35 +3475,35 @@ public function get_suspicious_tickets_details($target_month_ini, $target_month_
 {
     $eval_i_ini = $this->dateToInt($target_month_ini);
     $eval_i_fin = $this->dateToInt($target_month_fin);
-    $hist_i_ini = $this->dateToInt($hist_ini);
-    $hist_i_fin = $this->dateToInt($hist_fin);
 
     $sql = "
     DECLARE @codopr int = ?;
     DECLARE @eval_i_ini int = ?;
     DECLARE @eval_i_fin int = ?;
-    DECLARE @hist_i_ini int = ?;
-    DECLARE @hist_i_fin int = ?;
 
     ;WITH 
-    -- 1. DETALLE CRUDO (TODO EL PERIODO)
-    -- Ya no filtramos por 'SuspiciousDates' aquí, traemos todo el rango de fechas
+    -- 1. IDENTIFICAR FOLIOS (VISTA)
+    UniverseTickets AS (
+        SELECT DISTINCT nrofac, codgas
+        FROM TG.dbo.vw_DespachosConFactura WITH (NOLOCK)
+        WHERE [codopr (F)] = @codopr
+          AND fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
+    ),
+    -- 2. DETALLE OPERATIVO
     RawDetails AS (
         SELECT
             d.nrotrn, d.codgas, d.nrobom, d.fchtrn, d.hratrn, d.fchcor, d.nrotur,
             d.codprd, d.can, d.mto, d.codcli, d.codisl, d.codres, d.nrofac, d.tiptrn, d.datref, d.satuid, d.satrfc
         FROM SG12.dbo.Despachos d WITH (NOLOCK)
+        INNER JOIN UniverseTickets u ON d.nrofac = u.nrofac AND d.codgas = u.codgas
         WHERE d.nrofac > 0 
-          AND d.codcli = @codopr  -- OJO: Asegúrate que d.codcli o la relación sea correcta con tu esquema
-          AND d.fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
     ),
-    -- 2. ESTADÍSTICAS POR FACTURA (Para los filtros)
+    -- 3. ESTADÍSTICAS POR FACTURA (Para Prod. Mixtos y Montos Mixtos)
     FacStats AS (
         SELECT 
             nrofac, codgas,
             COUNT(DISTINCT codprd) as cnt_prods,
-            COUNT(DISTINCT mto) as cnt_mtos,
-            COUNT(*) as cnt_tickets
+            COUNT(DISTINCT mto) as cnt_mtos
         FROM RawDetails
         GROUP BY nrofac, codgas
     ),
@@ -3522,10 +3529,17 @@ public function get_suspicious_tickets_details($target_month_ini, $target_month_
         , calc.conceptofac
         , ISNULL(dc.satuid, '⚠️ SIN TIMBRAR / NO ENCONTRADO') as satuid 
 
-        -- BANDERAS PARA FILTROS
+        -- === BANDERAS LÓGICAS ===
+        
+        -- 1. Factura con Productos Mixtos
         , CASE WHEN fs.cnt_prods > 1 THEN 1 ELSE 0 END as is_mixed_prod
+        
+        -- 2. Factura con Montos Mixtos
         , CASE WHEN fs.cnt_mtos > 1 THEN 1 ELSE 0 END as is_mixed_mto
-        , CASE WHEN fs.cnt_tickets > 10 THEN 1 ELSE 0 END as is_high_vol
+        
+        -- 3. DÍA con Volumen Alto (>10 tickets en el día, independiente de la factura)
+        -- Usamos Window Function sobre la fecha (fchtrn)
+        , CASE WHEN COUNT(*) OVER (PARTITION BY t1.fchtrn) > 10 THEN 1 ELSE 0 END as is_high_vol_day
 
     FROM RawDetails AS t1
     INNER JOIN FacStats fs ON t1.nrofac = fs.nrofac AND t1.codgas = fs.codgas
@@ -3546,8 +3560,6 @@ public function get_suspicious_tickets_details($target_month_ini, $target_month_
     OPTION (RECOMPILE);
     ";
 
-    // Nota: Como quitamos el cálculo de sigma en este query para hacerlo más ligero (ya que traemos todo el mes), 
-    // solo necesitamos los parámetros de evaluación. Los históricos ya no se usan en este query específico.
     return $this->sql->select($sql, [$codopr, $eval_i_ini, $eval_i_fin]);
 }
 
