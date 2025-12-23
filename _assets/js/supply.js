@@ -3939,3 +3939,64 @@ function ejecutarGeneracionLayout(facturasIds) {
         }
     });
 }
+
+async function crearAnticipo() {
+    const proveedor_cod = $('#anticipo_proveedor').val();
+    const monto = parseFloat($('#anticipo_monto').val());
+    const comentario = $('#anticipo_comentario').val().trim();
+    
+    // Validaciones
+    if (!proveedor_cod) {
+        alertify.error('Debe seleccionar un proveedor');
+        return;
+    }
+    
+    if (!monto || monto <= 0) {
+        alertify.error('El monto debe ser mayor a cero');
+        return;
+    }
+    
+    if (!comentario) {
+        alertify.error('Debe proporcionar una justificación');
+        return;
+    }
+    
+    alertify.confirm(
+        'Confirmar Anticipo',
+        `¿Crear anticipo de <strong>$${monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>?<br><br>` +
+        `<small>${comentario}</small>`,
+        async function() {
+            try {
+                const response = await fetch('/supply/create_anticipo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider_cod: proveedor_cod,
+                        monto: monto,
+                        comentario: comentario
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alertify.success('Anticipo creado: ID #' + data.anticipo_id);
+                    
+                    // Limpiar formulario
+                    $('#anticipo_proveedor').val('').selectpicker('refresh');
+                    $('#anticipo_monto').val('');
+                    $('#anticipo_comentario').val('');
+                    
+                    // Cambiar a tab de anticipos
+                    $('a[href="#tab_anticipos"]').tab('show');
+                    $('#tabla_anticipos').DataTable().ajax.reload();
+                } else {
+                    alertify.error(data.message || 'Error al crear anticipo');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alertify.error('Error de conexión');
+            }
+        }
+    ).set('labels', {ok: 'Crear', cancel: 'Cancelar'});
+}

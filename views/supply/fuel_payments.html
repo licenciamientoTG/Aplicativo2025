@@ -1,7 +1,7 @@
 {% extends "views/layouts/base.html" %}
-{% block title %}Pagos Proveedores{% endblock %}
+{% block title %}Facturas Proveedores{% endblock %}
 {% block mycss %}{% endblock %}
-{% block menutitle %}Pagos Proveedores{% endblock %}
+{% block menutitle %}Facturas Proveedores{% endblock %}
 {% block content %}
 
 <style>
@@ -80,9 +80,6 @@ table.dataTable thead th, table.dataTable thead td {
 </style>
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link   " id="payment_list-tab" data-bs-toggle="tab" data-bs-target="#payment_list" type="button" role="tab" aria-controls="payment_list" aria-selected="true">Pagos</button>
-    </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
     </li>
@@ -92,9 +89,7 @@ table.dataTable thead th, table.dataTable thead td {
 </ul>
 
 <div class="tab-content" >
-    <div class="tab-pane  " id="payment_list" role="tabpanel" aria-labelledby="payment_list-tab">
-       {% include 'views/supply/payment_list.html' %}
-    </div>
+
     <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
             <div class="card-body">
@@ -107,22 +102,16 @@ table.dataTable thead th, table.dataTable thead td {
                         <label class="col-form-label-sm" for="until_compras">Hasta:</label>
                         <input type="date" class="form-control form-control-sm" name="until_compras" id="until_compras" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
-                    
                     <!-- FILTRO DE ESTACIÓN -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Estación:</label>
-                        <select class="selectpicker w-100" data-live-search="true" 
-                                name="codgas_compras" id="codgas_compras">
+                        <select class="selectpicker w-100" data-live-search="true" name="codgas_compras" id="codgas_compras">
                             <option value="0" selected>Todas las estaciones</option>
                             {% for station in stations %}
-                            <option value="{{ station.codgas }}" 
-                                    data-content="<span class='text-muted'>#{{ station.codgas }}</span> {{ station.den }}">
-                                #{{ station.codgas }} - {{ station.nomgas }}
-                            </option>
+                            <option value="{{ station.cod }}" data-content="<span class='text-muted'>{{ station.codgas }}</span> {{ station.abr }}">{{ station.nomre }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    
                     <!-- FILTRO DE PROVEEDOR -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Proveedor:</label>
@@ -329,8 +318,6 @@ table.dataTable thead th, table.dataTable thead td {
 </div>
 
 
-<!-- Modal para asignar facturas -->
-<!-- Modal para asignar facturas (Directo o con Petrotal) -->
 <div class="modal fade" id="modalAsignarFactura" tabindex="-1" aria-labelledby="modalAsignarFacturaLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -631,10 +618,6 @@ table.dataTable thead th, table.dataTable thead td {
 </div>
 
 
-
-
-
-
 <div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -650,11 +633,4 @@ table.dataTable thead th, table.dataTable thead td {
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
-<script>
-
-
-
-</script>
-
-</script>
 {% endblock %}

@@ -178,141 +178,228 @@ table.dataTable tfoot th, table.dataTable tfoot td {
     color: #000000 !important;
 }
 </style>
-
-<div class="row">
-    
-    <div class="col-8">
-        <div class="card " id="payment_search_card">
-            <div class="card-body">
-                <div class="row" style="align-items: flex-end;">
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="from1">Desde: </label>
-                        <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="until1">Hasta: </label>
-                        <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Razon social </label>
-                        <select class="selectpicker w-100" data-live-search="true" name="company" id="company" required>
-                            <option disabled selected> Seleccione</option>
-                            <option value="0">Todas</option>
-                            {% for company in companys %}
-                            <option value="{{ company.codemp }}">{{ company.den }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="until1">Estacion: </label>
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación" disabled>
-                            <option disabled selected>Seleccione empresa primero</option>
-                            <option value="0" style="display:none;">Todas las estaciones</option>
-                            {% for station in stations %}
-                                <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="until1">Proveedor: </label>
-                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
-                            <option value="0"  selected>Todos los proveedores</option>
-                            {% for proveedor in proveedores %}
-                                <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2 " >
-                        <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
-                        <button onclick="addAllToPayment()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 5px;"><i class="fas fa-angles-right me-1"></i>Agregar Todas</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card-body table-responsive" >
-                 <!-- Agregar esto justo antes de la tabla payment_create_table -->
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div>
-                        <button type="button" class="btn btn-sm btn-primary" onclick="addSelectedInvoices()">
-                            <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
-                            <i class="fas fa-check-square"></i> Seleccionar Todo
-                        </button>
-                    </div>
-                    <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
-                </div>
-
-                <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
-                    <thead>
-                        <tr>
-                            <th>
-                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
-                            </th>
-                            <th>Folio</th>
-                            <th>Factura</th>
-                            <th>Estación</th>
-                            <th>Proveedor</th>
-                            <th>Fecha</th>
-                            <th>Vencimiento</th>
-                            <th>Total</th>
-                            <th>Producto</th>
-                            <th>Estatus</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
-    
+<div class="card mb-3">
+    <div class="card-header bg-primary text-white">
+        <i class="fas fa-money-check-alt"></i> Tipo de Pago
     </div>
-    <div class="col-4">
-        <div class="card h-100">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                <h5 class="text-white mb-0">Armando Pago</h5>
-                <span id="item-count" class="badge bg-light text-dark">0 documentos</span>
-            </div>
-            <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                <div style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
-
-                    <button id="generar-pago" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " > <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
-                    <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;" class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i class="fas fa-trash me-2"></i>Limpiar Todo </button>
-                </div>
-                 <div id="payment-summary" class="payment-summary" style="display: none;">
-                    <h6 class="mb-3 text-white">Resumen del Pago</h6>
-                    <div class="row text-center">
-                        <div class="col-6">
-                            <div class="border-end">
-                                <small class="d-block">Total Documentos</small>
-                                <h5 id="total-docs" class="mb-0 text-white">0</h5>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <small class="d-block">Monto Total</small>
-                            <h5 id="total-amount" class="mb-0 text-white">$0.00</h5>
-                        </div>
-                    </div>
-                </div>
-                <ul id="payment-basket" class="list-group">
-                    <li class="empty-basket-message">
-                        <i class="fas fa-hand-point-right fa-2x mb-3"></i>
-                        <p>Arrastra aquí los documentos desde la tabla</p>
-                    </li>
-                </ul>
-            </div>
+    <div class="card-body">
+        <div class="btn-group w-100" role="group">
+            <input type="radio" class="btn-check" name="tipo_pago" id="tipo_normal" value="0" checked>
+            <label class="btn btn-outline-primary" for="tipo_normal">
+                <i class="fas fa-file-invoice-dollar"></i> Pago Normal <small class="d-block">Con facturas</small>
+            </label>
+            
+            <input type="radio" class="btn-check" name="tipo_pago" id="tipo_anticipo" value="1">
+            <label class="btn btn-outline-success" for="tipo_anticipo">
+                <i class="fas fa-hand-holding-usd"></i> Anticipo <small class="d-block">Sin facturas</small>
+            </label>
         </div>
     </div>
-
 </div>
 
 
+<div id="contenedor_pago_normal">
+    <div class="row">
+        
+        <div class="col-8">
+            <div class="card " id="payment_search_card">
+                <div class="card-body">
+                    <div class="row" style="align-items: flex-end;">
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="from1">Desde: </label>
+                            <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Hasta: </label>
+                            <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="">Razon social </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="company" id="company" required>
+                                <option disabled selected> Seleccione</option>
+                                <option value="0">Todas</option>
+                                {% for company in companys %}
+                                <option value="{{ company.codemp }}">{{ company.den }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Estacion: </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación" disabled>
+                                <option disabled selected>Seleccione empresa primero</option>
+                                <option value="0" style="display:none;">Todas las estaciones</option>
+                                {% for station in stations %}
+                                    <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Proveedor: </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
+                                <option value="0"  selected>Todos los proveedores</option>
+                                {% for proveedor in proveedores %}
+                                    <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 " >
+                            <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 5px;"><i class="fas fa-angles-right me-1"></i>Agregar Todas</button>
+                        </div>
+                    </div>
+                </div>
+    
+                <div class="card-body table-responsive" >
+                     <!-- Agregar esto justo antes de la tabla payment_create_table -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="addSelectedInvoices()">
+                                <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
+                                <i class="fas fa-check-square"></i> Seleccionar Todo
+                            </button>
+                        </div>
+                        <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
+                    </div>
+    
+                    <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+                                </th>
+                                <th>Folio</th>
+                                <th>Factura</th>
+                                <th>Estación</th>
+                                <th>Proveedor</th>
+                                <th>Fecha</th>
+                                <th>Vencimiento</th>
+                                <th>Total</th>
+                                <th>Producto</th>
+                                <th>Estatus</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        
+        </div>
+        <div class="col-4">
+            <div class="card h-100">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="text-white mb-0">Armando Pago</h5>
+                    <span id="item-count" class="badge bg-light text-dark">0 documentos</span>
+                </div>
+                <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+                    <div style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
+    
+                        <button id="generar-pago" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " > <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
+                        <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;" class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i class="fas fa-trash me-2"></i>Limpiar Todo </button>
+                    </div>
+                     <div id="payment-summary" class="payment-summary" style="display: none;">
+                        <h6 class="mb-3 text-white">Resumen del Pago</h6>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <div class="border-end">
+                                    <small class="d-block">Total Documentos</small>
+                                    <h5 id="total-docs" class="mb-0 text-white">0</h5>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <small class="d-block">Monto Total</small>
+                                <h5 id="total-amount" class="mb-0 text-white">$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <ul id="payment-basket" class="list-group">
+                        <li class="empty-basket-message">
+                            <i class="fas fa-hand-point-right fa-2x mb-3"></i>
+                            <p>Arrastra aquí los documentos desde la tabla</p>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    
+    </div>
+    <!-- Todo tu código actual de drag & drop -->
+</div>
 
-
+<div id="contenedor_anticipo" style="display: none;">
+    <div class="card">
+        <div class="card-header bg-success text-white">
+            <i class="fas fa-hand-holding-usd"></i> Crear Anticipo
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label class="form-label">
+                        <i class="fas fa-building"></i> Proveedor *
+                    </label>
+                    <select id="anticipo_proveedor" class="selectpicker form-control" 
+                            data-live-search="true" 
+                            required>
+                        <option value="">Seleccione proveedor...</option>
+                        <!-- Se cargará dinámicamente -->
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">
+                        <i class="fas fa-dollar-sign"></i> Monto del Anticipo *
+                    </label>
+                    <input type="number" 
+                           id="anticipo_monto" 
+                           class="form-control" 
+                           step="0.01" 
+                           min="0.01" 
+                           placeholder="0.00"
+                           required>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <label class="form-label">
+                        <i class="fas fa-comment"></i> Justificación/Comentario *
+                    </label>
+                    <textarea id="anticipo_comentario" 
+                              class="form-control" 
+                              rows="3" 
+                              placeholder="Explique el motivo del anticipo..."
+                              required></textarea>
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-md-12">
+                    <button type="button" 
+                            class="btn btn-success btn-lg w-100" 
+                            onclick="crearAnticipo()">
+                        <i class="fas fa-save"></i> Crear Anticipo
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
 <script>
+$('input[name="tipo_pago"]').on('change', function() {
+    const tipo = $(this).val();
+    if (tipo == '0') {
+        $('#contenedor_pago_normal').show();
+        $('#contenedor_anticipo').hide();
+    } else {
+        $('#contenedor_pago_normal').hide();
+        $('#contenedor_anticipo').show();
+        cargarProveedoresAnticipo();
+    }
+});
+
+
 let currentProvider = null;
 let paymentItems = [];
 
@@ -510,87 +597,7 @@ function updatePaymentSummary() {
     }
 }
 
-// Limpiar todo el pago
-{# function clearAllPayments() {
-    if (paymentItems.length === 0) return;
 
-    alertify.confirm(
-        '¿Estás seguro?',
-        '¿Quieres limpiar todos los documentos del pago?',
-        function() {
-            paymentItems = [];
-            renderPaymentItems();
-            updatePaymentSummary();
-            alertify.success('Pago limpiado correctamente');
-        },
-        function() {
-            // Cancelado
-        }
-    );
-} #}
-
-// Agregar todas las recepciones al pago
-{# function addAllToPayment() {
-    const table = $('#payment_create_table').DataTable();
-
-    if (!table || table.rows().count() === 0) {
-        alertify.myAlert(
-            `<div class="container text-center text-warning">
-                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">No hay documentos en la tabla para agregar.</p>
-            </div>`
-        );
-        return;
-    }
-
-    // Obtener todas las filas visibles (filtradas)
-    const allData = table.rows({ search: 'applied' }).data().toArray();
-    let addedCount = 0;
-    let skippedCount = 0;
-
-    allData.forEach(rowData => {
-        // Verificar si ya existe
-        const exists = paymentItems.some(item => item.nro === rowData.nro);
-        if (!exists) {
-            paymentItems.push(rowData);
-            addedCount++;
-        } else {
-            skippedCount++;
-        }
-    });
-
-    renderPaymentItems();
-    updatePaymentSummary();
-
-    if (addedCount > 0) {
-        let message = `Se agregaron ${addedCount} documento(s) al pago.`;
-        if (skippedCount > 0) {
-            message += ` (${skippedCount} ya existían)`;
-        }
-        alertify.success(message);
-    } else if (skippedCount > 0) {
-        alertify.warning('Todos los documentos ya están en el pago.');
-    }
-}
-
-
-// Inicializar sistema al cargar la página
-$(document).ready(function() {
-    window.originalStationOptions = $('#station_id1').html();
-    var company = document.getElementById('company');
-    company.addEventListener('change', function() {
-        filtrarEstacionesPorEmpresa();
-    });
-
-    // Configurar eventos de botones
-    $('#generar-pago').on('click', generatePayment);
-    $('#clear-basket').on('click', clearAllPayments);
-    
-    // Inicializar estado
-    updatePaymentSummary();
-});  #}
 function addAllToPayment() {
     const table = $('#payment_create_table').DataTable();
 

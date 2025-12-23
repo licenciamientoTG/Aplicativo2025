@@ -190,7 +190,10 @@ class FacturasRecibidasModel extends Model {
                         WHEN (t7.codprd) IN (179,192) THEN 'Regular'
                         WHEN (t7.codprd) IN (180,193) THEN 'Super'
                         WHEN (t7.codprd) = 181        THEN 'Diesel'
-                    END AS producto_tanque_nombre
+                    END AS producto_tanque_nombre,
+                    t8.ValorUnitario,
+					t8.Cantidad,
+					t8.Descripcion
                     FROM TG.dbo.FacturasRecibidas t1 WITH (NOLOCK)
                     LEFT JOIN TG.dbo.FacturasMovimientosTanques t2 ON t1.Id = t2.FacturaProveedorId AND t2.Activo = 1
                     LEFT JOIN TG.dbo.FacturasRecibidas t3 ON t2.FacturaPetrotalId = t3.Id
@@ -198,9 +201,12 @@ class FacturasRecibidasModel extends Model {
                     LEFT JOIN sg12.dbo.MovimientosTan t6 on t6.codgas = t4.codgas and t4.nro = t6.nrodoc and t6.tiptrn = 4 
                     LEFT JOIN SG12.dbo.Tanques t7 on t6.codtan = t7.cod 
                     left join SG12.dbo.Gasolineras t5 on t4.codgas = t5.cod
+                    LEFT JOIN TG.dbo.FacturasRecibidasConceptos t8 on t1.Id = t8.FacturaId and t8.ClaveUnidad = 'LTR'
+
                     $whereClause
                     ORDER BY t1.Fecha DESC, t1.Folio";
         $params = [$from, $until];
+
         return ($this->sql->select($query, $params)) ?: [];
     }
 
