@@ -7,907 +7,705 @@
 <style>
     :root {
         --primary-color: #2c3e50;
-        --secondary-color: #34495e;
         --accent-color: #3498db;
-        --accent-hover: #2980b9;
         --bg-light: #f8f9fa;
-        --text-muted: #6c757d;
-        --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.08);
-        --border-radius: 12px;
+        --border-color: #e9ecef;
+        /* Estados */
+        --selected-bg: #d1e7dd; /* Verde muy claro */
+        --selected-border: #198754;
+        --matched-bg: #e2e3e5;  /* Gris para conciliado */
+        --matched-text: #6c757d;
     }
 
-    body {
-        background-color: #f4f6f9;
-        font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    body { background-color: #f4f6f9; overflow-x: hidden; }
+
+    /* HEADER CONTROLS */
+    .controls-header {
+        background: #fff; padding: 15px 20px; border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px;
+        display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between;
+    }
+    .custom-select-pill {
+        border-radius: 50px; border: 1px solid #ced4da; padding-left: 15px;
+        background-color: #f8f9fa; font-weight: 600; color: var(--primary-color); height: 38px;
     }
 
-    /* --- ENCABEZADO --- */
-    .page-header-container {
-        text-align: center;
-        margin-bottom: 2.5rem;
-        position: relative;
+    /* PANELES */
+    .split-container {
+        display: flex; gap: 20px; padding: 0 10px 20px 10px; height: calc(100vh - 220px);
     }
+    .panel-split {
+        flex: 1; background: #fff; border-radius: 12px; border: 1px solid var(--border-color);
+        display: flex; flex-direction: column; overflow: hidden; position: relative;
+    }
+    .panel-header {
+        background: var(--primary-color); color: white; padding: 12px 15px;
+        font-weight: bold; display: flex; justify-content: space-between; align-items: center;
+        border-bottom: 3px solid rgba(0,0,0,0.1); transition: background-color 0.3s;
+    }
+    .panel-content { flex: 1; overflow-y: auto; padding: 0; }
 
-    .page-title {
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: var(--primary-color);
-        margin-bottom: 1.5rem;
-        letter-spacing: -0.5px;
+    /* FILAS */
+    .row-item {
+        padding: 10px 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
+        display: flex; justify-content: space-between; align-items: center;
+        font-size: 0.9rem; transition: all 0.1s; user-select: none;
     }
-
-    .date-widget-wrapper {
-        position: relative;
-        display: inline-block;
-        z-index: 2000;
-    }
-
-    /* El botón/pill principal que parece un input */
-    .date-widget-trigger {
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 50px;
-        padding: 8px 10px 8px 25px;
-        display: flex;
-        align-items: center;
-        gap: 15px;
-        box-shadow: var(--shadow-soft);
-        cursor: pointer;
-        transition: all 0.3s ease;
-        min-width: 320px;
-        justify-content: space-between;
-    }
-
-    .date-widget-trigger:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-        border-color: var(--accent-color);
-    }
-
-    .date-text-group {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        line-height: 1.2;
-    }
-
-    .date-label {
-        font-size: 0.65rem;
-        text-transform: uppercase;
-        font-weight: 700;
-        color: #b0b0b0;
-        letter-spacing: 1px;
-    }
-
-    .date-value {
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: var(--primary-color);
-    }
-
-    .btn-widget-search {
-        background-color: var(--accent-color);
-        color: white;
-        border: none;
-        border-radius: 50%;
-        width: 42px;
-        height: 42px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.2s;
-        box-shadow: 0 2px 5px rgba(52, 152, 219, 0.4);
-    }
-
-    .btn-widget-search:hover {
-        background-color: var(--accent-hover);
-        transform: scale(1.05);
-    }
-
-    /* El popup desplegable (Calendario Custom) */
-    .date-widget-dropdown {
-        position: absolute;
-        top: 110%; /* Debajo del trigger */
-        left: 50%;
-        transform: translateX(-50%);
-        background: #fff;
-        border-radius: 16px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        padding: 20px;
-        width: 300px;
-        display: none; /* Oculto por defecto */
-        border: 1px solid #f0f0f0;
-        animation: fadeIn 0.2s ease-out;
-    }
-
-    .date-widget-dropdown.active {
-        display: block;
-    }
-
-    @keyframes fadeIn { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
-
-    /* Año Selector dentro del dropdown */
-    .widget-year-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 15px;
-        padding-bottom: 10px;
-        border-bottom: 1px solid #eee;
-    }
-
-    .btn-year-nav {
-        background: transparent;
-        border: none;
-        color: var(--text-muted);
-        cursor: pointer;
-        font-size: 1.2rem;
-        padding: 5px;
-    }
-    .btn-year-nav:hover { color: var(--accent-color); }
-
-    .widget-year-display {
-        font-size: 1.2rem;
-        font-weight: 800;
-        color: var(--primary-color);
-    }
-
-    /* Grid de Meses */
-    .widget-months-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-    }
-
-    .month-option {
-        padding: 8px 5px;
-        text-align: center;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: var(--secondary-color);
-        cursor: pointer;
-        transition: all 0.2s;
-        border: 1px solid transparent;
-    }
-
-    .month-option:hover {
-        background-color: #f0f7fc;
-        color: var(--accent-color);
-    }
-
-    .month-option.selected {
-        background-color: var(--accent-color);
-        color: white;
-        box-shadow: 0 2px 5px rgba(52, 152, 219, 0.4);
-    }
-
-    /* --- TABS ESTILIZADOS --- */
-    .nav-pills-custom {
-        background: #fff;
-        padding: 0.5rem;
-        border-radius: 50rem;
-        box-shadow: var(--shadow-soft);
-        display: inline-flex;
-        margin-bottom: 2rem !important;
-    }
-    .nav-pills-custom .nav-link {
-        color: var(--text-muted);
-        font-weight: 600;
-        border-radius: 50rem;
-        padding: 0.6rem 2.5rem;
-        transition: all 0.3s;
-    }
-    .nav-pills-custom .nav-link.active {
-        background-color: var(--primary-color);
-        color: #fff;
-        box-shadow: 0 4px 10px rgba(44, 62, 80, 0.3);
-    }
-
-    /* --- TABS SECUNDARIOS --- */
-    .nav-tabs-banks {
-        border-bottom: 2px solid #e9ecef;
-        margin-bottom: 1.5rem;
-        justify-content: center;
-    }
-    .nav-tabs-banks .nav-link {
-        border: none;
-        border-bottom: 3px solid transparent;
-        color: var(--text-muted);
-        font-weight: 600;
-        padding: 10px 20px;
-        transition: color 0.3s, border-color 0.3s;
-        background: transparent;
-    }
-    .nav-tabs-banks .nav-link:hover { color: var(--primary-color); }
-    .nav-tabs-banks .nav-link.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
-    .nav-tabs-banks .nav-link.text-danger.active { border-bottom-color: #dc3545; color: #dc3545; }
-    .nav-tabs-banks .nav-link.text-primary.active { border-bottom-color: #0d6efd; color: #0d6efd; }
-    .nav-tabs-banks .nav-link.text-success.active { border-bottom-color: #198754; color: #198754; }
-
-    /* --- UTILS --- */
-    .content-card {
-        background: #fff;
-        border-radius: var(--border-radius);
-        box-shadow: var(--shadow-soft);
-        border: none;
-        overflow: hidden;
-    }
-    .content-card .card-header { background-color: #fff; border-bottom: 1px solid #f0f0f0; padding: 1rem 1.5rem; }
+    .row-item:hover { background-color: #f8f9fa; }
     
-    .table-custom { font-size: 0.9rem; }
-    .table-custom thead th {
-        background-color: var(--secondary-color);
-        color: #fff;
-        border: none;
-        font-weight: 600;
-        text-transform: uppercase;
-        font-size: 0.8rem;
-        padding: 12px 15px;
+    .row-item.active {
+        background-color: var(--selected-bg) !important;
+        border-left: 5px solid var(--selected-border);
+        padding-left: 10px;
     }
-    .table-custom tbody td { padding: 12px 15px; vertical-align: middle; border-top: 1px solid #f1f1f1; }
-    .font-numeric { font-family: 'Consolas', monospace; letter-spacing: -0.5px; }
-
-    .dropdown-overlay {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99; display: none;
-    }
-    .dropdown-overlay.active { display: block; }
     
-    /* Estilos para selector de RS */
-    .rs-switch-label { cursor: pointer; font-weight: 600; min-width: 100px; }
-    .rs-switch-label.active { box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-weight: 700; }
+    .row-item.conciliated {
+        color: var(--matched-text); 
+        opacity: 0.8; 
+        pointer-events: none; 
+        border-left: 5px solid #adb5bd;
+    }
+
+    .nexus-badge {
+        font-size: 0.7rem; font-weight: bold; color: #fff;
+        background: #6c757d; padding: 2px 6px; border-radius: 4px; margin-right: 8px;
+        vertical-align: middle;
+        box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+    }
+
+    .font-numeric { font-family: 'Consolas', monospace; font-weight: 700; }
+
+    /* BARRA FLOTANTE */
+    .action-bar {
+        position: fixed; bottom: 30px; left: 50%; transform: translate(-50%, 150%);
+        background: #2c3e50; color: white; padding: 12px 30px; border-radius: 50px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4); display: flex; align-items: center;
+        gap: 20px; z-index: 1000; transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .action-bar.visible { transform: translate(-50%, 0); }
+    
+    /* WIDGET FECHA */
+    .date-widget-trigger { cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: bold; }
+    .date-widget-dropdown { position: absolute; top: 100%; left: 0; background: white; z-index: 2000; border: 1px solid #ddd; padding: 15px; border-radius: 10px; display: none; width: 280px; }
+    .date-widget-dropdown.active { display: block; }
+    .month-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 10px; }
+    .month-btn { padding: 5px; text-align: center; cursor: pointer; border-radius: 5px; font-size: 0.8rem; }
+    .month-btn:hover { background: #eee; }
+    .month-btn.selected { background: var(--accent-color); color: white; }
 
 </style>
 
-<div class="container-fluid pb-5">
-
-    <div class="dropdown-overlay" id="pickerOverlay" onclick="closeDatePicker()"></div>
-
-    <div class="row justify-content-center">
-        <div class="col-lg-12">
-            <div class="page-header-container">
-                <h2 class="page-title">Conciliación de Movimientos</h2>
-                
-                <div class="date-widget-wrapper">
-                    <input type="hidden" id="hiddenYear">
-                    <input type="hidden" id="hiddenMonth">
-
-                    <div class="date-widget-trigger" onclick="toggleDatePicker()">
-                        <div class="d-flex align-items-center">
-                         <i class="far fa-calendar-alt text-primary" style="font-size: 1.5rem; margin-right: 20px;"></i>
-                            <div class="date-text-group">
-                                <span class="date-label">Periodo Seleccionado</span>
-                                <span class="date-value" id="displayFullDate">Cargando...</span>
-                            </div>
-                        </div>
-                        <div class="btn-widget-search" onclick="event.stopPropagation(); globalRefresh();" title="Cargar Datos">
-                            <i class="fas fa-search"></i>
-                        </div>
-                    </div>
-
-                    <div class="date-widget-dropdown" id="dateDropdown">
-                        <div class="widget-year-header">
-                            <button class="btn-year-nav" onclick="changeWidgetYear(-1)"><i class="fas fa-chevron-left"></i></button>
-                            <span class="widget-year-display" id="widgetYearDisplay">2025</span>
-                            <button class="btn-year-nav" onclick="changeWidgetYear(1)"><i class="fas fa-chevron-right"></i></button>
-                        </div>
-                        <div class="widget-months-grid">
-                            <div class="month-option" onclick="selectWidgetMonth('01', this)">Ene</div>
-                            <div class="month-option" onclick="selectWidgetMonth('02', this)">Feb</div>
-                            <div class="month-option" onclick="selectWidgetMonth('03', this)">Mar</div>
-                            <div class="month-option" onclick="selectWidgetMonth('04', this)">Abr</div>
-                            <div class="month-option" onclick="selectWidgetMonth('05', this)">May</div>
-                            <div class="month-option" onclick="selectWidgetMonth('06', this)">Jun</div>
-                            <div class="month-option" onclick="selectWidgetMonth('07', this)">Jul</div>
-                            <div class="month-option" onclick="selectWidgetMonth('08', this)">Ago</div>
-                            <div class="month-option" onclick="selectWidgetMonth('09', this)">Sep</div>
-                            <div class="month-option" onclick="selectWidgetMonth('10', this)">Oct</div>
-                            <div class="month-option" onclick="selectWidgetMonth('11', this)">Nov</div>
-                            <div class="month-option" onclick="selectWidgetMonth('12', this)">Dic</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-4">
-                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
-                        <label class="btn btn-outline-dark rs-switch-label active" onclick="setRS('DIAZ GAS')">
-                            <input type="radio" name="rs_option" autocomplete="off" checked> DIAZ GAS
-                        </label>
-                        <label class="btn btn-outline-dark rs-switch-label" onclick="setRS('GASOMEX')">
-                            <input type="radio" name="rs_option" autocomplete="off"> GASOMEX
-                        </label>
-                        <label class="btn btn-outline-dark rs-switch-label" onclick="setRS('FORANEAS')">
-                            <input type="radio" name="rs_option" autocomplete="off"> FORANEAS
-                        </label>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    </div>
-
-    <div class="text-center">
-        <ul class="nav nav-pills nav-pills-custom" id="mainTab" role="tablist">
-            <li class="nav-item">
-                <a class="nav-link active" id="controlgas-tab" data-toggle="pill" href="#pills-controlgas" role="tab">
-                    <i class="fas fa-gas-pump mr-2"></i> Ventas (ControlGas)
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="tesoreria-tab" data-toggle="pill" href="#pills-tesoreria" role="tab" onclick="initTesoreria()">
-                    <i class="fas fa-university mr-2"></i> Tesorería (Banco)
-                </a>
-            </li>
-        </ul>
-    </div>
-
-    <div class="tab-content" id="pills-tabContent">
+<div class="container-fluid pt-3">
+    
+    <div class="controls-header">
         
-        <div class="tab-pane fade show active" id="pills-controlgas" role="tabpanel">
-            <div class="row justify-content-center">
-                <div class="col-lg-8">
-                    
-                    <div class="content-card mb-4">
-                        <div class="card-body py-4 px-5">
-                            <div class="text-center">
-                                <label class="text-muted text-uppercase small font-weight-bold mb-3 d-block">
-                                    Seleccionar Estación
-                                </label>
-                                <select id="estacionSelect" class="form-control form-control-lg text-center" onchange="consultarDatos()" 
-                                        style="border-radius: 50px; background-color: #f1f3f5; border: 1px solid #ced4da;">
-                                    <option value="">-- Cargando estaciones... --</option>
-                                </select>
-                                <small class="text-muted mt-3 d-block">
-                                    <i class="fas fa-filter mr-1"></i> Filtrado por: <strong id="lbl-rs-actual">DIAZ GAS</strong>
-                                </small>
-                            </div>
-                        </div>
-                    </div>
+        <div class="btn-group btn-group-toggle shadow-sm rounded-pill overflow-hidden" data-toggle="buttons">
+            <label class="btn btn-outline-dark btn-sm active" onclick="setRS('DIAZ GAS')">
+                <input type="radio" checked> DIAZ
+            </label>
+            <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
+                <input type="radio"> GASO
+            </label>
+            <label class="btn btn-outline-dark btn-sm" onclick="setRS('FORANEAS')">
+                <input type="radio"> FORA
+            </label>
+        </div>
 
-                    <div id="loading-cg" class="text-center py-5" style="display:none;">
-                        <div class="spinner-border text-primary" role="status"></div>
-                        <p class="mt-2 text-primary font-weight-bold">Consultando información...</p>
-                    </div>
-
-                    <div class="content-card" id="card-resultados" style="display:none;">
-                        <div class="card-header bg-light">
-                            <ul class="nav nav-tabs card-header-tabs m-0" id="tabsConceptos"></ul>
-                        </div>
-                        <div class="card-body p-0">
-                            <div class="tab-content p-3" id="contenidoConceptos"></div>
-                        </div>
-                    </div>
-
+        <div class="position-relative">
+            <div class="date-widget-trigger border px-3 py-2 rounded-pill bg-white" onclick="toggleDatePicker()">
+                <i class="far fa-calendar-alt text-primary"></i>
+                <span id="displayFullDate">Cargando...</span>
+            </div>
+            <input type="hidden" id="hiddenYear">
+            <input type="hidden" id="hiddenMonth">
+            <div class="date-widget-dropdown" id="dateDropdown">
+                <div class="d-flex justify-content-between mb-2">
+                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)"><</button>
+                    <strong id="widgetYearDisplay">2025</strong>
+                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">></button>
                 </div>
+                <div class="month-grid" id="monthGrid"></div>
             </div>
         </div>
 
-        <div class="tab-pane fade" id="pills-tesoreria" role="tabpanel">
-            <div class="row justify-content-center">
-                <div class="col-lg-12">
-                    <ul class="nav nav-tabs nav-tabs-banks" id="subTabsTesoreria">
-                        <li class="nav-item"><a class="nav-link active mx-2" data-toggle="tab" href="#sub-general" onclick="cargarDatosTesoreriaBD()"><i class="fas fa-list mr-1"></i> General (0956)</a></li>
-                        <li class="nav-item"><a class="nav-link mx-2 text-danger" data-toggle="tab" href="#sub-banorte" onclick="cargarBanorte()"><i class="fas fa-credit-card mr-1"></i> Banorte</a></li>
-                        <li class="nav-item"><a class="nav-link mx-2 text-danger" data-toggle="tab" href="#sub-santander" onclick="cargarSantander()"><i class="fas fa-university mr-1"></i> Santander</a></li>
-                        <li class="nav-item"><a class="nav-link mx-2 text-primary" data-toggle="tab" href="#sub-amex" onclick="cargarAmex()"><i class="fab fa-cc-amex mr-1"></i> Amex</a></li>
-                        <li class="nav-item"><a class="nav-link mx-2 text-success" data-toggle="tab" href="#sub-afirme" onclick="cargarAfirme()"><i class="fas fa-money-check-alt mr-1"></i> Afirme</a></li>
-                    </ul>
+        <div class="control-group flex-grow-1">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">ESTACIÓN:</label>
+            <select id="estacionSelect" class="form-control custom-select-pill w-100" onchange="alCambiarEstacion()">
+                <option value="">Cargando...</option>
+            </select>
+        </div>
 
-                    <div class="tab-content">
-                        <div class="tab-pane fade show active" id="sub-general">
-                            <div class="content-card">
-                                <div class="card-header d-flex justify-content-between">
-                                    <h5 class="m-0 text-dark font-weight-bold">Movimientos Generales</h5>
-                                    <button onclick="cargarDatosTesoreriaBD(true)" class="btn btn-sm btn-light border rounded-pill"><i class="fas fa-sync-alt"></i> Recargar</button>
-                                </div>
-                                <div class="table-responsive" style="max-height:600px;">
-                                    <table class="table table-hover table-custom mb-0">
-                                        <thead class="thead-dark sticky-top">
-                                            <tr><th>Fecha</th><th>Ref</th><th>Descripción</th><th>Sucursal</th><th class="text-end">Depósitos</th><th class="text-end">Retiros</th><th class="text-end">Saldo</th></tr>
-                                        </thead>
-                                        <tbody id="body-tesoreria"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="tab-pane fade" id="sub-banorte">
-                            <div class="d-flex justify-content-end mb-2"><button onclick="cargarBanorte(true)" class="btn btn-danger btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
-                            <div id="loading-banorte" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-danger"></i></div>
-                            <div class="content-card border-top border-danger" style="border-top-width: 4px !important;">
-                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="banorte-station-tabs"></ul></div>
-                                <div class="card-body bg-light"><div class="tab-content" id="banorte-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
-                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-danger font-weight-bold font-numeric" id="gran-total-banorte">$0.00</h3></div>
-                            </div>
-                        </div>
+        <div class="control-group">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">BANCO:</label>
+            <select id="bancoSelect" class="form-control custom-select-pill" style="min-width: 150px;" onchange="alCambiarBanco()">
+                <option value="">--</option>
+            </select>
+        </div>
 
-                        <div class="tab-pane fade" id="sub-santander">
-                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarSantander(true)" class="btn btn-danger btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
-                            <div id="loading-santander" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-danger"></i></div>
-                            <div class="content-card border-top border-danger" style="border-top-width: 4px !important;">
-                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="santander-station-tabs"></ul></div>
-                                <div class="card-body bg-light"><div class="tab-content" id="santander-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
-                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-danger font-weight-bold font-numeric" id="gran-total-santander">$0.00</h3></div>
-                            </div>
-                        </div>
+        <div class="control-group" id="group-afiliacion" style="display:none;">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">AFILIACIÓN:</label>
+            <select id="afiliacionSelect" class="form-control custom-select-pill border-primary" style="min-width: 220px; color: var(--primary-color);" onchange="actualizarTodo()">
+                <option value="">-- Seleccione --</option>
+            </select>
+        </div>
 
-                        <div class="tab-pane fade" id="sub-amex">
-                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarAmex(true)" class="btn btn-primary btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
-                            <div id="loading-amex" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-primary"></i></div>
-                            <div class="content-card border-top border-primary" style="border-top-width: 4px !important;">
-                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="amex-station-tabs"></ul></div>
-                                <div class="card-body bg-light"><div class="tab-content" id="amex-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
-                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-primary font-weight-bold font-numeric" id="gran-total-amex">$0.00</h3></div>
-                            </div>
-                        </div>
+        <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
 
-                         <div class="tab-pane fade" id="sub-afirme">
-                             <div class="d-flex justify-content-end mb-2"><button onclick="cargarAfirme(true)" class="btn btn-success btn-sm rounded-pill shadow-sm"><i class="fas fa-sync"></i> Actualizar</button></div>
-                            <div id="loading-afirme" class="text-center py-3" style="display:none;"><i class="fas fa-circle-notch fa-spin text-success"></i></div>
-                            <div class="content-card border-top border-success" style="border-top-width: 4px !important;">
-                                <div class="card-header bg-white pb-0 border-0"><ul class="nav nav-tabs card-header-tabs" id="afirme-station-tabs"></ul></div>
-                                <div class="card-body bg-light"><div class="tab-content" id="afirme-station-content"><div class="text-center text-muted py-5">Seleccione "Actualizar"</div></div></div>
-                                <div class="card-footer bg-white text-right py-3"><span class="small text-muted font-weight-bold mr-2">TOTAL:</span><h3 class="d-inline text-success font-weight-bold font-numeric" id="gran-total-afirme">$0.00</h3></div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
+    <div class="split-container">
+        
+        <div class="panel-split">
+            <div class="panel-header bg-dark">
+                <span><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
+                <span class="badge badge-light text-dark" id="cg-counter">0</span>
+            </div>
+            <div class="bg-light border-bottom p-2 small text-muted text-center" id="cg-info-bar">...</div>
+            <div class="panel-content" id="cg-content">
+                <div class="text-center text-muted py-5 mt-5">Seleccione Cuenta</div>
             </div>
         </div>
+
+        <div class="panel-split">
+            <div class="panel-header" id="header-tesoreria">
+                <span><i class="fas fa-university mr-2"></i> Tesorería</span>
+                <span class="badge badge-light text-dark" id="bk-total">$0.00</span>
+            </div>
+            <div class="bg-warning text-dark p-2 small text-center font-weight-bold" id="bk-info-bar" style="display:none;"></div>
+            <div class="panel-content" id="bk-content">
+                <div class="text-center text-muted py-5 mt-5">...</div>
+            </div>
+        </div>
+
     </div>
 </div>
+
+<div class="action-bar" id="conciliacionBar">
+    <div class="text-white-50 border-right pr-3 mr-3 text-right">
+        <div class="small">CG (<span id="count-cg">0</span>): <span id="sum-cg" class="text-white font-weight-bold">$0.00</span></div>
+        <div class="small">BK (<span id="count-bk">0</span>): <span id="sum-bk" class="text-white font-weight-bold">$0.00</span></div>
+    </div>
+    
+    <div class="text-center">
+        <div class="small text-uppercase text-white-50">Diferencia</div>
+        <div class="h4 font-numeric mb-0" id="diffValue">$0.00</div>
+    </div>
+
+    <button class="btn btn-success rounded-pill font-weight-bold ml-3 shadow" onclick="confirmarConciliacion()">
+        <i class="fas fa-link mr-2"></i> UNIR
+    </button>
+    
+    <button class="btn btn-sm btn-outline-light rounded-circle border-0 ml-2" onclick="limpiarSeleccion()">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<div class="dropdown-overlay" id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
+
 {% endblock %}
 
 {% block myjs %}
 <script>
-    // --- LÓGICA DEL COMPONENTE DE FECHA (WIDGET) ---
-    const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    let widgetState = {
-        year: new Date().getFullYear(),
-        month: (new Date().getMonth() + 1).toString().padStart(2, '0') // 01-12
-    };
-
-    function initDateWidget() {
-        renderWidgetDisplay();
-        
-        // Cerrar al dar clic fuera
-        document.addEventListener('click', function(event) {
-            const wrapper = document.querySelector('.date-widget-wrapper');
-            const dropdown = document.getElementById('dateDropdown');
-            const overlay = document.getElementById('pickerOverlay');
-            
-            if (!wrapper.contains(event.target) && dropdown.classList.contains('active')) {
-                closeDatePicker();
-            }
-        });
-    }
-
-    function toggleDatePicker() {
-        const dropdown = document.getElementById('dateDropdown');
-        const overlay = document.getElementById('pickerOverlay');
-        dropdown.classList.toggle('active');
-        overlay.classList.toggle('active');
-        
-        // Sincronizar año visual al abrir
-        document.getElementById('widgetYearDisplay').innerText = widgetState.year;
-        highlightSelectedMonth();
-    }
-    
-    function closeDatePicker() {
-        document.getElementById('dateDropdown').classList.remove('active');
-        document.getElementById('pickerOverlay').classList.remove('active');
-    }
-
-    function changeWidgetYear(delta) {
-        widgetState.year += delta;
-        document.getElementById('widgetYearDisplay').innerText = widgetState.year;
-    }
-
-    function selectWidgetMonth(monthVal, element) {
-        widgetState.month = monthVal;
-        
-        document.querySelectorAll('.month-option').forEach(el => el.classList.remove('selected'));
-        element.classList.add('selected');
-        
-        renderWidgetDisplay();
-        closeDatePicker();
-    }
-
-    function highlightSelectedMonth() {
-        document.querySelectorAll('.month-option').forEach(el => {
-            el.classList.remove('selected');
-            if(el.getAttribute('onclick').includes(`'${widgetState.month}'`)) {
-                el.classList.add('selected');
-            }
-        });
-    }
-
-    function renderWidgetDisplay() {
-        $('#hiddenYear').val(widgetState.year);
-        $('#hiddenMonth').val(widgetState.month);
-        
-        const mName = monthNames[parseInt(widgetState.month) - 1];
-        document.getElementById('displayFullDate').innerText = `${mName} ${widgetState.year}`;
-    }
-
-    // --- FIN LÓGICA WIDGET ---
-
-    // --- CONFIGURACIÓN DE ENDPOINTS ---
-    // El endpoint de estaciones ahora es el local, unificado con Tesorería
-    const URL_ESTACIONES_LOCAL = '/income/get_estaciones_catalogo'; 
-    const URL_VENTAS = 'http://201.174.170.236:99/api/Ventas/GetConceptosValores';
-    
-    const URL_TESORERIA_GENERAL   = '/income/get_tesoreria_data'; 
-    const URL_TESORERIA_BANORTE   = '/income/get_tesoreria_banorte'; 
-    const URL_TESORERIA_SANTANDER = '/income/get_tesoreria_santander';
-    const URL_TESORERIA_AMEX      = '/income/get_tesoreria_amex';
-    const URL_TESORERIA_AFIRME    = '/income/get_tesoreria_afirme';
-
+    // ==========================================
+    // 1. CONFIGURACIÓN Y VARIABLES GLOBALES
+    // ==========================================
     const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
     
-    let generalCargado = false;
-    let banorteCargado = false;
-    let santanderCargado = false;
-    let amexCargado = false;
-    let afirmeCargado = false;
-
-    // DATA CACHE
-    let banorteData = null;
-    let santanderData = null;
-    let amexData = null;
-    let afirmeData = null;
-
-    // RAZÓN SOCIAL LOGIC
-    const RS_MAPPING = {
-        'DGA930823KD3': 'DIAZ GAS',
-        'DGM880621FU5': 'GASOMEX',
-        'FORANEAS': 'FORANEAS'
+    const URLS = {
+        config: '/income/get_conciliacion_config',
+        estaciones: '/income/get_estaciones_catalogo',
+        ventas: 'http://201.174.170.236:99/api/Ventas/GetConceptosValores',
+        guardar: '/income/guardar_conciliacion',
+        historial: '/income/get_conciliaciones_hechas'
     };
+
+    const ENTITY_CONFIG = {
+        1:  { url: '/income/get_tesoreria_santander', color: '#c0392b' }, 
+        3:  { url: '/income/get_tesoreria_amex',      color: '#007bff' }, 
+        4:  { url: '/income/get_tesoreria_banorte',   color: '#e74c3c' }, 
+        5:  { url: '/income/get_tesoreria_bbva',      color: '#2c3e50' }, 
+        13: { url: '/income/get_tesoreria_afirme',    color: '#27ae60' } 
+    };
+
+    let widgetState = { year: new Date().getFullYear(), month: (new Date().getMonth() + 1).toString().padStart(2, '0') };
     let currentRS = 'DIAZ GAS';
     let todasLasEstaciones = [];
+    const RS_MAPPING = { 'DGA930823KD3': 'DIAZ GAS', 'DGM880621FU5': 'GASOMEX', 'FORANEAS': 'FORANEAS' };
+    
+    // Estado de la aplicación
+    let selection = { left: [], right: [] }; 
+    let stationConfig = []; 
+    let currentActiveRule = null;
+    let historialConciliacion = { left: [], right: [] };
 
     $(document).ready(function() {
-        initDateWidget(); 
-        cargarEstacionesLocales();
+        initWidget();
+        cargarEstaciones();
     });
 
-    function getPeriodParams() {
-        const year = $('#hiddenYear').val();
-        const month = $('#hiddenMonth').val();
-        return { year: year, month: month };
+    // ==========================================
+    // 2. UTILIDADES CORE (Definidas al inicio)
+    // ==========================================
+
+    // Normaliza fechas a YYYY-MM-DD
+    function normalizarFecha(fechaStr) {
+        if (!fechaStr) return "";
+        let s = String(fechaStr).trim();
+        if (s.indexOf('-') === 4) return s.substring(0, 10);
+        if (s.indexOf('/') > -1) {
+            const partes = s.split('/'); 
+            if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
+        }
+        return s; 
     }
 
-    // --- FUNCIONES DE FILTRADO Y RS ---
-    function setRS(rs) {
-        currentRS = rs;
-        $('#lbl-rs-actual').text(rs);
+    // Paleta de colores para grupos
+    function getColorForGroup(id) {
+        if(!id) return '#95a5a6';
+        const palette = [
+            '#3498db', '#e67e22', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c', 
+            '#1abc9c', '#34495e', '#d35400', '#c0392b', '#8e44ad', '#16a085'
+        ];
+        const num = parseInt(String(id).replace(/\D/g, '')) || 0;
+        return palette[num % palette.length];
+    }
+
+    // Recalcula totales de la selección actual
+    function recalcTotals() {
+        const sumL = selection.left.reduce((a,b) => a + b.monto, 0);
+        const sumR = selection.right.reduce((a,b) => a + b.monto, 0);
         
-        filtrarDropdownEstaciones();
+        $('#count-cg').text(selection.left.length);
+        $('#sum-cg').text(formatter.format(sumL));
         
-        // Refrescar pestañas Tesorería si ya hay datos
-        if(banorteData) renderTabs(banorteData, 'banorte');
-        if(santanderData) renderTabs(santanderData, 'santander');
-        if(amexData) renderTabs(amexData, 'amex');
-        if(afirmeData) renderTabs(afirmeData, 'afirme');
-    }
+        $('#count-bk').text(selection.right.length);
+        $('#sum-bk').text(formatter.format(sumR));
 
-    function getRSType(rfc) {
-        if(!rfc || rfc === 'NULL') return 'FORANEAS';
-        return RS_MAPPING[rfc] || 'FORANEAS';
-    }
-
-    function cargarEstacionesLocales() {
-        $.get(URL_ESTACIONES_LOCAL, function(resp){
-            if(resp.status === 'success'){
-                todasLasEstaciones = resp.respuesta;
-                filtrarDropdownEstaciones();
-            } else {
-                $('#estacionSelect').html('<option>Error al cargar</option>');
-            }
-        });
-    }
-
-    function filtrarDropdownEstaciones() {
-        const $select = $('#estacionSelect');
-        $select.empty();
-        $select.append('<option value="">-- Seleccione una opción --</option>');
-
-        let count = 0;
-        todasLasEstaciones.forEach(e => {
-            // El campo RFC viene ahora unificado desde Tesoreria_afil en el controlador
-            if (getRSType(e.RFC) === currentRS) {
-                $select.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
-                count++;
-            }
-        });
-
-        if(count === 0) {
-            $select.append('<option disabled>No hay estaciones disponibles</option>');
-        }
-    }
-
-    // --- REFRESH GLOBAL ---
-    function globalRefresh() {
-        // Reset flags & data
-        generalCargado = false;
-        banorteCargado = false;
-        santanderCargado = false;
-        amexCargado = false;
-        afirmeCargado = false;
-
-        banorteData = null;
-        santanderData = null;
-        amexData = null;
-        afirmeData = null;
-
-        // Limpiar visual
-        $('#body-tesoreria').empty();
-        $('#banorte-station-tabs, #banorte-station-content').empty();
-        $('#santander-station-tabs, #santander-station-content').empty();
-        $('#amex-station-tabs, #amex-station-content').empty();
-        $('#afirme-station-tabs, #afirme-station-content').empty();
+        const diff = sumL - sumR;
+        $('#diffValue').text(formatter.format(diff));
         
-        $('#gran-total-banorte, #gran-total-santander, #gran-total-amex, #gran-total-afirme').text('$0.00');
+        if(Math.abs(diff) < 1) $('#diffValue').css('color', '#2ecc71'); // Verde
+        else $('#diffValue').css('color', '#e74c3c'); // Rojo
 
-        // Cargar ControlGas
-        if($('#estacionSelect').val()) {
-            consultarDatos();
-        }
-
-        // Cargar Tesorería activa
-        if($('#tesoreria-tab').hasClass('active')) {
-            const activeSubId = $('#subTabsTesoreria .nav-link.active').attr('href');
-            switch(activeSubId) {
-                case '#sub-banorte': cargarBanorte(); break;
-                case '#sub-santander': cargarSantander(); break;
-                case '#sub-amex': cargarAmex(); break;
-                case '#sub-afirme': cargarAfirme(); break;
-                default: cargarDatosTesoreriaBD(); break;
-            }
+        if(selection.left.length > 0 || selection.right.length > 0) {
+            $('#conciliacionBar').addClass('visible');
+        } else {
+            $('#conciliacionBar').removeClass('visible');
         }
     }
 
-    function initTesoreria() {
-        if(!generalCargado) cargarDatosTesoreriaBD();
+    // Limpia la selección actual
+    function limpiarSeleccion() {
+        $('.row-item.active').removeClass('active');
+        selection = { left: [], right: [] };
+        recalcTotals();
     }
 
-    // 1. GENERAL (0956)
-    function cargarDatosTesoreriaBD(force = false) {
-        if(generalCargado && !force) return;
-        const $tbody = $('#body-tesoreria');
-        $tbody.html('<tr><td colspan="7" class="text-center py-4"><div class="spinner-border spinner-border-sm text-secondary"></div> Cargando...</td></tr>');
-        
-        const params = getPeriodParams();
-        $.get(URL_TESORERIA_GENERAL, params, function(resp){
-            if(resp.status === 'error') {
-                $tbody.html(`<tr><td colspan="7" class="text-danger text-center p-3"><i class="fas fa-exclamation-circle"></i> ${resp.message}</td></tr>`);
-            } else {
-                let html = '';
-                (resp.data || []).forEach(r => {
-                    html += `<tr>
-                        <td class="font-numeric">${r.Fecha}</td>
-                        <td class="font-numeric text-muted">${r.Referencia}</td>
-                        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.Descripcion}">${r.Descripcion}</td>
-                        <td><span class="badge badge-light border">${r.Sucursal}</span></td>
-                        <td class="text-end text-success font-numeric">${r.Depositos > 0 ? formatter.format(r.Depositos) : '-'}</td>
-                        <td class="text-end text-danger font-numeric">${r.Retiros > 0 ? formatter.format(r.Retiros) : '-'}</td>
-                        <td class="text-end font-weight-bold font-numeric text-dark">${formatter.format(r.Saldo)}</td>
-                    </tr>`;
-                });
-                $tbody.html(html || '<tr><td colspan="7" class="text-center text-muted py-4"><i>Sin movimientos registrados en este periodo</i></td></tr>');
-                generalCargado = true;
-            }
-        }).fail(function() { $tbody.html('<tr><td colspan="7" class="text-danger text-center py-4">Error de conexión con el servidor.</td></tr>'); });
+    // Limpia las listas visuales
+    function limpiarListas() { 
+        $('#cg-content, #bk-content').empty(); 
+        $('#cg-counter').text('0'); 
+        $('#bk-total').text('$0.00'); 
+        $('#bk-info-bar').hide(); 
     }
 
-    // 2. BANORTE
-    function cargarBanorte(force = false) {
-        if(banorteCargado && !force) return;
-        $('#loading-banorte').show();
-        const params = getPeriodParams();
-        $.get(URL_TESORERIA_BANORTE, params, function(resp){
-            $('#loading-banorte').hide();
-            banorteData = resp; 
-            renderTabs(resp, 'banorte');
-            banorteCargado = true;
-        });
+    // Resetea la UI al cambiar estación
+    function resetUI() { 
+        $('#bancoSelect').empty(); 
+        $('#group-afiliacion').hide(); 
+        $('#afiliacionSelect').empty(); 
+        limpiarListas(); 
     }
 
-    // 3. SANTANDER
-    function cargarSantander(force = false) {
-        if(santanderCargado && !force) return;
-        $('#loading-santander').show();
-        const params = getPeriodParams();
-        $.get(URL_TESORERIA_SANTANDER, params, function(resp){
-            $('#loading-santander').hide();
-            santanderData = resp;
-            renderTabs(resp, 'santander');
-            santanderCargado = true;
-        });
-    }
+    // Maneja el click en un item (seleccionar/deseleccionar)
+    function toggleItem(side, fecha, monto, concepto, el) {
+        if($(el).hasClass('conciliated')) return;
 
-    // 4. AMEX
-    function cargarAmex(force = false) {
-        if(amexCargado && !force) return;
-        $('#loading-amex').show();
-        const params = getPeriodParams();
-        $.get(URL_TESORERIA_AMEX, params, function(resp){
-            $('#loading-amex').hide();
-            amexData = resp;
-            renderTabs(resp, 'amex');
-            amexCargado = true;
-        });
-    }
+        const list = side === 'left' ? selection.left : selection.right;
+        // Buscamos por fecha y monto exacto
+        const idx = list.findIndex(i => i.fecha === fecha && i.monto === monto);
 
-    // 5. AFIRME
-    function cargarAfirme(force = false) {
-        if(afirmeCargado && !force) return;
-        $('#loading-afirme').show();
-        const params = getPeriodParams();
-        $.get(URL_TESORERIA_AFIRME, params, function(resp){
-            $('#loading-afirme').hide();
-            afirmeData = resp;
-            renderTabs(resp, 'afirme');
-            afirmeCargado = true;
-        });
-    }
-
-    // --- RENDERIZADO GENÉRICO DE PESTAÑAS (FILTRADO POR RS) ---
-    function renderTabs(resp, prefix) {
-        const $tabsContainer = $(`#${prefix}-station-tabs`);
-        const $contentContainer = $(`#${prefix}-station-content`);
-        const $granTotal = $(`#gran-total-${prefix}`);
-
-        $tabsContainer.empty();
-        $contentContainer.empty();
-        $granTotal.text('$0.00');
-
-        if(resp.status === 'error') {
-            $contentContainer.html(`<div class="alert alert-danger m-4 shadow-sm border-0">${resp.message}</div>`);
-            return;
+        if(idx >= 0) {
+            list.splice(idx, 1);
+            $(el).removeClass('active');
+        } else {
+            list.push({ fecha: fecha, monto: monto, concepto: concepto, elId: el.id });
+            $(el).addClass('active');
         }
+        recalcTotals();
+    }
 
-        const datos = resp.data || [];
-        const catalogoCompleto = resp.catalog || [];
+    // ==========================================
+    // 3. LÓGICA DE NEGOCIO (Selectores)
+    // ==========================================
 
-        // --- FILTRADO CLAVE ---
-        // Filtramos el catálogo según la RS seleccionada y el RFC que viene del servidor
-        const catalogoFiltrado = catalogoCompleto.filter(item => getRSType(item.RFC) === currentRS);
+    async function alCambiarEstacion() {
+        resetUI();
+        const id = $('#estacionSelect').val();
+        if(!id) return;
 
-        if(catalogoFiltrado.length === 0) {
-            $contentContainer.html(`<div class="text-center py-5 text-muted"><i class="far fa-folder-open fa-3x mb-3"></i><br>No hay estaciones de <b>${currentRS}</b> para este banco.</div>`);
-            return;
-        }
-
-        // Agrupar
-        const grupos = {};
-        catalogoFiltrado.forEach(item => { grupos[item.afiliacion] = []; });
-
-        let granTotal = 0;
-        datos.forEach(r => {
-            // Solo sumamos si la afiliación pertenece al catálogo filtrado
-            if(grupos[r.Afiliacion] !== undefined) {
-                grupos[r.Afiliacion].push(r);
-                granTotal += parseFloat(r.Total);
-            }
-        });
-
-        // Generar HTML
-        catalogoFiltrado.forEach((item, index) => {
-            const afilNum = item.afiliacion;
-            const estNombre = item.Estacion;
-            const tabId = `tab-${prefix}-${index}`;
-            const isActive = index === 0 ? 'active show' : '';
-            const activeLink = index === 0 ? 'active' : '';
+        try {
+            const res = await fetch(`${URLS.config}?estacion_id=${id}`);
+            const json = await res.json();
             
-            const listaMovimientos = grupos[afilNum] || [];
-            const cantidad = listaMovimientos.length;
-            const badgeColor = cantidad > 0 ? 'badge-primary' : 'badge-light border text-muted';
-
-            $tabsContainer.append(`
-                <li class="nav-item">
-                    <a class="nav-link ${activeLink}" data-toggle="tab" href="#${tabId}" title="Afiliación: ${afilNum}">
-                        ${estNombre} <small class="text-muted d-none d-md-inline">(${afilNum})</small>
-                        <span class="badge ${badgeColor} ml-1">${cantidad}</span>
-                    </a>
-                </li>
-            `);
-
-            let filas = '';
-            let totalEst = 0;
-
-            if (cantidad > 0) {
-                listaMovimientos.forEach(f => {
-                    totalEst += parseFloat(f.Total);
-                    filas += `
-                        <tr>
-                            <td class="font-numeric pl-4">${f.Fecha}</td>
-                            <td class="text-right font-weight-bold text-dark font-numeric pr-4">${formatter.format(f.Total)}</td>
-                        </tr>`;
-                });
+            if(json.status === 'success') {
+                stationConfig = json.data || [];
+                llenarBancos();
             } else {
-                filas = '<tr><td colspan="2" class="text-center text-muted py-5"><i>Sin movimientos registrados en este periodo</i></td></tr>';
+                stationConfig = [];
+                $('#bancoSelect').empty().append('<option>Sin Configuración</option>');
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    function llenarBancos() {
+        const $sel = $('#bancoSelect').empty().append('<option value="">-- Banco --</option>');
+        const unicos = new Map();
+        
+        stationConfig.forEach(item => {
+            if(!unicos.has(item.entidad_id)) {
+                const nombre = item.nombre_banco || 'Banco ' + item.entidad_id;
+                unicos.set(item.entidad_id, nombre);
+            }
+        });
+        
+        unicos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
+    }
+
+    function alCambiarBanco() {
+        const eid = $('#bancoSelect').val();
+        const $asel = $('#afiliacionSelect'); // Referencia al select existente
+        
+        $asel.empty().append('<option value="">-- Seleccione --</option>');
+        limpiarListas();
+
+        if(!eid) {
+            $('#group-afiliacion').hide();
+            return;
+        }
+
+        const cuentas = stationConfig.filter(r => r.entidad_id == eid);
+        
+        if(cuentas.length === 0) {
+            $('#cg-info-bar').text('Sin cuentas configuradas para este banco');
+            $('#group-afiliacion').hide();
+            return;
+        }
+
+        cuentas.forEach((c, idx) => {
+            const desc = c.descripcion || 'Cuenta'; 
+            $asel.append(`<option value="${idx}">${desc} (${c.afiliacion})</option>`);
+        });
+
+        // Aseguramos que se vea
+        $('#group-afiliacion').show();
+        $asel.show(); 
+        
+        // Auto-seleccionar si es única
+        if(cuentas.length === 1) $asel.val(0).trigger('change');
+        
+        const conf = ENTITY_CONFIG[eid];
+        if(conf) $('#header-tesoreria').css('background-color', conf.color);
+    }
+
+    async function actualizarTodo() {
+        // Ahora sí encuentra la función porque está definida arriba
+        limpiarSeleccion(); 
+        
+        const ruleIdx = $('#afiliacionSelect').val();
+        const eid = $('#bancoSelect').val();
+        const sid = $('#estacionSelect').val();
+
+        if(ruleIdx === "" || ruleIdx === null || !eid) return;
+
+        const cuentasPosibles = stationConfig.filter(row => row.entidad_id == eid);
+        currentActiveRule = cuentasPosibles[ruleIdx];
+
+        if(!currentActiveRule) return;
+
+        // Carga secuencial
+        await cargarHistorial(sid, eid, currentActiveRule);
+        cargarControlGas(sid, currentActiveRule);
+        cargarTesoreria(eid, currentActiveRule);
+    }
+
+    // ==========================================
+    // 4. CARGAS DE DATOS (API)
+    // ==========================================
+
+    async function cargarHistorial(sid, eid, rule) {
+        const p = getPeriod();
+        try {
+            const params = { fecha_inicio: p.fi, fecha_fin: p.ff };
+            const res = await $.get(URLS.historial, params);
+            
+            if(res && res.data) {
+                historialConciliacion.left = res.data.filter(x => x.lado === 'left');
+                historialConciliacion.right = res.data.filter(x => x.lado === 'right');
+            } else {
+                historialConciliacion = { left: [], right: [] };
+            }
+        } catch(e) {
+            console.error("Error historial", e);
+            historialConciliacion = { left: [], right: [] };
+        }
+    }
+
+   async function cargarControlGas(sid, rule) {
+        const p = getPeriod();
+        $('#cg-content').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
+        
+        try {
+            // 1. Obtener datos de la API
+            const res = await fetch(URLS.ventas, {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
+            });
+            const json = await res.json();
+            const raw = json.respuesta || [];
+            
+            // 2. Preparar Palabras Clave (Keywords) de la Regla
+            // Normalizamos: A mayúsculas, quitamos acentos y espacios extra
+            const keywords = (rule.conceptos_cg || '')
+                .split(',')
+                .map(k => {
+                    return k.trim().toUpperCase()
+                            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quitar acentos
+                            .replace(/\s+/g, ' '); // Quitar espacios dobles
+                });
+
+            console.log("Regla:", rule.descripcion, "| Buscando:", keywords);
+
+            // 3. Filtrado con Normalización
+            const filtered = raw.filter(i => {
+                // Obtener concepto original
+                const rawConcept = (i.Concepto || i.concepto || '');
+                
+                // A. Normalización del Concepto que viene de ControlGas
+                // "Tarjeta de Crédito" -> "TARJETA DE CREDITO"
+                let c = rawConcept.toUpperCase()
+                                  .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Eliminar tildes
+                                  .replace(/\s+/g, ' ').trim(); // Limpiar espacios
+
+                // B. Parches específicos para inconsistencias conocidas
+                // Si viene "SMART BT" separado, lo juntamos para que coincida con "SMARTBT"
+                c = c.replace(/SMART\s*BT/g, 'SMARTBT'); 
+
+                // C. Comparación
+                // Revisa si alguna de las palabras clave existe en el concepto normalizado
+                return keywords.some(k => c.includes(k));
+            });
+
+            renderList('left', filtered, rule.descripcion || 'Venta');
+
+        } catch(e) { 
+            console.error("Error cargando ControlGas:", e);
+            $('#cg-content').html('<div class="text-danger p-3">Error API ControlGas</div>'); 
+        }
+    }
+
+    function cargarTesoreria(eid, rule) {
+        const container = $('#bk-content');
+        container.html('<div class="text-center py-5"><div class="spinner-border text-secondary"></div></div>');
+        const conf = ENTITY_CONFIG[eid];
+        if(!conf || !conf.url) { container.html('<div class="p-4 text-center">Sin endpoint</div>'); return; }
+
+        $.get(conf.url, {year: widgetState.year, month: widgetState.month}, function(resp){
+            if(!resp.data) { container.html('<div class="p-3 text-center">Sin datos</div>'); return; }
+            const filtered = resp.data.filter(m => String(m.Afiliacion).trim() === String(rule.afiliacion).trim());
+            renderList('right', filtered, rule.descripcion || 'Depósito');
+        });
+    }
+
+    // ==========================================
+    // 5. RENDERIZADO
+    // ==========================================
+
+    function renderList(side, rawData, label) {
+        const container = side === 'left' ? $('#cg-content') : $('#bk-content');
+        const counter = side === 'left' ? $('#cg-counter') : $('#bk-total');
+        container.empty();
+
+        if (!rawData || rawData.length === 0) {
+            container.html('<div class="text-muted text-center py-5">Sin movimientos</div>');
+            if(side==='left') counter.text('0'); else counter.text('$0.00');
+            return;
+        }
+
+        const grupos = {};
+        let grandTotal = 0;
+
+        rawData.forEach(item => {
+            if(!item.Fecha) return;
+            const fIso = normalizarFecha(item.Fecha);
+            
+            let val = item.Total || item.Depositos || item.Importe || 0;
+            if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
+            if(isNaN(val)) val = 0;
+
+            if(!grupos[fIso]) grupos[fIso] = { fecha: fIso, monto: 0, desc: new Set() };
+            grupos[fIso].monto += val;
+            grandTotal += val;
+            
+            let d = "";
+            if(side === 'left') d = item.Concepto || item.concepto || 'Venta';
+            else d = item.Referencia || item.Descripcion || 'Depósito';
+            grupos[fIso].desc.add(d);
+        });
+
+        const dates = Object.keys(grupos).sort();
+        
+        dates.forEach(fechaKey => { 
+            const g = grupos[fechaKey];
+            
+            // Render fecha visual
+            const partes = fechaKey.split('-');
+            let fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+
+            const descStr = Array.from(g.desc).join(', ');
+            const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
+            
+            const rowId = `item-${side}-${fechaKey}`; 
+            const etiquetaSegura = label || (side === 'left' ? 'Venta' : 'Banco');
+            const etiquetaClean = etiquetaSegura.replace(/'/g, "");
+
+            // Buscar coincidencia en historial (bloqueo)
+            const listaHistorial = side === 'left' ? historialConciliacion.left : historialConciliacion.right;
+            const coincidencia = listaHistorial.find(h => 
+                normalizarFecha(h.fecha) === fechaKey && 
+                Math.abs(parseFloat(h.monto) - parseFloat(g.monto)) < 0.1
+            );
+
+            let clasesExtra = "";
+            let badgeHtml = "";
+            let clickAction = `onclick="toggleItem('${side}', '${fechaKey}', ${g.monto}, '${etiquetaClean}', this)"`;
+            let estiloFondo = "";
+
+            if (coincidencia) {
+                clasesExtra = "conciliated"; 
+                clickAction = ""; 
+                const color = getColorForGroup(coincidencia.grupo_id);
+                estiloFondo = `style="background-color: ${color}40;"`; 
+                badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
             }
 
-            $contentContainer.append(`
-                <div class="tab-pane fade ${isActive}" id="${tabId}">
-                    <div class="table-responsive bg-white" style="max-height:500px; overflow-y:auto;">
-                        <table class="table table-hover table-custom mb-0">
-                            <thead class="sticky-top thead-light">
-                                <tr>
-                                    <th class="pl-4 border-top-0">Fecha</th>
-                                    <th class="text-right pr-4 border-top-0">Importe</th>
-                                </tr>
-                            </thead>
-                            <tbody>${filas}</tbody>
-                            <tfoot class="bg-light border-top">
-                                <tr>
-                                    <td class="text-right text-muted pr-3 text-uppercase font-weight-bold small">Total Estación:</td>
-                                    <td class="text-right text-success font-weight-bold font-numeric pr-4" style="font-size:1.1em;">${formatter.format(totalEst)}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+            container.append(`
+                <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}>
+                    <div>
+                        <div class="d-flex align-items-center mb-1">
+                            ${badgeHtml}
+                            <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
+                            <span class="badge ${side==='left'?'badge-info':'badge-warning'} text-white border" style="font-size:0.6rem;">${etiquetaSegura}</span>
+                        </div>
+                        <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">
+                            ${tooltip}
+                        </small>
+                    </div>
+                    <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
+                        ${formatter.format(g.monto)}
                     </div>
                 </div>
             `);
         });
 
-        $granTotal.text(formatter.format(granTotal));
+        if(side === 'left') counter.text(dates.length + ' días');
+        else counter.text(formatter.format(grandTotal));
     }
 
-    // --- CONTROLGAS: CONSULTA DE VENTAS ---
-    async function consultarDatos() {
-        const eid = $('#estacionSelect').val();
-        const params = getPeriodParams(); 
+    // ==========================================
+    // 6. ACCIONES DE USUARIO
+    // ==========================================
 
-        if(!eid || !params.year || !params.month) return; 
+    function confirmarConciliacion() {
+        if(selection.left.length === 0 || selection.right.length === 0) {
+            alert("Debe seleccionar al menos un registro de cada lado."); return;
+        }
+        let sumL_raw = selection.left.reduce((a,b) => a + b.monto, 0);
+        let sumR_raw = selection.right.reduce((a,b) => a + b.monto, 0);
+        let diff_raw = sumL_raw - sumR_raw;
+        
+        if(!confirm(`¿Conciliar selección?\nCG: ${formatter.format(sumL_raw)}\nBK: ${formatter.format(sumR_raw)}\nDiferencia: ${formatter.format(diff_raw)}`)) return;
 
-        const lastDay = new Date(params.year, params.month, 0).getDate();
-        const fi = `${params.year}${params.month}01`;
-        const ff = `${params.year}${params.month}${lastDay}`;
+        let payload = {
+            total_cg: Number(sumL_raw.toFixed(2)),
+            total_bk: Number(sumR_raw.toFixed(2)),
+            diferencia: Number(diff_raw.toFixed(2)),
+            left_rows: selection.left.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, concepto: i.concepto, ref: '' })),
+            right_rows: selection.right.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, afiliacion: $('#afiliacionSelect option:selected').text(), origen: 'Manual' }))
+        };
 
-        $('#loading-cg').show(); $('#card-resultados').hide(); $('#tabsConceptos, #contenidoConceptos').empty();
-        try {
-            const res = await fetch(URL_VENTAS, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({Datos:{FechaInicial:fi, FechaFinal:ff, Gasolinera:parseInt(eid)}})
-            });
-            const json = await res.json();
-            const filas = json.respuesta || [];
-            if(filas.length){ generarPestanas(filas); $('#card-resultados').show(); }
-            else { 
-                $('#contenidoConceptos').html('<div class="p-5 text-center text-muted"><i class="fas fa-search fa-2x mb-3 text-secondary"></i><br>No hay ventas registradas para este periodo.</div>');
-                $('#card-resultados').show();
-            }
-        } catch(e){console.error(e);}
-        finally{ $('#loading-cg').hide(); }
-    }
+        $.ajax({
+            url: URLS.guardar, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
+            success: function(resp) {
+                if(resp.status === 'success') {
+                    const groupColor = getColorForGroup(resp.grupo_id);
+                    const label = resp.grupo_id || 'OK';
 
-    function generarPestanas(datos) {
-        const keys = Object.keys(datos[0]);
-        const kCon = keys.find(k=>k.toLowerCase()==='concepto')||'Concepto';
-        const kTot = keys.find(k=>['Total','Valor','Importe'].includes(k))||'Total';
-        datos.forEach(d=>{
-            let c = (d[kCon]||'').trim();
-            if(c==='SMARTBT - MANUAL Bancarias') c='SMARTBT - Bancarias';
-            if(c==='SMARTBT - EFECTIVALE'||c==='Tarjeta EfectiCard') c='Efectivale';
-            d[kCon]=c;
-        });
-        const unicos = [...new Set(datos.map(d=>d[kCon]))].sort();
-        unicos.forEach((con,i)=>{
-            const id='t'+i, active=i===0?'active':'';
-            $('#tabsConceptos').append(`<li class="nav-item"><a class="nav-link ${active}" data-toggle="tab" href="#${id}">${con}</a></li>`);
-            const sub = datos.filter(d=>d[kCon]===con);
-            const agr = sub.reduce((acc,curr)=>{
-                const f=curr.Fecha; 
-                const v=typeof curr[kTot]==='number'?curr[kTot]:parseFloat(curr[kTot].replace(/[^0-9.-]+/g,""));
-                acc[f]=(acc[f]||0)+v; return acc;
-            },{});
-            let rows='', gt=0;
-            Object.keys(agr).sort().forEach(f=>{ gt+=agr[f]; rows+=`<tr><td class="font-numeric pl-4">${f}</td><td class="text-end font-numeric font-weight-bold pr-4">${formatter.format(agr[f])}</td></tr>`; });
-            $('#contenidoConceptos').append(`<div class="tab-pane fade show ${active}" id="${id}"><div class="table-responsive"><table class="table table-hover table-custom mt-3 mb-0"><thead class="thead-light"><tr><th class="pl-4">Fecha</th><th class="text-end pr-4">Total</th></tr></thead><tbody>${rows}</tbody><tfoot class="bg-light"><tr><td class="text-end font-weight-bold pr-3 text-uppercase">TOTAL:</td><td class="text-end text-primary font-weight-bold font-numeric pr-4" style="font-size:1.1em;">${formatter.format(gt)}</td></tr></tfoot></table></div></div>`);
+                    [...selection.left, ...selection.right].forEach(item => {
+                        const $el = $(document.getElementById(item.elId));
+                        $el.removeClass('active').addClass('conciliated');
+                        $el.css('background-color', groupColor + '40');
+                        $el.find('div:first').prepend(`<span class="nexus-badge" style="background:${groupColor}">#${label}</span>`);
+                        $el.prop('onclick', null).off('click');
+                    });
+                    limpiarSeleccion();
+                } else alert("Error: " + resp.message);
+            },
+            error: function() { alert("Error de red"); }
         });
     }
+
+    // ==========================================
+    // 7. HELPERS DE INTERFAZ (WIDGETS, ETC)
+    // ==========================================
+
+    function stringToColor(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        let color = '#';
+        for (let i = 0; i < 3; i++) { let value = (hash >> (i * 8)) & 0xFF; color += ('00' + value.toString(16)).substr(-2); }
+        return color;
+    }
+    
+    function getPeriod() { 
+        const d = new Date(widgetState.year, widgetState.month, 0);
+        return { fi: `${widgetState.year}${widgetState.month}01`, ff: `${widgetState.year}${widgetState.month}${d.getDate()}` }; 
+    }
+    
+    function cargarEstaciones() { $.get(URLS.estaciones, function(r) { if(r.status==='success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); } }); }
+    
+    function filtrarEstaciones() {
+        const $s = $('#estacionSelect').empty().append('<option value="">Estación</option>');
+        todasLasEstaciones.forEach(e => {
+            const tipo = RS_MAPPING[e.RFC] || 'FORANEAS';
+            if(tipo === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
+        });
+    }
+    
+    function setRS(rs) { currentRS = rs; filtrarEstaciones(); resetUI(); }
+    
+    function initWidget() {
+        const mNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        let html = '';
+        mNames.forEach((m,i) => { let n = (i+1).toString().padStart(2,'0'); html += `<div class="month-btn" onclick="selectWidgetMonth('${n}')">${m}</div>`; });
+        $('#monthGrid').html(html);
+        renderDateWidget();
+    }
+    
+    function renderDateWidget() {
+        const mNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+        $('#displayFullDate').text(`${mNames[parseInt(widgetState.month)-1]} ${widgetState.year}`);
+        $('#widgetYearDisplay').text(widgetState.year);
+        $('#hiddenYear').val(widgetState.year); $('#hiddenMonth').val(widgetState.month);
+        $('.month-btn').removeClass('selected');
+        $(`.month-btn:nth-child(${parseInt(widgetState.month)})`).addClass('selected');
+    }
+    
+    function changeWidgetYear(d) { widgetState.year += d; renderDateWidget(); }
+    function selectWidgetMonth(m) { widgetState.month = m; renderDateWidget(); toggleDatePicker(); actualizarTodo(); }
+    function toggleDatePicker() { $('#dateDropdown').toggleClass('active'); $('#pickerOverlay').toggle(); }
+    function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#pickerOverlay').hide(); }
+
 </script>
 {% endblock %}
