@@ -15,7 +15,7 @@ class PaymentRequestsModel extends Model
     const STATUS_CANCELLED = 3;
 
 
-    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null) : array {
+    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null) : array {
         if (empty($documents) || !is_array($documents)) {
             return [
                 'success' => false,
@@ -31,10 +31,10 @@ class PaymentRequestsModel extends Model
             $status = self::STATUS_PENDING;
             
             $query = 'INSERT INTO [TG].[dbo].[payment_requests] 
-                    (request_date, user_id, comment, [status], provider_cod)
-                    VALUES (?, ?, ?, ?, ?);';
+                    (request_date, user_id, comment, [status],  provider_cod, emp_cod)
+                    VALUES (?, ?, ?, ?, ?, ?);';
             
-            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status, $provider_cod]);
+            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status, $provider_cod, $empresa_cod]);
 
             if (!$payment_id) {
                 throw new Exception('Error al crear la solicitud de pago');
@@ -175,23 +175,23 @@ class PaymentRequestsModel extends Model
             ];
         }
     }
-    public function get_requests_with_summary($from = null, $until = null, $status = 'all') : array|false {
+    public function get_requests_with_summary($type, $status = 'all') : array|false {
         $whereClauses = [];
         $params = [];
-        
-        if ($from && $until) {
-            $whereClauses[] = "pr.request_date BETWEEN ? AND ?";
-            $params[] = $from;
-            $params[] = $until;
-        }
-        
+
         if ($status !== 'all') {
             $whereClauses[] = "pr.status = ?";
             $params[] = $status;
         }
-        
+
+        if($type === 'payment'){
+            $whereClauses[] = "pr.tipo IN (0)"; // Pendiente y Autorizado
+        } elseif($type === 'anticipos'){
+            $whereClauses[] = "pr.tipo NOT IN (0)"; // Pagado y Cancelado
+        }
+
         $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
-        
+
         $query = "
             SELECT 
                 pr.id,
@@ -200,29 +200,31 @@ class PaymentRequestsModel extends Model
                 pr.status,
                 pr.comment,
                 u.Nombre as usuario_nombre,
-                
+
                 -- Resumen de facturas
                 COUNT(DISTINCT pri.id) as total_invoices,
                 ISNULL(SUM(pri.amount), 0) as total_amount,
                 ISNULL(SUM(pri.paid_amount), 0) as total_paid,
-                
+
                 -- Autorizaciones por nivel
                 MAX(CASE WHEN pra.permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
                 MAX(CASE WHEN pra.permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
                 MAX(CASE WHEN pra.permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria,
-                
+
                 -- Información de autorizadores
                 MAX(CASE WHEN pra.permission_number = 66 THEN u2.Nombre ELSE NULL END) as auth_abastos_user,
                 MAX(CASE WHEN pra.permission_number = 67 THEN u3.Nombre ELSE NULL END) as auth_admin_user,
                 MAX(CASE WHEN pra.permission_number = 68 THEN u4.Nombre ELSE NULL END) as auth_tesoreria_user,
-                
+
                 -- Fechas de autorización
                 MAX(CASE WHEN pra.permission_number = 66 THEN pra.authorization_date ELSE NULL END) as auth_abastos_date,
                 MAX(CASE WHEN pra.permission_number = 67 THEN pra.authorization_date ELSE NULL END) as auth_admin_date,
                 MAX(CASE WHEN pra.permission_number = 68 THEN pra.authorization_date ELSE NULL END) as auth_tesoreria_date,
-                
-                COUNT(DISTINCT pra.id) as total_authorizations
-                
+
+                COUNT(DISTINCT pra.id) as total_authorizations,
+                u5.den as [provider_name],
+				u6.den as [emp_name]
+
             FROM [TG].[dbo].[payment_requests] pr
             LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
             LEFT JOIN [TG].[dbo].[payment_request_invoices] pri ON pr.id = pri.payment_request_id
@@ -230,11 +232,12 @@ class PaymentRequestsModel extends Model
             LEFT JOIN [TG].[dbo].[Usuario] u2 ON pra.staff_user_id = u2.Id AND pra.permission_number = 66
             LEFT JOIN [TG].[dbo].[Usuario] u3 ON pra.staff_user_id = u3.Id AND pra.permission_number = 67
             LEFT JOIN [TG].[dbo].[Usuario] u4 ON pra.staff_user_id = u4.Id AND pra.permission_number = 68
+            	LEFT JOIN [SG12].[dbo].Proveedores u5 on pr.provider_cod = u5.cod
+			LEFT JOIN [SG12].[dbo].Empresas u6 on pr.emp_cod = u6.cod
             $whereSQL
-            GROUP BY pr.id, pr.user_id, pr.request_date, pr.status, pr.comment, u.Nombre
+            GROUP BY pr.id, pr.user_id, pr.request_date, pr.status, pr.comment, u.Nombre,u5.den,u6.den
             ORDER BY pr.request_date DESC
         ";
-        
         return $this->sql->select($query, $params) ?: false;
     }
 

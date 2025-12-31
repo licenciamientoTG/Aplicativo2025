@@ -1332,6 +1332,7 @@ class Supply{
                     'codgas'           => $row['codgas'],
                     'en_orden_pago'    => $row['en_orden_pago'],
                     'payment_status'   => $row['payment_status'],
+                    'codigo_empresa'   => $row['codigo_empresa'],
                     'statusLabel'      => $statusLabel
                 );
             }
@@ -1421,136 +1422,136 @@ class Supply{
     }
 
    function procesar_uuids_facturas() {
-    header('Content-Type: application/json');
-    
-    try {
-        // Validar que llegue el archivo
-        if (!isset($_FILES['archivo_excel']) || $_FILES['archivo_excel']['error'] !== UPLOAD_ERR_OK) {
-            json_output(['success' => false, 'message' => 'No se recibió el archivo o hubo un error']);
-            return;
-        }
+        header('Content-Type: application/json');
+        
+        try {
+            // Validar que llegue el archivo
+            if (!isset($_FILES['archivo_excel']) || $_FILES['archivo_excel']['error'] !== UPLOAD_ERR_OK) {
+                json_output(['success' => false, 'message' => 'No se recibió el archivo o hubo un error']);
+                return;
+            }
 
-        $archivo = $_FILES['archivo_excel']['tmp_name'];
-        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($archivo);
-        $sheet = $spreadsheet->getActiveSheet();
-        
-        $uuidsValidos = [];
-        $uuidsInvalidos = [];
-        $highestRow = $sheet->getHighestRow();
-        
-        // Leer TODOS los UUIDs de la primera columna
-        for ($row = 2; $row <= $highestRow; $row++) {
-            $uuid = $sheet->getCell('A' . $row)->getValue();
-            if (!empty($uuid)) {
-                $uuid = trim($uuid);
-                $uuidOriginal = $uuid;
-                $uuid = strtoupper($uuid);
-                
-                // Validar formato UUID
-                if (strlen($uuid) !== 36) {
-                    // UUID inválido - longitud incorrecta
-                    $uuidsInvalidos[] = [
-                        'fila' => $row,
-                        'uuid' => $uuid,
-                        'estado' => 'formato_invalido',
-                        'error' => 'UUID con formato inválido (longitud: ' . strlen($uuid) . ', debe ser 36 caracteres)'
-                    ];
-                } else if (!preg_match('/^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/i', $uuid)) {
-                    // UUID inválido - formato incorrecto
-                    $uuidsInvalidos[] = [
-                        'fila' => $row,
-                        'uuid' => $uuid,
-                        'estado' => 'formato_invalido',
-                        'error' => 'UUID con formato inválido (no cumple patrón XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)'
-                    ];
-                } else {
-                    // UUID válido
-                    $uuidsValidos[] = $uuid;
+            $archivo = $_FILES['archivo_excel']['tmp_name'];
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($archivo);
+            $sheet = $spreadsheet->getActiveSheet();
+            
+            $uuidsValidos = [];
+            $uuidsInvalidos = [];
+            $highestRow = $sheet->getHighestRow();
+            
+            // Leer TODOS los UUIDs de la primera columna
+            for ($row = 2; $row <= $highestRow; $row++) {
+                $uuid = $sheet->getCell('A' . $row)->getValue();
+                if (!empty($uuid)) {
+                    $uuid = trim($uuid);
+                    $uuidOriginal = $uuid;
+                    $uuid = strtoupper($uuid);
+                    
+                    // Validar formato UUID
+                    if (strlen($uuid) !== 36) {
+                        // UUID inválido - longitud incorrecta
+                        $uuidsInvalidos[] = [
+                            'fila' => $row,
+                            'uuid' => $uuid,
+                            'estado' => 'formato_invalido',
+                            'error' => 'UUID con formato inválido (longitud: ' . strlen($uuid) . ', debe ser 36 caracteres)'
+                        ];
+                    } else if (!preg_match('/^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/i', $uuid)) {
+                        // UUID inválido - formato incorrecto
+                        $uuidsInvalidos[] = [
+                            'fila' => $row,
+                            'uuid' => $uuid,
+                            'estado' => 'formato_invalido',
+                            'error' => 'UUID con formato inválido (no cumple patrón XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)'
+                        ];
+                    } else {
+                        // UUID válido
+                        $uuidsValidos[] = $uuid;
+                    }
                 }
             }
-        }
 
-        $totalSolicitados = count($uuidsValidos) + count($uuidsInvalidos);
-        if ($totalSolicitados === 0) {
-            json_output(['success' => false, 'message' => 'No se encontraron UUIDs en el archivo']);
-            return;
-        }
-        
-        // Buscar facturas en la base de datos (solo con UUIDs válidos)
-        $facturas = [];
-        if (!empty($uuidsValidos)) {
-            $facturas = $this->facturasRecibidasModel->buscarPorUUIDs($uuidsValidos);
-        }
+            $totalSolicitados = count($uuidsValidos) + count($uuidsInvalidos);
+            if ($totalSolicitados === 0) {
+                json_output(['success' => false, 'message' => 'No se encontraron UUIDs en el archivo']);
+                return;
+            }
+            
+            // Buscar facturas en la base de datos (solo con UUIDs válidos)
+            $facturas = [];
+            if (!empty($uuidsValidos)) {
+                $facturas = $this->facturasRecibidasModel->buscarPorUUIDs($uuidsValidos);
+            }
 
-        // CAMBIO CLAVE: Usar arrays separados desde el inicio
-        $facturasExitosas = [];
-        $facturasFallidas = [];
-        $uuidsEncontrados = [];
+            // CAMBIO CLAVE: Usar arrays separados desde el inicio
+            $facturasExitosas = [];
+            $facturasFallidas = [];
+            $uuidsEncontrados = [];
 
-        if ($facturas) {
-            foreach ($facturas as $factura) {
-                // ✅ SOLUCIÓN: Guardar UUID en MAYÚSCULAS para comparación consistente
-                $uuidBD = strtoupper($factura['UUID']);
-                $uuidsEncontrados[] = $uuidBD;
+            if ($facturas) {
+                foreach ($facturas as $factura) {
+                    // ✅ SOLUCIÓN: Guardar UUID en MAYÚSCULAS para comparación consistente
+                    $uuidBD = strtoupper($factura['UUID']);
+                    $uuidsEncontrados[] = $uuidBD;
 
-                // Verificar que el archivo exista ANTES de agregarlo como exitosa
-                if (!empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
-                    // ✅ Factura completa y disponible
-                    $facturasExitosas[] = [
-                        'id' => $factura['Id'],
-                        'uuid' => $factura['UUID'],
-                        'nombre_archivo' => $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']),
-                        'folio' => $factura['Folio'],
-                        'emisor' => $factura['EmisorNombre'],
-                        'total' => $factura['Total'],
-                        'estado' => 'success'
-                    ];
-                } else {
-                    // ❌ Factura en BD pero archivo no existe
+                    // Verificar que el archivo exista ANTES de agregarlo como exitosa
+                    if (!empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
+                        // ✅ Factura completa y disponible
+                        $facturasExitosas[] = [
+                            'id' => $factura['Id'],
+                            'uuid' => $factura['UUID'],
+                            'nombre_archivo' => $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']),
+                            'folio' => $factura['Folio'],
+                            'emisor' => $factura['EmisorNombre'],
+                            'total' => $factura['Total'],
+                            'estado' => 'success'
+                        ];
+                    } else {
+                        // ❌ Factura en BD pero archivo no existe
+                        $facturasFallidas[] = [
+                            'uuid' => $factura['UUID'],
+                            'folio' => $factura['Folio'],
+                            'estado' => 'archivo_no_existe',
+                            'error' => 'Factura encontrada en BD pero archivo físico no existe: ' . 
+                                    ($factura['NombreArchivo'] ?? basename($factura['RutaArchivo'] ?? 'desconocido'))
+                        ];
+                    }
+                }
+            }
+            
+            // Identificar UUIDs válidos que NO se encontraron en la BD
+            // ✅ SOLUCIÓN: Ahora la comparación es case-insensitive (ambos en MAYÚSCULAS)
+            foreach ($uuidsValidos as $uuid) {
+                if (!in_array($uuid, $uuidsEncontrados)) {
                     $facturasFallidas[] = [
-                        'uuid' => $factura['UUID'],
-                        'folio' => $factura['Folio'],
-                        'estado' => 'archivo_no_existe',
-                        'error' => 'Factura encontrada en BD pero archivo físico no existe: ' . 
-                                   ($factura['NombreArchivo'] ?? basename($factura['RutaArchivo'] ?? 'desconocido'))
+                        'uuid' => $uuid,
+                        'folio' => null,
+                        'estado' => 'no_encontrado_bd',
+                        'error' => 'UUID no encontrado en la base de datos'
                     ];
                 }
             }
+            
+            // Agregar UUIDs con formato inválido a fallidas
+            $facturasFallidas = array_merge($facturasFallidas, $uuidsInvalidos);
+            
+            // Resultado final
+            json_output([
+                'success' => true,
+                'facturas' => array_values($facturasExitosas),
+                'facturas_fallidas' => array_values($facturasFallidas),
+                'total_solicitados' => $totalSolicitados,
+                'total_encontrados' => count($facturasExitosas),
+                'total_fallidos' => count($facturasFallidas)
+            ]);
+            
+        } catch (Exception $e) {
+            json_output([
+                'success' => false,
+                'message' => 'Error al procesar el archivo: ' . $e->getMessage()
+            ]);
         }
-        
-        // Identificar UUIDs válidos que NO se encontraron en la BD
-        // ✅ SOLUCIÓN: Ahora la comparación es case-insensitive (ambos en MAYÚSCULAS)
-        foreach ($uuidsValidos as $uuid) {
-            if (!in_array($uuid, $uuidsEncontrados)) {
-                $facturasFallidas[] = [
-                    'uuid' => $uuid,
-                    'folio' => null,
-                    'estado' => 'no_encontrado_bd',
-                    'error' => 'UUID no encontrado en la base de datos'
-                ];
-            }
-        }
-        
-        // Agregar UUIDs con formato inválido a fallidas
-        $facturasFallidas = array_merge($facturasFallidas, $uuidsInvalidos);
-        
-        // Resultado final
-        json_output([
-            'success' => true,
-            'facturas' => array_values($facturasExitosas),
-            'facturas_fallidas' => array_values($facturasFallidas),
-            'total_solicitados' => $totalSolicitados,
-            'total_encontrados' => count($facturasExitosas),
-            'total_fallidos' => count($facturasFallidas)
-        ]);
-        
-    } catch (Exception $e) {
-        json_output([
-            'success' => false,
-            'message' => 'Error al procesar el archivo: ' . $e->getMessage()
-        ]);
     }
-}
 
     /**
      * Descargar archivo de factura individual
@@ -1596,131 +1597,131 @@ class Supply{
     }
 
     /**
- * Descargar múltiples facturas en un archivo ZIP
- */
-function descargar_facturas_zip() {
-    header('Content-Type: application/json');
-    
-    try {
-        // Recibir los IDs de las facturas a descargar
-        $input = json_decode(file_get_contents('php://input'), true);
-        $ids = $input['ids'] ?? [];
+     * Descargar múltiples facturas en un archivo ZIP
+     */
+    function descargar_facturas_zip() {
+        header('Content-Type: application/json');
         
-        if (empty($ids)) {
-            json_output(['success' => false, 'message' => 'No se proporcionaron IDs de facturas']);
-            return;
-        }
-        
-        // Crear directorio temporal si no existe
-        $tempDir = __DIR__ . '/../temp/';
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0777, true);
-        }
-        
-        // Nombre único para el archivo ZIP
-        $zipFileName = 'facturas_' . date('YmdHis') . '_' . uniqid() . '.zip';
-        $zipPath = $tempDir . $zipFileName;
-        
-        // Crear archivo ZIP
-        $zip = new ZipArchive();
-        if ($zip->open($zipPath, ZipArchive::CREATE) !== TRUE) {
-            json_output(['success' => false, 'message' => 'No se pudo crear el archivo ZIP']);
-            return;
-        }
-        
-        $archivosAgregados = 0;
-        $archivosNoEncontrados = [];
-        
-        // Agregar cada factura al ZIP
-        foreach ($ids as $id) {
-            $factura = $this->facturasRecibidasModel->obtenerPorId($id);
+        try {
+            // Recibir los IDs de las facturas a descargar
+            $input = json_decode(file_get_contents('php://input'), true);
+            $ids = $input['ids'] ?? [];
             
-            if ($factura && !empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
-                $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
-                
-                // Agregar archivo al ZIP
-                if ($zip->addFile($factura['RutaArchivo'], $nombreArchivo)) {
-                    $archivosAgregados++;
-                } else {
-                    $archivosNoEncontrados[] = $nombreArchivo;
-                }
-            } else {
-                $archivosNoEncontrados[] = 'Factura ID: ' . $id;
+            if (empty($ids)) {
+                json_output(['success' => false, 'message' => 'No se proporcionaron IDs de facturas']);
+                return;
             }
-        }
-        
-        $zip->close();
-        
-        // Verificar que se agregó al menos un archivo
-        if ($archivosAgregados === 0) {
-            unlink($zipPath); // Eliminar ZIP vacío
+            
+            // Crear directorio temporal si no existe
+            $tempDir = __DIR__ . '/../temp/';
+            if (!is_dir($tempDir)) {
+                mkdir($tempDir, 0777, true);
+            }
+            
+            // Nombre único para el archivo ZIP
+            $zipFileName = 'facturas_' . date('YmdHis') . '_' . uniqid() . '.zip';
+            $zipPath = $tempDir . $zipFileName;
+            
+            // Crear archivo ZIP
+            $zip = new ZipArchive();
+            if ($zip->open($zipPath, ZipArchive::CREATE) !== TRUE) {
+                json_output(['success' => false, 'message' => 'No se pudo crear el archivo ZIP']);
+                return;
+            }
+            
+            $archivosAgregados = 0;
+            $archivosNoEncontrados = [];
+            
+            // Agregar cada factura al ZIP
+            foreach ($ids as $id) {
+                $factura = $this->facturasRecibidasModel->obtenerPorId($id);
+                
+                if ($factura && !empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
+                    $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
+                    
+                    // Agregar archivo al ZIP
+                    if ($zip->addFile($factura['RutaArchivo'], $nombreArchivo)) {
+                        $archivosAgregados++;
+                    } else {
+                        $archivosNoEncontrados[] = $nombreArchivo;
+                    }
+                } else {
+                    $archivosNoEncontrados[] = 'Factura ID: ' . $id;
+                }
+            }
+            
+            $zip->close();
+            
+            // Verificar que se agregó al menos un archivo
+            if ($archivosAgregados === 0) {
+                unlink($zipPath); // Eliminar ZIP vacío
+                json_output([
+                    'success' => false, 
+                    'message' => 'No se encontraron archivos para descargar',
+                    'archivos_no_encontrados' => $archivosNoEncontrados
+                ]);
+                return;
+            }
+            
+            // Retornar información del ZIP creado
             json_output([
-                'success' => false, 
-                'message' => 'No se encontraron archivos para descargar',
-                'archivos_no_encontrados' => $archivosNoEncontrados
+                'success' => true,
+                'zip_file' => $zipFileName,
+                'archivos_agregados' => $archivosAgregados,
+                'archivos_no_encontrados' => $archivosNoEncontrados,
+                'download_url' => '/supply/download_zip/' . $zipFileName
             ]);
-            return;
+            
+        } catch (Exception $e) {
+            json_output([
+                'success' => false,
+                'message' => 'Error al crear ZIP: ' . $e->getMessage()
+            ]);
         }
-        
-        // Retornar información del ZIP creado
-        json_output([
-            'success' => true,
-            'zip_file' => $zipFileName,
-            'archivos_agregados' => $archivosAgregados,
-            'archivos_no_encontrados' => $archivosNoEncontrados,
-            'download_url' => '/supply/download_zip/' . $zipFileName
-        ]);
-        
-    } catch (Exception $e) {
-        json_output([
-            'success' => false,
-            'message' => 'Error al crear ZIP: ' . $e->getMessage()
-        ]);
     }
-}
 
-/**
- * Descargar el archivo ZIP generado
- */
-function download_zip($zipFileName) {
-    try {
-        // Validar nombre de archivo (seguridad)
-        if (!preg_match('/^facturas_\d{14}_[a-z0-9]+\.zip$/', $zipFileName)) {
-            http_response_code(400);
-            die('Nombre de archivo inválido');
+    /**
+     * Descargar el archivo ZIP generado
+     */
+    function download_zip($zipFileName) {
+        try {
+            // Validar nombre de archivo (seguridad)
+            if (!preg_match('/^facturas_\d{14}_[a-z0-9]+\.zip$/', $zipFileName)) {
+                http_response_code(400);
+                die('Nombre de archivo inválido');
+            }
+            
+            $zipPath = __DIR__ . '/../temp/' . $zipFileName;
+            
+            if (!file_exists($zipPath)) {
+                http_response_code(404);
+                die('Archivo ZIP no encontrado');
+            }
+            
+            // Limpiar buffer
+            if (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            // Headers para descarga
+            header('Content-Type: application/zip');
+            header('Content-Disposition: attachment; filename="' . $zipFileName . '"');
+            header('Content-Length: ' . filesize($zipPath));
+            header('Cache-Control: no-cache, must-revalidate');
+            header('Pragma: public');
+            
+            // Enviar archivo
+            readfile($zipPath);
+            
+            // Eliminar archivo temporal después de enviarlo
+            unlink($zipPath);
+            exit;
+            
+        } catch (Exception $e) {
+            http_response_code(500);
+            die('Error al descargar ZIP: ' . $e->getMessage());
         }
-        
-        $zipPath = __DIR__ . '/../temp/' . $zipFileName;
-        
-        if (!file_exists($zipPath)) {
-            http_response_code(404);
-            die('Archivo ZIP no encontrado');
-        }
-        
-        // Limpiar buffer
-        if (ob_get_level()) {
-            ob_end_clean();
-        }
-        
-        // Headers para descarga
-        header('Content-Type: application/zip');
-        header('Content-Disposition: attachment; filename="' . $zipFileName . '"');
-        header('Content-Length: ' . filesize($zipPath));
-        header('Cache-Control: no-cache, must-revalidate');
-        header('Pragma: public');
-        
-        // Enviar archivo
-        readfile($zipPath);
-        
-        // Eliminar archivo temporal después de enviarlo
-        unlink($zipPath);
-        exit;
-        
-    } catch (Exception $e) {
-        http_response_code(500);
-        die('Error al descargar ZIP: ' . $e->getMessage());
     }
-}
 
     /**
      * Limpiar archivos ZIP antiguos (ejecutar periódicamente)
@@ -1749,7 +1750,7 @@ function download_zip($zipFileName) {
         ]);
     }
 
-    
+
 
 
     // public function resumen_payment_table() {
@@ -1757,7 +1758,7 @@ function download_zip($zipFileName) {
     //     ini_set('memory_limit', '1024M');
     //     set_time_limit(0);
     //     header('Content-Type: application/json');
-        
+
     //     $postData = [
     //         'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
     //         'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
@@ -1781,11 +1782,11 @@ function download_zip($zipFileName) {
 
     //         $response = curl_exec($ch);
     //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            
+
     //         if (curl_errno($ch)) {
     //             throw new Exception('Error de cURL: ' . curl_error($ch));
     //         }
-            
+
     //         curl_close($ch);
 
     //         if ($httpCode !== 200) {
@@ -1841,12 +1842,12 @@ function download_zip($zipFileName) {
     //                 // ========== BUSCAR FACTURA ASIGNADA ==========
     //                 $nrotrn = $row['nrotrn'];
     //                 $codgas = $row['numero_estacion']; // Usar numero_estacion como codgas
-                    
+
     //                 $facturaAsignada = null;
     //                 $uuidAsignado = '';
     //                 $folioAsignado = '';
     //                 $tieneFactura = false;
-                    
+
     //                 // Buscar en el array de facturas asignadas
     //                 $key = $nrotrn . '_' . $codgas;
     //                 if (isset($facturasAsignadas[$key])) {
@@ -1890,151 +1891,152 @@ function download_zip($zipFileName) {
     //     }
     // }
 
-    public function resumen_payment_table() {
-    ini_set('max_execution_time', 5000);
-    ini_set('memory_limit', '1024M');
-    set_time_limit(0);
-    header('Content-Type: application/json');
+    public function resumen_payment_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
 
-    $postData = [
-        'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
-        'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
-        'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
-        'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
-        'company' => isset($_POST['company']) ? $_POST['company'] : '0'
-    ];
+        $postData = [
+            'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
+            'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
+            'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+            'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+        ];
 
-    if (!$postData['from'] || !$postData['until']) {
-        json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
-        return;
-    }
-
-    try {
-        $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 600);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
-
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        
-        if (curl_errno($ch)) {
-            throw new Exception('Error de cURL: ' . curl_error($ch));
-        }
-        
-        curl_close($ch);
-
-        if ($httpCode !== 200) {
-            throw new Exception("Error HTTP: $httpCode");
+        if (!$postData['from'] || !$postData['until']) {
+            json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
+            return;
         }
 
-        $apiData = json_decode($response, true);
+        try {
+            $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
 
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
-        }
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-        $data = [];
-
-        if (isset($apiData) && is_array($apiData)) {
-            foreach ($apiData as $row) {
-                if (empty($row['nrotrn'])) {
-                    continue;
-                }
-
-                // Normalizar combustible
-                $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
-                $norm = mb_strtolower($raw, 'UTF-8');
-                $norm = str_replace(['.', '-', '_'], ' ', $norm);
-                $norm = preg_replace('/\s+/', ' ', $norm);
-                $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
-
-                $combustible = $raw;
-                if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
-                    $combustible = 'Regular';
-                } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
-                    $combustible = 'Diesel';
-                } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
-                    $combustible = 'Premium';
-                } else {
-                    $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
-                }
-
-                // Normalizar proveedor
-                $proveedor_controlgas = $row['proveedor_controlgas'];
-                if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
-                    $proveedor_controlgas = 'TESORO';
-                }
-                if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
-                    $proveedor_controlgas = 'PREMIERGAS';
-                }
-                if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
-                    $proveedor_controlgas = 'MGC';
-                }
-
-                // ========== DATOS YA VIENEN CON LA FACTURA ASIGNADA ==========
-                $tieneFactura = (bool)($row['tiene_factura_asignada'] ?? 0);
-                $uuidMostrar = $tieneFactura ? ($row['uuid_asignado'] ?? '') : ($row['uuid_original'] ?? '');
-                $folioMostrar = $tieneFactura ? ($row['folio_asignado'] ?? '') : ($row['nro_fac'] ?? '');
-
-                $data[] = [
-                    'fecha'                       => $row['fecha'] ?? '',
-                    'hora'                        => $row['hora_formateada'] ?? '',
-                    'nrotrn'                      => $row['nrotrn'],
-                    'codgas'                      => $row['codgas'] ?? '',
-                    'estacion'                    => $row['estacion'] ?? '',
-                    'numero_estacion'             => $row['numero_estacion'] ?? '',
-                    'proveedor_original'          => $proveedor_controlgas,
-                    'num_fac_proveedor'           => $folioMostrar,
-                    'proveedor_final'             => $proveedor_controlgas,
-                    'combustible'                 => $combustible,
-                    'capmax'                      => $row['capmax'] ?? 0,
-                    'recaudado'                   => $row['recaudado'] ?? 0,
-                    'fac_rec'                     => $row['fac_rec'] ?? 0,
-                    'nro_fac'                     => $row['nro_fac'] ?? '',
-                    'uuid'                        => $uuidMostrar,
-                    'proveedor_controlgas'        => $proveedor_controlgas,
-                    'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
-                    'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
-                    'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
-                    'graprd'                      => $row['graprd'] ?? '',
-                    
-                    // ========== INFORMACIÓN DE LA FACTURA ASIGNADA ==========
-                    'tiene_factura'               => $tieneFactura,
-                    'factura_id'                  => $tieneFactura ? ($row['factura_asignacion_id'] ?? null) : null,
-                    'fecha_asignacion'            => $tieneFactura ? ($row['fecha_asignacion'] ?? null) : null,
-                    'usuario_asignacion'          => $tieneFactura ? ($row['usuario_asignacion'] ?? null) : null,
-                    'observaciones_asignacion'    => $tieneFactura ? ($row['observaciones_asignacion'] ?? null) : null,
-                    'total_factura_asignada'      => $tieneFactura ? ($row['total_factura_asignada'] ?? 0) : 0,
-                    'emisor_factura_asignada'     => $tieneFactura ? ($row['emisor_factura_asignada'] ?? '') : '',
-                    'destino_factura'             => $tieneFactura ? ($row['destino_factura_asignada'] ?? '') : '',
-                    'remision_factura'            => $tieneFactura ? ($row['remision_factura_asignada'] ?? '') : ''
-                ];
+            if (curl_errno($ch)) {
+                throw new Exception('Error de cURL: ' . curl_error($ch));
             }
+
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception("Error HTTP: $httpCode");
+            }
+
+            $apiData = json_decode($response, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+            }
+
+            $data = [];
+
+            if (isset($apiData) && is_array($apiData)) {
+                foreach ($apiData as $row) {
+                    if (empty($row['nrotrn'])) {
+                        continue;
+                    }
+
+                    // Normalizar combustible
+                    $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
+                    $norm = mb_strtolower($raw, 'UTF-8');
+                    $norm = str_replace(['.', '-', '_'], ' ', $norm);
+                    $norm = preg_replace('/\s+/', ' ', $norm);
+                    $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
+
+                    $combustible = $raw;
+                    if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
+                        $combustible = 'Regular';
+                    } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
+                        $combustible = 'Diesel';
+                    } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
+                        $combustible = 'Premium';
+                    } else {
+                        $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8");
+                    }
+
+                    // Normalizar proveedor
+                    $proveedor_controlgas = $row['proveedor_controlgas'];
+                    if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
+                        $proveedor_controlgas = 'TESORO';
+                    }
+                    if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
+                        $proveedor_controlgas = 'PREMIERGAS';
+                    }
+                    if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
+                        $proveedor_controlgas = 'MGC';
+                    }
+
+                    // ========== DATOS YA VIENEN CON LA FACTURA ASIGNADA ==========
+                    $tieneFactura = (bool)($row['tiene_factura_asignada'] ?? 0);
+                    $uuidMostrar = $tieneFactura ? ($row['uuid_asignado'] ?? '') : ($row['uuid_original'] ?? '');
+                    $folioMostrar = $tieneFactura ? ($row['folio_asignado'] ?? '') : ($row['nro_fac'] ?? '');
+
+                    $data[] = [
+                        'fecha'                       => $row['fecha'] ?? '',
+                        'hora'                        => $row['hora_formateada'] ?? '',
+                        'nrotrn'                      => $row['nrotrn'],
+                        'codgas'                      => $row['codgas'] ?? '',
+                        'estacion'                    => $row['estacion'] ?? '',
+                        'numero_estacion'             => $row['numero_estacion'] ?? '',
+                        'proveedor_original'          => $proveedor_controlgas,
+                        'num_fac_proveedor'           => $folioMostrar,
+                        'proveedor_final'             => $proveedor_controlgas,
+                        'combustible'                 => $combustible,
+                        'capmax'                      => $row['capmax'] ?? 0,
+                        'recaudado'                   => $row['recaudado'] ?? 0,
+                        'fac_rec'                     => $row['fac_rec'] ?? 0,
+                        'nro_fac'                     => $row['nro_fac'] ?? '',
+                        'uuid'                        => $uuidMostrar,
+                        'proveedor_controlgas'        => $proveedor_controlgas,
+                        'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
+                        'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
+                        'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
+                        'graprd'                      => $row['graprd'] ?? '',
+
+                        // ========== INFORMACIÓN DE LA FACTURA ASIGNADA ==========
+                        'tiene_factura'               => $tieneFactura,
+                        'factura_id'                  => $tieneFactura ? ($row['factura_asignacion_id'] ?? null) : null,
+                        'fecha_asignacion'            => $tieneFactura ? ($row['fecha_asignacion'] ?? null) : null,
+                        'usuario_asignacion'          => $tieneFactura ? ($row['usuario_asignacion'] ?? null) : null,
+                        'observaciones_asignacion'    => $tieneFactura ? ($row['observaciones_asignacion'] ?? null) : null,
+                        'total_factura_asignada'      => $tieneFactura ? ($row['total_factura_asignada'] ?? 0) : 0,
+                        'emisor_factura_asignada'     => $tieneFactura ? ($row['emisor_factura_asignada'] ?? '') : '',
+                        'destino_factura'             => $tieneFactura ? ($row['destino_factura_asignada'] ?? '') : '',
+                        'remision_factura'            => $tieneFactura ? ($row['remision_factura_asignada'] ?? '') : ''
+                    ];
+                }
+            }
+
+            json_output(['data' => $data]);
+        } catch (Exception $e) {
+            error_log("Error en resumen_payment_table: " . $e->getMessage());
+            json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
         }
-
-        json_output(['data' => $data]);
-
-    } catch (Exception $e) {
-        error_log("Error en resumen_payment_table: " . $e->getMessage());
-        json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
-    }
     }
 
 
 
     // ========== NUEVO ENDPOINT: Buscar facturas disponibles ==========
-    public function buscar_facturas_disponibles() {
+    public function buscar_facturas_disponibles()
+    {
         header('Content-Type: application/json');
-        
+
         $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
         $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
         $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
-        
+
         try {
-            
+
 
             $facturas_recibidas = $this->facturasRecibidasModel->buscar_facturas_disponibles($searchTerm, $fechaInicio, $fechaFin);
 
@@ -2056,7 +2058,6 @@ function download_zip($zipFileName) {
 
 
             json_output(['success' => true, 'data' => $facturas]);
-
         } catch (Exception $e) {
             error_log("Error en buscar_facturas_disponibles: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2064,24 +2065,25 @@ function download_zip($zipFileName) {
     }
 
     // ========== NUEVO ENDPOINT: Asignar factura a movimiento ==========
-    public function asignar_factura_movimiento() {
+    public function asignar_factura_movimiento()
+    {
         header('Content-Type: application/json');
-        
+
         $facturaId = isset($_POST['factura_id']) ? intval($_POST['factura_id']) : 0;
         $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
         $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
         $observaciones = isset($_POST['observaciones']) ? $_POST['observaciones'] : '';
         $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Sistema';
-        
+
         if ($facturaId == 0 || $nrotrn == 0 || $codgas == 0) {
             json_output(['success' => false, 'message' => 'Parámetros inválidos']);
             return;
         }
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
@@ -2089,17 +2091,17 @@ function download_zip($zipFileName) {
             // Obtener UUID de la factura
             $queryUUID = "SELECT UUID FROM FacturasRecibidas WHERE Id = $facturaId";
             $resultUUID = odbc_exec($conn, $queryUUID);
-            
+
             if (!$resultUUID || !($rowUUID = odbc_fetch_array($resultUUID))) {
                 throw new Exception("Factura no encontrada");
             }
-            
+
             $uuid = $rowUUID['UUID'];
 
             // Verificar si ya existe una asignación
             $queryCheck = "SELECT Id FROM FacturasMovimientosTanques WHERE nrotrn = $nrotrn AND codgas = $codgas";
             $resultCheck = odbc_exec($conn, $queryCheck);
-            
+
             if ($rowCheck = odbc_fetch_array($resultCheck)) {
                 // Ya existe, actualizar
                 $queryUpdate = "
@@ -2112,11 +2114,11 @@ function download_zip($zipFileName) {
                         Activo = 1
                     WHERE nrotrn = $nrotrn AND codgas = $codgas
                 ";
-                
+
                 if (!odbc_exec($conn, $queryUpdate)) {
                     throw new Exception("Error al actualizar: " . odbc_errormsg($conn));
                 }
-                
+
                 $message = "Asignación actualizada correctamente";
             } else {
                 // No existe, insertar
@@ -2125,17 +2127,16 @@ function download_zip($zipFileName) {
                     (FacturaId, UUID, nrotrn, codgas, UsuarioAsignacion, Observaciones)
                     VALUES ($facturaId, '$uuid', $nrotrn, $codgas, '$usuario', '$observaciones')
                 ";
-                
+
                 if (!odbc_exec($conn, $queryInsert)) {
                     throw new Exception("Error al insertar: " . odbc_errormsg($conn));
                 }
-                
+
                 $message = "Factura asignada correctamente";
             }
 
             odbc_close($conn);
             json_output(['success' => true, 'message' => $message]);
-
         } catch (Exception $e) {
             error_log("Error en asignar_factura_movimiento: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2147,7 +2148,8 @@ function download_zip($zipFileName) {
      * Relacionar factura con movimiento de tanque
      * Endpoint que utiliza el modelo FacturasMovimientosTanquesModel
      */
-    public function relacionar_factura_movimiento() {
+    public function relacionar_factura_movimiento()
+    {
         header('Content-Type: application/json');
 
         // Obtener parámetros del POST
@@ -2185,34 +2187,35 @@ function download_zip($zipFileName) {
     }
 
     // ========== NUEVO ENDPOINT: Buscar facturas de PROVEEDOR (excluir Petrotal) ==========
-    public function buscar_facturas_proveedor() {
+    public function buscar_facturas_proveedor()
+    {
         header('Content-Type: application/json');
-        
+
         $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
         $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
         $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
 
             $whereClauses = [];
-            
+
             // Excluir facturas de Petrotal (emisor)
             $whereClauses[] = "fr.EmisorNombre NOT LIKE '%PETROTAL%'";
-            
+
             if (!empty($searchTerm)) {
                 $whereClauses[] = "(fr.UUID LIKE '%$searchTerm%' OR fr.Folio LIKE '%$searchTerm%' OR fr.EmisorNombre LIKE '%$searchTerm%')";
             }
-            
+
             if (!empty($fechaInicio) && !empty($fechaFin)) {
                 $whereClauses[] = "fr.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
             }
-            
+
             $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
 
             $query = "
@@ -2243,9 +2246,9 @@ function download_zip($zipFileName) {
                 $whereSQL
                 ORDER BY fr.Fecha DESC
             ";
-            
+
             $result = odbc_exec($conn, $query);
-            
+
             if (!$result) {
                 throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
             }
@@ -2269,7 +2272,6 @@ function download_zip($zipFileName) {
 
             odbc_close($conn);
             json_output(['success' => true, 'data' => $facturas]);
-
         } catch (Exception $e) {
             error_log("Error en buscar_facturas_proveedor: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2277,37 +2279,38 @@ function download_zip($zipFileName) {
     }
 
     // ========== NUEVO ENDPOINT: Buscar facturas de PETROTAL específicamente ==========
-    public function buscar_facturas_petrotal() {
+    public function buscar_facturas_petrotal()
+    {
         header('Content-Type: application/json');
-        
+
         $searchTerm = isset($_POST['search']) ? $_POST['search'] : '';
         $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
         $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
 
             $whereClauses = [];
-            
+
             // SOLO facturas emitidas por Petrotal
             $whereClauses[] = "fr.EmisorNombre LIKE '%PETROTAL%'";
-            
+
             // Y que sean facturas recibidas por TotalGas (receptor)
             $whereClauses[] = "fr.ReceptorNombre LIKE '%TOTAL%GAS%'";
-            
+
             if (!empty($searchTerm)) {
                 $whereClauses[] = "(fr.UUID LIKE '%$searchTerm%' OR fr.Folio LIKE '%$searchTerm%')";
             }
-            
+
             if (!empty($fechaInicio) && !empty($fechaFin)) {
                 $whereClauses[] = "fr.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
             }
-            
+
             $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
 
             $query = "
@@ -2337,9 +2340,9 @@ function download_zip($zipFileName) {
                 $whereSQL
                 ORDER BY fr.Fecha DESC
             ";
-            
+
             $result = odbc_exec($conn, $query);
-            
+
             if (!$result) {
                 throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
             }
@@ -2362,7 +2365,6 @@ function download_zip($zipFileName) {
 
             odbc_close($conn);
             json_output(['success' => true, 'data' => $facturas]);
-
         } catch (Exception $e) {
             error_log("Error en buscar_facturas_petrotal: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2370,16 +2372,17 @@ function download_zip($zipFileName) {
     }
 
     // ========== NUEVO ENDPOINT: Guardar asignación completa (directo o con Petrotal) ==========
-    public function guardar_asignacion_completa() {
+    public function guardar_asignacion_completa()
+    {
         header('Content-Type: application/json');
-        
+
         // Obtener datos del POST
         $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
         $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
         $tipoOperacion = isset($_POST['tipo_operacion']) ? intval($_POST['tipo_operacion']) : 1;
         $observaciones = isset($_POST['observaciones']) ? $_POST['observaciones'] : '';
         $usuario = isset($_SESSION['usuario']) ? $_SESSION['usuario'] : 'Sistema';
-        
+
         // Factura Proveedor (obligatoria)
         $facturaProveedorId = isset($_POST['factura_proveedor_id']) ? intval($_POST['factura_proveedor_id']) : 0;
         $uuidProveedor = isset($_POST['uuid_proveedor']) ? $_POST['uuid_proveedor'] : '';
@@ -2387,7 +2390,7 @@ function download_zip($zipFileName) {
         $montoProveedor = isset($_POST['monto_proveedor']) ? floatval($_POST['monto_proveedor']) : 0;
         $litrosProveedor = isset($_POST['litros_proveedor']) ? floatval($_POST['litros_proveedor']) : 0;
         $precioProveedor = isset($_POST['precio_proveedor']) ? floatval($_POST['precio_proveedor']) : 0;
-        
+
         // Factura Petrotal (opcional, solo si tipoOperacion = 2)
         $facturaPetrotalId = isset($_POST['factura_petrotal_id']) ? intval($_POST['factura_petrotal_id']) : null;
         $uuidPetrotal = isset($_POST['uuid_petrotal']) ? $_POST['uuid_petrotal'] : null;
@@ -2395,23 +2398,23 @@ function download_zip($zipFileName) {
         $montoPetrotal = isset($_POST['monto_petrotal']) ? floatval($_POST['monto_petrotal']) : null;
         $litrosPetrotal = isset($_POST['litros_petrotal']) ? floatval($_POST['litros_petrotal']) : null;
         $precioPetrotal = isset($_POST['precio_petrotal']) ? floatval($_POST['precio_petrotal']) : null;
-        
+
         // Validaciones
         if ($nrotrn == 0 || $codgas == 0 || $facturaProveedorId == 0) {
             json_output(['success' => false, 'message' => 'Datos incompletos (nrotrn, codgas o factura proveedor)']);
             return;
         }
-        
+
         // Si es operación con Petrotal, validar que tenga la factura de Petrotal
         if ($tipoOperacion == 2 && ($facturaPetrotalId == 0 || empty($facturaPetrotalId))) {
             json_output(['success' => false, 'message' => 'Para operación con Petrotal debe seleccionar la factura de Petrotal']);
             return;
         }
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
@@ -2419,13 +2422,13 @@ function download_zip($zipFileName) {
             // Verificar si ya existe una asignación
             $queryCheck = "SELECT Id FROM FacturasMovimientosTanques WHERE nrotrn = ? AND codgas = ?";
             $stmtCheck = odbc_prepare($conn, $queryCheck);
-            
+
             if (!odbc_execute($stmtCheck, [$nrotrn, $codgas])) {
                 throw new Exception("Error al verificar asignación existente");
             }
-            
+
             $existeAsignacion = odbc_fetch_array($stmtCheck);
-            
+
             if ($existeAsignacion) {
                 // Actualizar asignación existente
                 $queryUpdate = "
@@ -2450,9 +2453,9 @@ function download_zip($zipFileName) {
                         Activo = 1
                     WHERE nrotrn = ? AND codgas = ?
                 ";
-                
+
                 $stmtUpdate = odbc_prepare($conn, $queryUpdate);
-                
+
                 $params = [
                     $tipoOperacion,
                     $facturaProveedorId,
@@ -2472,13 +2475,12 @@ function download_zip($zipFileName) {
                     $nrotrn,
                     $codgas
                 ];
-                
+
                 if (!odbc_execute($stmtUpdate, $params)) {
                     throw new Exception("Error al actualizar asignación: " . odbc_errormsg($conn));
                 }
-                
+
                 $message = "Asignación actualizada correctamente";
-                
             } else {
                 // Insertar nueva asignación
                 $queryInsert = "
@@ -2489,9 +2491,9 @@ function download_zip($zipFileName) {
                     UsuarioAsignacion, Observaciones)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ";
-                
+
                 $stmtInsert = odbc_prepare($conn, $queryInsert);
-                
+
                 $params = [
                     $nrotrn,
                     $codgas,
@@ -2511,17 +2513,16 @@ function download_zip($zipFileName) {
                     $usuario,
                     $observaciones
                 ];
-                
+
                 if (!odbc_execute($stmtInsert, $params)) {
                     throw new Exception("Error al insertar asignación: " . odbc_errormsg($conn));
                 }
-                
+
                 $message = "Asignación guardada correctamente";
             }
 
             odbc_close($conn);
             json_output(['success' => true, 'message' => $message]);
-
         } catch (Exception $e) {
             error_log("Error en guardar_asignacion_completa: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2529,21 +2530,22 @@ function download_zip($zipFileName) {
     }
 
     // ========== ACTUALIZAR ENDPOINT: Eliminar asignación (ya existente pero actualizado) ==========
-    public function eliminar_asignacion_factura() {
+    public function eliminar_asignacion_factura()
+    {
         header('Content-Type: application/json');
-        
+
         $nrotrn = isset($_POST['nrotrn']) ? intval($_POST['nrotrn']) : 0;
         $codgas = isset($_POST['codgas']) ? intval($_POST['codgas']) : 0;
-        
+
         if ($nrotrn == 0 || $codgas == 0) {
             json_output(['success' => false, 'message' => 'Parámetros inválidos']);
             return;
         }
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
@@ -2554,16 +2556,15 @@ function download_zip($zipFileName) {
                 SET Activo = 0
                 WHERE nrotrn = ? AND codgas = ?
             ";
-            
+
             $stmt = odbc_prepare($conn, $query);
-            
+
             if (!odbc_execute($stmt, [$nrotrn, $codgas])) {
                 throw new Exception("Error al eliminar: " . odbc_errormsg($conn));
             }
 
             odbc_close($conn);
             json_output(['success' => true, 'message' => 'Asignación eliminada correctamente']);
-
         } catch (Exception $e) {
             error_log("Error en eliminar_asignacion_factura: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2571,21 +2572,22 @@ function download_zip($zipFileName) {
     }
 
     // ========== ENDPOINT ADICIONAL: Obtener detalle de asignación ==========
-    public function obtener_detalle_asignacion() {
+    public function obtener_detalle_asignacion()
+    {
         header('Content-Type: application/json');
-        
+
         $nrotrn = isset($_GET['nrotrn']) ? intval($_GET['nrotrn']) : 0;
         $codgas = isset($_GET['codgas']) ? intval($_GET['codgas']) : 0;
-        
+
         if ($nrotrn == 0 || $codgas == 0) {
             json_output(['success' => false, 'message' => 'Parámetros inválidos']);
             return;
         }
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
@@ -2603,15 +2605,15 @@ function download_zip($zipFileName) {
                 LEFT JOIN FacturasRecibidas frPetro ON fmt.FacturaPetrotalId = frPetro.Id
                 WHERE fmt.nrotrn = ? AND fmt.codgas = ? AND fmt.Activo = 1
             ";
-            
+
             $stmt = odbc_prepare($conn, $query);
-            
+
             if (!odbc_execute($stmt, [$nrotrn, $codgas])) {
                 throw new Exception("Error al consultar detalle");
             }
-            
+
             $detalle = odbc_fetch_array($stmt);
-            
+
             if (!$detalle) {
                 json_output(['success' => false, 'message' => 'No se encontró asignación']);
                 return;
@@ -2619,7 +2621,6 @@ function download_zip($zipFileName) {
 
             odbc_close($conn);
             json_output(['success' => true, 'data' => $detalle]);
-
         } catch (Exception $e) {
             error_log("Error en obtener_detalle_asignacion: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2627,16 +2628,17 @@ function download_zip($zipFileName) {
     }
 
     // ========== ENDPOINT ADICIONAL: Reporte de márgenes Petrotal ==========
-    public function reporte_margenes_petrotal() {
+    public function reporte_margenes_petrotal()
+    {
         header('Content-Type: application/json');
-        
+
         $fechaInicio = isset($_POST['fecha_inicio']) ? $_POST['fecha_inicio'] : '';
         $fechaFin = isset($_POST['fecha_fin']) ? $_POST['fecha_fin'] : '';
-        
+
         try {
             $conn_str = 'DRIVER={ODBC Driver 17 for SQL Server};SERVER=192.168.0.6;DATABASE=TG;UID=cguser;PWD=sahei1712';
             $conn = odbc_connect($conn_str, '', '');
-            
+
             if (!$conn) {
                 throw new Exception("Error al conectar con la base de datos");
             }
@@ -2673,9 +2675,9 @@ function download_zip($zipFileName) {
                     $whereSQL
                 ORDER BY frProv.Fecha DESC
             ";
-            
+
             $result = odbc_exec($conn, $query);
-            
+
             if (!$result) {
                 throw new Exception("Error en la consulta: " . odbc_errormsg($conn));
             }
@@ -2687,7 +2689,6 @@ function download_zip($zipFileName) {
 
             odbc_close($conn);
             json_output(['success' => true, 'data' => $reportes]);
-
         } catch (Exception $e) {
             error_log("Error en reporte_margenes_petrotal: " . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage()]);
@@ -2699,7 +2700,7 @@ function download_zip($zipFileName) {
     //     ini_set('memory_limit', '1024M');
     //     set_time_limit(0);
     //     header('Content-Type: application/json');
-        
+
     //     $postData = [
     //         'from' => isset($_POST['fromDate']) ? $_POST['fromDate'] : null,
     //         'until' => isset($_POST['untilDate']) ? $_POST['untilDate'] : null,
@@ -2722,11 +2723,11 @@ function download_zip($zipFileName) {
 
     //         $response = curl_exec($ch);
     //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            
+
     //         if (curl_errno($ch)) {
     //             throw new Exception('Error de cURL: ' . curl_error($ch));
     //         }
-            
+
     //         curl_close($ch);
 
     //         if ($httpCode !== 200) {
@@ -2751,7 +2752,8 @@ function download_zip($zipFileName) {
     //     }
     // }
 
-    public function compras_facturas_table() {
+    public function compras_facturas_table()
+    {
         if ($rows = $this->facturasRecibidasModel->compras_facturas_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas'], $_POST['proveedor'], $_POST['company'])) {
             $data = [];
             foreach ($rows as $row) {
@@ -2762,8 +2764,8 @@ function download_zip($zipFileName) {
                 $proveedor = $this->normalizarProveedor((string) ($row['ProveedorOriginal'] ?? ''));
                 $saldoFactura = is_numeric($row['SaldoFactura'] ?? null) ? floatval($row['SaldoFactura']) : 0.0;
 
-                $numeroEstacion = ($row['numero_estacion'] != "" ? $row['numero_estacion'] : '<span class="badge bg-warning text-dark">'.$row['Destino'].'</span>' );
-                $producto = ($row['producto_tanque_nombre'] != "" ? $row['producto_tanque_nombre'] : '<span class="badge bg-warning text-dark">'.$row['producto_tanque'].'</span>' );
+                $numeroEstacion = ($row['numero_estacion'] != "" ? $row['numero_estacion'] : '<span class="badge bg-warning text-dark">' . $row['Destino'] . '</span>');
+                $producto = ($row['producto_tanque_nombre'] != "" ? $row['producto_tanque_nombre'] : '<span class="badge bg-warning text-dark">' . $row['producto_tanque'] . '</span>');
 
                 // Número de estación
                 // $numeroEstacion = $row['numero_estacion'] ?? '00';
@@ -2804,7 +2806,8 @@ function download_zip($zipFileName) {
             echo json_encode(['data' => []]);
         }
     }
-    private function normalizarProducto($producto) {
+    private function normalizarProducto($producto)
+    {
         if (empty($producto)) return 'N/A';
 
         $prod = strtoupper($producto);
@@ -2820,7 +2823,8 @@ function download_zip($zipFileName) {
         return substr($producto, 0, 50);
     }
 
-    private function normalizarProveedor($proveedor) {
+    private function normalizarProveedor($proveedor)
+    {
         if (empty($proveedor)) return 'N/A';
 
         $prov = strtoupper($proveedor);
@@ -2839,7 +2843,8 @@ function download_zip($zipFileName) {
 
 
 
-    public function ModalinvoicePdf(){
+    public function ModalinvoicePdf()
+    {
         $facturaId = $_POST['FacturaId'] ?? null;
         if (!$facturaId) {
             echo '<div class="modal-body">Factura no especificada.</div>';
@@ -2855,7 +2860,8 @@ function download_zip($zipFileName) {
         // Renderiza un partial twig que contiene el iframe
         echo $this->twig->render($this->route . 'modals/invoice_pdf.html', compact('factura'));
     }
-    public function invoiceFile(){
+    public function invoiceFile()
+    {
         // Acepta GET o POST según tu preferencia
         $facturaId = $_GET['FacturaId'] ?? $_POST['FacturaId'] ?? null;
         if (!$facturaId) {
@@ -2904,27 +2910,28 @@ function download_zip($zipFileName) {
         exit;
     }
 
-    function payment_list() {
+    function payment_list()
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
         $companys = $this->gasolinerasModel->get_company();
         $proveedores = $this->proveedores->get_actives();
-        
+
         echo $this->twig->render($this->route . 'payment_list.html', compact('stations', 'companys', 'proveedores'));
     }
 
     /**
      * Endpoint para obtener lista de pagos programados (DataTable)
      */
-    function payment_list_table() {
+    function payment_list_table()
+    {
         header('Content-Type: application/json');
-        
-        $from = isset($_POST['fromDate']) ? $_POST['fromDate'] : date('Y-m-d', strtotime('-30 days'));
-        $until = isset($_POST['untilDate']) ? $_POST['untilDate'] : date('Y-m-d');
+
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
+        $type = isset($_POST['type']) ? $_POST['type'] : 'payment';
 
         try {
             // Obtener datos del modelo
-            $results = $this->PaymentRequestsModel->get_requests_with_summary($from .' 00:00:01', $until .' 23:59:59', $status);
+            $results = $this->PaymentRequestsModel->get_requests_with_summary($type, $status);
 
             if (!$results) {
                 json_output(['data' => []]);
@@ -2959,33 +2966,42 @@ function download_zip($zipFileName) {
                         </button>
                     </div>
                 ';
-                
+
                 $data[] = [
-                    'id' => $row['id'],
-                    'request_date' => date('d/m/Y H:i', strtotime($row['request_date'])),
-                    'usuario' => $row['usuario_nombre'],
+                    'id'             => $row['id'],
+                    'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
+                    'usuario'        => $row['usuario_nombre'],
+                    'provider_name'  => $row['provider_name'],
+                    'emp_name'       => $row['emp_name'],
                     'total_invoices' => $row['total_invoices'],
-                    'total_amount' => '$' . number_format($row['total_amount'], 2),
-                    'total_paid' => '$' . number_format($row['total_paid'], 2),
-                    'status' => $statusBadge,
+                    'total_amount'   => '$' . number_format($row['total_amount'], 2),
+                    'total_paid'     => '$' . number_format($row['total_paid'], 2),
+                    'status'         => $statusBadge,
                     'authorizations' => $authIndicator,
-                    'comment' => $row['comment'] ?: '-',
-                    'actions' => $actions
+                    'comment'        => $row['comment'] ?: '-',
+                    'actions'        => $actions
                 ];
             }
-            
+
             echo json_encode(['data' => $data]);
-            
         } catch (Exception $e) {
             echo json_encode(['error' => true, 'message' => $e->getMessage()]);
         }
     }
-    private function buildAuthorizationIndicator($abastos, $admin, $tesoreria, 
-        $abastos_user, $admin_user, $tesoreria_user,
-        $abastos_date, $admin_date, $tesoreria_date) {
-        
+    private function buildAuthorizationIndicator(
+        $abastos,
+        $admin,
+        $tesoreria,
+        $abastos_user,
+        $admin_user,
+        $tesoreria_user,
+        $abastos_date,
+        $admin_date,
+        $tesoreria_date
+    ) {
+
         $html = '<div class="d-flex gap-1 align-items-center justify-content-center">';
-        
+
         // Determinar el estado de cada nivel
         $nextLevel = null;
         if (!$abastos) {
@@ -2995,7 +3011,7 @@ function download_zip($zipFileName) {
         } elseif (!$tesoreria) {
             $nextLevel = 3;
         }
-        
+
         // NIVEL 1 - ABASTOS
         if ($abastos) {
             // Autorizado
@@ -3014,7 +3030,7 @@ function download_zip($zipFileName) {
                         <i class="fas fa-lock text-white"></i>
                     </div>';
         }
-        
+
         // NIVEL 2 - ADMIN Y FINANZAS
         if ($admin) {
             // Autorizado
@@ -3033,7 +3049,7 @@ function download_zip($zipFileName) {
                         <i class="fas fa-lock text-white"></i>
                     </div>';
         }
-        
+
         // NIVEL 3 - TESORERÍA
         if ($tesoreria) {
             // Autorizado
@@ -3052,18 +3068,18 @@ function download_zip($zipFileName) {
                         <i class="fas fa-lock text-white"></i>
                     </div>';
         }
-        
+
         $html .= '</div>';
-        
+
         return $html;
     }
 
     /**
      * Endpoint para generar pago (ya existente pero mejorado)
      */
-    function generate_payment() {
+    function generate_payment()
+    {
         header('Content-Type: application/json');
-        
         try {
             $json = file_get_contents('php://input');
             $data = json_decode($json, true);
@@ -3079,6 +3095,8 @@ function download_zip($zipFileName) {
             $comment = $data['comment'] ?? 'Pago programado';
             $provider_cod = $data['provider_cod'] ?? null; // ✅ RECIBIR
             $provider_name = $data['provider_name'] ?? null; // ✅ OPCIONAL
+            $empresa_cod = $data['empresa_cod'] ?? null; // ✅ OPCIONAL
+
 
             if (!$user) {
                 json_output(['success' => false, 'detail' => 'Usuario no autenticado']);
@@ -3095,7 +3113,7 @@ function download_zip($zipFileName) {
             }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment,$provider_cod);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod);
 
             if ($result['success']) {
                 json_output([
@@ -3111,7 +3129,6 @@ function download_zip($zipFileName) {
                     'detail' => $result['message']
                 ]);
             }
-            
         } catch (Exception $e) {
             error_log("Error en generate_payment: " . $e->getMessage());
             json_output([
@@ -3121,7 +3138,8 @@ function download_zip($zipFileName) {
         }
     }
 
-    function payment_detail($payment_id) {
+    function payment_detail($payment_id)
+    {
         try {
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
@@ -3130,10 +3148,10 @@ function download_zip($zipFileName) {
                 return;
             }
             $payment = $payment[0];
-            
+
             // ✅ Obtener facturas con cálculos desde el modelo
             $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-            
+
             // Obtener autorizaciones
             $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
             $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
@@ -3159,7 +3177,7 @@ function download_zip($zipFileName) {
 
             // ✅ Obtener resumen desde el modelo
             $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
-            
+
             echo $this->twig->render($this->route . 'payment_detail.html', compact(
                 'payment',
                 'invoices',
@@ -3169,14 +3187,14 @@ function download_zip($zipFileName) {
                 'summary',
                 'transactions'
             ));
-            
         } catch (Exception $e) {
             setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
             redirect('/supply/payment_list');
         }
     }
-   
-    function delete_payment() {
+
+    function delete_payment()
+    {
         header('Content-Type: application/json');
 
         try {
@@ -3193,22 +3211,24 @@ function download_zip($zipFileName) {
         }
     }
 
-    private function getStatusBadge($status) {
+    private function getStatusBadge($status)
+    {
         return PaymentRequestsModel::getStatusBadge($status);
     }
 
     /**
      * Autorizar un pago
      */
-    function authorize_payment() {
+    function authorize_payment()
+    {
         header('Content-Type: application/json');
-        
+
         try {
             $payment_id = $_POST['payment_id'] ?? null;
             $permission = $_POST['permission'] ?? null; // Permiso específico del botón
             $user_id = $_SESSION['tg_user']['Id'] ?? null;
 
-            
+
             if (!$payment_id || !$user_id || !$permission) {
                 json_output(['success' => false, 'message' => 'Datos incompletos']);
                 return;
@@ -3219,15 +3239,15 @@ function download_zip($zipFileName) {
                 json_output(['success' => false, 'message' => 'No tienes permiso para autorizar en este nivel']);
                 return;
             }
-            
+
 
             // Verificar si puede autorizar con ese permiso específico
             $can_authorize = $this->paymentRequestAuthorizationsModel->can_user_authorize(
-                $payment_id, 
-                $user_id, 
+                $payment_id,
+                $user_id,
                 $permission
             );
-            
+
             if (!$can_authorize['can_authorize']) {
                 json_output(['success' => false, 'message' => $can_authorize['reason']]);
                 return;
@@ -3235,8 +3255,8 @@ function download_zip($zipFileName) {
 
             // Insertar autorización
             $auth_id = $this->paymentRequestAuthorizationsModel->insert_authorization(
-                $payment_id, 
-                $user_id, 
+                $payment_id,
+                $user_id,
                 $permission
             );
 
@@ -3247,17 +3267,17 @@ function download_zip($zipFileName) {
 
             // Verificar si ya están todas las autorizaciones
             $next_level = $this->paymentRequestAuthorizationsModel->get_next_authorization_level($payment_id);
-            
+
             if ($next_level === null) {
                 // Todas las autorizaciones completadas - cambiar estado a AUTHORIZED
                 $this->PaymentRequestsModel->update_request_status(
-                    $payment_id, 
+                    $payment_id,
                     PaymentRequestsModel::STATUS_AUTHORIZED
                 );
                 $message = '✅ Pago completamente autorizado. Tesorería puede proceder al pago.';
             } else {
                 // Aún faltan autorizaciones
-                $department_name = match($next_level) {
+                $department_name = match ($next_level) {
                     66 => 'Abastos',
                     67 => 'Administración y Finanzas',
                     68 => 'Tesorería',
@@ -3272,7 +3292,6 @@ function download_zip($zipFileName) {
                 'next_level' => $next_level,
                 'all_authorized' => $next_level === null
             ]);
-            
         } catch (Exception $e) {
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
@@ -3281,8 +3300,9 @@ function download_zip($zipFileName) {
     /**
      * Método auxiliar para get_department_name (también en el modelo)
      */
-    public function get_department_name($permission_number) {
-        return match($permission_number) {
+    public function get_department_name($permission_number)
+    {
+        return match ($permission_number) {
             66 => 'Abastos',
             67 => 'Administración y Finanzas',
             68 => 'Tesorería',
@@ -3294,7 +3314,8 @@ function download_zip($zipFileName) {
     /**
      * Procesar pago de facturas (con pagos parciales)
      */
-    function process_payment() {
+    function process_payment()
+    {
         header('Content-Type: application/json');
 
         try {
@@ -3366,13 +3387,13 @@ function download_zip($zipFileName) {
             } else {
                 json_output(['success' => false, 'message' => $result['message']]);
             }
-
         } catch (Exception $e) {
             error_log("Error en process_payment: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
     }
-    function get_payment_history() {
+    function get_payment_history()
+    {
         header('Content-Type: application/json');
 
         $invoice_id = $_GET['invoice_id'] ?? null;
@@ -3397,7 +3418,6 @@ function download_zip($zipFileName) {
                     'message' => 'No hay pagos registrados'
                 ]);
             }
-
         } catch (Exception $e) {
             json_output([
                 'success' => false,
@@ -3406,332 +3426,335 @@ function download_zip($zipFileName) {
         }
     }
 
-function generate_payment_layout() {
-    ini_set('memory_limit', '1024M');
-    header('Content-Type: application/json');
+    function generate_payment_layout()
+    {
+        ini_set('memory_limit', '1024M');
+        header('Content-Type: application/json');
 
-    try {
-        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-        $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
-        $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
+        try {
+            $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+            $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
+            $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
 
-        if (!$payment_id) {
-            json_output(['success' => false, 'message' => 'ID de pago requerido']);
-            return;
-        }
-        $facturas_ids = json_decode($facturas_ids_json, true);
-        if (empty($facturas_ids)) {
-            json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
-            return;
-        }
-        $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
-        if (!$cuenta_bancaria) {
-            json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
-            return;
-        }
-        $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
-        $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
+            if (!$payment_id) {
+                json_output(['success' => false, 'message' => 'ID de pago requerido']);
+                return;
+            }
+            $facturas_ids = json_decode($facturas_ids_json, true);
+            if (empty($facturas_ids)) {
+                json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+                return;
+            }
+            $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
+            if (!$cuenta_bancaria) {
+                json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
+                return;
+            }
+            $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
+            $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
 
-        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-        if (!$payment) {
-            json_output(['success' => false, 'message' => 'Pago no encontrado']);
-            return;
-        }
-        $payment = $payment[0];
-        // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-        $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+            if (!$payment) {
+                json_output(['success' => false, 'message' => 'Pago no encontrado']);
+                return;
+            }
+            $payment = $payment[0];
+            // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+            $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
 
-        if (!$invoices || count($invoices) === 0) {
-            json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
-            return;
-        }
-        $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
-        if (!$cuenta_cargo_data) {
-            json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
-            return;
-        }
-        $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
-        $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
+            if (!$invoices || count($invoices) === 0) {
+                json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
+                return;
+            }
+            $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
+            if (!$cuenta_cargo_data) {
+                json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
+                return;
+            }
+            $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
+            $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
 
-        $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
 
-        if (!$proveedor) {
-            json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
-            return;
-        }
-
-        // ✅ CORRECCIÓN 1: Template XLSX
-        $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
-        // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
-
-        if (!file_exists($templatePath)) {
-            error_log("ERROR: Template NO existe en: $templatePath");
-            json_output([
-                'success' => false, 
-                'message' => 'Template no encontrado',
-                'error' => 'Ruta: ' . $templatePath
-            ]);
-            return;
-        }
-        
-
-        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
-        $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
-        $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
-
-        $spreadsheet = $reader->load($templatePath);
-        $spreadsheet->getCalculationEngine()->disableCalculationCache();
-
-        $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
-        if (!$sheet) {
-            error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
-            // Liberar memoria
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet);
-            json_output([
-                'success' => false, 
-                'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
-            ]);
-            return;
-        }
-
-        $fecha_pago = date('dmY');
-        $concepto = '88400000001';
-        $fila = 8;
-
-        $facturas_procesadas = 0;
-        $total_importe = 0;
-        $warnings = [
-            'sin_cuenta' => [],
-            'sin_email' => []
-        ];
-
-
-        foreach ($invoices as $invoice) {
-            $folio = $invoice['folio'];
-            $monto = floatval($invoice['amount']);
-            if ($monto <= 0) {
-                continue;
+            if (!$proveedor) {
+                json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
+                return;
             }
 
-            if (empty($cuenta_abono)) {
-                $warnings['sin_cuenta'][] = "Folio $folio";
-                continue;
-            }
+            // ✅ CORRECCIÓN 1: Template XLSX
+            $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+            // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
 
-            if (empty($email_beneficiario)) {
-                $warnings['sin_email'][] = "Folio $folio";
-            }
-
-            // Escribir datos
-            $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValue('C' . $fila, $monto);
-            $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
-            $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
-
-            $fila++;
-            $facturas_procesadas++;
-            $total_importe += $monto;
-        }
-
-
-        if ($facturas_procesadas === 0) {
-
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet);
-
-            json_output([
-                'success' => false, 
-                'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
-                'warnings' => $warnings
-            ]);
-            return;
-        }
-        $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
-        if (!is_dir($outputDir)) {
-            if (!mkdir($outputDir, 0777, true)) {
+            if (!file_exists($templatePath)) {
+                error_log("ERROR: Template NO existe en: $templatePath");
                 json_output([
                     'success' => false,
-                    'message' => 'No se pudo crear el directorio de salida',
-                    'error' => 'Directorio: ' . $outputDir
+                    'message' => 'Template no encontrado',
+                    'error' => 'Ruta: ' . $templatePath
                 ]);
                 return;
             }
-        }
-        while (ob_get_level()) { ob_end_clean(); }
-        $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
-        $outputPath = $outputDir . $filename;
-        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
-        $spreadsheet->getCalculationEngine()->disableCalculationCache();
-        $writer->setPreCalculateFormulas(false);
-        $writer->save($outputPath);
-       
-        // Liberar memoria
-        $spreadsheet->disconnectWorksheets();
-        unset($spreadsheet);
-        unset($writer);
-        gc_collect_cycles();
-
-        $file_url = '/supply/download_layout/' . $filename;
 
 
-        $response = [
-            'success' => true,
-            'message' => 'Archivo generado exitosamente',
-            'file_name' => $filename,
-            'file_url' => $file_url,
-            'registros_procesados' => $facturas_procesadas,
-            'total_registros' => count($invoices),
-            'total_importe' => $total_importe,
-            'cuenta_cargo' => $cuenta_cargo,
-            'banco_cargo' => $banco_cargo,
-            'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
-        ];
-        
-        
-        json_output($response);
+            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
+            $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
+            $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
 
-    } catch (Exception $e) {
-        $errorMsg = $e->getMessage();
-        $errorTrace = $e->getTraceAsString();
-        
-        
-        // Liberar memoria
-        if (isset($spreadsheet)) {
+            $spreadsheet = $reader->load($templatePath);
+            $spreadsheet->getCalculationEngine()->disableCalculationCache();
+
+            $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
+            if (!$sheet) {
+                error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
+                // Liberar memoria
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+                json_output([
+                    'success' => false,
+                    'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
+                ]);
+                return;
+            }
+
+            $fecha_pago = date('dmY');
+            $concepto = '88400000001';
+            $fila = 8;
+
+            $facturas_procesadas = 0;
+            $total_importe = 0;
+            $warnings = [
+                'sin_cuenta' => [],
+                'sin_email' => []
+            ];
+
+
+            foreach ($invoices as $invoice) {
+                $folio = $invoice['folio'];
+                $monto = floatval($invoice['amount']);
+                if ($monto <= 0) {
+                    continue;
+                }
+
+                if (empty($cuenta_abono)) {
+                    $warnings['sin_cuenta'][] = "Folio $folio";
+                    continue;
+                }
+
+                if (empty($email_beneficiario)) {
+                    $warnings['sin_email'][] = "Folio $folio";
+                }
+
+                // Escribir datos
+                $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('C' . $fila, $monto);
+                $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
+                $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+                $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
+
+                $fila++;
+                $facturas_procesadas++;
+                $total_importe += $monto;
+            }
+
+
+            if ($facturas_procesadas === 0) {
+
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+
+                json_output([
+                    'success' => false,
+                    'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
+                    'warnings' => $warnings
+                ]);
+                return;
+            }
+            $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
+            if (!is_dir($outputDir)) {
+                if (!mkdir($outputDir, 0777, true)) {
+                    json_output([
+                        'success' => false,
+                        'message' => 'No se pudo crear el directorio de salida',
+                        'error' => 'Directorio: ' . $outputDir
+                    ]);
+                    return;
+                }
+            }
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
+            $outputPath = $outputDir . $filename;
+            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
+            $spreadsheet->getCalculationEngine()->disableCalculationCache();
+            $writer->setPreCalculateFormulas(false);
+            $writer->save($outputPath);
+
+            // Liberar memoria
             $spreadsheet->disconnectWorksheets();
             unset($spreadsheet);
-        }
-        gc_collect_cycles();
-        
-        // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
-        json_output([
-            'success' => false,
-            'message' => 'Error al generar layout',
-            'error' => $errorMsg,
-            'trace' => $errorTrace // ← Traza completa para debug
-        ]);
-    }
-}
+            unset($writer);
+            gc_collect_cycles();
 
-function download_layout($filename) {
-    // ✅ Sanitizar filename (seguridad básica)
-    $filename = basename($filename); // Elimina path traversal
-    $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $filename); // Solo caracteres seguros
-    
-    // ✅ Verificar extensión
-    if (!str_ends_with($filename, '.xls')) {
-        http_response_code(400);
-        exit('Extensión no permitida');
+            $file_url = '/supply/download_layout/' . $filename;
+
+
+            $response = [
+                'success' => true,
+                'message' => 'Archivo generado exitosamente',
+                'file_name' => $filename,
+                'file_url' => $file_url,
+                'registros_procesados' => $facturas_procesadas,
+                'total_registros' => count($invoices),
+                'total_importe' => $total_importe,
+                'cuenta_cargo' => $cuenta_cargo,
+                'banco_cargo' => $banco_cargo,
+                'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
+            ];
+
+
+            json_output($response);
+        } catch (Exception $e) {
+            $errorMsg = $e->getMessage();
+            $errorTrace = $e->getTraceAsString();
+
+
+            // Liberar memoria
+            if (isset($spreadsheet)) {
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+            }
+            gc_collect_cycles();
+
+            // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
+            json_output([
+                'success' => false,
+                'message' => 'Error al generar layout',
+                'error' => $errorMsg,
+                'trace' => $errorTrace // ← Traza completa para debug
+            ]);
+        }
     }
-    
-    $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
-    
-    if (file_exists($file)) {
-        header('Content-Description: File Transfer');
-        header('Content-Type: application/vnd.ms-excel');
-        header('Content-Disposition: attachment; filename=' . basename($file));
-        header('Expires: 0');
-        header('Cache-Control: must-revalidate');
-        header('Pragma: public');
-        header('Content-Length: ' . filesize($file));
-        ob_clean();
-        flush();
-        readfile($file);
-        exit;
-    } else {
-        http_response_code(404);
-        exit('Archivo no encontrado');
-    }
-}
-function delete_layout() {
-    header('Content-Type: application/json');
-    
-    $filename = $_POST['filename'] ?? '';
-    $filename = basename($filename); // Seguridad
-    
-    if (empty($filename)) {
-        json_output(['success' => false, 'message' => 'Filename requerido']);
-        return;
-    }
-    
-    if (pathinfo($filename, PATHINFO_EXTENSION) !== 'xls') {
-        json_output(['success' => false, 'message' => 'Extensión no válida']);
-        return;
-    }
-    
-    $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
-    
-    if (file_exists($file)) {
-        if (unlink($file)) {
-            error_log("Archivo eliminado: $filename");
-            json_output(['success' => true, 'message' => 'Archivo eliminado']);
+
+    function download_layout($filename)
+    {
+        // ✅ Sanitizar filename (seguridad básica)
+        $filename = basename($filename); // Elimina path traversal
+        $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $filename); // Solo caracteres seguros
+
+        // ✅ Verificar extensión
+        if (!str_ends_with($filename, '.xls')) {
+            http_response_code(400);
+            exit('Extensión no permitida');
+        }
+
+        $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
+
+        if (file_exists($file)) {
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/vnd.ms-excel');
+            header('Content-Disposition: attachment; filename=' . basename($file));
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file));
+            ob_clean();
+            flush();
+            readfile($file);
+            exit;
         } else {
-            error_log("ERROR: No se pudo eliminar: $filename");
-            json_output(['success' => false, 'message' => 'Error al eliminar']);
+            http_response_code(404);
+            exit('Archivo no encontrado');
         }
-    } else {
-        json_output(['success' => false, 'message' => 'Archivo no existe']);
     }
-}
+    function delete_layout()
+    {
+        header('Content-Type: application/json');
 
-    public function configLayoutModal() {
-    try {
-        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-        
-        if (!$payment_id) {
-            echo '<div class="alert alert-danger">ID de pago requerido</div>';
-            return;
-        }
-        
-        // Obtener datos del pago
-        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-        if (!$payment || count($payment) === 0) {
-            echo '<div class="alert alert-danger">Pago no encontrado</div>';
-            return;
-        }
-        $payment = $payment[0];
-        
-        // Obtener datos del proveedor
-        $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
-        if (!$proveedor) {
-            echo '<div class="alert alert-danger">Proveedor no encontrado</div>';
-            return;
-        }
-        
-        // Obtener TODAS las cuentas bancarias del proveedor
-        $cuentas_bancarias = $this->CuentasBancariasModel->get_cuentas($proveedor['den']);
-        
-        if (!$cuentas_bancarias || count($cuentas_bancarias) === 0) {
-            echo '<div class="alert alert-warning">' .
-                 '<i class="fas fa-exclamation-triangle"></i> ' .
-                 'No se encontraron cuentas bancarias para el proveedor: <strong>' . htmlspecialchars($proveedor['den']) . '</strong>' .
-                 '</div>';
-            return;
-        }
-        
-        // Obtener facturas del pago
-        $facturas = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+        $filename = $_POST['filename'] ?? '';
+        $filename = basename($filename); // Seguridad
 
-        // Renderizar vista Twig
-        echo $this->twig->render($this->route . 'modals/configLayoutModal.html', [
-            'proveedor' => [
-                'codigo' => $payment['provider_cod'],
-                'nombre' => $proveedor['den']
-            ],
-            'cuentas_bancarias' => $cuentas_bancarias,
-            'facturas' => $facturas
-        ]);
-        
-    } catch (Exception $e) {
-        error_log('Error en configLayoutModal: ' . $e->getMessage());
-        echo '<div class="alert alert-danger">' .
-             '<i class="fas fa-exclamation-circle"></i> ' .
-             'Error al cargar la configuración: ' . htmlspecialchars($e->getMessage()) .
-             '</div>';
+        if (empty($filename)) {
+            json_output(['success' => false, 'message' => 'Filename requerido']);
+            return;
+        }
+
+        if (pathinfo($filename, PATHINFO_EXTENSION) !== 'xls') {
+            json_output(['success' => false, 'message' => 'Extensión no válida']);
+            return;
+        }
+
+        $file = __DIR__ . '/../../_assets/temp/layouts/' . $filename;
+
+        if (file_exists($file)) {
+            if (unlink($file)) {
+                error_log("Archivo eliminado: $filename");
+                json_output(['success' => true, 'message' => 'Archivo eliminado']);
+            } else {
+                error_log("ERROR: No se pudo eliminar: $filename");
+                json_output(['success' => false, 'message' => 'Error al eliminar']);
+            }
+        } else {
+            json_output(['success' => false, 'message' => 'Archivo no existe']);
+        }
     }
-}
 
+    public function configLayoutModal()
+    {
+        try {
+            $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+
+            if (!$payment_id) {
+                echo '<div class="alert alert-danger">ID de pago requerido</div>';
+                return;
+            }
+
+            // Obtener datos del pago
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+            if (!$payment || count($payment) === 0) {
+                echo '<div class="alert alert-danger">Pago no encontrado</div>';
+                return;
+            }
+            $payment = $payment[0];
+
+            // Obtener datos del proveedor
+            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+            if (!$proveedor) {
+                echo '<div class="alert alert-danger">Proveedor no encontrado</div>';
+                return;
+            }
+
+            // Obtener TODAS las cuentas bancarias del proveedor
+            $cuentas_bancarias = $this->CuentasBancariasModel->get_cuentas($proveedor['den']);
+
+            if (!$cuentas_bancarias || count($cuentas_bancarias) === 0) {
+                echo '<div class="alert alert-warning">' .
+                    '<i class="fas fa-exclamation-triangle"></i> ' .
+                    'No se encontraron cuentas bancarias para el proveedor: <strong>' . htmlspecialchars($proveedor['den']) . '</strong>' .
+                    '</div>';
+                return;
+            }
+
+            // Obtener facturas del pago
+            $facturas = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+
+            // Renderizar vista Twig
+            echo $this->twig->render($this->route . 'modals/configLayoutModal.html', [
+                'proveedor' => [
+                    'codigo' => $payment['provider_cod'],
+                    'nombre' => $proveedor['den']
+                ],
+                'cuentas_bancarias' => $cuentas_bancarias,
+                'facturas' => $facturas
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en configLayoutModal: ' . $e->getMessage());
+            echo '<div class="alert alert-danger">' .
+                '<i class="fas fa-exclamation-circle"></i> ' .
+                'Error al cargar la configuración: ' . htmlspecialchars($e->getMessage()) .
+                '</div>';
+        }
+    }
 }
