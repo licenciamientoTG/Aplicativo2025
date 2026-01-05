@@ -2599,15 +2599,42 @@ public function get_conciliaciones_hechas() {
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // CONSULTA SIMPLIFICADA: Trae todo lo conciliado en esas fechas.
-        // Si existe en la tabla detalles, ya se usó, por lo tanto debe bloquearse en el frontend.
+        // --- QUERY CORREGIDA CON EXTRACCIÓN DE TEXTO ---
         $sql = "SELECT 
-                    fecha, 
-                    monto, 
-                    grupo_id, 
-                    lado
-                FROM Conciliaciones_Detalles
-                WHERE fecha BETWEEN ? AND ?";
+                    D.fecha, 
+                    D.monto, 
+                    D.grupo_id, 
+                    D.lado,
+                    G.afiliacion_limpia as afiliacion,
+                    ISNULL(TE.Nombre, 'Desconocido') as nombre_banco
+                FROM Conciliaciones_Detalles D
+                
+                -- 1. Buscamos la afiliación y LIMPIAMOS EL TEXTO
+                OUTER APPLY (
+                    SELECT TOP 1 
+                        CASE 
+                            -- Si el texto es 'Principal (12345)', extraemos lo que hay entre paréntesis
+                            WHEN CHARINDEX('(', descripcion) > 0 AND CHARINDEX(')', descripcion) > 0
+                            THEN SUBSTRING(
+                                descripcion, 
+                                CHARINDEX('(', descripcion) + 1, 
+                                CHARINDEX(')', descripcion) - CHARINDEX('(', descripcion) - 1
+                            )
+                            -- Si no tiene paréntesis, usamos el texto tal cual
+                            ELSE descripcion 
+                        END as afiliacion_limpia
+                    FROM Conciliaciones_Detalles D2 
+                    WHERE D2.grupo_id = D.grupo_id AND D2.lado = 'RIGHT'
+                ) G
+
+                -- 2. Ahora cruzamos usando la afiliación limpia
+                LEFT JOIN Conciliacion_Configuracion CC ON G.afiliacion_limpia = CC.afiliacion
+                
+                -- 3. Obtenemos el nombre del banco
+                LEFT JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
+
+                WHERE D.fecha BETWEEN ? AND ?
+                ORDER BY D.grupo_id, D.lado"; 
 
         $stmt = $conn->prepare($sql);
         $stmt->execute([$fecha_ini, $fecha_fin]);
@@ -2617,12 +2644,12 @@ public function get_conciliaciones_hechas() {
         $data = [];
         foreach($filas as $fila) {
             $data[] = [
-                // Solo nos interesa la parte YYYY-MM-DD
-                'fecha'    => substr($fila['fecha'], 0, 10), 
-                'monto'    => (float) $fila['monto'],
-                'grupo_id' => $fila['grupo_id'],
-                // Convertimos a minusculas para asegurar match con JS
-                'lado'     => strtolower(trim($fila['lado'])) 
+                'fecha'      => substr($fila['fecha'], 0, 10), 
+                'monto'      => (float) $fila['monto'],
+                'grupo_id'   => $fila['grupo_id'],
+                'lado'       => strtolower(trim($fila['lado'])),
+                'afiliacion' => $fila['afiliacion'],
+                'banco'      => $fila['nombre_banco']
             ];
         }
         

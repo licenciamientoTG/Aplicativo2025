@@ -61,9 +61,9 @@
     
     .row-item.conciliated {
         color: var(--matched-text); 
-        opacity: 0.8; 
+        opacity: 0.9; 
         pointer-events: none; 
-        border-left: 5px solid #adb5bd;
+        border-left: 5px solid rgba(0,0,0,0.1);
     }
 
     .nexus-badge {
@@ -72,6 +72,21 @@
         vertical-align: middle;
         box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
     }
+
+    /* ESTILOS PARA EL TAG DE DIFERENCIA */
+    .diff-tag {
+        font-size: 0.75rem; 
+        font-weight: 700;
+        padding: 2px 8px; 
+        border-radius: 12px;
+        margin-right: 10px;
+        font-family: 'Consolas', monospace;
+        display: inline-block;
+        vertical-align: middle;
+        border: 1px solid transparent;
+    }
+    .diff-tag.ok { background-color: #d1e7dd; color: #0f5132; border-color: #badbcc; }
+    .diff-tag.warn { background-color: #f8d7da; color: #842029; border-color: #f5c2c7; }
 
     .font-numeric { font-family: 'Consolas', monospace; font-weight: 700; }
 
@@ -154,20 +169,19 @@
         </button>
     </div>
 
-    <div class="split-container">
-        
+   <div class="split-container">
+       
         <div class="panel-split">
             <div class="panel-header bg-dark">
                 <span><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
                 <span class="badge badge-light text-dark" id="cg-counter">0</span>
             </div>
-            <div class="bg-light border-bottom p-2 small text-muted text-center" id="cg-info-bar">...</div>
             <div class="panel-content" id="cg-content">
                 <div class="text-center text-muted py-5 mt-5">Seleccione Cuenta</div>
             </div>
         </div>
 
-        <div class="panel-split">
+        <div class="panel-split" style="flex: 1.3;">
             <div class="panel-header" id="header-tesoreria">
                 <span><i class="fas fa-university mr-2"></i> Tesorería</span>
                 <span class="badge badge-light text-dark" id="bk-total">$0.00</span>
@@ -175,6 +189,16 @@
             <div class="bg-warning text-dark p-2 small text-center font-weight-bold" id="bk-info-bar" style="display:none;"></div>
             <div class="panel-content" id="bk-content">
                 <div class="text-center text-muted py-5 mt-5">...</div>
+            </div>
+        </div>
+
+        <div class="panel-split" style="flex: 0 0 240px; border-left: 2px solid #dee2e6;">
+            <div class="panel-header bg-secondary text-white">
+                <span><i class="fas fa-balance-scale mr-2"></i> Resumen</span>
+                <span class="badge badge-light text-dark" id="diff-counter">0</span>
+            </div>
+            <div class="panel-content bg-light p-3" id="diff-content">
+                <div class="text-center text-muted py-5 mt-5 small">Sin datos</div>
             </div>
         </div>
 
@@ -237,7 +261,8 @@
     let selection = { left: [], right: [] }; 
     let stationConfig = []; 
     let currentActiveRule = null;
-    let historialConciliacion = { left: [], right: [] };
+    let historialConciliacion = []; 
+    let mapaDiferencias = {}; // Para guardar la diferencia calculada por grupo
 
     $(document).ready(function() {
         initWidget();
@@ -245,13 +270,13 @@
     });
 
     // ==========================================
-    // 2. UTILIDADES CORE (Definidas al inicio)
+    // 2. UTILIDADES CORE
     // ==========================================
 
-    // Normaliza fechas a YYYY-MM-DD
     function normalizarFecha(fechaStr) {
         if (!fechaStr) return "";
         let s = String(fechaStr).trim();
+        if (s.includes('T')) s = s.split('T')[0];
         if (s.indexOf('-') === 4) return s.substring(0, 10);
         if (s.indexOf('/') > -1) {
             const partes = s.split('/'); 
@@ -260,33 +285,33 @@
         return s; 
     }
 
-    // Paleta de colores para grupos
     function getColorForGroup(id) {
         if(!id) return '#95a5a6';
-        const palette = [
-            '#3498db', '#e67e22', '#9b59b6', '#2ecc71', '#f1c40f', '#e74c3c', 
-            '#1abc9c', '#34495e', '#d35400', '#c0392b', '#8e44ad', '#16a085'
-        ];
         const num = parseInt(String(id).replace(/\D/g, '')) || 0;
+        const palette = [
+            '#2980b9', '#c0392b', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#2c3e50', '#7f8c8d', 
+            '#c2185b', '#00695c', '#f57f17', '#6a1b9a', '#1565c0', '#2e7d32', '#d84315', '#4e342e',
+            '#37474f', '#ad1457', '#0277bd', '#00695c', '#9e9d24', '#ef6c00', '#4527a0', '#c62828',
+            '#558b2f', '#00838f', '#1a237e', '#b71c1c', '#004d40', '#827717', '#ff6f00', '#3e2723',
+            '#880e4f', '#1b5e20', '#01579b', '#bf360c', '#4a148c', '#33691e', '#311b92', '#b0bec5'
+        ];
         return palette[num % palette.length];
     }
 
-    // Recalcula totales de la selección actual
     function recalcTotals() {
         const sumL = selection.left.reduce((a,b) => a + b.monto, 0);
         const sumR = selection.right.reduce((a,b) => a + b.monto, 0);
         
         $('#count-cg').text(selection.left.length);
         $('#sum-cg').text(formatter.format(sumL));
-        
         $('#count-bk').text(selection.right.length);
         $('#sum-bk').text(formatter.format(sumR));
 
         const diff = sumL - sumR;
         $('#diffValue').text(formatter.format(diff));
         
-        if(Math.abs(diff) < 1) $('#diffValue').css('color', '#2ecc71'); // Verde
-        else $('#diffValue').css('color', '#e74c3c'); // Rojo
+        if(Math.abs(diff) < 1) $('#diffValue').css('color', '#2ecc71');
+        else $('#diffValue').css('color', '#e74c3c');
 
         if(selection.left.length > 0 || selection.right.length > 0) {
             $('#conciliacionBar').addClass('visible');
@@ -295,35 +320,16 @@
         }
     }
 
-    // Limpia la selección actual
     function limpiarSeleccion() {
         $('.row-item.active').removeClass('active');
         selection = { left: [], right: [] };
         recalcTotals();
     }
 
-    // Limpia las listas visuales
-    function limpiarListas() { 
-        $('#cg-content, #bk-content').empty(); 
-        $('#cg-counter').text('0'); 
-        $('#bk-total').text('$0.00'); 
-        $('#bk-info-bar').hide(); 
-    }
-
-    // Resetea la UI al cambiar estación
-    function resetUI() { 
-        $('#bancoSelect').empty(); 
-        $('#group-afiliacion').hide(); 
-        $('#afiliacionSelect').empty(); 
-        limpiarListas(); 
-    }
-
-    // Maneja el click en un item (seleccionar/deseleccionar)
     function toggleItem(side, fecha, monto, concepto, el) {
         if($(el).hasClass('conciliated')) return;
 
         const list = side === 'left' ? selection.left : selection.right;
-        // Buscamos por fecha y monto exacto
         const idx = list.findIndex(i => i.fecha === fecha && i.monto === monto);
 
         if(idx >= 0) {
@@ -337,11 +343,13 @@
     }
 
     // ==========================================
-    // 3. LÓGICA DE NEGOCIO (Selectores)
+    // 3. SELECTORES Y LOGICA
     // ==========================================
 
     async function alCambiarEstacion() {
-        resetUI();
+        $('#bancoSelect').empty(); $('#group-afiliacion').hide(); $('#afiliacionSelect').empty();
+        limpiarListas();
+        
         const id = $('#estacionSelect').val();
         if(!id) return;
 
@@ -354,7 +362,7 @@
                 llenarBancos();
             } else {
                 stationConfig = [];
-                $('#bancoSelect').empty().append('<option>Sin Configuración</option>');
+                $('#bancoSelect').append('<option>Sin Configuración</option>');
             }
         } catch(e) { console.error(e); }
     }
@@ -362,47 +370,29 @@
     function llenarBancos() {
         const $sel = $('#bancoSelect').empty().append('<option value="">-- Banco --</option>');
         const unicos = new Map();
-        
         stationConfig.forEach(item => {
             if(!unicos.has(item.entidad_id)) {
-                const nombre = item.nombre_banco || 'Banco ' + item.entidad_id;
-                unicos.set(item.entidad_id, nombre);
+                unicos.set(item.entidad_id, item.nombre_banco || 'Banco ' + item.entidad_id);
             }
         });
-        
         unicos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
     }
 
     function alCambiarBanco() {
         const eid = $('#bancoSelect').val();
-        const $asel = $('#afiliacionSelect'); // Referencia al select existente
-        
-        $asel.empty().append('<option value="">-- Seleccione --</option>');
+        const $asel = $('#afiliacionSelect').empty().append('<option value="">-- Seleccione --</option>');
         limpiarListas();
 
-        if(!eid) {
-            $('#group-afiliacion').hide();
-            return;
-        }
+        if(!eid) { $('#group-afiliacion').hide(); return; }
 
         const cuentas = stationConfig.filter(r => r.entidad_id == eid);
-        
-        if(cuentas.length === 0) {
-            $('#cg-info-bar').text('Sin cuentas configuradas para este banco');
-            $('#group-afiliacion').hide();
-            return;
-        }
+        if(cuentas.length === 0) { $('#group-afiliacion').hide(); return; }
 
         cuentas.forEach((c, idx) => {
-            const desc = c.descripcion || 'Cuenta'; 
-            $asel.append(`<option value="${idx}">${desc} (${c.afiliacion})</option>`);
+            $asel.append(`<option value="${idx}">${c.descripcion || 'Cuenta'} (${c.afiliacion})</option>`);
         });
 
-        // Aseguramos que se vea
         $('#group-afiliacion').show();
-        $asel.show(); 
-        
-        // Auto-seleccionar si es única
         if(cuentas.length === 1) $asel.val(0).trigger('change');
         
         const conf = ENTITY_CONFIG[eid];
@@ -410,7 +400,6 @@
     }
 
     async function actualizarTodo() {
-        // Ahora sí encuentra la función porque está definida arriba
         limpiarSeleccion(); 
         
         const ruleIdx = $('#afiliacionSelect').val();
@@ -424,40 +413,63 @@
 
         if(!currentActiveRule) return;
 
-        // Carga secuencial
-        await cargarHistorial(sid, eid, currentActiveRule);
+        await cargarHistorial(); 
         cargarControlGas(sid, currentActiveRule);
         cargarTesoreria(eid, currentActiveRule);
     }
 
     // ==========================================
-    // 4. CARGAS DE DATOS (API)
+    // 4. API CALLS & CÁLCULO DE DIFERENCIAS
     // ==========================================
 
-    async function cargarHistorial(sid, eid, rule) {
+    async function cargarHistorial() {
         const p = getPeriod();
         try {
             const params = { fecha_inicio: p.fi, fecha_fin: p.ff };
             const res = await $.get(URLS.historial, params);
             
             if(res && res.data) {
-                historialConciliacion.left = res.data.filter(x => x.lado === 'left');
-                historialConciliacion.right = res.data.filter(x => x.lado === 'right');
+                const uniqueSet = new Set();
+                historialConciliacion = res.data.filter(item => {
+                    const key = JSON.stringify(item);
+                    if (uniqueSet.has(key)) return false;
+                    uniqueSet.add(key);
+                    return true;
+                });
             } else {
-                historialConciliacion = { left: [], right: [] };
+                historialConciliacion = [];
             }
+            
+            // Calculamos diferencias por grupo
+            procesarDiferencias();
+            renderDiferenciasPanel(); 
+
         } catch(e) {
             console.error("Error historial", e);
-            historialConciliacion = { left: [], right: [] };
+            historialConciliacion = [];
+            mapaDiferencias = {};
         }
     }
 
-   async function cargarControlGas(sid, rule) {
+    function procesarDiferencias() {
+        mapaDiferencias = {};
+        historialConciliacion.forEach(row => {
+            // Aseguramos que solo procesamos los de la afiliación activa
+            if(currentActiveRule && String(row.afiliacion).trim() !== String(currentActiveRule.afiliacion).trim()) return;
+
+            const gid = row.grupo_id;
+            if(!mapaDiferencias[gid]) mapaDiferencias[gid] = { left: 0, right: 0 };
+            
+            if(row.lado === 'left') mapaDiferencias[gid].left += parseFloat(row.monto);
+            else if(row.lado === 'right') mapaDiferencias[gid].right += parseFloat(row.monto);
+        });
+    }
+
+    async function cargarControlGas(sid, rule) {
         const p = getPeriod();
         $('#cg-content').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
         
         try {
-            // 1. Obtener datos de la API
             const res = await fetch(URLS.ventas, {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
@@ -465,42 +477,17 @@
             const json = await res.json();
             const raw = json.respuesta || [];
             
-            // 2. Preparar Palabras Clave (Keywords) de la Regla
-            // Normalizamos: A mayúsculas, quitamos acentos y espacios extra
-            const keywords = (rule.conceptos_cg || '')
-                .split(',')
-                .map(k => {
-                    return k.trim().toUpperCase()
-                            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quitar acentos
-                            .replace(/\s+/g, ' '); // Quitar espacios dobles
-                });
+            const keywords = (rule.conceptos_cg || '').split(',')
+                .map(k => k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '));
 
-            console.log("Regla:", rule.descripcion, "| Buscando:", keywords);
-
-            // 3. Filtrado con Normalización
             const filtered = raw.filter(i => {
-                // Obtener concepto original
-                const rawConcept = (i.Concepto || i.concepto || '');
-                
-                // A. Normalización del Concepto que viene de ControlGas
-                // "Tarjeta de Crédito" -> "TARJETA DE CREDITO"
-                let c = rawConcept.toUpperCase()
-                                  .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Eliminar tildes
-                                  .replace(/\s+/g, ' ').trim(); // Limpiar espacios
-
-                // B. Parches específicos para inconsistencias conocidas
-                // Si viene "SMART BT" separado, lo juntamos para que coincida con "SMARTBT"
+                let c = (i.Concepto || i.concepto || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim();
                 c = c.replace(/SMART\s*BT/g, 'SMARTBT'); 
-
-                // C. Comparación
-                // Revisa si alguna de las palabras clave existe en el concepto normalizado
                 return keywords.some(k => c.includes(k));
             });
 
             renderList('left', filtered, rule.descripcion || 'Venta');
-
         } catch(e) { 
-            console.error("Error cargando ControlGas:", e);
             $('#cg-content').html('<div class="text-danger p-3">Error API ControlGas</div>'); 
         }
     }
@@ -533,35 +520,32 @@
             return;
         }
 
-        const grupos = {};
+        const gruposLocales = {};
         let grandTotal = 0;
 
         rawData.forEach(item => {
             if(!item.Fecha) return;
             const fIso = normalizarFecha(item.Fecha);
-            
             let val = item.Total || item.Depositos || item.Importe || 0;
             if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
             if(isNaN(val)) val = 0;
 
-            if(!grupos[fIso]) grupos[fIso] = { fecha: fIso, monto: 0, desc: new Set() };
-            grupos[fIso].monto += val;
+            if(!gruposLocales[fIso]) gruposLocales[fIso] = { fecha: fIso, monto: 0, desc: new Set() };
+            gruposLocales[fIso].monto += val;
             grandTotal += val;
             
-            let d = "";
-            if(side === 'left') d = item.Concepto || item.concepto || 'Venta';
-            else d = item.Referencia || item.Descripcion || 'Depósito';
-            grupos[fIso].desc.add(d);
+            let d = side === 'left' ? (item.Concepto || 'Venta') : (item.Referencia || 'Depósito');
+            gruposLocales[fIso].desc.add(d);
         });
 
-        const dates = Object.keys(grupos).sort();
+        const dates = Object.keys(gruposLocales).sort();
         
         dates.forEach(fechaKey => { 
-            const g = grupos[fechaKey];
+            const g = gruposLocales[fechaKey];
             
             // Render fecha visual
             const partes = fechaKey.split('-');
-            let fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+            const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
 
             const descStr = Array.from(g.desc).join(', ');
             const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
@@ -571,9 +555,9 @@
             const etiquetaClean = etiquetaSegura.replace(/'/g, "");
 
             // Buscar coincidencia en historial (bloqueo)
-            const listaHistorial = side === 'left' ? historialConciliacion.left : historialConciliacion.right;
-            const coincidencia = listaHistorial.find(h => 
+            const coincidencia = historialConciliacion.find(h => 
                 normalizarFecha(h.fecha) === fechaKey && 
+                h.lado === side &&
                 Math.abs(parseFloat(h.monto) - parseFloat(g.monto)) < 0.1
             );
 
@@ -581,13 +565,27 @@
             let badgeHtml = "";
             let clickAction = `onclick="toggleItem('${side}', '${fechaKey}', ${g.monto}, '${etiquetaClean}', this)"`;
             let estiloFondo = "";
+            let diffTagHtml = "";
 
             if (coincidencia) {
                 clasesExtra = "conciliated"; 
                 clickAction = ""; 
                 const color = getColorForGroup(coincidencia.grupo_id);
+                // Coloreado de fondo
                 estiloFondo = `style="background-color: ${color}40;"`; 
                 badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
+
+                // LOGICA DEL TAG: Solo en lado derecho
+                if(side === 'right') {
+                    const stats = mapaDiferencias[coincidencia.grupo_id];
+                    if(stats) {
+                        const diff = stats.left - stats.right;
+                        const isOk = Math.abs(diff) < 1.0;
+                        const claseTag = isOk ? 'ok' : 'warn';
+                        const textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
+                        diffTagHtml = `<span class="diff-tag ${claseTag}">${textoTag}</span>`;
+                    }
+                }
             }
 
             container.append(`
@@ -602,8 +600,11 @@
                             ${tooltip}
                         </small>
                     </div>
-                    <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
-                        ${formatter.format(g.monto)}
+                    <div class="d-flex align-items-center">
+                        ${diffTagHtml}
+                        <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
+                            ${formatter.format(g.monto)}
+                        </div>
                     </div>
                 </div>
             `);
@@ -611,6 +612,45 @@
 
         if(side === 'left') counter.text(dates.length + ' días');
         else counter.text(formatter.format(grandTotal));
+    }
+
+    // Aquí calculamos el total de diferencias para la 3ra tabla
+    function renderDiferenciasPanel() {
+        const counter = $('#diff-counter');
+        const container = $('#diff-content');
+        container.empty();
+        
+        if (!currentActiveRule || !currentActiveRule.afiliacion) { counter.text('0'); return; }
+        
+        let totalDiffGlobal = 0;
+        let countGrupos = 0;
+
+        // Sumar todas las diferencias de los grupos actuales
+        for (let gid in mapaDiferencias) {
+            const grp = mapaDiferencias[gid];
+            totalDiffGlobal += (grp.left - grp.right);
+            countGrupos++;
+        }
+        
+        counter.text(countGrupos);
+        
+        const diffColor = Math.abs(totalDiffGlobal) < 1 ? 'text-success' : 'text-danger';
+        
+        container.html(`
+            <div class="text-center py-4">
+                <div class="text-muted small mb-2 text-uppercase font-weight-bold">Total Diferencias</div>
+                <h3 class="font-numeric ${diffColor}">${formatter.format(totalDiffGlobal)}</h3>
+                <hr>
+                <div class="small text-muted">De ${countGrupos} conciliaciones</div>
+            </div>
+        `);
+    }
+
+    function limpiarListas() { 
+        $('#cg-content, #bk-content, #diff-content').empty(); 
+        $('#cg-counter, #diff-counter').text('0'); 
+        $('#bk-total').text('$0.00'); 
+        $('#bk-info-bar').hide(); 
     }
 
     // ==========================================
@@ -639,16 +679,12 @@
             url: URLS.guardar, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
             success: function(resp) {
                 if(resp.status === 'success') {
-                    const groupColor = getColorForGroup(resp.grupo_id);
-                    const label = resp.grupo_id || 'OK';
-
-                    [...selection.left, ...selection.right].forEach(item => {
-                        const $el = $(document.getElementById(item.elId));
-                        $el.removeClass('active').addClass('conciliated');
-                        $el.css('background-color', groupColor + '40');
-                        $el.find('div:first').prepend(`<span class="nexus-badge" style="background:${groupColor}">#${label}</span>`);
-                        $el.prop('onclick', null).off('click');
-                    });
+                    // Recargar historial y actualizar vistas
+                    const sid = $('#estacionSelect').val();
+                    const eid = $('#bancoSelect').val();
+                    
+                    // Recargamos todo para asegurar consistencia
+                    actualizarTodo(); 
                     limpiarSeleccion();
                 } else alert("Error: " + resp.message);
             },
