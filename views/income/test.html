@@ -11,10 +11,18 @@
         --bg-light: #f8f9fa;
         --border-color: #e9ecef;
         /* Estados */
-        --selected-bg: #d1e7dd; /* Verde muy claro */
+        --selected-bg: #d1e7dd; 
         --selected-border: #198754;
-        --matched-bg: #e2e3e5;  /* Gris para conciliado */
+        --matched-bg: #e2e3e5;  
         --matched-text: #6c757d;
+        /* Estados Tránsito */
+        --transit-incoming-bg: #fff3cd; 
+        --transit-incoming-border: #ffc107;
+        --transit-locked-bg: #e9ecef;   
+        --transit-locked-text: #adb5bd;
+        /* Estado Tránsito Completado (Verde) */
+        --transit-ok-bg: #d1e7dd;
+        --transit-ok-border: #198754;
     }
 
     body { background-color: #f4f6f9; overflow-x: hidden; }
@@ -50,6 +58,7 @@
         padding: 10px 15px; border-bottom: 1px solid #f0f0f0; cursor: pointer;
         display: flex; justify-content: space-between; align-items: center;
         font-size: 0.9rem; transition: all 0.1s; user-select: none;
+        flex-wrap: wrap;
     }
     .row-item:hover { background-color: #f8f9fa; }
     
@@ -64,6 +73,26 @@
         opacity: 0.9; 
         pointer-events: none; 
         border-left: 5px solid rgba(0,0,0,0.1);
+    }
+
+    /* Estilos Tránsito */
+    .row-item.transit-locked {
+        background-color: var(--transit-locked-bg);
+        color: var(--transit-locked-text);
+        pointer-events: none;
+        opacity: 0.8;
+    }
+    .row-item.transit-incoming {
+        background-color: var(--transit-incoming-bg);
+        border-left: 5px solid var(--transit-incoming-border);
+    }
+    .row-item.transit-completed {
+        background-color: var(--transit-ok-bg);
+        /* CORRECCIÓN: Texto negro para mejor contraste */
+        color: #000 !important; 
+        border-left: 5px solid var(--transit-ok-border);
+        pointer-events: none;
+        font-weight: 500;
     }
 
     .nexus-badge {
@@ -220,6 +249,10 @@
         <i class="fas fa-link mr-2"></i> UNIR
     </button>
     
+    <button class="btn btn-warning rounded-pill font-weight-bold ml-2 shadow text-white" onclick="marcarComoTransito()" title="Mover al siguiente mes">
+        <i class="fas fa-shipping-fast mr-2"></i> TRANSITO
+    </button>
+
     <button class="btn btn-sm btn-outline-light rounded-circle border-0 ml-2" onclick="limpiarSeleccion()">
         <i class="fas fa-times"></i>
     </button>
@@ -241,7 +274,10 @@
         estaciones: '/income/get_estaciones_catalogo',
         ventas: 'http://201.174.170.236:99/api/Ventas/GetConceptosValores',
         guardar: '/income/guardar_conciliacion',
-        historial: '/income/get_conciliaciones_hechas'
+        historial: '/income/get_conciliaciones_hechas',
+        guardar_transito: '/income/guardar_transito',
+        get_transitos: '/income/get_transitos_pendientes',
+        resumen_transito: '/income/get_resumen_transito'
     };
 
     const ENTITY_CONFIG = {
@@ -257,12 +293,22 @@
     let todasLasEstaciones = [];
     const RS_MAPPING = { 'DGA930823KD3': 'DIAZ GAS', 'DGM880621FU5': 'GASOMEX', 'FORANEAS': 'FORANEAS' };
     
-    // Estado de la aplicación
     let selection = { left: [], right: [] }; 
     let stationConfig = []; 
     let currentActiveRule = null;
     let historialConciliacion = []; 
-    let mapaDiferencias = {}; // Para guardar la diferencia calculada por grupo
+    let mapaDiferencias = {}; 
+    
+    // Variables para almacenar totales separados
+    let resumenGlobal = {
+        historico_visible_diff: 0,
+        historico_visible_count: 0,
+        transito_pasado_diff: 0,
+        transito_pasado_count: 0
+    };
+    
+    // Mapa para saber qué grupos son tránsito pasado específico
+    let transitoPasadoMap = {}; 
 
     $(document).ready(function() {
         initWidget();
@@ -277,24 +323,17 @@
         if (!fechaStr) return "";
         let s = String(fechaStr).trim();
         if (s.includes('T')) s = s.split('T')[0];
-        if (s.indexOf('-') === 4) return s.substring(0, 10);
         if (s.indexOf('/') > -1) {
             const partes = s.split('/'); 
             if (partes.length === 3) return `${partes[2]}-${partes[1]}-${partes[0]}`;
         }
-        return s; 
+        return s.substring(0, 10); 
     }
 
     function getColorForGroup(id) {
         if(!id) return '#95a5a6';
         const num = parseInt(String(id).replace(/\D/g, '')) || 0;
-        const palette = [
-            '#2980b9', '#c0392b', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#2c3e50', '#7f8c8d', 
-            '#c2185b', '#00695c', '#f57f17', '#6a1b9a', '#1565c0', '#2e7d32', '#d84315', '#4e342e',
-            '#37474f', '#ad1457', '#0277bd', '#00695c', '#9e9d24', '#ef6c00', '#4527a0', '#c62828',
-            '#558b2f', '#00838f', '#1a237e', '#b71c1c', '#004d40', '#827717', '#ff6f00', '#3e2723',
-            '#880e4f', '#1b5e20', '#01579b', '#bf360c', '#4a148c', '#33691e', '#311b92', '#b0bec5'
-        ];
+        const palette = ['#2980b9', '#c0392b', '#27ae60', '#8e44ad', '#d35400', '#16a085', '#2c3e50', '#7f8c8d'];
         return palette[num % palette.length];
     }
 
@@ -310,7 +349,7 @@
         const diff = sumL - sumR;
         $('#diffValue').text(formatter.format(diff));
         
-        if(Math.abs(diff) < 1) $('#diffValue').css('color', '#2ecc71');
+        if(Math.abs(diff) < 0.005) $('#diffValue').css('color', '#2ecc71');
         else $('#diffValue').css('color', '#e74c3c');
 
         if(selection.left.length > 0 || selection.right.length > 0) {
@@ -326,8 +365,9 @@
         recalcTotals();
     }
 
-    function toggleItem(side, fecha, monto, concepto, el) {
-        if($(el).hasClass('conciliated')) return;
+    function toggleItem(side, fecha, monto, concepto, el, transitIdsStr) {
+        // Bloquear click si ya está conciliado, bloqueado o completado
+        if($(el).hasClass('conciliated') || $(el).hasClass('transit-locked') || $(el).hasClass('transit-completed')) return;
 
         const list = side === 'left' ? selection.left : selection.right;
         const idx = list.findIndex(i => i.fecha === fecha && i.monto === monto);
@@ -336,7 +376,8 @@
             list.splice(idx, 1);
             $(el).removeClass('active');
         } else {
-            list.push({ fecha: fecha, monto: monto, concepto: concepto, elId: el.id });
+            const tIds = transitIdsStr ? String(transitIdsStr).split(',') : [];
+            list.push({ fecha: fecha, monto: monto, concepto: concepto, elId: el.id, transitIds: tIds });
             $(el).addClass('active');
         }
         recalcTotals();
@@ -413,9 +454,50 @@
 
         if(!currentActiveRule) return;
 
+        // Resetear resumen
+        resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
+
+        // 1. Cargar Historial Visible (Mes Actual)
         await cargarHistorial(); 
+        
+        // 2. Cargar Resumen de Tránsito del Pasado (Backend)
+        await cargarResumenTransito(sid, currentActiveRule);
+
+        // 3. Cargar Datos UI
         cargarControlGas(sid, currentActiveRule);
         cargarTesoreria(eid, currentActiveRule);
+    }
+
+    // --- NUEVA FUNCIÓN PARA LLAMAR AL BACKEND DE TRÁNSITO ---
+  async function cargarResumenTransito(sid, rule) {
+        const p = getPeriod();
+        // Limpiamos el mapa anterior
+        transitoPasadoMap = {};
+        
+        try {
+            const params = { 
+                fecha_inicio: p.fi, 
+                fecha_fin: p.ff, 
+                estacion_id: sid,
+                afiliacion: rule.afiliacion
+            };
+            const res = await $.get(URLS.resumen_transito, params);
+            if(res.status === 'success') {
+                resumenGlobal.transito_pasado_count = parseInt(res.data.count);
+                
+                // CORRECCIÓN: Ya no sumamos esta diferencia porque ya viene incluida 
+                // en el historial normal al estar conciliada.
+                resumenGlobal.transito_pasado_diff = 0; 
+                
+                // GUARDAMOS EL MAPA DE GRUPOS (ID -> DIFERENCIA)
+                // Esto sí lo necesitamos para pintar la etiqueta "Tránsito Pasado" en las filas
+                if(res.data.groups_map) {
+                    transitoPasadoMap = res.data.groups_map;
+                }
+            }
+        } catch(e) {
+            console.error("Error cargando resumen tránsito", e);
+        }
     }
 
     // ==========================================
@@ -440,55 +522,149 @@
                 historialConciliacion = [];
             }
             
-            // Calculamos diferencias por grupo
-            procesarDiferencias();
-            renderDiferenciasPanel(); 
+            procesarDiferenciasVisibles();
 
         } catch(e) {
             console.error("Error historial", e);
-            historialConciliacion = [];
-            mapaDiferencias = {};
+            historialConciliacion = []; mapaDiferencias = {};
         }
     }
 
-    function procesarDiferencias() {
+   function procesarDiferenciasVisibles() {
         mapaDiferencias = {};
-        historialConciliacion.forEach(row => {
-            // Aseguramos que solo procesamos los de la afiliación activa
-            if(currentActiveRule && String(row.afiliacion).trim() !== String(currentActiveRule.afiliacion).trim()) return;
+        resumenGlobal.historico_visible_diff = 0;
+        resumenGlobal.historico_visible_count = 0;
+        
+        let gruposProcesados = new Set();
 
-            const gid = row.grupo_id;
-            if(!mapaDiferencias[gid]) mapaDiferencias[gid] = { left: 0, right: 0 };
+        historialConciliacion.forEach(row => {
+            // 1. Filtro por afiliación activa
+            if(currentActiveRule && String(row.afiliacion).trim() !== String(currentActiveRule.afiliacion).trim()) return;
             
-            if(row.lado === 'left') mapaDiferencias[gid].left += parseFloat(row.monto);
-            else if(row.lado === 'right') mapaDiferencias[gid].right += parseFloat(row.monto);
+            const gid = row.grupo_id;
+
+            // 2. CORRECCIÓN: Si este grupo YA es un tránsito pasado, NO lo sumes al histórico del mes actual
+            // Esto evita el conteo doble (Historial + Tránsito)
+            if (transitoPasadoMap.hasOwnProperty(gid)) {
+                // Sí lo agregamos al mapa para poder pintar los tags en la lista,
+                // pero NO sumamos a los totales globales de "Mes Actual"
+                if(!mapaDiferencias[gid]) {
+                     let diffBD = (row.diferencia !== undefined && row.diferencia !== null) ? parseFloat(row.diferencia) : 0;
+                     mapaDiferencias[gid] = { real_diff: diffBD, left_visible: 0, right_visible: 0 };
+                }
+                return; 
+            }
+
+            // 3. Procesamiento Normal
+            if(!mapaDiferencias[gid]) {
+                let diffBD = (row.diferencia !== undefined && row.diferencia !== null) ? parseFloat(row.diferencia) : 0;
+                mapaDiferencias[gid] = { real_diff: diffBD, left_visible: 0, right_visible: 0 };
+                
+                if(!gruposProcesados.has(gid)) {
+                    resumenGlobal.historico_visible_diff += diffBD;
+                    resumenGlobal.historico_visible_count++;
+                    gruposProcesados.add(gid);
+                }
+            }
+            
+            if(row.lado === 'left') mapaDiferencias[gid].left_visible += parseFloat(row.monto);
+            else if(row.lado === 'right') mapaDiferencias[gid].right_visible += parseFloat(row.monto);
         });
     }
 
-    async function cargarControlGas(sid, rule) {
+async function cargarControlGas(sid, rule) {
         const p = getPeriod();
         $('#cg-content').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
         
         try {
-            const res = await fetch(URLS.ventas, {
-                method:'POST', headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
-            });
-            const json = await res.json();
-            const raw = json.respuesta || [];
-            
+            const [resVentas, resTransitos] = await Promise.all([
+                fetch(URLS.ventas, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
+                }).then(r => r.json()),
+                
+                $.get(URLS.get_transitos, { estacion_id: sid, afiliacion: rule.afiliacion })
+            ]);
+
+            const rawVentas = resVentas.respuesta || [];
             const keywords = (rule.conceptos_cg || '').split(',')
                 .map(k => k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '));
 
-            const filtered = raw.filter(i => {
+            let listaFinal = rawVentas.filter(i => {
                 let c = (i.Concepto || i.concepto || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim();
                 c = c.replace(/SMART\s*BT/g, 'SMARTBT'); 
                 return keywords.some(k => c.includes(k));
-            });
+            }).map(v => ({
+                Fecha: normalizarFecha(v.Fecha),
+                Total: parseFloat((v.Total || 0).toString().replace(/[^0-9.-]+/g,"")),
+                Concepto: v.Concepto,
+                _status: 'normal',
+                _transitId: null
+            }));
 
-            renderList('left', filtered, rule.descripcion || 'Venta');
+            // --- PROCESAMIENTO DE TRÁNSITOS ---
+            if(resTransitos && resTransitos.status === 'success' && resTransitos.data) {
+                const inicioMesVista = `${widgetState.year}-${widgetState.month}-01`;
+                const processedIndices = new Set();
+
+                resTransitos.data.forEach(t => {
+                    const tFecha = normalizarFecha(t.fecha);
+                    const tMonto = parseFloat(t.monto);
+                    const tEstado = (t.estado || '').toUpperCase(); 
+
+                    // =======================================================
+                    // CASO 1: INCOMING (Mes Futuro) - Mostrar como pendiente
+                    // =======================================================
+                    if (tFecha < inicioMesVista) {
+                        if(tEstado === 'PENDIENTE') {
+                            listaFinal.push({
+                                Fecha: tFecha,
+                                Total: tMonto,
+                                Concepto: (t.concepto || 'Tránsito') + ' (Pendiente)',
+                                _status: 'incoming', // Amarillo
+                                _transitId: t.id
+                            });
+                        }
+                    } 
+                    // =======================================================
+                    // CASO 2: OUTGOING (Mes Actual) - BLOQUEAR SI ESTÁ PENDIENTE
+                    // =======================================================
+                    else {
+                        const ventaIndex = listaFinal.findIndex((v, idx) => 
+                            !processedIndices.has(idx) && 
+                            v.Fecha === tFecha && 
+                            Math.abs(v.Total - tMonto) < 0.1 &&
+                            v._status === 'normal'
+                        );
+
+                        if (ventaIndex !== -1) {
+                            processedIndices.add(ventaIndex);
+
+                            if (tEstado === 'CONCILIADO') {
+                                // YA SE COBRÓ EN EL FUTURO (VERDE)
+                                listaFinal[ventaIndex]._status = 'transit_completed'; 
+                                listaFinal[ventaIndex].Concepto += ' (Cobrado)';
+                            } 
+                            // AQUÍ ESTÁ LA LÓGICA DE BLOQUEO
+                            else if (tEstado === 'PENDIENTE') {
+                                // ESTÁ EN TRÁNSITO HACIA EL FUTURO (GRIS / BLOQUEADO)
+                                // 'outgoing' activa la clase .transit-locked en renderList
+                                listaFinal[ventaIndex]._status = 'outgoing'; 
+                                listaFinal[ventaIndex].Concepto += ' (En Tránsito)';
+                            }
+                        }
+                    }
+                });
+            }
+
+            listaFinal.sort((a,b) => new Date(a.Fecha) - new Date(b.Fecha));
+            renderList('left', listaFinal, rule.descripcion || 'Venta');
+            
+            renderDiferenciasPanel();
+
         } catch(e) { 
-            $('#cg-content').html('<div class="text-danger p-3">Error API ControlGas</div>'); 
+            console.error(e);
+            $('#cg-content').html('<div class="text-danger p-3">Error cargando datos</div>'); 
         }
     }
 
@@ -506,7 +682,7 @@
     }
 
     // ==========================================
-    // 5. RENDERIZADO
+    // 5. RENDERIZADO (VISUALIZACIÓN)
     // ==========================================
 
     function renderList(side, rawData, label) {
@@ -530,60 +706,130 @@
             if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
             if(isNaN(val)) val = 0;
 
-            if(!gruposLocales[fIso]) gruposLocales[fIso] = { fecha: fIso, monto: 0, desc: new Set() };
-            gruposLocales[fIso].monto += val;
+            const statusKey = item._status || 'normal';
+            const uniqueKey = `${fIso}_${statusKey}`;
+
+            if(!gruposLocales[uniqueKey]) {
+                gruposLocales[uniqueKey] = { 
+                    fecha: fIso, 
+                    monto: 0, 
+                    desc: new Set(),
+                    status: statusKey,
+                    transitIds: [] 
+                };
+            }
+            gruposLocales[uniqueKey].monto += val;
             grandTotal += val;
             
             let d = side === 'left' ? (item.Concepto || 'Venta') : (item.Referencia || 'Depósito');
-            gruposLocales[fIso].desc.add(d);
+            gruposLocales[uniqueKey].desc.add(d);
+
+            if(item._transitId) {
+                gruposLocales[uniqueKey].transitIds.push(item._transitId);
+            }
         });
 
-        const dates = Object.keys(gruposLocales).sort();
-        
-        dates.forEach(fechaKey => { 
-            const g = gruposLocales[fechaKey];
+        const keys = Object.keys(gruposLocales).sort();
+        let displayDaysCount = new Set();
+
+        keys.forEach(key => { 
+            const g = gruposLocales[key];
+            displayDaysCount.add(g.fecha);
             
-            // Render fecha visual
-            const partes = fechaKey.split('-');
+            const partes = g.fecha.split('-');
             const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
 
-            const descStr = Array.from(g.desc).join(', ');
+            let descStr = Array.from(g.desc).join(', ');
             const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
             
-            const rowId = `item-${side}-${fechaKey}`; 
+            const rowId = `item-${side}-${g.fecha}-${g.status}`; 
             const etiquetaSegura = label || (side === 'left' ? 'Venta' : 'Banco');
             const etiquetaClean = etiquetaSegura.replace(/'/g, "");
 
-            // Buscar coincidencia en historial (bloqueo)
-            const coincidencia = historialConciliacion.find(h => 
-                normalizarFecha(h.fecha) === fechaKey && 
+            // =========================================================
+            // LÓGICA CORREGIDA DE BÚSQUEDA (PRIORIDAD AL TRÁNSITO)
+            // =========================================================
+            
+            // 1. Filtramos TODAS las posibles coincidencias de ese día y monto
+            const candidatos = historialConciliacion.filter(h => 
+                normalizarFecha(h.fecha) === g.fecha && 
                 h.lado === side &&
                 Math.abs(parseFloat(h.monto) - parseFloat(g.monto)) < 0.1
             );
 
+            let coincidencia = null;
+
+            if (candidatos.length > 0) {
+                // 2. Intentamos encontrar primero uno que esté en el mapa de Tránsito Pasado
+                coincidencia = candidatos.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id));
+                
+                // 3. Si no hay ninguno de tránsito, usamos el primero que encontramos (comportamiento normal)
+                if (!coincidencia) {
+                    coincidencia = candidatos[0];
+                }
+            }
+            // =========================================================
+
             let clasesExtra = "";
             let badgeHtml = "";
-            let clickAction = `onclick="toggleItem('${side}', '${fechaKey}', ${g.monto}, '${etiquetaClean}', this)"`;
+            let iconHtml = "";
+            let transitIdsParam = (g.transitIds && g.transitIds.length > 0) ? `'${g.transitIds.join(',')}'` : 'null';
+            let clickAction = `onclick="toggleItem('${side}', '${g.fecha}', ${g.monto}, '${etiquetaClean}', this, ${transitIdsParam})"`;
             let estiloFondo = "";
             let diffTagHtml = "";
+            let transitoPasadoHtml = ""; 
+
+            // --- LÓGICA VISUAL TRÁNSITO IZQUIERDA ---
+            if (side === 'left') {
+                if (g.status === 'outgoing') {
+                    clasesExtra += " transit-locked"; 
+                    iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>';
+                    clickAction = ""; 
+                } else if (g.status === 'incoming') {
+                    clasesExtra += " transit-incoming";
+                    iconHtml = '<span class="badge badge-warning text-dark mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-shipping-fast mr-1"></i> PENDIENTE</span>';
+                } else if (g.status === 'transit_completed') {
+                    clasesExtra += " transit-completed"; 
+                    iconHtml = '<span class="badge mr-2 shadow-sm border border-success" style="background-color:#d4edda; color:#000; font-size:0.7rem;"><i class="fas fa-check-double mr-1 text-success"></i> TRÁNSITO OK</span>';
+                    clickAction = ""; 
+                }
+            }
 
             if (coincidencia) {
-                clasesExtra = "conciliated"; 
+                clasesExtra += " conciliated"; 
                 clickAction = ""; 
                 const color = getColorForGroup(coincidencia.grupo_id);
-                // Coloreado de fondo
-                estiloFondo = `style="background-color: ${color}40;"`; 
+                
+                if (g.status !== 'transit_completed') {
+                    estiloFondo = `style="background-color: ${color}40;"`;
+                }
+                
                 badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
 
-                // LOGICA DEL TAG: Solo en lado derecho
                 if(side === 'right') {
                     const stats = mapaDiferencias[coincidencia.grupo_id];
+                    let diff = 0;
+                    
                     if(stats) {
-                        const diff = stats.left - stats.right;
-                        const isOk = Math.abs(diff) < 1.0;
+                        diff = (stats.real_diff !== null) ? stats.real_diff : (stats.left_visible - stats.right_visible);
+                        
+                        const isOk = Math.abs(diff) < 0.005; 
                         const claseTag = isOk ? 'ok' : 'warn';
-                        const textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
+                        let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
                         diffTagHtml = `<span class="diff-tag ${claseTag}">${textoTag}</span>`;
+                    }
+
+                    // CHECK DEL MAPA DE TRÁNSITO (Ahora usará el ID correcto si existe)
+                    if (transitoPasadoMap.hasOwnProperty(coincidencia.grupo_id)) {
+                        const diffTransito = parseFloat(transitoPasadoMap[coincidencia.grupo_id]);
+                        transitoPasadoHtml = `
+                            <div class="mt-1">
+                                <span class="badge badge-light border border-warning shadow-sm" style="color:#000; font-size:0.7rem;">
+                                    <i class="fas fa-history mr-1 text-warning"></i> Tránsito Pasado: 
+                                    <b>${formatter.format(diffTransito)}</b>
+                                </span>
+                            </div>
+                        `;
                     }
                 }
             }
@@ -593,12 +839,14 @@
                     <div>
                         <div class="d-flex align-items-center mb-1">
                             ${badgeHtml}
+                            ${iconHtml}
                             <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
                             <span class="badge ${side==='left'?'badge-info':'badge-warning'} text-white border" style="font-size:0.6rem;">${etiquetaSegura}</span>
                         </div>
                         <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">
                             ${tooltip}
                         </small>
+                        ${transitoPasadoHtml} 
                     </div>
                     <div class="d-flex align-items-center">
                         ${diffTagHtml}
@@ -610,11 +858,10 @@
             `);
         });
 
-        if(side === 'left') counter.text(dates.length + ' días');
+        if(side === 'left') counter.text(displayDaysCount.size + ' días');
         else counter.text(formatter.format(grandTotal));
     }
 
-    // Aquí calculamos el total de diferencias para la 3ra tabla
     function renderDiferenciasPanel() {
         const counter = $('#diff-counter');
         const container = $('#diff-content');
@@ -622,26 +869,40 @@
         
         if (!currentActiveRule || !currentActiveRule.afiliacion) { counter.text('0'); return; }
         
-        let totalDiffGlobal = 0;
-        let countGrupos = 0;
-
-        // Sumar todas las diferencias de los grupos actuales
-        for (let gid in mapaDiferencias) {
-            const grp = mapaDiferencias[gid];
-            totalDiffGlobal += (grp.left - grp.right);
-            countGrupos++;
+        // CORRECCIÓN: El total ahora es puramente lo que trae el historial (que ya incluye todo)
+        let totalGlobalDiff = resumenGlobal.historico_visible_diff;
+        
+        // El conteo sí lo sumamos para saber el total de operaciones
+        let totalCount = resumenGlobal.historico_visible_count; 
+        
+        counter.text(totalCount);
+        
+        // CERO TOLERANCIA PANEL
+        const diffColor = Math.abs(totalGlobalDiff) < 0.005 ? 'text-success' : 'text-danger';
+        
+        // Renderizado simplificado
+        // Si hay tránsitos pasados, mostramos una nota informativa, pero no desglosamos montos para no confundir
+        let htmlInfoTransito = '';
+        if(resumenGlobal.transito_pasado_count > 0) {
+            htmlInfoTransito = `
+                <div class="mt-2 text-center">
+                    <span class="badge badge-light border border-warning text-dark shadow-sm">
+                        <i class="fas fa-history text-warning mr-1"></i>
+                        Incluye ${resumenGlobal.transito_pasado_count} de tránsito pasado
+                    </span>
+                </div>
+            `;
         }
-        
-        counter.text(countGrupos);
-        
-        const diffColor = Math.abs(totalDiffGlobal) < 1 ? 'text-success' : 'text-danger';
-        
+
         container.html(`
             <div class="text-center py-4">
                 <div class="text-muted small mb-2 text-uppercase font-weight-bold">Total Diferencias</div>
-                <h3 class="font-numeric ${diffColor}">${formatter.format(totalDiffGlobal)}</h3>
+                <h3 class="font-numeric ${diffColor}">${formatter.format(totalGlobalDiff)}</h3>
                 <hr>
-                <div class="small text-muted">De ${countGrupos} conciliaciones</div>
+                <div class="small text-muted mt-3">
+                    ${totalCount} conciliaciones en total
+                </div>
+                ${htmlInfoTransito}
             </div>
         `);
     }
@@ -651,6 +912,8 @@
         $('#cg-counter, #diff-counter').text('0'); 
         $('#bk-total').text('$0.00'); 
         $('#bk-info-bar').hide(); 
+        // Resetear también variable global
+        resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
     }
 
     // ==========================================
@@ -667,12 +930,27 @@
         
         if(!confirm(`¿Conciliar selección?\nCG: ${formatter.format(sumL_raw)}\nBK: ${formatter.format(sumR_raw)}\nDiferencia: ${formatter.format(diff_raw)}`)) return;
 
+        // Aquí construimos el objeto a enviar al PHP
         let payload = {
             total_cg: Number(sumL_raw.toFixed(2)),
             total_bk: Number(sumR_raw.toFixed(2)),
             diferencia: Number(diff_raw.toFixed(2)),
-            left_rows: selection.left.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, concepto: i.concepto, ref: '' })),
-            right_rows: selection.right.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, afiliacion: $('#afiliacionSelect option:selected').text(), origen: 'Manual' }))
+            
+            // --- AQUÍ ESTÁ EL CAMBIO IMPORTANTE ---
+            // Mapeamos los transit_ids que recolectamos en toggleItem
+            left_rows: selection.left.map(i => ({ 
+                fecha: normalizarFecha(i.fecha), // Enviamos la fecha ORIGINAL
+                monto: i.monto, 
+                concepto: i.concepto, 
+                ref: '', 
+                transit_ids: i.transitIds // Array de IDs de tránsito para que PHP haga el UPDATE
+            })),
+            right_rows: selection.right.map(i => ({ 
+                fecha: normalizarFecha(i.fecha), 
+                monto: i.monto, 
+                afiliacion: $('#afiliacionSelect option:selected').text(), 
+                origen: 'Manual' 
+            }))
         };
 
         $.ajax({
@@ -680,15 +958,59 @@
             success: function(resp) {
                 if(resp.status === 'success') {
                     // Recargar historial y actualizar vistas
-                    const sid = $('#estacionSelect').val();
-                    const eid = $('#bancoSelect').val();
-                    
-                    // Recargamos todo para asegurar consistencia
                     actualizarTodo(); 
                     limpiarSeleccion();
                 } else alert("Error: " + resp.message);
             },
             error: function() { alert("Error de red"); }
+        });
+    }
+
+    // --- FUNCIÓN: MARCAR COMO TRÁNSITO ---
+    function marcarComoTransito() {
+        if(selection.left.length === 0) {
+            alert("Selecciona movimientos de la IZQUIERDA (Ventas) para enviar a tránsito.");
+            return;
+        }
+        if(selection.right.length > 0) {
+            alert("Solo puedes enviar a tránsito las Ventas (Izquierda). Desmarca el Banco.");
+            return;
+        }
+
+        const totalMonto = selection.left.reduce((a,b) => a + b.monto, 0);
+
+        if(!confirm(`¿Mover ${selection.left.length} ventas por ${formatter.format(totalMonto)} al siguiente mes?\n\nSe guardarán para conciliación futura y se bloquearán de este mes.`)) return;
+
+        const payload = {
+            estacion_id: $('#estacionSelect').val(),
+            // IMPORTANTE: Enviamos el texto visible del select para coincidir con la BD
+            afiliacion: $('#afiliacionSelect option:selected').text(),
+            rows: selection.left.map(i => ({
+                fecha: normalizarFecha(i.fecha),
+                monto: i.monto,
+                concepto: i.concepto
+            }))
+        };
+
+        $.ajax({
+            url: URLS.guardar_transito,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(payload),
+            success: function(resp) {
+                const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
+                if(r.status === 'success') {
+                    alert("Movimientos enviados a tránsito exitosamente.");
+                    actualizarTodo(); 
+                    limpiarSeleccion();
+                } else {
+                    alert("Error: " + r.message);
+                }
+            },
+            error: function(err) {
+                alert("Error de conexión al guardar tránsito");
+                console.error(err);
+            }
         });
     }
 
@@ -720,6 +1042,13 @@
     }
     
     function setRS(rs) { currentRS = rs; filtrarEstaciones(); resetUI(); }
+    function resetUI() { 
+        $('#bancoSelect').empty(); 
+        $('#group-afiliacion').hide(); 
+        $('#cg-content, #bk-content').empty(); 
+        $('#cg-counter, #diff-counter').text('0');
+        $('#bk-total').text('$0.00');
+    }
     
     function initWidget() {
         const mNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
