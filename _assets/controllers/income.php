@@ -2526,6 +2526,451 @@ public function anomalies_client_tickets()
     }
 
 
+// =========================================================================
+// GUARDAR CONCILIACIÓN
+// =========================================================================
+public function guardar_conciliacion() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+
+    if (!$data || !isset($data['left_rows']) || !isset($data['right_rows'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+        exit;
+    }
+
+    $server = "192.168.0.6"; 
+    $db = "TG"; 
+    $user = "cguser"; 
+    $pass = "sahei1712"; 
+
+    $conn = null;
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        $conn->beginTransaction();
+
+        // ---------------------------------------------------------
+        // A. Insertar Encabezado (CORREGIDO: Totales agregados)
+        // ---------------------------------------------------------
+        $sqlHeader = "INSERT INTO Conciliaciones_Grupos (total_cg, total_banco, diferencia, fecha_creacion) 
+                      VALUES (?, ?, ?, GETDATE())";
+        
+        $stmtHeader = $conn->prepare($sqlHeader);
+        $stmtHeader->execute([
+            $data['total_cg'],    // <--- Agregado
+            $data['total_bk'],    // <--- Agregado
+            $data['diferencia']
+        ]);
+
+        // ---------------------------------------------------------
+        // B. Recuperar ID
+        // ---------------------------------------------------------
+        $nextGroupId = $conn->lastInsertId();
+        if (!$nextGroupId) {
+            $stmtId = $conn->query("SELECT SCOPE_IDENTITY()");
+            $nextGroupId = $stmtId->fetchColumn();
+        }
+
+        // ---------------------------------------------------------
+        // C. Preparar Consultas
+        // ---------------------------------------------------------
+        $sqlInsert = "INSERT INTO Conciliaciones_Detalles 
+                      (grupo_id, fecha, monto, descripcion, lado, referencia_unica) 
+                      VALUES (?, ?, ?, ?, ?, ?)";
+        $stmtInsert = $conn->prepare($sqlInsert);
+
+        $sqlUpdateTransit = "UPDATE Conciliacion_Transito 
+                             SET estado = 'CONCILIADO', 
+                                 fecha_marcado = GETDATE() 
+                             WHERE id = ?";
+        $stmtUpdateTransit = $conn->prepare($sqlUpdateTransit);
+
+        // ---------------------------------------------------------
+        // D. Procesar Lado Izquierdo
+        // ---------------------------------------------------------
+        foreach ($data['left_rows'] as $row) {
+            $ref = isset($row['ref']) ? $row['ref'] : '';
+            $stmtInsert->execute([
+                $nextGroupId,
+                $row['fecha'],
+                $row['monto'],
+                $row['concepto'],
+                'LEFT',
+                $ref
+            ]);
+
+            if (!empty($row['transit_ids']) && is_array($row['transit_ids'])) {
+                foreach ($row['transit_ids'] as $tid) {
+                    $stmtUpdateTransit->execute([$tid]);
+                }
+            }
+        }
+
+        // ---------------------------------------------------------
+        // E. Procesar Lado Derecho (CORREGIDO: Banco Desconocido)
+        // ---------------------------------------------------------
+        foreach ($data['right_rows'] as $row) {
+            // Esta variable trae "Principal (12345)" desde el JS
+            $afiliacionTexto = isset($row['afiliacion']) ? $row['afiliacion'] : 'Depósito';
+
+            $stmtInsert->execute([
+                $nextGroupId,
+                $row['fecha'],
+                $row['monto'],
+                $afiliacionTexto, // <--- AQUÍ ESTABA EL ERROR. Antes decía 'Depósito'.
+                'RIGHT',
+                $afiliacionTexto  // referencia_unica
+            ]);
+        }
+
+        $conn->commit();
+        echo json_encode(['status' => 'success', 'grupo_id' => $nextGroupId]);
+
+    } catch (Exception $e) {
+        if ($conn) { $conn->rollBack(); }
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+public function get_conciliaciones_hechas() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    // 1. Recibir y validar fechas
+    $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
+    $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
+
+    if (!$fecha_ini_raw || !$fecha_fin_raw) {
+        $fecha_ini_raw = date('Ymd');
+        $fecha_fin_raw = date('Ymd');
+    }
+
+    $fecha_ini = date('Y-m-d', strtotime($fecha_ini_raw));
+    $fecha_fin = date('Y-m-d', strtotime($fecha_fin_raw));
+
+    $server = "192.168.0.6"; 
+    $db = "TG"; 
+    $user = "cguser"; 
+    $pass = "sahei1712"; 
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // --- QUERY OPTIMIZADA ---
+        // Clave: Hacemos JOIN con Conciliaciones_Grupos para obtener la 'diferencia' real
+        $sql = "SELECT 
+                    D.id,
+                    D.fecha, 
+                    D.monto, 
+                    D.grupo_id, 
+                    D.lado,
+                    D.descripcion,
+                    G.diferencia,  -- <--- DATO CRÍTICO PARA EL FRONTEND
+                    
+                    -- Lógica para obtener la afiliación del grupo (basada en el lado derecho/banco)
+                    ISNULL(BankInfo.afiliacion_limpia, 'Sin Afiliación') as afiliacion,
+                    ISNULL(TE.Nombre, 'Desconocido') as nombre_banco
+
+                FROM Conciliaciones_Detalles D
+                
+                -- 1. UNIÓN CON LA TABLA DE GRUPOS (Para sacar la diferencia real)
+                INNER JOIN Conciliaciones_Grupos G ON D.grupo_id = G.grupo_id
+                
+                -- 2. BUSCAR INFO DEL BANCO (AFILIACIÓN) DEL MISMO GRUPO
+                OUTER APPLY (
+                    SELECT TOP 1 
+                        CASE 
+                            -- Intenta sacar texto entre paréntesis: 'Principal (7404318)' -> '7404318'
+                            WHEN CHARINDEX('(', descripcion) > 0 AND CHARINDEX(')', descripcion) > 0
+                            THEN SUBSTRING(
+                                descripcion, 
+                                CHARINDEX('(', descripcion) + 1, 
+                                CHARINDEX(')', descripcion) - CHARINDEX('(', descripcion) - 1
+                            )
+                            -- Si no hay paréntesis, usa la descripción completa
+                            ELSE descripcion 
+                        END as afiliacion_limpia
+                    FROM Conciliaciones_Detalles D2 
+                    WHERE D2.grupo_id = D.grupo_id AND D2.lado = 'RIGHT'
+                ) BankInfo
+
+                -- 3. CRUZAR CON CONFIGURACIÓN PARA OBTENER NOMBRE DEL BANCO (Opcional visualmente)
+                LEFT JOIN Conciliacion_Configuracion CC ON BankInfo.afiliacion_limpia = CC.afiliacion
+                LEFT JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
+
+                WHERE D.fecha BETWEEN ? AND ?
+                ORDER BY D.grupo_id, D.lado"; 
+
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$fecha_ini, $fecha_fin]);
+        
+        $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $data = [];
+        foreach($filas as $fila) {
+            $data[] = [
+                'id'         => $fila['id'],
+                'fecha'      => substr($fila['fecha'], 0, 10), 
+                'monto'      => (float) $fila['monto'],
+                'grupo_id'   => $fila['grupo_id'],
+                'lado'       => strtolower(trim($fila['lado'])),
+                // Pasamos la diferencia para que JS la lea
+                'diferencia' => (float) $fila['diferencia'], 
+                'afiliacion' => $fila['afiliacion'],
+                'banco'      => $fila['nombre_banco'],
+                'concepto'   => $fila['descripcion'] // Útil para debugging
+            ];
+        }
+        
+        echo json_encode(['status' => 'success', 'data' => $data]);
+
+    } catch (PDOException $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+
+
+public function get_resumen_transito() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
+    $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
+    $estacion_id   = filter_input(INPUT_GET, 'estacion_id');
+    $afiliacion    = filter_input(INPUT_GET, 'afiliacion'); 
+
+    if (!$fecha_ini_raw || !$fecha_fin_raw) {
+        echo json_encode(['status' => 'error', 'message' => 'Faltan fechas']);
+        exit;
+    }
+
+    $fecha_vista_ini = date('Y-m-d 00:00:00', strtotime($fecha_ini_raw));
+    $fecha_vista_fin = date('Y-m-d 23:59:59', strtotime($fecha_fin_raw));
+
+    $server = "192.168.0.6"; 
+    $db = "TG"; 
+    $user = "cguser"; 
+    $pass = "sahei1712"; 
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        $sql = "SELECT 
+                    COUNT(T.grupo_id) as total_conciliaciones,
+                    ISNULL(SUM(T.diferencia), 0) as total_diferencia
+                FROM (
+                    SELECT DISTINCT G.grupo_id, G.diferencia
+                    FROM Conciliacion_Transito CT
+                    
+                    INNER JOIN Conciliaciones_Detalles DL ON 
+                        DL.fecha = CT.fecha_original AND 
+                        DL.monto = CT.monto AND 
+                        DL.lado = 'LEFT'
+                        
+                    INNER JOIN Conciliaciones_Grupos G ON G.grupo_id = DL.grupo_id
+
+                    INNER JOIN Conciliaciones_Detalles DR ON 
+                        DR.grupo_id = G.grupo_id AND 
+                        DR.lado = 'RIGHT'
+
+                    WHERE 
+                        CT.estacion_id = ? 
+                        AND CT.estado = 'CONCILIADO'
+                        AND CT.fecha_original < ? 
+                        AND DR.fecha BETWEEN ? AND ?
+                ";
+
+        $params = [
+            $estacion_id, 
+            $fecha_vista_ini,
+            $fecha_vista_ini,
+            $fecha_vista_fin
+        ];
+
+        // --- CORRECCIÓN AQUÍ: USAMOS LIKE EN LUGAR DE IGUAL ---
+        if ($afiliacion) {
+            // Buscamos que el texto '7374424' esté CONTENIDO en 'Principal (7374424)'
+            $sql .= " AND CT.afiliacion_asociada LIKE ?";
+            $params[] = "%" . $afiliacion . "%";
+        }
+
+        $sql .= ") T";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->execute($params);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        echo json_encode([
+            'status' => 'success', 
+            'debug_filtro' => $afiliacion ? "Filtrando por %$afiliacion%" : "Sin filtro afiliacion",
+            'data' => [
+                'count' => $result['total_conciliaciones'],
+                'diff'  => (float)$result['total_diferencia']
+            ]
+        ]);
+
+    } catch (PDOException $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// 1. Guardar lo que marcas como "En Tránsito"
+public function guardar_transito() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+
+    if (!$data || !isset($data['rows']) || empty($data['rows'])) {
+        echo json_encode(['status' => 'error', 'message' => 'No hay datos para guardar']);
+        exit;
+    }
+
+    // --- CREDENCIALES (Igual que en get_conciliacion_config) ---
+    $server = "192.168.0.6"; 
+    $db = "TG"; 
+    $user = "cguser"; 
+    $pass = "sahei1712"; 
+
+    $conn = null;
+
+    try {
+        // --- CONEXIÓN ---
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        $conn->beginTransaction();
+
+        $sql = "INSERT INTO Conciliacion_Transito (fecha_original, monto, concepto, estacion_id, afiliacion_asociada, estado) 
+                VALUES (?, ?, ?, ?, ?, 'PENDIENTE')";
+        $stmt = $conn->prepare($sql);
+
+        foreach ($data['rows'] as $row) {
+            $stmt->execute([
+                $row['fecha'], 
+                $row['monto'], 
+                $row['concepto'], 
+                $data['estacion_id'],
+                $data['afiliacion']
+            ]);
+        }
+
+        $conn->commit();
+        echo json_encode(['status' => 'success']);
+
+    } catch (Exception $e) {
+        if ($conn) { $conn->rollBack(); }
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// 2. Obtener lo que viene arrastrando de meses anteriores
+public function get_transitos_pendientes() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $estacion_id = filter_input(INPUT_GET, 'estacion_id');
+    $afiliacion  = filter_input(INPUT_GET, 'afiliacion');
+
+    if (!$estacion_id) {
+        echo json_encode(['status' => 'error', 'message' => 'Falta estacion']);
+        exit;
+    }
+
+    $server = "192.168.0.6";
+    $db = "TG";
+    $user = "cguser";
+    $pass = "sahei1712";
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // MODIFICACIÓN: No filtramos por estado fijo, traemos todo para que JS decida.
+        // Solo filtramos por Estación y Afiliación.
+        $sql = "SELECT id, fecha_original as fecha, monto, concepto, estado 
+                FROM Conciliacion_Transito 
+                WHERE estacion_id = ?";
+        
+        $params = [$estacion_id];
+
+        if ($afiliacion) {
+            $sql .= " AND afiliacion_asociada LIKE ?";
+            $params[] = "%$afiliacion%";
+        }
+
+        // Opcional: Limitar por fecha reciente si la tabla es muy grande (ej. últimos 90 días)
+        // $sql .= " AND fecha_original > DATEADD(month, -3, GETDATE())";
+
+        $stmt = $conn->prepare($sql);
+        $stmt->execute($params);
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        echo json_encode(['status' => 'success', 'data' => $data]);
+
+    } catch (Exception $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+public function get_conciliacion_config() {
+        ob_clean();
+        header('Content-Type: application/json');
+        
+        $estacion_id = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+        if (!$estacion_id) {
+            echo json_encode(['status' => 'error', 'message' => 'ID de estación inválido']);
+            exit;
+        }
+
+        $server = "192.168.0.6"; 
+        $db = "TG"; 
+        $user = "cguser"; 
+        $pass = "sahei1712"; 
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            
+            // JOIN CORRECTO con Tesoreria_Entidad para obtener el nombre del banco
+            $sql = "SELECT 
+                        C.entidad_id, 
+                        E.Nombre as nombre_banco, 
+                        C.afiliacion, 
+                        C.descripcion, 
+                        C.conceptos_cg 
+                    FROM Conciliacion_Configuracion C
+                    INNER JOIN Tesoreria_Entidad E ON C.entidad_id = E.id
+                    WHERE C.estacion_id = ?";
+            
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$estacion_id]);
+            $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode(['status' => 'success', 'data' => $reglas]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+
+
 
 
 
