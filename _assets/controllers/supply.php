@@ -56,6 +56,7 @@ class Supply{
     public PaymentRequestAuthorizationsModel  $paymentRequestAuthorizationsModel;
     public PaymentTransactionsModel $paymentTransactionsModel;
     public CuentasBancariasModel $CuentasBancariasModel;
+    public UsuariosModel $UsuariosModel;
     /**
      * @param $twig
      */
@@ -88,7 +89,8 @@ class Supply{
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
         $this->paymentRequestAuthorizationsModel                = new PaymentRequestAuthorizationsModel ();
         $this->CuentasBancariasModel                            = new CuentasBancariasModel();
-        $this->paymentTransactionsModel = new PaymentTransactionsModel();
+        $this->paymentTransactionsModel                        = new PaymentTransactionsModel();
+        $this->UsuariosModel                        = new UsuariosModel();
 
 
     }
@@ -2955,14 +2957,8 @@ class Supply{
 
                 $actions = '
                     <div class="btn-group btn-group-sm">
-                        <a href="/supply/payment_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle">
-                            <i class="fas fa-eye"></i>
-                        </a>
-                        <button class="btn btn-primary" onclick="editPayment(' . $row['id'] . ')" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
-                            <i class="fas fa-trash"></i>
+                        <a href="/supply/payment_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle"><i class="fas fa-eye"></i></a>
+                        <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash"></i>
                         </button>
                     </div>
                 ';
@@ -2980,6 +2976,86 @@ class Supply{
                     'authorizations' => $authIndicator,
                     'comment'        => $row['comment'] ?: '-',
                     'actions'        => $actions
+                ];
+            }
+
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            echo json_encode(['error' => true, 'message' => $e->getMessage()]);
+        }
+    }
+
+    function loadAnticiposList(){
+        header('Content-Type: application/json');
+
+        $status = isset($_POST['status']) ? $_POST['status'] : 'all';
+        $type = isset($_POST['type']) ? $_POST['type'] : 'anticipo'; // ✅ CAMBIO
+
+        try {
+            $results = $this->PaymentRequestsModel->get_anticipos_with_summary($type, $status);
+
+            if (!$results) {
+                json_output(['data' => []]);
+                return;
+            }
+
+            $data = [];
+            foreach ($results as $row) {
+                $statusBadge = $this->getStatusBadge($row['status']);
+                $authIndicator = $this->buildAuthorizationIndicator(
+                    $row['auth_abastos'],
+                    $row['auth_admin'],
+                    $row['auth_tesoreria'],
+                    $row['auth_abastos_user'],
+                    $row['auth_admin_user'],
+                    $row['auth_tesoreria_user'],
+                    $row['auth_abastos_date'],
+                    $row['auth_admin_date'],
+                    $row['auth_tesoreria_date']
+                );
+
+                // ✅ CALCULAR SALDO
+                $monto_total = floatval($row['mont_total']);
+                // $monto_aplicado = floatval($row['monto_aplicado']);
+                $monto_aplicado= '0';
+                $saldo = $monto_total - $monto_aplicado;
+
+                // ✅ ACCIONES ESPECÍFICAS PARA ANTICIPOS
+                $actions = '
+                    <div class="btn-group btn-group-sm">
+                        <a href="/supply/anticipo_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle">
+                            <i class="fas fa-eye"></i>
+                        </a>';
+                
+                // Solo permitir aplicar si tiene saldo disponible y está autorizado
+                if ($saldo > 0 && $row['status'] == 1) {
+                    $actions .= '
+                        <button class="btn btn-success" onclick="aplicarAnticipo(' . $row['id'] . ')" title="Aplicar a factura">
+                            <i class="fas fa-hand-holding-usd"></i>
+                        </button>';
+                }
+                
+                $actions .= '
+                        <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                ';
+
+                $data[] = [
+                    'id'                => $row['id'],
+                    'request_date'      => date('d/m/Y H:i', strtotime($row['request_date'])),
+                    'usuario'           => $row['usuario_nombre'],
+                    'provider_name'     => $row['provider_name'],
+                    'emp_name'          => $row['emp_name'],
+                    'total_invoices'    => $row['total_invoices'], // Ahora es "aplicaciones"
+                    'total_amount'      => '$' . number_format($monto_total, 2),
+                    'total_aplicado'    => '$' . number_format($monto_aplicado, 2), // ✅ NUEVO
+                    'saldo_disponible'  => '$' . number_format($saldo, 2), // ✅ NUEVO
+                    'status'            => $statusBadge,
+                    'authorizations'    => $authIndicator,
+                    'comment'           => $row['comment'] ?: '-',
+                    'actions'           => $actions
                 ];
             }
 
@@ -3111,11 +3187,17 @@ class Supply{
                 json_output(['success' => false, 'detail' => 'Código de proveedor requerido']);
                 return;
             }
+            $total_reques=0;
+            foreach ($documents as $doc) {
+                $total_reques += $doc['total_fac'];
+            }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod,$total_reques);
 
             if ($result['success']) {
+                $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
+
                 json_output([
                     'success' => true,
                     'message' => $result['message'],
@@ -3138,8 +3220,7 @@ class Supply{
         }
     }
 
-    function payment_detail($payment_id)
-    {
+    function payment_detail($payment_id){
         try {
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
@@ -3147,7 +3228,7 @@ class Supply{
                 redirect('/supply/payment_list');
                 return;
             }
-            $payment = $payment[0];
+            // $payment = $payment[0];
 
             // ✅ Obtener facturas con cálculos desde el modelo
             $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
@@ -3177,7 +3258,6 @@ class Supply{
 
             // ✅ Obtener resumen desde el modelo
             $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
-
             echo $this->twig->render($this->route . 'payment_detail.html', compact(
                 'payment',
                 'invoices',
@@ -3222,12 +3302,10 @@ class Supply{
     function authorize_payment()
     {
         header('Content-Type: application/json');
-
         try {
             $payment_id = $_POST['payment_id'] ?? null;
             $permission = $_POST['permission'] ?? null; // Permiso específico del botón
             $user_id = $_SESSION['tg_user']['Id'] ?? null;
-
 
             if (!$payment_id || !$user_id || !$permission) {
                 json_output(['success' => false, 'message' => 'Datos incompletos']);
@@ -3276,6 +3354,8 @@ class Supply{
                 );
                 $message = '✅ Pago completamente autorizado. Tesorería puede proceder al pago.';
             } else {
+                $this->enviar_notificacion_autorizacion_pendiente($payment_id, $next_level, $permission,$user_id);
+
                 // Aún faltan autorizaciones
                 $department_name = match ($next_level) {
                     66 => 'Abastos',
@@ -3317,12 +3397,10 @@ class Supply{
     function process_payment()
     {
         header('Content-Type: application/json');
-
         try {
             // Obtener datos JSON
             $json = file_get_contents('php://input');
             $data = json_decode($json, true);
-
             if ($data === null) {
                 json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
                 return;
@@ -3348,7 +3426,8 @@ class Supply{
 
             // Verificar que el pago esté autorizado
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-            if (!$payment || $payment[0]['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+
+            if (!$payment || $payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
                 json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
                 return;
             }
@@ -3372,10 +3451,7 @@ class Supply{
             if ($result['success']) {
                 // Si todas las facturas están completamente pagadas, cambiar estado del pago
                 if ($result['all_paid']) {
-                    $this->PaymentRequestsModel->update_request_status(
-                        $payment_id,
-                        PaymentRequestsModel::STATUS_PAID
-                    );
+                    $this->PaymentRequestsModel->update_request_status($payment_id,PaymentRequestsModel::STATUS_PAID);
                 }
 
                 json_output([
@@ -3425,9 +3501,126 @@ class Supply{
             ]);
         }
     }
+    public function modalCrearAnticipo(){
+        try {
+            $proveedores = $this->proveedores->get_actives();
+            $companys = $this->gasolinerasModel->get_company();
 
-    function generate_payment_layout()
-    {
+            // Renderizar vista Twig
+            echo $this->twig->render($this->route . 'modals/crear_anticipo.html', compact('proveedores', 'companys'));
+        } catch (Exception $e) {
+            error_log('Error en modalCrearAnticipo: ' . $e->getMessage());
+            echo '<div class="modal-body">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Error al cargar el formulario: ' . htmlspecialchars($e->getMessage()) . '
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                </div>';
+        }
+    }
+    /**
+     * Crear un nuevo anticipo (pago sin factura)
+     */
+    public function create_anticipo(){
+        header('Content-Type: application/json');
+        try {
+            $json = file_get_contents('php://input');
+            $data = json_decode($json, true);
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            // Validar que el usuario esté autenticado
+            if (!isset($user_id)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Usuario no autenticado'
+                ]);
+                return;
+            }
+            // Extraer y validar datos
+            $provider_cod = $data['provider_cod'] ?? null;
+            $empresa_cod = $data['empresa_cod'] ?? null;
+            $monto = $data['monto'] ?? 0;
+            $comentario = trim($data['comentario'] ?? '');
+
+            
+            // Validaciones
+            if (empty($provider_cod)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Debe seleccionar un proveedor'
+                ]);
+                return;
+            }
+            
+            if (empty($empresa_cod)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Debe seleccionar una empresa'
+                ]);
+                return;
+            }
+            
+            if (!is_numeric($monto) || $monto <= 0) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'El monto debe ser mayor a cero'
+                ]);
+                return;
+            }
+            
+            if (strlen($comentario) < 10) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'La justificación debe tener al menos 10 caracteres'
+                ]);
+                return;
+            }
+            
+            // Obtener nombre del proveedor
+            $proveedor = $this->proveedores->get_by_id($provider_cod);
+            if (!$proveedor) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Proveedor no encontrado'
+                ]);
+                return;
+            }
+            
+            // Preparar datos para el modelo
+            $anticipo_data = [
+                'provider_cod' => $provider_cod,
+                'empresa_cod' => $empresa_cod,
+                'monto_total' => $monto,
+                'nombre_request' => 'ANTICIPO - ' . $proveedor['den'],
+                'comentario' => $comentario,
+                'user_id' => $user_id
+            ];
+            
+            // Crear anticipo usando el modelo
+            $result = $this->PaymentRequestsModel->create_anticipo($anticipo_data);
+            
+            if ($result['success']) {
+                // Log de auditoría
+                error_log("ANTICIPO CREADO: ID={$result['anticipo_id']}, Provider=$provider_cod, Empresa=$empresa_cod, Monto=$monto, User=$user_id");
+            }
+            
+            // Retornar resultado
+            echo json_encode($result);
+            
+        } catch (Exception $e) {
+            error_log('Error en create_anticipo: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al procesar la solicitud: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    function generate_payment_layout(){
         ini_set('memory_limit', '1024M');
         header('Content-Type: application/json');
 
@@ -3638,8 +3831,7 @@ class Supply{
         }
     }
 
-    function download_layout($filename)
-    {
+    function download_layout($filename){
         // ✅ Sanitizar filename (seguridad básica)
         $filename = basename($filename); // Elimina path traversal
         $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $filename); // Solo caracteres seguros
@@ -3669,8 +3861,7 @@ class Supply{
             exit('Archivo no encontrado');
         }
     }
-    function delete_layout()
-    {
+    function delete_layout(){
         header('Content-Type: application/json');
 
         $filename = $_POST['filename'] ?? '';
@@ -3701,8 +3892,7 @@ class Supply{
         }
     }
 
-    public function configLayoutModal()
-    {
+    public function configLayoutModal(){
         try {
             $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
 
@@ -3757,4 +3947,677 @@ class Supply{
                 '</div>';
         }
     }
+
+
+    public function anticipo_detail($anticipo_id) {
+        //  try {
+            // Obtener datos del anticipo - USAR MÉTODO CORRECTO
+            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
+            if (!$anticipo || $anticipo['tipo'] != 1) { // tipo 1 = anticipo
+                $_SESSION['error'] = 'Anticipo no encontrado';
+                header('Location: /supply/payment_list');
+                return;
+            }
+            // Obtener aplicaciones del anticipo
+            $aplicaciones = $this->PaymentRequestsModel->get_anticipo_applications($anticipo_id);
+            // Obtener resumen (totales)
+            $summary = $this->PaymentRequestsModel->get_anticipo_summary($anticipo_id);
+            // Si no hay summary, crear uno vacío
+            if (!$summary) {
+                $summary = [
+                    'id' => $anticipo_id,
+                    'monto_original' => $anticipo['monto_total'],
+                    'total_aplicado' => 0,
+                    'saldo_disponible' => $anticipo['monto_total'],
+                    'total_aplicaciones' => 0
+                ];
+            }
+            // Obtener autorizaciones
+            $authorizations = $this->PaymentRequestsModel->getPaymentAuthorizations($anticipo_id);
+            // Estado de autorizaciones
+            $auth_status = $this->PaymentRequestsModel->getAuthorizationStatus($anticipo_id);
+            // Renderizar vista
+            // echo $this->twig->render($this->route . 'anticipo_detail.html', compact());
+
+            echo $this->twig->render($this->route . 'anticipo_detail.html', [
+                'anticipo' => $anticipo,
+                'aplicaciones' => $aplicaciones,
+                'summary' => $summary,
+                'authorizations' => $authorizations,
+                'authorization_status' => $auth_status,
+                'auth_info' => [
+                    'abastos' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 66),
+                    'admin_finanzas' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 67),
+                    'tesoreria' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 68)
+                ]
+            ]);
+        // } catch (Exception $e) {
+        //     error_log("Error en anticipo_detail: " . $e->getMessage());
+        //     $_SESSION['error'] = 'Error al cargar el detalle del anticipo';
+        //     header('Location: /supply/payment_list');
+
+        //     // $this->redirectTo('supply/payment_list');
+        // }
+    }
+
+    public function apply_anticipo_to_invoices() {
+        header('Content-Type: application/json');
+        
+        try {
+            $anticipo_id = $_POST['anticipo_id'] ?? null;
+            $aplicaciones = json_decode($_POST['aplicaciones'] ?? '[]', true);
+            
+            if (!$anticipo_id || empty($aplicaciones)) {
+                json_output(['success' => false, 'message' => 'Datos incompletos']);
+                return;
+            }
+            
+            // Validar saldo disponible
+            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
+            
+            if (!$anticipo || $anticipo['tipo'] != 1) {
+                json_output(['success' => false, 'message' => 'Anticipo no válido']);
+                return;
+            }
+            
+            $saldo = $this->PaymentRequestsModel->get_saldo_disponible($anticipo_id);
+            $total_aplicar = array_sum(array_column($aplicaciones, 'monto'));
+            
+            if ($total_aplicar > $saldo) {
+                json_output(['success' => false, 'message' => 'Excede saldo disponible']);
+                return;
+            }
+            
+            // Registrar aplicaciones
+            $result = $this->PaymentRequestsModel->register_anticipo_applications(
+                $anticipo_id, 
+                $aplicaciones, 
+                $_SESSION['tg_user']['Id']
+            );
+            
+            json_output($result);
+            
+        } catch (Exception $e) {
+            error_log("Error en apply_anticipo_to_invoices: " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor']);
+        }
+    }
+
+    private function enviar_notificacion_nuevo_pago($payment_id,$provider_name,$total_documents,$total_amount,$comment,$created_by) {
+        try {
+            // Obtener correos de usuarios con permiso de Abastos (66)
+            $emails = $this->UsuariosModel->get_emails_by_permission(66);
+            
+            if (empty($emails)) {
+                error_log("No hay usuarios con permiso de Abastos para notificar");
+                return;
+            }
+            $emails = array_filter($emails, function($email) {
+                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
+            });
+
+            // Crear el cuerpo del correo
+            $subject = "Nuevo Pago Creado - ID #{$payment_id}";
+            $body = $this->generar_html_notificacion_pago(
+                $payment_id,
+                $provider_name,
+                $total_documents,
+                $total_amount,
+                $comment,
+                $created_by
+            );
+
+            // Enviar correo
+            $from = 'totalgasdesarrollo@gmail.com';
+            
+            // Capturar salida para evitar problemas con JSON
+            ob_start();
+            $resultado = @send_mail2($subject, $body, $emails, $from);
+            ob_get_clean();
+
+            if ($resultado) {
+                error_log("Notificación de pago #{$payment_id} enviada a: " . implode(', ', $emails));
+            } else {
+                error_log("Error al enviar notificación de pago #{$payment_id}");
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error en enviar notificacion_nuevo_pago: " . $e->getMessage());
+        }
+    }
+
+    private function generar_html_notificacion_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by) {
+        $fecha = date('d/m/Y H:i:s');
+        $total_formatted = number_format($total_amount, 2, '.', ',');
+        
+        // URL del detalle del pago (ajustar según tu dominio)
+        $url_detalle = "http://totalgasonline.net:400/supply/payment_detail/{$payment_id}";
+        
+        return "
+        <!DOCTYPE html>
+        <html lang='es'>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 20px;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 10px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                .header {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .header p {
+                    margin: 5px 0 0 0;
+                    opacity: 0.9;
+                }
+                .content {
+                    padding: 30px;
+                }
+                .badge {
+                    display: inline-block;
+                    background: #667eea;
+                    color: white;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    margin-bottom: 20px;
+                }
+                .info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 15px 0;
+                    border-bottom: 1px solid #eee;
+                }
+                .info-row:last-child {
+                    border-bottom: none;
+                }
+                .info-label {
+                    color: #666;
+                    font-weight: 500;
+                }
+                .info-value {
+                    color: #333;
+                    font-weight: 600;
+                }
+                .total-box {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                    text-align: center;
+                }
+                .total-label {
+                    color: #666;
+                    font-size: 14px;
+                    margin-bottom: 5px;
+                }
+                .total-amount {
+                    color: #28a745;
+                    font-size: 32px;
+                    font-weight: bold;
+                }
+                .comment-box {
+                    background: #fff3cd;
+                    border-left: 4px solid #ffc107;
+                    padding: 15px;
+                    margin: 20px 0;
+                    border-radius: 4px;
+                }
+                .comment-label {
+                    font-weight: 600;
+                    color: #856404;
+                    margin-bottom: 5px;
+                }
+                .comment-text {
+                    color: #856404;
+                }
+                .button {
+                    display: inline-block;
+                    background: #667eea;
+                    color: white;
+                    padding: 12px 30px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                    font-weight: 600;
+                }
+                .button:hover {
+                    background: #5568d3;
+                }
+                .footer {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 12px;
+                }
+                .icon {
+                    display: inline-block;
+                    width: 20px;
+                    height: 20px;
+                    margin-right: 8px;
+                    vertical-align: middle;
+                }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    <h1>✓ Nuevo Pago Creado</h1>
+                    <p>Sistema de Gestión de Pagos - TotalGas</p>
+                </div>
+                
+                <div class='content'>
+                    <div class='badge'>🔔 Notificación - Departamento de Abastos</div>
+                    
+                    <p style='color: #333; line-height: 1.6;'>
+                        Se ha creado un nuevo pago que requiere autorización del departamento de Abastos.
+                    </p>
+                    
+                    <div style='margin: 20px 0;'>
+                        <div class='info-row'>
+                            <span class='info-label'>📋 ID de Pago:</span>
+                            <span class='info-value'>#${payment_id}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>🏢 Proveedor:</span>
+                            <span class='info-value'>{$provider_name}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>📄 Documentos:</span>
+                            <span class='info-value'>{$total_documents}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>👤 Creado por:</span>
+                            <span class='info-value'>{$created_by}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>📅 Fecha:</span>
+                            <span class='info-value'>{$fecha}</span>
+                        </div>
+                    </div>
+                    
+                    <div class='total-box'>
+                        <div class='total-label'>Monto Total del Pago</div>
+                        <div class='total-amount'>\${$total_formatted}</div>
+                    </div>
+                    
+                    " . (!empty($comment) ? "
+                    <div class='comment-box'>
+                        <div class='comment-label'>💬 Comentario:</div>
+                        <div class='comment-text'>{$comment}</div>
+                    </div>
+                    " : "") . "
+                    
+                    <div style='text-align: center; margin-top: 30px;'>
+                        <a href='{$url_detalle}' class='button'>
+                            Ver Detalle del Pago →
+                        </a>
+                    </div>
+                    
+                    <p style='color: #666; font-size: 14px; margin-top: 30px;'>
+                        Este pago requiere su autorización para poder continuar con el proceso de pago. 
+                        Por favor, revise los documentos y autorice según corresponda.
+                    </p>
+                </div>
+                
+                <div class='footer'>
+                    <p><strong>TotalGas - Sistema de Gestión de Pagos</strong></p>
+                    <p>Este es un correo automático, por favor no responda a este mensaje.</p>
+                    <p style='margin-top: 10px; font-size: 11px;'>
+                        © " . date('Y') . " TotalGas. Todos los derechos reservados.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+    private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission,$user_id) {
+        try {
+            // Obtener correos del siguiente nivel
+            $emails = $this->UsuariosModel->get_emails_by_permission($next_level_permission);
+            if (empty($emails)) {
+                error_log("No hay usuarios con permiso {$next_level_permission} para notificar");
+                return;
+            }
+
+            // ============================================================
+            // 🚧 BLOQUE TEMPORAL PARA PRUEBAS - REMOVER AL TERMINAR 🚧
+            // ============================================================
+            $emails = array_filter($emails, function($email) {
+                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
+            });
+
+            $emails = array_values($emails);
+            if (empty($emails)) {
+                error_log("⚠️ No hay correos disponibles después del filtro de pruebas");
+                return;
+            }
+            // ============================================================
+            // Obtener información del pago
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+            if (!$payment) {
+                error_log("Pago #{$payment_id} no encontrado");
+                return;
+            }
+
+            // Obtener nombre del proveedor
+            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
+            $provider_name = $proveedor ? $proveedor['den'] : 'Proveedor';
+
+            // Obtener nombre del nivel que autorizó
+            $authorized_department = match ($authorized_permission) {
+                66 => 'Abastos',
+                67 => 'Administración y Finanzas',
+                68 => 'Tesorería',
+                default => 'Desconocido'
+            };
+
+            // Obtener nombre del siguiente nivel
+            $next_department = match ($next_level_permission) {
+                66 => 'Abastos',
+                67 => 'Administración y Finanzas',
+                68 => 'Tesorería',
+                default => 'Desconocido'
+            };
+
+            // Crear el cuerpo del correo
+            $subject = "Pago #{$payment_id} requiere tu autorización - {$next_department}";
+            $body = $this->generar_html_notificacion_autorizacion(
+                $payment_id,
+                $provider_name,
+                $payment['total_invoices'] ?? 0,
+                $payment['monto_total'] ?? 0,
+                $user_id,
+                $next_department,
+                $payment['comment'] ?? ''
+            );
+
+            // Enviar correo
+            $from = 'totalgasdesarrollo@gmail.com';
+            
+            ob_start();
+            $resultado = @send_mail2($subject, $body, $emails, $from);
+            ob_get_clean();
+
+            if ($resultado) {
+                error_log("Notificación de autorización pendiente para pago #{$payment_id} enviada a {$next_department}: " . implode(', ', $emails));
+            } else {
+                error_log("Error al enviar notificación de autorización pendiente para pago #{$payment_id}");
+            }
+            
+        } catch (Exception $e) {
+            error_log("Error en enviar notificacion_autorizacion_pendiente: " . $e->getMessage());
+        }
+    }
+
+    private function generar_html_notificacion_autorizacion(
+        $payment_id,
+        $provider_name,
+        $total_documents,
+        $total_amount,
+        $authorized_department,
+        $next_department,
+        $comment
+    ) {
+        $fecha = date('d/m/Y H:i:s');
+        $total_formatted = number_format($total_amount, 2, '.', ',');
+        $url_detalle = "http://totalgasonline.net:400/supply/payment_detail/{$payment_id}";
+        
+        return "
+        <!DOCTYPE html>
+        <html lang='es'>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 20px;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 10px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                .header {
+                    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .header p {
+                    margin: 5px 0 0 0;
+                    opacity: 0.9;
+                }
+                .content {
+                    padding: 30px;
+                }
+                .badge {
+                    display: inline-block;
+                    background: #17a2b8;
+                    color: white;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    margin-bottom: 20px;
+                }
+                .status-box {
+                    background: #d1ecf1;
+                    border: 1px solid #bee5eb;
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin: 20px 0;
+                }
+                .status-box .status-label {
+                    font-weight: 600;
+                    color: #0c5460;
+                    margin-bottom: 8px;
+                }
+                .status-item {
+                    display: flex;
+                    align-items: center;
+                    padding: 8px 0;
+                }
+                .status-item i {
+                    margin-right: 10px;
+                    font-size: 18px;
+                }
+                .status-completed {
+                    color: #28a745;
+                }
+                .status-pending {
+                    color: #ffc107;
+                }
+                .info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 15px 0;
+                    border-bottom: 1px solid #eee;
+                }
+                .info-row:last-child {
+                    border-bottom: none;
+                }
+                .info-label {
+                    color: #666;
+                    font-weight: 500;
+                }
+                .info-value {
+                    color: #333;
+                    font-weight: 600;
+                }
+                .total-box {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                    text-align: center;
+                }
+                .total-label {
+                    color: #666;
+                    font-size: 14px;
+                    margin-bottom: 5px;
+                }
+                .total-amount {
+                    color: #17a2b8;
+                    font-size: 32px;
+                    font-weight: bold;
+                }
+                .comment-box {
+                    background: #fff3cd;
+                    border-left: 4px solid #ffc107;
+                    padding: 15px;
+                    margin: 20px 0;
+                    border-radius: 4px;
+                }
+                .comment-label {
+                    font-weight: 600;
+                    color: #856404;
+                    margin-bottom: 5px;
+                }
+                .comment-text {
+                    color: #856404;
+                }
+                .button {
+                    display: inline-block;
+                    background: #17a2b8;
+                    color: white;
+                    padding: 12px 30px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                    font-weight: 600;
+                }
+                .button:hover {
+                    background: #138496;
+                }
+                .footer {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 12px;
+                }
+                .alert-box {
+                    background: #d4edda;
+                    border: 1px solid #c3e6cb;
+                    color: #155724;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    <h1>⏳ Autorización Requerida</h1>
+                    <p>Sistema de Gestión de Pagos - TotalGas</p>
+                </div>
+                
+                <div class='content'>
+                    <div class='badge'>🔔 Notificación - {$next_department}</div>
+                    
+                    <div class='alert-box'>
+                        <strong>✅ {$authorized_department}</strong> ha autorizado el pago.<br>
+                        Ahora requiere tu autorización para continuar con el proceso.
+                    </div>
+                    
+                    <div style='margin: 20px 0;'>
+                        <div class='info-row'>
+                            <span class='info-label'>📋 ID de Pago:</span>
+                            <span class='info-value'>#${payment_id}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>🏢 Proveedor:</span>
+                            <span class='info-value'>{$provider_name}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>📄 Documentos:</span>
+                            <span class='info-value'>{$total_documents}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>📅 Fecha:</span>
+                            <span class='info-value'>{$fecha}</span>
+                        </div>
+                    </div>
+                    
+                    <div class='total-box'>
+                        <div class='total-label'>Monto Total del Pago</div>
+                        <div class='total-amount'>\${$total_formatted}</div>
+                    </div>
+                    
+                    <div class='status-box'>
+                        <div class='status-label'>📊 Estado de Autorizaciones:</div>
+                        <div class='status-item status-completed'>
+                            <i class='fas fa-check-circle'></i>
+                            <span><strong>{$authorized_department}:</strong> Autorizado</span>
+                        </div>
+                        <div class='status-item status-pending'>
+                            <i class='fas fa-clock'></i>
+                            <span><strong>{$next_department}:</strong> Pendiente (Tu autorización)</span>
+                        </div>
+                    </div>
+                    
+                    " . (!empty($comment) ? "
+                    <div class='comment-box'>
+                        <div class='comment-label'>💬 Comentario:</div>
+                        <div class='comment-text'>{$comment}</div>
+                    </div>
+                    " : "") . "
+                    
+                    <div style='text-align: center; margin-top: 30px;'>
+                        <a href='{$url_detalle}' class='button'>
+                            Revisar y Autorizar Pago →
+                        </a>
+                    </div>
+                    
+                    <p style='color: #666; font-size: 14px; margin-top: 30px; text-align: center;'>
+                        <strong>⚠️ Acción Requerida:</strong><br>
+                        Este pago necesita tu autorización para continuar con el flujo de aprobación.
+                    </p>
+                </div>
+                
+                <div class='footer'>
+                    <p><strong>TotalGas - Sistema de Gestión de Pagos</strong></p>
+                    <p>Este es un correo automático, por favor no responda a este mensaje.</p>
+                    <p style='margin-top: 10px; font-size: 11px;'>
+                        © " . date('Y') . " TotalGas. Todos los derechos reservados.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+
+    
 }

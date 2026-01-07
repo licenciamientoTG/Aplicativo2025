@@ -1,0 +1,94 @@
+{# Modal content for crear anticipo #}
+<div class="modal-body">
+    <div class="alert alert-info" style="display: flex;flex-direction: column; padding: 15px;">
+        <i class="fas fa-info-circle"></i>
+        <strong>¿Qué es un anticipo?</strong><br>
+        <small>Un anticipo es un pago sin factura que se realiza antes de recibir el combustible.
+            Posteriormente se aplicará a las facturas reales para justificarlo.</small>
+    </div>
+
+    <form id="formCrearAnticipo" style="display: flex; flex-direction: column;">
+        <div class="row g-3 mb-3">
+
+            <div class="col-12 col-md-6">
+                <label for="anticipo_proveedor" class="form-label fw-bold">Proveedor <span
+                        class="text-danger">*</span></label>
+                <select class="form-select selectpicker w-100" id="anticipo_proveedor" name="anticipo_proveedor"
+                    data-live-search="true" required>
+                    <option value="">Seleccione un proveedor</option>
+                    {% for proveedor in proveedores %}
+                    <option value="{{ proveedor.id_control_gas }}">{{ proveedor.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-6">
+                <label for="anticipo_empresa" class="form-label fw-bold">
+                    Razón social <span class="text-danger">*</span>
+                </label>
+                <select class="form-select selectpicker w-100" id="anticipo_empresa" name="anticipo_empresa" required>
+                    <option value="">Seleccione una empresa</option>
+                    {% for company in companys %}
+                    <option value="{{ company.codemp }}">{{ company.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Monto -->
+        <div class="mb-3">
+            <label class="form-label">Monto del Anticipo <span class="text-danger">*</span></label>
+            <div class="input-group">
+                <span class="input-group-text">$</span>
+                <input type="number" class="form-control" id="anticipo_monto" name="anticipo_monto" step="0.01"
+                    min="0.01" placeholder="0.00" required>
+            </div>
+            <small class="text-muted">Ingrese el monto total del anticipo</small>
+        </div>
+
+        <!-- Justificación -->
+        <div class="mb-3">
+            <label class="form-label">Justificación <span class="text-danger">*</span></label>
+            <textarea class="form-control" id="anticipo_comentario" name="anticipo_comentario" rows="3" maxlength="500"
+                placeholder="Describa el motivo del anticipo (mínimo 10 caracteres)..." required></textarea>
+            <small class="text-muted"><span id="comentario_chars">0</span>/500 caracteres</small>
+        </div>
+
+        <!-- Resumen -->
+        <div class="card bg-light" id="resumen_anticipo" style="display: none;">
+            <div class="card-body">
+                <h6 class="mb-3">
+                    <i class="fas fa-clipboard-check"></i> Resumen del Anticipo
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p class="mb-1">
+                            <strong>Proveedor:</strong><br>
+                            <span id="resumen_proveedor" class="text-primary">-</span>
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p class="mb-1">
+                            <strong>Empresa:</strong><br>
+                            <span id="resumen_empresa" class="text-primary">-</span>
+                        </p>
+                    </div>
+                    <div class="col-md-12 mt-3">
+                        <p class="mb-0">
+                            <strong>Monto Total:</strong><br>
+                            <span class="h4 text-success" id="resumen_monto">$0.00</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+        <i class="fas fa-times"></i> Cancelar
+    </button>
+    <button type="button" class="btn btn-primary" id="btnConfirmarAnticipo" onclick="confirmarCreacionAnticipo()">
+        <i class="fas fa-save"></i> Crear Anticipo
+    </button>
+</div>

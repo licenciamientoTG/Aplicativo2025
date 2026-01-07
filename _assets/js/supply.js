@@ -439,8 +439,8 @@ async function payment_create_table(){
             { data: 'fechaVto', className: 'text-center text-nowrap' },
             { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2) },
             { data: 'producto', className: 'text-center text-nowrap' },
-            {data :'statusLabel'},
-            {data: 'satuid',visible: false,searchable: false    }
+            { data :'statusLabel'},
+            { data: 'satuid',visible: false,searchable: false    }
         ],
          columnDefs: [
                     { orderable: false, targets: 0 }
@@ -3245,7 +3245,30 @@ async function ModalinvoicePdf(id, data){
 // ==========================================
 // FUNCIONES PARA GESTIÓN DE PAGOS
 // ==========================================
+function showPaymentLoader(text = 'Procesando pago...', subtext = 'Por favor espere') {
+    const loader = document.getElementById('paymentLoader');
+    if (loader) {
+        loader.querySelector('.payment-loader-text').textContent = text;
+        loader.querySelector('.payment-loader-subtext').textContent = subtext;
+        loader.classList.add('active');
+        
+        // Deshabilitar scroll del body
+        document.body.style.overflow = 'hidden';
+    }
+}
 
+/**
+ * Oculta el loader
+ */
+function hidePaymentLoader() {
+    const loader = document.getElementById('paymentLoader');
+    if (loader) {
+        loader.classList.remove('active');
+        
+        // Restaurar scroll del body
+        document.body.style.overflow = '';
+    }
+}
 // Mejorar generate_payment() existente
 async function generatePayment() {
    if (paymentItems.length === 0) {
@@ -3275,6 +3298,8 @@ async function generatePayment() {
         'Ingrese un comentario o descripción para este pago:',
         '',
         async function(evt, comment) {
+            showPaymentLoader('Creando pago...', 'Procesando documentos');
+
             const paymentData = {
                 documentos: paymentItems,
                 total_documentos: paymentItems.length,
@@ -3297,7 +3322,7 @@ async function generatePayment() {
                 });
 
                 const data = await response.json();
-
+                hidePaymentLoader();
                 if (data.success) {
                     alertify.success('Pago creado exitosamente: ID #' + data.payment_id);
 
@@ -3325,7 +3350,9 @@ async function generatePayment() {
                     alertify.error('Error: ' + data.detail);
                 }
             } catch (error) {
+                hidePaymentLoader();
                 alertify.error('Error de conexión');
+
                 console.error(error);
             }
         },
@@ -3377,15 +3404,16 @@ function loadPaymentList() {
 }
 
 function loadAnticiposList() {
+    console.log('Cargando lista de anticipos...');
     if ($.fn.DataTable.isDataTable('#tabla_anticipos')) {
         $('#tabla_anticipos').DataTable().destroy();
     }
-    
+
     const status = $('#status_filter').val();
-    
     paymentListTable = $('#tabla_anticipos').DataTable({
+        dom: '<"top"f>rt<"bottom"lip>',
         ajax: {
-            url: '/supply/payment_list_table',
+            url: '/supply/loadAnticiposList',
             type: 'POST',
             data: {
                 status: status,
@@ -3401,24 +3429,243 @@ function loadAnticiposList() {
             { data: 'emp_name' },
             { data: 'provider_name' },
             { data: 'usuario' },
-            { data: 'total_invoices', className: 'text-center' },
+            { 
+                data: 'total_invoices', 
+                className: 'text-center',
+                render: function(data) {
+                    return data > 0 
+                        ? '<span class="badge bg-info">' + data + '</span>'
+                        : '<span class="badge bg-secondary">0</span>';
+                }
+            },
             { data: 'total_amount', className: 'text-end' },
-            { data: 'total_paid', className: 'text-end' },
+            { data: 'total_aplicado', className: 'text-end' }, // ✅ CAMBIO
+            { 
+                data: 'saldo_disponible', 
+                className: 'text-end',
+                render: function(data) {
+                    const saldo = parseFloat(data.replace(/[$,]/g, ''));
+                    const color = saldo > 0 ? 'success' : 'secondary';
+                    return '<strong class="text-' + color + '">' + data + '</strong>';
+                }
+            }, // ✅ NUEVA
             { data: 'status', className: 'text-center' },
             { data: 'authorizations', className: 'text-center' },
             { data: 'comment' },
             { data: 'actions', orderable: false, className: 'text-center' }
         ],
         order: [[0, 'desc']],
-        // language: {
-        //     url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
-        // }
     });
 }
-
-function editPayment(paymentId) {
-    window.location.href = '/supply/payment_detail/' + paymentId;
+function aplicarAnticipo(anticipoId) {
+    // Redirigir a la página de detalle del anticipo
+    window.location.href = '/supply/anticipo_detail/' + anticipoId;
+    
+    // O abrir modal (implementación futura)
+    // abrirModalAplicarAnticipo(anticipoId);
 }
+async function abrirModalCrearAnticipo() {
+    try {
+        // Abrir modal inmediatamente
+        $('#modalCrearAnticipo').modal('show');
+        
+        // Mostrar loader
+        $('#modalCrearAnticipoContent').html(`
+            <div class="modal-body text-center py-5">
+                <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+                <p class="mt-3">Cargando formulario...</p>
+            </div>
+        `);
+        
+        // Cargar contenido del modal
+        const response = await fetch('/supply/modalCrearAnticipo', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Error al cargar el formulario');
+        }
+        
+        const content = await response.text();
+        $('#modalCrearAnticipoContent').html(content);
+        
+        // Reinicializar selectpicker si existe
+        if ($.fn.selectpicker) {
+            $('.selectpicker').selectpicker();
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        $('#modalCrearAnticipoContent').html(`
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i>
+                    Error al cargar el formulario. Por favor intente nuevamente.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        `);
+    }
+}
+/**
+ * Actualizar resumen del anticipo en tiempo real
+ */
+$(document).on('change input', '#anticipo_proveedor, #anticipo_empresa, #anticipo_monto', function() {
+    actualizarResumenAnticipo();
+});
+
+/**
+ * Contador de caracteres del comentario
+ */
+$(document).on('input', '#anticipo_comentario', function() {
+    const length = $(this).val().length;
+    $('#comentario_chars').text(length);
+});
+
+
+function actualizarResumenAnticipo() {
+    const proveedor = $('#anticipo_proveedor option:selected').text();
+    const empresa = $('#anticipo_empresa option:selected').text();
+    const monto = parseFloat($('#anticipo_monto').val()) || 0;
+    
+    if (proveedor && proveedor !== 'Seleccione un proveedor' && monto > 0) {
+        $('#resumen_proveedor').text(proveedor);
+        $('#resumen_empresa').text(empresa || 'No seleccionada');
+        $('#resumen_monto').text('$' + monto.toLocaleString('es-MX', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }));
+        $('#resumen_anticipo').slideDown();
+    } else {
+        $('#resumen_anticipo').slideUp();
+    }
+}
+
+/**
+ * Confirmar creación del anticipo
+ */
+function confirmarCreacionAnticipo() {
+    // Validar formulario
+    const proveedor_cod = $('#anticipo_proveedor').val();
+    const empresa_cod = $('#anticipo_empresa').val();
+    const monto = parseFloat($('#anticipo_monto').val());
+    const comentario = $('#anticipo_comentario').val().trim();
+    
+    // Validaciones
+    if (!proveedor_cod) {
+        alertify.error('Debe seleccionar un proveedor');
+        return;
+    }
+    
+    if (!empresa_cod) {
+        alertify.error('Debe seleccionar una empresa');
+        return;
+    }
+    
+    if (!monto || monto <= 0) {
+        alertify.error('El monto debe ser mayor a cero');
+        return;
+    }
+    
+    if (!comentario || comentario.length < 10) {
+        alertify.error('La justificación debe tener al menos 10 caracteres');
+        return;
+    }
+    
+    // Obtener nombres para confirmación
+    const proveedor_nombre = $('#anticipo_proveedor option:selected').text();
+    const empresa_nombre = $('#anticipo_empresa option:selected').text();
+    
+    // Confirmar con el usuario
+    alertify.confirm(
+        'Confirmar Anticipo',
+        `<div class="text-center">
+            <p class="mb-3">¿Crear anticipo con los siguientes datos?</p>
+            <div class="alert alert-info mb-3" style="display: flex;    flex-direction: column;">
+                <strong>Proveedor:</strong> ${proveedor_nombre}<br>
+                <strong>Empresa:</strong> ${empresa_nombre}<br>
+                <strong>Monto:</strong> <span class="h5 text-primary">$${monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+            </div>
+            <small class="text-muted">Este anticipo requerirá autorización de 3 niveles antes de poder aplicarse.</small>
+        </div>`,
+        function() {
+            ejecutarCreacionAnticipo(proveedor_cod, empresa_cod, monto, comentario);
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    ).set('labels', {ok: 'Crear Anticipo', cancel: 'Cancelar'});
+}
+
+/**
+ * Ejecutar creación del anticipo (AJAX)
+ */
+async function ejecutarCreacionAnticipo(proveedor_cod, empresa_cod, monto, comentario) {
+    try {
+        // Deshabilitar botón
+        $('#btnConfirmarAnticipo').prop('disabled', true)
+            .html('<i class="fas fa-spinner fa-spin"></i> Creando...');
+        
+        const response = await fetch('/supply/create_anticipo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider_cod: proveedor_cod,
+                empresa_cod: empresa_cod,
+                monto: monto,
+                comentario: comentario
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Cerrar modal
+            $('#modalCrearAnticipo').modal('hide');
+            
+            // Mensaje de éxito
+            alertify.success('✓ Anticipo creado exitosamente: ID #' + data.anticipo_id);
+            
+            // Recargar tabla de anticipos si existe
+            if ($.fn.DataTable.isDataTable('#tabla_anticipos')) {
+                $('#tabla_anticipos').DataTable().ajax.reload(null, false);
+            }
+            
+            // Preguntar si desea ver el detalle
+            setTimeout(() => {
+                alertify.confirm(
+                    '¿Ver detalle?',
+                    '¿Desea ver el detalle del anticipo creado?',
+                    function() {
+                        window.location.href = '/supply/payment_detail/' + data.anticipo_id;
+                    },
+                    function() {
+                        // No hacer nada
+                    }
+                ).set('labels', {ok: 'Ver Detalle', cancel: 'Cerrar'});
+            }, 500);
+            
+        } else {
+            alertify.error(data.message || 'Error al crear anticipo');
+            $('#btnConfirmarAnticipo').prop('disabled', false)
+                .html('<i class="fas fa-save"></i> Crear Anticipo');
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alertify.error('Error de conexión al crear anticipo');
+        $('#btnConfirmarAnticipo').prop('disabled', false)
+            .html('<i class="fas fa-save"></i> Crear Anticipo');
+    }
+}
+
 
 function deletePayment(paymentId) {
     alertify.confirm(
@@ -4448,69 +4695,292 @@ function calcularTotalConAnticipos() {
     $('#total_con_anticipos').text('$' + totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2}));
 }
 
-function table_anticipos(){
 
-    $('#tabla_anticipos').DataTable({
-        ajax: {
-            url: '/supply/anticipos_datatable',
-            type: 'POST'
+function openAuthModal(permission, departamento) {
+    currentPermission = permission;
+    $('#modalDepartamento').text(departamento);
+    $('#authModal').modal('show');
+}
+function confirmAuthorization() {
+    if (!currentPermission) {
+        alertify.error('Error: No se seleccionó un nivel de autorización');
+        return;
+    }
+    $('#btnConfirmAuth').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Autorizando...');
+    $.ajax({
+        url: '/supply/authorize_payment',
+        type: 'POST',
+        data: {
+            payment_id: paymentId,
+            permission: currentPermission
         },
-        columns: [
-            { data: 'id' },
-            { data: 'request_date' },
-            { data: 'proveedor_nombre' },
-            { 
-                data: 'monto_total',
-                render: function(data) {
-                    return '$' + parseFloat(data).toLocaleString('es-MX', {minimumFractionDigits: 2});
-                },
-                className: 'text-end'
-            },
-            { 
-                data: 'monto_aplicado',
-                render: function(data) {
-                    return '$' + parseFloat(data).toLocaleString('es-MX', {minimumFractionDigits: 2});
-                },
-                className: 'text-end'
-            },
-            { 
-                data: 'saldo_disponible',
-                render: function(data) {
-                    const saldo = parseFloat(data);
-                    const color = saldo > 0 ? 'text-success' : 'text-muted';
-                    return `<strong class="${color}">$${saldo.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong>`;
-                },
-                className: 'text-end'
-            },
-            {
-                data: 'status',
-                render: function(data, type, row) {
-                    const saldo = parseFloat(row.saldo_disponible);
-                    const monto_total = parseFloat(row.monto_total);
-                    
-                    if (data == 3) return '<span class="badge bg-danger">Rechazado</span>';
-                    if (saldo === 0) return '<span class="badge bg-secondary">Aplicado Total</span>';
-                    if (saldo < monto_total) return '<span class="badge bg-warning">Aplicado Parcial</span>';
-                    if (data == 2) return '<span class="badge bg-success">Autorizado</span>';
-                    if (data == 1) return '<span class="badge bg-info">En Proceso</span>';
-                    return '<span class="badge bg-secondary">Pendiente</span>';
-                }
-            },
-            {
-                data: null,
-                render: function(data, type, row) {
-                    return `
-                        <button class="btn btn-sm btn-primary" onclick="verDetalleAnticipo(${row.id})">
-                            <i class="fas fa-eye"></i>
-                        </button>
-                    `;
-                },
-                orderable: false
+        success: function(response) {
+            if (response.success) {
+                alertify.success(response.message);
+                $('#authModal').modal('hide');
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                alertify.error(response.message);
+                $('#btnConfirmAuth').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Autorización');
             }
-        ],
-        order: [[0, 'desc']],
-        language: {
-            url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json'
+        },
+        error: function() {
+            alertify.error('Error de conexión al autorizar');
+            $('#btnConfirmAuth').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Autorización');
         }
     });
+}
+
+function procesarPago() {
+    // Abrir modal de selección de facturas
+    $('#modalProcesarPago').modal('show');
+    updatePagoSummary();
+}
+function updatePagoSummary() {
+    let totalAPagar = 0;
+    let facturasCount = 0;
+    
+    $('.factura-checkbox:checked').each(function() {
+        const row = $(this).closest('tr');
+        const montoInput = row.find('.monto-pago');
+        const monto = parseFloat(montoInput.val()) || 0;
+        const saldo = parseFloat(row.data('saldo'));
+        
+        // Habilitar input cuando se selecciona
+        montoInput.prop('disabled', !$(this).prop('checked'));
+        
+        // Si se acaba de seleccionar y no tiene valor, poner el saldo completo
+        if ($(this).prop('checked') && montoInput.val() === '') {
+            montoInput.val(saldo.toFixed(2));
+        }
+        
+        // Validar que no exceda el saldo
+        if (monto > saldo) {
+            montoInput.val(saldo.toFixed(2));
+            alertify.warning('El monto no puede exceder el saldo de la factura');
+        }
+        
+        totalAPagar += parseFloat(montoInput.val()) || 0;
+        facturasCount++;
+    });
+    
+    // Actualizar resumen
+    $('#totalAPagar').text('$' + totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+    $('#facturasSeleccionadas').text(facturasCount);
+    
+    // Habilitar/deshabilitar botón de confirmar
+    $('#btnConfirmarPago').prop('disabled', facturasCount === 0 || totalAPagar === 0);
+}
+
+
+function toggleSelectAllFacturas() {
+    const selectAll = $('#selectAllFacturas').prop('checked');
+    $('.factura-checkbox').each(function() {
+        $(this).prop('checked', selectAll);
+        const row = $(this).closest('tr');
+        const montoInput = row.find('.monto-pago');
+        
+        if (selectAll) {
+            const saldo = parseFloat(row.data('saldo'));
+            montoInput.prop('disabled', false).val(saldo.toFixed(2));
+        } else {
+            montoInput.prop('disabled', true).val('');
+        }
+    });
+    
+    updatePagoSummary();
+}
+function confirmarProcesarPago() {
+    const facturasPago = [];
+    let totalAPagar = 0;
+    
+    // Recopilar facturas seleccionadas con sus montos
+    $('.factura-checkbox:checked').each(function() {
+        const row = $(this).closest('tr');
+        const facturaId = $(this).val();
+        const monto = parseFloat(row.find('.monto-pago').val()) || 0;
+        const saldo = parseFloat(row.data('saldo'));
+        const folio = row.data('folio');
+        
+        if (monto > 0 && monto <= saldo) {
+            facturasPago.push({
+                invoice_id: facturaId,
+                folio: folio,
+                monto_pagar: monto,
+                saldo_anterior: saldo
+            });
+            totalAPagar += monto;
+        }
+    });
+    
+    if (facturasPago.length === 0) {
+        alertify.error('Debe seleccionar al menos una factura con monto válido');
+        return;
+    }
+    
+    // Obtener datos adicionales
+    const observaciones = $('#observacionesPago').val();
+    const referencia = $('#referenciaPago').val();
+    const fechaPago = $('#fechaPago').val();
+    
+    // Confirmar con el usuario
+    alertify.confirm(
+        'Confirmar Pago',
+        `¿Está seguro de procesar el pago de ${facturasPago.length} factura(s) por un total de $${totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2})}?`,
+        function() {
+            ejecutarProcesoPago(facturasPago, observaciones, referencia, fechaPago);
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    );
+}
+
+function ejecutarProcesoPago(facturasPago, observaciones, referencia, fechaPago) {
+    $('#btnConfirmarPago').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+
+    $.ajax({
+        url: '/supply/process_payment',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            payment_id: paymentId,
+            facturas: facturasPago,
+            observaciones: observaciones,
+            referencia: referencia,
+            fecha_pago: fechaPago
+        }),
+        success: function(response) {
+            if (response.success) {
+                alertify.success(response.message);
+                $('#modalProcesarPago').modal('hide');
+                
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            } else {
+                alertify.error(response.message);
+                $('#btnConfirmarPago').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Pago');
+            }
+        },
+        error: function(xhr) {
+            const errorMsg = xhr.responseJSON?.message || 'Error al procesar el pago';
+            alertify.error(errorMsg);
+            $('#btnConfirmarPago').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Pago');
+        }
+    });
+}
+function verHistorialPagos(invoiceId, folio) {
+    $('#folioHistorial').text(folio);
+    $('#modalHistorialPagos').modal('show');
+    
+    // Cargar historial
+    $.ajax({
+        url: '/supply/get_payment_history',
+        type: 'GET',
+        data: { invoice_id: invoiceId },
+        success: function(response) {
+            if (response.success) {
+                renderHistorial(response.data, invoiceId);
+            } else {
+                $('#historialContent').html(`
+                    <div class="alert alert-warning">
+                        <i class="fas fa-info-circle"></i> No hay pagos registrados para esta factura
+                    </div>
+                `);
+            }
+        },
+        error: function() {
+            $('#historialContent').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error al cargar el historial
+                </div>
+            `);
+        }
+    });
+}
+
+function renderHistorial(transactions, invoiceId) {
+    if (!transactions || transactions.length === 0) {
+        $('#historialContent').html(`
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> No hay pagos registrados para esta factura
+            </div>
+        `);
+        return;
+    }
+    
+    let totalPagado = 0;
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Fecha Pago</th>
+                        <th class="text-end">Monto</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th>Pagado Por</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    transactions.forEach((tx, index) => {
+        totalPagado += parseFloat(tx.payment_amount);
+        
+        let statusBadge = '';
+        switch(parseInt(tx.status)) {
+            case 0: statusBadge = '<span class="badge bg-warning text-dark">Pendiente</span>'; break;
+            case 1: statusBadge = '<span class="badge bg-info">Procesado</span>'; break;
+            case 2: statusBadge = '<span class="badge bg-success">Confirmado</span>'; break;
+            case 3: statusBadge = '<span class="badge bg-danger">Rechazado</span>'; break;
+        }
+        
+        html += `
+            <tr>
+                <td>${index + 1}</td>
+                <td>${formatDate(tx.payment_date)}</td>
+                <td class="text-end"><strong>$${parseFloat(tx.payment_amount).toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong></td>
+                <td>${tx.payment_method || 'N/A'}</td>
+                <td>${tx.payment_reference || '-'}</td>
+                <td><small>${tx.created_by_name || 'N/A'}</small></td>
+                <td>${statusBadge}</td>
+            </tr>
+        `;
+    });
+    
+    html += `
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th colspan="2" class="text-end">TOTAL PAGADO:</th>
+                        <th class="text-end text-success">$${totalPagado.toLocaleString('es-MX', {minimumFractionDigits: 2})}</th>
+                        <th colspan="4"></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    `;
+    
+    $('#historialContent').html(html);
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit' 
+    });
+}
+
+function verNotasPago(transactionId, notes) {
+    $('#notasPagoContent').text(notes);
+    $('#modalNotasPago').modal('show');
 }

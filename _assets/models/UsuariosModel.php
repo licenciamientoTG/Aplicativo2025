@@ -123,4 +123,61 @@ class UsuariosModel extends Model{
         $query = "UPDATE [TG].[dbo].Usuario SET [Password] = ENCRYPTBYPASSPHRASE(?, ?) WHERE Id = ?;";
         return (bool)$this->sql->update($query, [$password, $password, $id]);
     }
+
+    /**
+     * Obtener usuarios que tienen un permiso específico
+     * 
+     * @param int $permission_id ID del permiso a buscar
+     * @return array Lista de usuarios con ese permiso
+     */
+    public function get_users_by_permission($permission_id) : array {
+        try {
+            $query = "
+                SELECT DISTINCT
+                    t1.Id,
+                    t1.Usuario,
+                    t1.Nombre,
+                    t1.Correo,
+                    t1.Estatus,
+                    t2.Nombre as Perfil
+                FROM [TG].[dbo].[Usuario] t1
+                INNER JOIN [TG].[dbo].[tg_permissions_users] t3 ON t1.Id = t3.user_id
+                LEFT JOIN [TG].[dbo].[Perfil] t2 ON t1.IdPerfil = t2.Id
+                WHERE t3.permission_id = ? 
+                    AND t1.Estatus = 1
+                    AND t1.Correo IS NOT NULL
+                    AND t1.Correo != ''
+            ";
+            
+            $params = [$permission_id];
+            $result = $this->sql->select($query, $params);
+            
+            return $result ?: [];
+            
+        } catch (Exception $e) {
+            error_log("Error en get_users_by_permission: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Obtener correos de usuarios con un permiso específico
+     * 
+     * @param int $permission_id ID del permiso
+     * @return array Lista de correos electrónicos
+     */
+    public function get_emails_by_permission($permission_id) : array {
+        $users = $this->get_users_by_permission($permission_id);
+        
+        $emails = array_filter(
+            array_map(function($user) {
+                return trim($user['Correo'] ?? '');
+            }, $users),
+            function($email) {
+                return !empty($email) && filter_var($email, FILTER_VALIDATE_EMAIL);
+            }
+        );
+        
+        return array_values(array_unique($emails));
+    }
 }

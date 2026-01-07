@@ -10,7 +10,10 @@ table.dataTable thead th {
     color: #ffffff !important;
 }
 
-
+#tabla_anticipos  thead th {
+    background-color: rgb(108, 117, 125,1) !important;
+    color: #ffffff !important;
+}
 .auth-box {
     width: 32px;
     height: 32px;
@@ -59,7 +62,7 @@ table.dataTable thead th {
         <a class="nav-link active" data-bs-toggle="tab" href="#tab_pagos"><i class="fas fa-list"></i> Pagos</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab_anticipos"><i class="fas fa-hand-holding-usd"></i> Anticipos</a>
+        <a class="nav-link " data-bs-toggle="tab" href="#tab_anticipos"><i class="fas fa-hand-holding-usd"></i> Anticipos</a>
     </li>
     
     <!-- ... otras tabs ... -->
@@ -68,20 +71,10 @@ table.dataTable thead th {
 
 
 <div class="tab-content">
-    <div class="tab-pane fade show active" id="tab_pagos">
+    <div class="tab-pane fade show active " id="tab_pagos">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
-                    <!-- <div class="col-2">
-                        <label class="col-form-label-sm" for="from_payments">Desde:</label>
-                        <input type="date" class="form-control form-control-sm" id="from_payments" 
-                            value="{{ 'first day of this month'|date('Y-m-d') }}">
-                    </div>
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="until_payments">Hasta:</label>
-                        <input type="date" class="form-control form-control-sm" id="until_payments" 
-                            value="{{ 'now'|date('Y-m-d') }}">
-                    </div> -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Estado:</label>
                         <select class="form-control form-control-sm form-select" id="status_filter">
@@ -131,7 +124,7 @@ table.dataTable thead th {
         </div>
     </div>
     <!-- Tab Anticipos -->
-    <div class="tab-pane fade" id="tab_anticipos">
+    <div class="tab-pane fade " id="tab_anticipos">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
@@ -149,7 +142,9 @@ table.dataTable thead th {
                         <button onclick="loadPaymentList()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                     <div class="col-2">
-                        <a href="/supply/add_payment" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;"><i class="fas fa-plus"></i> Nuevo Pago</a>
+                        <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;">
+                            <i class="fas fa-plus"></i> Nuevo Anticipo
+                        </button>
                     </div>
                 </div>
             </div>
@@ -159,29 +154,68 @@ table.dataTable thead th {
                 <i class="fas fa-hand-holding-usd"></i> Gestión de Anticipos
             </div>
             <div class="card-body">
-                <table id="tabla_anticipos" class="table table-striped table-hover">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Fecha</th>
-                            <th>Proveedor</th>
-                            <th>Monto Total</th>
-                            <th>Monto Aplicado</th>
-                            <th>Saldo Disponible</th>
-                            <th>Estado</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- DataTable -->
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table id="tabla_anticipos" class="table w-100 table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Fecha Solicitud</th>
+                                <th>Empresa</th>
+                                <th>Proveedor</th>
+                                <th>Usuario</th>
+                                <th>Aplicaciones</th> <!-- ✅ CAMBIO DE NOMBRE -->
+                                <th>Monto Total</th>
+                                <th>Aplicado</th> <!-- ✅ CAMBIO DE NOMBRE -->
+                                <th>Saldo</th> <!-- ✅ NUEVA COLUMNA -->
+                                <th>Estado</th>
+                                <th>Autorizaciones</th>
+                                <th>Comentario</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- DataTable -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Modal Base Crear Anticipo -->
+<div class="modal fade" id="modalCrearAnticipo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-hand-holding-usd"></i> Crear Anticipo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div id="modalCrearAnticipoContent">
+                <!-- Contenido cargado dinámicamente -->
+            </div>
+        </div>
+    </div>
+</div>
 
+<!-- Modal Base Detalle Anticipo -->
+<div class="modal fade" id="modalDetalleAnticipo" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-invoice-dollar"></i> Detalle del Anticipo
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div id="modalDetalleAnticipoContent">
+                <!-- Contenido cargado dinámicamente -->
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block myjs %}

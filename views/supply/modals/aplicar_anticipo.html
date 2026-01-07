@@ -1,0 +1,22 @@
+{# views/supply/modals/aplicar_anticipo.html #}
+<div class="modal-body">
+    <div class="alert alert-info">
+        <strong>Saldo disponible:</strong> $<span id="saldoDisponible">{{ saldo }}</span>
+    </div>
+    
+    <!-- Buscador de facturas pendientes del mismo proveedor -->
+    <input type="search" id="buscarFactura" placeholder="Buscar por folio o UUID...">
+    
+    <!-- Tabla de facturas seleccionables -->
+    <table id="tablaFacturasPendientes">
+        <thead>
+            <tr>
+                <th><input type="checkbox" id="selectAll"></th>
+                <th>Folio</th>
+                <th>Monto</th>
+                <th>Saldo Pendiente</th>
+                <th>Aplicar Monto</th>
+            </tr>
+        </thead>
+    </table>
+</div>
