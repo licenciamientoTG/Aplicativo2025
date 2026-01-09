@@ -243,11 +243,18 @@ class Accounting{
      *
      * @return void
      */
-    public function documentos_facturas() {
+public function documentos_facturas() {
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            $first_date = date('Y-m-01'); // Primer día del mes actual
-            $last_date = date('Y-m-d');   // Fecha actual
+            
+            // CAMBIO AQUÍ:
+            // En lugar del primer día del mes ('Y-m-01'), ponemos una fecha muy antigua
+            // para asegurar que "agarre" todo el historial por defecto.
+            $first_date = '2000-01-01'; 
+            
+            $last_date = date('Y-m-d');   // Fecha actual (Hoy)
+            
             $estaciones = $this->estacionesModel->get_select_stations() ?: [];
+            
             echo $this->twig->render($this->route . 'documentos_facturas.html', compact('first_date', 'last_date', 'estaciones'));
         }
     }
@@ -1608,7 +1615,7 @@ class Accounting{
         }
     }
 
-    function purchases_vs_receptions() {
+public function purchases_vs_receptions() {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'purchases_vs_receptions.html');
         } else {
@@ -1630,7 +1637,7 @@ class Accounting{
                 }
 
                 // 3. Crear lector con configuración para lectura eficiente
-                $reader = new XlsxReader();
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
                 
                 // Configurar para leer solo datos (sin formato, sin imágenes, etc.)
                 $reader->setReadDataOnly(true);
@@ -1671,6 +1678,13 @@ class Accounting{
                     
                     // Solo agregar si no está vacío
                     if (!empty($uuid)) {
+                        // --- CORRECCIÓN CRÍTICA AQUI ---
+                        // 1. Reemplazamos guiones bajos (_) por guiones medios (-)
+                        // 2. Quitamos espacios en blanco accidentales
+                        // 3. Convertimos a mayúsculas para asegurar coincidencia
+                        $uuid = str_replace(['_', ' '], ['-', ''], $uuid);
+                        $uuid = strtoupper($uuid);
+
                         $uuids[] = $uuid;
                     }
                     
@@ -1680,7 +1694,7 @@ class Accounting{
                     }
                 }
 
-                // 9. Liberar memoria
+                // 9. Liberar memoria del Excel
                 $spreadsheet->disconnectWorksheets();
                 unset($spreadsheet);
 
@@ -1690,9 +1704,12 @@ class Accounting{
                 }
 
                 // 11. Buscar registros en la base de datos
-                $uuidsCadena = "'" . implode("','", $uuids) . "'";
+                // Nota: array_unique es útil para no buscar el mismo UUID dos veces si se repite en el Excel
+                $uuidsUnicos = array_unique($uuids);
+                $uuidsCadena = "'" . implode("','", $uuidsUnicos) . "'";
 
                 $data = [];
+                // Asegúrate de que tu modelo 'movimientosTanModel' y método 'buscarPorUUID' existan
                 if ($resultados = $this->movimientosTanModel->buscarPorUUID($uuidsCadena)) {
                     foreach ($resultados as $key => $row) {
                         $data[] = array(
@@ -1701,14 +1718,21 @@ class Accounting{
                             'factura'          => str_replace(':', '', $row['Factura']),
                             'remision'         => str_replace(':', '', $row['Remision']),
                             'documento'        => $row['Documento'],
-                            'uuid'             => $row['satuid'],
+                            'uuid'             => $row['satuid'], // Aquí vendrá el UUID correcto de la BD
                             'fecha'            => ($row['Fecha'] . ' (' . $row['fch'] . ')'),
                             'volumen_recibido' => floatval($row['VolRecibido']),
                         );
                     }
                 }
+
                 // 12. Retornar JSON
-                json_output(array("data" => $data, "uuids_encontrados" => $uuidsCadena, "uuids_procesados" => count($uuids)));
+                json_output(array(
+                    "data" => $data, 
+                    // Mostramos los UUIDs procesados para depuración (opcional, puedes quitarlo en producción)
+                    "uuids_buscados_debug" => substr($uuidsCadena, 0, 100) . "...", 
+                    "cantidad_encontrada" => count($data),
+                    "uuids_procesados" => count($uuids)
+                ));
 
             } catch (Exception $e) {
                 // Retornar error en formato JSON
