@@ -5,13 +5,30 @@ class FacturasRecibidasModel extends Model {
     /**
      * Buscar facturas por UUIDs
      */
-    public function buscarPorUUIDs($uuids) {
+public function buscarPorUUIDs($uuids) {
         if (empty($uuids)) {
-            return false;
+            return []; // Return empty array instead of false for consistency
         }
         
-        // Crear placeholders para la consulta IN
-        $placeholders = implode(',', array_fill(0, count($uuids), '?'));
+        // 1. LIMPIEZA Y NORMALIZACIÓN DE UUIDS
+        // Esto soluciona el problema de que el Excel traiga guiones bajos (_)
+        // y la BD tenga guiones medios (-).
+        $cleanUuids = [];
+        foreach ($uuids as $uuid) {
+            $u = trim($uuid);
+            $u = str_replace(['_', ' '], ['-', ''], $u); // Reemplazar _ por - y quitar espacios
+            // $u = strtoupper($u); // Descomentar si tu BD es estricta con mayúsculas
+            if (!empty($u)) {
+                $cleanUuids[] = $u;
+            }
+        }
+
+        if (empty($cleanUuids)) {
+            return [];
+        }
+
+        // Crear placeholders para la consulta IN (?,?,?)
+        $placeholders = implode(',', array_fill(0, count($cleanUuids), '?'));
         
         $query = "SELECT 
                     Id, 
@@ -27,7 +44,9 @@ class FacturasRecibidasModel extends Model {
                   WHERE UUID IN ($placeholders)
                   AND RutaArchivo IS NOT NULL
                   AND RutaArchivo != ''";
-        return $this->sql->select($query, $uuids) ?: false;
+                  
+        // Pasamos el array limpio
+        return $this->sql->select($query, $cleanUuids) ?: [];
     }
     
     /**
@@ -51,7 +70,6 @@ class FacturasRecibidasModel extends Model {
     }
 
     public function obtener_facturas_asignadas() {
-
             $query = "
                 SELECT 
                     fmt.nrotrn,
@@ -67,20 +85,27 @@ class FacturasRecibidasModel extends Model {
                 WHERE fmt.Activo = 1
             ";
             
-            $params = [];
-            return ($this->sql->select($query, $params)) ?: [];
-
+            return ($this->sql->select($query, [])) ?: [];
     }
 
-    public function buscar_facturas_disponibles( $searchTerm = '', $fechaInicio = '', $fechaFin = '') {
+    public function buscar_facturas_disponibles($searchTerm = '', $fechaInicio = '', $fechaFin = '') {
             $whereClauses = [];
+            $params = [];
             
+            // 1. SEGURIDAD: Usar parámetros (?) en lugar de meter variables directas
             if (!empty($searchTerm)) {
-                $whereClauses[] = "(fr.UUID LIKE '%$searchTerm%' OR fr.Folio LIKE '%$searchTerm%' OR fr.EmisorNombre LIKE '%$searchTerm%')";
+                // SQL Server usa '+' para concatenar strings en LIKE, o pasamos los % en el parámetro
+                $whereClauses[] = "(fr.UUID LIKE ? OR fr.Folio LIKE ? OR fr.EmisorNombre LIKE ?)";
+                $likeTerm = "%" . $searchTerm . "%";
+                $params[] = $likeTerm;
+                $params[] = $likeTerm;
+                $params[] = $likeTerm;
             }
             
             if (!empty($fechaInicio) && !empty($fechaFin)) {
-                $whereClauses[] = "fr.Fecha BETWEEN '$fechaInicio' AND '$fechaFin'";
+                $whereClauses[] = "fr.Fecha BETWEEN ? AND ?";
+                $params[] = $fechaInicio;
+                $params[] = $fechaFin;
             }
             
             $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
@@ -106,10 +131,9 @@ class FacturasRecibidasModel extends Model {
                 ORDER BY fr.Fecha DESC
             ";
             
-            $params = [];
             return ($this->sql->select($query, $params)) ?: [];
-
     }
+
     public function compras_facturas_table($from,$until,$codgas,$proveedor,$company) {
         $from = date('Y-m-d', strtotime($from)) . ' 00:00:01';
         $until = date('Y-m-d', strtotime($until)) . ' 23:59:59';
