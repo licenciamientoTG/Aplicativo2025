@@ -223,13 +223,22 @@ class Accounting{
         ini_set('memory_limit', '512M');
         ini_set('max_execution_time', 300);
 
-        $from = $_POST['from'] ?? null;
-        $until = $_POST['until'] ?? null;
+        // --- MODIFICACIÓN CLAVE AQUÍ ---
+        // Si $_POST['from'] viene vacío, o si quieres asegurar un rango amplio por defecto:
+        // Usamos '2020-01-01' en lugar de null o fecha actual.
+        $from = !empty($_POST['from']) ? $_POST['from'] : '2000-01-01';
+        
+        // Para 'until', usamos la fecha de hoy si no viene nada.
+        $until = !empty($_POST['until']) ? $_POST['until'] : date('Y-m-d');
+        // -------------------------------
+
         $codgas = isset($_POST['codgas']) && $_POST['codgas'] !== '' ? (int)$_POST['codgas'] : null;
         $tipo_factura = $_POST['tipo_factura'] ?? null;
 
         try {
-            // 🎯 Datos salen formateados directamente del modelo
+            // Con el cambio en $from, la consulta SQL ahora será: 
+            // WHERE fch BETWEEN '2020-01-01' AND '2026-XX-XX'
+            // Esto incluirá tu factura de Noviembre 2025.
             $facturas = $this->Documentos->get_all_facturas($from, $until, $codgas, $tipo_factura);
             json_output(['data' => $facturas ?: []]);
         } catch (Exception $e) {
@@ -245,10 +254,7 @@ class Accounting{
      */
 public function documentos_facturas() {
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            
-            // CAMBIO AQUÍ:
-            // En lugar del primer día del mes ('Y-m-01'), ponemos una fecha muy antigua
-            // para asegurar que "agarre" todo el historial por defecto.
+
             $first_date = '2000-01-01'; 
             
             $last_date = date('Y-m-d');   // Fecha actual (Hoy)
