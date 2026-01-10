@@ -4324,14 +4324,6 @@ class Supply{
             $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
             $provider_name = $proveedor ? $proveedor['den'] : 'Proveedor';
 
-            // Obtener nombre del nivel que autorizó
-            $authorized_department = match ($authorized_permission) {
-                66 => 'Abastos',
-                67 => 'Administración y Finanzas',
-                68 => 'Tesorería',
-                default => 'Desconocido'
-            };
-
             // Obtener nombre del siguiente nivel
             $next_department = match ($next_level_permission) {
                 66 => 'Abastos',
@@ -4547,7 +4539,7 @@ class Supply{
                     <div class='badge'>🔔 Notificación - {$next_department}</div>
                     
                     <div class='alert-box'>
-                        <strong>✅ {$authorized_department}</strong> ha autorizado el pago.<br>
+                        <br>Se ha autorizado el pago.<br>
                         Ahora requiere tu autorización para continuar con el proceso.
                     </div>
                     

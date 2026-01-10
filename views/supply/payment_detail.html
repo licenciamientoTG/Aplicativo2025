@@ -238,13 +238,13 @@
                                             <br><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
                                         {% endif %}
                                     </div>
-                                    <div class="btn-group w-100" role="group" style="margin-top: 1rem;">
+                                    {# <div class="btn-group w-100" role="group" style="margin-top: 1rem;">
                                         <button type="button" id="btnGenerarTransferencias" class="btn btn-outline-danger"
                                             onclick="generarTransferenciasBancarias({{ payment.id }})"
                                             {% if payment_status == 'CANCELLED' %}disabled{% endif %}
                                             title="Generar archivo de transferencias bancarias Santander"><i class="fas fa-university"></i> Transferencias Santander
                                         </button>
-                                    </div>
+                                    </div> #}
 
                                     {% if payment.status == 1 and authorized(68) %}
                                         <button class="btn btn-primary  mt-3 w-100" 
@@ -821,7 +821,7 @@
     </div>
 </div>
 
-<!-- Modal para Configurar Layout de Santander (Base vacía) -->
+{# <!-- Modal para Configurar Layout de Santander (Base vacía) -->
 <div class="modal fade" id="modalConfigLayout" tabindex="-1" aria-labelledby="modalConfigLayoutLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -848,7 +848,7 @@
             </div>
         </div>
     </div>
-</div>
+</div> #}
 <input type="number" id="paymentId" value="{{ payment.id }}" hidden>
 
 {% endblock %}
