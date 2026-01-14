@@ -70,20 +70,25 @@
 </body>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    var path = window.location.pathname; // Solo el path de la URL
-    var route = path.substring(path.indexOf("income")); // Captura desde 'income'
-	console.log(path);
-	console.log(route);
-    document.getElementById('route').value = route;
+    // Captura el path completo (ej: /income/invoices) y los parámetros (ej: ?id=1)
+    var path = window.location.pathname;
+    var search = window.location.search;
+    var fullRoute = path + search;
+
+    // Validación para evitar que redirija al login o a la raíz vacía
+    // Si la ruta es solo "/", "/index.php" o vacía, definimos el home por defecto
+    if (fullRoute === '/' || fullRoute === '/index.php' || fullRoute.trim() === '') {
+        fullRoute = '/home/index';
+    }
+
+    console.log("Ruta de redirección capturada:", fullRoute);
+    document.getElementById('route').value = fullRoute;
 });
 
 function obtenerIP(response) {
     console.log(response);
     var user_ip = response.ip;
-
 	document.getElementById('ip').value = user_ip;
 }
 </script>
-
-<script src="https://api.ipify.org?format=jsonp&callback=obtenerIP"></script>
 </html>
