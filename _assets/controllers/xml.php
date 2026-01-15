@@ -39,9 +39,34 @@ class Xml
         foreach ($stations as $key => $codgas) {
             if ($station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $codgas)) {
                 // VALIDACIÓN: Si alguno de los datos esenciales está vacío, alerta y detén la ejecución
-                if (empty($station['numeroPermisoCRE']) || trim($station['rfc']) === "" || empty($station['imagenComercialId']) || empty($station['estatusESId'])) {
-                    // Si la salida es para el navegador, mostramos una alerta en JavaScript
-                    setFlashMessage('error', "La estación con código $codgas tiene datos esenciales vacíos. Verifica la información.");
+                // 1. Definimos un arreglo para capturar los nombres de los campos vacíos
+                $camposFaltantes = [];
+
+                // 2. Validamos cada campo individualmente
+                if (empty($station['numeroPermisoCRE'])) {
+                    $camposFaltantes[] = "Número de Permiso CRE";
+                }
+
+                if (trim($station['rfc']) === "") {
+                    $camposFaltantes[] = "RFC";
+                }
+
+                if (empty($station['imagenComercialId'])) {
+                    $camposFaltantes[] = "Imagen Comercial";
+                }
+
+                if (empty($station['estatusESId'])) {
+                    $camposFaltantes[] = "Estatus de la Estación";
+                }
+
+                // 3. Si el arreglo no está vacío, significa que hubo errores
+                if (!empty($camposFaltantes)) {
+                    // Convertimos el arreglo en una cadena de texto separada por comas
+                    $listaErrores = implode(", ", $camposFaltantes);
+                    
+                    // Mostramos el mensaje específico
+                    setFlashMessage('error', "La estación con código $codgas tiene los siguientes datos esenciales vacíos: $listaErrores. Por favor, verifica la información.");
+                    
                     redirect();
                     exit;
                 }
