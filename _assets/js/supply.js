@@ -3391,6 +3391,44 @@ function loadPaymentList() {
             { data: 'total_invoices', className: 'text-center' },
             { data: 'total_amount', className: 'text-end' },
             { data: 'total_paid', className: 'text-end' },
+                        { 
+                // ✅ NUEVA COLUMNA: Facturas Autorizadas
+                data: null,
+                className: 'text-center',
+                render: function(data, type, row) {
+                    var count = parseInt(row.authorized_invoices_count) || 0;
+                    var rawAmount = row.authorized_amount_total || '0';
+                    rawAmount = rawAmount.replace(/[$,]/g, '');
+                    var authorized_amount_total = parseFloat(rawAmount) || 0;
+                    if (count === 0) {
+                        return '<span class="badge bg-secondary">Sin autorizar</span>';
+                    }
+
+                    // Calcular porcentaje
+                    var totalInvoices = parseInt(row.total_invoices) || 0;
+                    var percentage = totalInvoices > 0 
+                        ? Math.round((count / totalInvoices) * 100) 
+                        : 0;
+
+                    let badgeColor = 'bg-warning';
+                    if (percentage === 100) {
+                        badgeColor = 'bg-success';
+                    } else if (percentage >= 50) {
+                        badgeColor = 'bg-info';
+                    }
+                    return `
+                        <div class="text-center">
+                            <span class="badge ${badgeColor}" style="font-size: 0.85rem;">
+                                <i class="fas fa-check-circle"></i> ${count} de ${totalInvoices}
+                            </span>
+                            <br>
+                            <small class="text-success fw-bold">
+                                $${authorized_amount_total.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                            </small>
+                        </div>
+                    `;
+                }
+            },
             { data: 'status', className: 'text-center' },
             { data: 'authorizations', className: 'text-center' },
             { data: 'comment' },
@@ -4733,18 +4771,24 @@ function confirmAuthorization() {
     });
 }
 
-function procesarPago() {
-    // Abrir modal de selección de facturas
-    $('#modalProcesarPago').modal('show');
-    updatePagoSummary();
+// function procesarPago() {
+//     // Abrir modal de selección de facturas
+//     $('#modalProcesarPago').modal('show');
+//     updatePagoSummary();
+// }
+function autorizarPago() {
+    $('#modalAutorizarPago').modal('show');
+    updateAutorizacionSummary();
 }
-function updatePagoSummary() {
-    let totalAPagar = 0;
+
+function updateAutorizacionSummary() {
+    let totalAAutorizar = 0;
     let facturasCount = 0;
     
-    $('.factura-checkbox:checked').each(function() {
+    // Solo contar facturas NO autorizadas que están seleccionadas
+    $('.factura-checkbox:checked:not(:disabled)').each(function() {
         const row = $(this).closest('tr');
-        const montoInput = row.find('.monto-pago');
+        const montoInput = row.find('.monto-autorizar');
         const monto = parseFloat(montoInput.val()) || 0;
         const saldo = parseFloat(row.data('saldo'));
         
@@ -4762,26 +4806,39 @@ function updatePagoSummary() {
             alertify.warning('El monto no puede exceder el saldo de la factura');
         }
         
-        totalAPagar += parseFloat(montoInput.val()) || 0;
+        totalAAutorizar += parseFloat(montoInput.val()) || 0;
         facturasCount++;
     });
     
     // Actualizar resumen
-    $('#totalAPagar').text('$' + totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+    $('#totalAAutorizar').text('$' + totalAAutorizar.toLocaleString('es-MX', {
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2
+    }));
     $('#facturasSeleccionadas').text(facturasCount);
+    $('#totalNuevasAutorizaciones').html('<strong>$' + totalAAutorizar.toLocaleString('es-MX', {
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2
+    }) + '</strong>');
     
     // Habilitar/deshabilitar botón de confirmar
-    $('#btnConfirmarPago').prop('disabled', facturasCount === 0 || totalAPagar === 0);
+    $('#btnConfirmarAutorizacion').prop('disabled', facturasCount === 0 || totalAAutorizar === 0);
+    
+    // Actualizar el checkbox "Seleccionar Todas" solo para las no autorizadas
+    const totalCheckboxes = $('.factura-checkbox:not(:disabled)').length;
+    const totalChecked = $('.factura-checkbox:checked:not(:disabled)').length;
+    $('#selectAllFacturas').prop('checked', totalCheckboxes > 0 && totalCheckboxes === totalChecked);
 }
 
 
 function toggleSelectAllFacturas() {
-    const selectAll = $('#selectAllFacturas').prop('checked');
-    $('.factura-checkbox').each(function() {
+    const selectAll = $('#selectAllFacturas').prop('checked');  
+    // Solo seleccionar checkboxes que NO están deshabilitados (facturas no autorizadas)
+    $('.factura-checkbox:not(:disabled)').each(function() {
         $(this).prop('checked', selectAll);
         const row = $(this).closest('tr');
-        const montoInput = row.find('.monto-pago');
-        
+        const montoInput = row.find('.monto-autorizar');
+
         if (selectAll) {
             const saldo = parseFloat(row.data('saldo'));
             montoInput.prop('disabled', false).val(saldo.toFixed(2));
@@ -4790,88 +4847,103 @@ function toggleSelectAllFacturas() {
         }
     });
     
-    updatePagoSummary();
+    updateAutorizacionSummary();
 }
-function confirmarProcesarPago() {
-    const facturasPago = [];
-    let totalAPagar = 0;
+function confirmarAutorizarPago() {
+    const facturasAutorizar = [];
+    let totalAAutorizar = 0;
     
     // Recopilar facturas seleccionadas con sus montos
     $('.factura-checkbox:checked').each(function() {
         const row = $(this).closest('tr');
         const facturaId = $(this).val();
-        const monto = parseFloat(row.find('.monto-pago').val()) || 0;
+        const monto = parseFloat(row.find('.monto-autorizar').val()) || 0;
         const saldo = parseFloat(row.data('saldo'));
         const folio = row.data('folio');
         
         if (monto > 0 && monto <= saldo) {
-            facturasPago.push({
+            facturasAutorizar.push({
                 invoice_id: facturaId,
                 folio: folio,
-                monto_pagar: monto,
+                monto_autorizado: monto,
                 saldo_anterior: saldo
             });
-            totalAPagar += monto;
+            totalAAutorizar += monto;
         }
     });
     
-    if (facturasPago.length === 0) {
+    if (facturasAutorizar.length === 0) {
         alertify.error('Debe seleccionar al menos una factura con monto válido');
         return;
     }
     
-    // Obtener datos adicionales
-    const observaciones = $('#observacionesPago').val();
-    const referencia = $('#referenciaPago').val();
-    const fechaPago = $('#fechaPago').val();
-    
     // Confirmar con el usuario
     alertify.confirm(
-        'Confirmar Pago',
-        `¿Está seguro de procesar el pago de ${facturasPago.length} factura(s) por un total de $${totalAPagar.toLocaleString('es-MX', {minimumFractionDigits: 2})}?`,
+        'Confirmar Autorización de Pago',
+        `<div class="text-center">
+            <i class="fas fa-check-circle text-info fa-3x mb-3"></i>
+            <p class="mb-3">¿Está seguro de autorizar el pago de <strong>${facturasAutorizar.length} factura(s)</strong>?</p>
+            <div class="alert alert-info">
+                <strong>Total a Autorizar:</strong><br>
+                <h4 class="text-info mb-0">$${totalAAutorizar.toLocaleString('es-MX', {minimumFractionDigits: 2})}</h4>
+            </div>
+            <small class="text-muted">La ejecución del pago será realizada posteriormente por el área correspondiente.</small>
+        </div>`,
         function() {
-            ejecutarProcesoPago(facturasPago, observaciones, referencia, fechaPago);
+            ejecutarAutorizacionPago(facturasAutorizar);
         },
         function() {
             alertify.message('Operación cancelada');
         }
-    );
+    ).set('labels', {ok: 'Autorizar', cancel: 'Cancelar'});
 }
 
-function ejecutarProcesoPago(facturasPago, observaciones, referencia, fechaPago) {
-    $('#btnConfirmarPago').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+function ejecutarAutorizacionPago(facturasAutorizar) {
+    $('#btnConfirmarAutorizacion')
+        .prop('disabled', true)
+        .html('<i class="fas fa-spinner fa-spin"></i> Autorizando...');
 
     $.ajax({
-        url: '/supply/process_payment',
+        // url: '/supply/process_payment',
+        url: '/supply/authorize_payment_execution',
         type: 'POST',
         contentType: 'application/json',
         data: JSON.stringify({
             payment_id: paymentId,
-            facturas: facturasPago,
-            observaciones: observaciones,
-            referencia: referencia,
-            fecha_pago: fechaPago
+            facturas: facturasAutorizar
         }),
         success: function(response) {
             if (response.success) {
-                alertify.success(response.message);
-                $('#modalProcesarPago').modal('hide');
+                alertify.success('✓ ' + response.message);
+                $('#modalAutorizarPago').modal('hide');
                 
                 setTimeout(() => {
                     location.reload();
                 }, 1500);
             } else {
                 alertify.error(response.message);
-                $('#btnConfirmarPago').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Pago');
+                $('#btnConfirmarAutorizacion')
+                    .prop('disabled', false)
+                    .html('<i class="fas fa-check-circle"></i> Autorizar Pago');
             }
         },
         error: function(xhr) {
-            const errorMsg = xhr.responseJSON?.message || 'Error al procesar el pago';
+            const errorMsg = xhr.responseJSON?.message || 'Error al autorizar el pago';
             alertify.error(errorMsg);
-            $('#btnConfirmarPago').prop('disabled', false).html('<i class="fas fa-check"></i> Confirmar Pago');
+            $('#btnConfirmarAutorizacion')
+                .prop('disabled', false)
+                .html('<i class="fas fa-check-circle"></i> Autorizar Pago');
         }
     });
 }
+// Limpiar cuando se cierra el modal
+$('#modalAutorizarPago').on('hidden.bs.modal', function() {
+    $('.factura-checkbox:not(:disabled)').prop('checked', false);
+    $('.monto-autorizar:not(:disabled)').val('').prop('disabled', true);
+    $('#selectAllFacturas').prop('checked', false);
+    updateAutorizacionSummary();
+});
+
 function verHistorialPagos(invoiceId, folio) {
     $('#folioHistorial').text(folio);
     $('#modalHistorialPagos').modal('show');
@@ -4984,3 +5056,592 @@ function verNotasPago(transactionId, notes) {
     $('#notasPagoContent').text(notes);
     $('#modalNotasPago').modal('show');
 }
+let tablaFacturasAutorizadas;
+
+/**
+ * Cargar tabla de facturas autorizadas pendientes AGRUPADAS
+ */
+function loadAuthorizedPendingInvoices() {
+    console.log('loadAuthorizedPendingInvoices called (GROUPED)');
+    if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
+        $('#tabla_facturas_autorizadas').DataTable().destroy();
+    }
+    tablaFacturasAutorizadas = $('#tabla_facturas_autorizadas').DataTable({
+        ajax: {
+            url: '/supply/authorized_pending_invoices_grouped_table', // ✅ Nuevo endpoint
+            type: 'POST',
+            dataSrc: 'data',
+            error: function(xhr, error, thrown) {
+                console.error('Error en AJAX:', xhr, error, thrown);
+                alertify.error('Error al cargar facturas: ' + thrown);
+            }
+        },
+        columns: [
+            {
+                // Checkbox
+                data: null,
+                orderable: false,
+                className: 'text-center',
+                render: function(data, type, row) {
+                    return `
+                        <input type="checkbox" 
+                               class="invoice-group-checkbox" 
+                               data-invoice-ids="${row.invoice_ids}"
+                               data-banco="${row.banco_asignado}"
+                               data-monto="${row.total_autorizado}"
+                               data-empresa="${row.empresa_nombre}"
+                               data-proveedor="${row.proveedor_nombre}"
+                               onchange="updateSelectedSummary()">
+                    `;
+                }
+            },
+            {
+                // Banco
+                data: 'banco_asignado',
+                render: function(data, type, row) {
+                    let icon = data === 'Banorte' ? 'university' : 'landmark';
+                    return `
+                        <span class="badge" style="background-color: ${row.banco_color}; color: white; font-size: 0.9rem;">
+                            <i class="fas fa-${icon}"></i> ${data}
+                        </span>
+                    `;
+                }
+            },
+            {
+                // Empresa
+                data: 'empresa_nombre',
+                render: function(data, type, row) {
+                    return `
+                        <strong>${data}</strong><br>
+                        <small class="text-muted">RFC: ${row.empresa_rfc}</small>
+                    `;
+                }
+            },
+            {
+                // Proveedor
+                data: 'proveedor_nombre',
+                render: function(data, type, row) {
+                    return `
+                        <strong>${data}</strong><br>
+                        <small class="text-muted">RFC: ${row.proveedor_rfc}</small>
+                    `;
+                }
+            },
+            {
+                // Total Facturas
+                data: 'total_facturas',
+                className: 'text-center',
+                render: function(data, type, row) {
+                    return `
+                        <span class="badge bg-primary" style="font-size: 0.9rem;">
+                            <i class="fas fa-file-invoice"></i> ${data} factura(s)
+                        </span>
+                    `;
+                }
+            },
+            {
+                // Monto Total Autorizado
+                data: 'total_autorizado',
+                className: 'text-end',
+                render: function(data) {
+                    return '<strong style="font-size: 1.1rem;">$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + '</strong>';
+                }
+            },
+            {
+                // Saldo Total
+                data: 'total_saldo',
+                className: 'text-end',
+                render: function(data) {
+                    return '<strong class="text-danger">$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + '</strong>';
+                }
+            },
+            {
+                // Autorizado Por
+                data: 'authorized_by_name',
+                render: function(data) {
+                    return `<small><i class="fas fa-user"></i> ${data}</small>`;
+                }
+            },
+            {
+                // Fecha Última Autorización
+                data: 'ultima_autorizacion',
+                render: function(data) {
+                    if (!data) return '-';
+                    return new Date(data).toLocaleDateString('es-MX', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+            },
+            {
+                // Vencimiento Más Próximo
+                data: 'vencimiento_mas_proximo',
+                render: function(data) {
+                    if (!data) return '-';
+                    const vencimiento = new Date(data);
+                    const hoy = new Date();
+                    const diasDiff = Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24));
+                    let badge = 'secondary';
+                    let icon = 'calendar';
+                    if (diasDiff < 0) {
+                        badge = 'danger';
+                        icon = 'exclamation-triangle';
+                    } else if (diasDiff <= 7) {
+                        badge = 'warning';
+                        icon = 'clock';
+                    } else {
+                        badge = 'success';
+                        icon = 'check';
+                    }
+                    return `
+                        <span class="badge bg-${badge}">
+                            <i class="fas fa-${icon}"></i> 
+                            ${vencimiento.toLocaleDateString('es-MX')}
+                        </span>
+                        ${diasDiff >= 0 ? '<br><small class="text-muted">' + diasDiff + ' días</small>' : '<br><small class="text-danger">Vencido</small>'}
+                    `;
+                }
+            },
+            {
+                // Acciones
+                data: null,
+                orderable: false,
+                className: 'text-center',
+                render: function(data, type, row) {
+                    return `
+                        <button class="btn btn-sm btn-outline-info" 
+                                onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
+                                title="Ver facturas individuales">
+                            <i class="fas fa-eye"></i> Ver Desglose
+                        </button>
+                    `;
+                }
+            }
+        ],
+        order: [[1, 'asc'], [2, 'asc'], [3, 'asc']], // Ordenar por banco, empresa, proveedor
+        pageLength: 50,
+        rowGroup: {
+            // Agrupar solo por banco
+            dataSrc: 'banco_asignado',
+            startRender: function(rows, group) {
+                const total = rows.data().pluck('total_autorizado').reduce((a, b) => {
+                    return parseFloat(a) + parseFloat(b);
+                }, 0);
+                const totalFacturas = rows.data().pluck('total_facturas').reduce((a, b) => {
+                    return parseInt(a) + parseInt(b);
+                }, 0);
+                return $('<tr/>')
+                    .addClass('group-header bg-light')
+                    .append(`<td colspan="11">
+                        <strong><i class="fas fa-university"></i> ${group}</strong> - 
+                        Total: <strong>$${total.toLocaleString('es-MX', {minimumFractionDigits: 2})}</strong> - 
+                        ${totalFacturas} factura(s) en ${rows.count()} grupo(s)
+                    </td>`);
+            }
+        },
+        drawCallback: function() {
+            const table = this.api();
+            updateBankSummaryFromTable(table);
+            updateSelectedSummary();
+            
+            // Poblar filtro de empresas
+            const empresas = new Set();
+            table.rows().data().each(function(row) {
+                empresas.add(row.empresa_nombre);
+            });
+            
+            $('#filtroEmpresa').html('<option value="all">Todas las Empresas</option>');
+            empresas.forEach(empresa => {
+                $('#filtroEmpresa').append(`<option value="${empresa}">${empresa}</option>`);
+            });
+        }
+    });
+}
+
+
+
+/**
+ * Actualizar resumen de seleccionadas (AGRUPADAS)
+ */
+function updateSelectedSummary() {
+    let total = 0;
+    let countGroups = 0;
+    let countFacturas = 0;
+    
+    $('.invoice-group-checkbox:checked').each(function() {
+        const monto = parseFloat($(this).data('monto')) || 0;
+        const facturas = $(this).data('invoice-ids').split(',').length;
+        
+        total += monto;
+        countGroups++;
+        countFacturas += facturas;
+    });
+    
+    $('#totalSeleccionadas').text('$' + total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#facturasSeleccionadas').text(countFacturas + ' facturas (' + countGroups + ' grupos)');
+    $('#footerTotalSeleccionado').text('$' + total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    
+    // Habilitar/deshabilitar botón de generar layout
+    $('#btnGenerarLayout').prop('disabled', countGroups === 0);
+}
+
+
+function updateBankSummaryFromTable(table) {
+    let banorte = {count: 0, total: 0};
+    let santander = {count: 0, total: 0};
+    
+    table.rows({search: 'applied'}).data().each(function(row) {
+        if (row.banco_asignado === 'Banorte') {
+            banorte.count++;
+            banorte.total += parseFloat(row.authorized_amount);
+        } else if (row.banco_asignado === 'Santander') {
+            santander.count++;
+            santander.total += parseFloat(row.authorized_amount);
+        }
+    });
+    console.log(banorte);
+    console.log(santander);
+    
+    $('#totalBanorte').text('$' + banorte.total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#facturasBanorte').text(banorte.count + ' facturas');
+    
+    $('#totalSantander').text('$' + santander.total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#facturasSantander').text(santander.count + ' facturas');
+}
+
+
+/**
+ * Aplicar filtros
+ */
+function aplicarFiltros() {
+    const banco = $('#filtroBanco').val();
+    const empresa = $('#filtroEmpresa').val();
+    
+    $.fn.dataTable.ext.search.push(
+        function(settings, data, dataIndex) {
+            if (settings.nTable.id !== 'tabla_facturas_autorizadas') {
+                return true;
+            }
+            
+            const rowData = tablaFacturasAutorizadas.row(dataIndex).data();
+            
+            let bancoMatch = banco === 'all' || rowData.banco_asignado === banco;
+            let empresaMatch = empresa === 'all' || rowData.empresa_nombre === empresa;
+            
+            return bancoMatch && empresaMatch;
+        }
+    );
+    
+    tablaFacturasAutorizadas.draw();
+    $.fn.dataTable.ext.search.pop();
+}
+
+/**
+ * Generar layout de pago
+ */
+function generarLayoutPago() {
+    const seleccionadas = [];
+    
+    $('.invoice-checkbox:checked').each(function() {
+        const row = tablaFacturasAutorizadas.row($(this).closest('tr')).data();
+        seleccionadas.push({
+            id: row.id,
+            payment_request_id: row.payment_request_id,
+            folio: row.folio,
+            monto: row.authorized_amount,
+            banco: row.banco_asignado,
+            empresa: row.empresa_nombre,
+            proveedor: row.proveedor_nombre
+        });
+    });
+    
+    if (seleccionadas.length === 0) {
+        alertify.warning('Seleccione al menos una factura');
+        return;
+    }
+    
+    // Verificar que todas sean del mismo banco
+    const bancos = [...new Set(seleccionadas.map(f => f.banco))];
+    if (bancos.length > 1) {
+        alertify.confirm(
+            'Múltiples Bancos',
+            'Has seleccionado facturas de diferentes bancos: ' + bancos.join(', ') + '. ¿Deseas continuar generando layouts separados?',
+            function() {
+                generarLayoutsPorBanco(seleccionadas);
+            },
+            function() {
+                alertify.error('Operación cancelada');
+            }
+        );
+        return;
+    }
+    
+    // TODO: Implementar lógica de generación de layout
+    console.log('Facturas seleccionadas:', seleccionadas);
+    alertify.success('Generando layout para ' + seleccionadas.length + ' facturas del banco ' + bancos[0]);
+}
+
+/**
+ * Ver detalle del pago
+ */
+function verDetallePago(paymentId) {
+    window.location.href = '/supply/payment_detail/' + paymentId;
+}
+
+
+let tablaDesgloseFacturas;
+
+/**
+ * Ver desglose de facturas agrupadas
+ */
+function verDetalleFacturasAgrupadas(invoiceIds, empresa, proveedor) {
+    // Mostrar información del grupo
+    $('#desgloseEmpresa').text(empresa);
+    $('#desgloseProveedor').text(proveedor);
+    
+    // Abrir modal
+    $('#modalDesgloseFacturas').modal('show');
+    
+    // Cargar datos
+    cargarDesgloseFacturas(invoiceIds);
+}
+
+/**
+ * Cargar desglose de facturas
+ */
+function cargarDesgloseFacturas(invoiceIds) {
+    // Destruir tabla anterior si existe
+    if ($.fn.DataTable.isDataTable('#tablaDesgloseFacturas')) {
+        $('#tablaDesgloseFacturas').DataTable().destroy();
+    }
+    
+    // Mostrar loading
+    $('#tablaDesgloseFacturas tbody').html(`
+        <tr>
+            <td colspan="11" class="text-center py-4">
+                <i class="fas fa-spinner fa-spin fa-2x"></i>
+                <p class="mt-2">Cargando facturas...</p>
+            </td>
+        </tr>
+    `);
+    
+    // Hacer petición AJAX
+    $.ajax({
+        url: '/supply/get_invoices_detail',
+        type: 'POST',
+        data: { invoice_ids: invoiceIds },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success && response.data) {
+                inicializarTablaDesglose(response.data);
+            } else {
+                alertify.error(response.message || 'Error al cargar las facturas');
+                $('#tablaDesgloseFacturas tbody').html(`
+                    <tr>
+                        <td colspan="11" class="text-center text-danger">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No se pudieron cargar las facturas
+                        </td>
+                    </tr>
+                `);
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error AJAX:', error);
+            alertify.error('Error al cargar las facturas: ' + error);
+            $('#tablaDesgloseFacturas tbody').html(`
+                <tr>
+                    <td colspan="11" class="text-center text-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Error de conexión
+                    </td>
+                </tr>
+            `);
+        }
+    });
+}
+
+/**
+ * Inicializar tabla de desglose con datos
+ */
+function inicializarTablaDesglose(data) {
+    tablaDesgloseFacturas = $('#tablaDesgloseFacturas').DataTable({
+        data: data,
+        columns: [
+            { 
+                data: 'folio',
+                render: function(data) {
+                    return '<strong>' + data + '</strong>';
+                }
+            },
+            { data: 'invoice_number' },
+            { data: 'estacion_nombre' },
+            {
+                data: 'amount',
+                className: 'text-end',
+                render: function(data) {
+                    return '$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                }
+            },
+            {
+                data: 'paid_amount',
+                className: 'text-end',
+                render: function(data) {
+                    return '$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    });
+                }
+            },
+            {
+                data: 'authorized_amount',
+                className: 'text-end',
+                render: function(data) {
+                    return '<strong class="text-success">$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + '</strong>';
+                }
+            },
+            {
+                data: 'saldo',
+                className: 'text-end',
+                render: function(data) {
+                    return '<strong class="text-danger">$' + parseFloat(data).toLocaleString('es-MX', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }) + '</strong>';
+                }
+            },
+            {
+                data: 'expiration_date',
+                render: function(data) {
+                    if (!data) return '-';
+                    const vencimiento = new Date(data);
+                    const hoy = new Date();
+                    const diasDiff = Math.ceil((vencimiento - hoy) / (1000 * 60 * 60 * 24));
+                    let badge = 'secondary';
+                    if (diasDiff < 0) badge = 'danger';
+                    else if (diasDiff <= 7) badge = 'warning';
+                    else badge = 'success';
+                    return `<span class="badge bg-${badge}">${vencimiento.toLocaleDateString('es-MX')}</span>`;
+                }
+            },
+            {
+                data: 'authorized_by_name',
+                render: function(data) {
+                    return `<small><i class="fas fa-user"></i> ${data}</small>`;
+                }
+            },
+            {
+                data: 'authorized_at',
+                render: function(data) {
+                    if (!data) return '-';
+                    return new Date(data).toLocaleDateString('es-MX', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                }
+            },
+            // {
+            //     data: null,
+            //     orderable: false,
+            //     className: 'text-center',
+            //     render: function(data, type, row) {
+            //         return `
+            //             <button class="btn btn-sm btn-outline-info" 
+            //                     onclick="verDetallePago(${row.payment_request_id})"
+            //                     title="Ver solicitud de pago">
+            //                 <i class="fas fa-eye"></i>
+            //             </button>
+            //         `;
+            //     }
+            // }
+        ],
+        order: [[7, 'asc']], // Ordenar por vencimiento
+        pageLength: 25,
+        dom: 'frtip',
+        // buttons: [
+        //     {
+        //         extend: 'excel',
+        //         text: '<i class="fas fa-file-excel"></i> Excel',
+        //         className: 'btn btn-success btn-sm',
+        //         exportOptions: {
+        //             columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        //         }
+        //     },
+        //     {
+        //         extend: 'pdf',
+        //         text: '<i class="fas fa-file-pdf"></i> PDF',
+        //         className: 'btn btn-danger btn-sm',
+        //         exportOptions: {
+        //             columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        //         }
+        //     }
+        // ],
+        drawCallback: function() {
+            actualizarTotalesDesglose(data);
+        }
+    });
+    
+    actualizarTotalesDesglose(data);
+}
+
+/**
+ * Actualizar totales del desglose
+ */
+function actualizarTotalesDesglose(data) {
+    let totalFacturas = data.length;
+    let totalAutorizado = 0;
+    let totalSaldo = 0;
+    
+    data.forEach(function(factura) {
+        totalAutorizado += parseFloat(factura.authorized_amount);
+        totalSaldo += parseFloat(factura.saldo);
+    });
+    
+    // Actualizar cards superiores
+    $('#desgloseTotalFacturas').text(totalFacturas);
+    $('#desgloseMontoTotal').text('$' + totalAutorizado.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    $('#desgloseSaldoTotal').text('$' + totalSaldo.toLocaleString('es-MX', {minimumFractionDigits: 2}));
+    
+    // Actualizar footer de la tabla
+    $('#footerDesgloseAutorizado').html('<strong>$' + totalAutorizado.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</strong>');
+    $('#footerDesgloseSaldo').html('<strong>$' + totalSaldo.toLocaleString('es-MX', {minimumFractionDigits: 2}) + '</strong>');
+}
+
+/**
+ * Exportar desglose a Excel
+ */
+function exportarDesgloseExcel() {
+    if (tablaDesgloseFacturas) {
+        tablaDesgloseFacturas.button('.buttons-excel').trigger();
+    } else {
+        alertify.warning('No hay datos para exportar');
+    }
+}
+
+/**
+ * Limpiar modal al cerrar
+ */
+$('#modalDesgloseFacturas').on('hidden.bs.modal', function() {
+    if ($.fn.DataTable.isDataTable('#tablaDesgloseFacturas')) {
+        $('#tablaDesgloseFacturas').DataTable().destroy();
+    }
+    $('#tablaDesgloseFacturas tbody').empty();
+});

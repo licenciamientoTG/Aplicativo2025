@@ -1,0 +1,689 @@
+{# add_payment.html #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas de combustible{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Facturas de combustible{% endblock %}
+{% block content %}
+
+<style>
+#payment_search_card {
+    border-left: 5px solid #389235 !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border-radius: 8px;
+    overflow: visible !important;
+}
+
+#payment_search_card .card-body {
+    padding: 20px;
+    min-height: 150px;
+    overflow: visible !important;
+}
+
+/* ========== SELECTPICKERS MEJORADOS ========== */
+.bootstrap-select {
+    width: 100% !important;
+}
+
+.bootstrap-select > .dropdown-toggle {
+    background-color: white !important;
+    border: 1px solid #ced4da !important;
+    color: #495057 !important;
+    height: 31px !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+}
+
+.bootstrap-select > .dropdown-toggle:focus {
+    border-color: #389235 !important;
+    box-shadow: 0 0 0 0.2rem rgba(56, 146, 53, 0.25) !important;
+}
+
+.bootstrap-select .dropdown-menu {
+    z-index: 9999 !important;
+    max-height: 300px !important;
+    border: 1px solid #389235 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+
+.bootstrap-select .dropdown-menu li a {
+    padding: 8px 15px !important;
+    transition: all 0.2s ease;
+}
+
+.bootstrap-select .dropdown-menu li a:hover {
+    background-color: #e8f5e9 !important;
+    color: #389235 !important;
+}
+
+.bootstrap-select .dropdown-menu li.selected a {
+    background-color: #389235 !important;
+    color: white !important;
+}
+
+.bootstrap-select.show-menu-arrow .dropdown-toggle:before {
+    z-index: 9998;
+}
+
+/* ========== TABLA - CABECERA NEGRA ========== */
+table.dataTable thead th, 
+table.dataTable thead td {
+    padding: 12px 18px;
+    border: none;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%) !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 3px solid #389235;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+table.dataTable tfoot th, 
+table.dataTable tfoot td {
+    padding: 12px 18px;
+    border: none;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%) !important;
+    color: #ffffff !important;
+    font-weight: 600;
+    border-top: 3px solid #389235;
+}
+
+/* ========== CUERPO DE LA TABLA ========== */
+table.dataTable tbody tr {
+    transition: all 0.2s ease;
+    border-bottom: 1px solid #e9ecef;
+}
+
+table.dataTable tbody tr:hover {
+    background-color: #f8f9fa !important;
+    transform: translateX(2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+table.dataTable tbody td {
+    padding: 10px 18px;
+    vertical-align: middle;
+    font-size: 0.875rem;
+}
+
+table.dataTable tbody tr:nth-child(even) {
+    background-color: #f8f9fa;
+}
+
+/* ========== CHECKBOXES ========== */
+.invoice-checkbox,
+#selectAllCheckbox {
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    accent-color: #389235;
+    transform: scale(1.1);
+}
+
+.invoice-checkbox:hover,
+#selectAllCheckbox:hover {
+    transform: scale(1.2);
+    transition: transform 0.2s ease;
+}
+
+/* ========== FILAS DE GRUPO ========== */
+tr.group,
+tr.group:hover {
+    background: linear-gradient(90deg, rgba(56, 146, 53, 0.1) 0%, rgba(56, 146, 53, 0.05) 100%) !important;
+    font-weight: 600;
+    border-left: 4px solid #389235;
+}
+
+:root.dark tr.group,
+:root.dark tr.group:hover {
+    background: linear-gradient(90deg, rgba(56, 146, 53, 0.2) 0%, rgba(56, 146, 53, 0.1) 100%) !important;
+}
+
+/* ========== COLUMNAS ESPECIALES ========== */
+.column_estation {
+    background-color: #e8f5e9 !important;
+    color: #2e7d32 !important;
+    font-weight: 500;
+}
+
+.total_bg {
+    background: linear-gradient(135deg, #48A1C7 0%, #3485a8 100%) !important;
+    color: white !important;
+    font-weight: 600;
+    padding: 8px !important;
+}
+
+.total_bg2 {
+    background: linear-gradient(135deg, #48A1C7 0%, #3485a8 100%) !important;
+    color: white !important;
+    font-weight: 600;
+}
+
+.bg_send {
+    background-color: #c8e6c9 !important;
+    color: #1b5e20 !important;
+    font-weight: 500;
+}
+
+/* ========== BORDES ========== */
+.border_center {
+    border: 1px solid rgba(56, 146, 53, 0.3) !important;
+    border-radius: 4px;
+}
+
+.border_OG {
+    border: 1px solid rgba(12, 32, 32, 0.2) !important;
+    background-color: rgba(109, 114, 119, 0.1);
+    border-radius: 4px;
+}
+
+/* ========== LOADER OVERLAY ========== */
+.payment-loader-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+    backdrop-filter: blur(3px);
+}
+
+.payment-loader-overlay.active {
+    display: flex;
+}
+
+.payment-loader-content {
+    background: white;
+    padding: 40px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    min-width: 300px;
+}
+
+.payment-loader-spinner {
+    width: 60px;
+    height: 60px;
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid #007bff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.payment-loader-text {
+    color: #333;
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+.payment-loader-subtext {
+    color: #666;
+    font-size: 14px;
+}
+
+/* ========== DRAG AND DROP ========== */
+.draggable-row {
+    cursor: move;
+    transition: all 0.2s ease;
+}
+
+.draggable-row:hover {
+    background-color: #e3f2fd !important;
+    transform: scale(1.01);
+}
+
+.dragging {
+    opacity: 0.5;
+    transform: rotate(2deg);
+    background-color: #bbdefb !important;
+}
+
+.drag-handle {
+    color: #6c757d;
+    cursor: move;
+    transition: color 0.2s ease;
+}
+
+.drag-handle:hover {
+    color: #007bff;
+}
+
+#payment-basket {
+    min-height: 400px;
+    height: 100%;
+    border: 2px dashed #ccc;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+#payment-basket.dragover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+    border-style: solid;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+}
+
+.payment-item {
+    background: linear-gradient(45deg, #28a745, #20c997) !important;
+    color: white !important;
+    border: none !important;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.payment-summary {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    color: white;
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 10px;
+}
+
+#generar-pago:disabled {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+.empty-basket-message {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 50px 20px;
+    border: none !important;
+    background: transparent !important;
+}
+
+/* ========== DATATABLES ========== */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter {
+    margin-bottom: 15px;
+}
+
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid #389235;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #389235;
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.table-responsive {
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.05);
+}
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+    table.dataTable thead th, 
+    table.dataTable thead td {
+        font-size: 0.75rem;
+        padding: 8px 10px;
+    }
+    
+    table.dataTable tbody td {
+        font-size: 0.8rem;
+        padding: 8px 10px;
+    }
+}
+
+
+/* ========== STATS CARDS ========== */
+.stats-card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    overflow: hidden;
+}
+
+.stats-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 15px rgba(0,0,0,0.2);
+}
+
+.stats-card .card-body {
+    position: relative;
+}
+
+.stats-icon {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.stats-card h2 {
+    font-weight: bold;
+    font-size: 2.5rem;
+}
+
+.stats-card h6 {
+    font-weight: 500;
+    opacity: 0.9;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stats-card small {
+    opacity: 0.8;
+    font-size: 0.85rem;
+}
+
+/* Station Cards */
+.station-card {
+    border-left: 4px solid #dc3545;
+    transition: all 0.2s ease;
+}
+
+.station-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.station-card .badge {
+    font-size: 0.9rem;
+    padding: 0.4rem 0.8rem;
+}
+
+/* Provider Cards */
+.provider-card {
+    border-left: 4px solid #17a2b8;
+    transition: all 0.2s ease;
+}
+
+.provider-card:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+/* Progress bars */
+.mini-progress {
+    height: 8px;
+    border-radius: 4px;
+    background-color: #e9ecef;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.mini-progress-bar {
+    height: 100%;
+    transition: width 0.6s ease;
+}
+
+.progress-danger {
+    background: linear-gradient(90deg, #dc3545 0%, #c82333 100%);
+}
+
+.progress-warning {
+    background: linear-gradient(90deg, #ffc107 0%, #e0a800 100%);
+}
+
+.progress-success {
+    background: linear-gradient(90deg, #28a745 0%, #218838 100%);
+}
+
+/* Animación de entrada */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stats-card,
+.station-card,
+.provider-card {
+    animation: fadeInUp 0.5s ease;
+}
+</style>
+
+
+<div id="contenedor_pago_normal" >
+    <div class="row">
+        
+        <div class="col-12">
+            <div class="card " id="payment_search_card" style="height: 100%;">
+                <div class="card-body">
+                    <div class="row" style="align-items: flex-end;">
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="from1">Desde: </label>
+                            <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Hasta: </label>
+                            <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="">Razon social </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="company" id="company" required>
+                                <option disabled selected> Seleccione</option>
+                                <option value="0">Todas</option>
+                                {% for company in companys %}
+                                <option value="{{ company.codemp }}">{{ company.den }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Estacion: </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación" disabled>
+                                <option disabled selected>Seleccione empresa primero</option>
+                                <option value="0" style="display:none;">Todas las estaciones</option>
+                                {% for station in stations %}
+                                    <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 ">
+                            <label class="col-form-label-sm" for="until1">Proveedor: </label>
+                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
+                                <option value="0"  selected>Todos los proveedores</option>
+                                {% for proveedor in proveedores %}
+                                    <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-2 " >
+                            <button onclick="invoice_puchase_table_function()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 mb-3" id="stats-container" style="display: none;">
+    <div class="row">
+        <!-- Card 1: Total Documentos -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Total Documentos</h6>
+                            <h2 class="mb-0 mt-2" id="total-docs">0</h2>
+                        </div>
+                        <div class="stats-icon">
+                            <i class="fas fa-file-invoice fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Correctos -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Correctos</h6>
+                            <h2 class="mb-0 mt-2" id="total-correctos">0</h2>
+                            <small id="percent-correctos">0%</small>
+                        </div>
+                        <div class="stats-icon">
+                            <i class="fas fa-check-circle fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Sin Factura -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Sin Factura</h6>
+                            <h2 class="mb-0 mt-2" id="total-sin-factura">0</h2>
+                            <small id="percent-sin-factura">0%</small>
+                        </div>
+                        <div class="stats-icon">
+                            <i class="fas fa-exclamation-triangle fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 4: Sin Descarga -->
+        <div class="col-md-3 mb-3">
+            <div class="card stats-card bg-danger text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-0">Sin Descarga</h6>
+                            <h2 class="mb-0 mt-2" id="total-sin-descarga">0</h2>
+                            <small id="percent-sin-descarga">0%</small>
+                        </div>
+                        <div class="stats-icon">
+                            <i class="fas fa-times-circle fa-3x opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cards de Estaciones con problemas -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-gas-pump"></i> Documentos Sin Descarga por Estación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="stations-without-descarga">
+                        <div class="col-12 text-center text-muted py-4">
+                            <i class="fas fa-info-circle fa-2x mb-2"></i>
+                            <p>Genere un reporte para ver las estadísticas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cards de Proveedores -->
+    <div class="row mt-3">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-truck"></i> Resumen por Proveedor
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="provider-stats">
+                        <div class="col-12 text-center text-muted py-4">
+                            <i class="fas fa-info-circle fa-2x mb-2"></i>
+                            <p>Genere un reporte para ver las estadísticas</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+                <div class="card-body table-responsive" >
+                    <table id="invoice_puchase_table" class="table table-sm table-striped table-hover w-100">
+                        <thead>
+                            <tr>
+                                <th>Estatus</th>
+                                <th>Folio</th>
+                                <th>Factura</th>
+                                <th>Cantidad</th>
+                                <th>Descargado</th>
+                                <th>Estación</th>
+                                <th>Proveedor</th>
+                                <th>Fecha</th>
+                                <th>Vencimiento</th>
+                                <th>Total</th>
+                                <th>Producto</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Todo tu código actual de drag & drop -->
+</div>
+
+{% endblock %}
+{% block myjs %}
+
+<script src="{{ JS }}accounting.js"></script>
+<script>
+let currentProvider = null;
+let paymentItems = [];
+
+
+$(document).ready(function() {
+
+
+    window.originalStationOptions = $('#station_id1').html();
+    var company = document.getElementById('company');
+    company.addEventListener('change', function() {
+        filtrarEstacionesPorEmpresa();
+    });
+}); 
+</script>
+
+{% endblock %}

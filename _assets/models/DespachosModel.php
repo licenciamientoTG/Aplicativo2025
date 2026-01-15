@@ -954,7 +954,6 @@ class DespachosModel extends Model{
                     FROM CTE WITH (NOLOCK)
                     WHERE rn = 1
                     ORDER BY fecha, hora_formateada;";
-                   
                     try {
 
                         return ($rs=$this->sql->select($query,array())) ? $rs : false ;

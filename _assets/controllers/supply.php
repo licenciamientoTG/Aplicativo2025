@@ -84,13 +84,12 @@ class Supply{
         $this->PaymentRequestsModel                               = new PaymentRequestsModel();
         $this->paymentRequestInvoicesModel                        = new PaymentRequestInvoicesModel();
         $this->proveedores                                       = new ProveedoresModel();
-        $this->proveedores                                       = new ProveedoresModel();
         $this->facturasRecibidasModel                            = new FacturasRecibidasModel();
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
         $this->paymentRequestAuthorizationsModel                = new PaymentRequestAuthorizationsModel ();
         $this->CuentasBancariasModel                            = new CuentasBancariasModel();
         $this->paymentTransactionsModel                        = new PaymentTransactionsModel();
-        $this->UsuariosModel                        = new UsuariosModel();
+        $this->UsuariosModel                                    = new UsuariosModel();
 
 
     }
@@ -1273,6 +1272,8 @@ class Supply{
         echo $this->twig->render($this->route . 'add_payment.html', compact('stations', 'companys', 'proveedores'));
 
     }
+
+
     public function payment_control_table(){
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
@@ -2975,6 +2976,8 @@ class Supply{
                     'total_invoices' => $row['total_invoices'],
                     'total_amount'   => '$' . number_format($row['total_amount'], 2),
                     'total_paid'     => '$' . number_format($row['total_paid'], 2),
+                    'authorized_invoices_count' => $row['authorized_invoices_count'],
+                    'authorized_amount_total' => '$' . number_format($row['authorized_amount_total'], 2),
                     'status'         => $statusBadge,
                     'authorizations' => $authIndicator,
                     'comment'        => $row['comment'] ?: '-',
@@ -2987,6 +2990,7 @@ class Supply{
             echo json_encode(['error' => true, 'message' => $e->getMessage()]);
         }
     }
+
 
     function loadAnticiposList(){
         header('Content-Type: application/json');
@@ -3235,7 +3239,8 @@ class Supply{
 
             // ✅ Obtener facturas con cálculos desde el modelo
             $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-
+            $facturas_autorizadas = 0;
+            $total_monto_autorizado = 0;
             // Obtener autorizaciones
             $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
             $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
@@ -3268,7 +3273,9 @@ class Supply{
                 'authorization_status',
                 'auth_info',
                 'summary',
-                'transactions'
+                'transactions',
+                'facturas_autorizadas',
+                'total_monto_autorizado'
             ));
         } catch (Exception $e) {
             setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
@@ -3393,84 +3400,304 @@ class Supply{
         };
     }
 
+/**
+ * Autorizar facturas específicas para su posterior pago
+ * NO ejecuta el pago, solo marca las facturas como autorizadas
+ */
+function authorize_payment_execution()
+{
+    header('Content-Type: application/json');
+    
+    try {
+        // Obtener datos JSON
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        
+        if ($data === null) {
+            json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
+            return;
+        }
+
+        $payment_id = $data['payment_id'] ?? null;
+        $facturas = $data['facturas'] ?? [];
+        $user_id = $_SESSION['tg_user']['Id'] ?? null;
+
+        // ========================================
+        // VALIDACIONES
+        // ========================================
+        
+        if (!$payment_id || !$user_id) {
+            json_output(['success' => false, 'message' => 'Datos incompletos']);
+            return;
+        }
+
+        if (empty($facturas)) {
+            json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+            return;
+        }
+
+        // Verificar que el pago exista y esté AUTORIZADO (status = 1)
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+        if (!$payment) {
+            json_output(['success' => false, 'message' => 'Solicitud de pago no encontrada']);
+            return;
+        }
+
+        if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+            json_output([
+                'success' => false, 
+                'message' => 'El pago debe estar completamente autorizado por los 3 niveles antes de autorizar facturas individuales'
+            ]);
+            return;
+        }
+
+        // Verificar que el usuario tenga permiso de Tesorería (68)
+        if (!authorized(68)) {
+            json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+            return;
+        }
+
+        // ========================================
+        // PROCESAR AUTORIZACIONES USANDO EL MODELO
+        // ========================================
+        
+        $result = $this->paymentRequestInvoicesModel->authorize_invoices_for_payment(
+            $payment_id,
+            $facturas,
+            $user_id
+        );
+
+        // Responder con el resultado del modelo
+        if ($result['success']) {
+            // Construir mensaje con detalles
+            $mensaje = $result['message'];
+            
+            if (!empty($result['errores'])) {
+                $mensaje .= "\n\nAdvertencias:\n" . implode("\n", $result['errores']);
+            }
+            
+            json_output([
+                'success' => true,
+                'message' => $mensaje,
+                'facturas_autorizadas' => $result['facturas_autorizadas'],
+                'total_autorizado' => number_format($result['total_autorizado'], 2, '.', ''),
+                'errores' => $result['errores'] ?? []
+            ]);
+        } else {
+            json_output(['success' => false, 'message' => $result['message']]);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Error en authorize_payment_execution: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * Ejecutar pago de facturas PREVIAMENTE AUTORIZADAS
+ * Este método procesa todas las facturas autorizadas pendientes de pago
+ */
+function execute_authorized_payments()
+{
+    header('Content-Type: application/json');
+    
+    try {
+        // Obtener datos JSON
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        
+        if ($data === null) {
+            json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
+            return;
+        }
+        
+        $payment_id = $data['payment_id'] ?? null;
+        $observaciones = $data['observaciones'] ?? '';
+        $referencia = $data['referencia'] ?? '';
+        $fecha_pago = $data['fecha_pago'] ?? date('Y-m-d');
+        $user_id = $_SESSION['tg_user']['Id'] ?? null;
+
+        // ========================================
+        // VALIDACIONES
+        // ========================================
+        
+        if (!$payment_id || !$user_id) {
+            json_output(['success' => false, 'message' => 'Datos incompletos']);
+            return;
+        }
+
+        // Verificar que el pago existe y está autorizado
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        
+        if (!$payment) {
+            json_output(['success' => false, 'message' => 'Solicitud de pago no encontrada']);
+            return;
+        }
+
+        if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+            json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
+            return;
+        }
+
+        // Verificar permiso de Tesorería (68)
+        if (!authorized(68)) {
+            json_output(['success' => false, 'message' => 'Solo Tesorería puede ejecutar pagos']);
+            return;
+        }
+
+        // ========================================
+        // OBTENER FACTURAS AUTORIZADAS USANDO EL MODELO
+        // ========================================
+        
+        $facturas_autorizadas = $this->paymentRequestInvoicesModel->get_authorized_pending_payment($payment_id);
+
+        if (!$facturas_autorizadas || empty($facturas_autorizadas)) {
+            json_output(['success' => false, 'message' => 'No hay facturas autorizadas pendientes de pago']);
+            return;
+        }
+
+        // ========================================
+        // PREPARAR DATOS PARA PROCESAR
+        // ========================================
+        
+        $facturas_procesar = [];
+        $total_a_pagar = 0;
+        
+        foreach ($facturas_autorizadas as $factura) {
+            $facturas_procesar[] = [
+                'invoice_id' => $factura['id'],
+                'folio' => $factura['folio'],
+                'monto_pagar' => $factura['authorized_amount'], // ✅ Usar monto autorizado
+                'saldo_anterior' => $factura['saldo']
+            ];
+            
+            $total_a_pagar += floatval($factura['authorized_amount']);
+        }
+
+        // ========================================
+        // EJECUTAR PAGO USANDO EL MODELO DE TRANSACCIONES
+        // ========================================
+        
+        $result = $this->paymentTransactionsModel->process_bulk_payment(
+            $payment_id,
+            $facturas_procesar,
+            $user_id,
+            $fecha_pago,
+            $observaciones,
+            $referencia
+        );
+
+        // ========================================
+        // PROCESAR RESULTADO
+        // ========================================
+        
+        if ($result['success']) {
+            // Actualizar estado del pago si todas las facturas están completamente pagadas
+            if ($result['all_paid']) {
+                $this->PaymentRequestsModel->update_request_status(
+                    $payment_id, 
+                    PaymentRequestsModel::STATUS_PAID
+                );
+            }
+
+            json_output([
+                'success' => true,
+                'message' => $result['message'],
+                'facturas_procesadas' => $result['facturas_procesadas'] ?? count($facturas_procesar),
+                'total_pagado' => $result['total_pagado'] ?? $total_a_pagar,
+                'all_paid' => $result['all_paid'] ?? false
+            ]);
+        } else {
+            json_output(['success' => false, 'message' => $result['message']]);
+        }
+
+    } catch (Exception $e) {
+        error_log("Error en execute_authorized_payments: " . $e->getMessage());
+        error_log("Stack trace: " . $e->getTraceAsString());
+        json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+    }
+}
+
 
     /**
      * Procesar pago de facturas (con pagos parciales)
      */
-    function process_payment()
-    {
-        header('Content-Type: application/json');
-        try {
-            // Obtener datos JSON
-            $json = file_get_contents('php://input');
-            $data = json_decode($json, true);
-            if ($data === null) {
-                json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
-                return;
-            }
+    // function process_payment()
+    // {
+    //     header('Content-Type: application/json');
+    //     try {
+    //         // Obtener datos JSON
+    //         $json = file_get_contents('php://input');
+    //         $data = json_decode($json, true);
+    //         if ($data === null) {
+    //             json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
+    //             return;
+    //         }
 
-            $payment_id = $data['payment_id'] ?? null;
-            $facturas = $data['facturas'] ?? [];
-            $observaciones = $data['observaciones'] ?? '';
-            $referencia = $data['referencia'] ?? '';
-            $fecha_pago = $data['fecha_pago'] ?? date('Y-m-d');
-            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+    //         $payment_id = $data['payment_id'] ?? null;
+    //         $facturas = $data['facturas'] ?? [];
+    //         $observaciones = $data['observaciones'] ?? '';
+    //         $referencia = $data['referencia'] ?? '';
+    //         $fecha_pago = $data['fecha_pago'] ?? date('Y-m-d');
+    //         $user_id = $_SESSION['tg_user']['Id'] ?? null;
 
-            // Validaciones
-            if (!$payment_id || !$user_id) {
-                json_output(['success' => false, 'message' => 'Datos incompletos']);
-                return;
-            }
+    //         // Validaciones
+    //         if (!$payment_id || !$user_id) {
+    //             json_output(['success' => false, 'message' => 'Datos incompletos']);
+    //             return;
+    //         }
 
-            if (empty($facturas)) {
-                json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
-                return;
-            }
+    //         if (empty($facturas)) {
+    //             json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+    //             return;
+    //         }
 
-            // Verificar que el pago esté autorizado
-            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+    //         // Verificar que el pago esté autorizado
+    //         $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
 
-            if (!$payment || $payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
-                return;
-            }
+    //         if (!$payment || $payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+    //             json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
+    //             return;
+    //         }
 
-            // Verificar que el usuario tenga permiso de Tesorería
-            if (!authorized(68)) {
-                json_output(['success' => false, 'message' => 'Solo Tesorería puede procesar pagos']);
-                return;
-            }
+    //         // Verificar que el usuario tenga permiso de Tesorería
+    //         if (!authorized(68)) {
+    //             json_output(['success' => false, 'message' => 'Solo Tesorería puede procesar pagos']);
+    //             return;
+    //         }
 
-            // Procesar pago usando el modelo
-            $result = $this->paymentTransactionsModel->process_bulk_payment(
-                $payment_id,
-                $facturas,
-                $user_id,
-                $fecha_pago,
-                $observaciones,
-                $referencia
-            );
+    //         // Procesar pago usando el modelo
+    //         $result = $this->paymentTransactionsModel->process_bulk_payment(
+    //             $payment_id,
+    //             $facturas,
+    //             $user_id,
+    //             $fecha_pago,
+    //             $observaciones,
+    //             $referencia
+    //         );
 
-            if ($result['success']) {
-                // Si todas las facturas están completamente pagadas, cambiar estado del pago
-                if ($result['all_paid']) {
-                    $this->PaymentRequestsModel->update_request_status($payment_id,PaymentRequestsModel::STATUS_PAID);
-                }
+    //         if ($result['success']) {
+    //             // Si todas las facturas están completamente pagadas, cambiar estado del pago
+    //             if ($result['all_paid']) {
+    //                 $this->PaymentRequestsModel->update_request_status($payment_id,PaymentRequestsModel::STATUS_PAID);
+    //             }
 
-                json_output([
-                    'success' => true,
-                    'message' => $result['message'],
-                    'facturas_procesadas' => $result['facturas_procesadas'],
-                    'total_pagado' => $result['total_pagado']
-                ]);
-            } else {
-                json_output(['success' => false, 'message' => $result['message']]);
-            }
-        } catch (Exception $e) {
-            error_log("Error en process_payment: " . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-        }
-    }
+    //             json_output([
+    //                 'success' => true,
+    //                 'message' => $result['message'],
+    //                 'facturas_procesadas' => $result['facturas_procesadas'],
+    //                 'total_pagado' => $result['total_pagado']
+    //             ]);
+    //         } else {
+    //             json_output(['success' => false, 'message' => $result['message']]);
+    //         }
+    //     } catch (Exception $e) {
+    //         error_log("Error en process_payment: " . $e->getMessage());
+    //         json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    //     }
+    // }
     function get_payment_history()
     {
         header('Content-Type: application/json');
@@ -4613,6 +4840,121 @@ class Supply{
         </html>
         ";
     }
+
+    function authorized_pending_invoices(){
+        try {
+            // Obtener facturas autorizadas pendientes
+            $invoices = $this->paymentRequestInvoicesModel->get_authorized_pending_invoices();
+            
+            // Obtener resumen por banco
+            $summary_by_bank = $this->paymentRequestInvoicesModel->get_authorized_pending_summary_by_bank();
+            
+            echo $this->twig->render($this->route . 'payment_list.html', compact(
+                'invoices',
+                'summary_by_bank'
+            ));
+        } catch (Exception $e) {
+            setFlashMessage('error', 'Error al cargar facturas: ' . $e->getMessage());
+            redirect('/supply/payment_list');
+        }
+    }
+
+
+    function authorized_pending_invoices_grouped_table()
+    {
+        header('Content-Type: application/json');
+        
+        try {
+            $invoices = $this->paymentRequestInvoicesModel->get_authorized_pending_grouped();
+            
+            if (!$invoices) {
+                json_output(['data' => []]);
+                return;
+            }
+            
+            $data = [];
+            foreach ($invoices as $invoice) {
+                $data[] = [
+                    'emp_cod' => $invoice['emp_cod'],
+                    'provider_cod' => $invoice['provider_cod'],
+                    'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
+                    'empresa_rfc' => $invoice['empresa_rfc'] ?? 'N/A',
+                    'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
+                    'proveedor_rfc' => $invoice['proveedor_rfc'] ?? 'N/A',
+                    'banco_asignado' => $invoice['banco_asignado'],
+                    'banco_color' => $invoice['banco_color'],
+                    'total_facturas' => $invoice['total_facturas'],
+                    'total_autorizado' => $invoice['total_autorizado'],
+                    'total_saldo' => $invoice['total_saldo'],
+                    'vencimiento_mas_proximo' => $invoice['vencimiento_mas_proximo'],
+                    'vencimiento_mas_lejano' => $invoice['vencimiento_mas_lejano'],
+                    'invoice_ids' => $invoice['invoice_ids'],
+                    'folios_list' => $invoice['folios_list'],
+                    'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
+                    'ultima_autorizacion' => $invoice['ultima_autorizacion']
+                ];
+            }
+            
+            json_output(['data' => $data]);
+            
+        } catch (Exception $e) {
+            error_log("Error en authorized_pending_invoices_grouped_table: " . $e->getMessage());
+            json_output(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+ * Obtener desglose de facturas por IDs
+ */
+function get_invoices_detail()
+{
+    header('Content-Type: application/json');
+    
+    try {
+        $invoice_ids = $_POST['invoice_ids'] ?? '';
+        
+        if (empty($invoice_ids)) {
+            json_output(['success' => false, 'message' => 'IDs de facturas requeridos']);
+            return;
+        }
+        
+        // Obtener facturas individuales
+        $invoices = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids($invoice_ids);
+        
+        if (!$invoices) {
+            json_output(['success' => false, 'message' => 'No se encontraron facturas']);
+            return;
+        }
+        
+        $data = [];
+        foreach ($invoices as $invoice) {
+            $data[] = [
+                'id' => $invoice['id'],
+                'payment_request_id' => $invoice['payment_request_id'],
+                'folio' => $invoice['folio'],
+                'invoice_number' => $invoice['invoice_number'],
+                'estacion_nombre' => $invoice['estacion_nombre'] ?? 'N/A',
+                'amount' => $invoice['amount'],
+                'paid_amount' => $invoice['paid_amount'] ?? 0,
+                'authorized_amount' => $invoice['authorized_amount'],
+                'saldo' => $invoice['saldo'],
+                'expiration_date' => $invoice['expiration_date'],
+                'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
+                'authorized_at' => $invoice['authorized_at'],
+                'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
+                'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
+                'uuid' => $invoice['uuid']
+            ];
+        }
+        
+        json_output(['success' => true, 'data' => $data]);
+        
+    } catch (Exception $e) {
+        error_log("Error en get_invoices_detail: " . $e->getMessage());
+        json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    }
+}
+
 
     
 }

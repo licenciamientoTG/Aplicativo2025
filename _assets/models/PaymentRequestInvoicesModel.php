@@ -247,6 +247,10 @@ class PaymentRequestInvoicesModel extends Model
                 t1.expiration_date,
                 t1.date_added,
                 t1.uuid,
+                t1.authorized_amount,
+                t1.payment_authorized,
+                t1.authorized_by,
+                t1.authorized_at,
                 t4.den as proveedor_nombre,
                 t2.abr as estacion_nombre,
                 -- Calcular paid_amount desde payment_transactions
@@ -365,6 +369,530 @@ class PaymentRequestInvoicesModel extends Model
         return $result ?: false;
 
     }
+
+    /**
+     * Autorizar facturas para pago
+     * @param int $payment_id
+     * @param array $facturas - Array de facturas con invoice_id, monto_autorizado, saldo_anterior
+     * @param int $user_id - Usuario que autoriza
+     * @return array
+     */
+    public function authorize_invoices_for_payment($payment_id, $facturas, $user_id) : array {
+        if (empty($facturas)) {
+            return [
+                'success' => false,
+                'message' => 'No hay facturas para autorizar'
+            ];
+        }
+
+        $this->sql->beginTransaction();
+        
+        try {
+            $facturas_autorizadas = 0;
+            $total_autorizado = 0;
+            $errores = [];
+            
+            foreach ($facturas as $factura) {
+                $invoice_id = $factura['invoice_id'] ?? null;
+                $monto_autorizado = floatval($factura['monto_autorizado'] ?? 0);
+                $saldo_anterior = floatval($factura['saldo_anterior'] ?? 0);
+                $folio = $factura['folio'] ?? 'N/A';
+                
+                // Validar datos de la factura
+                if (!$invoice_id || $monto_autorizado <= 0) {
+                    $errores[] = "Factura {$folio}: datos inválidos";
+                    continue;
+                }
+                
+                // Validar que no exceda el saldo
+                if ($monto_autorizado > $saldo_anterior) {
+                    $errores[] = "Factura {$folio}: monto excede saldo disponible";
+                    continue;
+                }
+                
+                // Verificar que la factura pertenece a este payment_request y obtener su estado actual
+                $query_check = "
+                    SELECT id, amount, paid_amount, payment_authorized 
+                    FROM [TG].[dbo].[payment_request_invoices]
+                    WHERE id = ? AND payment_request_id = ?
+                ";
+                
+                $invoice_data = $this->sql->select($query_check, [$invoice_id, $payment_id]);
+                
+                if (!$invoice_data || empty($invoice_data)) {
+                    $errores[] = "Factura {$folio}: no pertenece a esta solicitud";
+                    continue;
+                }
+                
+                $invoice = $invoice_data[0];
+                
+                // Verificar que no esté ya autorizada
+                if ($invoice['payment_authorized'] == 1) {
+                    $errores[] = "Factura {$folio}: ya está autorizada para pago";
+                    continue;
+                }
+                
+                // Actualizar factura con autorización
+                $query_update = "
+                    UPDATE [TG].[dbo].[payment_request_invoices]
+                    SET 
+                        authorized_amount = ?,
+                        payment_authorized = 1,
+                        authorized_by = ?,
+                        authorized_at = GETDATE()
+                    WHERE id = ?
+                ";
+                
+                $update_result = $this->sql->update(
+                    $query_update,
+                    [$monto_autorizado, $user_id, $invoice_id]
+                );
+                
+                if ($update_result) {
+                    $facturas_autorizadas++;
+                    $total_autorizado += $monto_autorizado;
+                } else {
+                    $errores[] = "Factura {$folio}: error al autorizar en base de datos";
+                }
+            }
+            
+            // Verificar si se autorizó al menos una
+            if ($facturas_autorizadas === 0) {
+                throw new Exception('No se pudo autorizar ninguna factura. ' . implode(', ', $errores));
+            }
+            
+            // Commit de la transacción
+            $this->sql->commit();
+            
+            return [
+                'success' => true,
+                'facturas_autorizadas' => $facturas_autorizadas,
+                'total_autorizado' => $total_autorizado,
+                'errores' => $errores,
+                'message' => "Se autorizaron {$facturas_autorizadas} factura(s) para pago por un total de $" . number_format($total_autorizado, 2)
+            ];
+            
+        } catch (Exception $e) {
+            $this->sql->rollback();
+            error_log("Error en authorize_invoices_for_payment: " . $e->getMessage());
+            
+            return [
+                'success' => false,
+                'message' => 'Error al autorizar facturas: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Obtener facturas autorizadas pendientes de pago
+     * @param int $payment_id
+     * @return array|false
+     */
+    public function get_authorized_pending_payment($payment_id) : array|false {
+        $query = "
+            SELECT 
+                id,
+                folio,
+                invoice_number,
+                codgas,
+                amount,
+                paid_amount,
+                authorized_amount,
+                status,
+                uuid,
+                (amount - ISNULL(paid_amount, 0)) as saldo
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE payment_request_id = ?
+            AND payment_authorized = 1
+            AND status != ?
+            ORDER BY id
+        ";
+        
+        return $this->sql->select($query, [$payment_id, PaymentRequestsModel::STATUS_PAID]) ?: false;
+    }
+
+    /**
+     * Verificar si una factura ya está autorizada
+     * @param int $invoice_id
+     * @return bool
+     */
+    public function is_invoice_authorized($invoice_id) : bool {
+        $query = "
+            SELECT payment_authorized
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE id = ?
+        ";
+        
+        $result = $this->sql->select($query, [$invoice_id]);
+        
+        if ($result && !empty($result)) {
+            return $result[0]['payment_authorized'] == 1;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Verificar si todas las facturas de un pago están completamente pagadas
+     * @param int $payment_id
+     * @return bool
+     */
+    public function all_invoices_paid($payment_id) : bool {
+        $query = "
+            SELECT COUNT(*) as total,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pagadas
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE payment_request_id = ?
+        ";
+        
+        $result = $this->sql->select($query, [
+            PaymentRequestsModel::STATUS_PAID,
+            $payment_id
+        ]);
+        
+        if ($result && !empty($result)) {
+            return ($result[0]['total'] == $result[0]['pagadas'] && $result[0]['total'] > 0);
+        }
+        
+        return false;
+    }
+
+    /**
+     * Obtener resumen de pagos de una solicitud
+     * @param int $payment_id
+     * @return array|null
+     */
+    public function get_payment_execution_summary($payment_id) : array|null {
+        $query = "
+            SELECT 
+                COUNT(*) as total_facturas,
+                SUM(amount) as monto_total,
+                SUM(ISNULL(paid_amount, 0)) as total_pagado,
+                SUM(authorized_amount) as total_autorizado,
+                SUM(CASE WHEN payment_authorized = 1 THEN 1 ELSE 0 END) as facturas_autorizadas,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as facturas_pagadas
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE payment_request_id = ?
+        ";
+        
+        $result = $this->sql->select($query, [
+            PaymentRequestsModel::STATUS_PAID,
+            $payment_id
+        ]);
+        
+        return $result ? $result[0] : null;
+    }
+
+    /**
+     * Obtener todas las facturas autorizadas pendientes de pago
+     * Agrupadas por empresa y razón social
+     * @return array|false
+     */
+    public function get_authorized_pending_invoices() : array|false {
+        $query = "
+            SELECT 
+                pri.id,
+                pri.payment_request_id,
+                pri.folio,
+                pri.invoice_number,
+                pri.codgas,
+                pri.amount,
+                pri.paid_amount,
+                pri.authorized_amount,
+                pri.payment_authorized,
+                pri.authorized_by,
+                pri.authorized_at,
+                pri.status,
+                pri.expiration_date,
+                pri.uuid,
+                
+                -- Saldo calculado
+                (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+                
+                -- Información de payment_request
+                pr.id as pago_id,
+                pr.emp_cod,
+                pr.provider_cod,
+                pr.request_date as pago_fecha,
+                pr.comment as pago_comentario,
+                
+                -- Información de la estación
+                g.abr as estacion_nombre,
+                g.den as estacion_completa,
+                
+                -- Usuario que autorizó
+                u_auth.Nombre as authorized_by_name,
+                
+                -- Proveedor
+                prov.den as proveedor_nombre,
+                prov.rfc as proveedor_rfc,
+                
+                -- Empresa (razón social)
+                emp.den as empresa_nombre,
+                emp.rfc as empresa_rfc,
+                
+                -- Determinar banco según emp_cod
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    ELSE 'Sin asignar'
+                END as banco_asignado,
+                
+                -- Color para agrupar visualmente
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                    ELSE '#6c757d'
+                END as banco_color
+                
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            
+            INNER JOIN [TG].[dbo].[payment_requests] pr 
+                ON pri.payment_request_id = pr.id
+            
+            LEFT JOIN [SG12].[dbo].[Gasolineras] g 
+                ON pri.codgas = g.cod
+            
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+                ON pri.authorized_by = u_auth.Id
+            
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+                ON pr.provider_cod = prov.cod
+            
+            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+                ON pr.emp_cod = emp.cod
+            
+            WHERE pri.payment_authorized = 1  -- Solo autorizadas
+            AND pri.status != ?              -- No pagadas completamente
+            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0  -- Con saldo pendiente
+            AND pr.status = ?                -- Pago autorizado
+            
+            ORDER BY 
+                banco_asignado,
+                emp.den,
+                prov.den,
+                pri.expiration_date
+        ";
+        
+        return $this->sql->select($query, [
+            PaymentRequestsModel::STATUS_PAID,
+            PaymentRequestsModel::STATUS_AUTHORIZED
+        ]) ?: false;
+    }
+
+    /**
+     * Obtener resumen por banco de facturas autorizadas pendientes
+     * @return array|false
+     */
+    public function get_authorized_pending_summary_by_bank() : array|false {
+        $query = "
+            SELECT 
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (19, 20, 16) THEN 'Santander'
+                    ELSE 'Sin asignar'
+                END as banco,
+                
+                COUNT(DISTINCT pri.id) as total_facturas,
+                COUNT(DISTINCT pr.provider_cod) as total_proveedores,
+                SUM(pri.authorized_amount) as total_autorizado,
+                MIN(pri.expiration_date) as vencimiento_mas_proximo
+                
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr ON pri.payment_request_id = pr.id
+            
+            WHERE pri.payment_authorized = 1
+            AND pri.status != ?
+            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+            AND pr.status = ?
+            
+            GROUP BY 
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    ELSE 'Sin asignar'
+                END
+            
+            ORDER BY banco
+        ";
+        
+        return $this->sql->select($query, [
+            PaymentRequestsModel::STATUS_PAID,
+            PaymentRequestsModel::STATUS_AUTHORIZED
+        ]) ?: false;
+    }
+
+    /**
+     * Obtener facturas autorizadas pendientes AGRUPADAS por empresa y proveedor
+     * @return array|false
+     */
+    public function get_authorized_pending_grouped() : array|false {
+        $query = "
+            SELECT 
+                -- Agrupación
+                pr.emp_cod,
+                pr.provider_cod,
+                
+                -- Información de empresa
+                emp.den as empresa_nombre,
+                emp.rfc as empresa_rfc,
+                
+                -- Información de proveedor
+                prov.den as proveedor_nombre,
+                prov.rfc as proveedor_rfc,
+                
+                -- Determinar banco según emp_cod
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    ELSE 'Sin asignar'
+                END as banco_asignado,
+                
+                -- Color para agrupar visualmente
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                    ELSE '#6c757d'
+                END as banco_color,
+                
+                -- Agregaciones
+                COUNT(DISTINCT pri.id) as total_facturas,
+                SUM(pri.authorized_amount) as total_autorizado,
+                SUM(pri.amount - ISNULL(pri.paid_amount, 0)) as total_saldo,
+                MIN(pri.expiration_date) as vencimiento_mas_proximo,
+                MAX(pri.expiration_date) as vencimiento_mas_lejano,
+                
+                -- Concatenar IDs de facturas para referencia
+                STRING_AGG(CAST(pri.id AS VARCHAR), ',') as invoice_ids,
+                STRING_AGG(pri.folio, ', ') as folios_list,
+                
+                -- Información del autorizador (tomar el más reciente)
+                MAX(u_auth.Nombre) as authorized_by_name,
+                MAX(pri.authorized_at) as ultima_autorizacion
+                
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            
+            INNER JOIN [TG].[dbo].[payment_requests] pr 
+                ON pri.payment_request_id = pr.id
+            
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+                ON pri.authorized_by = u_auth.Id
+            
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+                ON pr.provider_cod = prov.cod
+            
+            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+                ON pr.emp_cod = emp.cod
+            
+            WHERE pri.payment_authorized = 1  -- Solo autorizadas
+            AND pri.status != ?              -- No pagadas completamente
+            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0  -- Con saldo pendiente
+            AND pr.status = ?                -- Pago autorizado
+            
+            GROUP BY 
+                pr.emp_cod,
+                pr.provider_cod,
+                emp.den,
+                emp.rfc,
+                prov.den,
+                prov.rfc,
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    ELSE 'Sin asignar'
+                END,
+                CASE 
+                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                    ELSE '#6c757d'
+                END
+            
+            ORDER BY 
+                banco_asignado,
+                emp.den,
+                prov.den
+        ";
+        
+        return $this->sql->select($query, [
+            PaymentRequestsModel::STATUS_PAID,
+            PaymentRequestsModel::STATUS_AUTHORIZED
+        ]) ?: false;
+    }
+
+    public function get_invoices_detail_by_ids($invoice_ids) : array|false {
+    if (empty($invoice_ids)) {
+        return false;
+    }
+    
+    // Limpiar y validar IDs
+    $ids = array_map('intval', explode(',', $invoice_ids));
+    $ids_string = implode(',', $ids);
+    
+    $query = "
+        SELECT 
+            pri.id,
+            pri.payment_request_id,
+            pri.folio,
+            pri.invoice_number,
+            pri.codgas,
+            pri.amount,
+            pri.paid_amount,
+            pri.authorized_amount,
+            pri.payment_authorized,
+            pri.authorized_by,
+            pri.authorized_at,
+            pri.status,
+            pri.expiration_date,
+            pri.uuid,
+            
+            -- Saldo calculado
+            (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+            
+            -- Información de payment_request
+            pr.id as pago_id,
+            pr.emp_cod,
+            pr.provider_cod,
+            pr.request_date as pago_fecha,
+            
+            -- Información de la estación
+            g.abr as estacion_nombre,
+            g.den as estacion_completa,
+            
+            -- Usuario que autorizó
+            u_auth.Nombre as authorized_by_name,
+            
+            -- Proveedor
+            prov.den as proveedor_nombre,
+            prov.rfc as proveedor_rfc,
+            
+            -- Empresa (razón social)
+            emp.den as empresa_nombre,
+            emp.rfc as empresa_rfc
+            
+        FROM [TG].[dbo].[payment_request_invoices] pri
+        
+        INNER JOIN [TG].[dbo].[payment_requests] pr 
+            ON pri.payment_request_id = pr.id
+        
+        LEFT JOIN [SG12].[dbo].[Gasolineras] g 
+            ON pri.codgas = g.cod
+        
+        LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+            ON pri.authorized_by = u_auth.Id
+        
+        LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+            ON pr.provider_cod = prov.cod
+        
+        LEFT JOIN [SG12].[dbo].[Empresas] emp 
+            ON pr.emp_cod = emp.cod
+        
+        WHERE pri.id IN ($ids_string)
+        
+        ORDER BY pri.expiration_date, pri.folio
+    ";
+    
+    return $this->sql->select($query) ?: false;
+}
 
 
 }

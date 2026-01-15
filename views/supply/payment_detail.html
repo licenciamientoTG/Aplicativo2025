@@ -18,6 +18,55 @@
     font-size: 0.75rem;
 }
 
+/* Estilos para facturas autorizadas */
+#tablaAutorizarPago tr.table-success {
+    background-color: #d1fae5 !important;
+}
+
+#tablaAutorizarPago tr.table-success td {
+    opacity: 0.8;
+}
+
+/* Animación sutil para nuevas autorizaciones */
+.monto-autorizar:focus {
+    border-color: #17a2b8;
+    box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.25);
+}
+
+/* Estilo para inputs readonly de facturas autorizadas */
+input[readonly] {
+    cursor: not-allowed;
+}
+/* Estilos para facturas autorizadas */
+#tablaFacturasIncluidas tr.table-success {
+    background-color: #d1fae5 !important;
+}
+
+#tablaFacturasIncluidas tr.table-success:hover {
+    background-color: #a7f3d0 !important;
+}
+
+/* Animación sutil para el ícono de check */
+#tablaFacturasIncluidas .fa-check-circle {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* Badge de autorizada en el folio */
+#tablaFacturasIncluidas .badge.bg-success {
+    box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+/* Highlight del monto autorizado */
+#tablaFacturasIncluidas .text-success strong {
+    font-size: 0.95rem;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
 </style>
 <div class="row">
     <div class="col-12">
@@ -246,10 +295,16 @@
                                         </button>
                                     </div> #}
 
-                                    {% if payment.status == 1 and authorized(68) %}
+                                    {# {% if payment.status == 1 and authorized(68) %}
                                         <button class="btn btn-primary  mt-3 w-100" 
                                                 onclick="procesarPago()">
                                             <i class="fas fa-dollar-sign"></i> Procesar Pago
+                                        </button>
+                                    {% endif %} #}
+                                    {% if payment.status == 1 and authorized(68) %}
+                                        <button class="btn btn-info mt-3 w-100" 
+                                                onclick="autorizarPago()">
+                                            <i class="fas fa-check-circle"></i> Autorizar Pago
                                         </button>
                                     {% endif %}
                                 {% elseif authorization_status.next_level == 68 %}
@@ -355,16 +410,38 @@
 </div>
 
 <!-- Facturas -->
+<!-- Facturas -->
 <div class="row mt-3">
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <h6 class="mb-0"><i class="fas fa-file-invoice-dollar"></i> Facturas Incluidas</h6>
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas fa-file-invoice-dollar"></i> Facturas Incluidas
+                    </h6>
+                    <div>
+                        {% set total_facturas = invoices|length %}
+                        {% set facturas_autorizadas = 0 %}
+                        {% for invoice in invoices %}
+                            {% if invoice.payment_authorized == 1 %}
+                                {% set facturas_autorizadas = facturas_autorizadas + 1 %}
+                            {% endif %}
+                        {% endfor %}
+                        <span class="badge bg-primary">Total: {{ total_facturas }}</span>
+                        <span class="badge bg-success">Autorizadas: {{ facturas_autorizadas }}</span>
+                        <span class="badge bg-warning text-dark">Pendientes: {{ total_facturas - facturas_autorizadas }}</span>
+                    </div>
+                </div>
             </div>
             <div class="card-body table-responsive">
-                <table class="table table-sm table-hover">
+                <table class="table table-sm table-hover" id="tablaFacturasIncluidas">
                     <thead class="table-light">
                         <tr>
+                            <th width="40">
+                                <i class="fas fa-check-circle text-success" 
+                                   data-bs-toggle="tooltip" 
+                                   title="Autorizada para pago"></i>
+                            </th>
                             <th>Folio</th>
                             <th>Factura</th>
                             <th>Proveedor</th>
@@ -372,21 +449,58 @@
                             <th class="text-end">Monto</th>
                             <th class="text-end">Pagado</th>
                             <th class="text-end">Saldo</th>
-                            <th>Estado</th>
+                            <th>Estado Pago</th>
+                            <th>Autorización</th>
                             <th>Vencimiento</th>
-                            <th>Acciones</th> <!-- ✅ NUEVO -->
+                            <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for invoice in invoices %}
                         {% set saldo = invoice.amount - invoice.paid_amount %}
-                        <tr>
-                            <td>{{ invoice.folio }}</td>
+                        {% set autorizada = invoice.payment_authorized == 1 %}
+                        
+                        <tr {% if autorizada %}class="table-success"{% endif %}>
+                            {# Indicador de Autorización #}
+                            <td class="text-center">
+                                {% if autorizada %}
+                                    <i class="fas fa-check-circle fa-lg text-success" 
+                                       data-bs-toggle="tooltip" 
+                                       title="Autorizada para pago"></i>
+                                {% else %}
+                                    <i class="fas fa-circle fa-sm text-muted" 
+                                       data-bs-toggle="tooltip" 
+                                       title="No autorizada"></i>
+                                {% endif %}
+                            </td>
+                            
+                            {# Folio #}
+                            <td>
+                                <strong>{{ invoice.folio }}</strong>
+                                {% if autorizada %}
+                                    <br>
+                                    <span class="badge bg-success" style="font-size: 0.7rem;">
+                                        <i class="fas fa-check"></i> Autorizada
+                                    </span>
+                                {% endif %}
+                            </td>
+                            
+                            {# Factura #}
                             <td>{{ invoice.invoice_number }}</td>
+                            
+                            {# Proveedor #}
                             <td>{{ invoice.proveedor_nombre }}</td>
+                            
+                            {# Estación #}
                             <td>{{ invoice.estacion_nombre }}</td>
+                            
+                            {# Monto #}
                             <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
+                            
+                            {# Pagado #}
                             <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>
+                            
+                            {# Saldo #}
                             <td class="text-end">
                                 {% if saldo > 0 %}
                                     <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
@@ -394,6 +508,8 @@
                                     <span class="text-success">$0.00</span>
                                 {% endif %}
                             </td>
+                            
+                            {# Estado de Pago #}
                             <td>
                                 {% if invoice.status == 2 %}
                                     <span class="badge bg-success">Pagado</span>
@@ -403,9 +519,45 @@
                                     <span class="badge bg-warning text-dark">Pendiente</span>
                                 {% endif %}
                             </td>
-                            <td>{{ invoice.expiration_date|date('d/m/Y') }}</td>
+                            
+                            {# Información de Autorización - NUEVA COLUMNA #}
                             <td>
-                                <!-- ✅ NUEVO: Botón para ver historial de pagos -->
+                                {% if autorizada %}
+                                    <div class="text-center">
+                                        <div class="mb-1">
+                                            <strong class="text-success">
+                                                ${{ invoice.authorized_amount|number_format(2) }}
+                                            </strong>
+                                        </div>
+                                        <small class="text-muted d-block">
+                                            <i class="fas fa-user"></i> 
+                                            {{ invoice.authorized_by_name ?? 'N/A' }}
+                                        </small>
+                                        <small class="text-muted d-block">
+                                            <i class="fas fa-calendar"></i> 
+                                            {{ invoice.authorized_at|date('d/m/Y H:i') }}
+                                        </small>
+                                    </div>
+                                {% else %}
+                                    <div class="text-center">
+                                        <span class="badge bg-secondary" style="font-size: 0.7rem;">
+                                            <i class="fas fa-clock"></i> Sin autorizar
+                                        </span>
+                                    </div>
+                                {% endif %}
+                            </td>
+                            
+                            {# Vencimiento #}
+                            <td>
+                                {% if invoice.expiration_date %}
+                                    {{ invoice.expiration_date|date('d/m/Y') }}
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            
+                            {# Acciones #}
+                            <td class="text-center">
                                 <button class="btn btn-sm btn-outline-info" 
                                         onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')"
                                         title="Ver historial de pagos">
@@ -415,6 +567,50 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <th colspan="5" class="text-end">TOTALES:</th>
+                            <th class="text-end">
+                                {% set total_monto = 0 %}
+                                {% for invoice in invoices %}
+                                    {% set total_monto = total_monto + invoice.amount %}
+                                {% endfor %}
+                                ${{ total_monto|number_format(2) }}
+                            </th>
+                            <th class="text-end">
+                                {% set total_pagado_calc = 0 %}
+                                {% for invoice in invoices %}
+                                    {% set total_pagado_calc = total_pagado_calc + invoice.paid_amount %}
+                                {% endfor %}
+                                ${{ total_pagado_calc|number_format(2) }}
+                            </th>
+                            <th class="text-end">
+                                <strong class="text-danger">
+                                    ${{ (total_monto - total_pagado_calc)|number_format(2) }}
+                                </strong>
+                            </th>
+                            <th colspan="4"></th>
+                        </tr>
+                        <tr>
+                            <th colspan="5" class="text-end">MONTO AUTORIZADO:</th>
+                            <th class="text-end" colspan="3">
+                                {% set total_autorizado_tabla = 0 %}
+                                {% for invoice in invoices %}
+                                    {% if invoice.payment_authorized == 1 %}
+                                        {% set total_autorizado_tabla = total_autorizado_tabla + invoice.authorized_amount %}
+                                    {% endif %}
+                                {% endfor %}
+                                <strong class="text-success" style="font-size: 1.1rem;">
+                                    ${{ total_autorizado_tabla|number_format(2) }}
+                                </strong>
+                            </th>
+                            <th colspan="4">
+                                <small class="text-muted">
+                                    {{ facturas_autorizadas }} de {{ total_facturas }} facturas autorizadas
+                                </small>
+                            </th>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -674,27 +870,29 @@
 
 
 
-<div class="modal fade" id="modalProcesarPago" tabindex="-1">
+<!-- Modal de Autorizar Pago -->
+<!-- Modal de Autorizar Pago -->
+<div class="modal fade" id="modalAutorizarPago" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
+            <div class="modal-header bg-info text-white">
                 <h5 class="modal-title">
-                    <i class="fas fa-dollar-sign"></i> Procesar Pago - Solicitud #{{ payment.id }}
+                    <i class="fas fa-check-circle"></i> Autorizar Pago - Solicitud #{{ payment.id }}
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-info">
                     <i class="fas fa-info-circle"></i>
-                    <strong>Instrucciones:</strong> Seleccione las facturas que desea pagar y especifique el monto de cada una. 
-                    Puede realizar pagos parciales si no desea pagar el monto completo.
+                    <strong>Instrucciones:</strong> Seleccione las facturas que autoriza para pago y especifique el monto de cada una. 
+                    Las facturas ya autorizadas aparecen deshabilitadas. La ejecución del pago será realizada posteriormente por el área correspondiente.
                 </div>
 
                 <!-- Resumen del Pago -->
                 <div class="row mb-3">
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card bg-light">
-                            <div class="card-body text-center">
+                            <div class="card-body text-center p-2">
                                 <small class="text-muted">Monto Total Pendiente</small>
                                 <h4 class="mb-0 text-primary" id="totalPendiente">
                                     ${{ summary.total_pending|number_format(2) }}
@@ -702,19 +900,33 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <small class="text-muted">Monto a Pagar</small>
-                                <h4 class="mb-0 text-success" id="totalAPagar">$0.00</h4>
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Monto a Autorizar</small>
+                                <h4 class="mb-0 text-success" id="totalAAutorizar">$0.00</h4>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <div class="card bg-light">
-                            <div class="card-body text-center">
+                            <div class="card-body text-center p-2">
                                 <small class="text-muted">Facturas Seleccionadas</small>
                                 <h4 class="mb-0 text-info" id="facturasSeleccionadas">0</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Ya Autorizadas</small>
+                                {% set autorizadas = 0 %}
+                                {% for invoice in invoices %}
+                                    {% if invoice.payment_authorized == 1 %}
+                                        {% set autorizadas = autorizadas + 1 %}
+                                    {% endif %}
+                                {% endfor %}
+                                <h4 class="mb-0 text-success">{{ autorizadas }}</h4>
                             </div>
                         </div>
                     </div>
@@ -722,35 +934,63 @@
 
                 <!-- Tabla de Facturas -->
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover" id="tablaPagoFacturas">
+                    <table class="table table-sm table-hover" id="tablaAutorizarPago">
                         <thead class="table-light">
                             <tr>
                                 <th width="50">
                                     <input type="checkbox" id="selectAllFacturas" onchange="toggleSelectAllFacturas()">
                                 </th>
+                                <th>Estado</th>
                                 <th>Folio</th>
                                 <th>Factura</th>
                                 <th>Estación</th>
                                 <th class="text-end">Monto Total</th>
                                 <th class="text-end">Pagado</th>
                                 <th class="text-end">Saldo</th>
-                                <th width="150">Monto a Pagar</th>
+                                <th width="150">Monto a Autorizar</th>
+                                <th>Autorizado Por</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for invoice in invoices %}
                             {% set saldo = invoice.amount - invoice.paid_amount %}
+                            {% set ya_autorizada = invoice.payment_authorized == 1 %}
+                            {# Solo mostrar si tiene saldo pendiente #}
                             {% if saldo > 0 %}
                             <tr data-invoice-id="{{ invoice.id }}" 
                                 data-folio="{{ invoice.folio }}"
-                                data-saldo="{{ saldo }}">
+                                data-saldo="{{ saldo }}"
+                                {% if ya_autorizada %}class="table-success"{% endif %}>
                                 <td>
-                                    <input type="checkbox" 
-                                           class="factura-checkbox" 
-                                           value="{{ invoice.id }}"
-                                           onchange="updatePagoSummary()">
+                                    {% if ya_autorizada %}
+                                        <i class="fas fa-check-circle text-success" title="Ya autorizada"></i>
+                                    {% else %}
+                                        <input type="checkbox" 
+                                               class="factura-checkbox" 
+                                               value="{{ invoice.id }}"
+                                               onchange="updateAutorizacionSummary()">
+                                    {% endif %}
                                 </td>
-                                <td><strong>{{ invoice.folio }}</strong></td>
+                                <td>
+                                    {% if ya_autorizada %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i> Autorizada
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="fas fa-clock"></i> Pendiente
+                                        </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong>{{ invoice.folio }}</strong>
+                                    {% if ya_autorizada %}
+                                        <br><small class="text-success">
+                                            <i class="fas fa-calendar-check"></i> 
+                                            {{ invoice.authorized_at|date('d/m/Y H:i') }}
+                                        </small>
+                                    {% endif %}
+                                </td>
                                 <td>{{ invoice.invoice_number }}</td>
                                 <td>{{ invoice.estacion_nombre }}</td>
                                 <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
@@ -759,49 +999,77 @@
                                     <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
                                 </td>
                                 <td>
-                                    <input type="number" 
-                                           class="form-control form-control-sm monto-pago" 
-                                           step="0.01" 
-                                           min="0" 
-                                           max="{{ saldo }}"
-                                           placeholder="0.00"
-                                           disabled
-                                           onchange="updatePagoSummary()"
-                                           onkeyup="updatePagoSummary()">
+                                    {% if ya_autorizada %}
+                                        {# Mostrar monto autorizado en modo solo lectura #}
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text bg-success text-white">
+                                                <i class="fas fa-check"></i>
+                                            </span>
+                                            <input type="text" 
+                                                   class="form-control form-control-sm text-end" 
+                                                   value="{{ invoice.authorized_amount|number_format(2) }}"
+                                                   readonly
+                                                   style="background-color: #d1fae5;">
+                                        </div>
+                                    {% else %}
+                                        {# Input editable para nuevas autorizaciones #}
+                                        <input type="number" 
+                                               class="form-control form-control-sm monto-autorizar" 
+                                               step="0.01" 
+                                               min="0" 
+                                               max="{{ saldo }}"
+                                               placeholder="0.00"
+                                               disabled
+                                               onchange="updateAutorizacionSummary()"
+                                               onkeyup="updateAutorizacionSummary()">
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if ya_autorizada and invoice.authorized_by_name %}
+                                        <small class="text-success">
+                                            <i class="fas fa-user"></i> 
+                                            {{ invoice.authorized_by_name }}
+                                        </small>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endif %}
                             {% endfor %}
                         </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="8" class="text-end">Totales:</th>
+                                <th class="text-end">
+                                    <div id="totalNuevasAutorizaciones">$0.00</div>
+                                    <small class="text-muted">Nuevas</small>
+                                </th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
 
-                <!-- Información Adicional -->
+                <!-- Leyenda -->
                 <div class="row mt-3">
                     <div class="col-12">
-                        <label class="form-label">Observaciones del Pago</label>
-                        <textarea class="form-control" 
-                                  id="observacionesPago" 
-                                  rows="2" 
-                                  placeholder="Agregue cualquier observación sobre este pago..."></textarea>
-                    </div>
-                </div>
-
-                <!-- Referencia de Pago (opcional) -->
-                <div class="row mt-2">
-                    <div class="col-md-6">
-                        <label class="form-label">Referencia/Folio de Pago</label>
-                        <input type="text" 
-                               class="form-control" 
-                               id="referenciaPago" 
-                               placeholder="Ej: Transferencia #12345">
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Fecha de Pago</label>
-                        <input type="date" 
-                               class="form-control" 
-                               id="fechaPago" 
-                               value="{{ 'now'|date('Y-m-d') }}">
+                        <div class="alert alert-light mb-0">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <small>
+                                        <i class="fas fa-square text-success"></i> 
+                                        <strong>Verde:</strong> Factura ya autorizada (no modificable)
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small>
+                                        <i class="fas fa-square" style="color: #fff;"></i> 
+                                        <strong>Blanco:</strong> Factura disponible para autorizar
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -810,11 +1078,11 @@
                     <i class="fas fa-times"></i> Cancelar
                 </button>
                 <button type="button" 
-                        class="btn btn-success" 
-                        id="btnConfirmarPago" 
-                        onclick="confirmarProcesarPago()"
+                        class="btn btn-info" 
+                        id="btnConfirmarAutorizacion" 
+                        onclick="confirmarAutorizarPago()"
                         disabled>
-                    <i class="fas fa-check"></i> Confirmar Pago
+                    <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
                 </button>
             </div>
         </div>

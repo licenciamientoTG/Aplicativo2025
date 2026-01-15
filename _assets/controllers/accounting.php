@@ -34,6 +34,8 @@ class Accounting{
     public PetrotalConceptosModel $petrotalConceptosModel;
     public ERAjustesModel $eraJustesModel;
     public MovimientosTanModel $movimientosTanModel;
+    public GasolinerasModel $gasolinerasModel;
+    public ProveedoresModel $proveedores;
     /**
      * @param $twig
      */
@@ -48,7 +50,9 @@ class Accounting{
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
         $this->eraJustesModel         = new ERAjustesModel();
         $this->movimientosTanModel    = new MovimientosTanModel();
-        $this->movimientosTanModel    = new MovimientosTanModel();
+        $this->gasolinerasModel      = new GasolinerasModel;
+        $this->proveedores           = new ProveedoresModel();
+
     }
 
     /**
@@ -249,6 +253,21 @@ class Accounting{
             $last_date = date('Y-m-d');   // Fecha actual
             $estaciones = $this->estacionesModel->get_select_stations() ?: [];
             echo $this->twig->render($this->route . 'documentos_facturas.html', compact('first_date', 'last_date', 'estaciones'));
+        }
+    }
+    public function invoice_purchase() {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $estaciones = $this->estacionesModel->get_select_stations() ?: [];
+            $all_stations = $this->gasolinerasModel->get_stations();
+    
+            // Filtrar estaciones para quitar la que tiene cod = 0
+            $stations = array_filter($all_stations, function($station) {
+                return $station['cod'] != 0; // o !== '0' si cod es string
+            });
+
+            $companys = $this->gasolinerasModel->get_company();
+            $proveedores = $this->proveedores->get_actives();
+            echo $this->twig->render($this->route . 'invoice_purchase.html', compact('stations', 'companys', 'proveedores'));
         }
     }
 
@@ -2051,5 +2070,95 @@ class Accounting{
         $response = curl_exec($ch);
         curl_close($ch);
         return json_decode($response, true);
+    }
+
+    public function invoice_puchase_table(){
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'from' => dateToInt($_POST['fromDate']),
+            'until' => dateToInt($_POST['untilDate']),
+            'codgas' => $_POST['codgas'] ? $_POST['codgas'] : '0',
+            'proveedor' => $_POST['proveedor'] ? $_POST['proveedor'] : '0',
+            'company' => $_POST['company'] ? $_POST['company'] : '0'
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        // Ejecutar y obtener respuesta
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        $data = [];
+        if (isset($apiData) && is_array($apiData)) {
+            foreach ($apiData as $row) {
+
+                $status = $this->determineInvoiceStatus($row);
+                $data[] = array(
+                    'nro'              => $row['nro'],
+                    'Factura'          => $row['Factura'],
+                    'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
+                    'fecha'            => $row['fecha'],
+                    'fechaVto'         => $row['fechaVto'],
+                    'producto'         => $row['producto'],
+                    'proveedor'        => $row['proveedor'],
+                    'proveedor_codigo' => $row['proveedor_codigo'],
+                    'volrec'           => $row['volrec'],
+                    'can'              => $row['can'],
+                    'pre'              => $row['pre'],
+                    'mto'              => $row['mto'],
+                    'mtoiie'           => $row['mtoiie'],
+                    'iva8'             => $row['iva8'],
+                    'iva'              => $row['iva'],
+                    'iva_total'        => $row['iva_total'],
+                    'servicio'         => $row['servicio'],
+                    'iva_servicio'     => $row['iva_servicio'],
+                    'total_fac'        => $row['total_fac'],
+                    'satuid'           => $row['satuid'],
+                    'gasolinera'       => $row['gasolinera'],
+                    'codgas'           => $row['codgas'],
+                    'en_orden_pago'    => $row['en_orden_pago'],
+                    'payment_status'   => $row['payment_status'],
+                    'codigo_empresa'   => $row['codigo_empresa'],
+                    'status'           => $status
+                );
+            }
+        }
+        json_output(array("data" => $data));
+    }
+    /**
+     * Determina el estatus de una factura basado en los datos
+     */
+    private function determineInvoiceStatus($row) {
+        // Sin factura y sin descarga
+        if (empty($row['Factura']) && empty($row['volrec'])) {
+            return 'Sin Factura y Descarga';
+        }
+        
+        // Sin factura
+        if (empty($row['Factura'])) {
+            return 'Sin Factura';
+        }
+        
+        // Sin descarga
+        if (empty($row['volrec'])) {
+            return 'Sin Descarga';
+        }
+        
+        if (isset($row['can']) && isset($row['volrec'])) {
+            $diferencia = abs($row['can'] - $row['volrec']);
+            $tolerancia = $row['can'] * 0.12; // 12% de tolerancia
+            
+            if ($diferencia > $tolerancia) {
+                return 'Diferencia Cantidad';
+            }
+        }
+        
+        return 'Correcto';
     }
 }

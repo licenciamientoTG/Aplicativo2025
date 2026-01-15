@@ -2586,3 +2586,502 @@ function showAlert(message, type = 'info') {
         });
     }, 5000);
 }
+
+let invoice_puchase_table = null;
+async function invoice_puchase_table_function(){
+    var fromDate = document.getElementById('from1').value;
+    var untilDate = document.getElementById('until1').value;
+    var codgas = document.getElementById('station_id1').value;
+    var company = document.getElementById('company').value;
+    var proveedor = document.getElementById('proveedor_id').value;
+    if(!codgas || !company || !proveedor || codgas == 'Seleccione' || company == 'Seleccione' || proveedor == 'Seleccione'){
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Debe seleccionar una estación para continuar.</p>
+            </div>`
+        );
+        return;
+    }
+     if (invoice_puchase_table) {
+
+        // Actualizar parámetros AJAX
+        invoice_puchase_table.settings()[0].ajax.data = {
+            'fromDate': fromDate,
+            'untilDate': untilDate,
+            'codgas': codgas,
+            'company': company,
+            'proveedor': proveedor
+        };
+
+        invoice_puchase_table.ajax.reload(function() {
+            $('.table-responsive').removeClass('loading');
+        }, false);
+        return;
+    }
+
+    console.log('🆕 Creando tabla por primera vez...');
+
+    invoice_puchase_table = $('#invoice_puchase_table').DataTable({
+        order: [[0, "desc"], [1, "desc"]],
+        colReorder: false,
+        dom: '<"top"f>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        ajax: {
+            method: 'POST',
+            data: {
+                'fromDate':fromDate,
+                'untilDate':untilDate,
+                'codgas':codgas,
+                'company':company,
+                'proveedor':proveedor
+            },
+            url: '/accounting/invoice_puchase_table',
+            timeout: 600000, 
+            error: function() {
+                $('#invoice_puchase_table').waitMe('hide');
+                $('.table-responsive').removeClass('loading');
+
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            },
+            dataSrc: function(json) {
+                $('.table-responsive').removeClass('loading');
+                
+                if (json.error) {
+                    alertify.error(json.message || 'Error en la respuesta');
+                    return [];
+                }
+                
+                // ✨ CALCULAR Y MOSTRAR ESTADÍSTICAS
+                calculateAndDisplayStats(json.data);
+                
+                alertify.success(`Se cargaron ${json.data.length} registros`);
+                return json.data;
+            }
+        },
+        columns: [
+            {data: 'status'},
+            {data: 'nro'},
+            {data: 'Factura'},
+            {data: 'can',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
+            {data: 'volrec',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
+            {data: 'gasolinera', className: 'text-center text-nowrap' },
+            {data: 'proveedor', className: 'text-center text-nowrap' },
+            {data: 'fecha', className: 'text-center text-nowrap' },
+            {data: 'fechaVto', className: 'text-center text-nowrap' },
+            {data: 'total_fac',render: $.fn.dataTable.render.number(',', '.', 2, '$'),className: 'text-right font-weight-bold'},
+            {data: 'producto', className: 'text-center text-nowrap' },
+            {data: 'satuid', visible: false, searchable: false }
+        ],
+         columnDefs: [
+                    { orderable: false, targets: 0 }
+                ],
+        deferRender: true,
+        // destroy: true, 
+        createdRow: function (row, data, dataIndex) {
+           switch(data.status) {
+                case 'Sin Descarga':
+                    $(row).addClass('table-danger');
+                    break;
+                case 'Sin Factura':
+                    $(row).addClass('table-warning');
+                    break;
+                case 'Diferencia Cantidad':
+                    $(row).addClass('table-info');
+                    break;
+            }
+        },
+        initComplete: function () {
+            const api = this.api();
+
+            if ($('#invoice_puchase_table thead tr.filter').length === 0) {
+                const filterRow = $('<tr class="filter"></tr>');
+
+                $('#invoice_puchase_table thead tr:first th').each(function (index) {
+                   
+                        // ✅ RESTO DE COLUMNAS: Con filtro
+                        filterRow.append(
+                            `<th>
+                                <input type="text"
+                                    class="form-control form-control-sm"
+                                    placeholder="${$(this).text().trim()}">
+                            </th>`
+                        );
+                });
+
+                $('#invoice_puchase_table thead').prepend(filterRow);
+
+                // Eventos de búsqueda
+                $('#invoice_puchase_table thead tr.filter input')
+                    .on('keyup change', function () {
+                        const colIndex = $(this).parent().index();
+                        api.column(colIndex).search(this.value).draw();
+                    });
+            }
+            $('.table-responsive').removeClass('loading');
+            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+            console.log('🎯 Filtros agregados:', $('#invoice_puchase_table thead tr.filter').length);
+
+        },
+         drawCallback: function(settings) {
+        },
+        footerCallback: function (row, data, start, end, display) {
+
+             const api = this.api();
+            
+            // Calcular totales solo de la página actual
+            let totalFacturas = 0;
+            let totalCantidad = 0;
+            let totalDescargado = 0;
+            
+            api.rows({page: 'current'}).every(function() {
+                const d = this.data();
+                totalFacturas += parseFloat(d.total_fac) || 0;
+                totalCantidad += parseFloat(d.can) || 0;
+                totalDescargado += parseFloat(d.volrec) || 0;
+            });
+            
+            // Mostrar en consola o en un elemento
+            console.log('Totales página actual:', {
+                facturas: totalFacturas,
+                cantidad: totalCantidad,
+                descargado: totalDescargado
+            });
+        }
+    });
+}
+function filtrarEstacionesPorEmpresa() {
+    const empresaSel = $('#company').val();
+    const $station = $('#station_id1');
+
+    // Si no se ha seleccionado empresa, mantener estaciones deshabilitadas
+    if (empresaSel === null || empresaSel === '') {
+        $station.prop('disabled', true);
+        $station.selectpicker('refresh');
+        return;
+    }
+
+    // Habilitar el select de estaciones
+    $station.prop('disabled', false);
+
+    // Destruir selectpicker para reconstruir opciones
+    $station.selectpicker('destroy');
+
+    // Limpiar todas las opciones
+    $station.empty();
+
+    // Agregar opción placeholder (NO seleccionada por defecto)
+    $station.append('<option value="" disabled selected >Seleccione una estación</option>');
+
+    // Agregar opción "Todas las estaciones"
+    if (empresaSel === '0') {
+        $station.append('<option value="0">Todas las estaciones</option>');
+    } else {
+        $station.append('<option value="0">Todas las estaciones de esta empresa</option>');
+    }
+
+    
+    // Obtener y filtrar estaciones desde los datos originales
+    if (window.originalStationOptions) {
+        const $tempDiv = $('<div>').html(window.originalStationOptions);
+        
+        $tempDiv.find('option[data-emp]').each(function() {
+            const emp = $(this).attr('data-emp');
+            const stationValue = $(this).attr('value');
+            const stationText = $(this).text();
+            if (empresaSel === '0' || emp === empresaSel) {
+                $station.append('<option value="' + stationValue + '" data-emp="' + emp + '">' + stationText + '</option>');
+            }
+        });
+    } else {
+        console.error('No se encontraron opciones originales');
+    }
+
+    // Seleccionar "Todas las estaciones" por defecto
+    $station.val('0');
+
+    // Reinicializar selectpicker
+    $station.selectpicker({
+        liveSearch: true,
+        title: 'Seleccione una estación'
+    });
+    
+    // $station.find('option').each(function() {
+    //     console.log('Opción:', $(this).text(), 'Valor:', $(this).val());
+    // });
+}
+
+/**
+ * Calcula y muestra estadísticas del reporte
+ */
+function calculateAndDisplayStats(data) {
+    if (!data || data.length === 0) {
+        $('#stats-container').hide();
+        return;
+    }
+
+    // Mostrar contenedor de stats
+    $('#stats-container').show();
+
+    // Calcular totales generales
+    const total = data.length;
+    const correctos = data.filter(d => d.status === 'Correcto').length;
+    const sinFactura = data.filter(d => d.status === 'Sin Factura').length;
+    const sinDescarga = data.filter(d => d.status === 'Sin Descarga').length;
+    const sinAmbos = data.filter(d => d.status === 'Sin Factura y Descarga').length;
+
+    // Actualizar cards principales
+    $('#total-docs').text(total.toLocaleString());
+    $('#total-correctos').text(correctos.toLocaleString());
+    $('#percent-correctos').text(((correctos / total) * 100).toFixed(1) + '%');
+    
+    $('#total-sin-factura').text((sinFactura + sinAmbos).toLocaleString());
+    $('#percent-sin-factura').text((((sinFactura + sinAmbos) / total) * 100).toFixed(1) + '%');
+    
+    $('#total-sin-descarga').text((sinDescarga + sinAmbos).toLocaleString());
+    $('#percent-sin-descarga').text((((sinDescarga + sinAmbos) / total) * 100).toFixed(1) + '%');
+
+    // Calcular por estación
+    const stationStats = calculateStationStats(data);
+    displayStationCards(stationStats);
+
+    // Calcular por proveedor
+    const providerStats = calculateProviderStats(data);
+    displayProviderCards(providerStats);
+}
+
+/**
+ * Calcula estadísticas por estación
+ */
+function calculateStationStats(data) {
+    const stats = {};
+
+    data.forEach(row => {
+        const station = row.gasolinera;
+        if (!stats[station]) {
+            stats[station] = {
+                name: station,
+                codgas: row.codgas,
+                total: 0,
+                sinDescarga: 0,
+                sinFactura: 0,
+                correctos: 0
+            };
+        }
+
+        stats[station].total++;
+        
+        switch(row.status) {
+            case 'Sin Descarga':
+            case 'Sin Factura y Descarga':
+                stats[station].sinDescarga++;
+                break;
+            case 'Sin Factura':
+                stats[station].sinFactura++;
+                break;
+            case 'Correcto':
+                stats[station].correctos++;
+                break;
+        }
+    });
+
+    // Convertir a array y ordenar por cantidad sin descarga
+    return Object.values(stats)
+        .sort((a, b) => b.sinDescarga - a.sinDescarga);
+}
+
+/**
+ * Muestra cards de estaciones
+ */
+function displayStationCards(stationStats) {
+    const container = $('#stations-without-descarga');
+    container.empty();
+
+    // Filtrar solo estaciones con problemas
+    const stationsWithIssues = stationStats.filter(s => s.sinDescarga > 0);
+
+    if (stationsWithIssues.length === 0) {
+        container.html(`
+            <div class="col-12 text-center text-success py-4">
+                <i class="fas fa-check-circle fa-3x mb-2"></i>
+                <p class="mb-0"><strong>¡Excelente!</strong> Todas las estaciones tienen sus descargas correctas</p>
+            </div>
+        `);
+        return;
+    }
+
+    stationsWithIssues.forEach((station, index) => {
+        const percentSinDescarga = ((station.sinDescarga / station.total) * 100).toFixed(1);
+        const percentCorrectos = ((station.correctos / station.total) * 100).toFixed(1);
+        
+        const card = `
+            <div class="col-md-4 col-lg-3 mb-3" style="animation-delay: ${index * 0.1}s">
+                <div class="card station-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h6 class="mb-0 font-weight-bold">${station.name}</h6>
+                            <span class="badge badge-danger">${station.sinDescarga}</span>
+                        </div>
+                        
+                        <div class="small text-muted mb-2">
+                            <i class="fas fa-hashtag"></i> Código: ${station.codgas}
+                        </div>
+                        
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between small">
+                                <span>Total documentos:</span>
+                                <strong>${station.total}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small text-danger">
+                                <span>Sin descarga:</span>
+                                <strong>${station.sinDescarga} (${percentSinDescarga}%)</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small text-warning">
+                                <span>Sin factura:</span>
+                                <strong>${station.sinFactura}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small text-success">
+                                <span>Correctos:</span>
+                                <strong>${station.correctos} (${percentCorrectos}%)</strong>
+                            </div>
+                        </div>
+                        
+                        <div class="mini-progress">
+                            <div class="mini-progress-bar progress-danger" 
+                                 style="width: ${percentSinDescarga}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.append(card);
+    });
+}
+
+/**
+ * Calcula estadísticas por proveedor
+ */
+function calculateProviderStats(data) {
+    const stats = {};
+
+    data.forEach(row => {
+        const provider = row.proveedor;
+        if (!stats[provider]) {
+            stats[provider] = {
+                name: provider,
+                codigo: row.proveedor_codigo,
+                total: 0,
+                sinDescarga: 0,
+                sinFactura: 0,
+                correctos: 0,
+                totalMonto: 0
+            };
+        }
+
+        stats[provider].total++;
+        stats[provider].totalMonto += parseFloat(row.total_fac) || 0;
+        
+        switch(row.status) {
+            case 'Sin Descarga':
+            case 'Sin Factura y Descarga':
+                stats[provider].sinDescarga++;
+                break;
+            case 'Sin Factura':
+                stats[provider].sinFactura++;
+                break;
+            case 'Correcto':
+                stats[provider].correctos++;
+                break;
+        }
+    });
+
+    // Convertir a array y ordenar por total de documentos
+    return Object.values(stats)
+        .sort((a, b) => b.total - a.total);
+}
+
+/**
+ * Muestra cards de proveedores
+ */
+function displayProviderCards(providerStats) {
+    const container = $('#provider-stats');
+    container.empty();
+
+    if (providerStats.length === 0) {
+        container.html(`
+            <div class="col-12 text-center text-muted py-4">
+                <i class="fas fa-info-circle fa-2x mb-2"></i>
+                <p>No hay datos de proveedores</p>
+            </div>
+        `);
+        return;
+    }
+
+    providerStats.forEach((provider, index) => {
+        const percentCorrectos = ((provider.correctos / provider.total) * 100).toFixed(1);
+        const percentProblemas = (((provider.sinDescarga + provider.sinFactura) / provider.total) * 100).toFixed(1);
+        
+        const card = `
+            <div class="col-md-6 col-lg-4 mb-3" style="animation-delay: ${index * 0.1}s">
+                <div class="card provider-card h-100">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h6 class="mb-0 font-weight-bold">${provider.name}</h6>
+                                <small class="text-muted">Código: ${provider.codigo}</small>
+                            </div>
+                            <span class="badge badge-primary badge-lg">${provider.total}</span>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span><i class="fas fa-check-circle text-success"></i> Correctos:</span>
+                                <strong class="text-success">${provider.correctos} (${percentCorrectos}%)</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span><i class="fas fa-times-circle text-danger"></i> Sin descarga:</span>
+                                <strong class="text-danger">${provider.sinDescarga}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span><i class="fas fa-exclamation-triangle text-warning"></i> Sin factura:</span>
+                                <strong class="text-warning">${provider.sinFactura}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span><i class="fas fa-dollar-sign text-info"></i> Total monto:</span>
+                                <strong class="text-info">$${provider.totalMonto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                            </div>
+                        </div>
+                        
+                        <div class="mini-progress">
+                            <div class="mini-progress-bar progress-success" 
+                                 style="width: ${percentCorrectos}%"></div>
+                        </div>
+                        
+                        ${provider.sinDescarga > 0 || provider.sinFactura > 0 ? `
+                            <div class="alert alert-warning alert-sm mt-2 mb-0 py-1 px-2" role="alert">
+                                <small><i class="fas fa-exclamation-circle"></i> ${percentProblemas}% con problemas</small>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.append(card);
+    });
+}
