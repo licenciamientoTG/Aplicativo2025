@@ -677,8 +677,7 @@ class Supply{
 
         // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
         $data = $this->gasolinerasModel->get_active_station_TG();
-        $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
-        $stations = array_values($dataFiltered);
+        $stations = array_values($data);
 
         // Arreglo común para renderizar la vista
         $twigVars = compact('from', 'yesterday', 'tenDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
@@ -686,6 +685,7 @@ class Supply{
         if (!empty($companyRfc)) {
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
+
             $twigVars['codgas_string'] = $codgas_string;
 
             // Obtiene los productos asociados a las estaciones para la fecha indicada
@@ -701,33 +701,34 @@ class Supply{
 
             // Obtiene el reporte de volumen una sola vez
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
-                $reportId = $reporteVolumenes['id'];
 
+                $reportId = $reporteVolumenes['id'];
+                
                 // Procesa cada producto
                 foreach ($codgas_products as $item) {
+                    
+                    
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
 
                     // Si no existe el registro en la tabla de inventarios vendidos, lo inserta o actualiza
-                    if (!$this->xsdEstacionServicioVolumenVendidoInventariosModel->exists($reportId, $item['controlGasStationId'], $item['controlGasProductId'])) {
-                        $this->xsdEstacionServicioVolumenVendidoInventariosModel->insertOrUpdateRow(
-                            $reportId,
-                            $estacionServicioVolumen['id'],
-                            $item['controlGasStationId'],
-                            $item['controlGasProductId'],
-                            $item['creProductId'],
-                            $item['creSubProductId'],
-                            $item['creSubProductBrandId'],
-                            intval($item['SaldoInicial']),
-                            intval($item['Ventas']),
-                            intval($item['SaldoFinal']),
-                            intval($item['Merma'])
-                        );
-                    }
+                    $this->xsdEstacionServicioVolumenVendidoInventariosModel->insertOrUpdateRow(
+                        $reportId,
+                        $estacionServicioVolumen['id'],
+                        $item['controlGasStationId'],
+                        $item['controlGasProductId'],
+                        $item['creProductId'],
+                        $item['creSubProductId'],
+                        $item['creSubProductBrandId'],
+                        intval($item['SaldoInicial']),
+                        intval($item['Ventas']),
+                        intval($item['SaldoFinal']),
+                        intval($item['Merma'])
+                    );
                 }
-
                 // Obtiene los productos actualizados
                 $products = $this->xsdEstacionServicioVolumenVendidoInventariosModel->getProductsByStations($codgas_string, $reportId);
+
                 $groupedData = [];
 
                 // Agrupa los productos por estación y agrega la información de compras
@@ -798,6 +799,10 @@ class Supply{
             $creSubProductBrandId = $_POST['creSubProductBrandId'];
 
             $cabecera = $this->xsdReportesVolumenesModel->get_cabecera($_POST['from']);
+
+            echo '<pre>';
+            var_dump($cabecera['id'], $_POST['codgas']);
+            die();
             $station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $_POST['codgas']);
 
             if ($station_inventory = $this->xsdEstacionServicioVolumenVendidoInventariosModel->get_inventory_product($station['id'], $creProductId, $creSubProductId)) {
@@ -4465,7 +4470,7 @@ function execute_authorized_payments()
                     <div style='margin: 20px 0;'>
                         <div class='info-row'>
                             <span class='info-label'>📋 ID de Pago:</span>
-                            <span class='info-value'>#${payment_id}</span>
+                            <span class='info-value'>#{$payment_id}</span>
                         </div>
                         <div class='info-row'>
                             <span class='info-label'>🏢 Proveedor:</span>
@@ -4487,7 +4492,7 @@ function execute_authorized_payments()
                     
                     <div class='total-box'>
                         <div class='total-label'>Monto Total del Pago</div>
-                        <div class='total-amount'>\${$total_formatted}</div>
+                        <div class='total-amount'>{$total_formatted}</div>
                     </div>
                     
                     " . (!empty($comment) ? "
@@ -4776,7 +4781,7 @@ function execute_authorized_payments()
                     <div style='margin: 20px 0;'>
                         <div class='info-row'>
                             <span class='info-label'>📋 ID de Pago:</span>
-                            <span class='info-value'>#${payment_id}</span>
+                            <span class='info-value'>#{$payment_id}</span>
                         </div>
                         <div class='info-row'>
                             <span class='info-label'>🏢 Proveedor:</span>
