@@ -2639,104 +2639,99 @@ public function guardar_conciliacion() {
 }
 
 public function get_conciliaciones_hechas() {
-    ob_clean();
-    header('Content-Type: application/json');
+        ob_clean();
+        header('Content-Type: application/json');
 
-    // 1. Recibir y validar fechas
-    $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
-    $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
+        // 1. Recibir y validar fechas
+        $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
+        $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
 
-    if (!$fecha_ini_raw || !$fecha_fin_raw) {
-        $fecha_ini_raw = date('Ymd');
-        $fecha_fin_raw = date('Ymd');
-    }
-
-    $fecha_ini = date('Y-m-d', strtotime($fecha_ini_raw));
-    $fecha_fin = date('Y-m-d', strtotime($fecha_fin_raw));
-
-    $server = "192.168.0.6"; 
-    $db = "TG"; 
-    $user = "cguser"; 
-    $pass = "sahei1712"; 
-
-    try {
-        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-        // --- QUERY OPTIMIZADA ---
-        // Clave: Hacemos JOIN con Conciliaciones_Grupos para obtener la 'diferencia' real
-        $sql = "SELECT 
-                    D.id,
-                    D.fecha, 
-                    D.monto, 
-                    D.grupo_id, 
-                    D.lado,
-                    D.descripcion,
-                    G.diferencia,  -- <--- DATO CRÍTICO PARA EL FRONTEND
-                    
-                    -- Lógica para obtener la afiliación del grupo (basada en el lado derecho/banco)
-                    ISNULL(BankInfo.afiliacion_limpia, 'Sin Afiliación') as afiliacion,
-                    ISNULL(TE.Nombre, 'Desconocido') as nombre_banco
-
-                FROM Conciliaciones_Detalles D
-                
-                -- 1. UNIÓN CON LA TABLA DE GRUPOS (Para sacar la diferencia real)
-                INNER JOIN Conciliaciones_Grupos G ON D.grupo_id = G.grupo_id
-                
-                -- 2. BUSCAR INFO DEL BANCO (AFILIACIÓN) DEL MISMO GRUPO
-                OUTER APPLY (
-                    SELECT TOP 1 
-                        CASE 
-                            -- Intenta sacar texto entre paréntesis: 'Principal (7404318)' -> '7404318'
-                            WHEN CHARINDEX('(', descripcion) > 0 AND CHARINDEX(')', descripcion) > 0
-                            THEN SUBSTRING(
-                                descripcion, 
-                                CHARINDEX('(', descripcion) + 1, 
-                                CHARINDEX(')', descripcion) - CHARINDEX('(', descripcion) - 1
-                            )
-                            -- Si no hay paréntesis, usa la descripción completa
-                            ELSE descripcion 
-                        END as afiliacion_limpia
-                    FROM Conciliaciones_Detalles D2 
-                    WHERE D2.grupo_id = D.grupo_id AND D2.lado = 'RIGHT'
-                ) BankInfo
-
-                -- 3. CRUZAR CON CONFIGURACIÓN PARA OBTENER NOMBRE DEL BANCO (Opcional visualmente)
-                LEFT JOIN Conciliacion_Configuracion CC ON BankInfo.afiliacion_limpia = CC.afiliacion
-                LEFT JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
-
-                WHERE D.fecha BETWEEN ? AND ?
-                ORDER BY D.grupo_id, D.lado"; 
-
-        $stmt = $conn->prepare($sql);
-        $stmt->execute([$fecha_ini, $fecha_fin]);
-        
-        $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $data = [];
-        foreach($filas as $fila) {
-            $data[] = [
-                'id'         => $fila['id'],
-                'fecha'      => substr($fila['fecha'], 0, 10), 
-                'monto'      => (float) $fila['monto'],
-                'grupo_id'   => $fila['grupo_id'],
-                'lado'       => strtolower(trim($fila['lado'])),
-                // Pasamos la diferencia para que JS la lea
-                'diferencia' => (float) $fila['diferencia'], 
-                'afiliacion' => $fila['afiliacion'],
-                'banco'      => $fila['nombre_banco'],
-                'concepto'   => $fila['descripcion'] // Útil para debugging
-            ];
+        if (!$fecha_ini_raw || !$fecha_fin_raw) {
+            $fecha_ini_raw = date('Ymd');
+            $fecha_fin_raw = date('Ymd');
         }
-        
-        echo json_encode(['status' => 'success', 'data' => $data]);
 
-    } catch (PDOException $e) {
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        $fecha_ini = date('Y-m-d', strtotime($fecha_ini_raw));
+        $fecha_fin = date('Y-m-d', strtotime($fecha_fin_raw));
+
+        $server = "192.168.0.6"; 
+        $db = "TG"; 
+        $user = "cguser"; 
+        $pass = "sahei1712"; 
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // --- QUERY CORREGIDA ---
+            // Ahora seleccionamos por GRUPO completo, no solo por filas individuales en el rango.
+            $sql = "SELECT 
+                        D.id,
+                        D.fecha, 
+                        D.monto, 
+                        D.grupo_id, 
+                        D.lado,
+                        D.descripcion,
+                        G.diferencia, 
+                        ISNULL(BankInfo.afiliacion_limpia, 'Sin Afiliación') as afiliacion,
+                        ISNULL(TE.Nombre, 'Desconocido') as nombre_banco
+
+                    FROM Conciliaciones_Detalles D
+                    
+                    INNER JOIN Conciliaciones_Grupos G ON D.grupo_id = G.grupo_id
+                    
+                    -- SUBQUERY PARA OBTENER LA AFILIACIÓN (Igual que antes)
+                    OUTER APPLY (
+                        SELECT TOP 1 
+                            CASE 
+                                WHEN CHARINDEX('(', descripcion) > 0 AND CHARINDEX(')', descripcion) > 0
+                                THEN SUBSTRING(descripcion, CHARINDEX('(', descripcion) + 1, CHARINDEX(')', descripcion) - CHARINDEX('(', descripcion) - 1)
+                                ELSE descripcion 
+                            END as afiliacion_limpia
+                        FROM Conciliaciones_Detalles D2 
+                        WHERE D2.grupo_id = D.grupo_id AND D2.lado = 'RIGHT'
+                    ) BankInfo
+
+                    LEFT JOIN Conciliacion_Configuracion CC ON BankInfo.afiliacion_limpia = CC.afiliacion
+                    LEFT JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
+
+                    -- CAMBIO CRÍTICO AQUÍ:
+                    -- No filtramos D.fecha directamente. Filtramos los GRUPOS que tocan este mes.
+                    WHERE D.grupo_id IN (
+                        SELECT DISTINCT subD.grupo_id 
+                        FROM Conciliaciones_Detalles subD
+                        WHERE subD.fecha BETWEEN ? AND ?
+                    )
+                    
+                    ORDER BY D.grupo_id, D.lado"; 
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$fecha_ini, $fecha_fin]);
+            
+            $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $data = [];
+            foreach($filas as $fila) {
+                $data[] = [
+                    'id'         => $fila['id'],
+                    'fecha'      => substr($fila['fecha'], 0, 10), 
+                    'monto'      => (float) $fila['monto'],
+                    'grupo_id'   => $fila['grupo_id'],
+                    'lado'       => strtolower(trim($fila['lado'])),
+                    'diferencia' => (float) $fila['diferencia'], 
+                    'afiliacion' => $fila['afiliacion'],
+                    'banco'      => $fila['nombre_banco'],
+                    'concepto'   => $fila['descripcion']
+                ];
+            }
+            
+            echo json_encode(['status' => 'success', 'data' => $data]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
     }
-    exit;
-}
-
 
 
 public function get_resumen_transito() {
@@ -2969,6 +2964,256 @@ public function get_conciliacion_config() {
         exit;
     }
 
+    // =========================================================================
+// FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO
+// =========================================================================
+private function recalcular_grupo_interno($conn, $grupo_id) {
+    // 1. Sumar Lado Izquierdo (CG)
+    $sqlLeft = "SELECT ISNULL(SUM(monto), 0) as total FROM Conciliaciones_Detalles 
+                WHERE grupo_id = ? AND lado = 'LEFT'";
+    $stmtL = $conn->prepare($sqlLeft);
+    $stmtL->execute([$grupo_id]);
+    $totalCG = (float)$stmtL->fetchColumn();
+
+    // 2. Sumar Lado Derecho (Banco)
+    $sqlRight = "SELECT ISNULL(SUM(monto), 0) as total FROM Conciliaciones_Detalles 
+                 WHERE grupo_id = ? AND lado = 'RIGHT'";
+    $stmtR = $conn->prepare($sqlRight);
+    $stmtR->execute([$grupo_id]);
+    $totalBk = (float)$stmtR->fetchColumn();
+
+    // 3. Calcular Diferencia
+    $diferencia = $totalCG - $totalBk;
+
+    // 4. Actualizar la Tabla Padre (Conciliaciones_Grupos)
+    $sqlUpdate = "UPDATE Conciliaciones_Grupos 
+                  SET total_cg = ?, total_banco = ?, diferencia = ? 
+                  WHERE grupo_id = ?";
+    $stmtUp = $conn->prepare($sqlUpdate);
+    $stmtUp->execute([$totalCG, $totalBk, $diferencia, $grupo_id]);
+
+    return [
+        'nuevo_total_cg' => $totalCG, 
+        'nuevo_total_bk' => $totalBk, 
+        'nueva_diferencia' => $diferencia
+    ];
+}
+
+// =========================================================================
+// RECALCULAR MANUALMENTE UN GRUPO (BOTÓN DE PÁNICO)
+// =========================================================================
+public function forzar_recalculo() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+
+    if (!isset($data['grupo_id'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Falta grupo_id']);
+        exit;
+    }
+
+    $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // Simplemente llamamos a la lógica de suma
+        $nuevos_totales = $this->recalcular_grupo_interno($conn, $data['grupo_id']);
+
+        echo json_encode([
+            'status' => 'success', 
+            'data' => $nuevos_totales
+        ]);
+
+    } catch (Exception $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+
+
+
+
+
+
+
+// =========================================================================
+    // ACTUALIZAR MONTO Y REPARAR DIFERENCIA (CASCADA)
+    // =========================================================================
+    public function actualizar_monto_detalle() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        // 1. Recibimos el ID de la fila (tabla detalles) y el NUEVO monto real
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+
+        if (!isset($data['id_detalle']) || !isset($data['nuevo_monto'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan datos (id_detalle, nuevo_monto)']);
+            exit;
+        }
+
+        $id_detalle = $data['id_detalle'];
+        $nuevo_monto = $data['nuevo_monto'];
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            
+            // INICIAMOS TRANSACCIÓN (Para que no se guarde una cosa sin la otra)
+            $conn->beginTransaction();
+
+            // ---------------------------------------------------------
+            // PASO A: Averiguar a qué Grupo pertenece este detalle
+            // ---------------------------------------------------------
+            $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliaciones_Detalles WHERE id = ?");
+            $stmtGet->execute([$id_detalle]);
+            $grupo_id = $stmtGet->fetchColumn();
+
+            if (!$grupo_id) {
+                throw new Exception("El detalle ID $id_detalle no existe.");
+            }
+
+            // ---------------------------------------------------------
+            // PASO B: Actualizar el monto en la tabla hija (Detalles)
+            // ---------------------------------------------------------
+            $stmtUpdateDetalle = $conn->prepare("UPDATE Conciliaciones_Detalles SET monto = ? WHERE id = ?");
+            $stmtUpdateDetalle->execute([$nuevo_monto, $id_detalle]);
+
+            // ---------------------------------------------------------
+            // PASO C: RECALCULAR TOTALES (Leer todo de nuevo para ser exactos)
+            // ---------------------------------------------------------
+            
+            // 1. Sumar nuevo Total Izquierda (CG)
+            $stmtSumL = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'LEFT'");
+            $stmtSumL->execute([$grupo_id]);
+            $nuevo_total_cg = (float)$stmtSumL->fetchColumn();
+
+            // 2. Sumar nuevo Total Derecha (Banco)
+            $stmtSumR = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'RIGHT'");
+            $stmtSumR->execute([$grupo_id]);
+            $nuevo_total_bk = (float)$stmtSumR->fetchColumn();
+
+            // 3. Calcular la nueva diferencia matemática
+            $nueva_diferencia = $nuevo_total_bk - $nuevo_total_cg; // Ojo: Banco - CG (según tu lógica visual)
+            
+            // Nota: Si prefieres CG - Banco, invierte la resta. 
+            // En tu imagen 2, el Grupo 45 tiene Diff $364.59. 
+            // CG: 14494 vs BK: 14129. La diferencia es positiva a favor de CG.
+            // Ajusta el signo según tu preferencia de negocio.
+
+            // ---------------------------------------------------------
+            // PASO D: Actualizar la tabla padre (Conciliaciones_Grupos)
+            // ---------------------------------------------------------
+            $stmtUpdateGrupo = $conn->prepare("UPDATE Conciliaciones_Grupos 
+                                               SET total_cg = ?, 
+                                                   total_banco = ?, 
+                                                   diferencia = ? 
+                                               WHERE grupo_id = ?");
+            $stmtUpdateGrupo->execute([$nuevo_total_cg, $nuevo_total_bk, $nueva_diferencia, $grupo_id]);
+
+            $conn->commit();
+
+            echo json_encode([
+                'status' => 'success', 
+                'message' => 'Actualizado correctamente',
+                'data' => [
+                    'grupo_id' => $grupo_id,
+                    'nuevo_total_cg' => $nuevo_total_cg,
+                    'nuevo_total_bk' => $nuevo_total_bk,
+                    'nueva_diferencia' => $nueva_diferencia
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            if(isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+// DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÍO)
+// =========================================================================
+public function desligar_movimiento() {
+    ob_clean();
+    header('Content-Type: application/json');
+
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+
+    if (!isset($data['id_detalle'])) {
+        echo json_encode(['status' => 'error', 'message' => 'Falta ID']);
+        exit;
+    }
+
+    $id_detalle = $data['id_detalle'];
+    $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $conn->beginTransaction();
+
+        // 1. Obtener el grupo_id antes de borrar (para saber qué recalcular)
+        $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliaciones_Detalles WHERE id = ?");
+        $stmtGet->execute([$id_detalle]);
+        $grupo_id = $stmtGet->fetchColumn();
+
+        if (!$grupo_id) {
+            throw new Exception("El movimiento no existe o ya fue borrado.");
+        }
+
+        // 2. Eliminar el detalle específico
+        $stmtDel = $conn->prepare("DELETE FROM Conciliaciones_Detalles WHERE id = ?");
+        $stmtDel->execute([$id_detalle]);
+
+        // 3. Verificar cuántos miembros quedan en ese grupo
+        $stmtCount = $conn->prepare("SELECT COUNT(*) FROM Conciliaciones_Detalles WHERE grupo_id = ?");
+        $stmtCount->execute([$grupo_id]);
+        $remaining = (int)$stmtCount->fetchColumn();
+
+        if ($remaining === 0) {
+            // CASO A: El grupo quedó vacío -> ELIMINAR EL GRUPO
+            $stmtDelGroup = $conn->prepare("DELETE FROM Conciliaciones_Grupos WHERE grupo_id = ?");
+            $stmtDelGroup->execute([$grupo_id]);
+            $mensaje = "Grupo eliminado por quedar vacío.";
+        } else {
+            // CASO B: Aún quedan miembros -> RECALCULAR TOTALES
+            
+            // Sumar Left
+            $stmtSumL = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'LEFT'");
+            $stmtSumL->execute([$grupo_id]);
+            $totalCG = (float)$stmtSumL->fetchColumn();
+
+            // Sumar Right
+            $stmtSumR = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'RIGHT'");
+            $stmtSumR->execute([$grupo_id]);
+            $totalBk = (float)$stmtSumR->fetchColumn();
+
+            $diferencia = $totalBk - $totalCG;
+
+            $stmtUp = $conn->prepare("UPDATE Conciliaciones_Grupos SET total_cg = ?, total_banco = ?, diferencia = ? WHERE grupo_id = ?");
+            $stmtUp->execute([$totalCG, $totalBk, $diferencia, $grupo_id]);
+            
+            $mensaje = "Grupo recalculado.";
+        }
+
+        $conn->commit();
+        echo json_encode(['status' => 'success', 'message' => $mensaje]);
+
+    } catch (Exception $e) {
+        if (isset($conn)) $conn->rollBack();
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
 
 
 
