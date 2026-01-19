@@ -820,79 +820,259 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     public function get_invoices_detail_by_ids($invoice_ids) : array|false {
-    if (empty($invoice_ids)) {
-        return false;
+        if (empty($invoice_ids)) {
+            return false;
+        }
+        
+        // Limpiar y validar IDs
+        $ids = array_map('intval', explode(',', $invoice_ids));
+        $ids_string = implode(',', $ids);
+        
+        $query = "
+            SELECT 
+                pri.id,
+                pri.payment_request_id,
+                pri.folio,
+                pri.invoice_number,
+                pri.codgas,
+                pri.amount,
+                pri.paid_amount,
+                pri.authorized_amount,
+                pri.payment_authorized,
+                pri.authorized_by,
+                pri.authorized_at,
+                pri.status,
+                pri.expiration_date,
+                pri.uuid,
+                
+                -- Saldo calculado
+                (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+                
+                -- Información de payment_request
+                pr.id as pago_id,
+                pr.emp_cod,
+                pr.provider_cod,
+                pr.request_date as pago_fecha,
+                
+                -- Información de la estación
+                g.abr as estacion_nombre,
+                g.den as estacion_completa,
+                
+                -- Usuario que autorizó
+                u_auth.Nombre as authorized_by_name,
+                
+                -- Proveedor
+                prov.den as proveedor_nombre,
+                prov.rfc as proveedor_rfc,
+                
+                -- Empresa (razón social)
+                emp.den as empresa_nombre,
+                emp.rfc as empresa_rfc
+                
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            
+            INNER JOIN [TG].[dbo].[payment_requests] pr 
+                ON pri.payment_request_id = pr.id
+            
+            LEFT JOIN [SG12].[dbo].[Gasolineras] g 
+                ON pri.codgas = g.cod
+            
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+                ON pri.authorized_by = u_auth.Id
+            
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+                ON pr.provider_cod = prov.cod
+            
+            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+                ON pr.emp_cod = emp.cod
+            
+            WHERE pri.id IN ($ids_string)
+            
+            ORDER BY pri.expiration_date, pri.folio
+        ";
+        
+        return $this->sql->select($query) ?: false;
     }
-    
-    // Limpiar y validar IDs
-    $ids = array_map('intval', explode(',', $invoice_ids));
-    $ids_string = implode(',', $ids);
-    
-    $query = "
-        SELECT 
-            pri.id,
-            pri.payment_request_id,
-            pri.folio,
-            pri.invoice_number,
-            pri.codgas,
-            pri.amount,
-            pri.paid_amount,
-            pri.authorized_amount,
-            pri.payment_authorized,
-            pri.authorized_by,
-            pri.authorized_at,
-            pri.status,
-            pri.expiration_date,
-            pri.uuid,
-            
-            -- Saldo calculado
-            (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
-            
-            -- Información de payment_request
-            pr.id as pago_id,
-            pr.emp_cod,
-            pr.provider_cod,
-            pr.request_date as pago_fecha,
-            
-            -- Información de la estación
-            g.abr as estacion_nombre,
-            g.den as estacion_completa,
-            
-            -- Usuario que autorizó
-            u_auth.Nombre as authorized_by_name,
-            
-            -- Proveedor
-            prov.den as proveedor_nombre,
-            prov.rfc as proveedor_rfc,
-            
-            -- Empresa (razón social)
-            emp.den as empresa_nombre,
-            emp.rfc as empresa_rfc
-            
-        FROM [TG].[dbo].[payment_request_invoices] pri
-        
-        INNER JOIN [TG].[dbo].[payment_requests] pr 
-            ON pri.payment_request_id = pr.id
-        
-        LEFT JOIN [SG12].[dbo].[Gasolineras] g 
-            ON pri.codgas = g.cod
-        
-        LEFT JOIN [TG].[dbo].[Usuario] u_auth 
-            ON pri.authorized_by = u_auth.Id
-        
-        LEFT JOIN [SG12].[dbo].[Proveedores] prov 
-            ON pr.provider_cod = prov.cod
-        
-        LEFT JOIN [SG12].[dbo].[Empresas] emp 
-            ON pr.emp_cod = emp.cod
-        
-        WHERE pri.id IN ($ids_string)
-        
-        ORDER BY pri.expiration_date, pri.folio
-    ";
-    
-    return $this->sql->select($query) ?: false;
-}
 
+    public function get_facturas_para_layout($facturas_ids) {
+        if (empty($facturas_ids)) return [];
+        
+        $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
+        
+        $query = "
+            SELECT 
+                inv.id,
+                inv.folio,
+                inv.invoice_number,
+                inv.amount AS monto_original,
+                inv.authorized_amount AS monto_autorizado,
+                inv.uuid,
+                -- Datos del proveedor
+                prov.cod AS proveedor_codigo,
+                prov.den AS proveedor_nombre,
+                prov.rfc AS proveedor_rfc,
+                -- ✅ CLABE del proveedor desde cuentas TERCEROS
+                cb_tercero.CuentaLocal AS clabe_beneficiario,
+                cb_tercero.TitularCuenta AS titular_beneficiario,
+                cb_tercero.Banco AS banco_beneficiario,
+                cb_tercero.Id AS cuenta_beneficiario_id,
+                -- Datos de la empresa
+                emp.den AS empresa_nombre,
+                emp.cod AS empresa_cod,
+                -- ✅ Cuenta PROPIA de la empresa (para validación)
+                cb_propia.CuentaLocal AS cuenta_cargo_empresa,
+                cb_propia.TitularCuenta AS titular_cargo
+            FROM [TG].[dbo].[payment_request_invoices] inv
+            INNER JOIN [SG12].[dbo].DocumentosC cg ON cg.nro = inv.folio and inv.codgas = cg.codgas and cg.tip = 1
+            INNER JOIN [SG12].[dbo].[Proveedores] prov ON prov.cod = cg.codopr
+            -- ✅ JOIN con cuentas TERCEROS (beneficiarios)
+            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero 
+                ON cb_tercero.Tipo = 'Terceros'
+                --AND cb_tercero.Banco = 'SANTANDER'
+                AND cb_tercero.Activo = 1
+                AND (
+                    cb_tercero.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                    OR cb_tercero.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                )
+            LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id =pr.id
+            INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
+            -- ✅ JOIN con cuentas PROPIAS (ordenantes)
+            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia
+                ON cb_propia.emp_cod = emp.cod
+                AND cb_propia.Tipo = 'Propias'
+                AND cb_propia.Banco = 'SANTANDER'
+                AND cb_propia.Activo = 1
+            WHERE inv.id IN ($placeholders)
+            AND inv.authorized_amount > 0
+
+            ORDER BY prov.den, inv.folio
+        ";
+
+        return $this->sql->select($query, $facturas_ids) ?: [];
+    }
+
+    public function get_empresas_from_invoices($facturas_ids) {
+        if (empty($facturas_ids)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
+        $query = "SELECT DISTINCT  
+                        t3.den AS nombre,
+                        t2.emp_cod AS emp_cod
+                    FROM [TG].[dbo].[payment_request_invoices] t1
+                    LEFT JOIN TG.dbo.payment_requests t2 ON t1.payment_request_id = t2.id
+                    INNER JOIN SG12.[dbo].[Empresas] t3 ON t3.cod = t2.emp_cod
+                    WHERE t1.id IN ($placeholders)
+                    ORDER BY t3.den
+                ";
+
+        return $this->sql->select($query, $facturas_ids) ?: [];
+    }
+
+    public function validar_cuentas_para_layout($facturas_ids) {
+        if (empty($facturas_ids)) {
+            return [
+                'success' => false,
+                'message' => 'No se proporcionaron facturas'
+            ];
+        }
+        
+        $facturas = $this->get_facturas_para_layout($facturas_ids);
+        
+        if (empty($facturas)) {
+            return [
+                'success' => false,
+                'message' => 'No se encontraron facturas válidas'
+            ];
+        }
+        
+        $sin_cuenta_cargo = [];
+        $sin_cuenta_beneficiario = [];
+        
+        foreach ($facturas as $factura) {
+            // Validar cuenta de cargo (empresa)
+            if (!$factura['cuenta_cargo_empresa']) {
+                $sin_cuenta_cargo[] = [
+                    'empresa' => $factura['empresa_nombre'],
+                    'emp_cod' => $factura['empresa_cod']
+                ];
+            }
+            
+            // Validar CLABE beneficiario (proveedor)
+            if (!$factura['clabe_beneficiario'] || strlen($factura['clabe_beneficiario']) != 18) {
+                $sin_cuenta_beneficiario[] = [
+                    'folio' => $factura['folio'],
+                    'proveedor' => $factura['proveedor_nombre'],
+                    'rfc' => $factura['proveedor_rfc']
+                ];
+            }
+        }
+        
+        // Eliminar duplicados de empresas
+        $sin_cuenta_cargo = array_values(array_unique($sin_cuenta_cargo, SORT_REGULAR));
+        
+        if (!empty($sin_cuenta_cargo) || !empty($sin_cuenta_beneficiario)) {
+            return [
+                'success' => false,
+                'sin_cuenta_cargo' => $sin_cuenta_cargo,
+                'sin_cuenta_beneficiario' => $sin_cuenta_beneficiario,
+                'message' => 'Algunas facturas no tienen cuentas bancarias configuradas'
+            ];
+        }
+        
+        return [
+            'success' => true,
+            'message' => 'Todas las facturas tienen cuentas configuradas',
+            'total_facturas' => count($facturas)
+        ];
+    }
+
+    /**
+     * ✅ Obtiene el detalle de facturas por sus IDs (para modal de desglose)
+     * @param array $facturas_ids
+     * @return array
+     */
+    public function get_invoices_detail($facturas_ids) {
+        if (empty($facturas_ids)) {
+            return [];
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
+        
+        $query = "
+            SELECT 
+                inv.id,
+                inv.folio,
+                inv.invoice_number,
+                inv.amount,
+                inv.paid_amount,
+                inv.authorized_amount,
+                (inv.amount - inv.paid_amount) AS saldo,
+                inv.expiration_date,
+                inv.authorized_at,
+                inv.payment_request_id,
+                
+                -- Estación
+                est.nombre AS estacion_nombre,
+                
+                -- Usuario que autorizó
+                usr.nombre AS authorized_by_name
+                
+            FROM [TG].[dbo].[payment_request_invoices] inv
+            
+            LEFT JOIN [TG].[dbo].[Estaciones] est 
+                ON est.codgas = inv.codgas
+            
+            LEFT JOIN [TG].[dbo].[Usuarios] usr 
+                ON usr.id = inv.authorized_by
+            
+            WHERE inv.id IN ($placeholders)
+            
+            ORDER BY inv.expiration_date ASC, inv.folio ASC
+        ";
+        
+        return $this->sql->select($query, $facturas_ids) ?: [];
+    }
 
 }

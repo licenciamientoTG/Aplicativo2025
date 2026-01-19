@@ -5056,11 +5056,8 @@ function verNotasPago(transactionId, notes) {
     $('#notasPagoContent').text(notes);
     $('#modalNotasPago').modal('show');
 }
-let tablaFacturasAutorizadas;
 
-/**
- * Cargar tabla de facturas autorizadas pendientes AGRUPADAS
- */
+let tablaFacturasAutorizadas;
 function loadAuthorizedPendingInvoices() {
     console.log('loadAuthorizedPendingInvoices called (GROUPED)');
     if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
@@ -5269,53 +5266,101 @@ function loadAuthorizedPendingInvoices() {
 
 
 
-/**
- * Actualizar resumen de seleccionadas (AGRUPADAS)
- */
 function updateSelectedSummary() {
     let total = 0;
     let countGroups = 0;
     let countFacturas = 0;
+    const bancos = new Set(); // ✅ AGREGADO: Declarar variable bancos
     
     $('.invoice-group-checkbox:checked').each(function() {
         const monto = parseFloat($(this).data('monto')) || 0;
         const facturas = $(this).data('invoice-ids').split(',').length;
+        const banco = $(this).data('banco'); // ✅ AGREGADO: Obtener banco
         
         total += monto;
         countGroups++;
         countFacturas += facturas;
+        bancos.add(banco); // ✅ AGREGADO: Agregar banco al Set
     });
     
     $('#totalSeleccionadas').text('$' + total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
     $('#facturasSeleccionadas').text(countFacturas + ' facturas (' + countGroups + ' grupos)');
     $('#footerTotalSeleccionado').text('$' + total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
     
-    // Habilitar/deshabilitar botón de generar layout
-    $('#btnGenerarLayout').prop('disabled', countGroups === 0);
+    // ✅ Habilitar/deshabilitar botón de generar layout
+    const btnLayout = $('#btnGenerarLayout');
+    
+    if (countGroups === 0) {
+        // Sin selección
+        btnLayout.prop('disabled', true)
+            .removeClass('btn-success btn-warning btn-info')
+            .addClass('btn-secondary')
+            .html('<i class="fas fa-file-excel"></i> Generar Layout de Pago');
+    } else if (bancos.size > 1) {
+        // ⚠️ Múltiples bancos seleccionados
+        btnLayout.prop('disabled', false)
+            .removeClass('btn-success btn-secondary btn-info')
+            .addClass('btn-warning')
+            .html('<i class="fas fa-exclamation-triangle"></i> Bancos Mezclados - Click para Ver');
+    } else {
+        // ✅ Un solo banco seleccionado
+        const banco = Array.from(bancos)[0];
+        let icono = 'file-excel';
+        let color = 'btn-secondary';
+        let texto = 'Generar Layout';
+        
+        if (banco === 'Santander') {
+            icono = 'file-invoice-dollar';
+            color = 'btn-success';
+            texto = 'Generar Layout Santander';
+        } else if (banco === 'Banorte') {
+            icono = 'hard-hat';
+            color = 'btn-info';
+            texto = 'Generar Layout Banorte (En Desarrollo)';
+        } else if (banco === 'Sin asignar') {
+            icono = 'exclamation-circle';
+            color = 'btn-danger';
+            texto = 'Sin Banco Asignado';
+        }
+        
+        btnLayout.prop('disabled', false)
+            .removeClass('btn-warning btn-secondary btn-success btn-info btn-danger')
+            .addClass(color)
+            .html(`<i class="fas fa-${icono}"></i> ${texto}`);
+    }
 }
 
 
+
 function updateBankSummaryFromTable(table) {
+    if (!table.data().count()) {
+        console.log('⏭️ Tabla sin datos aún, omitiendo actualización');
+        return;
+    }
     let banorte = {count: 0, total: 0};
     let santander = {count: 0, total: 0};
     
     table.rows({search: 'applied'}).data().each(function(row) {
+        // ✅ FIX: Usar total_autorizado en lugar de authorized_amount
+        const monto = parseFloat(row.total_autorizado) || 0;
+        
         if (row.banco_asignado === 'Banorte') {
             banorte.count++;
-            banorte.total += parseFloat(row.authorized_amount);
+            banorte.total += monto;
         } else if (row.banco_asignado === 'Santander') {
             santander.count++;
-            santander.total += parseFloat(row.authorized_amount);
+            santander.total += monto;
         }
     });
-    console.log(banorte);
-    console.log(santander);
+    
+    console.log('Banorte:', banorte);
+    console.log('Santander:', santander);
     
     $('#totalBanorte').text('$' + banorte.total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    $('#facturasBanorte').text(banorte.count + ' facturas');
+    $('#facturasBanorte').text(banorte.count + ' grupos');
     
     $('#totalSantander').text('$' + santander.total.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    $('#facturasSantander').text(santander.count + ' facturas');
+    $('#facturasSantander').text(santander.count + ' grupos');
 }
 
 
@@ -5348,47 +5393,47 @@ function aplicarFiltros() {
 /**
  * Generar layout de pago
  */
-function generarLayoutPago() {
-    const seleccionadas = [];
+// function generarLayoutPago() {
+//     const seleccionadas = [];
     
-    $('.invoice-checkbox:checked').each(function() {
-        const row = tablaFacturasAutorizadas.row($(this).closest('tr')).data();
-        seleccionadas.push({
-            id: row.id,
-            payment_request_id: row.payment_request_id,
-            folio: row.folio,
-            monto: row.authorized_amount,
-            banco: row.banco_asignado,
-            empresa: row.empresa_nombre,
-            proveedor: row.proveedor_nombre
-        });
-    });
+//     $('.invoice-checkbox:checked').each(function() {
+//         const row = tablaFacturasAutorizadas.row($(this).closest('tr')).data();
+//         seleccionadas.push({
+//             id: row.id,
+//             payment_request_id: row.payment_request_id,
+//             folio: row.folio,
+//             monto: row.authorized_amount,
+//             banco: row.banco_asignado,
+//             empresa: row.empresa_nombre,
+//             proveedor: row.proveedor_nombre
+//         });
+//     });
     
-    if (seleccionadas.length === 0) {
-        alertify.warning('Seleccione al menos una factura');
-        return;
-    }
+//     if (seleccionadas.length === 0) {
+//         alertify.warning('Seleccione al menos una factura');
+//         return;
+//     }
     
-    // Verificar que todas sean del mismo banco
-    const bancos = [...new Set(seleccionadas.map(f => f.banco))];
-    if (bancos.length > 1) {
-        alertify.confirm(
-            'Múltiples Bancos',
-            'Has seleccionado facturas de diferentes bancos: ' + bancos.join(', ') + '. ¿Deseas continuar generando layouts separados?',
-            function() {
-                generarLayoutsPorBanco(seleccionadas);
-            },
-            function() {
-                alertify.error('Operación cancelada');
-            }
-        );
-        return;
-    }
+//     // Verificar que todas sean del mismo banco
+//     const bancos = [...new Set(seleccionadas.map(f => f.banco))];
+//     if (bancos.length > 1) {
+//         alertify.confirm(
+//             'Múltiples Bancos',
+//             'Has seleccionado facturas de diferentes bancos: ' + bancos.join(', ') + '. ¿Deseas continuar generando layouts separados?',
+//             function() {
+//                 generarLayoutsPorBanco(seleccionadas);
+//             },
+//             function() {
+//                 alertify.error('Operación cancelada');
+//             }
+//         );
+//         return;
+//     }
     
-    // TODO: Implementar lógica de generación de layout
-    console.log('Facturas seleccionadas:', seleccionadas);
-    alertify.success('Generando layout para ' + seleccionadas.length + ' facturas del banco ' + bancos[0]);
-}
+//     // TODO: Implementar lógica de generación de layout
+//     console.log('Facturas seleccionadas:', seleccionadas);
+//     alertify.success('Generando layout para ' + seleccionadas.length + ' facturas del banco ' + bancos[0]);
+// }
 
 /**
  * Ver detalle del pago
@@ -5645,3 +5690,268 @@ $('#modalDesgloseFacturas').on('hidden.bs.modal', function() {
     }
     $('#tablaDesgloseFacturas tbody').empty();
 });
+
+
+function validarYGenerarLayout() {
+    const seleccionadas = [];
+    const bancos = new Set();
+    
+    // Recopilar facturas seleccionadas y sus bancos
+    $('.invoice-group-checkbox:checked').each(function() {
+        const banco = $(this).data('banco');
+        const invoiceIds = $(this).data('invoice-ids');
+        const empresa = $(this).data('empresa');
+        const proveedor = $(this).data('proveedor');
+        const monto = $(this).data('monto');
+        
+        bancos.add(banco);
+        
+        seleccionadas.push({
+            banco: banco,
+            invoice_ids: invoiceIds,
+            empresa: empresa,
+            proveedor: proveedor,
+            monto: monto
+        });
+    });
+    
+    // ✅ VALIDACIÓN 1: Debe haber facturas seleccionadas
+    if (seleccionadas.length === 0) {
+        alertify.warning('Debe seleccionar al menos un grupo de facturas');
+        return;
+    }
+    
+    // ✅ VALIDACIÓN 2: Solo un banco permitido
+    if (bancos.size > 1) {
+        const bancosArray = Array.from(bancos);
+        alertify.alert(
+            '<i class="fas fa-exclamation-triangle text-warning"></i> Bancos Mezclados',
+            `<div class="text-center">
+                <p class="mb-3">Has seleccionado facturas de diferentes bancos:</p>
+                <div class="alert alert-warning mb-3">
+                    ${bancosArray.map(b => `<span class="badge bg-secondary me-2">${b}</span>`).join('')}
+                </div>
+                <p><strong>Debes generar layouts separados por banco.</strong></p>
+                <small class="text-muted">Por favor, selecciona facturas de un solo banco a la vez.</small>
+            </div>`
+        ).set({
+            maximizable: false,
+            closable: true
+        });
+        return;
+    }
+    
+    const bancoSeleccionado = Array.from(bancos)[0];
+    
+    // ✅ VALIDACIÓN 3: Redirigir según el banco
+    switch (bancoSeleccionado) {
+        case 'Santander':
+            generarLayoutSantander(seleccionadas);
+            break;
+            
+        case 'Banorte':
+            alertify.alert(
+                '<i class="fas fa-tools text-info"></i> Función en Construcción',
+                `<div class="text-center">
+                    <i class="fas fa-hard-hat fa-3x text-warning mb-3"></i>
+                    <h5>Layout Banorte</h5>
+                    <p class="text-muted">Esta funcionalidad está en desarrollo.</p>
+                    <div class="alert alert-info mt-3">
+                        <strong>Facturas seleccionadas:</strong> ${seleccionadas.length} grupo(s)<br>
+                        <strong>Banco:</strong> Banorte<br>
+                        <strong>Total:</strong> $${seleccionadas.reduce((sum, s) => sum + parseFloat(s.monto), 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+                    </div>
+                    <small>Próximamente podrás generar layouts para Banorte.</small>
+                </div>`
+            ).set({
+                maximizable: false,
+                closable: true
+            });
+            break;
+            
+        case 'Sin asignar':
+            alertify.error('Las facturas seleccionadas no tienen banco asignado');
+            break;
+            
+        default:
+            alertify.error('Banco no reconocido: ' + bancoSeleccionado);
+    }
+}
+
+/**
+ * Genera layout de Santander
+ */
+function generarLayoutSantander(gruposSeleccionados) {
+    // Extraer todos los invoice_ids de los grupos seleccionados
+    const todosLosIds = [];
+
+    gruposSeleccionados.forEach(grupo => {
+        const ids = grupo.invoice_ids.split(',').map(id => parseInt(id.trim()));
+        todosLosIds.push(...ids);
+    });
+
+    // Calcular totales
+    const totalGrupos = gruposSeleccionados.length;
+    const totalFacturas = todosLosIds.length;
+    const totalMonto = gruposSeleccionados.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+
+    // Obtener empresa única
+    const empresas = [...new Set(gruposSeleccionados.map(g => g.empresa))];
+    const empresasTexto = empresas.length === 1 
+        ? empresas[0] 
+        : `${empresas.length} empresas: ${empresas.join(', ')}`;
+
+    // Mostrar confirmación con resumen
+    alertify.confirm(
+        '<i class="fas fa-file-invoice-dollar text-success"></i> Confirmar Generación de Layout Santander',
+        `<div class="text-center">
+            <div class="alert alert-info mb-3" style="flex-direction: column;">
+                <strong><i class="fas fa-building"></i> Empresa:</strong> ${empresas[0]}<br>
+                <strong><i class="fas fa-university"></i> Banco:</strong> Santander<br>
+                <strong><i class="fas fa-layer-group"></i> Grupos:</strong> ${totalGrupos}<br>
+                <strong><i class="fas fa-file-invoice"></i> Facturas:</strong> ${totalFacturas}<br>
+                <strong><i class="fas fa-dollar-sign"></i> Total:</strong> $${totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            <p class="mb-2">¿Deseas generar el archivo de layout para carga en Santander?</p>
+            <small class="text-muted">Se generará un archivo de texto (.txt) con formato bancario.</small>
+        </div>`,
+        function() {
+            // ✅ EJECUTAR GENERACIÓN
+            ejecutarGeneracionLayoutSantander(todosLosIds);
+        },
+        function() {
+            alertify.message('Operación cancelada');
+        }
+    ).set('labels', {ok: 'Generar Layout', cancel: 'Cancelar'});
+}
+
+/**
+ * Ejecuta la generación del layout Santander
+ */
+function ejecutarGeneracionLayoutSantander(invoiceIds) {
+    alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando layout de Santander...');
+    
+    const btnLayout = $('#btnGenerarLayout');
+    const btnOriginalHtml = btnLayout.html();
+    btnLayout.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
+    
+    $.ajax({
+        url: '/supply/generate_santander_layout',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            invoice_ids: invoiceIds
+        }),
+        timeout: 300000, // 5 minutos
+        success: function(response) {
+            if (response.success) {
+                // ✅ DESCARGAR ARCHIVO
+                descargarLayoutSantander(response);
+            } else {
+                alertify.error(response.message || 'Error al generar layout');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error AJAX:', { status, error, xhr });
+            
+            let mensaje = 'Error al generar el layout';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                mensaje = xhr.responseJSON.message;
+            } else if (status === 'timeout') {
+                mensaje = 'El proceso tardó demasiado. Intente con menos facturas.';
+            }
+            
+            alertify.error(mensaje);
+        },
+        complete: function() {
+            btnLayout.prop('disabled', false).html(btnOriginalHtml);
+        }
+    });
+}
+
+/**
+ * Descarga el archivo de layout generado
+ */
+function descargarLayoutSantander(response) {
+    // Descargar archivo
+    fetch(response.file_url)
+        .then(res => {
+            if (!res.ok) throw new Error('Error en la descarga');
+            return res.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = response.file_name;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            // Mostrar resumen
+            alertify.alert(
+                '<i class="fas fa-check-circle text-success"></i> Layout Generado',
+                `<div class="text-center">
+                    <i class="fas fa-file-download fa-3x text-success mb-3"></i>
+                    <h5>Archivo Descargado Exitosamente</h5>
+                    
+                    <div class="alert alert-success mt-3 mb-3">
+                        <strong><i class="fas fa-file-alt"></i> Archivo:</strong> ${response.file_name}<br>
+                        <strong><i class="fas fa-building"></i> Empresa:</strong> ${response.empresa_nombre}<br>
+                        <strong><i class="fas fa-credit-card"></i> Cuenta Cargo:</strong> ${response.cuenta_cargo}<br>
+                        <strong><i class="fas fa-user"></i> Titular:</strong> ${response.titular_cuenta}
+                    </div>
+                    
+                    <div class="row text-start">
+                        <div class="col-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-2">
+                                    <small class="text-muted">Transferencias</small>
+                                    <h4 class="mb-0 text-primary">${response.registros_procesados}</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card bg-light">
+                                <div class="card-body p-2">
+                                    <small class="text-muted">Monto Total</small>
+                                    <h4 class="mb-0 text-success">$${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="alert alert-info mb-0">
+                        <small>
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Siguiente paso:</strong><br>
+                            Sube este archivo a Santander SuperNet para procesar los pagos.
+                        </small>
+                    </div>
+                </div>`,
+                function() {
+                    // Eliminar archivo temporal del servidor
+                    $.post('/supply/delete_layout', {
+                        filename: response.file_name
+                    });
+                    
+                    // Recargar tabla para reflejar cambios
+                    if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
+                        $('#tabla_facturas_autorizadas').DataTable().ajax.reload(null, false);
+                    }
+                }
+            ).set({
+                maximizable: false,
+                closable: true
+            });
+            
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alertify.error('Error al descargar el archivo: ' + error.message);
+        });
+}
