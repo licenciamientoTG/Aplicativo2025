@@ -3270,11 +3270,8 @@ function cfdi_comparison_advance($from, $until, $codgas, $bd, $server)
 
 public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini, $hist_i_fin, $visual_fin)
 {
-
     set_time_limit(0);
-
     ini_set('memory_limit', '1024M'); 
-
     header('Content-Type: application/json');
 
     $cod_eval_i_ini = $this->dateToInt($eval_i_ini);
@@ -3308,7 +3305,7 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
             codopr,
             AVG(CAST(cnt AS float)) AS media_hist,
             STDEV(CAST(cnt AS float)) AS desv_hist,
-            COUNT(*) AS dias_base_promedio -- <--- NUEVO: Días usados para el promedio
+            COUNT(*) AS dias_base_promedio 
         FROM HistData
         GROUP BY codopr
     ),
@@ -3324,9 +3321,10 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
         WHERE fchtrn BETWEEN @eval_i_ini AND @eval_i_fin
         GROUP BY [codopr (F)], fchtrn
     ),
-    -- 3. VISUAL: Gráficas (sin cambios en lógica visual)
+    -- 3. VISUAL: Gráficas (CORREGIDO: Se agregaron líneas para el mes 1 - Enero)
     VisualData AS (
         SELECT [codopr (F)] as codopr, 
+            COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 1 THEN 1 END) as M01, -- <--- AGREGADO
             COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 2 THEN 1 END) as M02,
             COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 3 THEN 1 END) as M03,
             COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 4 THEN 1 END) as M04,
@@ -3339,6 +3337,7 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
             COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 11 THEN 1 END) as M11,
             COUNT(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 12 THEN 1 END) as M12,
             
+            SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 1 THEN mto ELSE 0 END) as Money01, -- <--- AGREGADO
             SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 2 THEN mto ELSE 0 END) as Money02,
             SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 3 THEN mto ELSE 0 END) as Money03,
             SUM(CASE WHEN MONTH(DATEADD(DAY, fchtrn-1, '1900-01-01')) = 4 THEN mto ELSE 0 END) as Money04,
@@ -3357,12 +3356,12 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
     ),
     StatsCalculator AS (
         SELECT 
-            v.*, h.media_hist, h.desv_hist, h.dias_base_promedio, -- <--- NUEVO: Pasamos el dato
+            v.*, h.media_hist, h.desv_hist, h.dias_base_promedio,
             (h.media_hist + (@k_sigma * ISNULL(h.desv_hist,0))) as umbral_sigma
         FROM VisualData v
         JOIN HistStats h ON v.codopr = h.codopr
     ),
-   DailyFlags AS (
+    DailyFlags AS (
         SELECT 
             sc.codopr,
             ed.cnt,
@@ -3377,15 +3376,11 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
                 ELSE 0 
             END as daily_excess_money,
             
-            -- Banderas de Patrones (NUEVO)
-            -- Nota: Esto es aproximado a nivel diario. Para precisión exacta usamos el detalle.
-            -- Aquí marcamos si el DÍA tuvo volumen alto (>10)
+            -- Banderas de Patrones
             CASE WHEN ed.cnt > 10 THEN 1 ELSE 0 END as flag_volumen_alto
         FROM StatsCalculator sc
         JOIN EvalData ed ON sc.codopr = ed.codopr
     ),
-    -- Necesitamos una subconsulta extra para detectar Patrones de Factura (Prod/Montos mixtos)
-    -- Esto es pesado, así que lo hacemos resumido
     InvoicePatterns AS (
          SELECT 
             [codopr (F)] as codopr,
@@ -3416,9 +3411,9 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
         sc.codopr AS [Codigo],
         LEFT(c.den, 40) AS [Cliente],
         
-        -- ... (Tus columnas de Meses M01..M12 y Money01...Money12 siguen igual) ...
-        sc.M02, sc.M03, sc.M04, sc.M05, sc.M06, sc.M07, sc.M08, sc.M09, sc.M10, sc.M11, sc.M12,
-        sc.Money02, sc.Money03, sc.Money04, sc.Money05, sc.Money06, sc.Money07, sc.Money08, sc.Money09, sc.Money10, sc.Money11, sc.Money12,
+        -- CORREGIDO: SE AGREGARON M01 Y Money01 AL SELECT FINAL
+        sc.M01, sc.M02, sc.M03, sc.M04, sc.M05, sc.M06, sc.M07, sc.M08, sc.M09, sc.M10, sc.M11, sc.M12,
+        sc.Money01, sc.Money02, sc.Money03, sc.Money04, sc.Money05, sc.Money06, sc.Money07, sc.Money08, sc.Money09, sc.Money10, sc.Money11, sc.Money12,
 
         CAST(sc.media_hist AS DECIMAL(10,1)) AS [Promedio_Normal],
         el.Max_Pico_Ago AS [Pico_Agosto],
@@ -3429,14 +3424,13 @@ public function get_anomalies_visual_data($eval_i_ini, $eval_i_fin, $hist_i_ini,
         CAST(el.Exceso_Dinero AS DECIMAL(12,2)) AS [Monto_Exceso],
         CAST(CASE WHEN sc.media_hist > 0 THEN ((el.Max_Pico_Ago - sc.media_hist) / sc.media_hist) * 100 ELSE 0 END AS DECIMAL(10,0)) AS [Porcentaje_Aumento],
 
-        -- NUEVAS BANDERAS PARA EL FRONTEND
         ISNULL(ip.has_mixed_products, 0) as [has_mixed_products],
         ISNULL(ip.has_mixed_amounts, 0) as [has_mixed_amounts],
         ISNULL(el.Has_High_Vol, 0) as [has_high_vol]
 
     FROM StatsCalculator sc
     JOIN EvalLogic el ON el.codopr = sc.codopr
-    LEFT JOIN InvoicePatterns ip ON ip.codopr = sc.codopr -- Join nuevo
+    LEFT JOIN InvoicePatterns ip ON ip.codopr = sc.codopr 
     LEFT JOIN SG12.dbo.Clientes c WITH (NOLOCK) ON c.cod = sc.codopr
     WHERE 
         el.Dias_4Sigma > 0             
