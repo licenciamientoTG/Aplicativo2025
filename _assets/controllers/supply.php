@@ -595,9 +595,6 @@ class Supply{
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
                     if (!is_null($item['controlGasProductId'])) {
-                        echo '<pre>';
-                        var_dump($item);
-                        die();
                         if ($recepcion = $this->movimientosTanModel->sp_obtener_recepciones_combustible($from, $item['codgas'], $item['controlGasProductId'])) {
                             $satdat = $recepcion[0]['satdat'];
 
@@ -704,10 +701,11 @@ class Supply{
             if ($reporteVolumenes = $this->xsdReportesVolumenesModel->getOrAddRow($from)) {
 
                 $reportId = $reporteVolumenes['id'];
-                
+
                 // Procesa cada producto
                 foreach ($codgas_products as $item) {
                     
+
                     
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
@@ -801,9 +799,6 @@ class Supply{
 
             $cabecera = $this->xsdReportesVolumenesModel->get_cabecera($_POST['from']);
 
-            echo '<pre>';
-            var_dump($cabecera['id'], $_POST['codgas']);
-            die();
             $station = $this->xsdEstacionServicioVolumenModel->get_station($cabecera['id'], $_POST['codgas']);
 
             if ($station_inventory = $this->xsdEstacionServicioVolumenVendidoInventariosModel->get_inventory_product($station['id'], $creProductId, $creSubProductId)) {
