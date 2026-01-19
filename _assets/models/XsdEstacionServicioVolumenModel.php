@@ -9,6 +9,7 @@ class XsdEstacionServicioVolumenModel extends Model{
     public $createdAt;
 
     function getOrAddRow($reportId, $numeroPermisoCRE, $rfc) : array | false{
+
         // Consulta para verificar si ya existe el registro
         $querySelect = "SELECT * FROM [devTotalGas].[dbo].[xsdEstacionServicioVolumen] WHERE xsdReportesVolumenesId = {$reportId} AND numeroPermisoCRE = '{$numeroPermisoCRE}';";
 

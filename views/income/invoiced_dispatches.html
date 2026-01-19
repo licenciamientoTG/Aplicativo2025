@@ -355,36 +355,55 @@ $(document).ready(function() {
 
 // --- HELPER GRÁFICAS ---
 function getDynamicChartData(data, targetDateStr, isWeekly) {
-    let targetDate, endDate = new Date();
+    let targetDate, endDate;
+
+    // 1. Determinar la Fecha Objetivo y la Fecha Final basándonos estrictamente en el input
     if (isWeekly) {
         const d = getWeekDates(targetDateStr);
+        // En modo semanal, el target es el fin de la semana
         targetDate = new Date(d.end.split('/')[2], d.end.split('/')[1]-1, d.end.split('/')[0]);
     } else {
         const p = targetDateStr.split('-');
+        // En modo mensual, fijamos el target al día 1 del mes seleccionado
         targetDate = new Date(p[0], p[1]-1, 1);
     }
     
+    // CORRECCIÓN: La fecha final de la gráfica SIEMPRE es la fecha seleccionada.
+    // Eliminamos la dependencia de 'new Date()' (hoy) para evitar cortes erróneos.
+    endDate = new Date(targetDate);
+
+    // 2. Determinar Fecha de Inicio (6 meses atrás)
     let startDate = new Date(targetDate);
     startDate.setMonth(startDate.getMonth() - 6);
-    if(endDate.getFullYear() > targetDate.getFullYear()) endDate = new Date(targetDate.getFullYear(), 11, 31);
-    if(startDate > endDate) endDate = startDate;
+
+    // No necesitamos la validación de años futuros/pasados aquí, 
+    // queremos ver la historia relativa al mes seleccionado, sea cual sea.
 
     let labels = [], values = [], bgColors = [], targetIndex = -1;
     const ms = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    let curr = new Date(startDate); curr.setDate(1);
+    
+    // Inicializamos iterador
+    let curr = new Date(startDate); 
+    curr.setDate(1); // Aseguramos que iteramos desde el día 1
 
     while (curr <= endDate) {
         let m = curr.getMonth();
+        // Generamos la clave M01, M02... 
         let k = 'M' + (m+1).toString().padStart(2,'0'); 
+        
         labels.push(ms[m]);
         values.push(data[k] ? parseFloat(data[k]) : 0);
 
+        // Identificar si esta barra corresponde al Target para pintarla roja
+        // Comparamos mes y año para exactitud
         if (m === targetDate.getMonth() && curr.getFullYear() === targetDate.getFullYear()) {
             bgColors.push('#EF4444'); 
             targetIndex = labels.length-1;
         } else {
             bgColors.push('#E5E7EB'); 
         }
+        
+        // Avanzar al siguiente mes
         curr.setMonth(curr.getMonth()+1);
     }
     return { labels, values, bgColors, targetIndex };

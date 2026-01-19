@@ -46,7 +46,17 @@ let datatables_top_tabulators = $('#datatables_top_tabulators').DataTable({
         {
             extend: 'print', // Agrega el botón de impresión
             className: 'd-none',
-        }
+        },
+        // Botón para recargar la tabla
+        {
+            text: '<i class="fas fa-sync-alt"></i>',
+            className: 'btn btn-secondary refresh_datatables_top_tabulators',
+            action: function ( e, dt, node, config ) {
+                datatables_top_tabulators.clear().draw();
+                datatables_top_tabulators.ajax.reload();
+                $('#datatables_top_tabulators').waitMe('hide');
+            }
+        }   
     ],
     ajax: {
         url: '/operations/datatables_top_tabulators',

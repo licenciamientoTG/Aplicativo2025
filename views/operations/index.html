@@ -119,4 +119,15 @@
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}operations.js"></script>
+// Vamos a agregar la funcionalidad para que el botón refrresh funcione
+<script>
+    $(document).ready(function() {
+        // Evento para el botón de recarga
+        $('.refresh').on('click', function() {
+            datatables_top_tabulators.clear().draw();
+            datatables_top_tabulators.ajax.reload();
+            $('.table-responsive').removeClass('loading');
+        });
+    });
+</script>
 {% endblock %}

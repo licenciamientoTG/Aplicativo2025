@@ -23,6 +23,9 @@
         /* Estado Tránsito Completado (Verde) */
         --transit-ok-bg: #d1e7dd;
         --transit-ok-border: #198754;
+        /* Estado Desincronizado (Amarillo Alerta) */
+        --desync-bg: #fff3cd;
+        --desync-border: #ffc107;
     }
 
     body { background-color: #f4f6f9; overflow-x: hidden; }
@@ -71,8 +74,14 @@
     .row-item.conciliated {
         color: var(--matched-text); 
         opacity: 0.9; 
-        pointer-events: none; 
         border-left: 5px solid rgba(0,0,0,0.1);
+    }
+
+    /* Fila que existe en BD pero el monto cambió */
+    .row-item.desync {
+        background-color: var(--desync-bg) !important;
+        border-left: 5px solid var(--desync-border) !important;
+        color: #856404;
     }
 
     /* Estilos Tránsito */
@@ -88,7 +97,6 @@
     }
     .row-item.transit-completed {
         background-color: var(--transit-ok-bg);
-        /* CORRECCIÓN: Texto negro para mejor contraste */
         color: #000 !important; 
         border-left: 5px solid var(--transit-ok-border);
         pointer-events: none;
@@ -118,6 +126,32 @@
     .diff-tag.warn { background-color: #f8d7da; color: #842029; border-color: #f5c2c7; }
 
     .font-numeric { font-family: 'Consolas', monospace; font-weight: 700; }
+
+    /* BOTONES DE ACCIÓN (UPDATE / UNLINK) */
+    .btn-action-mini {
+        border: none;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        margin-left: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: all 0.2s;
+        z-index: 100;
+    }
+    .btn-action-mini:hover { transform: scale(1.1); }
+
+    .btn-sync-db { background-color: #fd7e14; color: white; animation: pulse 2s infinite; }
+    .btn-sync-db:hover { background-color: #e67e22; }
+
+    .btn-unlink { background-color: #e74c3c; color: white; opacity: 0.7; }
+    .btn-unlink:hover { background-color: #c0392b; opacity: 1; }
+
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0.4); }
+        70% { box-shadow: 0 0 0 6px rgba(253, 126, 20, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0); }
+    }
 
     /* BARRA FLOTANTE */
     .action-bar {
@@ -203,7 +237,7 @@
         <div class="panel-split">
             <div class="panel-header bg-dark">
                 <span><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
-                <span class="badge badge-light text-dark" id="cg-counter">0</span>
+                <span class="badge badge-light text-light" id="cg-counter">$0.00</span>
             </div>
             <div class="panel-content" id="cg-content">
                 <div class="text-center text-muted py-5 mt-5">Seleccione Cuenta</div>
@@ -264,9 +298,6 @@
 
 {% block myjs %}
 <script>
-    // ==========================================
-    // 1. CONFIGURACIÓN Y VARIABLES GLOBALES
-    // ==========================================
     const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
     
     const URLS = {
@@ -277,7 +308,9 @@
         historial: '/income/get_conciliaciones_hechas',
         guardar_transito: '/income/guardar_transito',
         get_transitos: '/income/get_transitos_pendientes',
-        resumen_transito: '/income/get_resumen_transito'
+        resumen_transito: '/income/get_resumen_transito',
+        actualizar_detalle: '/income/actualizar_monto_detalle',
+        desligar_detalle: '/income/desligar_movimiento' 
     };
 
     const ENTITY_CONFIG = {
@@ -298,16 +331,12 @@
     let currentActiveRule = null;
     let historialConciliacion = []; 
     let mapaDiferencias = {}; 
-    
-    // Variables para almacenar totales separados
     let resumenGlobal = {
         historico_visible_diff: 0,
         historico_visible_count: 0,
         transito_pasado_diff: 0,
         transito_pasado_count: 0
     };
-    
-    // Mapa para saber qué grupos son tránsito pasado específico
     let transitoPasadoMap = {}; 
 
     $(document).ready(function() {
@@ -316,9 +345,8 @@
     });
 
     // ==========================================
-    // 2. UTILIDADES CORE
+    // UTILIDADES
     // ==========================================
-
     function normalizarFecha(fechaStr) {
         if (!fechaStr) return "";
         let s = String(fechaStr).trim();
@@ -340,23 +368,16 @@
     function recalcTotals() {
         const sumL = selection.left.reduce((a,b) => a + b.monto, 0);
         const sumR = selection.right.reduce((a,b) => a + b.monto, 0);
-        
         $('#count-cg').text(selection.left.length);
         $('#sum-cg').text(formatter.format(sumL));
         $('#count-bk').text(selection.right.length);
         $('#sum-bk').text(formatter.format(sumR));
-
-        const diff = sumL - sumR;
+        const diff = sumR - sumL; 
         $('#diffValue').text(formatter.format(diff));
-        
-        if(Math.abs(diff) < 0.005) $('#diffValue').css('color', '#2ecc71');
+        if(diff >= -0.005) $('#diffValue').css('color', '#2ecc71');
         else $('#diffValue').css('color', '#e74c3c');
-
-        if(selection.left.length > 0 || selection.right.length > 0) {
-            $('#conciliacionBar').addClass('visible');
-        } else {
-            $('#conciliacionBar').removeClass('visible');
-        }
+        if(selection.left.length > 0 || selection.right.length > 0) $('#conciliacionBar').addClass('visible');
+        else $('#conciliacionBar').removeClass('visible');
     }
 
     function limpiarSeleccion() {
@@ -366,12 +387,9 @@
     }
 
     function toggleItem(side, fecha, monto, concepto, el, transitIdsStr) {
-        // Bloquear click si ya está conciliado, bloqueado o completado
         if($(el).hasClass('conciliated') || $(el).hasClass('transit-locked') || $(el).hasClass('transit-completed')) return;
-
         const list = side === 'left' ? selection.left : selection.right;
         const idx = list.findIndex(i => i.fecha === fecha && i.monto === monto);
-
         if(idx >= 0) {
             list.splice(idx, 1);
             $(el).removeClass('active');
@@ -384,20 +402,56 @@
     }
 
     // ==========================================
-    // 3. SELECTORES Y LOGICA
+    // ACCIONES DE MANTENIMIENTO
+    // ==========================================
+
+    function sincronizarMonto(idFila, montoApi) {
+        event.stopPropagation();
+        if(!confirm("El monto en ControlGas ha cambiado.\n\n¿Actualizar BD a " + formatter.format(montoApi) + " y recalcular Grupo?")) return;
+
+        $.ajax({
+            url: URLS.actualizar_detalle,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ id_detalle: idFila, nuevo_monto: parseFloat(montoApi) }),
+            success: function(resp) {
+                if(resp.status === 'success') actualizarTodo();
+                else alert("Error al actualizar: " + resp.message);
+            },
+            error: function(err) { alert("Error de red"); console.error(err); }
+        });
+    }
+
+    function desconciliarItem(idFila) {
+        event.stopPropagation();
+        if(!confirm("¿Estás seguro de DESLIGAR este movimiento?\n\nSi el grupo queda vacío, se eliminará permanentemente.")) return;
+
+        $.ajax({
+            url: URLS.desligar_detalle,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ id_detalle: idFila }),
+            success: function(resp) {
+                if(resp.status === 'success') {
+                    actualizarTodo();
+                } else alert("Error al desligar: " + resp.message);
+            },
+            error: function(err) { alert("Error de red"); console.error(err); }
+        });
+    }
+
+    // ==========================================
+    // API CALLS & CARGAS
     // ==========================================
 
     async function alCambiarEstacion() {
         $('#bancoSelect').empty(); $('#group-afiliacion').hide(); $('#afiliacionSelect').empty();
         limpiarListas();
-        
         const id = $('#estacionSelect').val();
         if(!id) return;
-
         try {
             const res = await fetch(`${URLS.config}?estacion_id=${id}`);
             const json = await res.json();
-            
             if(json.status === 'success') {
                 stationConfig = json.data || [];
                 llenarBancos();
@@ -423,93 +477,56 @@
         const eid = $('#bancoSelect').val();
         const $asel = $('#afiliacionSelect').empty().append('<option value="">-- Seleccione --</option>');
         limpiarListas();
-
         if(!eid) { $('#group-afiliacion').hide(); return; }
-
         const cuentas = stationConfig.filter(r => r.entidad_id == eid);
         if(cuentas.length === 0) { $('#group-afiliacion').hide(); return; }
-
         cuentas.forEach((c, idx) => {
             $asel.append(`<option value="${idx}">${c.descripcion || 'Cuenta'} (${c.afiliacion})</option>`);
         });
-
         $('#group-afiliacion').show();
         if(cuentas.length === 1) $asel.val(0).trigger('change');
-        
         const conf = ENTITY_CONFIG[eid];
         if(conf) $('#header-tesoreria').css('background-color', conf.color);
     }
 
     async function actualizarTodo() {
         limpiarSeleccion(); 
-        
         const ruleIdx = $('#afiliacionSelect').val();
         const eid = $('#bancoSelect').val();
         const sid = $('#estacionSelect').val();
-
         if(ruleIdx === "" || ruleIdx === null || !eid) return;
-
         const cuentasPosibles = stationConfig.filter(row => row.entidad_id == eid);
         currentActiveRule = cuentasPosibles[ruleIdx];
-
         if(!currentActiveRule) return;
-
-        // Resetear resumen
-        resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
-
-        // 1. Cargar Historial Visible (Mes Actual)
-        await cargarHistorial(); 
         
-        // 2. Cargar Resumen de Tránsito del Pasado (Backend)
+        resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
+        
+        await cargarHistorial(); 
         await cargarResumenTransito(sid, currentActiveRule);
-
-        // 3. Cargar Datos UI
+        
         cargarControlGas(sid, currentActiveRule);
         cargarTesoreria(eid, currentActiveRule);
     }
 
-    // --- NUEVA FUNCIÓN PARA LLAMAR AL BACKEND DE TRÁNSITO ---
-  async function cargarResumenTransito(sid, rule) {
+    async function cargarResumenTransito(sid, rule) {
         const p = getPeriod();
-        // Limpiamos el mapa anterior
         transitoPasadoMap = {};
-        
         try {
-            const params = { 
-                fecha_inicio: p.fi, 
-                fecha_fin: p.ff, 
-                estacion_id: sid,
-                afiliacion: rule.afiliacion
-            };
+            const params = { fecha_inicio: p.fi, fecha_fin: p.ff, estacion_id: sid, afiliacion: rule.afiliacion };
             const res = await $.get(URLS.resumen_transito, params);
             if(res.status === 'success') {
                 resumenGlobal.transito_pasado_count = parseInt(res.data.count);
-                
-                // CORRECCIÓN: Ya no sumamos esta diferencia porque ya viene incluida 
-                // en el historial normal al estar conciliada.
                 resumenGlobal.transito_pasado_diff = 0; 
-                
-                // GUARDAMOS EL MAPA DE GRUPOS (ID -> DIFERENCIA)
-                // Esto sí lo necesitamos para pintar la etiqueta "Tránsito Pasado" en las filas
-                if(res.data.groups_map) {
-                    transitoPasadoMap = res.data.groups_map;
-                }
+                if(res.data.groups_map) transitoPasadoMap = res.data.groups_map;
             }
-        } catch(e) {
-            console.error("Error cargando resumen tránsito", e);
-        }
+        } catch(e) { console.error("Error cargando resumen tránsito", e); }
     }
-
-    // ==========================================
-    // 4. API CALLS & CÁLCULO DE DIFERENCIAS
-    // ==========================================
 
     async function cargarHistorial() {
         const p = getPeriod();
         try {
             const params = { fecha_inicio: p.fi, fecha_fin: p.ff };
             const res = await $.get(URLS.historial, params);
-            
             if(res && res.data) {
                 const uniqueSet = new Set();
                 historialConciliacion = res.data.filter(item => {
@@ -518,78 +535,66 @@
                     uniqueSet.add(key);
                     return true;
                 });
-            } else {
-                historialConciliacion = [];
-            }
-            
+            } else { historialConciliacion = []; }
             procesarDiferenciasVisibles();
-
-        } catch(e) {
+        } catch(e) { 
             console.error("Error historial", e);
             historialConciliacion = []; mapaDiferencias = {};
         }
     }
 
-   function procesarDiferenciasVisibles() {
+    function procesarDiferenciasVisibles() {
         mapaDiferencias = {};
         resumenGlobal.historico_visible_diff = 0;
         resumenGlobal.historico_visible_count = 0;
-        
-        let gruposProcesados = new Set();
+        const p = getPeriod(); 
+        const fechaLimiteMes = p.ff.substring(0, 4) + '-' + p.ff.substring(4, 6) + '-' + p.ff.substring(6, 8);
+        let tempGroups = {};
 
         historialConciliacion.forEach(row => {
-            // 1. Filtro por afiliación activa
-            if(currentActiveRule && String(row.afiliacion).trim() !== String(currentActiveRule.afiliacion).trim()) return;
-            
             const gid = row.grupo_id;
-
-            // 2. CORRECCIÓN: Si este grupo YA es un tránsito pasado, NO lo sumes al histórico del mes actual
-            // Esto evita el conteo doble (Historial + Tránsito)
-            if (transitoPasadoMap.hasOwnProperty(gid)) {
-                // Sí lo agregamos al mapa para poder pintar los tags en la lista,
-                // pero NO sumamos a los totales globales de "Mes Actual"
-                if(!mapaDiferencias[gid]) {
-                     let diffBD = (row.diferencia !== undefined && row.diferencia !== null) ? parseFloat(row.diferencia) : 0;
-                     mapaDiferencias[gid] = { real_diff: diffBD, left_visible: 0, right_visible: 0 };
-                }
-                return; 
+            if (!tempGroups[gid]) {
+                tempGroups[gid] = { left: 0, right: 0, afil: row.afiliacion, maxRightDate: '', db_diff: parseFloat(row.diferencia) || 0 }; 
             }
-
-            // 3. Procesamiento Normal
-            if(!mapaDiferencias[gid]) {
-                let diffBD = (row.diferencia !== undefined && row.diferencia !== null) ? parseFloat(row.diferencia) : 0;
-                mapaDiferencias[gid] = { real_diff: diffBD, left_visible: 0, right_visible: 0 };
-                
-                if(!gruposProcesados.has(gid)) {
-                    resumenGlobal.historico_visible_diff += diffBD;
-                    resumenGlobal.historico_visible_count++;
-                    gruposProcesados.add(gid);
-                }
+            let val = parseFloat(row.monto);
+            if (row.lado === 'left') tempGroups[gid].left += val;
+            else if (row.lado === 'right') {
+                tempGroups[gid].right += val;
+                if (row.fecha > tempGroups[gid].maxRightDate) tempGroups[gid].maxRightDate = row.fecha;
             }
-            
-            if(row.lado === 'left') mapaDiferencias[gid].left_visible += parseFloat(row.monto);
-            else if(row.lado === 'right') mapaDiferencias[gid].right_visible += parseFloat(row.monto);
         });
+
+        Object.keys(tempGroups).forEach(gid => {
+            const g = tempGroups[gid];
+            if (currentActiveRule) {
+                const rowAfil = String(g.afil || '').trim().toUpperCase();
+                const filterAfil = String(currentActiveRule.afiliacion || '').trim().toUpperCase();
+                if (rowAfil !== filterAfil) return; 
+            }
+            mapaDiferencias[gid] = { real_diff: g.db_diff, left_visible: g.left, right_visible: g.right };
+            if (g.maxRightDate > fechaLimiteMes) return; 
+            let currentTotal = Math.round(resumenGlobal.historico_visible_diff * 100);
+            let addVal = Math.round(g.db_diff * 100);
+            resumenGlobal.historico_visible_diff = (currentTotal + addVal) / 100;
+            resumenGlobal.historico_visible_count++;
+        });
+        renderDiferenciasPanel();
     }
 
-async function cargarControlGas(sid, rule) {
+    async function cargarControlGas(sid, rule) {
         const p = getPeriod();
         $('#cg-content').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
-        
         try {
             const [resVentas, resTransitos] = await Promise.all([
                 fetch(URLS.ventas, {
                     method:'POST', headers:{'Content-Type':'application/json'},
                     body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
                 }).then(r => r.json()),
-                
                 $.get(URLS.get_transitos, { estacion_id: sid, afiliacion: rule.afiliacion })
             ]);
 
             const rawVentas = resVentas.respuesta || [];
-            const keywords = (rule.conceptos_cg || '').split(',')
-                .map(k => k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '));
-
+            const keywords = (rule.conceptos_cg || '').split(',').map(k => k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '));
             let listaFinal = rawVentas.filter(i => {
                 let c = (i.Concepto || i.concepto || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim();
                 c = c.replace(/SMART\s*BT/g, 'SMARTBT'); 
@@ -602,70 +607,31 @@ async function cargarControlGas(sid, rule) {
                 _transitId: null
             }));
 
-            // --- PROCESAMIENTO DE TRÁNSITOS ---
             if(resTransitos && resTransitos.status === 'success' && resTransitos.data) {
                 const inicioMesVista = `${widgetState.year}-${widgetState.month}-01`;
                 const processedIndices = new Set();
-
                 resTransitos.data.forEach(t => {
                     const tFecha = normalizarFecha(t.fecha);
                     const tMonto = parseFloat(t.monto);
                     const tEstado = (t.estado || '').toUpperCase(); 
-
-                    // =======================================================
-                    // CASO 1: INCOMING (Mes Futuro) - Mostrar como pendiente
-                    // =======================================================
                     if (tFecha < inicioMesVista) {
                         if(tEstado === 'PENDIENTE') {
-                            listaFinal.push({
-                                Fecha: tFecha,
-                                Total: tMonto,
-                                Concepto: (t.concepto || 'Tránsito') + ' (Pendiente)',
-                                _status: 'incoming', // Amarillo
-                                _transitId: t.id
-                            });
+                            listaFinal.push({ Fecha: tFecha, Total: tMonto, Concepto: (t.concepto || 'Tránsito') + ' (Pendiente)', _status: 'incoming', _transitId: t.id });
                         }
-                    } 
-                    // =======================================================
-                    // CASO 2: OUTGOING (Mes Actual) - BLOQUEAR SI ESTÁ PENDIENTE
-                    // =======================================================
-                    else {
-                        const ventaIndex = listaFinal.findIndex((v, idx) => 
-                            !processedIndices.has(idx) && 
-                            v.Fecha === tFecha && 
-                            Math.abs(v.Total - tMonto) < 0.1 &&
-                            v._status === 'normal'
-                        );
-
+                    } else {
+                        const ventaIndex = listaFinal.findIndex((v, idx) => !processedIndices.has(idx) && v.Fecha === tFecha && Math.abs(v.Total - tMonto) < 0.1 && v._status === 'normal');
                         if (ventaIndex !== -1) {
                             processedIndices.add(ventaIndex);
-
-                            if (tEstado === 'CONCILIADO') {
-                                // YA SE COBRÓ EN EL FUTURO (VERDE)
-                                listaFinal[ventaIndex]._status = 'transit_completed'; 
-                                listaFinal[ventaIndex].Concepto += ' (Cobrado)';
-                            } 
-                            // AQUÍ ESTÁ LA LÓGICA DE BLOQUEO
-                            else if (tEstado === 'PENDIENTE') {
-                                // ESTÁ EN TRÁNSITO HACIA EL FUTURO (GRIS / BLOQUEADO)
-                                // 'outgoing' activa la clase .transit-locked en renderList
-                                listaFinal[ventaIndex]._status = 'outgoing'; 
-                                listaFinal[ventaIndex].Concepto += ' (En Tránsito)';
-                            }
+                            if (tEstado === 'CONCILIADO') { listaFinal[ventaIndex]._status = 'transit_completed'; listaFinal[ventaIndex].Concepto += ' (Cobrado)'; } 
+                            else if (tEstado === 'PENDIENTE') { listaFinal[ventaIndex]._status = 'outgoing'; listaFinal[ventaIndex].Concepto += ' (En Tránsito)'; }
                         }
                     }
                 });
             }
-
             listaFinal.sort((a,b) => new Date(a.Fecha) - new Date(b.Fecha));
             renderList('left', listaFinal, rule.descripcion || 'Venta');
-            
             renderDiferenciasPanel();
-
-        } catch(e) { 
-            console.error(e);
-            $('#cg-content').html('<div class="text-danger p-3">Error cargando datos</div>'); 
-        }
+        } catch(e) { console.error(e); $('#cg-content').html('<div class="text-danger p-3">Error cargando datos</div>'); }
     }
 
     function cargarTesoreria(eid, rule) {
@@ -673,7 +639,6 @@ async function cargarControlGas(sid, rule) {
         container.html('<div class="text-center py-5"><div class="spinner-border text-secondary"></div></div>');
         const conf = ENTITY_CONFIG[eid];
         if(!conf || !conf.url) { container.html('<div class="p-4 text-center">Sin endpoint</div>'); return; }
-
         $.get(conf.url, {year: widgetState.year, month: widgetState.month}, function(resp){
             if(!resp.data) { container.html('<div class="p-3 text-center">Sin datos</div>'); return; }
             const filtered = resp.data.filter(m => String(m.Afiliacion).trim() === String(rule.afiliacion).trim());
@@ -682,7 +647,7 @@ async function cargarControlGas(sid, rule) {
     }
 
     // ==========================================
-    // 5. RENDERIZADO (VISUALIZACIÓN)
+    // 5. RENDERIZADO MEJORADO
     // ==========================================
 
     function renderList(side, rawData, label) {
@@ -692,7 +657,7 @@ async function cargarControlGas(sid, rule) {
 
         if (!rawData || rawData.length === 0) {
             container.html('<div class="text-muted text-center py-5">Sin movimientos</div>');
-            if(side==='left') counter.text('0'); else counter.text('$0.00');
+            if(side==='left') counter.text('$0.00'); else counter.text('$0.00');
             return;
         }
 
@@ -705,92 +670,70 @@ async function cargarControlGas(sid, rule) {
             let val = item.Total || item.Depositos || item.Importe || 0;
             if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
             if(isNaN(val)) val = 0;
-
             const statusKey = item._status || 'normal';
             const uniqueKey = `${fIso}_${statusKey}`;
-
-            if(!gruposLocales[uniqueKey]) {
-                gruposLocales[uniqueKey] = { 
-                    fecha: fIso, 
-                    monto: 0, 
-                    desc: new Set(),
-                    status: statusKey,
-                    transitIds: [] 
-                };
-            }
+            if(!gruposLocales[uniqueKey]) gruposLocales[uniqueKey] = { fecha: fIso, monto: 0, desc: new Set(), status: statusKey, transitIds: [] };
             gruposLocales[uniqueKey].monto += val;
             grandTotal += val;
-            
             let d = side === 'left' ? (item.Concepto || 'Venta') : (item.Referencia || 'Depósito');
             gruposLocales[uniqueKey].desc.add(d);
-
-            if(item._transitId) {
-                gruposLocales[uniqueKey].transitIds.push(item._transitId);
-            }
+            if(item._transitId) gruposLocales[uniqueKey].transitIds.push(item._transitId);
         });
 
         const keys = Object.keys(gruposLocales).sort();
         let displayDaysCount = new Set();
+        const coincidenciasUsadas = new Set();
 
         keys.forEach(key => { 
             const g = gruposLocales[key];
             displayDaysCount.add(g.fecha);
-            
             const partes = g.fecha.split('-');
             const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
-
             let descStr = Array.from(g.desc).join(', ');
             const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
-            
             const rowId = `item-${side}-${g.fecha}-${g.status}`; 
             const etiquetaSegura = label || (side === 'left' ? 'Venta' : 'Banco');
             const etiquetaClean = etiquetaSegura.replace(/'/g, "");
 
-            // =========================================================
-            // LÓGICA CORREGIDA DE BÚSQUEDA (PRIORIDAD AL TRÁNSITO)
-            // =========================================================
-            
-            // 1. Filtramos TODAS las posibles coincidencias de ese día y monto
-            const candidatos = historialConciliacion.filter(h => 
+            // 1. Búsqueda Exacta
+            let coincidencia = historialConciliacion.find(h => 
+                !coincidenciasUsadas.has(h.id) &&
                 normalizarFecha(h.fecha) === g.fecha && 
                 h.lado === side &&
                 Math.abs(parseFloat(h.monto) - parseFloat(g.monto)) < 0.1
             );
 
-            let coincidencia = null;
-
-            if (candidatos.length > 0) {
-                // 2. Intentamos encontrar primero uno que esté en el mapa de Tránsito Pasado
-                coincidencia = candidatos.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id));
-                
-                // 3. Si no hay ninguno de tránsito, usamos el primero que encontramos (comportamiento normal)
-                if (!coincidencia) {
-                    coincidencia = candidatos[0];
-                }
+            // 2. Búsqueda Flexible (Mismo día y lado, monto diferente)
+            if (!coincidencia) {
+                coincidencia = historialConciliacion.find(h => 
+                    !coincidenciasUsadas.has(h.id) &&
+                    normalizarFecha(h.fecha) === g.fecha && 
+                    h.lado === side
+                );
             }
-            // =========================================================
 
-            let clasesExtra = "";
-            let badgeHtml = "";
-            let iconHtml = "";
+            // 3. Fallback Tránsito
+            if (!coincidencia && side === 'left') {
+                coincidencia = historialConciliacion.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id) && !coincidenciasUsadas.has(h.id));
+            }
+
+            if (coincidencia) coincidenciasUsadas.add(coincidencia.id);
+
+            let clasesExtra = ""; let badgeHtml = ""; let iconHtml = "";
             let transitIdsParam = (g.transitIds && g.transitIds.length > 0) ? `'${g.transitIds.join(',')}'` : 'null';
             let clickAction = `onclick="toggleItem('${side}', '${g.fecha}', ${g.monto}, '${etiquetaClean}', this, ${transitIdsParam})"`;
-            let estiloFondo = "";
-            let diffTagHtml = "";
-            let transitoPasadoHtml = ""; 
+            let estiloFondo = ""; let diffTagHtml = ""; let transitoPasadoHtml = ""; 
+            let buttonsHtml = "";
 
-            // --- LÓGICA VISUAL TRÁNSITO IZQUIERDA ---
+            // Cambio 2: Tag "Tránsito Exitoso" (Left)
             if (side === 'left') {
                 if (g.status === 'outgoing') {
-                    clasesExtra += " transit-locked"; 
-                    iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>';
-                    clickAction = ""; 
+                    clasesExtra += " transit-locked"; iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>'; clickAction = ""; 
                 } else if (g.status === 'incoming') {
-                    clasesExtra += " transit-incoming";
-                    iconHtml = '<span class="badge badge-warning text-dark mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-shipping-fast mr-1"></i> PENDIENTE</span>';
+                    clasesExtra += " transit-incoming"; iconHtml = '<span class="badge badge-warning text-dark mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-shipping-fast mr-1"></i> PENDIENTE</span>';
                 } else if (g.status === 'transit_completed') {
                     clasesExtra += " transit-completed"; 
-                    iconHtml = '<span class="badge mr-2 shadow-sm border border-success" style="background-color:#d4edda; color:#000; font-size:0.7rem;"><i class="fas fa-check-double mr-1 text-success"></i> TRÁNSITO OK</span>';
+                    iconHtml = '<span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span>'; 
                     clickAction = ""; 
                 }
             }
@@ -799,37 +742,44 @@ async function cargarControlGas(sid, rule) {
                 clasesExtra += " conciliated"; 
                 clickAction = ""; 
                 const color = getColorForGroup(coincidencia.grupo_id);
-                
-                if (g.status !== 'transit_completed') {
-                    estiloFondo = `style="background-color: ${color}40;"`;
-                }
-                
+                if (g.status !== 'transit_completed') estiloFondo = `style="background-color: ${color}40;"`;
                 badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
+
+                buttonsHtml += `
+                    <button class="btn-action-mini btn-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer">
+                        <i class="fas fa-unlink"></i>
+                    </button>
+                `;
+
+                if (side === 'left') {
+                    const montoBd = parseFloat(coincidencia.monto);
+                    if(Math.abs(g.monto - montoBd) > 0.1) {
+                        clasesExtra += " desync"; 
+                        buttonsHtml = `
+                            <button class="btn-action-mini btn-sync-db" 
+                                onclick="sincronizarMonto(${coincidencia.id}, ${g.monto})"
+                                title="Actualizar BD a ${formatter.format(g.monto)}">
+                                <i class="fas fa-sync-alt"></i> Actualizar
+                            </button>
+                            ${buttonsHtml} 
+                        `;
+                    }
+                }
 
                 if(side === 'right') {
                     const stats = mapaDiferencias[coincidencia.grupo_id];
                     let diff = 0;
-                    
                     if(stats) {
-                        diff = (stats.real_diff !== null) ? stats.real_diff : (stats.left_visible - stats.right_visible);
-                        
-                        const isOk = Math.abs(diff) < 0.005; 
+                        diff = stats.real_diff; 
+                        const isOk = Math.abs(diff) < 0.01; 
                         const claseTag = isOk ? 'ok' : 'warn';
                         let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
-                        diffTagHtml = `<span class="diff-tag ${claseTag}">${textoTag}</span>`;
+                        let iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
+                        diffTagHtml = `<span class="diff-tag ${claseTag}" title="Diferencia registrada en BD">${iconDiff}${textoTag}</span>`;
                     }
-
-                    // CHECK DEL MAPA DE TRÁNSITO (Ahora usará el ID correcto si existe)
+                    // Cambio 2: Tag "Tránsito Exitoso" (Right)
                     if (transitoPasadoMap.hasOwnProperty(coincidencia.grupo_id)) {
-                        const diffTransito = parseFloat(transitoPasadoMap[coincidencia.grupo_id]);
-                        transitoPasadoHtml = `
-                            <div class="mt-1">
-                                <span class="badge badge-light border border-warning shadow-sm" style="color:#000; font-size:0.7rem;">
-                                    <i class="fas fa-history mr-1 text-warning"></i> Tránsito Pasado: 
-                                    <b>${formatter.format(diffTransito)}</b>
-                                </span>
-                            </div>
-                        `;
+                        transitoPasadoHtml = `<div class="mt-1"><span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span></div>`;
                     }
                 }
             }
@@ -838,14 +788,11 @@ async function cargarControlGas(sid, rule) {
                 <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}>
                     <div>
                         <div class="d-flex align-items-center mb-1">
-                            ${badgeHtml}
-                            ${iconHtml}
+                            ${badgeHtml} ${iconHtml}
                             <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
                             <span class="badge ${side==='left'?'badge-info':'badge-warning'} text-white border" style="font-size:0.6rem;">${etiquetaSegura}</span>
                         </div>
-                        <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">
-                            ${tooltip}
-                        </small>
+                        <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">${tooltip}</small>
                         ${transitoPasadoHtml} 
                     </div>
                     <div class="d-flex align-items-center">
@@ -853,35 +800,25 @@ async function cargarControlGas(sid, rule) {
                         <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
                             ${formatter.format(g.monto)}
                         </div>
+                        ${buttonsHtml}
                     </div>
                 </div>
             `);
         });
 
-        if(side === 'left') counter.text(displayDaysCount.size + ' días');
-        else counter.text(formatter.format(grandTotal));
+        // Cambio 1: Total Monetario Izquierda
+        counter.text(formatter.format(grandTotal));
     }
 
     function renderDiferenciasPanel() {
         const counter = $('#diff-counter');
         const container = $('#diff-content');
         container.empty();
-        
         if (!currentActiveRule || !currentActiveRule.afiliacion) { counter.text('0'); return; }
-        
-        // CORRECCIÓN: El total ahora es puramente lo que trae el historial (que ya incluye todo)
         let totalGlobalDiff = resumenGlobal.historico_visible_diff;
-        
-        // El conteo sí lo sumamos para saber el total de operaciones
         let totalCount = resumenGlobal.historico_visible_count; 
-        
         counter.text(totalCount);
-        
-        // CERO TOLERANCIA PANEL
         const diffColor = Math.abs(totalGlobalDiff) < 0.005 ? 'text-success' : 'text-danger';
-        
-        // Renderizado simplificado
-        // Si hay tránsitos pasados, mostramos una nota informativa, pero no desglosamos montos para no confundir
         let htmlInfoTransito = '';
         if(resumenGlobal.transito_pasado_count > 0) {
             htmlInfoTransito = `
@@ -893,7 +830,6 @@ async function cargarControlGas(sid, rule) {
                 </div>
             `;
         }
-
         container.html(`
             <div class="text-center py-4">
                 <div class="text-muted small mb-2 text-uppercase font-weight-bold">Total Diferencias</div>
@@ -912,7 +848,6 @@ async function cargarControlGas(sid, rule) {
         $('#cg-counter, #diff-counter').text('0'); 
         $('#bk-total').text('$0.00'); 
         $('#bk-info-bar').hide(); 
-        // Resetear también variable global
         resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
     }
 
@@ -926,91 +861,44 @@ async function cargarControlGas(sid, rule) {
         }
         let sumL_raw = selection.left.reduce((a,b) => a + b.monto, 0);
         let sumR_raw = selection.right.reduce((a,b) => a + b.monto, 0);
-        let diff_raw = sumL_raw - sumR_raw;
-        
+        let diff_raw = sumR_raw - sumL_raw;
         if(!confirm(`¿Conciliar selección?\nCG: ${formatter.format(sumL_raw)}\nBK: ${formatter.format(sumR_raw)}\nDiferencia: ${formatter.format(diff_raw)}`)) return;
-
-        // Aquí construimos el objeto a enviar al PHP
+        
         let payload = {
             total_cg: Number(sumL_raw.toFixed(2)),
             total_bk: Number(sumR_raw.toFixed(2)),
-            diferencia: Number(diff_raw.toFixed(2)),
-            
-            // --- AQUÍ ESTÁ EL CAMBIO IMPORTANTE ---
-            // Mapeamos los transit_ids que recolectamos en toggleItem
-            left_rows: selection.left.map(i => ({ 
-                fecha: normalizarFecha(i.fecha), // Enviamos la fecha ORIGINAL
-                monto: i.monto, 
-                concepto: i.concepto, 
-                ref: '', 
-                transit_ids: i.transitIds // Array de IDs de tránsito para que PHP haga el UPDATE
-            })),
-            right_rows: selection.right.map(i => ({ 
-                fecha: normalizarFecha(i.fecha), 
-                monto: i.monto, 
-                afiliacion: $('#afiliacionSelect option:selected').text(), 
-                origen: 'Manual' 
-            }))
+            diferencia: Number(diff_raw.toFixed(2)), 
+            left_rows: selection.left.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, concepto: i.concepto, ref: '', transit_ids: i.transitIds })),
+            right_rows: selection.right.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, afiliacion: $('#afiliacionSelect option:selected').text(), origen: 'Manual' }))
         };
 
         $.ajax({
             url: URLS.guardar, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
             success: function(resp) {
-                if(resp.status === 'success') {
-                    // Recargar historial y actualizar vistas
-                    actualizarTodo(); 
-                    limpiarSeleccion();
-                } else alert("Error: " + resp.message);
+                if(resp.status === 'success') { actualizarTodo(); limpiarSeleccion(); } else alert("Error: " + resp.message);
             },
             error: function() { alert("Error de red"); }
         });
     }
 
-    // --- FUNCIÓN: MARCAR COMO TRÁNSITO ---
     function marcarComoTransito() {
-        if(selection.left.length === 0) {
-            alert("Selecciona movimientos de la IZQUIERDA (Ventas) para enviar a tránsito.");
-            return;
-        }
-        if(selection.right.length > 0) {
-            alert("Solo puedes enviar a tránsito las Ventas (Izquierda). Desmarca el Banco.");
-            return;
-        }
-
+        if(selection.left.length === 0) { alert("Selecciona movimientos de la IZQUIERDA (Ventas) para enviar a tránsito."); return; }
+        if(selection.right.length > 0) { alert("Solo puedes enviar a tránsito las Ventas (Izquierda). Desmarca el Banco."); return; }
         const totalMonto = selection.left.reduce((a,b) => a + b.monto, 0);
-
         if(!confirm(`¿Mover ${selection.left.length} ventas por ${formatter.format(totalMonto)} al siguiente mes?\n\nSe guardarán para conciliación futura y se bloquearán de este mes.`)) return;
-
         const payload = {
             estacion_id: $('#estacionSelect').val(),
-            // IMPORTANTE: Enviamos el texto visible del select para coincidir con la BD
             afiliacion: $('#afiliacionSelect option:selected').text(),
-            rows: selection.left.map(i => ({
-                fecha: normalizarFecha(i.fecha),
-                monto: i.monto,
-                concepto: i.concepto
-            }))
+            rows: selection.left.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, concepto: i.concepto }))
         };
-
         $.ajax({
-            url: URLS.guardar_transito,
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(payload),
+            url: URLS.guardar_transito, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
             success: function(resp) {
                 const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
-                if(r.status === 'success') {
-                    alert("Movimientos enviados a tránsito exitosamente.");
-                    actualizarTodo(); 
-                    limpiarSeleccion();
-                } else {
-                    alert("Error: " + r.message);
-                }
+                if(r.status === 'success') { alert("Movimientos enviados a tránsito exitosamente."); actualizarTodo(); limpiarSeleccion(); } 
+                else { alert("Error: " + r.message); }
             },
-            error: function(err) {
-                alert("Error de conexión al guardar tránsito");
-                console.error(err);
-            }
+            error: function(err) { alert("Error de conexión al guardar tránsito"); console.error(err); }
         });
     }
 
