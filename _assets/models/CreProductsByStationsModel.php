@@ -107,6 +107,11 @@ class CreProductsByStationsModel extends Model{
             }
         }
         $query = implode(" UNION ", $queryParts); // Unir todas las partes con UNION
+        if ($codgas == 38) {
+            echo '<pre>';
+            var_dump($query);
+            die();
+        }
         return $this->sql->select($query) ?: false;
     }
 }

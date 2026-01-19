@@ -552,6 +552,7 @@ class Supply{
 
         // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
         $data = $this->gasolinerasModel->get_active_station_TG();
+
         $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
         $stations = array_values($dataFiltered);
 
@@ -685,11 +686,11 @@ class Supply{
         if (!empty($companyRfc)) {
             // Obtiene las estaciones asociadas a la compañía
             $codgas_string = $this->estacionesModel->getStationsByCompany($_GET['company']);
-
             $twigVars['codgas_string'] = $codgas_string;
 
             // Obtiene los productos asociados a las estaciones para la fecha indicada
             $codgas_products = $this->creProductsByStationsModel->getProductsByStations($codgas_string, dateToInt($from));
+
             // $codgas_products = array_values(array_filter(
             //     $codgas_products,
             //     function ($row) {
