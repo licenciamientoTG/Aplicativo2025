@@ -193,7 +193,6 @@ class Operations{
                 $islands = $this->islandModel->get_available_islands_by_tab($tabulator['CodigoEstacion'], $tabulator['Id']);
                 $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
                 $assignments = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
-
                 echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'blocked_tab'));
             } catch (\Throwable $th) {
                 setFlashMessage('error', $th->getMessage()); // Mostramos un mensaje de error

@@ -1,192 +1,208 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Operaciones - Consulta Distribuida{% endblock %}
+
 {% block content %}
+{# Tabs navigation #}
 <ul class="nav nav-tabs" id="operationsTabs" role="tablist">
-    <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="central-tab" data-bs-toggle="tab" data-bs-target="#central" type="button">
-            Consulta Central
-        </button>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link" id="distributed-tab" data-bs-toggle="tab" data-bs-target="#distributed" type="button">
-            Consulta Distribuida
-        </button>
-    </li>
+    {% set tabs = [
+        {id: 'central', label: 'Consulta Central', active: true},
+        {id: 'distributed', label: 'Consulta Distribuida', active: false}
+    ] %}
+    
+    {% for tab in tabs %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {{ tab.active ? 'active' : '' }}" 
+                    id="{{ tab.id }}-tab" 
+                    data-bs-toggle="tab" 
+                    data-bs-target="#{{ tab.id }}" 
+                    type="button">
+                {{ tab.label }}
+            </button>
+        </li>
+    {% endfor %}
 </ul>
 
 <div class="tab-content" id="operationsTabContent">
-    <!-- TAB 1: Consulta Central (tu código actual) -->
+    {# TAB 1: Consulta Central #}
     <div class="tab-pane fade show active" id="central" role="tabpanel">
-        <div class="row mt-3">
-            <div class="card flex-fill w-100">
-                <div class="card-body">
-                    <form action="#" method="get">
-                        <div class="row">
-                            <div class="col">
-                                <label for="from" class="col-form-label col-form-label-sm">Fecha inicio: </label>
-                                <input type="date" class="form-control" name="from" id="from" value="{{ from }}" required>
-                            </div>
-                            <div class="col">
-                                <label for="until" class="col-form-label col-form-label-sm">Fecha final: </label>
-                                <input type="date" class="form-control" name="until" id="until" value="{{ until }}" required>
-                            </div>
-                            <div class="col-2 d-flex flex-column justify-content-between">
-                                <div></div>
-                                <button onclick="inventories_table()" class="btn btn-primary btn-block w-100"><i data-feather="search"></i> Buscar</button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        
-        <div class="row">
-    <div class="card shadow">
-        <div class="card-header">
-            <div class="card-actions float-end">
-                <div class="dropdown position-relative">
-                    <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                            <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
-                        </svg>
-                    </a>
-                    <div class="dropdown-menu dropdown-menu-end">
-                        <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
-                        <a class="dropdown-item refresh_stimulus_table" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
-                    </div>
-                </div>
-            </div>
-            <h5 class="card-title mb-0">Inventarios y mermas</h5>
-        </div>
-        <div class="card-body table-responsive">
-            <div id="filtro-inventories_table" class="mb-1">
-                <div class="row">
-                    <!-- Agrega tus elementos de filtrado aquí -->
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="ESTACION"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PRODUCTO" placeholder="PRODUCTO"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOINICIAL" placeholder="SALDOINICIAL"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="COMPRAS" placeholder="COMPRAS"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="VENTAS" placeholder="VENTAS"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOFINAL" placeholder="SALDOFINAL"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="SALDOREAL" placeholder="SALDOREAL"></div>
-                    <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="MERMA" placeholder="MERMA"></div>
-                    <div class="col p-1 text-center"><button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button></div>
-                </div>
-                <!-- Puedes agregar más filtros según tus necesidades -->
-            </div>
-            <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="inventories_table">
-                <thead>
-                <tr>
-                    <th>ESTACION</th>
-                    <th>PRODUCTO</th>
-                    <th>SALDOINICIAL</th>
-                    <th>COMPRAS</th>
-                    <th>VENTAS</th>
-                    <th>SALDOFINAL</th>
-                    <th>SALDOREAL</th>
-                    <th>MERMA</th>
-                    <th>ACCIONES</th>
-                </tr>
-                </thead>
-                <tbody>
-
-                </tbody>
-                <tfoot>
-                <tr>
-                    <th>ESTACION</th>
-                    <th>PRODUCTO</th>
-                    <th>SALDOINICIAL</th>
-                    <th>COMPRAS</th>
-                    <th>VENTAS</th>
-                    <th>SALDOFINAL</th>
-                    <th>SALDOREAL</th>
-                    <th>MERMA</th>
-                    <th>ACCIONES</th>
-                </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-</div>
+        {{ _self.search_form('from', 'until', 'inventories_table()', 'primary') }}
+        {{ _self.inventory_table('inventories_table', 'exportExcel', 'refresh_stimulus_table', true) }}
     </div>
 
-    <!-- TAB 2: Consulta Distribuida (NUEVO) -->
+    {# TAB 2: Consulta Distribuida #}
     <div class="tab-pane fade" id="distributed" role="tabpanel">
-        <div class="row mt-3">
-            <div class="card flex-fill w-100">
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col">
-                            <label for="from_dist" class="col-form-label col-form-label-sm">Fecha inicio: </label>
-                            <input type="date" class="form-control" name="from_dist" id="from_dist" value="{{ from }}" required>
-                        </div>
-                        <div class="col">
-                            <label for="until_dist" class="col-form-label col-form-label-sm">Fecha final: </label>
-                            <input type="date" class="form-control" name="until_dist" id="until_dist" value="{{ until }}" required>
-                        </div>
-                        <div class="col-2 d-flex flex-column justify-content-between">
-                            <div></div>
-                            <button type="button" class="btn btn-success btn-block w-100" id="btn_consultar_distribuido">
-                                <i data-feather="download-cloud"></i> Consultar
-                            </button>
-                        </div>
-                    </div>
-                    <div class="row mt-2">
-                        <div class="col">
-                            <div id="progress_container" class="d-none">
-                                <div class="progress">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress_bar" style="width: 0%"></div>
-                                </div>
-                                <p class="text-center mt-2" id="progress_text">Consultando estaciones...</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-3">
-            <div class="card shadow">
-                <div class="card-header">
-                    <div class="card-actions float-end">
-                        <div class="dropdown position-relative">
-                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
-                                </svg>
-                            </a>
-                            <div class="dropdown-menu dropdown-menu-end">
-                                <a class="dropdown-item" href="#" id="exportExcelDist"><i data-feather="file-text"></i> Exportar a Excel</a>
-                                <a class="dropdown-item" href="#" id="refresh_distributed_table"><i data-feather="refresh-ccw"></i> Limpiar</a>
-                            </div>
-                        </div>
-                    </div>
-                    <h5 class="card-title mb-0">Inventarios y mermas - Consulta Distribuida</h5>
-                </div>
-                <div class="card-body table-responsive">
-                    <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="inventories_distributed_table">
-                        <thead>
-                        <tr>
-                            <th>ESTACION</th>
-                            <th>PRODUCTO</th>
-                            <th>SALDOINICIAL</th>
-                            <th>COMPRAS</th>
-                            <th>VENTAS</th>
-                            <th>SALDOFINAL</th>
-                            <th>SALDOREAL</th>
-                            <th>MERMA</th>
-                            <th>ACCIONES</th>
-                        </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
+        {{ _self.distributed_search_form() }}
+        {{ _self.inventory_table('inventories_distributed_table', 'exportExcelDist', 'refresh_distributed_table', false) }}
     </div>
 </div>
 {% endblock %}
+
+{# Macro: Formulario de búsqueda estándar #}
+{% macro search_form(from_id, until_id, onclick_action, btn_class) %}
+    <div class="row mt-3">
+        <div class="card flex-fill w-100">
+            <div class="card-body">
+                <form action="#" method="get">
+                    <div class="row">
+                        <div class="col">
+                            <label for="{{ from_id }}" class="col-form-label col-form-label-sm">Fecha inicio:</label>
+                            <input type="date" class="form-control" name="{{ from_id }}" id="{{ from_id }}" value="{{ from }}" required>
+                        </div>
+                        <div class="col">
+                            <label for="{{ until_id }}" class="col-form-label col-form-label-sm">Fecha final:</label>
+                            <input type="date" class="form-control" name="{{ until_id }}" id="{{ until_id }}" value="{{ until }}" required>
+                        </div>
+                        <div class="col-2 d-flex flex-column justify-content-end">
+                            <button onclick="{{ onclick_action }}" class="btn btn-{{ btn_class }} w-100">
+                                <i data-feather="search"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{# Macro: Formulario de búsqueda distribuida con barra de progreso #}
+{% macro distributed_search_form() %}
+    <div class="row mt-3">
+        <div class="card flex-fill w-100">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col">
+                        <label for="from_dist" class="col-form-label col-form-label-sm">Fecha inicio:</label>
+                        <input type="date" class="form-control" name="from_dist" id="from_dist" value="{{ from }}" required>
+                    </div>
+                    <div class="col">
+                        <label for="until_dist" class="col-form-label col-form-label-sm">Fecha final:</label>
+                        <input type="date" class="form-control" name="until_dist" id="until_dist" value="{{ until }}" required>
+                    </div>
+                    <div class="col-2 d-flex flex-column justify-content-end">
+                        <button type="button" class="btn btn-success w-100" id="btn_consultar_distribuido">
+                            <i data-feather="download-cloud"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-2">
+                    <div class="col">
+                        <div id="progress_container" class="d-none">
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" 
+                                     id="progress_bar" 
+                                     style="width: 0%">
+                                </div>
+                            </div>
+                            <p class="text-center mt-2" id="progress_text">Consultando estaciones...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{# Macro: Tabla de inventarios #}
+{% macro inventory_table(table_id, export_id, refresh_id, show_filters) %}
+    <div class="row {{ show_filters ? '' : 'mt-3' }}">
+        <div class="card shadow">
+            <div class="card-header">
+                {{ _self.card_actions_menu(export_id, refresh_id) }}
+                <h5 class="card-title mb-0">
+                    Inventarios y mermas{{ table_id == 'inventories_distributed_table' ? ' - Consulta Distribuida' : '' }}
+                </h5>
+            </div>
+            <div class="card-body table-responsive">
+                {% if show_filters %}
+                    {{ _self.table_filters() }}
+                {% endif %}
+                
+                <table class="table table-borderless my-0 w-100 table-striped table-sm" 
+                       style="font-size: small" 
+                       id="{{ table_id }}">
+                    {{ _self.table_headers() }}
+                    <tbody></tbody>
+                    {% if show_filters %}
+                        {{ _self.table_headers('tfoot') }}
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{# Macro: Menú de acciones de la card #}
+{% macro card_actions_menu(export_id, refresh_id) %}
+    <div class="card-actions float-end">
+        <div class="dropdown position-relative">
+            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
+                     fill="none" stroke="currentColor" stroke-width="2" 
+                     stroke-linecap="round" stroke-linejoin="round" 
+                     class="feather feather-more-horizontal align-middle">
+                    <circle cx="12" cy="12" r="1"></circle>
+                    <circle cx="19" cy="12" r="1"></circle>
+                    <circle cx="5" cy="12" r="1"></circle>
+                </svg>
+            </a>
+            <div class="dropdown-menu dropdown-menu-end">
+                <a class="dropdown-item" href="#" id="{{ export_id }}">
+                    <i data-feather="file-text"></i> Exportar a Excel
+                </a>
+                <a class="dropdown-item {{ refresh_id }}" href="#">
+                    <i data-feather="refresh-ccw"></i> {{ refresh_id == 'refresh_distributed_table' ? 'Limpiar' : 'Actualizar' }}
+                </a>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{# Macro: Filtros de tabla #}
+{% macro table_filters() %}
+    {% set filters = [
+        'ESTACION', 'PRODUCTO', 'SALDOINICIAL', 'COMPRAS', 
+        'VENTAS', 'SALDOFINAL', 'SALDOREAL', 'MERMA'
+    ] %}
+    
+    <div id="filtro-inventories_table" class="mb-1">
+        <div class="row">
+            {% for filter in filters %}
+                <div class="col p-1">
+                    <input type="text" 
+                           class="form-control form-control-sm" 
+                           style="margin-left: 3px" 
+                           id="{{ filter }}" 
+                           placeholder="{{ filter }}">
+                </div>
+            {% endfor %}
+            <div class="col p-1 text-center">
+                <button type="button" class="btn btn-sm btn-success refresh">
+                    <i data-feather="refresh-ccw"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+{% endmacro %}
+
+{# Macro: Headers de tabla #}
+{% macro table_headers(tag) %}
+    {% set tag = tag|default('thead') %}
+    {% set columns = [
+        'ESTACION', 'PRODUCTO', 'SALDOINICIAL', 'COMPRAS', 
+        'VENTAS', 'SALDOFINAL', 'SALDOREAL', 'MERMA', 'ACCIONES'
+    ] %}
+    
+    <{{ tag }}>
+        <tr>
+            {% for column in columns %}
+                <th>{{ column }}</th>
+            {% endfor %}
+        </tr>
+    </{{ tag }}>
+{% endmacro %}
+
 {% block myjs %}
-<script src="{{ JS }}operations.js"></script>
-<script src="{{ JS }}operations/operations_distributed.js"></script>
+    <script src="{{ JS }}operations.js"></script>
+    <script src="{{ JS }}operations/operations_distributed.js"></script>
 {% endblock %}
