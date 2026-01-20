@@ -4955,38 +4955,38 @@ function execute_authorized_payments()
         }
     }
 
-    public function generate_santander_layout() {
+   public function generate_santander_layout() {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
             $invoice_ids = $input['invoice_ids'] ?? [];
 
             if (empty($invoice_ids)) {
-                return $this->responderJSON(false, 'No se proporcionaron facturas');
+                // ✅ ERROR: Retornar JSON
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'No se proporcionaron facturas']);
+                return;
             }
 
-            // ✅ OBTENER DATOS DE FACTURAS CON CUENTAS (ya incluye cuenta_cargo por factura)
+            // ✅ OBTENER Y VALIDAR DATOS
             $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_para_layout($invoice_ids);
             if (!$facturas_data) {
-                return $this->responderJSON(false, 'No se encontraron facturas válidas');
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'No se encontraron facturas válidas']);
+                return;
             }
 
-            // ✅ VALIDAR QUE CADA FACTURA TENGA:
-            // 1. Cuenta de cargo (empresa)
-            // 2. CLABE beneficiario (proveedor)
+            // ✅ VALIDACIONES
             $sin_cuenta_cargo = [];
             $sin_clabe = [];
             foreach ($facturas_data as $factura) {
-                // Validar cuenta de cargo (cuenta PROPIA de la empresa)
                 if (!$factura['cuenta_cargo_empresa'] || strlen($factura['cuenta_cargo_empresa']) != 11) {
                     $sin_cuenta_cargo[] = "Empresa: {$factura['empresa_nombre']} (emp_cod: {$factura['empresa_cod']})";
                 }
-                // Validar CLABE beneficiario (cuenta TERCERO del proveedor)
                 if (!$factura['clabe_beneficiario'] || strlen($factura['clabe_beneficiario']) != 18) {
                     $sin_clabe[] = "Folio {$factura['folio']} - {$factura['proveedor_nombre']}";
                 }
             }
 
-            // ✅ REPORTAR ERRORES DETALLADOS
             if (!empty($sin_cuenta_cargo) || !empty($sin_clabe)) {
                 $mensaje = '<strong>No se puede generar el layout:</strong><br><br>';
                 if (!empty($sin_cuenta_cargo)) {
@@ -4997,147 +4997,189 @@ function execute_authorized_payments()
                     $mensaje .= '<strong class="text-warning">⚠️ Proveedores sin cuenta TERCERO:</strong><br>';
                     $mensaje .= implode('<br>', array_unique($sin_clabe)) . '<br><br>';
                 }
-                
                 $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
                 
-                return $this->responderJSON(false, $mensaje);
+                // ✅ ERROR CON HTML: Retornar JSON
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => $mensaje]);
+                return;
             }
 
-            // ✅ GENERAR LAYOUT (ahora cada factura usa su propia cuenta de cargo)
+            // ✅ GENERAR LAYOUT
             $layout_content = $this->generar_layout_santander_multi_empresa(
                 $facturas_data,
                 'SUSANA.PANTOJA@TOTALGAS.COM'
             );
 
-            // ✅ OBTENER EMPRESAS ÚNICAS (para el nombre del archivo)
+            // ✅ GENERAR NOMBRE DE ARCHIVO
             $empresas_unicas = array_unique(array_column($facturas_data, 'empresa_nombre'));
             $empresa_label = count($empresas_unicas) === 1 
                 ? $empresas_unicas[0] 
                 : 'MULTI_EMPRESAS';
 
-            // ✅ GUARDAR ARCHIVO
             $filename = 'LAYOUT_SANTANDER_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
-            $filepath = APPROOT . '/temp/' . $filename;
 
-            if (!is_dir(APPROOT . '/temp')) {
-                mkdir(APPROOT . '/temp', 0777, true);
-            }
-
-            file_put_contents($filepath, $layout_content);
-
-            // ✅ RESPUESTA
-            return $this->responderJSON(true, 'Layout generado correctamente', [
-                'file_url' => URLROOT . '/temp/' . $filename,
-                'file_name' => $filename,
-                'registros_procesados' => count($facturas_data),
-                'total_importe' => array_sum(array_column($facturas_data, 'monto_autorizado')),
-                'cuenta_cargo' => count($empresas_unicas) === 1 
-                    ? $facturas_data[0]['cuenta_cargo_empresa'] 
-                    : 'Múltiples cuentas',
-                'titular_cuenta' => count($empresas_unicas) === 1 
-                    ? $facturas_data[0]['titular_cargo'] 
-                    : implode(', ', $empresas_unicas),
-                'empresa_nombre' => $empresa_label,
-                'empresas_involucradas' => $empresas_unicas
-            ]);
+            // ✅ ENVIAR ARCHIVO DIRECTAMENTE
+            header('Content-Type: text/plain; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($layout_content));
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            echo $layout_content;
+            exit;
 
         } catch (Exception $e) {
             error_log('Error en generate_santander_layout: ' . $e->getMessage());
-            return $this->responderJSON(false, 'Error al generar layout: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Error al generar layout: ' . $e->getMessage()]);
+            exit;
         }
     }
 
-    /**
-     * ✅ Genera layout Santander con MÚLTIPLES EMPRESAS
-     * Cada línea LTX05 usa la cuenta de cargo de SU empresa
-     */
-    private function generar_layout_santander_multi_empresa($facturas, $email_notificacion) {
-        $lineas = [];
-        $total_monto = 0;
-        $total_registros = 0;
+ private function generar_layout_santander_multi_empresa($facturas, $email_notificacion) {
+    $lineas = [];
+    
+    // ✅ PASO 1: CONSOLIDAR por cuenta_cargo + proveedor
+    $consolidados = [];
+    
+    foreach ($facturas as $factura) {
+        // ✅ Usar proveedor_codigo (no proveedor_cod)
+        $key = $factura['cuenta_cargo_empresa'] . '|' . $factura['proveedor_codigo'];
         
-        // ✅ Usar la PRIMERA cuenta de cargo para el LTX07 (o la más frecuente)
-        $cuenta_ordenante_principal = $facturas[0]['cuenta_cargo_empresa'];
-        $numero_control = date('ymdHis');
-
-        foreach ($facturas as $factura) {
-            $monto_autorizado = floatval($factura['monto_autorizado']);
-            
-            // ✅ USAR LA CUENTA DE CARGO DE ESTA FACTURA ESPECÍFICA
-            $cuenta_cargo_esta_factura = $factura['cuenta_cargo_empresa'];
-
-            // Formatear monto (23 dígitos con prefijo 1234)
-            $monto_sin_decimales = intval($monto_autorizado * 100); // Convertir a centavos
-            $monto_str = str_pad($monto_sin_decimales, 19, '0', STR_PAD_LEFT);
-
-            // Limpiar y formatear textos
-            $nombre_beneficiario = $this->limpiar_texto_layout(
-                $factura['titular_beneficiario'] ?: $factura['proveedor_nombre'], 
-                40
-            );
-
-            $concepto = $this->limpiar_texto_layout(
-                $factura['invoice_number'] . ' ' . $factura['proveedor_nombre'],
-                40
-            );
-
-            $referencia = $this->limpiar_texto_layout($factura['invoice_number'], 5);
-
-            // ✅ Construir línea LTX05 con la cuenta de cargo ESPECÍFICA de esta empresa
-            $linea = sprintf(
-                "LTX05 %-11s       %-18s %-40s    1234%s  %-5s %-40s 00 00  %-28s",
-                $cuenta_cargo_esta_factura,      // ← Cuenta de la empresa de ESTA factura
-                $factura['clabe_beneficiario'],  // CLABE del proveedor
-                $nombre_beneficiario,
-                $monto_str,
-                $referencia,
-                $concepto,
-                substr($email_notificacion, 0, 28)
-            );
-
-            $lineas[] = str_pad(substr($linea, 0, 240), 240);
-
-            $total_monto += $monto_autorizado;
-            $total_registros++;
+        if (!isset($consolidados[$key])) {
+            $consolidados[$key] = [
+                'cuenta_cargo' => $factura['cuenta_cargo_empresa'],
+                'clabe_beneficiario' => $factura['clabe_beneficiario'],
+                // ✅ titular_beneficiario es NULL, usar proveedor_nombre
+                'titular_beneficiario' => $factura['titular_beneficiario'] ?: $factura['proveedor_nombre'],
+                'proveedor_nombre' => $factura['proveedor_nombre'],
+                'proveedor_codigo' => $factura['proveedor_codigo'],
+                'monto_total' => 0,
+                'facturas' => [],
+                'folios' => []
+            ];
         }
-
-        // ✅ Línea LTX07 (totales) - Usa la cuenta principal
-        $monto_total_centavos = intval($total_monto * 100);
-        $monto_total_str = str_pad($monto_total_centavos, 19, '0', STR_PAD_LEFT);
         
-        $registros_totales = str_pad($total_registros, 8, '0', STR_PAD_LEFT);
-        $fecha_aplicacion = date('dmY'); // DDMMYYYY
-
-        $footer = sprintf(
-            "LTX07 %-11s       %-11s        %s%s                             %s%-28s",
-            $cuenta_ordenante_principal,
-            $numero_control,
-            $monto_total_str,
-            $registros_totales,
-            $fecha_aplicacion,
+        $consolidados[$key]['monto_total'] += floatval($factura['monto_autorizado']);
+        $consolidados[$key]['facturas'][] = $factura['invoice_number'];
+        $consolidados[$key]['folios'][] = $factura['folio'];
+    }
+    
+    // ✅ PASO 2: GENERAR LÍNEAS LTX05
+    foreach ($consolidados as $grupo) {
+        // ✅ Detectar banco desde CLABE
+        $codigo_banco = $this->obtener_codigo_banco_desde_clabe($grupo['clabe_beneficiario']);
+        
+        // ✅ Monto con plaza Banxico (901)
+        $monto_centavos = intval($grupo['monto_total'] * 100);
+        $monto_con_plaza = str_pad($monto_centavos, 19, '0', STR_PAD_LEFT) . '901';
+        
+        // Limpiar nombre beneficiario
+        $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
+        
+        // ✅ Concepto: Usar primer folio como referencia
+        $cantidad_facturas = count($grupo['facturas']);
+        $primer_folio = $grupo['folios'][0];
+        
+        if ($cantidad_facturas === 1) {
+            $concepto_texto = $primer_folio . ' ' . $grupo['proveedor_nombre'];
+        } else {
+            // Ej: "C4177 ALTOS ENERGETICOS MEXICANOS"
+            $concepto_texto = 'C' . $primer_folio . ' ' . $grupo['proveedor_nombre'];
+        }
+        
+        $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
+        
+        // ✅ Línea LTX05
+        $linea = sprintf(
+            "LTX05 %-11s       %-18s %-5s%-40s    1234%s  %-40s 00 00  %-28s",
+            $grupo['cuenta_cargo'],
+            $grupo['clabe_beneficiario'],
+            $codigo_banco,
+            $nombre_beneficiario,
+            $monto_con_plaza,
+            $concepto,
             substr($email_notificacion, 0, 28)
         );
-
-        $lineas[] = str_pad(substr($footer, 0, 240), 240);
-
-        return implode("\r\n", $lineas);
-    }
-
-    /**
-     * Limpia texto para layout bancario
-     */
-    private function limpiar_texto_layout($texto, $longitud_maxima) {
-        // Remover acentos
-        $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
         
-        // Remover caracteres especiales, solo permitir A-Z, 0-9 y espacios
-        $texto = preg_replace('/[^A-Z0-9 ]/', '', strtoupper($texto));
-        
-        // Limitar longitud y rellenar con espacios
-        return str_pad(substr($texto, 0, $longitud_maxima), $longitud_maxima);
+        $lineas[] = $linea;
     }
+    
+    return implode("\r\n", $lineas);
+}
 
+/**
+ * ✅ Obtiene código de banco según CLABE (primeros 3 dígitos)
+ */
+private function obtener_codigo_banco_desde_clabe($clabe) {
+    $codigo_banco_clabe = substr($clabe, 0, 3);
+    
+    $mapeo_bancos = [
+        '002' => 'BANCO', // Banxico
+        '006' => 'BCEXT', // Bancomext
+        '009' => 'BOBRA', // Banobras
+        '012' => 'BACOM', // BBVA México
+        '014' => 'BANME', // Santander
+        '019' => 'BEJER', // Banjercito
+        '021' => 'BITAL', // HSBC
+        '030' => 'BAJIO', // Bajío
+        '036' => 'BINBU', // Inbursa
+        '042' => 'MIFEL', // Banca Mifel
+        '044' => 'COMER', // Scotia Bank
+        '058' => 'BANRE', // Banregio
+        '059' => 'BINVE', // Invex
+        '060' => 'BANSI', // Bansi
+        '062' => 'BAFIR', // Afirme
+        '072' => 'BBANO', // Banorte
+        '106' => 'BAMSA', // Bank of America
+        '108' => 'MUFG',  // MUFG Bank
+        '110' => 'CHASE', // JP Morgan
+        '112' => 'CMCA',  // Bmonex
+        '113' => 'DRESD', // Ve por Mas
+        '124' => 'DEUTB', // CBM Banco
+        '127' => 'BAZTE', // Azteca
+        '128' => 'BAUTO', // Banco Autofin
+        '129' => 'BARCL', // Barclays
+        '130' => 'BCOMP', // Compartamos
+        '132' => 'MULTI', // Multiva
+        '133' => 'PRUDE', // Actinver
+        '136' => 'REGIO', // Intercam
+        '137' => 'COPEL', // Bancoppel
+        '138' => 'AMIGO', // ABC Capital
+        '140' => 'FACIL', // Consubanco
+        '141' => 'VOLKS', // Volkswagen
+        '143' => 'CONSU', // CI Banco
+        '145' => 'BBASE', // Bbase
+        '147' => 'AGROF', // Bankaool
+        '148' => 'PTODO', // Pagatodo
+        '150' => 'INMOB', // Inmobiliario
+        '151' => 'DONDE', // Donde
+        '152' => 'BCREA', // Bancrea
+        '154' => 'COVAL', // Covalto
+        '155' => 'ICBCH', // ICBC
+        '156' => 'SABAD', // Sabadell
+        '157' => 'SHINH', // Shinhan
+        '158' => 'MISUO', // Mizuho
+        '159' => 'BOCHI', // Bank of China
+        '160' => 'BCOS3', // Banco S3
+        '166' => 'BANSE', // Bansefi
+        '168' => 'HIFED', // Hipotecaria Federal
+    ];
+    
+    return $mapeo_bancos[$codigo_banco_clabe] ?? 'BACOM';
+}
 
+/**
+ * ✅ Limpia texto para layout
+ */
+private function limpiar_texto_layout($texto, $max_length) {
+    $texto = strtoupper($texto);
+    $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+    $texto = preg_replace('/[^A-Z0-9 ]/', '', $texto);
+    $texto = preg_replace('/\s+/', ' ', trim($texto));
+    return substr($texto, 0, $max_length);
+}
 
 
 }

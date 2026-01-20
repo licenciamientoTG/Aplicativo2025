@@ -913,7 +913,7 @@ class PaymentRequestInvoicesModel extends Model
                 prov.rfc AS proveedor_rfc,
                 -- ✅ CLABE del proveedor desde cuentas TERCEROS
                 cb_tercero.CuentaLocal AS clabe_beneficiario,
-                cb_tercero.TitularCuenta AS titular_beneficiario,
+                cb_tercero.Descripcion AS titular_beneficiario,
                 cb_tercero.Banco AS banco_beneficiario,
                 cb_tercero.Id AS cuenta_beneficiario_id,
                 -- Datos de la empresa
@@ -929,6 +929,7 @@ class PaymentRequestInvoicesModel extends Model
             LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero 
                 ON cb_tercero.Tipo = 'Terceros'
                 --AND cb_tercero.Banco = 'SANTANDER'
+                AND cb_tercero.Divisa = 'NUEVO PESO MEXICANO'
                 AND cb_tercero.Activo = 1
                 AND (
                     cb_tercero.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'

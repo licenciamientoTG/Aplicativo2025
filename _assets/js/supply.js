@@ -5835,123 +5835,115 @@ function ejecutarGeneracionLayoutSantander(invoiceIds) {
     const btnOriginalHtml = btnLayout.html();
     btnLayout.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
     
-    $.ajax({
-        url: '/supply/generate_santander_layout',
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({
+    fetch('/supply/generate_santander_layout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
             invoice_ids: invoiceIds
-        }),
-        timeout: 300000, // 5 minutos
-        success: function(response) {
-            if (response.success) {
-                // ✅ DESCARGAR ARCHIVO
-                descargarLayoutSantander(response);
-            } else {
-                alertify.error(response.message || 'Error al generar layout');
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Error AJAX:', { status, error, xhr });
-            
-            let mensaje = 'Error al generar el layout';
-            if (xhr.responseJSON && xhr.responseJSON.message) {
-                mensaje = xhr.responseJSON.message;
-            } else if (status === 'timeout') {
-                mensaje = 'El proceso tardó demasiado. Intente con menos facturas.';
-            }
-            
-            alertify.error(mensaje);
-        },
-        complete: function() {
-            btnLayout.prop('disabled', false).html(btnOriginalHtml);
-        }
-    });
-}
-
-/**
- * Descarga el archivo de layout generado
- */
-function descargarLayoutSantander(response) {
-    // Descargar archivo
-    fetch(response.file_url)
-        .then(res => {
-            if (!res.ok) throw new Error('Error en la descarga');
-            return res.blob();
         })
-        .then(blob => {
-            const url = window.URL.createObjectURL(new Blob([blob]));
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = response.file_name;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            // Mostrar resumen
+    })
+    .then(response => {
+        // ✅ Si el servidor devuelve JSON, es un error
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return response.json().then(data => {
+                throw new Error(data.message || 'Error al generar layout');
+            });
+        }
+        
+        // ✅ Si es text/plain, es el archivo
+        if (!response.ok) {
+            throw new Error('Error en la respuesta del servidor');
+        }
+        
+        // Obtener el nombre del archivo del header
+        const disposition = response.headers.get('Content-Disposition');
+        let filename = 'LAYOUT_SANTANDER_' + new Date().getTime() + '.txt';
+        // if (disposition && disposition.includes('filename=')) {
+        //     const matches = disposition.match(/filename="?(.+)"?/);
+        //     if (matches && matches[1]) {
+        //         filename = matches[1];
+        //     }
+        // }
+        
+        return response.blob().then(blob => ({ blob, filename }));
+    })
+    .then(({ blob, filename }) => {
+        // ✅ DESCARGAR ARCHIVO DIRECTAMENTE
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // ✅ MOSTRAR CONFIRMACIÓN SIMPLE
+        alertify.success('Layout de Santander descargado correctamente');
+        
+        // Opcional: Mostrar modal con info
+        mostrarResumenLayoutSantander(filename, invoiceIds.length);
+        
+        // Recargar tabla
+        if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
+            $('#tabla_facturas_autorizadas').DataTable().ajax.reload(null, false);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        
+        // ✅ MANEJO DE ERRORES MEJORADO
+        let mensaje = error.message || 'Error al generar el layout';
+        
+        // Si el mensaje contiene HTML (errores de validación del servidor)
+        if (mensaje.includes('<')) {
             alertify.alert(
-                '<i class="fas fa-check-circle text-success"></i> Layout Generado',
-                `<div class="text-center">
-                    <i class="fas fa-file-download fa-3x text-success mb-3"></i>
-                    <h5>Archivo Descargado Exitosamente</h5>
-                    
-                    <div class="alert alert-success mt-3 mb-3">
-                        <strong><i class="fas fa-file-alt"></i> Archivo:</strong> ${response.file_name}<br>
-                        <strong><i class="fas fa-building"></i> Empresa:</strong> ${response.empresa_nombre}<br>
-                        <strong><i class="fas fa-credit-card"></i> Cuenta Cargo:</strong> ${response.cuenta_cargo}<br>
-                        <strong><i class="fas fa-user"></i> Titular:</strong> ${response.titular_cuenta}
-                    </div>
-                    
-                    <div class="row text-start">
-                        <div class="col-6">
-                            <div class="card bg-light">
-                                <div class="card-body p-2">
-                                    <small class="text-muted">Transferencias</small>
-                                    <h4 class="mb-0 text-primary">${response.registros_procesados}</h4>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="card bg-light">
-                                <div class="card-body p-2">
-                                    <small class="text-muted">Monto Total</small>
-                                    <h4 class="mb-0 text-success">$${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}</h4>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <hr>
-                    
-                    <div class="alert alert-info mb-0">
-                        <small>
-                            <i class="fas fa-info-circle"></i>
-                            <strong>Siguiente paso:</strong><br>
-                            Sube este archivo a Santander SuperNet para procesar los pagos.
-                        </small>
-                    </div>
-                </div>`,
-                function() {
-                    // Eliminar archivo temporal del servidor
-                    $.post('/supply/delete_layout', {
-                        filename: response.file_name
-                    });
-                    
-                    // Recargar tabla para reflejar cambios
-                    if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
-                        $('#tabla_facturas_autorizadas').DataTable().ajax.reload(null, false);
-                    }
-                }
+                '<i class="fas fa-exclamation-triangle text-danger"></i> Error al Generar Layout',
+                mensaje
             ).set({
                 maximizable: false,
                 closable: true
             });
+        } else {
+            alertify.error(mensaje);
+        }
+    })
+    .finally(() => {
+        btnLayout.prop('disabled', false).html(btnOriginalHtml);
+    });
+}
+
+/**
+ * ✅ Muestra resumen después de la descarga (opcional pero útil)
+ */
+function mostrarResumenLayoutSantander(filename, totalFacturas) {
+    alertify.alert(
+        '<i class="fas fa-check-circle text-success"></i> Layout Generado',
+        `<div class="text-center">
+            <i class="fas fa-file-download fa-3x text-success mb-3"></i>
+            <h5>Archivo Descargado Exitosamente</h5>
             
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alertify.error('Error al descargar el archivo: ' + error.message);
-        });
+            <div class="alert alert-success mt-3 mb-3" style="flex-direction: column; display: flex; font-size: 1.1em; width: 100%; padding: 15px;">
+                <strong><i class="fas fa-file-alt"></i> Archivo:</strong> ${filename}<br>
+                <strong><i class="fas fa-file-invoice"></i> Facturas procesadas:</strong> ${totalFacturas}
+            </div>
+            
+            <hr>
+            
+            <div class="alert alert-info mb-0">
+                <small>
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Siguiente paso:</strong><br>
+                    Sube este archivo a Santander SuperNet para procesar los pagos.
+                </small>
+            </div>
+        </div>`
+    ).set({
+        maximizable: false,
+        closable: true
+    });
 }
