@@ -3850,217 +3850,219 @@ function execute_authorized_payments()
             ]);
         }
     }
-
-    function generate_payment_layout(){
-        ini_set('memory_limit', '1024M');
-        header('Content-Type: application/json');
-
-        try {
-            $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-            $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
-            $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
-
-            if (!$payment_id) {
-                json_output(['success' => false, 'message' => 'ID de pago requerido']);
-                return;
-            }
-            $facturas_ids = json_decode($facturas_ids_json, true);
-            if (empty($facturas_ids)) {
-                json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
-                return;
-            }
-            $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
-            if (!$cuenta_bancaria) {
-                json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
-                return;
-            }
-            $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
-            $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
-
-            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-            if (!$payment) {
-                json_output(['success' => false, 'message' => 'Pago no encontrado']);
-                return;
-            }
-            $payment = $payment[0];
-            // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-            $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
-
-            if (!$invoices || count($invoices) === 0) {
-                json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
-                return;
-            }
-            $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
-            if (!$cuenta_cargo_data) {
-                json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
-                return;
-            }
-            $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
-            $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
-
-            $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
-
-            if (!$proveedor) {
-                json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
-                return;
-            }
-
-            // ✅ CORRECCIÓN 1: Template XLSX
-            $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
-            // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
-
-            if (!file_exists($templatePath)) {
-                error_log("ERROR: Template NO existe en: $templatePath");
-                json_output([
-                    'success' => false,
-                    'message' => 'Template no encontrado',
-                    'error' => 'Ruta: ' . $templatePath
-                ]);
-                return;
-            }
+    
 
 
-            $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
-            $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
-            $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
+    // function generate_payment_layout(){
+    //     ini_set('memory_limit', '1024M');
+    //     header('Content-Type: application/json');
 
-            $spreadsheet = $reader->load($templatePath);
-            $spreadsheet->getCalculationEngine()->disableCalculationCache();
+    //     try {
+    //         $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+    //         $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
+    //         $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
 
-            $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
-            if (!$sheet) {
-                error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
-                // Liberar memoria
-                $spreadsheet->disconnectWorksheets();
-                unset($spreadsheet);
-                json_output([
-                    'success' => false,
-                    'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
-                ]);
-                return;
-            }
+    //         if (!$payment_id) {
+    //             json_output(['success' => false, 'message' => 'ID de pago requerido']);
+    //             return;
+    //         }
+    //         $facturas_ids = json_decode($facturas_ids_json, true);
+    //         if (empty($facturas_ids)) {
+    //             json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+    //             return;
+    //         }
+    //         $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
+    //         if (!$cuenta_bancaria) {
+    //             json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
+    //             return;
+    //         }
+    //         $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
+    //         $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
 
-            $fecha_pago = date('dmY');
-            $concepto = '88400000001';
-            $fila = 8;
+    //         $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+    //         if (!$payment) {
+    //             json_output(['success' => false, 'message' => 'Pago no encontrado']);
+    //             return;
+    //         }
+    //         $payment = $payment[0];
+    //         // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+    //         $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
 
-            $facturas_procesadas = 0;
-            $total_importe = 0;
-            $warnings = [
-                'sin_cuenta' => [],
-                'sin_email' => []
-            ];
+    //         if (!$invoices || count($invoices) === 0) {
+    //             json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
+    //             return;
+    //         }
+    //         $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
+    //         if (!$cuenta_cargo_data) {
+    //             json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
+    //             return;
+    //         }
+    //         $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
+    //         $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
 
+    //         $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
 
-            foreach ($invoices as $invoice) {
-                $folio = $invoice['folio'];
-                $monto = floatval($invoice['amount']);
-                if ($monto <= 0) {
-                    continue;
-                }
+    //         if (!$proveedor) {
+    //             json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
+    //             return;
+    //         }
 
-                if (empty($cuenta_abono)) {
-                    $warnings['sin_cuenta'][] = "Folio $folio";
-                    continue;
-                }
+    //         // ✅ CORRECCIÓN 1: Template XLSX
+    //         $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
+    //         // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
 
-                if (empty($email_beneficiario)) {
-                    $warnings['sin_email'][] = "Folio $folio";
-                }
-
-                // Escribir datos
-                $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-                $sheet->setCellValue('C' . $fila, $monto);
-                $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
-                $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-                $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-                $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
-
-                $fila++;
-                $facturas_procesadas++;
-                $total_importe += $monto;
-            }
-
-
-            if ($facturas_procesadas === 0) {
-
-                $spreadsheet->disconnectWorksheets();
-                unset($spreadsheet);
-
-                json_output([
-                    'success' => false,
-                    'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
-                    'warnings' => $warnings
-                ]);
-                return;
-            }
-            $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
-            if (!is_dir($outputDir)) {
-                if (!mkdir($outputDir, 0777, true)) {
-                    json_output([
-                        'success' => false,
-                        'message' => 'No se pudo crear el directorio de salida',
-                        'error' => 'Directorio: ' . $outputDir
-                    ]);
-                    return;
-                }
-            }
-            while (ob_get_level()) {
-                ob_end_clean();
-            }
-            $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
-            $outputPath = $outputDir . $filename;
-            $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
-            $spreadsheet->getCalculationEngine()->disableCalculationCache();
-            $writer->setPreCalculateFormulas(false);
-            $writer->save($outputPath);
-
-            // Liberar memoria
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet);
-            unset($writer);
-            gc_collect_cycles();
-
-            $file_url = '/supply/download_layout/' . $filename;
+    //         if (!file_exists($templatePath)) {
+    //             error_log("ERROR: Template NO existe en: $templatePath");
+    //             json_output([
+    //                 'success' => false,
+    //                 'message' => 'Template no encontrado',
+    //                 'error' => 'Ruta: ' . $templatePath
+    //             ]);
+    //             return;
+    //         }
 
 
-            $response = [
-                'success' => true,
-                'message' => 'Archivo generado exitosamente',
-                'file_name' => $filename,
-                'file_url' => $file_url,
-                'registros_procesados' => $facturas_procesadas,
-                'total_registros' => count($invoices),
-                'total_importe' => $total_importe,
-                'cuenta_cargo' => $cuenta_cargo,
-                'banco_cargo' => $banco_cargo,
-                'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
-            ];
+    //         $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
+    //         $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
+    //         $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
+
+    //         $spreadsheet = $reader->load($templatePath);
+    //         $spreadsheet->getCalculationEngine()->disableCalculationCache();
+
+    //         $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
+    //         if (!$sheet) {
+    //             error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
+    //             // Liberar memoria
+    //             $spreadsheet->disconnectWorksheets();
+    //             unset($spreadsheet);
+    //             json_output([
+    //                 'success' => false,
+    //                 'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
+    //             ]);
+    //             return;
+    //         }
+
+    //         $fecha_pago = date('dmY');
+    //         $concepto = '88400000001';
+    //         $fila = 8;
+
+    //         $facturas_procesadas = 0;
+    //         $total_importe = 0;
+    //         $warnings = [
+    //             'sin_cuenta' => [],
+    //             'sin_email' => []
+    //         ];
 
 
-            json_output($response);
-        } catch (Exception $e) {
-            $errorMsg = $e->getMessage();
-            $errorTrace = $e->getTraceAsString();
+    //         foreach ($invoices as $invoice) {
+    //             $folio = $invoice['folio'];
+    //             $monto = floatval($invoice['amount']);
+    //             if ($monto <= 0) {
+    //                 continue;
+    //             }
+
+    //             if (empty($cuenta_abono)) {
+    //                 $warnings['sin_cuenta'][] = "Folio $folio";
+    //                 continue;
+    //             }
+
+    //             if (empty($email_beneficiario)) {
+    //                 $warnings['sin_email'][] = "Folio $folio";
+    //             }
+
+    //             // Escribir datos
+    //             $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    //             $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    //             $sheet->setCellValue('C' . $fila, $monto);
+    //             $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
+    //             $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    //             $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
+    //             $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
+
+    //             $fila++;
+    //             $facturas_procesadas++;
+    //             $total_importe += $monto;
+    //         }
 
 
-            // Liberar memoria
-            if (isset($spreadsheet)) {
-                $spreadsheet->disconnectWorksheets();
-                unset($spreadsheet);
-            }
-            gc_collect_cycles();
+    //         if ($facturas_procesadas === 0) {
 
-            // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
-            json_output([
-                'success' => false,
-                'message' => 'Error al generar layout',
-                'error' => $errorMsg,
-                'trace' => $errorTrace // ← Traza completa para debug
-            ]);
-        }
-    }
+    //             $spreadsheet->disconnectWorksheets();
+    //             unset($spreadsheet);
+
+    //             json_output([
+    //                 'success' => false,
+    //                 'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
+    //                 'warnings' => $warnings
+    //             ]);
+    //             return;
+    //         }
+    //         $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
+    //         if (!is_dir($outputDir)) {
+    //             if (!mkdir($outputDir, 0777, true)) {
+    //                 json_output([
+    //                     'success' => false,
+    //                     'message' => 'No se pudo crear el directorio de salida',
+    //                     'error' => 'Directorio: ' . $outputDir
+    //                 ]);
+    //                 return;
+    //             }
+    //         }
+    //         while (ob_get_level()) {
+    //             ob_end_clean();
+    //         }
+    //         $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
+    //         $outputPath = $outputDir . $filename;
+    //         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
+    //         $spreadsheet->getCalculationEngine()->disableCalculationCache();
+    //         $writer->setPreCalculateFormulas(false);
+    //         $writer->save($outputPath);
+
+    //         // Liberar memoria
+    //         $spreadsheet->disconnectWorksheets();
+    //         unset($spreadsheet);
+    //         unset($writer);
+    //         gc_collect_cycles();
+
+    //         $file_url = '/supply/download_layout/' . $filename;
+
+
+    //         $response = [
+    //             'success' => true,
+    //             'message' => 'Archivo generado exitosamente',
+    //             'file_name' => $filename,
+    //             'file_url' => $file_url,
+    //             'registros_procesados' => $facturas_procesadas,
+    //             'total_registros' => count($invoices),
+    //             'total_importe' => $total_importe,
+    //             'cuenta_cargo' => $cuenta_cargo,
+    //             'banco_cargo' => $banco_cargo,
+    //             'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
+    //         ];
+
+
+    //         json_output($response);
+    //     } catch (Exception $e) {
+    //         $errorMsg = $e->getMessage();
+    //         $errorTrace = $e->getTraceAsString();
+
+
+    //         // Liberar memoria
+    //         if (isset($spreadsheet)) {
+    //             $spreadsheet->disconnectWorksheets();
+    //             unset($spreadsheet);
+    //         }
+    //         gc_collect_cycles();
+
+    //         // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
+    //         json_output([
+    //             'success' => false,
+    //             'message' => 'Error al generar layout',
+    //             'error' => $errorMsg,
+    //             'trace' => $errorTrace // ← Traza completa para debug
+    //         ]);
+    //     }
+    // }
 
     function download_layout($filename){
         // ✅ Sanitizar filename (seguridad básica)
@@ -4905,57 +4907,237 @@ function execute_authorized_payments()
     }
 
     /**
- * Obtener desglose de facturas por IDs
- */
-function get_invoices_detail()
-{
-    header('Content-Type: application/json');
-    
-    try {
-        $invoice_ids = $_POST['invoice_ids'] ?? '';
-        
-        if (empty($invoice_ids)) {
-            json_output(['success' => false, 'message' => 'IDs de facturas requeridos']);
-            return;
+     * Obtener desglose de facturas por IDs
+     */
+    function get_invoices_detail(){
+        header('Content-Type: application/json');
+        try {
+            $invoice_ids = $_POST['invoice_ids'] ?? '';
+            if (empty($invoice_ids)) {
+                json_output(['success' => false, 'message' => 'IDs de facturas requeridos']);
+                return;
+            }
+
+            // Obtener facturas individuales
+            $invoices = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids($invoice_ids);
+
+            if (!$invoices) {
+                json_output(['success' => false, 'message' => 'No se encontraron facturas']);
+                return;
+            }
+
+            $data = [];
+            foreach ($invoices as $invoice) {
+                $data[] = [
+                    'id' => $invoice['id'],
+                    'payment_request_id' => $invoice['payment_request_id'],
+                    'folio' => $invoice['folio'],
+                    'invoice_number' => $invoice['invoice_number'],
+                    'estacion_nombre' => $invoice['estacion_nombre'] ?? 'N/A',
+                    'amount' => $invoice['amount'],
+                    'paid_amount' => $invoice['paid_amount'] ?? 0,
+                    'authorized_amount' => $invoice['authorized_amount'],
+                    'saldo' => $invoice['saldo'],
+                    'expiration_date' => $invoice['expiration_date'],
+                    'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
+                    'authorized_at' => $invoice['authorized_at'],
+                    'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
+                    'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
+                    'uuid' => $invoice['uuid']
+                ];
+            }
+
+            json_output(['success' => true, 'data' => $data]);
+
+        } catch (Exception $e) {
+            error_log("Error en get_invoices_detail: " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
-        
-        // Obtener facturas individuales
-        $invoices = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids($invoice_ids);
-        
-        if (!$invoices) {
-            json_output(['success' => false, 'message' => 'No se encontraron facturas']);
-            return;
-        }
-        
-        $data = [];
-        foreach ($invoices as $invoice) {
-            $data[] = [
-                'id' => $invoice['id'],
-                'payment_request_id' => $invoice['payment_request_id'],
-                'folio' => $invoice['folio'],
-                'invoice_number' => $invoice['invoice_number'],
-                'estacion_nombre' => $invoice['estacion_nombre'] ?? 'N/A',
-                'amount' => $invoice['amount'],
-                'paid_amount' => $invoice['paid_amount'] ?? 0,
-                'authorized_amount' => $invoice['authorized_amount'],
-                'saldo' => $invoice['saldo'],
-                'expiration_date' => $invoice['expiration_date'],
-                'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
-                'authorized_at' => $invoice['authorized_at'],
-                'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
-                'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
-                'uuid' => $invoice['uuid']
-            ];
-        }
-        
-        json_output(['success' => true, 'data' => $data]);
-        
-    } catch (Exception $e) {
-        error_log("Error en get_invoices_detail: " . $e->getMessage());
-        json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
     }
-}
+
+    public function generate_santander_layout() {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $invoice_ids = $input['invoice_ids'] ?? [];
+
+            if (empty($invoice_ids)) {
+                return $this->responderJSON(false, 'No se proporcionaron facturas');
+            }
+
+            // ✅ OBTENER DATOS DE FACTURAS CON CUENTAS (ya incluye cuenta_cargo por factura)
+            $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_para_layout($invoice_ids);
+            if (!$facturas_data) {
+                return $this->responderJSON(false, 'No se encontraron facturas válidas');
+            }
+
+            // ✅ VALIDAR QUE CADA FACTURA TENGA:
+            // 1. Cuenta de cargo (empresa)
+            // 2. CLABE beneficiario (proveedor)
+            $sin_cuenta_cargo = [];
+            $sin_clabe = [];
+            foreach ($facturas_data as $factura) {
+                // Validar cuenta de cargo (cuenta PROPIA de la empresa)
+                if (!$factura['cuenta_cargo_empresa'] || strlen($factura['cuenta_cargo_empresa']) != 11) {
+                    $sin_cuenta_cargo[] = "Empresa: {$factura['empresa_nombre']} (emp_cod: {$factura['empresa_cod']})";
+                }
+                // Validar CLABE beneficiario (cuenta TERCERO del proveedor)
+                if (!$factura['clabe_beneficiario'] || strlen($factura['clabe_beneficiario']) != 18) {
+                    $sin_clabe[] = "Folio {$factura['folio']} - {$factura['proveedor_nombre']}";
+                }
+            }
+
+            // ✅ REPORTAR ERRORES DETALLADOS
+            if (!empty($sin_cuenta_cargo) || !empty($sin_clabe)) {
+                $mensaje = '<strong>No se puede generar el layout:</strong><br><br>';
+                if (!empty($sin_cuenta_cargo)) {
+                    $mensaje .= '<strong class="text-danger">❌ Empresas sin cuenta Santander PROPIA:</strong><br>';
+                    $mensaje .= implode('<br>', array_unique($sin_cuenta_cargo)) . '<br><br>';
+                }
+                if (!empty($sin_clabe)) {
+                    $mensaje .= '<strong class="text-warning">⚠️ Proveedores sin cuenta TERCERO:</strong><br>';
+                    $mensaje .= implode('<br>', array_unique($sin_clabe)) . '<br><br>';
+                }
+                
+                $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
+                
+                return $this->responderJSON(false, $mensaje);
+            }
+
+            // ✅ GENERAR LAYOUT (ahora cada factura usa su propia cuenta de cargo)
+            $layout_content = $this->generar_layout_santander_multi_empresa(
+                $facturas_data,
+                'SUSANA.PANTOJA@TOTALGAS.COM'
+            );
+
+            // ✅ OBTENER EMPRESAS ÚNICAS (para el nombre del archivo)
+            $empresas_unicas = array_unique(array_column($facturas_data, 'empresa_nombre'));
+            $empresa_label = count($empresas_unicas) === 1 
+                ? $empresas_unicas[0] 
+                : 'MULTI_EMPRESAS';
+
+            // ✅ GUARDAR ARCHIVO
+            $filename = 'LAYOUT_SANTANDER_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
+            $filepath = APPROOT . '/temp/' . $filename;
+
+            if (!is_dir(APPROOT . '/temp')) {
+                mkdir(APPROOT . '/temp', 0777, true);
+            }
+
+            file_put_contents($filepath, $layout_content);
+
+            // ✅ RESPUESTA
+            return $this->responderJSON(true, 'Layout generado correctamente', [
+                'file_url' => URLROOT . '/temp/' . $filename,
+                'file_name' => $filename,
+                'registros_procesados' => count($facturas_data),
+                'total_importe' => array_sum(array_column($facturas_data, 'monto_autorizado')),
+                'cuenta_cargo' => count($empresas_unicas) === 1 
+                    ? $facturas_data[0]['cuenta_cargo_empresa'] 
+                    : 'Múltiples cuentas',
+                'titular_cuenta' => count($empresas_unicas) === 1 
+                    ? $facturas_data[0]['titular_cargo'] 
+                    : implode(', ', $empresas_unicas),
+                'empresa_nombre' => $empresa_label,
+                'empresas_involucradas' => $empresas_unicas
+            ]);
+
+        } catch (Exception $e) {
+            error_log('Error en generate_santander_layout: ' . $e->getMessage());
+            return $this->responderJSON(false, 'Error al generar layout: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * ✅ Genera layout Santander con MÚLTIPLES EMPRESAS
+     * Cada línea LTX05 usa la cuenta de cargo de SU empresa
+     */
+    private function generar_layout_santander_multi_empresa($facturas, $email_notificacion) {
+        $lineas = [];
+        $total_monto = 0;
+        $total_registros = 0;
+        
+        // ✅ Usar la PRIMERA cuenta de cargo para el LTX07 (o la más frecuente)
+        $cuenta_ordenante_principal = $facturas[0]['cuenta_cargo_empresa'];
+        $numero_control = date('ymdHis');
+
+        foreach ($facturas as $factura) {
+            $monto_autorizado = floatval($factura['monto_autorizado']);
+            
+            // ✅ USAR LA CUENTA DE CARGO DE ESTA FACTURA ESPECÍFICA
+            $cuenta_cargo_esta_factura = $factura['cuenta_cargo_empresa'];
+
+            // Formatear monto (23 dígitos con prefijo 1234)
+            $monto_sin_decimales = intval($monto_autorizado * 100); // Convertir a centavos
+            $monto_str = str_pad($monto_sin_decimales, 19, '0', STR_PAD_LEFT);
+
+            // Limpiar y formatear textos
+            $nombre_beneficiario = $this->limpiar_texto_layout(
+                $factura['titular_beneficiario'] ?: $factura['proveedor_nombre'], 
+                40
+            );
+
+            $concepto = $this->limpiar_texto_layout(
+                $factura['invoice_number'] . ' ' . $factura['proveedor_nombre'],
+                40
+            );
+
+            $referencia = $this->limpiar_texto_layout($factura['invoice_number'], 5);
+
+            // ✅ Construir línea LTX05 con la cuenta de cargo ESPECÍFICA de esta empresa
+            $linea = sprintf(
+                "LTX05 %-11s       %-18s %-40s    1234%s  %-5s %-40s 00 00  %-28s",
+                $cuenta_cargo_esta_factura,      // ← Cuenta de la empresa de ESTA factura
+                $factura['clabe_beneficiario'],  // CLABE del proveedor
+                $nombre_beneficiario,
+                $monto_str,
+                $referencia,
+                $concepto,
+                substr($email_notificacion, 0, 28)
+            );
+
+            $lineas[] = str_pad(substr($linea, 0, 240), 240);
+
+            $total_monto += $monto_autorizado;
+            $total_registros++;
+        }
+
+        // ✅ Línea LTX07 (totales) - Usa la cuenta principal
+        $monto_total_centavos = intval($total_monto * 100);
+        $monto_total_str = str_pad($monto_total_centavos, 19, '0', STR_PAD_LEFT);
+        
+        $registros_totales = str_pad($total_registros, 8, '0', STR_PAD_LEFT);
+        $fecha_aplicacion = date('dmY'); // DDMMYYYY
+
+        $footer = sprintf(
+            "LTX07 %-11s       %-11s        %s%s                             %s%-28s",
+            $cuenta_ordenante_principal,
+            $numero_control,
+            $monto_total_str,
+            $registros_totales,
+            $fecha_aplicacion,
+            substr($email_notificacion, 0, 28)
+        );
+
+        $lineas[] = str_pad(substr($footer, 0, 240), 240);
+
+        return implode("\r\n", $lineas);
+    }
+
+    /**
+     * Limpia texto para layout bancario
+     */
+    private function limpiar_texto_layout($texto, $longitud_maxima) {
+        // Remover acentos
+        $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+        
+        // Remover caracteres especiales, solo permitir A-Z, 0-9 y espacios
+        $texto = preg_replace('/[^A-Z0-9 ]/', '', strtoupper($texto));
+        
+        // Limitar longitud y rellenar con espacios
+        return str_pad(substr($texto, 0, $longitud_maxima), $longitud_maxima);
+    }
 
 
-    
+
+
 }

@@ -2589,6 +2589,7 @@ function showAlert(message, type = 'info') {
 
 let invoice_puchase_table = null;
 async function invoice_puchase_table_function(){
+    $('#contenedor_pago_normal').addClass('is-loading');
     var fromDate = document.getElementById('from1').value;
     var untilDate = document.getElementById('until1').value;
     var codgas = document.getElementById('station_id1').value;
@@ -2618,6 +2619,8 @@ async function invoice_puchase_table_function(){
 
         invoice_puchase_table.ajax.reload(function() {
             $('.table-responsive').removeClass('loading');
+            $('#contenedor_pago_normal').removeClass('is-loading');
+
         }, false);
         return;
     }
@@ -2644,6 +2647,7 @@ async function invoice_puchase_table_function(){
             error: function() {
                 $('#invoice_puchase_table').waitMe('hide');
                 $('.table-responsive').removeClass('loading');
+                $('#contenedor_pago_normal').removeClass('is-loading');
 
                 alertify.myAlert(
                     `<div class="container text-center text-danger">
@@ -2657,9 +2661,13 @@ async function invoice_puchase_table_function(){
             },
             beforeSend: function() {
                 $('.table-responsive').addClass('loading');
+                $('#stats-container').addClass('loading');
             },
             dataSrc: function(json) {
                 $('.table-responsive').removeClass('loading');
+                $('#stats-container').removeClass('loading');
+                $('#contenedor_pago_normal').removeClass('is-loading');
+
                 
                 if (json.error) {
                     alertify.error(json.message || 'Error en la respuesta');
@@ -2733,6 +2741,7 @@ async function invoice_puchase_table_function(){
                     });
             }
             $('.table-responsive').removeClass('loading');
+$('#contenedor_pago_normal').removeClass('is-loading');
             // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
             console.log('🎯 Filtros agregados:', $('#invoice_puchase_table thead tr.filter').length);
 

@@ -123,4 +123,169 @@ class CuentasBancariasModel extends Model {
 
         return $result ?: false;
     }
+
+    public function get_cuenta_cargo_santander($emp_cod) {
+        $query = "
+            SELECT TOP 1
+                Id,
+                CuentaLocal,
+                Descripcion,
+                TipoCuenta,
+                Banco,
+                TitularCuenta,
+                emp_cod
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE emp_cod = ?
+            AND Tipo = 'Propias'
+            AND Banco = 'SANTANDER'
+            AND Activo = 1
+            ORDER BY FechaAlta DESC
+        ";
+        
+        $params = [$emp_cod];
+        $result = $this->sql->select($query, $params);
+        
+        return $result ? $result[0] : false;
+    }
+
+    /**
+     * ✅ Obtiene la cuenta TERCERO (abono/beneficiario) de un proveedor
+     * Busca por coincidencia en el nombre del titular
+     * @param string $proveedor_nombre Nombre del proveedor
+     * @param string $proveedor_rfc RFC del proveedor (opcional)
+     * @return array|false Datos de la cuenta o false si no existe
+     */
+    public function get_cuenta_beneficiario_by_proveedor($proveedor_nombre, $proveedor_rfc = null) {
+        // Limpiar y extraer primera palabra del nombre del proveedor
+        $baseName = strtoupper(trim($proveedor_nombre));
+        $baseName = str_replace('.', '', $baseName);
+        $palabras = preg_split('/\s+/', $baseName);
+        $primeraPalabra = $palabras[0];
+        
+        $query = "
+            SELECT TOP 1
+                Id,
+                CuentaLocal AS clabe_beneficiario,
+                Descripcion,
+                TitularCuenta AS titular_beneficiario,
+                Banco,
+                TipoCuenta
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE Tipo = 'Terceros'
+            AND Banco = 'SANTANDER'
+            AND Activo = 1
+            AND (
+                -- Buscar por nombre
+                TitularCuenta LIKE ?
+                OR Descripcion LIKE ?
+                " . ($proveedor_rfc ? "OR TitularCuenta LIKE ?" : "") . "
+            )
+            ORDER BY 
+                CASE 
+                    WHEN TitularCuenta LIKE ? THEN 1  -- Coincidencia exacta con primera palabra
+                    WHEN Descripcion LIKE ? THEN 2    -- Coincidencia en descripción
+                    ELSE 3
+                END,
+                FechaAlta DESC
+        ";
+        
+        // Construir parámetros
+        $params = [
+            '%' . $primeraPalabra . '%',  // TitularCuenta LIKE
+            '%' . $primeraPalabra . '%'   // Descripcion LIKE
+        ];
+        
+        if ($proveedor_rfc) {
+            $params[] = '%' . $proveedor_rfc . '%';  // RFC en TitularCuenta
+        }
+        
+        $params[] = $primeraPalabra . '%';  // ORDER BY primera palabra exacta
+        $params[] = $primeraPalabra . '%';  // ORDER BY descripción
+        
+        $result = $this->sql->select($query, $params);
+        
+        return $result ? $result[0] : false;
+    }
+
+    /**
+     * ✅ Obtiene todas las cuentas Santander PROPIAS activas
+     * @return array|false
+     */
+    public function get_cuentas_santander_propias() {
+        $query = "
+            SELECT 
+                emp_cod,
+                CuentaLocal,
+                TitularCuenta,
+                Descripcion
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE Tipo = 'Propias'
+            AND Banco = 'SANTANDER'
+            AND Activo = 1
+            ORDER BY emp_cod
+        ";
+        
+        return $this->sql->select($query) ?: false;
+    }
+
+    /**
+     * ✅ Obtiene todas las cuentas Santander TERCEROS activas
+     * @return array|false
+     */
+    public function get_cuentas_santander_terceros() {
+        $query = "
+            SELECT 
+                Id,
+                CuentaLocal AS clabe,
+                TitularCuenta AS titular,
+                Descripcion
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE Tipo = 'Terceros'
+            AND Banco = 'SANTANDER'
+            AND Activo = 1
+            ORDER BY TitularCuenta
+        ";
+        
+        return $this->sql->select($query) ?: false;
+    }
+
+    /**
+     * ✅ Valida que una empresa tenga cuenta Santander configurada
+     * @param int $emp_cod
+     * @return bool
+     */
+    public function tiene_cuenta_santander($emp_cod) {
+        $cuenta = $this->get_cuenta_cargo_santander($emp_cod);
+        return $cuenta !== false;
+    }
+
+    /**
+     * ✅ Búsqueda flexible de cuenta beneficiario (para debugging)
+     * @param string $search Término de búsqueda
+     * @return array
+     */
+    public function buscar_cuenta_tercero($search) {
+        $query = "
+            SELECT 
+                Id,
+                CuentaLocal,
+                TitularCuenta,
+                Descripcion,
+                FechaAlta
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE Tipo = 'Terceros'
+            AND Banco = 'SANTANDER'
+            AND Activo = 1
+            AND (
+                TitularCuenta LIKE ?
+                OR Descripcion LIKE ?
+                OR CuentaLocal LIKE ?
+            )
+            ORDER BY TitularCuenta
+        ";
+        
+        $params = ['%' . $search . '%', '%' . $search . '%', '%' . $search . '%'];
+        
+        return $this->sql->select($query, $params) ?: [];
+    }
 }

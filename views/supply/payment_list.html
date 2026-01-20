@@ -271,7 +271,7 @@ table.dataTable thead th {
                     <div class="col-md-3">
                         <button class="btn btn-sm btn-success w-100" 
                                 id="btnGenerarLayout" 
-                                onclick="generarLayoutPago()" 
+                                onclick="validarYGenerarLayout()" 
                                 disabled>
                             <i class="fas fa-file-excel"></i> Generar Layout de Pago
                         </button>
@@ -470,11 +470,7 @@ $(document).ready(function() {
     loadPaymentList();
     loadAnticiposList();
     loadAuthorizedPendingInvoices();
-});
-
-$(document).ready(function() {
-    // Inicializar tooltips cuando se dibuja la tabla
-    $('#payment_list_table').on('draw.dt', function() {
+   $('#payment_list_table').on('draw.dt', function() {
         $('[data-bs-toggle="tooltip"]').tooltip({
             html: true,
             placement: 'top'
