@@ -126,7 +126,7 @@ table.dataTable thead th {
                 <i class="fas fa-hand-holding-usd"></i> Lista de Pagos Programados
             </div>
             <div class="card-body table-responsive">
-                <table id="payment_list_table" class="table table-hover table-sm w-100">
+                <table id="payment_list_table" class="table table-hover table-sm w-100  table-striped  dataTable">
                     <thead>
                         <tr>
                             <th>ID</th>
@@ -269,11 +269,12 @@ table.dataTable thead th {
                         </button>
                     </div>
                     <div class="col-md-3">
-                        <button class="btn btn-sm btn-success w-100" 
-                                id="btnGenerarLayout" 
-                                onclick="validarYGenerarLayout()" 
-                                disabled>
+                        <button class="btn btn-sm btn-success w-100" id="btnGenerarLayout" onclick="validarYGenerarLayout()" disabled>
                             <i class="fas fa-file-excel"></i> Generar Layout de Pago
+                        </button>
+                        <button type="button" class="btn btn-success" id="btnRegistrarPago" 
+                                onclick="abrirModalRegistroPago()">
+                            <i class="fas fa-check-circle"></i> Registrar Pago
                         </button>
                     </div>
                 </div>

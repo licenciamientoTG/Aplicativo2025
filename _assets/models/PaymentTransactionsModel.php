@@ -29,17 +29,8 @@ class PaymentTransactionsModel extends Model
     const STATUS_CONFIRMED = 2;
     const STATUS_REJECTED = 3;
 
-    public function process_bulk_payment(
-        $payment_request_id,
-        $facturas,
-        $user_id,
-        $fecha_pago,
-        $notes = null,
-        $payment_reference = null,
-        $payment_method = 'TRANSFERENCIA'
-    ) : array {
+    public function process_bulk_payment($facturas,$user_id,$fecha_pago,$notes = null,$payment_reference = null,$payment_method = 'TRANSFERENCIA') : array {
         $this->sql->beginTransaction();
-
         try {
             $total_pagado = 0;
             $facturas_procesadas = 0;
@@ -49,6 +40,8 @@ class PaymentTransactionsModel extends Model
                 $invoice_id = intval($factura['invoice_id']);
                 $monto_pagar = floatval($factura['monto_pagar']);
                 $folio = $factura['folio'];
+                $payment_request_id = intval($factura['payment_request_id']); // ✅ Obtener de cada factura
+
 
                 if ($monto_pagar <= 0) {
                     continue;
@@ -107,7 +100,7 @@ class PaymentTransactionsModel extends Model
             }
 
             // 6. Verificar si todas las facturas están pagadas
-            $all_paid = $this->check_all_invoices_paid($payment_request_id);
+            // $all_paid = $this->check_all_invoices_paid($payment_request_id);
 
             // Commit
             $this->sql->commit();
@@ -117,7 +110,7 @@ class PaymentTransactionsModel extends Model
                 'message' => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
                 'total_pagado' => $total_pagado,
                 'facturas_procesadas' => $facturas_procesadas,
-                'all_paid' => $all_paid
+                // 'all_paid' => $all_paid
             ];
 
         } catch (Exception $e) {

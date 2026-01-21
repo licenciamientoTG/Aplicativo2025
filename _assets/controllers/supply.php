@@ -3401,14 +3401,9 @@ class Supply{
         };
     }
 
-/**
- * Autorizar facturas específicas para su posterior pago
- * NO ejecuta el pago, solo marca las facturas como autorizadas
- */
-function authorize_payment_execution()
-{
+    function authorize_payment_execution(){
     header('Content-Type: application/json');
-    
+
     try {
         // Obtener datos JSON
         $json = file_get_contents('php://input');
@@ -3494,137 +3489,113 @@ function authorize_payment_execution()
         error_log("Stack trace: " . $e->getTraceAsString());
         json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
     }
-}
+    }
 
-/**
- * Ejecutar pago de facturas PREVIAMENTE AUTORIZADAS
- * Este método procesa todas las facturas autorizadas pendientes de pago
- */
-function execute_authorized_payments()
-{
-    header('Content-Type: application/json');
-    
-    try {
-        // Obtener datos JSON
-        $json = file_get_contents('php://input');
-        $data = json_decode($json, true);
-        
-        if ($data === null) {
-            json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
-            return;
-        }
-        
-        $payment_id = $data['payment_id'] ?? null;
-        $observaciones = $data['observaciones'] ?? '';
-        $referencia = $data['referencia'] ?? '';
-        $fecha_pago = $data['fecha_pago'] ?? date('Y-m-d');
-        $user_id = $_SESSION['tg_user']['Id'] ?? null;
 
-        // ========================================
-        // VALIDACIONES
-        // ========================================
-        
-        if (!$payment_id || !$user_id) {
-            json_output(['success' => false, 'message' => 'Datos incompletos']);
-            return;
-        }
+    function execute_authorized_payments(){
+        header('Content-Type: application/json');
+        try {
+            $invoice_ids = json_decode($_POST['invoice_ids'] ?? '[]', true);
+            $fecha_pago = $_POST['fecha_pago'] ?? null;
+            $referencia_bancaria = $_POST['referencia_bancaria'] ?? null;
+            $observaciones = $_POST['observaciones'] ?? '';
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
 
-        // Verificar que el pago existe y está autorizado
-        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-        
-        if (!$payment) {
-            json_output(['success' => false, 'message' => 'Solicitud de pago no encontrada']);
-            return;
-        }
 
-        if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-            json_output(['success' => false, 'message' => 'El pago debe estar completamente autorizado']);
-            return;
-        }
-
-        // Verificar permiso de Tesorería (68)
-        if (!authorized(68)) {
-            json_output(['success' => false, 'message' => 'Solo Tesorería puede ejecutar pagos']);
-            return;
-        }
-
-        // ========================================
-        // OBTENER FACTURAS AUTORIZADAS USANDO EL MODELO
-        // ========================================
-        
-        $facturas_autorizadas = $this->paymentRequestInvoicesModel->get_authorized_pending_payment($payment_id);
-
-        if (!$facturas_autorizadas || empty($facturas_autorizadas)) {
-            json_output(['success' => false, 'message' => 'No hay facturas autorizadas pendientes de pago']);
-            return;
-        }
-
-        // ========================================
-        // PREPARAR DATOS PARA PROCESAR
-        // ========================================
-        
-        $facturas_procesar = [];
-        $total_a_pagar = 0;
-        
-        foreach ($facturas_autorizadas as $factura) {
-            $facturas_procesar[] = [
-                'invoice_id' => $factura['id'],
-                'folio' => $factura['folio'],
-                'monto_pagar' => $factura['authorized_amount'], // ✅ Usar monto autorizado
-                'saldo_anterior' => $factura['saldo']
-            ];
+            if (empty($invoice_ids)) {
+                return $this->responderJSON(false, 'No se proporcionaron facturas');
+            }
+            if (!$fecha_pago || !$referencia_bancaria) {
+                return $this->responderJSON(false, 'Faltan datos obligatorios: fecha y referencia bancaria');
+            }
             
-            $total_a_pagar += floatval($factura['authorized_amount']);
-        }
-
-        // ========================================
-        // EJECUTAR PAGO USANDO EL MODELO DE TRANSACCIONES
-        // ========================================
-        
-        $result = $this->paymentTransactionsModel->process_bulk_payment(
-            $payment_id,
-            $facturas_procesar,
-            $user_id,
-            $fecha_pago,
-            $observaciones,
-            $referencia
-        );
-
-        // ========================================
-        // PROCESAR RESULTADO
-        // ========================================
-        
-        if ($result['success']) {
-            // Actualizar estado del pago si todas las facturas están completamente pagadas
-            if ($result['all_paid']) {
-                $this->PaymentRequestsModel->update_request_status(
-                    $payment_id, 
-                    PaymentRequestsModel::STATUS_PAID
-                );
+            if (!$user_id) {
+                return $this->responderJSON(false, 'Usuario no identificado');
+            }
+            if (!authorized(68)) {
+                return $this->responderJSON(false, 'Solo Tesorería puede ejecutar pagos');
             }
 
-            json_output([
-                'success' => true,
-                'message' => $result['message'],
-                'facturas_procesadas' => $result['facturas_procesadas'] ?? count($facturas_procesar),
-                'total_pagado' => $result['total_pagado'] ?? $total_a_pagar,
-                'all_paid' => $result['all_paid'] ?? false
-            ]);
-        } else {
-            json_output(['success' => false, 'message' => $result['message']]);
+            // $facturas_autorizadas = $this->paymentRequestInvoicesModel->get_authorized_pending_payment($payment_id);
+            $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_autorizadas_by_ids($invoice_ids);
+
+
+            if (!$facturas_data || empty($facturas_data)) {
+                json_output(['success' => false, 'message' => 'No hay facturas autorizadas pendientes de pago']);
+                return;
+            }
+
+            // ✅ PREPARAR DATOS PARA PROCESAR (formato que espera el modelo)
+            $facturas_procesar = [];
+            $payment_request_ids_unicos = [];
+            foreach ($facturas_data as $factura) {
+                 if ($factura['payment_authorized'] != 1) {
+                    return $this->responderJSON(false, "La factura {$factura['folio']} no está autorizada");
+                }
+                $facturas_procesar[] = [
+                    'invoice_id' => $factura['id'],
+                    'folio' => $factura['folio'],
+                    'monto_pagar' => $factura['authorized_amount'], // ✅ Usar monto autorizado
+                    'saldo_anterior' => $factura['saldo'],
+                    'payment_request_id' => $factura['payment_request_id'] // ✅ Incluir para el proceso
+
+                ];
+                
+                $payment_request_ids_unicos[$factura['payment_request_id']] = true;
+            }
+            // ✅ EJECUTAR PAGO MASIVO=====================================
+
+            $result = $this->paymentTransactionsModel->process_bulk_payment(
+                $facturas_procesar,
+                $user_id,
+                $fecha_pago,
+                $observaciones,
+                $referencia_bancaria,
+                'TRANSFERENCIA'
+            );
+
+            // ========================================
+            // PROCESAR RESULTADO
+            // ========================================
+            
+           // ✅ PROCESAR RESULTADO
+            if ($result['success']) {
+                // ✅ REVISAR CADA PAYMENT_REQUEST_ID ÚNICO
+                $solicitudes_completadas = 0;
+                foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
+                    $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
+                    
+                    if ($all_paid) {
+                        $this->PaymentRequestsModel->update_request_status(
+                            $payment_request_id, 
+                            PaymentRequestsModel::STATUS_PAID,
+                            "Pago ejecutado el " . date('d/m/Y', strtotime($fecha_pago)) . " - Ref: $referencia_bancaria"
+                        );
+                        $solicitudes_completadas++;
+                    }
+                }
+
+                return $this->responderJSON(true, $result['message'], [
+                    'facturas_procesadas' => $result['facturas_procesadas'],
+                    'total_pagado' => $result['total_pagado'],
+                    'fecha_pago' => date('d/m/Y', strtotime($fecha_pago)),
+                    'referencia_bancaria' => $referencia_bancaria,
+                    'solicitudes_completadas' => $solicitudes_completadas,
+                    'total_solicitudes' => count($payment_request_ids_unicos)
+                ]);
+            } else {
+                return $this->responderJSON(false, $result['message']);
+            }
+
+        } catch (Exception $e) {
+            error_log("Error en execute_authorized_payments: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
         }
-
-    } catch (Exception $e) {
-        error_log("Error en execute_authorized_payments: " . $e->getMessage());
-        error_log("Stack trace: " . $e->getTraceAsString());
-        json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
     }
-}
 
 
-    /**
-     * Procesar pago de facturas (con pagos parciales)
-     */
+
     // function process_payment()
     // {
     //     header('Content-Type: application/json');
@@ -3850,219 +3821,6 @@ function execute_authorized_payments()
             ]);
         }
     }
-    
-
-
-    // function generate_payment_layout(){
-    //     ini_set('memory_limit', '1024M');
-    //     header('Content-Type: application/json');
-
-    //     try {
-    //         $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
-    //         $cuenta_bancaria_id = isset($_POST['cuenta_bancaria_id']) ? intval($_POST['cuenta_bancaria_id']) : 0;
-    //         $facturas_ids_json = isset($_POST['facturas_ids']) ? $_POST['facturas_ids'] : '[]';
-
-    //         if (!$payment_id) {
-    //             json_output(['success' => false, 'message' => 'ID de pago requerido']);
-    //             return;
-    //         }
-    //         $facturas_ids = json_decode($facturas_ids_json, true);
-    //         if (empty($facturas_ids)) {
-    //             json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
-    //             return;
-    //         }
-    //         $cuenta_bancaria = $this->CuentasBancariasModel->get_by_id($cuenta_bancaria_id);
-    //         if (!$cuenta_bancaria) {
-    //             json_output(['success' => false, 'message' => 'Cuenta bancaria no encontrada']);
-    //             return;
-    //         }
-    //         $cuenta_abono = $cuenta_bancaria['CuentaLocal'];
-    //         $email_beneficiario = $cuenta_bancaria['EmailCuenta'] ?? 'susana.pantoja@totalgas.com';
-
-    //         $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-    //         if (!$payment) {
-    //             json_output(['success' => false, 'message' => 'Pago no encontrado']);
-    //             return;
-    //         }
-    //         $payment = $payment[0];
-    //         // $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-    //         $invoices = $this->paymentRequestInvoicesModel->get_by_ids($facturas_ids);
-
-    //         if (!$invoices || count($invoices) === 0) {
-    //             json_output(['success' => false, 'message' => 'No hay facturas en este pago']);
-    //             return;
-    //         }
-    //         $cuenta_cargo_data = $this->CuentasBancariasModel->get_by_name('GASOMEX PRINCIPAL');
-    //         if (!$cuenta_cargo_data) {
-    //             json_output(['success' => false, 'message' => 'No se encontró la cuenta de cargo (GASOMEX PRINCIPAL)']);
-    //             return;
-    //         }
-    //         $cuenta_cargo = $cuenta_cargo_data['CuentaLocal'];
-    //         $banco_cargo = $cuenta_cargo_data['Banco'] ?? 'SANTANDER';
-
-    //         $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
-
-    //         if (!$proveedor) {
-    //             json_output(['success' => false, 'message' => 'Proveedor no encontrado']);
-    //             return;
-    //         }
-
-    //         // ✅ CORRECCIÓN 1: Template XLSX
-    //         $templatePath = 'C:\inetpub\wwwroot\TG_PHP\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xls';
-    //         // $templatePath = 'C:\Users\alejandro.martinez\Desktop\codigo\AplicativoPhp\_assets\includes\documents\TRANSFERENCIAS_MIXTAS_NUEVA.xlsx';
-
-    //         if (!file_exists($templatePath)) {
-    //             error_log("ERROR: Template NO existe en: $templatePath");
-    //             json_output([
-    //                 'success' => false,
-    //                 'message' => 'Template no encontrado',
-    //                 'error' => 'Ruta: ' . $templatePath
-    //             ]);
-    //             return;
-    //         }
-
-
-    //         $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Xls');
-    //         $reader->setReadDataOnly(false); // ← DEBE SER FALSE PARA ESCRIBIR
-    //         $reader->setLoadSheetsOnly(['Santander sin comp fiscal']);
-
-    //         $spreadsheet = $reader->load($templatePath);
-    //         $spreadsheet->getCalculationEngine()->disableCalculationCache();
-
-    //         $sheet = $spreadsheet->getSheetByName('Santander sin comp fiscal');
-    //         if (!$sheet) {
-    //             error_log("ERROR: Hoja 'Santander sin comp fiscal' NO encontrada");
-    //             // Liberar memoria
-    //             $spreadsheet->disconnectWorksheets();
-    //             unset($spreadsheet);
-    //             json_output([
-    //                 'success' => false,
-    //                 'message' => 'Hoja "Santander sin comp fiscal" no encontrada en el template'
-    //             ]);
-    //             return;
-    //         }
-
-    //         $fecha_pago = date('dmY');
-    //         $concepto = '88400000001';
-    //         $fila = 8;
-
-    //         $facturas_procesadas = 0;
-    //         $total_importe = 0;
-    //         $warnings = [
-    //             'sin_cuenta' => [],
-    //             'sin_email' => []
-    //         ];
-
-
-    //         foreach ($invoices as $invoice) {
-    //             $folio = $invoice['folio'];
-    //             $monto = floatval($invoice['amount']);
-    //             if ($monto <= 0) {
-    //                 continue;
-    //             }
-
-    //             if (empty($cuenta_abono)) {
-    //                 $warnings['sin_cuenta'][] = "Folio $folio";
-    //                 continue;
-    //             }
-
-    //             if (empty($email_beneficiario)) {
-    //                 $warnings['sin_email'][] = "Folio $folio";
-    //             }
-
-    //             // Escribir datos
-    //             $sheet->setCellValueExplicit('A' . $fila, $cuenta_cargo, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-    //             $sheet->setCellValueExplicit('B' . $fila, $cuenta_abono, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-    //             $sheet->setCellValue('C' . $fila, $monto);
-    //             $sheet->getStyle('C' . $fila)->getNumberFormat()->setFormatCode('0.00');
-    //             $sheet->setCellValueExplicit('D' . $fila, $concepto, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-    //             $sheet->setCellValueExplicit('E' . $fila, $fecha_pago, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-    //             $sheet->setCellValue('F' . $fila, $email_beneficiario ?? ''); // Evitar null
-
-    //             $fila++;
-    //             $facturas_procesadas++;
-    //             $total_importe += $monto;
-    //         }
-
-
-    //         if ($facturas_procesadas === 0) {
-
-    //             $spreadsheet->disconnectWorksheets();
-    //             unset($spreadsheet);
-
-    //             json_output([
-    //                 'success' => false,
-    //                 'message' => 'No se pudieron procesar facturas. Verifica que tengan monto válido y cuenta bancaria.',
-    //                 'warnings' => $warnings
-    //             ]);
-    //             return;
-    //         }
-    //         $outputDir = __DIR__ . '/../../_assets/temp/layouts/';
-    //         if (!is_dir($outputDir)) {
-    //             if (!mkdir($outputDir, 0777, true)) {
-    //                 json_output([
-    //                     'success' => false,
-    //                     'message' => 'No se pudo crear el directorio de salida',
-    //                     'error' => 'Directorio: ' . $outputDir
-    //                 ]);
-    //                 return;
-    //             }
-    //         }
-    //         while (ob_get_level()) {
-    //             ob_end_clean();
-    //         }
-    //         $filename = 'Layout_Santander_Pago_' . $payment_id . '_' . date('Ymd_His') . '.xls';
-    //         $outputPath = $outputDir . $filename;
-    //         $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xls');
-    //         $spreadsheet->getCalculationEngine()->disableCalculationCache();
-    //         $writer->setPreCalculateFormulas(false);
-    //         $writer->save($outputPath);
-
-    //         // Liberar memoria
-    //         $spreadsheet->disconnectWorksheets();
-    //         unset($spreadsheet);
-    //         unset($writer);
-    //         gc_collect_cycles();
-
-    //         $file_url = '/supply/download_layout/' . $filename;
-
-
-    //         $response = [
-    //             'success' => true,
-    //             'message' => 'Archivo generado exitosamente',
-    //             'file_name' => $filename,
-    //             'file_url' => $file_url,
-    //             'registros_procesados' => $facturas_procesadas,
-    //             'total_registros' => count($invoices),
-    //             'total_importe' => $total_importe,
-    //             'cuenta_cargo' => $cuenta_cargo,
-    //             'banco_cargo' => $banco_cargo,
-    //             'warnings' => !empty($warnings['sin_cuenta']) || !empty($warnings['sin_email']) ? $warnings : null
-    //         ];
-
-
-    //         json_output($response);
-    //     } catch (Exception $e) {
-    //         $errorMsg = $e->getMessage();
-    //         $errorTrace = $e->getTraceAsString();
-
-
-    //         // Liberar memoria
-    //         if (isset($spreadsheet)) {
-    //             $spreadsheet->disconnectWorksheets();
-    //             unset($spreadsheet);
-    //         }
-    //         gc_collect_cycles();
-
-    //         // ✅ ENVIAR ERROR COMPLETO AL JAVASCRIPT
-    //         json_output([
-    //             'success' => false,
-    //             'message' => 'Error al generar layout',
-    //             'error' => $errorMsg,
-    //             'trace' => $errorTrace // ← Traza completa para debug
-    //         ]);
-    //     }
-    // }
 
     function download_layout($filename){
         // ✅ Sanitizar filename (seguridad básica)

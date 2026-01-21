@@ -1076,4 +1076,34 @@ class PaymentRequestInvoicesModel extends Model
         return $this->sql->select($query, $facturas_ids) ?: [];
     }
 
+    public function get_facturas_autorizadas_by_ids($invoice_ids) : array|false {
+        if (empty($invoice_ids)) {
+            return false;
+        }
+        
+        $ids_str = implode(',', array_map('intval', $invoice_ids));
+        
+        $query = "
+            SELECT 
+                id,
+                payment_request_id,
+                folio,
+                invoice_number,
+                codgas,
+                amount,
+                paid_amount,
+                authorized_amount,
+                payment_authorized,
+                status,
+                uuid,
+                (amount - ISNULL(paid_amount, 0)) as saldo
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE id IN ($ids_str)
+            AND payment_authorized = 1
+            AND status != ?
+            ORDER BY payment_request_id, id
+        ";
+        return $this->sql->select($query, [PaymentRequestsModel::STATUS_PAID]) ?: false;
+    }
+
 }

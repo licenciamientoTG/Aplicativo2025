@@ -871,7 +871,6 @@ input[readonly] {
 
 
 <!-- Modal de Autorizar Pago -->
-<!-- Modal de Autorizar Pago -->
 <div class="modal fade" id="modalAutorizarPago" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
@@ -882,10 +881,8 @@ input[readonly] {
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>Instrucciones:</strong> Seleccione las facturas que autoriza para pago y especifique el monto de cada una. 
-                    Las facturas ya autorizadas aparecen deshabilitadas. La ejecución del pago será realizada posteriormente por el área correspondiente.
+                <div class="alert alert-info" style="width: 50%;" >
+                    <i class="fas fa-info-circle" style="margin: 5px;"></i> Seleccione las facturas que autoriza para pago .
                 </div>
 
                 <!-- Resumen del Pago -->
@@ -930,6 +927,19 @@ input[readonly] {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 15px;" >
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" 
+                        class="btn btn-info" 
+                        id="btnConfirmarAutorizacion" 
+                        onclick="confirmarAutorizarPago()"
+                        disabled>
+                    <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
+                </button>
                 </div>
 
                 <!-- Tabla de Facturas -->
@@ -1074,16 +1084,7 @@ input[readonly] {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancelar
-                </button>
-                <button type="button" 
-                        class="btn btn-info" 
-                        id="btnConfirmarAutorizacion" 
-                        onclick="confirmarAutorizarPago()"
-                        disabled>
-                    <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
-                </button>
+                
             </div>
         </div>
     </div>

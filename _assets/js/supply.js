@@ -3370,6 +3370,7 @@ function loadPaymentList() {
     const status = $('#status_filter').val();
     
     paymentListTable = $('#payment_list_table').DataTable({
+        responsive: false,
         ajax: {
             url: '/supply/payment_list_table',
             type: 'POST',
@@ -3392,7 +3393,6 @@ function loadPaymentList() {
             { data: 'total_amount', className: 'text-end' },
             { data: 'total_paid', className: 'text-end' },
                         { 
-                // ✅ NUEVA COLUMNA: Facturas Autorizadas
                 data: null,
                 className: 'text-center',
                 render: function(data, type, row) {
@@ -3414,7 +3414,7 @@ function loadPaymentList() {
                     if (percentage === 100) {
                         badgeColor = 'bg-success';
                     } else if (percentage >= 50) {
-                        badgeColor = 'bg-info';
+                        badgeColor = 'bg-warning';
                     }
                     return `
                         <div class="text-center">
@@ -3706,31 +3706,32 @@ async function ejecutarCreacionAnticipo(proveedor_cod, empresa_cod, monto, comen
 
 
 function deletePayment(paymentId) {
-    alertify.confirm(
-        'Eliminar Pago',
-        '¿Está seguro de eliminar este pago programado? Esta acción no se puede deshacer.',
-        function() {
-            $.ajax({
-                url: '/supply/delete_payment',
-                type: 'POST',
-                data: { payment_id: paymentId },
-                success: function(response) {
-                    if (response.success) {
-                        alertify.success(response.message);
-                        loadPaymentList();
-                    } else {
-                        alertify.error(response.message);
-                    }
-                },
-                error: function() {
-                    alertify.error('Error al eliminar el pago');
-                }
-            });
-        },
-        function() {
-            alertify.message('Operación cancelada');
-        }
-    );
+    // alertify.confirm(
+    //     'Eliminar Pago',
+    //     '¿Está seguro de eliminar este pago programado? Esta acción no se puede deshacer.',
+    //     function() {
+    //         $.ajax({
+    //             url: '/supply/delete_payment',
+    //             type: 'POST',
+    //             data: { payment_id: paymentId },
+    //             success: function(response) {
+    //                 if (response.success) {
+    //                     alertify.success(response.message);
+    //                     loadPaymentList();
+    //                 } else {
+    //                     alertify.error(response.message);
+    //                 }
+    //             },
+    //             error: function() {
+    //                 alertify.error('Error al eliminar el pago');
+    //             }
+    //         });
+    //     },
+    //     function() {
+    //         alertify.message('Operación cancelada');
+    //     }
+    // );
+    alertify.error('Funcionalidad de eliminación pendiente de implementación');
 }
 
 function toggleSelectAll() {
@@ -4771,11 +4772,6 @@ function confirmAuthorization() {
     });
 }
 
-// function procesarPago() {
-//     // Abrir modal de selección de facturas
-//     $('#modalProcesarPago').modal('show');
-//     updatePagoSummary();
-// }
 function autorizarPago() {
     $('#modalAutorizarPago').modal('show');
     updateAutorizacionSummary();
@@ -4883,7 +4879,7 @@ function confirmarAutorizarPago() {
         `<div class="text-center">
             <i class="fas fa-check-circle text-info fa-3x mb-3"></i>
             <p class="mb-3">¿Está seguro de autorizar el pago de <strong>${facturasAutorizar.length} factura(s)</strong>?</p>
-            <div class="alert alert-info">
+            <div class="alert alert-info" style="display: flex;flex-direction: column;padding-bottom: 10px;">
                 <strong>Total a Autorizar:</strong><br>
                 <h4 class="text-info mb-0">$${totalAAutorizar.toLocaleString('es-MX', {minimumFractionDigits: 2})}</h4>
             </div>
@@ -5939,6 +5935,244 @@ function mostrarResumenLayoutSantander(filename, totalFacturas) {
                     <i class="fas fa-info-circle"></i>
                     <strong>Siguiente paso:</strong><br>
                     Sube este archivo a Santander SuperNet para procesar los pagos.
+                </small>
+            </div>
+        </div>`
+    ).set({
+        maximizable: false,
+        closable: true
+    });
+}
+
+
+function abrirModalRegistroPago() {
+    const seleccionadas = [];
+    const bancos = new Set();
+    
+    // Recopilar facturas seleccionadas
+    $('.invoice-group-checkbox:checked').each(function() {
+        const banco = $(this).data('banco');
+        const invoiceIds = $(this).data('invoice-ids');
+        const empresa = $(this).data('empresa');
+        const proveedor = $(this).data('proveedor');
+        const monto = $(this).data('monto');
+        
+        bancos.add(banco);
+        
+        seleccionadas.push({
+            banco: banco,
+            invoice_ids: invoiceIds,
+            empresa: empresa,
+            proveedor: proveedor,
+            monto: monto
+        });
+    });
+
+    // ✅ VALIDACIÓN 1: Debe haber facturas seleccionadas
+    if (seleccionadas.length === 0) {
+        alertify.warning('Debe seleccionar al menos un grupo de facturas');
+        return;
+    }
+
+    // ✅ VALIDACIÓN 2: Solo un banco permitido
+    if (bancos.size > 1) {
+        const bancosArray = Array.from(bancos);
+        alertify.alert(
+            '<i class="fas fa-exclamation-triangle text-warning"></i> Bancos Mezclados',
+            `<div class="text-center">
+                <p class="mb-3">Has seleccionado facturas de diferentes bancos:</p>
+                <div class="alert alert-warning mb-3">
+                    ${bancosArray.map(b => `<span class="badge bg-secondary me-2">${b}</span>`).join('')}
+                </div>
+                <p><strong>Debes registrar pagos por banco.</strong></p>
+            </div>`
+        );
+        return;
+    }
+    
+    const bancoSeleccionado = Array.from(bancos)[0];
+    
+    // ✅ VALIDACIÓN 3: Verificar que sea Santander (por ahora)
+    if (bancoSeleccionado !== 'Santander') {
+        alertify.warning('Por ahora solo se pueden registrar pagos de Santander');
+        return;
+    }
+    
+    // ✅ Abrir modal con resumen
+    mostrarModalRegistroPago(seleccionadas, bancoSeleccionado);
+}
+
+/**
+ * ✅ Muestra modal para registrar el pago
+ */
+function mostrarModalRegistroPago(gruposSeleccionados, banco) {
+    // Extraer todos los invoice_ids
+    const todosLosIds = [];
+    gruposSeleccionados.forEach(grupo => {
+        const ids = grupo.invoice_ids.split(',').map(id => parseInt(id.trim()));
+        todosLosIds.push(...ids);
+    });
+    
+    // Calcular totales
+    const totalGrupos = gruposSeleccionados.length;
+    const totalFacturas = todosLosIds.length;
+    const totalMonto = gruposSeleccionados.reduce((sum, g) => sum + parseFloat(g.monto), 0);
+    
+    // Obtener empresa única
+    const empresas = [...new Set(gruposSeleccionados.map(g => g.empresa))];
+    const empresasTexto = empresas.length === 1 
+        ? empresas[0] 
+        : `${empresas.length} empresas`;
+    
+    // ✅ MODAL CON FORMULARIO
+    const modalHTML = `
+        <div class="text-start">
+            <!-- Resumen -->
+            <div class="alert alert-info mb-3">
+                <div class="row">
+                    <div class="col-6">
+                        <strong><i class="fas fa-building"></i> Empresa:</strong> ${empresasTexto}<br>
+                        <strong><i class="fas fa-university"></i> Banco:</strong> ${banco}
+                    </div>
+                    <div class="col-6">
+                        <strong><i class="fas fa-layer-group"></i> Grupos:</strong> ${totalGrupos}<br>
+                        <strong><i class="fas fa-file-invoice"></i> Facturas:</strong> ${totalFacturas}
+                    </div>
+                </div>
+                <hr class="my-2">
+                <div class="text-center">
+                    <strong><i class="fas fa-dollar-sign"></i> Total:</strong> 
+                    <span class="fs-5 text-success">$${totalMonto.toLocaleString('es-MX', {minimumFractionDigits: 2})}</span>
+                </div>
+            </div>
+            
+            <!-- Formulario -->
+            <form id="formRegistroPago">
+                <div class="mb-3">
+                    <label class="form-label"><i class="fas fa-calendar"></i> Fecha de Pago *</label>
+                    <input type="date" class="form-control" id="fecha_pago" required 
+                           value="${new Date().toISOString().split('T')[0]}" max="${new Date().toISOString().split('T')[0]}">
+                    <small class="text-muted">Fecha en que se ejecutó el pago en el banco</small>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label"><i class="fas fa-hashtag"></i> Número de Referencia Bancaria *</label>
+                    <input type="text" class="form-control" id="referencia_bancaria" 
+                           placeholder="Ej: 123456789" required maxlength="50">
+                    <small class="text-muted">Folio o referencia del banco</small>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label"><i class="fas fa-comment"></i> Observaciones</label>
+                    <textarea class="form-control" id="observaciones_pago" rows="2" 
+                              placeholder="Notas adicionales (opcional)"></textarea>
+                </div>
+                
+                <input type="hidden" id="invoice_ids_pago" value='${JSON.stringify(todosLosIds)}'>
+            </form>
+        </div>
+    `;
+    
+    alertify.confirm(
+        '<i class="fas fa-check-circle text-success"></i> Registrar Pago Ejecutado',
+        modalHTML,
+        function() {
+            // ✅ Al confirmar, ejecutar registro
+            ejecutarRegistroPago();
+        },
+        function() {
+            alertify.message('Registro cancelado');
+        }
+    ).set({
+        labels: {ok: 'Registrar Pago', cancel: 'Cancelar'},
+        maximizable: false,
+        closable: true
+    }).resizeTo('50%', '80%');
+}
+
+/**
+ * ✅ Ejecuta el registro del pago
+ */
+function ejecutarRegistroPago() {
+    // Validar formulario
+    const fechaPago = $('#fecha_pago').val();
+    const referenciaBancaria = $('#referencia_bancaria').val().trim();
+    const invoiceIds = JSON.parse($('#invoice_ids_pago').val());
+    const observaciones = $('#observaciones_pago').val().trim();
+    // const comprobante = $('#comprobante_pago')[0].files[0];
+    
+    if (!fechaPago || !referenciaBancaria) {
+        alertify.error('Complete todos los campos obligatorios');
+        return;
+    }
+    
+    // ✅ Preparar FormData (para el archivo)
+    const formData = new FormData();
+    formData.append('invoice_ids', JSON.stringify(invoiceIds));
+    formData.append('fecha_pago', fechaPago);
+    formData.append('referencia_bancaria', referenciaBancaria);
+    formData.append('observaciones', observaciones);
+
+    
+    // ✅ Enviar al servidor
+    alertify.message('<i class="fas fa-spinner fa-spin"></i> Registrando pago...');
+    
+    $.ajax({
+        url: '/supply/execute_authorized_payments',
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            if (response.success) {
+                alertify.success('✅ Pago registrado correctamente');
+                // Mostrar resumen
+                mostrarResumenPagoRegistrado(response);
+
+                // Recargar tabla
+                if ($.fn.DataTable.isDataTable('#tabla_facturas_autorizadas')) {
+                    $('#tabla_facturas_autorizadas').DataTable().ajax.reload(null, false);
+                }
+            } else {
+                alertify.error(response.message || 'Error al registrar pago');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('Error AJAX:', { status, error, xhr });
+            alertify.error('Error al registrar el pago');
+        }
+    });
+}
+
+
+function mostrarResumenPagoRegistrado(response) {
+    const mensajeCompletadas = response.solicitudes_completadas > 0
+        ? `<div class="alert alert-success mt-2" style="display: flex;    flex-direction: column;">
+             <i class="fas fa-check-double"></i> 
+             ${response.solicitudes_completadas} de ${response.total_solicitudes} 
+             solicitud(es) completamente pagada(s)
+           </div>`
+        : '';
+    
+    alertify.alert(
+        '<i class="fas fa-check-circle text-success"></i> Pago Registrado',
+        `<div class="text-center">
+            <i class="fas fa-check-double fa-3x text-success mb-3"></i>
+            <h5>Pago Registrado Exitosamente</h5>
+            
+            <div class="alert alert-info mt-3 mb-3" style="display: flex;    flex-direction: column;">
+                <strong><i class="fas fa-calendar"></i> Fecha:</strong> ${response.fecha_pago}<br>
+                <strong><i class="fas fa-hashtag"></i> Referencia:</strong> ${response.referencia_bancaria}<br>
+                <strong><i class="fas fa-file-invoice"></i> Facturas:</strong> ${response.facturas_procesadas}<br>
+                <strong><i class="fas fa-dollar-sign"></i> Total:</strong> $${parseFloat(response.total_pagado).toLocaleString('es-MX', {minimumFractionDigits: 2})}
+            </div>
+            
+            ${mensajeCompletadas}
+            
+            <div class="alert alert-info mb-0">
+                <small>
+                    <i class="fas fa-info-circle"></i>
+                    Las facturas han sido registradas con estado <strong>PAGADO</strong>
                 </small>
             </div>
         </div>`

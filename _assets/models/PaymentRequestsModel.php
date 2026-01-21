@@ -344,9 +344,9 @@ class PaymentRequestsModel extends Model
             case self::STATUS_PENDING:
                 return '<span class="badge bg-warning text-dark">Pendiente</span>';
             case self::STATUS_AUTHORIZED:
-                return '<span class="badge bg-info">Autorizado</span>';
+                return '<span class="badge text-bg-dark">Autorizado</span>';
             case self::STATUS_PAID:
-                return '<span class="badge bg-success">Pagado</span>';
+                return '<span class="badge text-bg-success">Pagado</span>';
             case self::STATUS_CANCELLED:
                 return '<span class="badge bg-danger">Cancelado</span>';
             default:
