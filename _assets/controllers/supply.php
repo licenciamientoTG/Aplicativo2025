@@ -675,7 +675,8 @@ class Supply{
 
         // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
         $data = $this->gasolinerasModel->get_active_station_TG();
-        $stations = array_values($data);
+        $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
+        $stations = array_values($dataFiltered);
 
         // Arreglo común para renderizar la vista
         $twigVars = compact('from', 'yesterday', 'tenDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
