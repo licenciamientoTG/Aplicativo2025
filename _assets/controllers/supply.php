@@ -3024,7 +3024,7 @@ class Supply{
                 );
 
                 // ✅ CALCULAR SALDO
-                $monto_total = floatval($row['mont_total']);
+                $monto_total = floatval($row['monto_total']);
                 // $monto_aplicado = floatval($row['monto_aplicado']);
                 $monto_aplicado= '0';
                 $saldo = $monto_total - $monto_aplicado;
@@ -4526,15 +4526,15 @@ class Supply{
                     <h1>⏳ Autorización Requerida</h1>
                     <p>Sistema de Gestión de Pagos - TotalGas</p>
                 </div>
-                
+
                 <div class='content'>
                     <div class='badge'>🔔 Notificación - {$next_department}</div>
-                    
+
                     <div class='alert-box'>
                         <br>Se ha autorizado el pago.<br>
                         Ahora requiere tu autorización para continuar con el proceso.
                     </div>
-                    
+
                     <div style='margin: 20px 0;'>
                         <div class='info-row'>
                             <span class='info-label'>📋 ID de Pago:</span>
@@ -4553,12 +4553,12 @@ class Supply{
                             <span class='info-value'>{$fecha}</span>
                         </div>
                     </div>
-                    
+
                     <div class='total-box'>
                         <div class='total-label'>Monto Total del Pago</div>
                         <div class='total-amount'>\${$total_formatted}</div>
                     </div>
-                    
+
                     <div class='status-box'>
                         <div class='status-label'>📊 Estado de Autorizaciones:</div>
                         <div class='status-item status-completed'>
@@ -4570,26 +4570,26 @@ class Supply{
                             <span><strong>{$next_department}:</strong> Pendiente (Tu autorización)</span>
                         </div>
                     </div>
-                    
+
                     " . (!empty($comment) ? "
                     <div class='comment-box'>
                         <div class='comment-label'>💬 Comentario:</div>
                         <div class='comment-text'>{$comment}</div>
                     </div>
                     " : "") . "
-                    
+
                     <div style='text-align: center; margin-top: 30px;'>
                         <a href='{$url_detalle}' class='button'>
                             Revisar y Autorizar Pago →
                         </a>
                     </div>
-                    
+
                     <p style='color: #666; font-size: 14px; margin-top: 30px; text-align: center;'>
                         <strong>⚠️ Acción Requerida:</strong><br>
                         Este pago necesita tu autorización para continuar con el flujo de aprobación.
                     </p>
                 </div>
-                
+
                 <div class='footer'>
                     <p><strong>TotalGas - Sistema de Gestión de Pagos</strong></p>
                     <p>Este es un correo automático, por favor no responda a este mensaje.</p>
@@ -4622,8 +4622,7 @@ class Supply{
     }
 
 
-    function authorized_pending_invoices_grouped_table()
-    {
+    function authorized_pending_invoices_grouped_table(){
         header('Content-Type: application/json');
         
         try {
@@ -4653,7 +4652,9 @@ class Supply{
                     'invoice_ids' => $invoice['invoice_ids'],
                     'folios_list' => $invoice['folios_list'],
                     'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
-                    'ultima_autorizacion' => $invoice['ultima_autorizacion']
+                    'ultima_autorizacion' => $invoice['ultima_autorizacion'],
+                    'tipo_registro' => $invoice['tipo_registro'],  // NUEVO
+                    'payment_request_id' => $invoice['payment_request_id']  // NUEVO (solo para anticipos)
                 ];
             }
             
@@ -4665,9 +4666,6 @@ class Supply{
         }
     }
 
-    /**
-     * Obtener desglose de facturas por IDs
-     */
     function get_invoices_detail(){
         header('Content-Type: application/json');
         try {
@@ -4713,36 +4711,55 @@ class Supply{
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
     }
-
-   public function generate_santander_layout() {
+    public function generate_santander_layout() {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
             $invoice_ids = $input['invoice_ids'] ?? [];
+            $anticipo_ids = $input['anticipo_ids'] ?? [];
 
-            if (empty($invoice_ids)) {
-                // ✅ ERROR: Retornar JSON
+
+             if (empty($invoice_ids) && empty($anticipo_ids)) {
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'No se proporcionaron facturas']);
+                echo json_encode(['success' => false, 'message' => 'No se proporcionaron facturas ni anticipos']);
                 return;
             }
+            $todos_los_datos = [];
 
-            // ✅ OBTENER Y VALIDAR DATOS
-            $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_para_layout($invoice_ids);
-            if (!$facturas_data) {
+
+            if (!empty($invoice_ids)) {
+                $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_para_layout($invoice_ids);
+                if ($facturas_data) {
+                    $todos_los_datos = array_merge($todos_los_datos, $facturas_data);
+                }
+            }
+            // ✅ OBTENER ANTICIPOS si hay
+            if (!empty($anticipo_ids)) {
+                $anticipos_data = $this->PaymentRequestsModel->get_anticipos_para_layout($anticipo_ids);
+                if ($anticipos_data) {
+                    $todos_los_datos = array_merge($todos_los_datos, $anticipos_data);
+                }
+            }
+
+           if (empty($todos_los_datos)) {
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'No se encontraron facturas válidas']);
+                echo json_encode(['success' => false, 'message' => 'No se encontraron datos válidos para generar el layout']);
                 return;
             }
 
             // ✅ VALIDACIONES
             $sin_cuenta_cargo = [];
             $sin_clabe = [];
-            foreach ($facturas_data as $factura) {
-                if (!$factura['cuenta_cargo_empresa'] || strlen($factura['cuenta_cargo_empresa']) != 11) {
-                    $sin_cuenta_cargo[] = "Empresa: {$factura['empresa_nombre']} (emp_cod: {$factura['empresa_cod']})";
+            
+            foreach ($todos_los_datos as $pago) {
+                if (!$pago['cuenta_cargo_empresa'] || strlen($pago['cuenta_cargo_empresa']) != 11) {
+                    $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
                 }
-                if (!$factura['clabe_beneficiario'] || strlen($factura['clabe_beneficiario']) != 18) {
-                    $sin_clabe[] = "Folio {$factura['folio']} - {$factura['proveedor_nombre']}";
+                if (!$pago['clabe_beneficiario'] || strlen($pago['clabe_beneficiario']) != 18) {
+                    $tipo = $pago['tipo_pago'] ?? 'FACTURA';
+                    $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
+                        ? "Anticipo #{$pago['payment_request_id']}" 
+                        : "Folio {$pago['folio']}";
+                    $sin_clabe[] = "{$referencia} - {$pago['proveedor_nombre']}";
                 }
             }
 
@@ -4758,7 +4775,6 @@ class Supply{
                 }
                 $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
                 
-                // ✅ ERROR CON HTML: Retornar JSON
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => $mensaje]);
                 return;
@@ -4766,19 +4782,19 @@ class Supply{
 
             // ✅ GENERAR LAYOUT
             $layout_content = $this->generar_layout_santander_multi_empresa(
-                $facturas_data,
+                $todos_los_datos,
                 'SUSANA.PANTOJA@TOTALGAS.COM'
             );
 
             // ✅ GENERAR NOMBRE DE ARCHIVO
-            $empresas_unicas = array_unique(array_column($facturas_data, 'empresa_nombre'));
+            $empresas_unicas = array_unique(array_column($todos_los_datos, 'empresa_nombre'));
             $empresa_label = count($empresas_unicas) === 1 
                 ? $empresas_unicas[0] 
                 : 'MULTI_EMPRESAS';
 
             $filename = 'LAYOUT_SANTANDER_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
 
-            // ✅ ENVIAR ARCHIVO DIRECTAMENTE
+            // ✅ ENVIAR ARCHIVO
             header('Content-Type: text/plain; charset=utf-8');
             header('Content-Disposition: attachment; filename="' . $filename . '"');
             header('Content-Length: ' . strlen($layout_content));
@@ -4796,149 +4812,338 @@ class Supply{
         }
     }
 
- private function generar_layout_santander_multi_empresa($facturas, $email_notificacion) {
-    $lineas = [];
-    
-    // ✅ PASO 1: CONSOLIDAR por cuenta_cargo + proveedor
-    $consolidados = [];
-    
-    foreach ($facturas as $factura) {
-        // ✅ Usar proveedor_codigo (no proveedor_cod)
-        $key = $factura['cuenta_cargo_empresa'] . '|' . $factura['proveedor_codigo'];
-        
-        if (!isset($consolidados[$key])) {
-            $consolidados[$key] = [
-                'cuenta_cargo' => $factura['cuenta_cargo_empresa'],
-                'clabe_beneficiario' => $factura['clabe_beneficiario'],
-                // ✅ titular_beneficiario es NULL, usar proveedor_nombre
-                'titular_beneficiario' => $factura['titular_beneficiario'] ?: $factura['proveedor_nombre'],
-                'proveedor_nombre' => $factura['proveedor_nombre'],
-                'proveedor_codigo' => $factura['proveedor_codigo'],
-                'monto_total' => 0,
-                'facturas' => [],
-                'folios' => []
-            ];
+    private function generar_layout_santander_multi_empresa($pagos, $email_notificacion) {
+        $lineas = [];
+        $consolidados = [];
+        foreach ($pagos as $pago) {
+            $key = $pago['cuenta_cargo_empresa'] . '|' . $pago['proveedor_codigo'];
+
+            if (!isset($consolidados[$key])) {
+                $consolidados[$key] = [
+                    'cuenta_cargo' => $pago['cuenta_cargo_empresa'],
+                    'clabe_beneficiario' => $pago['clabe_beneficiario'],
+                    'titular_beneficiario' => $pago['titular_beneficiario'] ?: $pago['proveedor_nombre'],
+                    'proveedor_nombre' => $pago['proveedor_nombre'],
+                    'proveedor_codigo' => $pago['proveedor_codigo'],
+                    'monto_total' => 0,
+                    'referencias' => [],
+                    'es_anticipo' => false
+                ];
+            }
+            $consolidados[$key]['monto_total'] += floatval($pago['monto_autorizado']);
+            // ✅ Manejar referencias según tipo
+            if ($pago['tipo_pago'] === 'ANTICIPO') {
+                $consolidados[$key]['referencias'][] = $pago['folio']; // "ANTICIPO #55"
+                $consolidados[$key]['es_anticipo'] = true;
+            } else {
+                $consolidados[$key]['referencias'][] = $pago['invoice_number'] ?? $pago['folio'];
+            }
+        }
+        // ✅ GENERAR LÍNEAS
+        foreach ($consolidados as $grupo) {
+            $codigo_banco = $this->obtener_codigo_banco_desde_clabe($grupo['clabe_beneficiario']);
+            $monto_centavos = intval($grupo['monto_total'] * 100);
+            $monto_con_plaza = str_pad($monto_centavos, 19, '0', STR_PAD_LEFT) . '901';
+            $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
+            
+            // ✅ Concepto adaptado
+            $cantidad_refs = count($grupo['referencias']);
+            $primera_ref = $grupo['referencias'][0];
+            
+            if ($grupo['es_anticipo']) {
+                // Para anticipos: "ANTICIPO #55 NOMBRE PROVEEDOR"
+                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            } else if ($cantidad_refs === 1) {
+                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            } else {
+                $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            }
+            
+            $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
+            
+            $linea = sprintf(
+                "LTX05 %-11s       %-18s %-5s%-40s    1234%s  %-40s 00 00  %-28s",
+                $grupo['cuenta_cargo'],
+                $grupo['clabe_beneficiario'],
+                $codigo_banco,
+                $nombre_beneficiario,
+                $monto_con_plaza,
+                $concepto,
+                substr($email_notificacion, 0, 28)
+            );
+            
+            $lineas[] = $linea;
         }
         
-        $consolidados[$key]['monto_total'] += floatval($factura['monto_autorizado']);
-        $consolidados[$key]['facturas'][] = $factura['invoice_number'];
-        $consolidados[$key]['folios'][] = $factura['folio'];
+        return implode("\r\n", $lineas);
     }
-    
-    // ✅ PASO 2: GENERAR LÍNEAS LTX05
-    foreach ($consolidados as $grupo) {
-        // ✅ Detectar banco desde CLABE
-        $codigo_banco = $this->obtener_codigo_banco_desde_clabe($grupo['clabe_beneficiario']);
+
+    private function obtener_codigo_banco_desde_clabe($clabe) {
+        $codigo_banco_clabe = substr($clabe, 0, 3);
         
-        // ✅ Monto con plaza Banxico (901)
-        $monto_centavos = intval($grupo['monto_total'] * 100);
-        $monto_con_plaza = str_pad($monto_centavos, 19, '0', STR_PAD_LEFT) . '901';
+        $mapeo_bancos = [
+            '002' => 'BANCO', // Banxico
+            '006' => 'BCEXT', // Bancomext
+            '009' => 'BOBRA', // Banobras
+            '012' => 'BACOM', // BBVA México
+            '014' => 'BANME', // Santander
+            '019' => 'BEJER', // Banjercito
+            '021' => 'BITAL', // HSBC
+            '030' => 'BAJIO', // Bajío
+            '036' => 'BINBU', // Inbursa
+            '042' => 'MIFEL', // Banca Mifel
+            '044' => 'COMER', // Scotia Bank
+            '058' => 'BANRE', // Banregio
+            '059' => 'BINVE', // Invex
+            '060' => 'BANSI', // Bansi
+            '062' => 'BAFIR', // Afirme
+            '072' => 'BBANO', // Banorte
+            '106' => 'BAMSA', // Bank of America
+            '108' => 'MUFG',  // MUFG Bank
+            '110' => 'CHASE', // JP Morgan
+            '112' => 'CMCA',  // Bmonex
+            '113' => 'DRESD', // Ve por Mas
+            '124' => 'DEUTB', // CBM Banco
+            '127' => 'BAZTE', // Azteca
+            '128' => 'BAUTO', // Banco Autofin
+            '129' => 'BARCL', // Barclays
+            '130' => 'BCOMP', // Compartamos
+            '132' => 'MULTI', // Multiva
+            '133' => 'PRUDE', // Actinver
+            '136' => 'REGIO', // Intercam
+            '137' => 'COPEL', // Bancoppel
+            '138' => 'AMIGO', // ABC Capital
+            '140' => 'FACIL', // Consubanco
+            '141' => 'VOLKS', // Volkswagen
+            '143' => 'CONSU', // CI Banco
+            '145' => 'BBASE', // Bbase
+            '147' => 'AGROF', // Bankaool
+            '148' => 'PTODO', // Pagatodo
+            '150' => 'INMOB', // Inmobiliario
+            '151' => 'DONDE', // Donde
+            '152' => 'BCREA', // Bancrea
+            '154' => 'COVAL', // Covalto
+            '155' => 'ICBCH', // ICBC
+            '156' => 'SABAD', // Sabadell
+            '157' => 'SHINH', // Shinhan
+            '158' => 'MISUO', // Mizuho
+            '159' => 'BOCHI', // Bank of China
+            '160' => 'BCOS3', // Banco S3
+            '166' => 'BANSE', // Bansefi
+            '168' => 'HIFED', // Hipotecaria Federal
+        ];
         
-        // Limpiar nombre beneficiario
-        $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
+        return $mapeo_bancos[$codigo_banco_clabe] ?? 'BACOM';
+    }
+
+    private function limpiar_texto_layout($texto, $max_length) {
+        $texto = strtoupper($texto);
+        $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+        $texto = preg_replace('/[^A-Z0-9 ]/', '', $texto);
+        $texto = preg_replace('/\s+/', ' ', trim($texto));
+        return substr($texto, 0, $max_length);
+    }
+
+    public function generate_banorte_layout() {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $invoice_ids = $input['invoice_ids'] ?? [];
+            $anticipo_ids = $input['anticipo_ids'] ?? [];
+
+            if (empty($invoice_ids) && empty($anticipo_ids)) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'No se proporcionaron facturas ni anticipos']);
+                return;
+            }
+
+            $todos_los_datos = [];
+
+            // ✅ Obtener facturas
+            if (!empty($invoice_ids)) {
+                $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_para_layout($invoice_ids);
+                if ($facturas_data) {
+                    $todos_los_datos = array_merge($todos_los_datos, $facturas_data);
+                }
+            }
+
+            // ✅ Obtener anticipos
+            if (!empty($anticipo_ids)) {
+                $anticipos_data = $this->PaymentRequestsModel->get_anticipos_para_layout($anticipo_ids);
+                if ($anticipos_data) {
+                    $todos_los_datos = array_merge($todos_los_datos, $anticipos_data);
+                }
+            }
+
+            if (empty($todos_los_datos)) {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => 'No se encontraron datos válidos para generar el layout']);
+                return;
+            }
+
+            // ✅ VALIDACIONES
+            $sin_cuenta_cargo = [];
+            $sin_cuenta_abono = [];
+
+            
+            foreach ($todos_los_datos as $pago) {
+                // Validar cuenta cargo de la empresa (debe ser de 10 dígitos)
+                if (!$pago['cuenta_cargo_banorte'] || strlen($pago['cuenta_cargo_banorte']) != 10) {
+                    $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
+                }
+                
+                // Validar cuenta abono del proveedor (puede ser CLABE de 18 o cuenta de 10)
+                if (!$pago['clabe_beneficiario']) {
+                    $tipo = $pago['tipo_pago'] ?? 'FACTURA';
+                    $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
+                        ? "Anticipo #{$pago['payment_request_id']}" 
+                        : "Folio {$pago['folio']}";
+                    $sin_cuenta_abono[] = "{$referencia} - {$pago['proveedor_nombre']}";
+                } else {
+                    // Si es CLABE de 18, validar que se pueda extraer cuenta de 10
+                    $longitud = strlen($pago['clabe_beneficiario']);
+                    if ($longitud != 10 && $longitud != 18) {
+                        $tipo = $pago['tipo_pago'] ?? 'FACTURA';
+                        $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
+                            ? "Anticipo #{$pago['payment_request_id']}" 
+                            : "Folio {$pago['folio']}";
+                        $sin_cuenta_abono[] = "{$referencia} - {$pago['proveedor_nombre']} (cuenta inválida: {$longitud} dígitos)";
+                    }
+                }
+            }
+
+            if (!empty($sin_cuenta_cargo) || !empty($sin_cuenta_abono)) {
+                $mensaje = '<strong>No se puede generar el layout de Banorte:</strong><br><br>';
+                if (!empty($sin_cuenta_cargo)) {
+                    $mensaje .= '<strong class="text-danger">❌ Empresas sin cuenta Banorte PROPIA (10 dígitos):</strong><br>';
+                    $mensaje .= implode('<br>', array_unique($sin_cuenta_cargo)) . '<br><br>';
+                }
+                if (!empty($sin_cuenta_abono)) {
+                    $mensaje .= '<strong class="text-warning">⚠️ Proveedores sin cuenta válida:</strong><br>';
+                    $mensaje .= implode('<br>', array_unique($sin_cuenta_abono)) . '<br><br>';
+                }
+                $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
+                
+                header('Content-Type: application/json');
+                echo json_encode(['success' => false, 'message' => $mensaje]);
+                return;
+            }
+
+            // ✅ GENERAR LAYOUT
+            $layout_content = $this->generar_layout_banorte_multi_empresa($todos_los_datos);
+
+            // ✅ GENERAR NOMBRE DE ARCHIVO
+            $empresas_unicas = array_unique(array_column($todos_los_datos, 'empresa_nombre'));
+            $empresa_label = count($empresas_unicas) === 1 
+                ? $empresas_unicas[0] 
+                : 'MULTI_EMPRESAS';
+
+            $filename = 'LAYOUT_BANORTE_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
+
+            // ✅ ENVIAR ARCHIVO
+            header('Content-Type: text/plain; charset=utf-8');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Content-Length: ' . strlen($layout_content));
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            echo $layout_content;
+            exit;
+
+        } catch (Exception $e) {
+            error_log('Error en generate_banorte_layout: ' . $e->getMessage());
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Error al generar layout: ' . $e->getMessage()]);
+            exit;
+        }
+    }
+
+    private function generar_layout_banorte_multi_empresa($pagos) {
+        $lineas = [];
+        $consolidados = [];
         
-        // ✅ Concepto: Usar primer folio como referencia
-        $cantidad_facturas = count($grupo['facturas']);
-        $primer_folio = $grupo['folios'][0];
-        
-        if ($cantidad_facturas === 1) {
-            $concepto_texto = $primer_folio . ' ' . $grupo['proveedor_nombre'];
-        } else {
-            // Ej: "C4177 ALTOS ENERGETICOS MEXICANOS"
-            $concepto_texto = 'C' . $primer_folio . ' ' . $grupo['proveedor_nombre'];
+        // ✅ Consolidar por cuenta cargo + proveedor
+        foreach ($pagos as $pago) {
+            $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo'];
+
+            if (!isset($consolidados[$key])) {
+                // ✅ Obtener cuenta de 10 dígitos del beneficiario
+                $cuenta_abono = $this->extraer_cuenta_banorte($pago['clabe_beneficiario']);
+                
+                $consolidados[$key] = [
+                    'cuenta_cargo' => $pago['cuenta_cargo_banorte'],
+                    'cuenta_abono' => $cuenta_abono,
+                    'proveedor_nombre' => $pago['proveedor_nombre'],
+                    'proveedor_codigo' => $pago['proveedor_codigo'],
+                    'monto_total' => 0,
+                    'referencias' => [],
+                    'es_anticipo' => false
+                ];
+            }
+            
+            $consolidados[$key]['monto_total'] += floatval($pago['monto_autorizado']);
+            
+            // ✅ Manejar referencias según tipo
+            if ($pago['tipo_pago'] === 'ANTICIPO') {
+                $consolidados[$key]['referencias'][] = $pago['folio']; // "ANTICIPO #55"
+                $consolidados[$key]['es_anticipo'] = true;
+            } else {
+                $consolidados[$key]['referencias'][] = $pago['invoice_number'] ?? $pago['folio'];
+            }
         }
         
-        $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
+        // ✅ GENERAR LÍNEAS
+        $fecha_operacion = date('dmY'); // Formato DDMMAAAA
         
-        // ✅ Línea LTX05
-        $linea = sprintf(
-            "LTX05 %-11s       %-18s %-5s%-40s    1234%s  %-40s 00 00  %-28s",
-            $grupo['cuenta_cargo'],
-            $grupo['clabe_beneficiario'],
-            $codigo_banco,
-            $nombre_beneficiario,
-            $monto_con_plaza,
-            $concepto,
-            substr($email_notificacion, 0, 28)
-        );
+        foreach ($consolidados as $grupo) {
+            // Monto en centavos (sin decimales)
+            $monto_centavos = intval($grupo['monto_total'] * 100);
+            
+            // ✅ Concepto adaptado
+            $cantidad_refs = count($grupo['referencias']);
+            $primera_ref = $grupo['referencias'][0];
+            
+            if ($grupo['es_anticipo']) {
+                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            } else if ($cantidad_refs === 1) {
+                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            } else {
+                $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
+            }
+            
+            $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
+            
+            // ✅ Formato Banorte:
+            // 01[TAB][TAB]cuenta_cargo[TAB]cuenta_abono[TAB]monto[TAB]19[TAB]concepto[TAB][TAB]0[TAB]fecha[TAB]concepto
+            $linea = sprintf(
+                "01\t\t%s\t%s\t%d\t19\t%s\t\t0\t%s\t%s",
+                $grupo['cuenta_cargo'],
+                $grupo['cuenta_abono'],
+                $monto_centavos,
+                $concepto,
+                $fecha_operacion,
+                $concepto
+            );
+            
+            $lineas[] = $linea;
+        }
         
-        $lineas[] = $linea;
+        return implode("\r\n", $lineas);
     }
-    
-    return implode("\r\n", $lineas);
-}
 
-/**
- * ✅ Obtiene código de banco según CLABE (primeros 3 dígitos)
- */
-private function obtener_codigo_banco_desde_clabe($clabe) {
-    $codigo_banco_clabe = substr($clabe, 0, 3);
-    
-    $mapeo_bancos = [
-        '002' => 'BANCO', // Banxico
-        '006' => 'BCEXT', // Bancomext
-        '009' => 'BOBRA', // Banobras
-        '012' => 'BACOM', // BBVA México
-        '014' => 'BANME', // Santander
-        '019' => 'BEJER', // Banjercito
-        '021' => 'BITAL', // HSBC
-        '030' => 'BAJIO', // Bajío
-        '036' => 'BINBU', // Inbursa
-        '042' => 'MIFEL', // Banca Mifel
-        '044' => 'COMER', // Scotia Bank
-        '058' => 'BANRE', // Banregio
-        '059' => 'BINVE', // Invex
-        '060' => 'BANSI', // Bansi
-        '062' => 'BAFIR', // Afirme
-        '072' => 'BBANO', // Banorte
-        '106' => 'BAMSA', // Bank of America
-        '108' => 'MUFG',  // MUFG Bank
-        '110' => 'CHASE', // JP Morgan
-        '112' => 'CMCA',  // Bmonex
-        '113' => 'DRESD', // Ve por Mas
-        '124' => 'DEUTB', // CBM Banco
-        '127' => 'BAZTE', // Azteca
-        '128' => 'BAUTO', // Banco Autofin
-        '129' => 'BARCL', // Barclays
-        '130' => 'BCOMP', // Compartamos
-        '132' => 'MULTI', // Multiva
-        '133' => 'PRUDE', // Actinver
-        '136' => 'REGIO', // Intercam
-        '137' => 'COPEL', // Bancoppel
-        '138' => 'AMIGO', // ABC Capital
-        '140' => 'FACIL', // Consubanco
-        '141' => 'VOLKS', // Volkswagen
-        '143' => 'CONSU', // CI Banco
-        '145' => 'BBASE', // Bbase
-        '147' => 'AGROF', // Bankaool
-        '148' => 'PTODO', // Pagatodo
-        '150' => 'INMOB', // Inmobiliario
-        '151' => 'DONDE', // Donde
-        '152' => 'BCREA', // Bancrea
-        '154' => 'COVAL', // Covalto
-        '155' => 'ICBCH', // ICBC
-        '156' => 'SABAD', // Sabadell
-        '157' => 'SHINH', // Shinhan
-        '158' => 'MISUO', // Mizuho
-        '159' => 'BOCHI', // Bank of China
-        '160' => 'BCOS3', // Banco S3
-        '166' => 'BANSE', // Bansefi
-        '168' => 'HIFED', // Hipotecaria Federal
-    ];
-    
-    return $mapeo_bancos[$codigo_banco_clabe] ?? 'BACOM';
-}
-
-/**
- * ✅ Limpia texto para layout
- */
-private function limpiar_texto_layout($texto, $max_length) {
-    $texto = strtoupper($texto);
-    $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
-    $texto = preg_replace('/[^A-Z0-9 ]/', '', $texto);
-    $texto = preg_replace('/\s+/', ' ', trim($texto));
-    return substr($texto, 0, $max_length);
-}
+    private function extraer_cuenta_banorte($clabe_o_cuenta) {
+        $longitud = strlen($clabe_o_cuenta);
+        
+        if ($longitud == 18) {
+            // Es CLABE, extraer los 10 dígitos centrales (posición 3 a 12)
+            return substr($clabe_o_cuenta, 3, 10);
+        } else if ($longitud == 10) {
+            // Ya es cuenta de 10 dígitos
+            return $clabe_o_cuenta;
+        }
+        
+        // Si no es ninguno de los dos, devolver tal cual (fallará en validación)
+        return $clabe_o_cuenta;
+    }
 
 
 }

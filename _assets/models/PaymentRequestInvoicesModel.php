@@ -728,94 +728,108 @@ class PaymentRequestInvoicesModel extends Model
      */
     public function get_authorized_pending_grouped() : array|false {
         $query = "
+            -- PARTE 1: Facturas autorizadas pendientes (consulta original)
             SELECT 
-                -- Agrupación
                 pr.emp_cod,
                 pr.provider_cod,
-                
-                -- Información de empresa
                 emp.den as empresa_nombre,
                 emp.rfc as empresa_rfc,
-                
-                -- Información de proveedor
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
-                
-                -- Determinar banco según emp_cod
                 CASE 
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                
-                -- Color para agrupar visualmente
                 CASE 
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
-                
-                -- Agregaciones
                 COUNT(DISTINCT pri.id) as total_facturas,
                 SUM(pri.authorized_amount) as total_autorizado,
                 SUM(pri.amount - ISNULL(pri.paid_amount, 0)) as total_saldo,
                 MIN(pri.expiration_date) as vencimiento_mas_proximo,
                 MAX(pri.expiration_date) as vencimiento_mas_lejano,
-                
-                -- Concatenar IDs de facturas para referencia
                 STRING_AGG(CAST(pri.id AS VARCHAR), ',') as invoice_ids,
                 STRING_AGG(pri.folio, ', ') as folios_list,
-                
-                -- Información del autorizador (tomar el más reciente)
                 MAX(u_auth.Nombre) as authorized_by_name,
-                MAX(pri.authorized_at) as ultima_autorizacion
-                
+                MAX(pri.authorized_at) as ultima_autorizacion,
+                'FACTURAS' as tipo_registro,
+                NULL as payment_request_id
             FROM [TG].[dbo].[payment_request_invoices] pri
-            
             INNER JOIN [TG].[dbo].[payment_requests] pr 
                 ON pri.payment_request_id = pr.id
-            
             LEFT JOIN [TG].[dbo].[Usuario] u_auth 
                 ON pri.authorized_by = u_auth.Id
-            
             LEFT JOIN [SG12].[dbo].[Proveedores] prov 
                 ON pr.provider_cod = prov.cod
-            
             LEFT JOIN [SG12].[dbo].[Empresas] emp 
                 ON pr.emp_cod = emp.cod
-            
-            WHERE pri.payment_authorized = 1  -- Solo autorizadas
-            AND pri.status != ?              -- No pagadas completamente
-            AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0  -- Con saldo pendiente
-            AND pr.status = ?                -- Pago autorizado
-            
+            WHERE pri.payment_authorized = 1
+                AND pri.status != ?
+                AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+                AND pr.status = ?
             GROUP BY 
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den,
                 emp.rfc,
                 prov.den,
-                prov.rfc,
+                prov.rfc
+            
+            UNION ALL
+            
+            -- PARTE 2: Anticipos pendientes
+            SELECT 
+                pr.emp_cod,
+                pr.provider_cod,
+                emp.den as empresa_nombre,
+                emp.rfc as empresa_rfc,
+                prov.den as proveedor_nombre,
+                prov.rfc as proveedor_rfc,
                 CASE 
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
                     ELSE 'Sin asignar'
-                END,
+                END as banco_asignado,
                 CASE 
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
                     ELSE '#6c757d'
-                END
+                END as banco_color,
+                0 as total_facturas,
+                pr.monto_total as total_autorizado,
+                pr.monto_total as total_saldo,
+                pr.request_date as vencimiento_mas_proximo,
+                pr.request_date as vencimiento_mas_lejano,
+                NULL as invoice_ids,
+                'ANTICIPO #' + CAST(pr.id AS VARCHAR) as folios_list,
+                u.Nombre as authorized_by_name,
+                pr.date_added as ultima_autorizacion,
+                'ANTICIPO' as tipo_registro,
+                pr.id as payment_request_id
+            FROM [TG].[dbo].[payment_requests] pr
+            LEFT JOIN [TG].[dbo].[Usuario] u 
+                ON pr.user_id = u.Id
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+                ON pr.provider_cod = prov.cod
+            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+                ON pr.emp_cod = emp.cod
+            WHERE pr.tipo = 1
+                AND pr.status = ?  -- Autorizados
             
             ORDER BY 
                 banco_asignado,
-                emp.den,
-                prov.den
+                empresa_nombre,
+                proveedor_nombre,
+                tipo_registro DESC  -- FACTURAS primero, ANTICIPO después
         ";
         
         return $this->sql->select($query, [
             PaymentRequestsModel::STATUS_PAID,
-            PaymentRequestsModel::STATUS_AUTHORIZED
+            PaymentRequestsModel::STATUS_AUTHORIZED,
+            PaymentRequestsModel::STATUS_AUTHORIZED  // Para los anticipos
         ]) ?: false;
     }
 
@@ -894,63 +908,141 @@ class PaymentRequestInvoicesModel extends Model
         return $this->sql->select($query) ?: false;
     }
 
+    // public function get_facturas_para_layout($facturas_ids) {
+    //     if (empty($facturas_ids)) return [];
+        
+    //     $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
+        
+    //     $query = "
+    //         SELECT 
+    //             inv.id,
+    //             inv.folio,
+    //             inv.invoice_number,
+    //             inv.amount AS monto_original,
+    //             inv.authorized_amount AS monto_autorizado,
+    //             inv.uuid,
+    //             -- Datos del proveedor
+    //             prov.cod AS proveedor_codigo,
+    //             prov.den AS proveedor_nombre,
+    //             prov.rfc AS proveedor_rfc,
+    //             -- ✅ CLABE del proveedor desde cuentas TERCEROS
+    //             cb_tercero.CuentaLocal AS clabe_beneficiario,
+    //             cb_tercero.Descripcion AS titular_beneficiario,
+    //             cb_tercero.Banco AS banco_beneficiario,
+    //             cb_tercero.Id AS cuenta_beneficiario_id,
+    //             -- Datos de la empresa
+    //             emp.den AS empresa_nombre,
+    //             emp.cod AS empresa_cod,
+    //             'FACTURA' as tipo_pago,
+    //             -- ✅ Cuenta PROPIA de la empresa (para validación)
+    //             cb_propia.CuentaLocal AS cuenta_cargo_empresa,
+    //             cb_propia.TitularCuenta AS titular_cargo
+    //         FROM [TG].[dbo].[payment_request_invoices] inv
+    //         INNER JOIN [SG12].[dbo].DocumentosC cg ON cg.nro = inv.folio and inv.codgas = cg.codgas and cg.tip = 1
+    //         INNER JOIN [SG12].[dbo].[Proveedores] prov ON prov.cod = cg.codopr
+    //         -- ✅ JOIN con cuentas TERCEROS (beneficiarios)
+    //         LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero 
+    //             ON cb_tercero.Tipo = 'Terceros'
+    //             --AND cb_tercero.Banco = 'SANTANDER'
+    //             AND cb_tercero.Divisa = 'NUEVO PESO MEXICANO'
+    //             AND cb_tercero.Activo = 1
+    //             AND (
+    //                 cb_tercero.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+    //                 OR cb_tercero.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+    //             )
+    //         LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id =pr.id
+    //         INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
+    //         -- ✅ JOIN con cuentas PROPIAS (ordenantes)
+    //         LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia
+    //             ON cb_propia.emp_cod = emp.cod
+    //             AND cb_propia.Tipo = 'Propias'
+    //             AND cb_propia.Banco = 'SANTANDER'
+    //             AND cb_propia.Activo = 1
+    //         WHERE inv.id IN ($placeholders)
+    //         AND inv.authorized_amount > 0
+
+    //         ORDER BY prov.den, inv.folio
+    //     ";
+
+    //     return $this->sql->select($query, $facturas_ids) ?: [];
+    // }
+
     public function get_facturas_para_layout($facturas_ids) {
-        if (empty($facturas_ids)) return [];
-        
-        $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
-        
-        $query = "
-            SELECT 
-                inv.id,
-                inv.folio,
-                inv.invoice_number,
-                inv.amount AS monto_original,
-                inv.authorized_amount AS monto_autorizado,
-                inv.uuid,
-                -- Datos del proveedor
-                prov.cod AS proveedor_codigo,
-                prov.den AS proveedor_nombre,
-                prov.rfc AS proveedor_rfc,
-                -- ✅ CLABE del proveedor desde cuentas TERCEROS
-                cb_tercero.CuentaLocal AS clabe_beneficiario,
-                cb_tercero.Descripcion AS titular_beneficiario,
-                cb_tercero.Banco AS banco_beneficiario,
-                cb_tercero.Id AS cuenta_beneficiario_id,
-                -- Datos de la empresa
-                emp.den AS empresa_nombre,
-                emp.cod AS empresa_cod,
-                -- ✅ Cuenta PROPIA de la empresa (para validación)
-                cb_propia.CuentaLocal AS cuenta_cargo_empresa,
-                cb_propia.TitularCuenta AS titular_cargo
-            FROM [TG].[dbo].[payment_request_invoices] inv
-            INNER JOIN [SG12].[dbo].DocumentosC cg ON cg.nro = inv.folio and inv.codgas = cg.codgas and cg.tip = 1
-            INNER JOIN [SG12].[dbo].[Proveedores] prov ON prov.cod = cg.codopr
-            -- ✅ JOIN con cuentas TERCEROS (beneficiarios)
-            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero 
-                ON cb_tercero.Tipo = 'Terceros'
-                --AND cb_tercero.Banco = 'SANTANDER'
-                AND cb_tercero.Divisa = 'NUEVO PESO MEXICANO'
-                AND cb_tercero.Activo = 1
-                AND (
-                    cb_tercero.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                    OR cb_tercero.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                )
-            LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id =pr.id
-            INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
-            -- ✅ JOIN con cuentas PROPIAS (ordenantes)
-            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia
-                ON cb_propia.emp_cod = emp.cod
-                AND cb_propia.Tipo = 'Propias'
-                AND cb_propia.Banco = 'SANTANDER'
-                AND cb_propia.Activo = 1
-            WHERE inv.id IN ($placeholders)
-            AND inv.authorized_amount > 0
+    if (empty($facturas_ids)) return [];
+    
+    $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
+    
+    $query = "
+        SELECT 
+            inv.id,
+            inv.folio,
+            inv.invoice_number,
+            inv.amount AS monto_original,
+            inv.authorized_amount AS monto_autorizado,
+            inv.uuid,
+            -- Datos del proveedor
+            prov.cod AS proveedor_codigo,
+            prov.den AS proveedor_nombre,
+            prov.rfc AS proveedor_rfc,
+            
+            -- ✅ SANTANDER: CLABE del proveedor desde cuentas TERCEROS
+            cb_tercero_sant.CuentaLocal AS clabe_beneficiario,
+            cb_tercero_sant.Descripcion AS titular_beneficiario,
+            cb_tercero_sant.Banco AS banco_beneficiario,
+            cb_tercero_sant.Id AS cuenta_beneficiario_id,
 
-            ORDER BY prov.den, inv.folio
-        ";
+            -- Datos de la empresa
+            emp.den AS empresa_nombre,
+            emp.cod AS empresa_cod,
+            'FACTURA' as tipo_pago,
 
-        return $this->sql->select($query, $facturas_ids) ?: [];
-    }
+            -- ✅ SANTANDER: Cuenta PROPIA de la empresa (CLABE)
+            cb_propia_sant.CuentaLocal AS cuenta_cargo_empresa,
+            cb_propia_sant.TitularCuenta AS titular_cargo,
+
+            -- ✅ BANORTE: Cuenta PROPIA de la empresa (10 dígitos)
+            cb_propia_banorte.CuentaLocal AS cuenta_cargo_banorte,
+            cb_propia_banorte.TitularCuenta AS titular_cargo_banorte
+
+        FROM [TG].[dbo].[payment_request_invoices] inv
+        INNER JOIN [SG12].[dbo].DocumentosC cg ON cg.nro = inv.folio and inv.codgas = cg.codgas and cg.tip = 1
+        INNER JOIN [SG12].[dbo].[Proveedores] prov ON prov.cod = cg.codopr
+
+        -- ✅ JOIN con cuentas TERCEROS SANTANDER (beneficiarios)
+        LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
+            ON cb_tercero_sant.Tipo = 'Terceros'
+            AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
+            AND cb_tercero_sant.Activo = 1
+            AND (
+                cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+            )
+        LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id = pr.id
+        INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
+        -- ✅ JOIN con cuentas PROPIAS SANTANDER (ordenantes)
+        LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant
+            ON cb_propia_sant.emp_cod = emp.cod
+            AND cb_propia_sant.Tipo = 'Propias'
+            AND cb_propia_sant.Banco = 'SANTANDER'
+            AND cb_propia_sant.Activo = 1
+        
+        -- ✅ JOIN con cuentas PROPIAS BANORTE (ordenantes)
+        LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_banorte
+            ON cb_propia_banorte.emp_cod = emp.cod
+            AND cb_propia_banorte.Tipo = 'Propias'
+            AND cb_propia_banorte.Banco = 'BANORTE'
+            AND cb_propia_banorte.Activo = 1
+            
+        WHERE inv.id IN ($placeholders)
+        AND inv.authorized_amount > 0
+
+        ORDER BY prov.den, inv.folio
+    ";
+
+ 
+
+    return $this->sql->select($query, $facturas_ids) ?: [];
+}
 
     public function get_empresas_from_invoices($facturas_ids) {
         if (empty($facturas_ids)) {

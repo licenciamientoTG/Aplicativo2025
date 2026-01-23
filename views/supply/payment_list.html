@@ -76,6 +76,18 @@ table.dataTable thead th {
 .badge[style*="EC1C24"] {
     background-color: #EC1C24 !important; /* Santander */
 }
+/* Resaltar filas de anticipos */
+.table-warning {
+    --bs-table-bg: #fff3cd !important;
+    --bs-table-striped-bg: #ffe69c !important;
+}
+
+/* Badge de anticipo */
+.badge.bg-warning.text-dark {
+    background-color: #ffc107 !important;
+    color: #000 !important;
+    font-weight: 600;
+}
 </style>
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
@@ -295,7 +307,7 @@ table.dataTable thead th {
                 </div>
             </div>
             <div class="card-body table-responsive">
-               <table id="tabla_facturas_autorizadas" class="table table-sm table-hover w-100">
+                <table id="tabla_facturas_autorizadas" class="table table-sm table-hover w-100">
                     <thead class="table-light">
                         <tr>
                             <th width="40">
@@ -304,12 +316,12 @@ table.dataTable thead th {
                             <th>Banco</th>
                             <th>Empresa (Razón Social)</th>
                             <th>Proveedor</th>
-                            <th class="text-center"># Facturas</th>
+                            <th class="text-center">Tipo</th> <!-- ✅ CAMBIO DE NOMBRE -->
                             <th class="text-end">Monto Total Autorizado</th>
                             <th class="text-end">Saldo Total</th>
                             <th>Autorizado Por</th>
                             <th>Última Autorización</th>
-                            <th>Vencimiento Próximo</th>
+                            <th>Vencimiento / Folio</th> <!-- ✅ CAMBIO DE NOMBRE -->
                             <th>Acciones</th>
                         </tr>
                     </thead>

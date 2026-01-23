@@ -355,7 +355,7 @@ class PaymentRequestsModel extends Model
     }
 
     public function get_anticipos_with_summary( $type  ='payment', $status = 'all') : array|false {
-        $whereClauses = ["pr.tipo = 1"]; // Solo anticipos
+        $whereClauses = ["t1.tipo = 1"]; // Solo anticipos
         $params = [];
 
         if ($status !== 'all') {
@@ -367,66 +367,85 @@ class PaymentRequestsModel extends Model
             ];
             
             if (isset($statusMap[$status])) {
-                $whereClauses[] = "pr.status = ?";
+                $whereClauses[] = "t1.status = ?";
                 $params[] = $statusMap[$status];
             }
         }
         if($type === 'payment'){
-            $whereClauses[] = "pr.tipo IN (0)"; // Pendiente y Autorizado
+            $whereClauses[] = "t1.tipo IN (0)"; // Pendiente y Autorizado
         } elseif($type === 'anticipos'){
-            $whereClauses[] = "pr.tipo NOT IN (0)"; // Pagado y Cancelado
+            $whereClauses[] = "t1.tipo NOT IN (0)"; // Pagado y Cancelado
         }
 
 
         $whereSQL = "WHERE " . implode(" AND ", $whereClauses);
 
         $query = "
-            SELECT 
-                pr.id,
-                pr.user_id,
-                pr.request_date,
-                pr.status,
-                pr.comment,
-                u.Nombre as usuario_nombre,
-                sum(pr.monto_total) as [mont_total],
-
-
+                        SELECT 
+                t1.id,
+                t1.user_id,
+                t1.request_date,
+                t1.status,
+                t1.comment,
+                t3.Nombre AS usuario_nombre,
                 -- Resumen de facturas
-                COUNT(DISTINCT pri.id) as total_invoices,
-                ISNULL(SUM(pri.amount), 0) as total_amount,
-                ISNULL(SUM(pri.paid_amount), 0) as total_paid,
-
+                ISNULL(t2.total_invoices, 0) AS total_invoices,
+                ISNULL(t2.total_amount, 0)   AS total_amount,
+                ISNULL(t1.monto_total, 0)   AS monto_total,
+                ISNULL(t2.total_paid, 0)     AS total_paid,
+                ISNULL(t2.authorized_invoices_count, 0) AS authorized_invoices_count,
+                ISNULL(t2.authorized_amount_total, 0)   AS authorized_amount_total,
                 -- Autorizaciones por nivel
-                MAX(CASE WHEN pra.permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
-                MAX(CASE WHEN pra.permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
-                MAX(CASE WHEN pra.permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria,
-
+                ISNULL(t4.auth_abastos, 0)    AS auth_abastos,
+                ISNULL(t4.auth_admin, 0)      AS auth_admin,
+                ISNULL(t4.auth_tesoreria, 0)  AS auth_tesoreria,
                 -- Información de autorizadores
-                MAX(CASE WHEN pra.permission_number = 66 THEN u2.Nombre ELSE NULL END) as auth_abastos_user,
-                MAX(CASE WHEN pra.permission_number = 67 THEN u3.Nombre ELSE NULL END) as auth_admin_user,
-                MAX(CASE WHEN pra.permission_number = 68 THEN u4.Nombre ELSE NULL END) as auth_tesoreria_user,
-
+                t4.auth_abastos_user,
+                t4.auth_admin_user,
+                t4.auth_tesoreria_user,
                 -- Fechas de autorización
-                MAX(CASE WHEN pra.permission_number = 66 THEN pra.authorization_date ELSE NULL END) as auth_abastos_date,
-                MAX(CASE WHEN pra.permission_number = 67 THEN pra.authorization_date ELSE NULL END) as auth_admin_date,
-                MAX(CASE WHEN pra.permission_number = 68 THEN pra.authorization_date ELSE NULL END) as auth_tesoreria_date,
-
-                COUNT(DISTINCT pra.id) as total_authorizations,
-                u5.den as [provider_name],
-				u6.den as [emp_name]
-
-            FROM [TG].[dbo].[payment_requests] pr
-            LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
-            LEFT JOIN [TG].[dbo].[payment_request_invoices] pri ON pr.id = pri.payment_request_id
-            LEFT JOIN [TG].[dbo].[payment_request_authorizations] pra ON pr.id = pra.payment_request_id
-            LEFT JOIN [TG].[dbo].[Usuario] u2 ON pra.staff_user_id = u2.Id AND pra.permission_number = 66
-            LEFT JOIN [TG].[dbo].[Usuario] u3 ON pra.staff_user_id = u3.Id AND pra.permission_number = 67
-            LEFT JOIN [TG].[dbo].[Usuario] u4 ON pra.staff_user_id = u4.Id AND pra.permission_number = 68
-            LEFT JOIN [SG12].[dbo].Proveedores u5 on pr.provider_cod = u5.cod
-			LEFT JOIN [SG12].[dbo].Empresas u6 on pr.emp_cod = u6.cod
+                t4.auth_abastos_date,
+                t4.auth_admin_date,
+                t4.auth_tesoreria_date,
+                ISNULL(t4.total_authorizations, 0) AS total_authorizations,
+                t5.den AS provider_name,
+                t6.den AS emp_name
+            FROM [TG].[dbo].[payment_requests] t1
+            LEFT JOIN (
+                SELECT 
+                    payment_request_id,
+                    COUNT(*) AS total_invoices,
+                    SUM(amount) AS total_amount,
+                    SUM(paid_amount) AS total_paid,
+                    SUM(CASE WHEN payment_authorized = 1 THEN 1 ELSE 0 END) AS authorized_invoices_count,
+                    SUM(CASE WHEN payment_authorized = 1 THEN ISNULL(authorized_amount, 0) ELSE 0 END) AS authorized_amount_total
+                FROM tg.dbo.payment_request_invoices
+                GROUP BY payment_request_id
+            ) t2 ON t1.id = t2.payment_request_id
+            LEFT JOIN [TG].[dbo].[Usuario] t3 ON t1.user_id = t3.Id
+            -- === Agregado de autorizaciones ===
+            LEFT JOIN (
+                SELECT
+                    pra.payment_request_id,
+                    MAX(CASE WHEN pra.permission_number = 66 THEN 1 ELSE 0 END) AS auth_abastos,
+                    MAX(CASE WHEN pra.permission_number = 67 THEN 1 ELSE 0 END) AS auth_admin,
+                    MAX(CASE WHEN pra.permission_number = 68 THEN 1 ELSE 0 END) AS auth_tesoreria,
+                    MAX(CASE WHEN pra.permission_number = 66 THEN u.Nombre END) AS auth_abastos_user,
+                    MAX(CASE WHEN pra.permission_number = 67 THEN u.Nombre END) AS auth_admin_user,
+                    MAX(CASE WHEN pra.permission_number = 68 THEN u.Nombre END) AS auth_tesoreria_user,
+                    MAX(CASE WHEN pra.permission_number = 66 THEN pra.authorization_date END) AS auth_abastos_date,
+                    MAX(CASE WHEN pra.permission_number = 67 THEN pra.authorization_date END) AS auth_admin_date,
+                    MAX(CASE WHEN pra.permission_number = 68 THEN pra.authorization_date END) AS auth_tesoreria_date,
+                    COUNT(*) AS total_authorizations
+                FROM tg.dbo.payment_request_authorizations pra
+                LEFT JOIN tg.dbo.Usuario u
+                    ON pra.staff_user_id = u.Id
+                GROUP BY pra.payment_request_id
+            ) t4 ON t1.id = t4.payment_request_id
+            LEFT JOIN [SG12].[dbo].Proveedores t5 ON t1.provider_cod = t5.cod
+            LEFT JOIN [SG12].[dbo].Empresas t6 ON t1.emp_cod = t6.cod
             $whereSQL
-            GROUP BY pr.id, pr.user_id, pr.request_date, pr.status, pr.comment, u.Nombre,u5.den,u6.den
-            ORDER BY pr.request_date DESC
+            ORDER BY t1.request_date DESC
         ";
         return $this->sql->select($query, $params) ?: false;
     }
@@ -685,6 +704,137 @@ class PaymentRequestsModel extends Model
             ];
         }
     }
+    // public function get_anticipos_para_layout(array $anticipo_ids) : array|false {
+    //     if (empty($anticipo_ids)) {
+    //         return false;
+    //     }
+        
+    //     $placeholders = implode(',', array_fill(0, count($anticipo_ids), '?'));
+        
+    //     $query = "SELECT 
+    //                 t1.id as payment_request_id,
+    //                 t1.emp_cod as empresa_cod,
+    //                 t1.provider_cod as proveedor_codigo,
+    //                 t1.monto_total as monto_autorizado,
+    //                 emp.den as empresa_nombre,
+    //                 cb_propia.CuentaLocal AS cuenta_cargo_empresa,
+    //                 cb_propia.TitularCuenta AS titular_cargo,
+    //                 prov.den as proveedor_nombre,
+    //                 cb_tercero.CuentaLocal AS clabe_beneficiario,
+    //                 cb_tercero.Descripcion AS titular_beneficiario,
+    //                 cb_tercero.Banco AS banco_beneficiario,
+    //                 cb_tercero.Id AS cuenta_beneficiario_id,
+    //                 'ANTICIPO' as tipo_pago,
+    //                 'ANTICIPO #' + CAST(t1.id AS VARCHAR) as folio,
+    //                 NULL as invoice_number,
+    //                 t1.request_date as fecha_pago,
+    //                 'Pago' as tipo_pago,
+    //                 t1.comment as concepto
+    //             FROM [TG].[dbo].[payment_requests] t1
+    //             LEFT JOIN [SG12].[dbo].[Empresas] emp ON t1.emp_cod = emp.cod
+    //             LEFT JOIN [SG12].[dbo].[Proveedores] prov ON t1.provider_cod = prov.cod
+    //             LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero 
+    //                 ON cb_tercero.Tipo = 'Terceros'
+    //                 --AND cb_tercero.Banco = 'SANTANDER'
+    //                 AND cb_tercero.Divisa = 'NUEVO PESO MEXICANO'
+    //                 AND cb_tercero.Activo = 1
+    //                 AND (
+    //                     cb_tercero.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+    //                     OR cb_tercero.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+    //                 )      
+    //             LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia
+    //                             ON cb_propia.emp_cod = emp.cod
+    //                             AND cb_propia.Tipo = 'Propias'
+    //                             AND cb_propia.Banco = 'SANTANDER'
+    //                             AND cb_propia.Activo = 1
+    //             WHERE t1.id IN ($placeholders)
+    //                 AND t1.tipo = ?  -- Solo anticipos
+    //                 AND t1.status = ?  -- Solo autorizados
+    //             ORDER BY t1.emp_cod, t1.provider_cod
+    //     ";
+        
+    //     $params = array_merge(
+    //         $anticipo_ids, 
+    //         [1, PaymentRequestsModel::STATUS_AUTHORIZED]  // tipo = 1 (anticipo), status = autorizado
+    //     );
+        
+    //     return $this->sql->select($query, $params) ?: false;
+    // }
+
+    public function get_anticipos_para_layout(array $anticipo_ids) : array|false {
+    if (empty($anticipo_ids)) {
+        return false;
+    }
+    
+    $placeholders = implode(',', array_fill(0, count($anticipo_ids), '?'));
+    
+    $query = "SELECT 
+                t1.id as payment_request_id,
+                t1.emp_cod as empresa_cod,
+                t1.provider_cod as proveedor_codigo,
+                t1.monto_total as monto_autorizado,
+                emp.den as empresa_nombre,
+                
+                -- ✅ SANTANDER
+                cb_propia_sant.CuentaLocal AS cuenta_cargo_empresa,
+                cb_propia_sant.TitularCuenta AS titular_cargo,
+                cb_tercero_sant.CuentaLocal AS clabe_beneficiario,
+                cb_tercero_sant.Descripcion AS titular_beneficiario,
+                cb_tercero_sant.Banco AS banco_beneficiario,
+                cb_tercero_sant.Id AS cuenta_beneficiario_id,
+                
+                -- ✅ BANORTE
+                cb_propia_banorte.CuentaLocal AS cuenta_cargo_banorte,
+                cb_propia_banorte.TitularCuenta AS titular_cargo_banorte,
+                
+                prov.den as proveedor_nombre,
+                'ANTICIPO' as tipo_pago,
+                'ANTICIPO #' + CAST(t1.id AS VARCHAR) as folio,
+                NULL as invoice_number,
+                t1.request_date as fecha_pago,
+                t1.comment as concepto
+                
+            FROM [TG].[dbo].[payment_requests] t1
+            LEFT JOIN [SG12].[dbo].[Empresas] emp ON t1.emp_cod = emp.cod
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov ON t1.provider_cod = prov.cod
+            
+            -- TERCEROS SANTANDER
+            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
+                ON cb_tercero_sant.Tipo = 'Terceros'
+                AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
+                AND cb_tercero_sant.Activo = 1
+                AND (
+                    cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                    OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                )
+
+            -- PROPIAS SANTANDER
+            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant
+                ON cb_propia_sant.emp_cod = emp.cod
+                AND cb_propia_sant.Tipo = 'Propias'
+                AND cb_propia_sant.Banco = 'SANTANDER'
+                AND cb_propia_sant.Activo = 1
+            
+            -- PROPIAS BANORTE
+            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_banorte
+                ON cb_propia_banorte.emp_cod = emp.cod
+                AND cb_propia_banorte.Tipo = 'Propias'
+                AND cb_propia_banorte.Banco = 'BANORTE'
+                AND cb_propia_banorte.Activo = 1
+                
+            WHERE t1.id IN ($placeholders)
+                AND t1.tipo = ?  -- Solo anticipos
+                AND t1.status = ?  -- Solo autorizados
+            ORDER BY t1.emp_cod, t1.provider_cod
+    ";
+    
+    $params = array_merge(
+        $anticipo_ids, 
+        [1, PaymentRequestsModel::STATUS_AUTHORIZED]
+    );
+
+    return $this->sql->select($query, $params) ?: false;
+}
     
 
 
