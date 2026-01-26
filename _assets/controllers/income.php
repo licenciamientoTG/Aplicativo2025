@@ -2106,8 +2106,320 @@ public function anomalies_client_tickets()
     }
 
 
-// =========================================================================
-    // VISTA PRINCIPAL
+    // =========================================================================
+    // CARGA DE REPORTES BANCARIOS (Manual)
+    // =========================================================================
+    public function upload_bank_reports() {
+        echo $this->twig->render($this->route . 'upload_reports.html');
+    }
+
+  private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
+        if (!$nombre) return "SinNombre";
+        $orig = trim((string)$nombre);
+
+        // 1. Quitar BOM (Byte Order Mark) invisible
+        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE"], '', $orig);
+
+        // 2. REPARACIÓN DE CODIFICACIÓN (Nuevo)
+        // Si detectamos patrones como Ã³ (ó), Ã± (ñ), etc., intentamos arreglarlo.
+        // Esto convierte la cadena interpretada incorrectamente de vuelta a su caracter real.
+        if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
+            $intento = @utf8_decode($orig);
+            if ($intento && mb_check_encoding($intento, 'UTF-8')) {
+                $orig = $intento;
+            }
+        }
+
+        // 3. Revisar en el Mapa (Chequeo exacto)
+        if (isset($coreMap[$bankType][$orig])) {
+            return $coreMap[$bankType][$orig];
+        }
+
+        // 4. Limpieza estándar (Fallback)
+        // iconv elimina acentos: 'Aplicación' -> 'Aplicacion'
+        $s = iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
+        $s = preg_replace('/[^a-zA-Z0-9_]/', '_', $s);
+        $s = preg_replace('/_+/', '_', $s);
+        
+        return trim($s, '_');
+    }
+    private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
+        $stmt = $conn->prepare("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ?");
+        $stmt->execute([$tabla]);
+        $actuales = array_map('strtolower', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        foreach ($cleanCols as $col) {
+            if (!in_array(strtolower($col), $actuales)) {
+                $conn->exec("ALTER TABLE [$tabla] ADD [$col] VARCHAR(MAX)");
+            }
+        }
+    }
+
+    public function process_bank_upload() {
+        set_time_limit(0);
+        ini_set('memory_limit', '-1');
+        ob_clean();
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']);
+            exit;
+        }
+
+        $bankType = $_POST['bank_type'] ?? '';
+        $filePath = '';
+        $isTempFile = false;
+
+        // Soporte para datos en Base64 (para saltar límites de upload_max_filesize)
+        if (!empty($_POST['file_data'])) {
+            $fileName = $_POST['file_name'] ?? 'uploaded_file.tmp';
+            $filePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('bank_') . '_' . $fileName;
+            if (file_put_contents($filePath, base64_decode($_POST['file_data'])) === false) {
+                echo json_encode(['status' => 'error', 'message' => 'Error al procesar los datos del archivo']);
+                exit;
+            }
+            $isTempFile = true;
+        } 
+        // Soporte para subida tradicional
+        elseif (isset($_FILES['report_file']) && $_FILES['report_file']['error'] === UPLOAD_ERR_OK) {
+            $filePath = $_FILES['report_file']['tmp_name'];
+        }
+
+        if (empty($filePath)) {
+            $errCode = $_FILES['report_file']['error'] ?? 'NO_FILE';
+            echo json_encode(['status' => 'error', 'message' => "Error al recibir el archivo (Code: $errCode)."]);
+            exit;
+        }
+
+        $extension = pathinfo($_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? $filePath), PATHINFO_EXTENSION);
+
+        $server = "192.168.0.6";
+        $db = "TG";
+        $user = "cguser";
+        $pass = "sahei1712";
+
+        $coreMap = [
+            'BANORTE' => [
+                'Afiliación' => 'Afiliacion',
+                'Nombre de Afiliación' => 'Nombre_Afiliacion',
+                'Moneda' => 'Moneda',
+                'Estatus de Transacción' => 'Estatus',
+                'Tipo transaccion' => 'Tipo_Transaccion',
+                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Número de Control' => 'Numero_Control',
+                'Número de Tarjeta' => 'Tarjeta',
+                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
+                'Monto de Transacción Signo' => 'Monto',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Código Autorización' => 'Codigo_Autorizacion',
+                'Fecha Aplicación' => 'Fecha_Aplicacion',
+                'Fecha AplicaciÃ³n' => 'Fecha_Aplicacion',
+                'Referencia' => 'Referencia',
+                'Terminal ID' => 'Terminal_ID',
+                'Lote de Transacción' => 'Lote',
+                'Hora de Transacción' => 'Hora',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion', // Caso roto
+                'Descripción' => 'Descripcion',
+                'DescripciÃ³n' => 'Descripcion',
+            ],
+            'SANTANDER' => [
+                'ID movimiento' => 'ID_Movimiento',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Hora de Transacción' => 'Hora',
+                'Hora Transacción' => 'Hora',
+                'Afiliación' => 'Afiliacion',
+                'Nombre del comercio' => 'Comercio',
+                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Tipo Transacción' => 'Tipo_Transaccion',
+                'Tarjeta' => 'Tarjeta',
+                'Cod. Terminal' => 'Terminal',
+                'Terminal ID' => 'Terminal',
+                'Operación' => 'Operacion',
+                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
+                'Tipo Tarjeta' => 'Tipo_Tarjeta',
+                'Número de Tarjeta' => 'Tarjeta_Numero',
+                'Tarjeta Número' => 'Tarjeta_Numero',
+                'Código Autorización' => 'Cod_Autorizacion',
+                'Cod. Aut' => 'Cod_Autorizacion',
+                'Total' => 'Total',
+                'Monto de Transacción Signo' => 'Total',
+                'Comisión' => 'Comision'
+            ]
+        ];
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $inserted = 0;
+            $skipped = 0;
+
+            if ($bankType === 'BANORTE') {
+                $spreadsheet = PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray();
+                $rawHeader = array_shift($rows);
+
+                // 1. Sanitizar y Unificar Nombres de Columna
+                $cleanCols = [];
+                $seen = [];
+                foreach ($rawHeader as $h) {
+                    $name = $this->sanitizar_nombre_columna_php($h, 'BANORTE', $coreMap);
+                    if (isset($seen[$name])) {
+                        $seen[$name]++;
+                        $name = "{$name}_{$seen[$name]}";
+                    } else {
+                        $seen[$name] = 0;
+                    }
+                    $cleanCols[] = $name;
+                }
+
+                // 2. Asegurar esquema
+                $this->asegurar_columnas_php($conn, 'banco_banorte', $cleanCols);
+
+                // 3. Huellas para duplicados
+                $stmt = $conn->query("SELECT Afiliacion, Numero_Control, Fecha_Transaccion, Monto FROM banco_banorte");
+                $huellas = [];
+                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                    $huellas[trim($r['Afiliacion']) . '|' . trim($r['Numero_Control']) . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '')] = true;
+                }
+
+                // 4. Mapeo de índices core para la huella
+                $idxAfil = array_search('Afiliacion', $cleanCols);
+                $idxNCtrl = array_search('Numero_Control', $cleanCols);
+                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
+                $idxMonto = array_search('Monto', $cleanCols);
+
+                // 5. Preparar SQL Dinámico
+                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
+                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
+                $ins = $conn->prepare("INSERT INTO banco_banorte ($colsSql) VALUES ($placeholders)");
+
+                foreach ($rows as $row) {
+                    if (empty(array_filter($row))) continue;
+
+                    $afil = ($idxAfil !== false) ? ltrim(trim($row[$idxAfil] ?? ''), '0') : '';
+                    $nctrl = ($idxNCtrl !== false) ? trim($row[$idxNCtrl] ?? '') : '';
+                    $monto = ($idxMonto !== false) ? (float)str_replace(['$', ','], '', $row[$idxMonto] ?? 0) : 0;
+                    
+                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
+                    $fechaSql = null;
+                    if ($fechaRaw) {
+                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
+                        if (!$d) $d = new DateTime($fechaRaw);
+                        if ($d) $fechaSql = $d->format('Y-m-d');
+                    }
+
+                    $huella = $afil . '|' . $nctrl . '|' . $fechaSql . '|' . number_format($monto, 2, '.', '');
+                    if (isset($huellas[$huella])) { $skipped++; continue; }
+
+                    // Limpieza de valores para el insert
+                    $finalVals = [];
+                    foreach ($row as $i => $v) {
+                        if ($i === $idxFecha) $finalVals[] = $fechaSql;
+                        elseif ($i === $idxMonto) $finalVals[] = $monto;
+                        elseif ($i === $idxAfil) $finalVals[] = $afil;
+                        else $finalVals[] = ($v === null || $v === '') ? null : (string)$v;
+                    }
+
+                    $ins->execute($finalVals);
+                    $inserted++;
+                }
+
+            } elseif ($bankType === 'SANTANDER') {
+                $handle = fopen($filePath, "r");
+                $rawHeader = fgetcsv($handle, 0, ",");
+                
+                // 1. Sanitizar y Unificar Nombres de Columna
+                $cleanCols = [];
+                $seen = [];
+                foreach ($rawHeader as $h) {
+                    $name = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
+                    if (isset($seen[$name])) {
+                        $seen[$name]++;
+                        $name = "{$name}_{$seen[$name]}";
+                    } else {
+                        $seen[$name] = 0;
+                    }
+                    $cleanCols[] = $name;
+                }
+
+                // 2. Asegurar esquema
+                $this->asegurar_columnas_php($conn, 'banco_getnet', $cleanCols);
+
+                // 3. Huellas (ID + Auth + Monto)
+                $stmt = $conn->query("SELECT ID_Movimiento, Cod_Autorizacion, Total FROM banco_getnet");
+                $huellas = [];
+                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $huellas[trim($r['ID_Movimiento']) . '|' . trim($r['Cod_Autorizacion']) . '|' . number_format((float)$r['Total'], 2, '.', '')] = true;
+                }
+
+                // 4. Mapeo de índices core
+                $idxIDM = array_search('ID_Movimiento', $cleanCols);
+                $idxAuth = array_search('Cod_Autorizacion', $cleanCols);
+                $idxTotal = array_search('Total', $cleanCols);
+                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
+
+                // 5. Preparar SQL Dinámico
+                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
+                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
+                $ins = $conn->prepare("INSERT INTO banco_getnet ($colsSql) VALUES ($placeholders)");
+
+                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                    $idm = ($idxIDM !== false) ? trim($row[$idxIDM] ?? '') : '';
+                    $auth = ($idxAuth !== false) ? trim($row[$idxAuth] ?? '') : '';
+                    $monto = ($idxTotal !== false) ? (float)str_replace(['$', ','], '', $row[$idxTotal] ?? 0) : 0;
+                    $montoStr = number_format($monto, 2, '.', '');
+
+                    $huella = $idm . '|' . $auth . '|' . $montoStr;
+                    if (isset($huellas[$huella])) { $skipped++; continue; }
+
+                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
+                    $fechaSql = null;
+                    if ($fechaRaw) {
+                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
+                        if (!$d) $d = new DateTime($fechaRaw);
+                        if ($d) $fechaSql = $d->format('Y-m-d');
+                    }
+
+                    // Limpieza de valores
+                    $finalVals = [];
+                    foreach ($row as $i => $v) {
+                        if ($i === $idxFecha) $finalVals[] = $fechaSql;
+                        elseif ($i === $idxTotal) $finalVals[] = $monto;
+                        else $finalVals[] = ($v === null || $v === '') ? null : (string)$v;
+                    }
+
+                    $ins->execute($finalVals);
+                    $inserted++;
+                }
+                fclose($handle);
+            }
+
+            // Limpiar logs de debug previos
+            if (file_exists('debug_santander_upload.log')) @unlink('debug_santander_upload.log');
+            if (file_exists('conciliacion_debug.log')) @unlink('conciliacion_debug.log');
+
+            // Limpiar archivo temporal si se creó desde Base64
+            if ($isTempFile && file_exists($filePath)) {
+                @unlink($filePath);
+            }
+
+            echo json_encode([
+                'status' => 'success', 
+                'inserted' => $inserted, 
+                'skipped' => $skipped
+            ]);
+
+        } catch (Exception $e) {
+            if ($isTempFile && file_exists($filePath)) @unlink($filePath);
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
     // =========================================================================
     public function conc_test() {
         echo $this->twig->render($this->route . 'test.html');
@@ -2525,15 +2837,82 @@ public function anomalies_client_tickets()
         exit;
     }
 
+    // =========================================================================
+    // 2. OBTENER TRANSACCIONES DEL BANCO (GETNET / BANORTE)
+    // =========================================================================
+    public function get_transacciones_banco() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $eid = $_GET['entidad_id'] ?? null;
+        $afiliacion = $_GET['afiliacion'] ?? null;
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
+        if (!$eid || !$afiliacion) {
+            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            exit;
+        }
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $tabla = "";
+            $colFecha = "fecha_Transaccion";
+            $colTotal = "Total";
+            $colAfil = "afiliacion";
+
+            if ($eid == 1) { // Santander -> GetNet
+                $tabla = "banco_getnet";
+            } else if ($eid == 4) { // Banorte
+                $tabla = "banco_banorte";
+                $colTotal = "Monto";
+            }
+
+            if (empty($tabla)) {
+                echo json_encode(["status" => "success", "data" => []]);
+                exit;
+            }
+
+            $sql = "SELECT $colFecha as Fecha, $colTotal as Total, 'Venta' as Concepto
+                    FROM $tabla 
+                    WHERE YEAR($colFecha) = ? AND MONTH($colFecha) = ? AND $colAfil = ?
+                    ORDER BY $colFecha ASC";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$year, $month, $afiliacion]);
+            
+            $result = [];
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $fechaVal = $row['Fecha'];
+                $row['Fecha'] = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                $row['Total'] = (float)$row['Total'];
+                $result[] = $row;
+            }
+
+            echo json_encode(["status" => "success", "data" => $result]);
+
+        } catch (PDOException $e) {
+            echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        }
+        exit;
+    }
+
 
 // =========================================================================
-// GUARDAR CONCILIACIÓN
+// GUARDAR CONCILIACIÓN (SOPORTE 3 VÍAS)
 // =========================================================================
 public function guardar_conciliacion() {
     ob_clean();
     header('Content-Type: application/json');
 
     $json = file_get_contents('php://input');
+    // DEBUG: Log payload
+    file_put_contents('conciliacion_debug.log', date('Y-m-d H:i:s') . " Payload: " . $json . "\n", FILE_APPEND);
+
     $data = json_decode($json, true);
 
     if (!$data || !isset($data['left_rows']) || !isset($data['right_rows'])) {
@@ -2554,31 +2933,41 @@ public function guardar_conciliacion() {
         
         $conn->beginTransaction();
 
-        // ---------------------------------------------------------
-        // A. Insertar Encabezado (CORREGIDO: Totales agregados)
-        // ---------------------------------------------------------
-        $sqlHeader = "INSERT INTO Conciliaciones_Grupos (total_cg, total_banco, diferencia, fecha_creacion) 
-                      VALUES (?, ?, ?, GETDATE())";
+        // 1. Preparar Totales
+        $total_cg = (float)$data['total_cg'];
+        $total_bk = (float)$data['total_bk'];
+        $total_tx = isset($data['total_tx']) ? (float)$data['total_tx'] : 0;
+        $diff_val = (float)$data['diferencia'];
+
+        // 2. Inferir Tipo de Diferencia (Para saber cómo recalcular en el futuro)
+        // Opciones: CG_BK (Default), CG_TX, TX_BK
+        $tipo_dif = 'CG_BK';
+        
+        // Verificamos matemáticamente cuál coincide con la diferencia enviada
+        if (abs($diff_val - ($total_bk - $total_cg)) < 0.01) {
+            $tipo_dif = 'CG_BK';
+        } elseif (abs($diff_val - ($total_tx - $total_cg)) < 0.01) {
+            $tipo_dif = 'CG_TX';
+        } elseif (abs($diff_val - ($total_bk - $total_tx)) < 0.01) {
+            $tipo_dif = 'TX_BK';
+        }
+
+        // 3. Insertar Encabezado
+        $sqlHeader = "INSERT INTO Conciliaciones_Grupos 
+                      (total_cg, total_banco, total_tx, diferencia, tipo_diferencia, fecha_creacion) 
+                      VALUES (?, ?, ?, ?, ?, GETDATE())";
         
         $stmtHeader = $conn->prepare($sqlHeader);
-        $stmtHeader->execute([
-            $data['total_cg'],    // <--- Agregado
-            $data['total_bk'],    // <--- Agregado
-            $data['diferencia']
-        ]);
+        $stmtHeader->execute([$total_cg, $total_bk, $total_tx, $diff_val, $tipo_dif]);
 
-        // ---------------------------------------------------------
-        // B. Recuperar ID
-        // ---------------------------------------------------------
+        // Recuperar ID
         $nextGroupId = $conn->lastInsertId();
         if (!$nextGroupId) {
             $stmtId = $conn->query("SELECT SCOPE_IDENTITY()");
             $nextGroupId = $stmtId->fetchColumn();
         }
 
-        // ---------------------------------------------------------
-        // C. Preparar Consultas
-        // ---------------------------------------------------------
+        // 4. Insertar Detalles
         $sqlInsert = "INSERT INTO Conciliaciones_Detalles 
                       (grupo_id, fecha, monto, descripcion, lado, referencia_unica) 
                       VALUES (?, ?, ?, ?, ?, ?)";
@@ -2590,19 +2979,10 @@ public function guardar_conciliacion() {
                              WHERE id = ?";
         $stmtUpdateTransit = $conn->prepare($sqlUpdateTransit);
 
-        // ---------------------------------------------------------
-        // D. Procesar Lado Izquierdo
-        // ---------------------------------------------------------
+        // A) Lado Izquierdo (CG)
         foreach ($data['left_rows'] as $row) {
             $ref = isset($row['ref']) ? $row['ref'] : '';
-            $stmtInsert->execute([
-                $nextGroupId,
-                $row['fecha'],
-                $row['monto'],
-                $row['concepto'],
-                'LEFT',
-                $ref
-            ]);
+            $stmtInsert->execute([$nextGroupId, $row['fecha'], $row['monto'], $row['concepto'], 'LEFT', $ref]);
 
             if (!empty($row['transit_ids']) && is_array($row['transit_ids'])) {
                 foreach ($row['transit_ids'] as $tid) {
@@ -2611,21 +2991,26 @@ public function guardar_conciliacion() {
             }
         }
 
-        // ---------------------------------------------------------
-        // E. Procesar Lado Derecho (CORREGIDO: Banco Desconocido)
-        // ---------------------------------------------------------
-        foreach ($data['right_rows'] as $row) {
-            // Esta variable trae "Principal (12345)" desde el JS
-            $afiliacionTexto = isset($row['afiliacion']) ? $row['afiliacion'] : 'Depósito';
+        // B) Lado Centro (Transacciones)
+        if (isset($data['center_rows']) && is_array($data['center_rows'])) {
+            foreach ($data['center_rows'] as $row) {
+                $ref = isset($row['ref']) ? $row['ref'] : '';
+                $stmtInsert->execute([$nextGroupId, $row['fecha'], $row['monto'], $row['concepto'], 'CENTER', $ref]);
 
-            $stmtInsert->execute([
-                $nextGroupId,
-                $row['fecha'],
-                $row['monto'],
-                $afiliacionTexto, // <--- AQUÍ ESTABA EL ERROR. Antes decía 'Depósito'.
-                'RIGHT',
-                $afiliacionTexto  // referencia_unica
-            ]);
+                if (!empty($row['transit_ids']) && is_array($row['transit_ids'])) {
+                    // DEBUG: Log transit update
+                    file_put_contents('conciliacion_debug.log', "Updating Center Transit IDs: " . json_encode($row['transit_ids']) . "\n", FILE_APPEND);
+                    foreach ($row['transit_ids'] as $tid) {
+                        $stmtUpdateTransit->execute([$tid]);
+                    }
+                }
+            }
+        }
+
+        // C) Lado Derecho (Banco)
+        foreach ($data['right_rows'] as $row) {
+            $afiliacionTexto = isset($row['afiliacion']) ? $row['afiliacion'] : 'Depósito';
+            $stmtInsert->execute([$nextGroupId, $row['fecha'], $row['monto'], $afiliacionTexto, 'RIGHT', $afiliacionTexto]);
         }
 
         $conn->commit();
@@ -2633,6 +3018,8 @@ public function guardar_conciliacion() {
 
     } catch (Exception $e) {
         if ($conn) { $conn->rollBack(); }
+        // DEBUG: Log error
+        file_put_contents('conciliacion_debug.log', "ERROR: " . $e->getMessage() . "\n", FILE_APPEND);
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
     exit;
@@ -2680,16 +3067,19 @@ public function get_conciliaciones_hechas() {
                     
                     INNER JOIN Conciliaciones_Grupos G ON D.grupo_id = G.grupo_id
                     
-                    -- SUBQUERY PARA OBTENER LA AFILIACIÓN (Igual que antes)
+                    -- SUBQUERY PARA OBTENER LA AFILIACIÓN (MEJORADA)
                     OUTER APPLY (
                         SELECT TOP 1 
                             CASE 
-                                WHEN CHARINDEX('(', descripcion) > 0 AND CHARINDEX(')', descripcion) > 0
-                                THEN SUBSTRING(descripcion, CHARINDEX('(', descripcion) + 1, CHARINDEX(')', descripcion) - CHARINDEX('(', descripcion) - 1)
-                                ELSE descripcion 
+                                -- Si tiene paréntesis (formato estándar 'Principal (12345)')
+                                WHEN CHARINDEX('(', referencia_unica) > 0 AND CHARINDEX(')', referencia_unica) > 0
+                                THEN SUBSTRING(referencia_unica, CHARINDEX('(', referencia_unica) + 1, CHARINDEX(')', referencia_unica) - CHARINDEX('(', referencia_unica) - 1)
+                                -- Si es solo numérico o texto directo en el lado derecho
+                                ELSE referencia_unica 
                             END as afiliacion_limpia
                         FROM Conciliaciones_Detalles D2 
-                        WHERE D2.grupo_id = D.grupo_id AND D2.lado = 'RIGHT'
+                        WHERE D2.grupo_id = D.grupo_id 
+                        AND D2.lado = 'RIGHT' -- Priorizamos lado derecho que siempre trae la afiliación
                     ) BankInfo
 
                     LEFT JOIN Conciliacion_Configuracion CC ON BankInfo.afiliacion_limpia = CC.afiliacion
@@ -2848,17 +3238,21 @@ public function guardar_transito() {
 
         $conn->beginTransaction();
 
-        $sql = "INSERT INTO Conciliacion_Transito (fecha_original, monto, concepto, estacion_id, afiliacion_asociada, estado) 
-                VALUES (?, ?, ?, ?, ?, 'PENDIENTE')";
+        $sql = "INSERT INTO Conciliacion_Transito (fecha_original, monto, concepto, estacion_id, afiliacion_asociada, estado, origen) 
+                VALUES (?, ?, ?, ?, ?, 'PENDIENTE', ?)";
         $stmt = $conn->prepare($sql);
 
         foreach ($data['rows'] as $row) {
+            // Determinamos origen individualmente o por defecto
+            $origen = isset($row['origen']) ? $row['origen'] : 'LEFT';
+
             $stmt->execute([
                 $row['fecha'], 
                 $row['monto'], 
                 $row['concepto'], 
                 $data['estacion_id'],
-                $data['afiliacion']
+                $data['afiliacion'],
+                $origen
             ]);
         }
 
@@ -2878,7 +3272,7 @@ public function get_transitos_pendientes() {
     header('Content-Type: application/json');
 
     $estacion_id = filter_input(INPUT_GET, 'estacion_id');
-    $afiliacion  = filter_input(INPUT_GET, 'afiliacion');
+    $afiliacion  = trim(filter_input(INPUT_GET, 'afiliacion'));
 
     if (!$estacion_id) {
         echo json_encode(['status' => 'error', 'message' => 'Falta estacion']);
@@ -2894,9 +3288,8 @@ public function get_transitos_pendientes() {
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        // MODIFICACIÓN: No filtramos por estado fijo, traemos todo para que JS decida.
-        // Solo filtramos por Estación y Afiliación.
-        $sql = "SELECT id, fecha_original as fecha, monto, concepto, estado 
+        // MODIFICACIÓN: Incluimos columna 'origen' y 'afiliacion_asociada'
+        $sql = "SELECT id, fecha_original as fecha, monto, concepto, estado, ISNULL(origen, 'LEFT') as origen, afiliacion_asociada 
                 FROM Conciliacion_Transito 
                 WHERE estacion_id = ?";
         
@@ -2917,6 +3310,52 @@ public function get_transitos_pendientes() {
         echo json_encode(['status' => 'success', 'data' => $data]);
 
     } catch (Exception $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
+// 3. Borrar registros de tránsito (Deshacer)
+public function borrar_transito() {
+    // Limpiar cualquier salida previa (errores, espacios, etc)
+    while (ob_get_level()) { ob_end_clean(); }
+    header('Content-Type: application/json; charset=utf-8');
+
+    try {
+        $input = file_get_contents('php://input');
+        $data = json_decode($input, true);
+
+        if (!$data || !isset($data['ids']) || !is_array($data['ids']) || empty($data['ids'])) {
+            throw new Exception("Datos inválidos o lista de IDs vacía.");
+        }
+
+        $server = "192.168.0.6"; 
+        $db = "TG"; 
+        $user = "cguser"; 
+        $pass = "sahei1712";
+
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        // Filtrar IDs para asegurar que sean enteros
+        $ids = array_map('intval', $data['ids']);
+        $ids = array_filter($ids, function($id) { return $id > 0; });
+
+        if (empty($ids)) {
+            throw new Exception("No se proporcionaron IDs válidos para eliminar.");
+        }
+
+        // Construir query segura
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $sql = "DELETE FROM Conciliacion_Transito WHERE id IN ($placeholders)";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->execute(array_values($ids));
+
+        echo json_encode(['status' => 'success', 'deleted_count' => count($ids)]);
+
+    } catch (Exception $e) {
+        http_response_code(500); // Indicar error de servidor
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     }
     exit;
@@ -2965,35 +3404,55 @@ public function get_conciliacion_config() {
     }
 
     // =========================================================================
-// FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO
+// FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO (3 VÍAS)
 // =========================================================================
 private function recalcular_grupo_interno($conn, $grupo_id) {
-    // 1. Sumar Lado Izquierdo (CG)
-    $sqlLeft = "SELECT ISNULL(SUM(monto), 0) as total FROM Conciliaciones_Detalles 
-                WHERE grupo_id = ? AND lado = 'LEFT'";
+    // 1. Obtener la configuración actual del grupo (para saber qué diferencia aplicar)
+    $stmtConfig = $conn->prepare("SELECT tipo_diferencia FROM Conciliaciones_Grupos WHERE grupo_id = ?");
+    $stmtConfig->execute([$grupo_id]);
+    $tipo_diferencia = $stmtConfig->fetchColumn() ?: 'CG_BK';
+
+    // 2. Sumar Lado Izquierdo (CG)
+    $sqlLeft = "SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'LEFT'";
     $stmtL = $conn->prepare($sqlLeft);
     $stmtL->execute([$grupo_id]);
     $totalCG = (float)$stmtL->fetchColumn();
 
-    // 2. Sumar Lado Derecho (Banco)
-    $sqlRight = "SELECT ISNULL(SUM(monto), 0) as total FROM Conciliaciones_Detalles 
-                 WHERE grupo_id = ? AND lado = 'RIGHT'";
+    // 3. Sumar Lado Centro (TX)
+    $sqlCenter = "SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'CENTER'";
+    $stmtC = $conn->prepare($sqlCenter);
+    $stmtC->execute([$grupo_id]);
+    $totalTX = (float)$stmtC->fetchColumn();
+
+    // 4. Sumar Lado Derecho (Banco)
+    $sqlRight = "SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'RIGHT'";
     $stmtR = $conn->prepare($sqlRight);
     $stmtR->execute([$grupo_id]);
     $totalBk = (float)$stmtR->fetchColumn();
 
-    // 3. Calcular Diferencia
-    $diferencia = $totalCG - $totalBk;
+    // 5. Calcular Diferencia según la lógica guardada
+    $diferencia = 0;
+    if ($tipo_diferencia === 'CG_BK') {
+        $diferencia = $totalBk - $totalCG;
+    } elseif ($tipo_diferencia === 'CG_TX') {
+        $diferencia = $totalTX - $totalCG;
+    } elseif ($tipo_diferencia === 'TX_BK') {
+        $diferencia = $totalBk - $totalTX;
+    } else {
+        // Fallback por si acaso
+        $diferencia = $totalBk - $totalCG;
+    }
 
-    // 4. Actualizar la Tabla Padre (Conciliaciones_Grupos)
+    // 6. Actualizar la Tabla Padre
     $sqlUpdate = "UPDATE Conciliaciones_Grupos 
-                  SET total_cg = ?, total_banco = ?, diferencia = ? 
+                  SET total_cg = ?, total_tx = ?, total_banco = ?, diferencia = ? 
                   WHERE grupo_id = ?";
     $stmtUp = $conn->prepare($sqlUpdate);
-    $stmtUp->execute([$totalCG, $totalBk, $diferencia, $grupo_id]);
+    $stmtUp->execute([$totalCG, $totalTX, $totalBk, $diferencia, $grupo_id]);
 
     return [
         'nuevo_total_cg' => $totalCG, 
+        'nuevo_total_tx' => $totalTX,
         'nuevo_total_bk' => $totalBk, 
         'nueva_diferencia' => $diferencia
     ];
@@ -3041,19 +3500,18 @@ public function forzar_recalculo() {
 
 
 
-// =========================================================================
+    // =========================================================================
     // ACTUALIZAR MONTO Y REPARAR DIFERENCIA (CASCADA)
     // =========================================================================
     public function actualizar_monto_detalle() {
         ob_clean();
         header('Content-Type: application/json');
 
-        // 1. Recibimos el ID de la fila (tabla detalles) y el NUEVO monto real
         $json = file_get_contents('php://input');
         $data = json_decode($json, true);
 
         if (!isset($data['id_detalle']) || !isset($data['nuevo_monto'])) {
-            echo json_encode(['status' => 'error', 'message' => 'Faltan datos (id_detalle, nuevo_monto)']);
+            echo json_encode(['status' => 'error', 'message' => 'Faltan datos']);
             exit;
         }
 
@@ -3065,70 +3523,28 @@ public function forzar_recalculo() {
         try {
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            
-            // INICIAMOS TRANSACCIÓN (Para que no se guarde una cosa sin la otra)
             $conn->beginTransaction();
 
-            // ---------------------------------------------------------
-            // PASO A: Averiguar a qué Grupo pertenece este detalle
-            // ---------------------------------------------------------
+            // 1. Obtener Grupo
             $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliaciones_Detalles WHERE id = ?");
             $stmtGet->execute([$id_detalle]);
             $grupo_id = $stmtGet->fetchColumn();
 
-            if (!$grupo_id) {
-                throw new Exception("El detalle ID $id_detalle no existe.");
-            }
+            if (!$grupo_id) throw new Exception("Detalle no encontrado.");
 
-            // ---------------------------------------------------------
-            // PASO B: Actualizar el monto en la tabla hija (Detalles)
-            // ---------------------------------------------------------
+            // 2. Actualizar Detalle
             $stmtUpdateDetalle = $conn->prepare("UPDATE Conciliaciones_Detalles SET monto = ? WHERE id = ?");
             $stmtUpdateDetalle->execute([$nuevo_monto, $id_detalle]);
 
-            // ---------------------------------------------------------
-            // PASO C: RECALCULAR TOTALES (Leer todo de nuevo para ser exactos)
-            // ---------------------------------------------------------
-            
-            // 1. Sumar nuevo Total Izquierda (CG)
-            $stmtSumL = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'LEFT'");
-            $stmtSumL->execute([$grupo_id]);
-            $nuevo_total_cg = (float)$stmtSumL->fetchColumn();
-
-            // 2. Sumar nuevo Total Derecha (Banco)
-            $stmtSumR = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'RIGHT'");
-            $stmtSumR->execute([$grupo_id]);
-            $nuevo_total_bk = (float)$stmtSumR->fetchColumn();
-
-            // 3. Calcular la nueva diferencia matemática
-            $nueva_diferencia = $nuevo_total_bk - $nuevo_total_cg; // Ojo: Banco - CG (según tu lógica visual)
-            
-            // Nota: Si prefieres CG - Banco, invierte la resta. 
-            // En tu imagen 2, el Grupo 45 tiene Diff $364.59. 
-            // CG: 14494 vs BK: 14129. La diferencia es positiva a favor de CG.
-            // Ajusta el signo según tu preferencia de negocio.
-
-            // ---------------------------------------------------------
-            // PASO D: Actualizar la tabla padre (Conciliaciones_Grupos)
-            // ---------------------------------------------------------
-            $stmtUpdateGrupo = $conn->prepare("UPDATE Conciliaciones_Grupos 
-                                               SET total_cg = ?, 
-                                                   total_banco = ?, 
-                                                   diferencia = ? 
-                                               WHERE grupo_id = ?");
-            $stmtUpdateGrupo->execute([$nuevo_total_cg, $nuevo_total_bk, $nueva_diferencia, $grupo_id]);
+            // 3. RECALCULAR TOTALES (Usando la nueva lógica de 3 vías)
+            $nuevos_totales = $this->recalcular_grupo_interno($conn, $grupo_id);
 
             $conn->commit();
 
             echo json_encode([
                 'status' => 'success', 
                 'message' => 'Actualizado correctamente',
-                'data' => [
-                    'grupo_id' => $grupo_id,
-                    'nuevo_total_cg' => $nuevo_total_cg,
-                    'nuevo_total_bk' => $nuevo_total_bk,
-                    'nueva_diferencia' => $nueva_diferencia
-                ]
+                'data' => array_merge(['grupo_id' => $grupo_id], $nuevos_totales)
             ]);
 
         } catch (Exception $e) {
@@ -3137,7 +3553,6 @@ public function forzar_recalculo() {
         }
         exit;
     }
-
     // =========================================================================
 // DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÍO)
 // =========================================================================
@@ -3161,47 +3576,50 @@ public function desligar_movimiento() {
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $conn->beginTransaction();
 
-        // 1. Obtener el grupo_id antes de borrar (para saber qué recalcular)
-        $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliaciones_Detalles WHERE id = ?");
+        // 1. Obtener el grupo_id antes de borrar
+        $stmtGet = $conn->prepare("SELECT grupo_id, referencia_unica, lado FROM Conciliaciones_Detalles WHERE id = ?");
         $stmtGet->execute([$id_detalle]);
-        $grupo_id = $stmtGet->fetchColumn();
-
-        if (!$grupo_id) {
-            throw new Exception("El movimiento no existe o ya fue borrado.");
-        }
+        $rowDet = $stmtGet->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$rowDet) throw new Exception("Movimiento no encontrado.");
+        
+        $grupo_id = $rowDet['grupo_id'];
+        $ref      = $rowDet['referencia_unica'];
+        $lado     = $rowDet['lado'];
 
         // 2. Eliminar el detalle específico
         $stmtDel = $conn->prepare("DELETE FROM Conciliaciones_Detalles WHERE id = ?");
         $stmtDel->execute([$id_detalle]);
 
-        // 3. Verificar cuántos miembros quedan en ese grupo
+        // REVERSIÓN DE TRÁNSITO: Si tenía IDs de tránsito guardados en 'referencia_unica', volverlos a PENDIENTE
+        if (($lado === 'LEFT' || $lado === 'CENTER') && !empty($ref)) {
+            // Validar que sea una lista de números
+            if (preg_match('/^[\d,]+$/', $ref)) {
+                // Convertir "1,2,3" a array
+                $tIds = explode(',', $ref);
+                if (count($tIds) > 0) {
+                    // Preparamos placeholders (?,?,?)
+                    $placeholders = implode(',', array_fill(0, count($tIds), '?'));
+                    $sqlRevert = "UPDATE Conciliacion_Transito SET estado = 'PENDIENTE', fecha_marcado = NULL WHERE id IN ($placeholders)";
+                    $stmtRevert = $conn->prepare($sqlRevert);
+                    $stmtRevert->execute($tIds);
+                }
+            }
+        }
+
+        // 3. Verificar si queda vacío
         $stmtCount = $conn->prepare("SELECT COUNT(*) FROM Conciliaciones_Detalles WHERE grupo_id = ?");
         $stmtCount->execute([$grupo_id]);
         $remaining = (int)$stmtCount->fetchColumn();
 
         if ($remaining === 0) {
-            // CASO A: El grupo quedó vacío -> ELIMINAR EL GRUPO
+            // Grupo vacío -> Eliminar
             $stmtDelGroup = $conn->prepare("DELETE FROM Conciliaciones_Grupos WHERE grupo_id = ?");
             $stmtDelGroup->execute([$grupo_id]);
             $mensaje = "Grupo eliminado por quedar vacío.";
         } else {
-            // CASO B: Aún quedan miembros -> RECALCULAR TOTALES
-            
-            // Sumar Left
-            $stmtSumL = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'LEFT'");
-            $stmtSumL->execute([$grupo_id]);
-            $totalCG = (float)$stmtSumL->fetchColumn();
-
-            // Sumar Right
-            $stmtSumR = $conn->prepare("SELECT ISNULL(SUM(monto), 0) FROM Conciliaciones_Detalles WHERE grupo_id = ? AND lado = 'RIGHT'");
-            $stmtSumR->execute([$grupo_id]);
-            $totalBk = (float)$stmtSumR->fetchColumn();
-
-            $diferencia = $totalBk - $totalCG;
-
-            $stmtUp = $conn->prepare("UPDATE Conciliaciones_Grupos SET total_cg = ?, total_banco = ?, diferencia = ? WHERE grupo_id = ?");
-            $stmtUp->execute([$totalCG, $totalBk, $diferencia, $grupo_id]);
-            
+            // Grupo con datos -> Recalcular (3 Vías)
+            $this->recalcular_grupo_interno($conn, $grupo_id);
             $mensaje = "Grupo recalculado.";
         }
 
