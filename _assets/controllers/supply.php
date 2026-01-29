@@ -1457,9 +1457,8 @@ class Supply{
                     $uuid = trim($uuid);
                     $uuidOriginal = $uuid;
                     $uuid = strtoupper($uuid);
-                    
                     // Validar formato UUID
-                    if (strlen($uuid) !== 36) {
+                    if (strlen($uuid) !== 36) {                        
                         // UUID inválido - longitud incorrecta
                         $uuidsInvalidos[] = [
                             'fila' => $row,
@@ -1467,21 +1466,21 @@ class Supply{
                             'estado' => 'formato_invalido',
                             'error' => 'UUID con formato inválido (longitud: ' . strlen($uuid) . ', debe ser 36 caracteres)'
                         ];
-                } else if (!preg_match('/^[A-F0-9]{8}[-_][A-F0-9]{4}[-_][A-F0-9]{4}[-_][A-F0-9]{4}[-_][A-F0-9]{12}$/i', $uuid)) {
-                    // UUID inválido - formato incorrecto
-                    $uuidsInvalidos[] = [
-                        'fila' => $row,
-                        'uuid' => $uuid,
-                        'estado' => 'formato_invalido',
-                        'error' => 'UUID con formato inválido (no cumple patrón 8-4-4-4-12 caracteres)'
-                    ];
-                } else {
-                    // UUID válido
-                    // IMPORTANTE: Aunque el Regex ahora acepte guiones bajos,
-                    // tu base de datos seguramente usa guiones medios.
-                    // Convertimos a formato estándar para buscarlo correctamente:
-                    $uuidsValidos[] = str_replace('_', '-', $uuid);
-                }
+                    } else if (!preg_match('/^[A-F0-9]{8}[-_][A-F0-9]{4}[-_][A-F0-9]{4}[-_][A-F0-9]{4}[-_][A-F0-9]{12}$/i', $uuid)) {
+                        // UUID inválido - formato incorrecto
+                        $uuidsInvalidos[] = [
+                            'fila' => $row,
+                            'uuid' => $uuid,
+                            'estado' => 'formato_invalido',
+                            'error' => 'UUID con formato inválido (no cumple patrón 8-4-4-4-12 caracteres)'
+                        ];
+                    } else {
+                        // UUID válido
+                        // IMPORTANTE: Aunque el Regex ahora acepte guiones bajos,
+                        // tu base de datos seguramente usa guiones medios.
+                        // Convertimos a formato estándar para buscarlo correctamente:
+                        $uuidsValidos[] = str_replace('_', '-', $uuid);
+                    }
                 }
             }
 
@@ -1490,6 +1489,7 @@ class Supply{
                 json_output(['success' => false, 'message' => 'No se encontraron UUIDs en el archivo']);
                 return;
             }
+
             
             // Buscar facturas en la base de datos (solo con UUIDs válidos)
             $facturas = [];

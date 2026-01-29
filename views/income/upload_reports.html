@@ -1,0 +1,184 @@
+{% extends "views/layouts/base.html" %}
+
+{% block title %}Carga de Reportes Bancarios{% endblock %}
+{% block menutitle %}Carga de Reportes Bancarios{% endblock %}
+
+{% block content %}
+<style>
+    .bank-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+        border-radius: 15px;
+        overflow: hidden;
+        border: 1px solid #e0e0e0;
+    }
+    .bank-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+    .bank-logo {
+        height: 60px;
+        object-fit: contain;
+        margin-bottom: 15px;
+    }
+    .bank-card.disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        filter: grayscale(1);
+    }
+    .upload-area {
+        border: 2px dashed #ccc;
+        padding: 20px;
+        text-align: center;
+        border-radius: 10px;
+        background: #f9f9f9;
+        margin-top: 15px;
+    }
+</style>
+
+<div class="container-fluid pt-3">
+    <div class="row">
+        <!-- SANTANDER / GETNET -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card shadow-sm h-100" onclick="openUploadModal('SANTANDER', 'banco_getnet')">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/Banco_Santander_Logotipo.svg/1280px-Banco_Santander_Logotipo.svg.png" alt="Santander" class="bank-logo" onerror="this.src='/_assets/images/logos/Logo.png'">
+                    <h5 class="font-weight-bold">SANTANDER (GETNET)</h5>
+                    <p class="small text-muted">Carga manual de reportes .CSV</p>
+                    <button class="btn btn-primary btn-sm rounded-pill px-4">Subir Reporte</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- BANORTE -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card shadow-sm h-100" onclick="openUploadModal('BANORTE', 'banco_banorte')">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Logo_de_Banorte.svg/1280px-Logo_de_Banorte.svg.png" alt="Banorte" class="bank-logo" onerror="this.src='/_assets/images/logos/Logo.png'">
+                    <h5 class="font-weight-bold">BANORTE</h5>
+                    <p class="small text-muted">Carga manual de reportes .XLSX</p>
+                    <button class="btn btn-danger btn-sm rounded-pill px-4">Subir Reporte</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- AMEX (Placeholder) -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card disabled shadow-sm h-100">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/American_Express_logo_%282018%29.svg/1200px-American_Express_logo_%282018%29.svg.png" alt="AMEX" class="bank-logo">
+                    <h5 class="font-weight-bold">AMERICAN EXPRESS</h5>
+                    <p class="small text-muted">Próximamente...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- AFIRME (Placeholder) -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card disabled shadow-sm h-100">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <img src="https://www.afirme.com/o/afirme-theme/images/logo-afirme.svg" alt="Afirme" class="bank-logo">
+                    <h5 class="font-weight-bold">AFIRME</h5>
+                    <p class="small text-muted">Próximamente...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Carga -->
+<div class="modal fade" id="modalUpload" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title font-weight-bold">Subir Reporte - <span id="modalBankName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <input type="hidden" name="bank_type" id="inputBankType">
+                    <div class="mb-3">
+                        <label class="form-label">Seleccione el archivo exportado del banco:</label>
+                        <input type="file" name="report_file" id="reportFile" class="form-control" accept=".csv, .xlsx, .xls">
+                    </div>
+                    <div id="uploadProgress" style="display:none;">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                        </div>
+                        <p class="text-center small">Procesando registros, por favor espere...</p>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="executeUpload()">Iniciar Carga</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+    function openUploadModal(bank, table) {
+        if(bank === 'AMEX' || bank === 'AFIRME') return;
+        $('#modalBankName').text(bank);
+        $('#inputBankType').val(bank);
+        $('#reportFile').val('');
+        $('#uploadProgress').hide();
+        $('#modalUpload').modal('show');
+    }
+
+    function executeUpload() {
+        const fileInput = $('#reportFile')[0];
+        const file = fileInput.files[0];
+        if(!file) {
+            alert("Por favor seleccione un archivo.");
+            return;
+        }
+
+        const bankType = $('#inputBankType').val();
+        $('#uploadProgress').show();
+        $('.modal-footer button').attr('disabled', true);
+
+        // Leer archivo como Base64 para saltar límites de upload_max_filesize
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const base64Data = e.target.result.split(',')[1];
+            
+            $.ajax({
+                url: '/income/process_bank_upload',
+                type: 'POST',
+                data: {
+                    bank_type: bankType,
+                    file_name: file.name,
+                    file_data: base64Data
+                },
+                success: function(resp) {
+                    $('#uploadProgress').hide();
+                    $('.modal-footer button').attr('disabled', false);
+                    
+                    let data = {};
+                    try {
+                        data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+                    } catch(e) { console.error(e); }
+
+                    if(data.status === 'success') {
+                        alert(`Éxito: ${data.inserted} registros nuevos insertados. ${data.skipped} duplicados omitidos.`);
+                        $('#modalUpload').modal('hide');
+                    } else {
+                        alert("Error: " + (data.message || "Error desconocido"));
+                    }
+                },
+                error: function(xhr) {
+                    $('#uploadProgress').hide();
+                    $('.modal-footer button').attr('disabled', false);
+                    alert("Error de conexión con el servidor.");
+                }
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+</script>
+{% endblock %}

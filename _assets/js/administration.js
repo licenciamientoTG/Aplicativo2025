@@ -1634,7 +1634,7 @@ let datatables_resueltos_tickets = $('#datatables_resueltos_tickets').DataTable(
             title: 'Tabuladores',
             // Prevenimos la exportación de la columna de checkbox y de las acciones
             exportOptions: {
-                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
             }
         },
         {

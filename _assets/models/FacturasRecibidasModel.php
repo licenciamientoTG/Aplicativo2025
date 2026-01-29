@@ -22,11 +22,12 @@ public function buscarPorUUIDs($uuids) {
                 $cleanUuids[] = $u;
             }
         }
-
+        
         if (empty($cleanUuids)) {
             return [];
         }
-
+        
+        
         // Crear placeholders para la consulta IN (?,?,?)
         $placeholders = implode(',', array_fill(0, count($cleanUuids), '?'));
         
@@ -44,6 +45,8 @@ public function buscarPorUUIDs($uuids) {
                   WHERE UUID IN ($placeholders)
                   AND RutaArchivo IS NOT NULL
                   AND RutaArchivo != ''";
+
+        // F791050F-555D-4B82-82DF-518E222E9271
                   
         // Pasamos el array limpio
         return $this->sql->select($query, $cleanUuids) ?: [];
