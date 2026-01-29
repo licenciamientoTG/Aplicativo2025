@@ -56,123 +56,8 @@ $(document).ready(function() {
         inventory_mov_table.ajax.reload();
         $('#inventory_mov_table').waitMe('hide');
     });
-});
-
-let movimientoActual = {};
-let facturaProveedorSeleccionada = null;
-let facturaPetrotalSeleccionada = null;
 
 
-let datatable_product_prices = $('#datatable_product_prices').DataTable({
-    colReorder: true,
-    order: [0, "asc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-        {
-            extend: 'excel',
-            className: 'd-none',
-            // Título del archivo de exportación
-            title: 'Precios de Combustibles',
-        }
-    ],
-    ajax: {
-        url: '/supply/datatable_product_prices',
-        type: 'POST',
-        error: function() {
-            $('#datatable_product_prices').waitMe('hide');
-            alertify.myAlert(
-                `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`
-            );
-        },
-        beforeSend: function() {
-            $('.table-responsive').addClass('loading');
-        }
-    },
-    deferRender: true,
-    columns: [
-        {'data': 'CODEST'},
-        {'data': 'ESTACION'},
-        {'data': 'PRECIOANTERIORMAXIMA'},
-        {'data': 'PRECIONUEVOMAXIMA'},
-        {'data': 'DIFERENCIAMAXIMA'},
-        {'data': 'PRECIOANTERIORSUPER'},
-        {'data': 'PRECIONUEVOSUPER'},
-        {'data': 'DIFERENCIASUPER'},
-        {'data': 'PRECIOANTERIORDIESEL'},
-        {'data': 'PRECIONUEVODIESEL'},
-        {'data': 'DIFERENCIADIESEL'},
-    ],
-    rowId: 'CODEST',
-    createdRow: function (row, data, dataIndex) {
-        // Vamos a agregar la clase .bg-success a las celdas de la columna 2,3 y 4
-        // que tengan un valor mayor a 100
-        $('td', row).eq(2).addClass('bg-success text-white text-center');
-        $('td', row).eq(3).addClass('bg-success text-white text-center');
-        $('td', row).eq(4).addClass('bg-success text-white text-center');
-
-        $('td', row).eq(5).addClass('bg-primary text-white text-center');
-        $('td', row).eq(6).addClass('bg-primary text-white text-center');
-        $('td', row).eq(7).addClass('bg-primary text-white text-center');
-
-        // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
-        if ($('td', row).eq(6).text() === 'N/A') {
-            $('td', row).eq(5).addClass('bg-black');
-            $('td', row).eq(6).addClass('bg-black');
-            $('td', row).eq(7).addClass('bg-black');
-        }
-
-        $('td', row).eq(8).addClass('table-warning text-center');
-        $('td', row).eq(9).addClass('table-warning text-center');
-        $('td', row).eq(10).addClass('table-warning text-center');
-
-        // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
-        if ($('td', row).eq(9).text() === 'N/A') {
-            $('td', row).eq(8).addClass('bg-black text-white');
-            $('td', row).eq(9).addClass('bg-black text-white');
-            $('td', row).eq(10).addClass('bg-black text-white');
-        }
-    },
-    initComplete: function () {
-        $('.dt-buttons').addClass('d-none');
-        $('.table-responsive').removeClass('loading');
-    }
-});
-
-datatable_product_prices.on('draw', function() {
-    $('[data-toggle="tooltip"]').tooltip();
-});
-
-// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-$('#filtro-datatable_product_prices input').on('keyup change clear', function () {
-    datatable_product_prices
-        .column(0).search($('#CODEST').val().trim())
-        .column(1).search($('#ESTACION').val().trim())
-        .column(2).search($('#PRECIOANTERIORMAXIMA').val().trim())
-        .column(3).search($('#PRECIONUEVOMAXIMA').val().trim())
-        .column(4).search($('#DIFERENCIAMAXIMA').val().trim())
-        .column(5).search($('#PRECIOANTERIORSUPER').val().trim())
-        .column(6).search($('#PRECIONUEVOSUPER').val().trim())
-        .column(7).search($('#DIFERENCIASUPER').val().trim())
-        .column(8).search($('#PRECIOANTERIORDIESEL').val().trim())
-        .column(9).search($('#PRECIONUEVODIESEL').val().trim())
-        .column(10).search($('#DIFERENCIADIESEL').val().trim())
-        .draw();
-});
-
-// Agregar un evento clic de refresh
-$('.refresh_datatable_product_prices').on('click', function () {
-    datatable_product_prices.clear().draw();
-    datatable_product_prices.ajax.reload();
-    $('#datatable_product_prices').waitMe('hide');
-});
-
-$(document).ready(function() {
     $('#ieps_value').text();
     $('#product').on('changed.bs.select', function(e, clickedIndex, isSelected, previousValue) {
         var selectedValue = $(this).val();
@@ -182,7 +67,123 @@ $(document).ready(function() {
         });
 
     });
+    let movimientoActual = {};
+    let facturaProveedorSeleccionada = null;
+    let facturaPetrotalSeleccionada = null;
+    
+    
+    let datatable_product_prices = $('#datatable_product_prices').DataTable({
+        colReorder: true,
+        order: [0, "asc"],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 100,
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+                // Título del archivo de exportación
+                title: 'Precios de Combustibles',
+            }
+        ],
+        ajax: {
+            url: '/supply/datatable_product_prices',
+            type: 'POST',
+            error: function() {
+                $('#datatable_product_prices').waitMe('hide');
+                alertify.myAlert(
+                    `<div class="container text-center text-danger">
+                        <h4 class="mt-2 text-danger">¡Error!</h4>
+                    </div>
+                    <div class="text-dark">
+                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                    </div>`
+                );
+            },
+            beforeSend: function() {
+                $('.table-responsive').addClass('loading');
+            }
+        },
+        deferRender: true,
+        columns: [
+            {'data': 'CODEST'},
+            {'data': 'ESTACION'},
+            {'data': 'PRECIOANTERIORMAXIMA'},
+            {'data': 'PRECIONUEVOMAXIMA'},
+            {'data': 'DIFERENCIAMAXIMA'},
+            {'data': 'PRECIOANTERIORSUPER'},
+            {'data': 'PRECIONUEVOSUPER'},
+            {'data': 'DIFERENCIASUPER'},
+            {'data': 'PRECIOANTERIORDIESEL'},
+            {'data': 'PRECIONUEVODIESEL'},
+            {'data': 'DIFERENCIADIESEL'},
+        ],
+        rowId: 'CODEST',
+        createdRow: function (row, data, dataIndex) {
+            // Vamos a agregar la clase .bg-success a las celdas de la columna 2,3 y 4
+            // que tengan un valor mayor a 100
+            $('td', row).eq(2).addClass('bg-success text-white text-center');
+            $('td', row).eq(3).addClass('bg-success text-white text-center');
+            $('td', row).eq(4).addClass('bg-success text-white text-center');
+    
+            $('td', row).eq(5).addClass('bg-primary text-white text-center');
+            $('td', row).eq(6).addClass('bg-primary text-white text-center');
+            $('td', row).eq(7).addClass('bg-primary text-white text-center');
+    
+            // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
+            if ($('td', row).eq(6).text() === 'N/A') {
+                $('td', row).eq(5).addClass('bg-black');
+                $('td', row).eq(6).addClass('bg-black');
+                $('td', row).eq(7).addClass('bg-black');
+            }
+    
+            $('td', row).eq(8).addClass('table-warning text-center');
+            $('td', row).eq(9).addClass('table-warning text-center');
+            $('td', row).eq(10).addClass('table-warning text-center');
+    
+            // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
+            if ($('td', row).eq(9).text() === 'N/A') {
+                $('td', row).eq(8).addClass('bg-black text-white');
+                $('td', row).eq(9).addClass('bg-black text-white');
+                $('td', row).eq(10).addClass('bg-black text-white');
+            }
+        },
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+            $('.table-responsive').removeClass('loading');
+        }
+    });
+    
+    datatable_product_prices.on('draw', function() {
+        $('[data-toggle="tooltip"]').tooltip();
+    });
+    
+    // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+    $('#filtro-datatable_product_prices input').on('keyup change clear', function () {
+        datatable_product_prices
+            .column(0).search($('#CODEST').val().trim())
+            .column(1).search($('#ESTACION').val().trim())
+            .column(2).search($('#PRECIOANTERIORMAXIMA').val().trim())
+            .column(3).search($('#PRECIONUEVOMAXIMA').val().trim())
+            .column(4).search($('#DIFERENCIAMAXIMA').val().trim())
+            .column(5).search($('#PRECIOANTERIORSUPER').val().trim())
+            .column(6).search($('#PRECIONUEVOSUPER').val().trim())
+            .column(7).search($('#DIFERENCIASUPER').val().trim())
+            .column(8).search($('#PRECIOANTERIORDIESEL').val().trim())
+            .column(9).search($('#PRECIONUEVODIESEL').val().trim())
+            .column(10).search($('#DIFERENCIADIESEL').val().trim())
+            .draw();
+    });
+    
+    // Agregar un evento clic de refresh
+    $('.refresh_datatable_product_prices').on('click', function () {
+        datatable_product_prices.clear().draw();
+        datatable_product_prices.ajax.reload();
+        $('#datatable_product_prices').waitMe('hide');
+    });
 });
+
+
+
 
 function update_price(codprd, codgas, fch, hra, pre) {
     alertify.prompt('Actualizar precio', 'Por favor, ingrese el precio del producto: ', pre,
@@ -686,9 +687,9 @@ async function shop_fuel_table(){
         $('#shop_fuel_table').DataTable().destroy();
         $('#shop_fuel_table thead .filter').remove();
     }
-    var fromDate = document.getElementById('from1').value;
-    var untilDate = document.getElementById('until1').value;
-    var codgas = document.getElementById('station_id1').value;
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('station_id').value;
     if(!codgas){
         alertify.myAlert(
             `<div class="container text-center text-danger">
@@ -804,12 +805,6 @@ async function shop_fuel_table(){
 }
 
 
-
-// ... [CÓDIGO ANTERIOR DE SUPPLY.JS SE MANTIENE IGUAL HASTA LA LÍNEA ~1440] ...
-
-// ==========================================
-// DESCARGAR FACTURAS POR UUID - VERSIÓN ÚNICA Y DEFINITIVA
-// ==========================================
 $(document).ready(function() {
     // Solo ejecutar si estamos en la página correcta
     if ($('#formImportarUUIDs').length > 0) {
@@ -3734,12 +3729,13 @@ function deletePayment(paymentId) {
 }
 
 function toggleSelectAll() {
+    console.log('toggleSelectAll');
     const selectAllCheckbox = $('#selectAllCheckbox');
     const isChecked = selectAllCheckbox.prop('checked');
-    
     $('.invoice-checkbox:visible').prop('checked', isChecked);
     updateSelectedCount();
 }
+
 
 // Actualizar contador de facturas seleccionadas
 function updateSelectedCount() {
@@ -4206,83 +4202,6 @@ async function generarTransferenciasBancarias(paymentId) {
     }
 }
 
-// function generarArchivoTransferencias(paymentId) {
-//     alertify.message('<i class="fas fa-spinner fa-spin"></i> Generando archivo...');
-    
-//     const btnTransfer = $('#btnGenerarTransferencias');
-//     const btnOriginalText = btnTransfer.html();
-//     btnTransfer.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Generando...');
-    
-//     $.ajax({
-//         url: '/supply/generate_payment_layout',
-//         type: 'POST',
-//         data: { payment_id: paymentId },
-//         timeout: 300000,
-//         success: function(response) {
-            
-//             if (response.success) {
-//                 // Descargar archivo
-//                 fetch(response.file_url)
-//                     .then(res => {
-//                         if (!res.ok) throw new Error('Error en la descarga');
-//                         return res.blob();
-//                     })
-//                     .then(blob => {
-//                         const url = window.URL.createObjectURL(new Blob([blob]));
-//                         const a = document.createElement('a');
-//                         a.style.display = 'none';
-//                         a.href = url;
-//                         a.download = response.file_name;
-//                         document.body.appendChild(a);
-//                         a.click();
-//                         window.URL.revokeObjectURL(url);
-//                         document.body.removeChild(a);
-                        
-//                         // ✅ Mostrar modal y eliminar archivo AL CERRARLO
-//                         alertify.alert(
-//                             'Layout Generado',
-//                             `<div class="text-center">
-//                                 <i class="fas fa-check-circle text-success" style="font-size: 48px;"></i>
-//                                 <h5 class="mt-3">Archivo Descargado</h5>
-//                                 <p class="mb-2"><strong>${response.file_name}</strong></p>
-//                                 <p class="text-muted">
-//                                     ${response.registros_procesados} transferencias<br>
-//                                     Total: $${parseFloat(response.total_importe).toLocaleString('es-MX', {minimumFractionDigits: 2})}
-//                                 </p>
-//                             </div>`,
-//                             function() {
-//                                 // ✅ Eliminar archivo CUANDO EL USUARIO CIERRE EL MODAL
-//                                 $.post('/supply/delete_layout', {
-//                                     filename: response.file_name
-//                                 }, function(deleteResponse) {
-//                                     console.log('Archivo eliminado:', deleteResponse);
-//                                 }).fail(function(error) {
-//                                     console.error('Error al eliminar:', error);
-//                                 });
-//                             }
-//                         ).set({
-//                             maximizable: false,
-//                             closable: true
-//                         });
-//                     })
-//                     .catch(error => {
-//                         console.error('Error:', error);
-//                         alertify.error('Error al descargar el archivo');
-//                     });
-                
-//             } else {
-//                 alertify.error(response.message);
-//             }
-//         },
-//         error: function(xhr, status) {
-//             console.error('Error AJAX:', { status, xhr });
-//             alertify.error(status === 'timeout' ? 'Timeout' : 'Error al generar');
-//         },
-//         complete: function() {
-//             btnTransfer.prop('disabled', false).html(btnOriginalText);
-//         }
-//     });
-// }
 
 function cargarDatosParaLayout(paymentId) {
     $.ajax({
@@ -6397,5 +6316,69 @@ function mostrarResumenLayoutBanorte(filename, totalPagos, totalFacturas, totalA
     ).set({
         maximizable: false,
         closable: true
+    });
+}
+
+async function addNoteModal(id){
+    try {
+        $('#addNoteModal').modal('show'); // Abre el modal
+        id = $('#paymentId').val();
+        const response = await fetch('/supply/addNoteModal', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+            body: `payment_request_id=${id}`
+        });
+
+        const content = await response.text();
+        // Inserta el contenido en el modal
+        $('#addNoteModal').find('#addNoteModalContent').html(content);
+
+    } catch (error) {
+        console.error(error);
+    }
+
+}
+
+
+function deleteNote(noteId) {
+    Swal.fire({
+        title: '¿Está seguro?',
+        text: "Esta acción no se puede deshacer",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.ajax({
+                url: '/supply/deleteCreditDebitNote/' + noteId,
+                type: 'DELETE',
+                success: function(response) {
+                    if (response.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Eliminado',
+                            text: response.message,
+                            timer: 2000
+                        }).then(() => {
+                            location.reload();
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Error al eliminar: ' + xhr.responseText
+                    });
+                }
+            });
+        }
     });
 }

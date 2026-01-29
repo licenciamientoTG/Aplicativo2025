@@ -2,6 +2,7 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Detalle de Pago #{{ payment.id }}{% endblock %}
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <style>
 .table-success th {
@@ -65,6 +66,36 @@ input[readonly] {
 #tablaFacturasIncluidas .text-success strong {
     font-size: 0.95rem;
     text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.bg-light-success {
+    background-color: #d4edda !important;
+}
+
+.bg-light-warning {
+    background-color: #fff3cd !important;
+}
+
+.text-success {
+    color: #28a745 !important;
+}
+
+.text-warning {
+    color: #ffc107 !important;
+}
+
+.text-danger {
+    color: #dc3545 !important;
+}
+
+/* Animación sutil para el total */
+.card-body table tr.bg-primary {
+    animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+@keyframes pulse-subtle {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
 }
 
 </style>
@@ -409,7 +440,193 @@ input[readonly] {
     </div>
 </div>
 
-<!-- Facturas -->
+<div class="row mt-4">
+    <div class="col-md-6 offset-md-6">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0">
+                    <i class="fas fa-calculator"></i> Cálculo Total a Pagar
+                </h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <!-- Subtotal de facturas -->
+                    <tr>
+                        <td>
+                            <i class="fas fa-file-invoice text-primary"></i>
+                            Total Facturas:
+                        </td>
+                        <td class="text-right">
+                            <strong>${{ payment_calculation.invoice_total|number_format(2) }}</strong>
+                        </td>
+                    </tr>
+                    
+                    <!-- Anticipos aplicados -->
+                    {% if payment_calculation.advance_total > 0 %}
+                    <tr class="text-muted">
+                        <td>
+                            <i class="fas fa-hand-holding-usd"></i>
+                            Menos: Anticipos
+                        </td>
+                        <td class="text-right">
+                            <span class="text-danger">
+                                -${{ payment_calculation.advance_total|number_format(2) }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    
+                    <!-- Notas de crédito (REDUCEN el monto) -->
+                    {% if payment_calculation.credit_notes_total > 0 %}
+                    <tr class="bg-light-success">
+                        <td>
+                            <i class="fas fa-minus-circle text-success"></i>
+                            Menos: Notas de Crédito
+                            <small class="text-muted d-block">
+                                (Descuentos, devoluciones, bonificaciones)
+                            </small>
+                        </td>
+                        <td class="text-right">
+                            <span class="text-success font-weight-bold">
+                                -${{ payment_calculation.credit_notes_total|number_format(2) }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    
+                    <!-- Notas de cargo (INCREMENTAN el monto) -->
+                    {% if payment_calculation.debit_notes_total > 0 %}
+                    <tr class="bg-light-warning">
+                        <td>
+                            <i class="fas fa-plus-circle text-warning"></i>
+                            Más: Notas de Cargo
+                            <small class="text-muted d-block">
+                                (Cargos extra, servicios adicionales)
+                            </small>
+                        </td>
+                        <td class="text-right">
+                            <span class="text-warning font-weight-bold">
+                                +${{ payment_calculation.debit_notes_total|number_format(2) }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    
+                    <!-- Línea divisoria -->
+                    <tr>
+                        <td colspan="2"><hr class="my-2"></td>
+                    </tr>
+                    
+                    <!-- Total final -->
+                    <tr class="bg-primary text-white">
+                        <td>
+                            <strong>
+                                <i class="fas fa-equals"></i>
+                                TOTAL A PAGAR:
+                            </strong>
+                        </td>
+                        <td class="text-right">
+                            <strong style="font-size: 1.3em;">
+                                ${{ payment_calculation.final_amount|number_format(2) }}
+                            </strong>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Sección de Notas de Crédito/Cargo en payment_details.twig -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>
+            <i class="fas fa-file-invoice-dollar"></i> 
+            Notas de Crédito y Cargo
+             <button type="button" class="btn btn-sm btn-primary float-right" onclick="addNoteModal()">
+                <i class="fas fa-plus"></i> Agregar Nota
+            </button>
+        </h5>
+    </div>
+    <div class="card-body">
+        <table id="creditDebitNotesTable" class="table table-sm table-hover">
+            <thead>
+                <tr>
+                    <th class="text-center">Tipo</th>
+                    <th class="text-center">Número</th>
+                    <th class="text-center">Fecha</th>
+                    <th class="text-center">Monto</th>
+                    <th class="text-center">Descripción</th>
+                    <th class="text-center">Archivo</th>
+                    <th class="text-center">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="text-center">
+                {% for note in invoice_credit_debit_notes %}
+                <tr class="{{ note.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
+                    <td>
+                        {% if note.note_type == 'CREDIT' %}
+                            <span class="badge bg-success text-dark">
+                                <i class="fas fa-minus-circle"></i> Crédito
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">
+                                <i class="fas fa-plus-circle"></i> Cargo
+                            </span>
+                        {% endif %}
+                    </td>
+                    <td>{{ note.note_number }}</td>
+                    <td>{{ note.note_date|date('d/m/Y') }}</td>
+                    <td class="text-end">
+                        {{ note.note_type == 'CREDIT' ? '-' : '+' }}
+                        ${{ note.amount|number_format(2) }}
+                    </td>
+                    <td class="text-center">{{ note.description }}</td>
+                    <td>
+                        {% if note.file_path %}
+                            <a href="{{ note.file_path }}" target="_blank" class="btn btn-sm btn-info">
+                                <i class="fas fa-file-pdf"></i> Ver PDF
+                            </a>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" 
+                                onclick="deleteNote({{ note.id }})"
+                                title="Eliminar nota">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        
+        <!-- Resumen de ajustes -->
+        <div class="row mt-3">
+            <div class="col-md-4 offset-md-8">
+                <table class="table table-sm">
+                    <tr>
+                        <td><strong>Total Notas de Crédito:</strong></td>
+                        <td class="text-end text-success">
+                            -${{ notes_totals.total_credits|number_format(2) }}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Total Notas de Cargo:</strong></td>
+                        <td class="text-end text-warning">
+                            +${{ notes_totals.total_debits|number_format(2) }}
+                        </td>
+                    </tr>
+                    <tr class="border-top">
+                        <td><strong>Ajuste Neto:</strong></td>
+                        <td class="text-end">
+                            <strong>{{ (notes_totals.total_credits - notes_totals.total_debits) >= 0 ? '+' : '' }}${{ (notes_totals.total_credits - notes_totals.total_debits)|number_format(2) }}</strong>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- Facturas -->
 <div class="row mt-3">
     <div class="col-12">
@@ -857,9 +1074,7 @@ input[readonly] {
                 </p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancelar   
-                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cancelar</button>
                 <button type="button" class="btn btn-success" id="btnConfirmAuth" onclick="confirmAuthorization()">
                     <i class="fas fa-check"></i> Confirmar Autorización
                 </button>
@@ -1090,34 +1305,24 @@ input[readonly] {
     </div>
 </div>
 
-{# <!-- Modal para Configurar Layout de Santander (Base vacía) -->
-<div class="modal fade" id="modalConfigLayout" tabindex="-1" aria-labelledby="modalConfigLayoutLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
+
+<div class="modal fade" id="addNoteModal" tabindex="-1" aria-labelledby="addNoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="modalConfigLayoutLabel">
-                    <i class="fas fa-file-invoice-dollar"></i> Configurar Layout de Santander
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="addNoteModalLabel">Agregar Nota de Crédito/Cargo</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body" id="modalConfigLayoutContent">
-                <!-- Contenido cargado dinámicamente -->
-                <div class="text-center py-5">
-                    <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
-                    <p class="mt-3">Cargando configuración...</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times"></i> Cancelar
-                </button>
-                <button type="button" class="btn btn-primary" id="btnConfirmarLayout" disabled onclick="confirmarGeneracionLayout()">
-                    <i class="fas fa-file-download"></i> Generar Layout
-                </button>
+            <div id="addNoteModalContent">
             </div>
         </div>
     </div>
-</div> #}
+</div>
+
+
+
+
+
 <input type="number" id="paymentId" value="{{ payment.id }}" hidden>
 
 {% endblock %}

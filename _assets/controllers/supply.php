@@ -57,6 +57,7 @@ class Supply{
     public PaymentTransactionsModel $paymentTransactionsModel;
     public CuentasBancariasModel $CuentasBancariasModel;
     public UsuariosModel $UsuariosModel;
+    public InvoiceCreditDebitNotesModel $InvoiceCreditDebitNotesModel;
     /**
      * @param $twig
      */
@@ -90,6 +91,7 @@ class Supply{
         $this->CuentasBancariasModel                            = new CuentasBancariasModel();
         $this->paymentTransactionsModel                        = new PaymentTransactionsModel();
         $this->UsuariosModel                                    = new UsuariosModel();
+        $this->InvoiceCreditDebitNotesModel                     = new InvoiceCreditDebitNotesModel();
 
 
     }
@@ -1299,11 +1301,13 @@ class Supply{
         curl_close($ch);
         $apiData = json_decode($response, true);
         $data = [];
+        $hoy = date('Y-m-d');
         if (isset($apiData) && is_array($apiData)) {
             foreach ($apiData as $row) {
                 if (empty($row['satuid'])) {
                     continue; // Skip rows with empty 'nro'
                 }
+                $estaVencida = !empty($row['fechaVto']) && $row['fechaVto'] < $hoy;
                 $statusLabel = 'Pendiente';
                 if ($row['payment_status'] == '0') {
                     $statusLabel = '<span class="badge bg-light text-dark">Enviado</span>';
@@ -1311,6 +1315,8 @@ class Supply{
                     $statusLabel = '<span class="badge bg-secondary">Autorizado</span>';
                 } elseif ($row['payment_status'] == '2') {
                     $statusLabel = '<span class="badge bg-success">Pagado</span>';
+                } elseif ($estaVencida) {
+                    $statusLabel = '<span class="badge bg-danger">Vencido</span>';
                 }
                 $data[] = array(
                     'nro'              => $row['nro'],
@@ -3205,7 +3211,8 @@ class Supply{
             $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod,$total_reques);
 
             if ($result['success']) {
-                $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
+                // $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
+                //se cambiara a uno pro dia
 
                 json_output([
                     'success' => true,
@@ -3230,7 +3237,7 @@ class Supply{
     }
 
     function payment_detail($payment_id){
-        try {
+        // try {
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
                 setFlashMessage('error', 'Pago no encontrado');
@@ -3246,7 +3253,8 @@ class Supply{
             // Obtener autorizaciones
             $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
             $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
-
+            $invoice_credit_debit_notes = $this->InvoiceCreditDebitNotesModel->getCreditDebitNotes($payment_id);
+            $notes_totals = $this->InvoiceCreditDebitNotesModel->calculateNotesTotals($payment_id);
             // Crear array con información de cada autorización
             $auth_info = [
                 'abastos' => null,
@@ -3268,6 +3276,19 @@ class Supply{
 
             // ✅ Obtener resumen desde el modelo
             $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
+            $payment_calculation = [
+                'invoice_total' => $summary['total_amount'] ?? 0,
+                'advance_total' => $summary['total_advances'] ?? 0,
+                'credit_notes_total' => $notes_totals['total_credits'],
+                'debit_notes_total' => $notes_totals['total_debits'],
+                'net_adjustment' => $notes_totals['net_adjustment'],
+                'final_amount' => max(0, 
+                    ($summary['total_amount'] ?? 0) - 
+                    ($summary['total_advances'] ?? 0) - 
+                    $notes_totals['total_credits'] + 
+                    $notes_totals['total_debits']
+                )
+            ];
             echo $this->twig->render($this->route . 'payment_detail.html', compact(
                 'payment',
                 'invoices',
@@ -3277,11 +3298,143 @@ class Supply{
                 'summary',
                 'transactions',
                 'facturas_autorizadas',
-                'total_monto_autorizado'
+                'total_monto_autorizado',
+                'invoice_credit_debit_notes',
+                'notes_totals',
+                'payment_calculation'
             ));
+        // } catch (Exception $e) {
+        //     setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
+        //     redirect('/supply/payment_list');
+        // }
+    }
+    function addNoteModal(){
+        $payment_request_id = $_POST['payment_request_id'] ?? null;
+        $payment_request = $this->PaymentRequestsModel->get_request_by_id($payment_request_id);
+        echo $this->twig->render($this->route . 'modals/addNoteModal.html', compact('payment_request_id', 'payment_request'));
+    }
+
+    public function addCreditDebitNote() {
+        try {
+            // Validar que se recibió archivo
+            if (!isset($_FILES['note_file']) || $_FILES['note_file']['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('No se recibió el archivo o hubo un error en la carga');
+            }
+
+            // Validar tipo de archivo
+            $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
+            if ($fileType !== 'application/pdf') {
+                throw new Exception('Solo se permiten archivos PDF');
+            }
+
+            // Validar tamaño (10MB máximo)
+            if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
+                throw new Exception('El archivo no debe exceder 10MB');
+            }
+
+            // Validar datos requeridos
+            $requiredFields = ['note_type', 'note_date', 'amount', 'description', 'payment_request_id'];
+            foreach ($requiredFields as $field) {
+                if (empty($_POST[$field])) {
+                    throw new Exception("El campo {$field} es requerido");
+                }
+            }
+
+            // Validar tipo de nota
+            if (!in_array($_POST['note_type'], ['CREDIT', 'DEBIT'])) {
+                throw new Exception('Tipo de nota inválido');
+            }
+
+            // Crear directorio para almacenar archivos
+            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            // Generar nombre único para el archivo
+            $originalFilename = $_FILES['note_file']['name'];
+            $extension = pathinfo($originalFilename, PATHINFO_EXTENSION);
+            $newFilename = uniqid('note_') . '_' . time() . '.' . $extension;
+            $filePath = $uploadDir . $newFilename;
+
+            // Mover archivo
+            if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $filePath)) {
+                throw new Exception('Error al guardar el archivo');
+            }
+
+            // Preparar datos para el modelo
+            $data = [
+                'payment_request_id' => $_POST['payment_request_id'],
+                'provider_id' => $_POST['provider_id'],
+                'note_type' => $_POST['note_type'],
+                'note_number' => $_POST['note_number'] ?? null,
+                'note_date' => $_POST['note_date'],
+                'amount' => $_POST['amount'],
+                'description' => $_POST['description'],
+                'reason_code' => $_POST['reason_code'] ?? null,
+                'file_path' => str_replace(__DIR__ . '/../', '', $filePath), // Ruta relativa
+                'original_filename' => $originalFilename,
+                'created_by' => $_SESSION['tg_user']['Id']
+            ];
+
+            // Guardar en base de datos usando el modelo
+            $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote($data);
+            if (!$noteId) {
+                throw new Exception('Error al guardar la nota en la base de datos');
+            }
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Nota guardada correctamente',
+                'note_id' => $noteId
+            ]);
+
         } catch (Exception $e) {
-            setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
-            redirect('/supply/payment_list');
+            // Si hubo error y se subió archivo, eliminarlo
+            if (isset($filePath) && file_exists($filePath)) {
+                unlink($filePath);
+            }
+
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Eliminar nota de crédito/cargo (soft delete)
+     */
+    public function deleteCreditDebitNote($noteId) {
+        try {
+            // Verificar que la nota existe y obtener su información
+            $note = $this->InvoiceCreditDebitNotesModel->getNoteById($noteId);
+
+            if (!$note) {
+                throw new Exception('Nota no encontrada o ya fue eliminada');
+            }
+
+            // Soft delete: cambiar status a 0
+            $deleted = $this->InvoiceCreditDebitNotesModel->deleteCreditDebitNote(
+                $noteId, 
+                $_SESSION['tg_user']['Id']
+            );
+
+            if (!$deleted) {
+                throw new Exception('Error al eliminar la nota');
+            }
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Nota eliminada correctamente'
+            ]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
         }
     }
 
@@ -3366,7 +3519,8 @@ class Supply{
                 );
                 $message = '✅ Pago completamente autorizado. Tesorería puede proceder al pago.';
             } else {
-                $this->enviar_notificacion_autorizacion_pendiente($payment_id, $next_level, $permission,$user_id);
+                // $this->enviar_notificacion_autorizacion_pendiente($payment_id, $next_level, $permission,$user_id);
+                //se mandara una diaria
 
                 // Aún faltan autorizaciones
                 $department_name = match ($next_level) {
@@ -5144,6 +5298,238 @@ class Supply{
         // Si no es ninguno de los dos, devolver tal cual (fallará en validación)
         return $clabe_o_cuenta;
     }
+
+
+    public function getPendingBulkAuthorization() {
+    header('Content-Type: application/json');
+    
+    try {
+        // Obtener nivel de autorización del usuario actual
+        $userPermissions = $_SESSION['permissions'] ?? [];
+        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        
+        if (!$nivelAutorizacion) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No tienes permisos de autorización'
+            ]);
+            return;
+        }
+        
+        // Obtener pagos pendientes
+        $pagosPendientes = $this->supplyModel->getPendingPaymentsForAuthorization($nivelAutorizacion);
+        
+        echo json_encode([
+            'success' => true,
+            'data' => $pagosPendientes,
+            'nivel_autorizacion' => $this->getNombreNivel($nivelAutorizacion),
+            'nivel_num' => $nivelAutorizacion
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("Error en getPendingBulkAuthorization: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al obtener pagos pendientes: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Procesar aprobación masiva de pagos
+ */
+public function processBulkAuthorization() {
+    header('Content-Type: application/json');
+    
+    try {
+        // Validar datos de entrada
+        $paymentIds = $_POST['payment_ids'] ?? [];
+        $comentario = $_POST['comentario'] ?? '';
+        
+        if (empty($paymentIds) || !is_array($paymentIds)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No se recibieron pagos para aprobar'
+            ]);
+            return;
+        }
+        
+        // Obtener información del usuario
+        $userId = $_SESSION['user_id'] ?? 0;
+        $userName = $_SESSION['user_name'] ?? 'Unknown';
+        $userPermissions = $_SESSION['permissions'] ?? [];
+        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        
+        if (!$nivelAutorizacion) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'No tienes permisos para autorizar pagos'
+            ]);
+            return;
+        }
+        
+        // Validar límites antes de procesar
+        $validacion = $this->supplyModel->validarLimitesAprobacionMasiva($paymentIds);
+        
+        if (!$validacion['valido']) {
+            echo json_encode([
+                'success' => false,
+                'message' => $validacion['mensaje'],
+                'detalles' => $validacion['detalles']
+            ]);
+            return;
+        }
+        
+        // Procesar aprobación masiva
+        $resultado = $this->supplyModel->processBulkAuthorization(
+            $paymentIds,
+            $nivelAutorizacion,
+            $userId,
+            $userName,
+            $comentario
+        );
+        
+        if ($resultado['success']) {
+            // Enviar notificaciones si es necesario
+            $this->enviarNotificacionesAprobacionMasiva($resultado['bulk_id'], $paymentIds, $nivelAutorizacion);
+            
+            echo json_encode([
+                'success' => true,
+                'message' => 'Aprobación masiva completada exitosamente',
+                'resumen' => [
+                    'aprobados' => $resultado['aprobados'],
+                    'errores' => $resultado['errores'],
+                    'monto_total' => number_format($resultado['monto_total'], 2),
+                    'bulk_id' => $resultado['bulk_id']
+                ]
+            ]);
+        } else {
+            echo json_encode([
+                'success' => false,
+                'message' => $resultado['message'],
+                'detalles' => $resultado['detalles'] ?? []
+            ]);
+        }
+        
+    } catch (Exception $e) {
+        error_log("Error en processBulkAuthorization: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al procesar aprobación masiva: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Obtener contadores de pagos pendientes
+ */
+public function getPendingCounts() {
+    header('Content-Type: application/json');
+    
+    try {
+        $userPermissions = $_SESSION['permissions'] ?? [];
+        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        
+        if (!$nivelAutorizacion) {
+            echo json_encode([
+                'success' => true,
+                'total' => 0
+            ]);
+            return;
+        }
+        
+        $count = $this->supplyModel->getPendingAuthorizationCount($nivelAutorizacion);
+        
+        echo json_encode([
+            'success' => true,
+            'total' => $count,
+            'nivel' => $nivelAutorizacion
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("Error en getPendingCounts: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al obtener contadores'
+        ]);
+    }
+}
+
+/**
+ * Deshacer aprobación masiva (dentro de ventana de tiempo)
+ */
+public function undoBulkAuthorization() {
+    header('Content-Type: application/json');
+    
+    try {
+        $bulkId = $_POST['bulk_id'] ?? 0;
+        $userId = $_SESSION['user_id'] ?? 0;
+        
+        if (!$bulkId) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'ID de aprobación masiva no válido'
+            ]);
+            return;
+        }
+        
+        $resultado = $this->supplyModel->undoBulkAuthorization($bulkId, $userId);
+        
+        echo json_encode($resultado);
+        
+    } catch (Exception $e) {
+        error_log("Error en undoBulkAuthorization: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al deshacer aprobación masiva: ' . $e->getMessage()
+        ]);
+    }
+}
+
+/**
+ * Determinar el nivel de autorización del usuario según sus permisos
+ */
+private function determinarNivelAutorizacion($permissions) {
+    if (in_array(66, $permissions)) { // Abastos
+        return 1;
+    } elseif (in_array(67, $permissions)) { // Administración y Finanzas
+        return 2;
+    } elseif (in_array(68, $permissions)) { // Tesorería
+        return 3;
+    }
+    return null;
+}
+
+/**
+ * Obtener nombre legible del nivel
+ */
+private function getNombreNivel($nivel) {
+    $niveles = [
+        1 => 'Abastos',
+        2 => 'Administración y Finanzas',
+        3 => 'Tesorería'
+    ];
+    return $niveles[$nivel] ?? 'Desconocido';
+}
+
+/**
+ * Enviar notificaciones de aprobación masiva
+ */
+private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $nivel) {
+    // Implementar según tu sistema de notificaciones existente
+    // Puede enviar emails a los siguientes niveles o supervisores
+    try {
+        // Ejemplo básico de notificación
+        $detalles = $this->supplyModel->getBulkAuthorizationDetails($bulkId);
+        
+        // Aquí puedes usar tu sistema PHPMailer existente
+        // $this->enviarEmailNotificacion($detalles);
+        
+    } catch (Exception $e) {
+        error_log("Error al enviar notificaciones: " . $e->getMessage());
+        // No detener el flujo si falla la notificación
+    }
+}
 
 
 }

@@ -78,54 +78,50 @@ let isTableInitialized = false; // Bandera para saber si la tabla ya está inici
         stimulus_table.ajax.reload();
         $('#stimulus_table').waitMe('hide');
     });
+
+    $('#no_selected').show();
 });
+    async function openAdjustmentModal(){
+        try {
+            $('#adjustmentModal').modal('show'); // Abre el modal
+            const response = await fetch('/accounting/adjustmentModal', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json, text/javascript, */*',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                credentials: 'include',
+            });
 
+            const content = await response.text();
+            // Inserta el contenido en el modal
+            $('#adjustmentModal').find('#adjustmentModalContent').html(content);
 
-
-
-async function openAdjustmentModal(){
-    try {
-        $('#adjustmentModal').modal('show'); // Abre el modal
-        const response = await fetch('/accounting/adjustmentModal', {
-            method: 'POST',
-            headers: {
-                'Accept': 'application/json, text/javascript, */*',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            credentials: 'include',
-        });
-
-        const content = await response.text();
-        // Inserta el contenido en el modal
-        $('#adjustmentModal').find('#adjustmentModalContent').html(content);
-
-    } catch (error) {
-        console.error(error);
-    }
-
-}
-function download_format_sales_petrotal(){
-    fetch('/accounting/download_format_sales_petrotal')
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Error en la descarga del archivo');
+        } catch (error) {
+            console.error(error);
         }
-        return response.blob();
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(new Blob([blob]));
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = 'FormatoVentasPetrotal.xlsx'; // Nombre del archivo a descargar
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-    })
-    .catch(error => console.error('Error:', error));
-}
 
-
+    }
+    function download_format_sales_petrotal(){
+        fetch('/accounting/download_format_sales_petrotal')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error en la descarga del archivo');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'FormatoVentasPetrotal.xlsx'; // Nombre del archivo a descargar
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error:', error));
+    }
     async function upload_file_sales_petrotal() {
         const fileInput = document.getElementById('file_to_upload');
         const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
@@ -171,2926 +167,2855 @@ function download_format_sales_petrotal(){
         $('.mistery_heather').removeClass('loading');
     
     }
-
-
-async function upload_file_concept_petrotal() {
-    const fileInput = document.getElementById('file_to_upload2');
-    date = $('#month_to_upload').val();
-    const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
-    if (!file) {
-        toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
-        return;
-    }
-    // $('.er_petrotal_heather').addClass('loading');
-    const formData = new FormData();
-    formData.append('file_to_upload', file);
-    formData.append('date', date); // Agrega la fecha al FormData
-    try {
-        $('.er_petrotal_heather').addClass('loading');
-        const response = await fetch('/accounting/import_file_concept_petrotal', {
-            method: 'POST',
-            body: formData
-        });
-
-        const data = await response.json();
-        console.log(data);
-
-        if (data['success'] == false) {
-            toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
-            $('.er_petrotal_heather').removeClass('loading');
-            fileInput.value = '';
+    async function upload_file_concept_petrotal() {
+        const fileInput = document.getElementById('file_to_upload2');
+        date = $('#month_to_upload').val();
+        const file = fileInput.files[0]; // Obtiene el primer archivo seleccionado
+        if (!file) {
+            toastr.error('Por favor, selecciona un archivo.', '¡Error!', { timeOut: 3000 });
             return;
         }
-
-        if (data['success'] == true) {
-            toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
-            $('.er_petrotal_heather').removeClass('loading');
-            fileInput.value = '';
-            // mistery_shopper_table();
-            // setTimeout(() => {
-            //     window.location.reload();
-            // }, 2000);
-        } 
-    } catch (error) {
-        console.error('Error al subir el archivo:', error);
-        // $('.mistery_heather').removeClass('loading');
-        // $('.mistery_heather').removeClass('loading');
-
-        toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
-    }
-    $('.er_petrotal_heather').removeClass('loading');
-
-}
-
-function actualizarDataTableInvoce() {
-    var from = $('#from').val();
-    var until = $('#until').val();
-    var rfc = $('#rfc').val();
-   
-    // var timestamp = new Date().getTime();
-
-    if (!rfc || rfc === "") {
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Por favor, seleccione una Razon social antes de continuar.</p>
-            </div>`
-        );
-        return; // Detiene la ejecución de la función si no se seleccionó una estación
-    }
-    if ($.fn.DataTable.isDataTable('#invoice_table')) {
-        $('#invoice_table').DataTable().destroy();
-    }
-    $('#element_hidden').removeAttr('hidden');
-    $('#no_selected').attr('hidden',true);
-
-    let invoice_table = $('#invoice_table').DataTable({
-            pageLength: 100,
-            dom: '<"top"Bf>rt<"bottom"lip>',
-           // order: [3, 'asc'],
-           buttons: [
-               {
-                   extend: 'excel',
-                   className: 'btn btn-outline-success',
-                   text: '<i data-feather="download"> Excel',
-               },
-               {
-                extend: 'pdf',
-                className: 'btn btn-outline-info',
-                text: ' PDF'
-            },
-           ],
-           ajax: {
-               method: 'POST',
-               url: '/accounting/invoice_table',
-               timeout: 300000, 
-               data: {
-                    'from': from,
-                    'until': until,
-                    'rfc': rfc
-                },
-               error: function() {
-                //    $('#invoice_table').waitMe('hide');
-                //    $('.invoice_table').removeClass('loading');
-       
-                   alertify.myAlert(
-                       `<div class="container text-center text-danger">
-                           <h4 class="mt-2 text-danger">¡Error!</h4>
-                       </div>
-                       <div class="text-dark">
-                           <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                       </div>`
-                   );
-       
-               },
-               beforeSend: function() {
-                   $('.invoice_table').addClass('loading');
-               },
-            
-           },
-           deferRender: true,
-           columns: [
-               {'data': 'Fecha'},
-               {'data': 'Folio'},
-                {'data': 'Serie'},
-               {'data': 'EmisorRfc'},
-               {'data': 'ReceptorNombre'},
-               {'data': 'ReceptorRfc'},
-               {'data': 'SubTotal', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
-               {'data': 'TotalImpuestosTrasladados', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
-               {'data': 'Total', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
-               {'data': 'FechaTimbrado'},
-               {'data': 'MetodoPago'},
-               {'data': 'UUID'},
-               {'data': 'Descripcion'},
-               {'data': 'FormaPago'},
-           ],
-           rowId: 'Folio',
-           createdRow: function (row, data, dataIndex) {
-
-           },
-           initComplete: function (settings, json) {
-            //    $('.dt-buttons').addClass('d-none');
-               $('.control_dispaches_table').removeClass('loading');
-           }
-       });
-    // Actualizar los datos del DataTable
-    $('#filtro-invoice_table input').on('keyup  change clear', function () {
-        invoice_table
-        .column(0).search($('#fecha').val().trim())                // Fecha
-        .column(1).search($('#Folio').val().trim())      // Hora formateada
-        .column(3).search($('#despacho').val().trim())             // Despacho
-        .column(4).search($('#producto').val().trim())             // Producto
-        .draw();
-    });
-
-    // Agregar un evento clic de refresh
-    $('.refresh_invoice_table').on('click', function () {
-        invoice_table.clear().draw();
-        invoice_table.ajax.reload();
-        $('#invoice_table').waitMe('hide');
-    });
-}
-
-
-async function InvoiceConceptModal(uuid){
+        // $('.er_petrotal_heather').addClass('loading');
+        const formData = new FormData();
+        formData.append('file_to_upload', file);
+        formData.append('date', date); // Agrega la fecha al FormData
         try {
-            $('#InvoiceConceptModal').modal('show'); // Abre el modal
-            const response = await fetch('/accounting/InvoiceConceptModal', {
+            $('.er_petrotal_heather').addClass('loading');
+            const response = await fetch('/accounting/import_file_concept_petrotal', {
                 method: 'POST',
-                headers: {
-                    'Accept': 'application/json, text/javascript, */*',
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                },
-                credentials: 'include',
-                body: `uuid=${uuid}`
+                body: formData
             });
 
-            const content = await response.text();
-            // Inserta el contenido en el modal
-            $('#InvoiceConceptModal').find('#InvoiceConceptModalContent').html(content);
+            const data = await response.json();
+            console.log(data);
 
+            if (data['success'] == false) {
+                toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+                $('.er_petrotal_heather').removeClass('loading');
+                fileInput.value = '';
+                return;
+            }
+
+            if (data['success'] == true) {
+                toastr.success('Archivo subido exitosamente ', '¡Éxito!', { timeOut: 3000 });
+                $('.er_petrotal_heather').removeClass('loading');
+                fileInput.value = '';
+                // mistery_shopper_table();
+                // setTimeout(() => {
+                //     window.location.reload();
+                // }, 2000);
+            } 
         } catch (error) {
-            console.error(error);
+            console.error('Error al subir el archivo:', error);
+            // $('.mistery_heather').removeClass('loading');
+            // $('.mistery_heather').removeClass('loading');
+
+            toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
         }
+        $('.er_petrotal_heather').removeClass('loading');
 
-}
-
-
-async function invoice_purchase_table(){
-    if ($.fn.DataTable.isDataTable('#invoice_purchase_table')) {
-        $('#invoice_purchase_table').DataTable().destroy();
-        $('#invoice_purchase_table thead .filter').remove();
-        // $('#invoice_purchase_table').DataTable().destroy();  // Destruye la tabla existente
-        // $('#invoice_purchase_table thead').empty(); // Limpia el encabezado
-        // $('#invoice_purchase_table tbody').empty(); // Limpia el cuerpo
-        // $('#invoice_purchase_table tfoot').empty(); // Limpia el pie de tabla si lo usas
     }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-    var product = document.getElementById('product').value;
+    function actualizarDataTableInvoce() {
+        var from = $('#from').val();
+        var until = $('#until').val();
+        var rfc = $('#rfc').val();
+    
+        // var timestamp = new Date().getTime();
 
-    $('#invoice_purchase_table thead').prepend($('#invoice_purchase_table thead tr').clone().addClass('filter'));
-    $('#invoice_purchase_table thead tr.filter th').each(function (index) {
-        col = $('#invoice_purchase_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        if (!rfc || rfc === "") {
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">Por favor, seleccione una Razon social antes de continuar.</p>
+                </div>`
+            );
+            return; // Detiene la ejecución de la función si no se seleccionó una estación
         }
-    });
-    $('#invoice_purchase_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#invoice_purchase_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let invoice_purchase_table =$('#invoice_purchase_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'product':product
-            },
-            url: '/accounting/invoice_purchase_table',
-            timeout: 600000, 
-            error: function() {
-                $('#invoice_purchase_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
+        if ($.fn.DataTable.isDataTable('#invoice_table')) {
+            $('#invoice_table').DataTable().destroy();
+        }
+        $('#element_hidden').removeAttr('hidden');
+        $('#no_selected').attr('hidden',true);
 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            {'data': 'Fecha',className:'text-nowrap'},
-            {'data': 'Fecha_vencimiento'},
-            {'data': 'proveedor',className:'text-nowrap'},
-            {'data': 'Factura'},
-            {'data': 'txtref'},
-            {'data': 'Estacion',className:'text-nowrap'},  // Falta en tu DataTable
-            {'data': 'producto'},
-            {'data': 'Empresa'},
-            {'data': 'satuid',className:'text-nowrap'},
-
-            {'data': 'can', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'pre', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'mto', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'mtoori', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'mtoiva', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'cantidad', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
-            {'data': 'precio', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
-            {'data': 'IvaImporte', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'IEPS', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
-            {'data': 'Subtotal', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'Total', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'Numero_pago_OG'},
-            {'data': 'num_factura_OG'},
-            {'data': 'Ref_Numerica'},
-            {'data': 'fecha_pago',className:'text-nowrap'},
-            {'data': 'monto_pago', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'monto_pago_fac', render: $.fn.dataTable.render.number(',', '.', 2)},
-            {'data': 'cuenta'},
-            {'data': 'banco'},
-
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-            $('td:eq(15)', row).addClass('border_OG');
-            if (data['mto'] !=  data['Subtotal']) {
-                $('td:eq(19)', row).addClass('bg-danger');
+        let invoice_table = $('#invoice_table').DataTable({
+                pageLength: 100,
+                dom: '<"top"Bf>rt<"bottom"lip>',
+            // order: [3, 'asc'],
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-outline-success',
+                    text: '<i data-feather="download"> Excel',
+                },
+                {
+                    extend: 'pdf',
+                    className: 'btn btn-outline-info',
+                    text: ' PDF'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                url: '/accounting/invoice_table',
+                timeout: 300000, 
+                data: {
+                        'from': from,
+                        'until': until,
+                        'rfc': rfc
+                    },
+                error: function() {
+                    //    $('#invoice_table').waitMe('hide');
+                    //    $('.invoice_table').removeClass('loading');
+        
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+        
+                },
+                beforeSend: function() {
+                    $('.invoice_table').addClass('loading');
+                },
                 
+            },
+            deferRender: true,
+            columns: [
+                {'data': 'Fecha'},
+                {'data': 'Folio'},
+                    {'data': 'Serie'},
+                {'data': 'EmisorRfc'},
+                {'data': 'ReceptorNombre'},
+                {'data': 'ReceptorRfc'},
+                {'data': 'SubTotal', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'TotalImpuestosTrasladados', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'Total', 'render': $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'FechaTimbrado'},
+                {'data': 'MetodoPago'},
+                {'data': 'UUID'},
+                {'data': 'Descripcion'},
+                {'data': 'FormaPago'},
+            ],
+            rowId: 'Folio',
+            createdRow: function (row, data, dataIndex) {
+
+            },
+            initComplete: function (settings, json) {
+                //    $('.dt-buttons').addClass('d-none');
+                $('.control_dispaches_table').removeClass('loading');
             }
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-        footerCallback: function (row, data, start, end, display) {
-            var api = this.api();
-
-            // Función para sumar valores en una columna
-            var intVal = function (i) {
-                return typeof i === 'string' ?
-                    i.replace(/[\$,]/g, '') * 1 :
-                    typeof i === 'number' ? i : 0;
-            };
-        
-            // Lista de columnas a sumar (desde 'can' en adelante)
-            var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
-
-            api.columns().every(function (index) {
-                if (index > 8 && index < 21 ) { // Desde la tercera columna en adelante
-                    // Sumatoria de los datos filtrados (página actual)
-                    var filteredSum = api
-                        .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
-                        .data()
-                        .reduce((a, b) => intVal(a) + intVal(b), 0);
-            
-                    // Sumatoria de todos los datos (incluyendo no visibles)
-                    var totalSum = api
-                        .column(index, { page: 'all' }) // Todos los datos
-                        .data()
-                        .reduce((a, b) => intVal(a) + intVal(b), 0);
-            
-                    // Actualizar el footer con ambas sumatorias
-                    var footer = $(api.column(index).footer());
-                    footer.html(`
-                        <div>${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-                        <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-                    `);
-                }
-            });
-        
-            // columnIndexes.forEach(function (colIdx, i) {
-            //     // Calcula la suma de la columna
-            //     var total = api.column(colIdx, { page: 'current' }).data()
-            //         .reduce(function (a, b) {
-            //             return intVal(a) + intVal(b);
-            //         }, 0);
-        
-            //     // Inserta el total en el footer
-            //     $(api.column(colIdx).footer()).html(total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-            // });
-        }
-    });
-}
-async function payments_table(){
-    if ($.fn.DataTable.isDataTable('#payments_table')) {
-        $('#payments_table').DataTable().destroy();
-        $('#payments_table thead .filter').remove();
-    }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-
-    $('#payments_table thead').prepend($('#payments_table thead tr').clone().addClass('filter'));
-    $('#payments_table thead tr.filter th').each(function (index) {
-        col = $('#payments_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#payments_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#payments_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let payments_table =$('#payments_table').DataTable({
-        order: [1, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        // scrollY: '700px',
-        // scrollX: true,
-        // scrollCollapse: true,
-        paging: true,
-        pageLength: 100,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate
-            },
-            url: '/accounting/payments_table',
-            timeout: 600000, 
-            error: function() {
-                $('#payments_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            { data: 'num_doc', className: 'text-nowrap' },              // Número de pago
-            { data: 'clave' },
-            // { data: 'id_prov' },
-            { data: 'nom1' },                                            // Nombre del proveedor
-            { data: 'cuenta' },                                          // t5.num
-            { data: 'Ref_num' },                                         // t1.num_doc_cli
-            { data: 'banco' },                                           // t6.nom
-            { data: 'ref_ben' },
-            { data: 'fecha', className: 'text-nowrap' },                 // Fecha del pago
-            { data: 'monto', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
-            { data: 'folio' },                                           // t8.id_doc
-            { data: 'folio_dr' },                                           // t8.id_doc
-            { data: 'fec_doc' },
-            { data: 'cargo', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
-            { data: 'importe', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'imptos', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'aplicado', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'ptg_apl', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'uuid_i', className: 'text-nowrap' },
-            { data: 'control' },
-            { data: 'Factura' },
-            { data: 'Fecha_control' },
-            { data: 'Fecha_vencimiento' },
-            { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mtoori', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mtoiva', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'total_control', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'producto' },                                        // t9.den
-            { data: 'estacion' },
-            { data: 'documento' }// t9.abr
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-            // var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
-            // $('td:eq(19)', row)
-            //   .addClass(cls)
-            //   .text(data.control); // muestra “12345 SI” o “12345 NO”
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-        footerCallback: function (row, data, start, end, display) {
-        }
-    });
-}
-
-async function  SearchResults(){
-    const year = document.getElementById('year').value;
-
-    if ($.fn.DataTable.isDataTable('#income_statement_table')) {
-        $('#income_statement_table').DataTable().destroy();
-        $('#income_statement_table thead .filter').remove();
-    }
-
-    $('#income_statement_table thead').prepend($('#income_statement_table thead tr').clone().addClass('filter'));
-    $('#income_statement_table thead tr.filter th').each(function (index) {
-        col = $('#income_statement_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#income_statement_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#income_statement_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let income_statement_table =$('#income_statement_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        paging: true,
-        pageLength: 50,
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'year':year
-            },
-            url: '/accounting/income_statement_table',
-            timeout: 600000,
-            error: function() {
-                $('#income_statement_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            { data: 'origin_text', title: 'Origen'},
-
-            { data: 'Empresa',  title: 'Empresa' , className: 'text-nowrap' },
-            { data: 'CentroCosto', title: 'Centro de Costo' , className: 'text-nowrap' },
-            { data: 'CatCentroCosto', title: 'Estado de Resultados' , className: 'text-nowrap' },
-            { data: 'NoCuenta', title: 'No. Cuenta' , className: 'text-nowrap' },
-            { data: 'Rubro', title: 'Rubro' , className: 'text-nowrap' },
-            { data: 'Concepto', title: 'Concepto' , className: 'text-nowrap' },
-            { data: 'Enero', title: 'Enero',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Febrero', title: 'Febrero',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Marzo', title: 'Marzo',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Abril', title: 'Abril',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Mayo', title: 'Mayo',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Junio', title: 'Junio',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Julio', title: 'Julio',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Agosto', title: 'Agosto',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Septiembre', title: 'Septiembre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Octubre', title: 'Octubre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Noviembre', title: 'Noviembre',render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'Diciembre', title: 'Diciembre',render: $.fn.dataTable.render.number(',', '.', 2) },
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-            if (data['origin'] === 'ajustes') {
-                $(row).addClass('bg-warning text-white');
-            }
-            if (data['origin'] === 'petrotal') {
-                $(row).addClass('bg_petrotal');
-            }
-
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-
-        },
-        footerCallback: function (row, data, start, end, display) {
-        }
-    });
-    
-}
-
-// Formatea números con separador de miles (sin decimales)
-function formatea(valor) {
-  if (typeof valor === 'number') {
-    return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
-  }
-  return valor || '-';
-}
-
-
-
-
-
-function toggleSection(div) {
-
-  // alterna el icono
-  const icon = div.querySelector('i');
-  icon.classList.toggle('fa-chevron-down');
-  icon.classList.toggle('fa-chevron-right');
-
-  // oculta/muestra hasta el siguiente .divider
-  let next = div.nextElementSibling;
-  while (next && !next.classList.contains('divider')) {
-    next.style.display = next.style.display === 'none' ? '' : 'none';
-    next = next.nextElementSibling;
-  }
-}
-
-function toggleGroup(tr) {
-  const icon = tr.querySelector('i');
-  icon.classList.toggle('fa-chevron-down');
-  icon.classList.toggle('fa-chevron-right');
-
-  // oculta/enseña hasta el siguiente header (.fw-bold)
-  let next = tr.nextElementSibling;
-  while (next && !next.classList.contains('fw-bold')) {
-    next.style.display = next.style.display === 'none' ? '' : 'none';
-    next = next.nextElementSibling;
-  }
-}
-
-
-async function annual_budgetTable(){
-  const container = document.getElementById('annual_budget');
-  container.classList.add('loading');
-
-  try {
-    // 1) Fetch y parseo
-    const year = parseInt(document.getElementById('input_year').value, 10);
-    const response = await fetch(`/accounting/get_er_budget?year=${year}`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json, text/javascript, */*',
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      credentials: 'include',
-      body: `year=${year}`
-    });
-    const api = await response.json();
-
-    // 2) Defino todas las secciones con su categoría
-    const allSections = [
-      // → Estaciones
-      { label: 'A - INGRESOS',             dataKey: 'ingresos_estaciones',         category: 'estaciones' },
-      { label: 'B - COSTO DE VENTA',       dataKey: 'costoventa_estaciones',       category: 'estaciones' },
-      { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_estaciones', category: 'estaciones' },
-      { label: 'C - NOMINA',               dataKey: 'nomina_estaciones',           category: 'estaciones' },
-      { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_estaciones',     category: 'estaciones' },
-      { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_estaciones',    category: 'estaciones' },
-      { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_estaciones',     category: 'estaciones' },
-
-      // → Staff
-      { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_staff',      category: 'staff' },
-      { label: 'C - NOMINA',               dataKey: 'nomina_staff',                category: 'staff' },
-      { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_staff',          category: 'staff' },
-      { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_staff',         category: 'staff' },
-      { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_staff',          category: 'staff' },
-    ];
-
-    // 3) Preparo los mapas de resumen para cada categoría
-    const summaryMaps = {
-      estaciones: (api.rubro_estaciones || []).reduce((acc, x) => {
-        acc[x.Rubro] = x; return acc;
-      }, {}),
-      staff:      (api.rubro_staff      || []).reduce((acc, x) => {
-        acc[x.Rubro] = x; return acc;
-      }, {}),
-    };
-
-    // 4) Meses y referencias DOM
-    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
-                   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-    const table = document.getElementById('annual_budgetTable');
-    const thead = table.querySelector('thead');
-    const tbody = document.getElementById('body_annual_budget');
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-
-    // 5) Encabezado de la tabla
-    const headerRow = document.createElement('tr');
-    headerRow.innerHTML = `<th>CONCEPTO</th>` +
-      meses.map(m => `<th>${m.toUpperCase()}</th>`).join('');
-    thead.appendChild(headerRow);
-
-    // 6) Helpers
-    function createSummaryRow(label, sums) {
-      const tr = document.createElement('tr');
-      tr.classList.add('table-light', 'fw-bold');
-      tr.setAttribute('onclick', 'toggleGroup(this)');
-      let inner = `<td><i class="fas fa-chevron-down pe-2"></i>${label}</td>`;
-      inner += meses.map(m => `<td> ${formatea(sums[m] || 0)}</td>`).join('');
-      tr.innerHTML = inner;
-      return tr;
-    }
-    function createDetailRows(list) {
-      return list.map(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${item.Concepto}</td>` +
-          meses.map(m => `<td> ${formatea(item[m] ?? 0)}</td>`).join('');
-        return tr;
-      });
-    }
-
-    // 7) Recorro todas las secciones, eligiendo correctamente summaryMap según category
-    // Y entre medio agrego el separador “Gastos Staff”
-    let insertedStaffSeparator = false;
-    for (const sec of allSections) {
-      // Cuando empiece la primera sección de staff, inserto el separador
-      if (!insertedStaffSeparator && sec.category === 'staff') {
-        const sep = document.createElement('tr');
-        sep.classList.add('table-secondary', 'fw-bold');
-        sep.innerHTML = `<td colspan="${1 + meses.length}" class="text-start">Gastos Staff</td>`;
-        tbody.appendChild(sep);
-        insertedStaffSeparator = true;
-      }
-
-         // A) fila resumen
-        const sums    = summaryMaps[sec.category][sec.label] || {};
-        const summary = createSummaryRow(sec.label, sums);
-        tbody.appendChild(summary);
-
-
-      // B) filas detalle
-      const details = api[sec.dataKey] || [];
-      createDetailRows(details).forEach(r => tbody.appendChild(r));
-    }
-
-    container.classList.remove('loading');
-    const summaryRows = document.querySelectorAll('#body_annual_budget tr.table-light');
-    setTimeout(() => {
-        summaryRows.forEach(row => {
-            toggleGroup(row);
         });
-    }, 0);
-}
-  catch (err) {
-    console.error('Error al dibujar tabla presupuesto:', err);
-    container.classList.remove('loading');
-  }
-}
+        // Actualizar los datos del DataTable
+        $('#filtro-invoice_table input').on('keyup  change clear', function () {
+            invoice_table
+            .column(0).search($('#fecha').val().trim())                // Fecha
+            .column(1).search($('#Folio').val().trim())      // Hora formateada
+            .column(3).search($('#despacho').val().trim())             // Despacho
+            .column(4).search($('#producto').val().trim())             // Producto
+            .draw();
+        });
 
-
-
-async function drawAnnualTable() {
-    const container = document.getElementById('Edo_anual');
-    const table = document.getElementById('estadoResultadosTable');
-    const thead = table.querySelector('thead');
-    var tbody = document.getElementById('bodyEstadoResultados');
-     if ($.fn.DataTable.isDataTable('#estadoResultadosTable')) {
-        $('#estadoResultadosTable').DataTable().destroy();
+        // Agregar un evento clic de refresh
+        $('.refresh_invoice_table').on('click', function () {
+            invoice_table.clear().draw();
+            invoice_table.ajax.reload();
+            $('#invoice_table').waitMe('hide');
+        });
     }
+    async function InvoiceConceptModal(uuid){
+            try {
+                $('#InvoiceConceptModal').modal('show'); // Abre el modal
+                const response = await fetch('/accounting/InvoiceConceptModal', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json, text/javascript, */*',
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    credentials: 'include',
+                    body: `uuid=${uuid}`
+                });
 
-    thead.innerHTML = '';
-    tbody.innerHTML = '';
-    container.style.display = 'none';
-    container.offsetHeight; // Trigger reflow
-    container.style.display = '';
-    
+                const content = await response.text();
+                // Inserta el contenido en el modal
+                $('#InvoiceConceptModal').find('#InvoiceConceptModalContent').html(content);
+
+            } catch (error) {
+                console.error(error);
+            }
+
+    }
+    async function invoice_purchase_table(){
+        if ($.fn.DataTable.isDataTable('#invoice_purchase_table')) {
+            $('#invoice_purchase_table').DataTable().destroy();
+            $('#invoice_purchase_table thead .filter').remove();
+            // $('#invoice_purchase_table').DataTable().destroy();  // Destruye la tabla existente
+            // $('#invoice_purchase_table thead').empty(); // Limpia el encabezado
+            // $('#invoice_purchase_table tbody').empty(); // Limpia el cuerpo
+            // $('#invoice_purchase_table tfoot').empty(); // Limpia el pie de tabla si lo usas
+        }
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
+        var product = document.getElementById('product').value;
+
+        $('#invoice_purchase_table thead').prepend($('#invoice_purchase_table thead tr').clone().addClass('filter'));
+        $('#invoice_purchase_table thead tr.filter th').each(function (index) {
+            col = $('#invoice_purchase_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#invoice_purchase_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#invoice_purchase_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let invoice_purchase_table =$('#invoice_purchase_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            // processing: true,  // Agregar esta línea
+            // serverSide: true,  // Agregar esta línea
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                    'product':product
+                },
+                url: '/accounting/invoice_purchase_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#invoice_purchase_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                {'data': 'Fecha',className:'text-nowrap'},
+                {'data': 'Fecha_vencimiento'},
+                {'data': 'proveedor',className:'text-nowrap'},
+                {'data': 'Factura'},
+                {'data': 'txtref'},
+                {'data': 'Estacion',className:'text-nowrap'},  // Falta en tu DataTable
+                {'data': 'producto'},
+                {'data': 'Empresa'},
+                {'data': 'satuid',className:'text-nowrap'},
+
+                {'data': 'can', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'pre', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'mto', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'mtoori', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'mtoiva', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'mtoiie', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'cantidad', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
+                {'data': 'precio', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
+                {'data': 'IvaImporte', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'IEPS', render: $.fn.dataTable.render.number(',', '.', 2)},  // Falta en tu DataTable
+                {'data': 'Subtotal', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'Total', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'Numero_pago_OG'},
+                {'data': 'num_factura_OG'},
+                {'data': 'Ref_Numerica'},
+                {'data': 'fecha_pago',className:'text-nowrap'},
+                {'data': 'monto_pago', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'monto_pago_fac', render: $.fn.dataTable.render.number(',', '.', 2)},
+                {'data': 'cuenta'},
+                {'data': 'banco'},
+
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+                $('td:eq(15)', row).addClass('border_OG');
+                if (data['mto'] !=  data['Subtotal']) {
+                    $('td:eq(19)', row).addClass('bg-danger');
+                    
+                }
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+            },
+            footerCallback: function (row, data, start, end, display) {
+                var api = this.api();
+
+                // Función para sumar valores en una columna
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ? i : 0;
+                };
+            
+                // Lista de columnas a sumar (desde 'can' en adelante)
+                var columnIndexes = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+                api.columns().every(function (index) {
+                    if (index > 8 && index < 21 ) { // Desde la tercera columna en adelante
+                        // Sumatoria de los datos filtrados (página actual)
+                        var filteredSum = api
+                            .column(index, { page: 'current' }) // Solo datos visibles (filtrados)
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                
+                        // Sumatoria de todos los datos (incluyendo no visibles)
+                        var totalSum = api
+                            .column(index, { page: 'all' }) // Todos los datos
+                            .data()
+                            .reduce((a, b) => intVal(a) + intVal(b), 0);
+                
+                        // Actualizar el footer con ambas sumatorias
+                        var footer = $(api.column(index).footer());
+                        footer.html(`
+                            <div>${filteredSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                            <div>Total: ${totalSum.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        `);
+                    }
+                });
+            
+                // columnIndexes.forEach(function (colIdx, i) {
+                //     // Calcula la suma de la columna
+                //     var total = api.column(colIdx, { page: 'current' }).data()
+                //         .reduce(function (a, b) {
+                //             return intVal(a) + intVal(b);
+                //         }, 0);
+            
+                //     // Inserta el total en el footer
+                //     $(api.column(colIdx).footer()).html(total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                // });
+            }
+        });
+    }
+    async function payments_table(){
+        if ($.fn.DataTable.isDataTable('#payments_table')) {
+            $('#payments_table').DataTable().destroy();
+            $('#payments_table thead .filter').remove();
+        }
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
+
+        $('#payments_table thead').prepend($('#payments_table thead tr').clone().addClass('filter'));
+        $('#payments_table thead tr.filter th').each(function (index) {
+            col = $('#payments_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#payments_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#payments_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let payments_table =$('#payments_table').DataTable({
+            order: [1, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            // scrollY: '700px',
+            // scrollX: true,
+            // scrollCollapse: true,
+            paging: true,
+            pageLength: 100,
+            // processing: true,  // Agregar esta línea
+            // serverSide: true,  // Agregar esta línea
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate
+                },
+                url: '/accounting/payments_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#payments_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                { data: 'num_doc', className: 'text-nowrap' },              // Número de pago
+                { data: 'clave' },
+                // { data: 'id_prov' },
+                { data: 'nom1' },                                            // Nombre del proveedor
+                { data: 'cuenta' },                                          // t5.num
+                { data: 'Ref_num' },                                         // t1.num_doc_cli
+                { data: 'banco' },                                           // t6.nom
+                { data: 'ref_ben' },
+                { data: 'fecha', className: 'text-nowrap' },                 // Fecha del pago
+                { data: 'monto', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
+                { data: 'folio' },                                           // t8.id_doc
+                { data: 'folio_dr' },                                           // t8.id_doc
+                { data: 'fec_doc' },
+                { data: 'cargo', render: $.fn.dataTable.render.number(',', '.', 2) }, // Monto del pago
+                { data: 'importe', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'imptos', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'aplicado', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'ptg_apl', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'uuid_i', className: 'text-nowrap' },
+                { data: 'control' },
+                { data: 'Factura' },
+                { data: 'Fecha_control' },
+                { data: 'Fecha_vencimiento' },
+                { data: 'can', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'pre', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'mtoori', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'mtoiva', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'mto', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'total_control', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'producto' },                                        // t9.den
+                { data: 'estacion' },
+                { data: 'documento' }// t9.abr
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+                // var cls = data.control_estado === 'SI' ? 'bg-success' : 'bg-danger';
+                // $('td:eq(19)', row)
+                //   .addClass(cls)
+                //   .text(data.control); // muestra “12345 SI” o “12345 NO”
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+            },
+            footerCallback: function (row, data, start, end, display) {
+            }
+        });
+    }
+    async function  SearchResults(){
+        const year = document.getElementById('year').value;
+
+        if ($.fn.DataTable.isDataTable('#income_statement_table')) {
+            $('#income_statement_table').DataTable().destroy();
+            $('#income_statement_table thead .filter').remove();
+        }
+
+        $('#income_statement_table thead').prepend($('#income_statement_table thead tr').clone().addClass('filter'));
+        $('#income_statement_table thead tr.filter th').each(function (index) {
+            col = $('#income_statement_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#income_statement_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#income_statement_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let income_statement_table =$('#income_statement_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            paging: true,
+            pageLength: 50,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'year':year
+                },
+                url: '/accounting/income_statement_table',
+                timeout: 600000,
+                error: function() {
+                    $('#income_statement_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                { data: 'origin_text', title: 'Origen'},
+
+                { data: 'Empresa',  title: 'Empresa' , className: 'text-nowrap' },
+                { data: 'CentroCosto', title: 'Centro de Costo' , className: 'text-nowrap' },
+                { data: 'CatCentroCosto', title: 'Estado de Resultados' , className: 'text-nowrap' },
+                { data: 'NoCuenta', title: 'No. Cuenta' , className: 'text-nowrap' },
+                { data: 'Rubro', title: 'Rubro' , className: 'text-nowrap' },
+                { data: 'Concepto', title: 'Concepto' , className: 'text-nowrap' },
+                { data: 'Enero', title: 'Enero',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Febrero', title: 'Febrero',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Marzo', title: 'Marzo',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Abril', title: 'Abril',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Mayo', title: 'Mayo',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Junio', title: 'Junio',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Julio', title: 'Julio',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Agosto', title: 'Agosto',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Septiembre', title: 'Septiembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Octubre', title: 'Octubre',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Noviembre', title: 'Noviembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'Diciembre', title: 'Diciembre',render: $.fn.dataTable.render.number(',', '.', 2) },
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+                if (data['origin'] === 'ajustes') {
+                    $(row).addClass('bg-warning text-white');
+                }
+                if (data['origin'] === 'petrotal') {
+                    $(row).addClass('bg_petrotal');
+                }
+
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+
+            },
+            footerCallback: function (row, data, start, end, display) {
+            }
+        });
+        
+    }
+    function formatea(valor) {
+    if (typeof valor === 'number') {
+        return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
+    }
+    return valor || '-';
+    }
+    function toggleSection(div) {
+
+    // alterna el icono
+    const icon = div.querySelector('i');
+    icon.classList.toggle('fa-chevron-down');
+    icon.classList.toggle('fa-chevron-right');
+
+    // oculta/muestra hasta el siguiente .divider
+    let next = div.nextElementSibling;
+    while (next && !next.classList.contains('divider')) {
+        next.style.display = next.style.display === 'none' ? '' : 'none';
+        next = next.nextElementSibling;
+    }
+    }
+    function toggleGroup(tr) {
+    const icon = tr.querySelector('i');
+    icon.classList.toggle('fa-chevron-down');
+    icon.classList.toggle('fa-chevron-right');
+
+    // oculta/enseña hasta el siguiente header (.fw-bold)
+    let next = tr.nextElementSibling;
+    while (next && !next.classList.contains('fw-bold')) {
+        next.style.display = next.style.display === 'none' ? '' : 'none';
+        next = next.nextElementSibling;
+    }
+    }
+    async function annual_budgetTable(){
+    const container = document.getElementById('annual_budget');
     container.classList.add('loading');
 
-    const year = parseInt(document.getElementById('input_year').value, 10);
-    const prevYear = year - 1;
-
-    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril','Mayo', 'Junio', 'Julio', 'Agosto',
-    'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
     try {
-    var api = await fetchData(year);
-    console.log('API response:', api);
-    buildTableHeader(thead, year, prevYear, meses);
-    renderTableBody(api, meses);
-
-    container.classList.remove('loading');
-
-    const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
-    setTimeout(() => {
-        summaryRows.forEach(row => {
-            toggleGroup(row);
+        // 1) Fetch y parseo
+        const year = parseInt(document.getElementById('input_year').value, 10);
+        const response = await fetch(`/accounting/get_er_budget?year=${year}`, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json, text/javascript, */*',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        credentials: 'include',
+        body: `year=${year}`
         });
-    }, 0);
-    setTimeout(function() {
+        const api = await response.json();
+
+        // 2) Defino todas las secciones con su categoría
+        const allSections = [
+        // → Estaciones
+        { label: 'A - INGRESOS',             dataKey: 'ingresos_estaciones',         category: 'estaciones' },
+        { label: 'B - COSTO DE VENTA',       dataKey: 'costoventa_estaciones',       category: 'estaciones' },
+        { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_estaciones', category: 'estaciones' },
+        { label: 'C - NOMINA',               dataKey: 'nomina_estaciones',           category: 'estaciones' },
+        { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_estaciones',     category: 'estaciones' },
+        { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_estaciones',    category: 'estaciones' },
+        { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_estaciones',     category: 'estaciones' },
+
+        // → Staff
+        { label: 'E - GASTOS DE OPERACION',  dataKey: 'gastos_operacion_staff',      category: 'staff' },
+        { label: 'C - NOMINA',               dataKey: 'nomina_staff',                category: 'staff' },
+        { label: 'D - COSTO SOCIAL',         dataKey: 'costo_social_staff',          category: 'staff' },
+        { label: 'F - MANTENIMIENTO',        dataKey: 'mantenimiento_staff',         category: 'staff' },
+        { label: 'H - GASTOS FIJOS',         dataKey: 'gastos_fijos_staff',          category: 'staff' },
+        ];
+
+        // 3) Preparo los mapas de resumen para cada categoría
+        const summaryMaps = {
+        estaciones: (api.rubro_estaciones || []).reduce((acc, x) => {
+            acc[x.Rubro] = x; return acc;
+        }, {}),
+        staff:      (api.rubro_staff      || []).reduce((acc, x) => {
+            acc[x.Rubro] = x; return acc;
+        }, {}),
+        };
+
+        // 4) Meses y referencias DOM
+        const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                    'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        const table = document.getElementById('annual_budgetTable');
+        const thead = table.querySelector('thead');
+        const tbody = document.getElementById('body_annual_budget');
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+
+        // 5) Encabezado de la tabla
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = `<th>CONCEPTO</th>` +
+        meses.map(m => `<th>${m.toUpperCase()}</th>`).join('');
+        thead.appendChild(headerRow);
+
+        // 6) Helpers
+        function createSummaryRow(label, sums) {
+        const tr = document.createElement('tr');
+        tr.classList.add('table-light', 'fw-bold');
+        tr.setAttribute('onclick', 'toggleGroup(this)');
+        let inner = `<td><i class="fas fa-chevron-down pe-2"></i>${label}</td>`;
+        inner += meses.map(m => `<td> ${formatea(sums[m] || 0)}</td>`).join('');
+        tr.innerHTML = inner;
+        return tr;
+        }
+        function createDetailRows(list) {
+        return list.map(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${item.Concepto}</td>` +
+            meses.map(m => `<td> ${formatea(item[m] ?? 0)}</td>`).join('');
+            return tr;
+        });
+        }
+
+        // 7) Recorro todas las secciones, eligiendo correctamente summaryMap según category
+        // Y entre medio agrego el separador “Gastos Staff”
+        let insertedStaffSeparator = false;
+        for (const sec of allSections) {
+        // Cuando empiece la primera sección de staff, inserto el separador
+        if (!insertedStaffSeparator && sec.category === 'staff') {
+            const sep = document.createElement('tr');
+            sep.classList.add('table-secondary', 'fw-bold');
+            sep.innerHTML = `<td colspan="${1 + meses.length}" class="text-start">Gastos Staff</td>`;
+            tbody.appendChild(sep);
+            insertedStaffSeparator = true;
+        }
+
+            // A) fila resumen
+            const sums    = summaryMaps[sec.category][sec.label] || {};
+            const summary = createSummaryRow(sec.label, sums);
+            tbody.appendChild(summary);
+
+
+        // B) filas detalle
+        const details = api[sec.dataKey] || [];
+        createDetailRows(details).forEach(r => tbody.appendChild(r));
+        }
+
+        container.classList.remove('loading');
+        const summaryRows = document.querySelectorAll('#body_annual_budget tr.table-light');
+        setTimeout(() => {
+            summaryRows.forEach(row => {
+                toggleGroup(row);
+            });
+        }, 0);
+    }
+    catch (err) {
+        console.error('Error al dibujar tabla presupuesto:', err);
+        container.classList.remove('loading');
+    }
+    }
+    async function drawAnnualTable() {
+        const container = document.getElementById('Edo_anual');
+        const table = document.getElementById('estadoResultadosTable');
+        const thead = table.querySelector('thead');
+        var tbody = document.getElementById('bodyEstadoResultados');
         if ($.fn.DataTable.isDataTable('#estadoResultadosTable')) {
             $('#estadoResultadosTable').DataTable().destroy();
         }
 
-        $('#estadoResultadosTable').DataTable({
-            destroy: true,
-            dom: 'Btip',
-            buttons: [
-            {
-                extend: 'excelHtml5',
-                text: 'Exportar a Excel',
-                title: 'Estado de Resultados Anual'
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        container.style.display = 'none';
+        container.offsetHeight; // Trigger reflow
+        container.style.display = '';
+        
+        container.classList.add('loading');
+
+        const year = parseInt(document.getElementById('input_year').value, 10);
+        const prevYear = year - 1;
+
+        const meses = ['Enero', 'Febrero', 'Marzo', 'Abril','Mayo', 'Junio', 'Julio', 'Agosto',
+        'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        try {
+        var api = await fetchData(year);
+        console.log('API response:', api);
+        buildTableHeader(thead, year, prevYear, meses);
+        renderTableBody(api, meses);
+
+        container.classList.remove('loading');
+
+        const summaryRows = document.querySelectorAll('#estadoResultadosTable tr.table-light');
+        setTimeout(() => {
+            summaryRows.forEach(row => {
+                toggleGroup(row);
+            });
+        }, 0);
+        setTimeout(function() {
+            if ($.fn.DataTable.isDataTable('#estadoResultadosTable')) {
+                $('#estadoResultadosTable').DataTable().destroy();
             }
-            ],
-            paging: false,
-            searching: false,
-            ordering: false,
-            info: false
+
+            $('#estadoResultadosTable').DataTable({
+                destroy: true,
+                dom: 'Btip',
+                buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Exportar a Excel',
+                    title: 'Estado de Resultados Anual'
+                }
+                ],
+                paging: false,
+                searching: false,
+                ordering: false,
+                info: false
+            });
+        }, 100);
+
+        } catch (error) {
+        console.error('Error al dibujar tabla anual:', error);
+        }
+        
+
+    }
+    function validateTableStructure() {
+        const table = document.getElementById('estadoResultadosTable');
+        const headerCols = table.querySelectorAll('thead th').length;
+        const bodyRows = table.querySelectorAll('tbody tr');
+
+        console.log(`Header tiene ${headerCols} columnas`);
+
+        bodyRows.forEach((row, index) => {
+            const cells = row.querySelectorAll('td');
+
+            // Verificar si es una fila de divider
+            if (row.classList.contains('divider')) {
+                // Las filas de divider tienen colspan, no las procesamos
+                return;
+            }
+
+            // Para filas normales, verificar que tengan el número correcto de columnas
+            if (cells.length !== headerCols) {
+                console.warn(`Fila ${index + 1} tiene ${cells.length} columnas, esperadas ${headerCols}`);
+
+                // Agregar celdas faltantes si es necesario
+                while (cells.length < headerCols) {
+                    const newCell = document.createElement('td');
+                    newCell.textContent = '-';
+                    row.appendChild(newCell);
+                }
+            }
         });
-    }, 100);
-
-    } catch (error) {
-    console.error('Error al dibujar tabla anual:', error);
     }
-    
+    function buildTableHeader(thead, year, prevYear, meses) {
+        const colors = ['#92D050', '#0070C0'];
+        const trMeses = document.createElement('tr');
+        trMeses.innerHTML = `<th class="" rowspan="2">CONCEPTO</th>`;
+        meses.forEach((m, i) => {
+            const color = colors[i % 2];
+            trMeses.innerHTML += `<th colspan="8" style="background:${color}; color: #fff;">${m.toUpperCase()}</th>`;
+        });
+        thead.appendChild(trMeses);
 
-}
-
-function validateTableStructure() {
-    const table = document.getElementById('estadoResultadosTable');
-    const headerCols = table.querySelectorAll('thead th').length;
-    const bodyRows = table.querySelectorAll('tbody tr');
-
-    console.log(`Header tiene ${headerCols} columnas`);
-
-    bodyRows.forEach((row, index) => {
-        const cells = row.querySelectorAll('td');
-
-        // Verificar si es una fila de divider
-        if (row.classList.contains('divider')) {
-            // Las filas de divider tienen colspan, no las procesamos
-            return;
-        }
-
-        // Para filas normales, verificar que tengan el número correcto de columnas
-        if (cells.length !== headerCols) {
-            console.warn(`Fila ${index + 1} tiene ${cells.length} columnas, esperadas ${headerCols}`);
-
-            // Agregar celdas faltantes si es necesario
-            while (cells.length < headerCols) {
-                const newCell = document.createElement('td');
-                newCell.textContent = '-';
-                row.appendChild(newCell);
-            }
-        }
-    });
-}
-
-///////////contrulle el header de la tabla
-function buildTableHeader(thead, year, prevYear, meses) {
-    const colors = ['#92D050', '#0070C0'];
-    const trMeses = document.createElement('tr');
-    trMeses.innerHTML = `<th class="" rowspan="2">CONCEPTO</th>`;
-    meses.forEach((m, i) => {
-        const color = colors[i % 2];
-        trMeses.innerHTML += `<th colspan="8" style="background:${color}; color: #fff;">${m.toUpperCase()}</th>`;
-    });
-    thead.appendChild(trMeses);
-
-    const trSub = document.createElement('tr');
-    meses.forEach(() => {
-        trSub.innerHTML += `
-        <th class="sub_header_blue">${prevYear}</th>
-        <th class="sub_header_grey">% Part</th>
-        <th class="sub_header_blue">${year}</th>
-        <th class="sub_header_grey">% Part</th>
-        <th class="sub_header_blue">Ptto ${year}</th>
-        <th class="sub_header_grey">% Part</th>
-        <th class="sub_header_grey">Var AA%</th>
-        <th class="sub_header_grey">Var Ppto%</th>
-        `;
-    });
-    thead.appendChild(trSub);
-}
-
-/////////////////////contrulle el cuerpo de la tabla
-function renderTableBody( api, months) {
-
-    var {
-        budget = {},
-        secciones_estaciones: estaciones = {},
-        secciones_estaciones_last_year: estacionesLastYear = {},
-        secciones_staff: staff = {},
-        secciones_staff_last_year: staffLastYear = {},
-        sumas_por_rubro_mes: sumasPorRubroMes = {},
-        sumas_por_rubro_mes_last_year: sumasPorRubroMesLastYear = {},
-        porcentajes_vs_ingresos: porcentajesVsIngresos = {},
-        porcentajes_vs_ingresos_last_year: porcentajesVsIngresosLastYear = {},
-        porcentajes_vs_ingresos_staff: porcentajesVsIngresosStaff = {}
-    } = api;
-    BudgetTotalIngresos = api.budget.rubro_estaciones.find(r => r.Rubro === 'A - INGRESOS') || {};
-    const getSumas = (rubro, type) => sumasPorRubroMes[rubro]?.[type] || {};
-    const getPorcentajes = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresos : porcentajesVsIngresosStaff)[rubro] || {};
-    const getBudgetRubro = (rubro) => budget.rubro_estaciones?.find(r => r.Rubro === rubro) || {};
-    const getBudgetRubroStaff = (rubro) => budget.rubro_staff?.find(r => r.Rubro === rubro) || {};
-    const getBudgetConceptos = (sectionType) => budget[sectionType] || [];
-    //////lastyear
-    const getSumasLastYear = (rubro, type) => sumasPorRubroMesLastYear[rubro]?.[type] || {};
-    const getPorcentajesLastYear = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresosLastYear : porcentajesVsIngresosStaff)[rubro] || {};
-    const numCols = 1 + months.length * 8;
-
-    renderDivider('INGRESOS', numCols);
-    renderSection(
-        'A - INGRESOS', estaciones.ingresos_estaciones || [],estacionesLastYear.ingresos_estaciones || [],
-        getSumas('A - INGRESOS', 'ESTACIONES'), 
-        getSumasLastYear('A - INGRESOS', 'ESTACIONES'),
-        getPorcentajes('A - INGRESOS', 'ESTACIONES'),
-        getPorcentajesLastYear('A - INGRESOS', 'ESTACIONES'),
-        getBudgetRubro('A - INGRESOS'), getBudgetConceptos('ingresos_estaciones'), months, BudgetTotalIngresos
-    );
-    renderSection(
-        'B - COSTO DE VENTA', estaciones.costo_venta_estaciones || [],estacionesLastYear.costo_venta_estaciones || [],
-        getSumas('B - COSTO DE VENTA', 'ESTACIONES'),
-        getSumasLastYear('B - COSTO DE VENTA', 'ESTACIONES'),
-        getPorcentajes('B - COSTO DE VENTA', 'ESTACIONES'),
-        getPorcentajesLastYear('B - COSTO DE VENTA', 'ESTACIONES'),
-        getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months,BudgetTotalIngresos
-    );
-    renderDivider( 'GASTOS ESTACIONES',numCols);
-    renderSection(
-        'E - GASTOS DE OPERACION', estaciones.gastos_operacion_estaciones || [],estacionesLastYear.gastos_operacion_estaciones || [],
-        getSumas('E - GASTOS DE OPERACION', 'ESTACIONES'),
-        getSumasLastYear('E - GASTOS DE OPERACION', 'ESTACIONES'),
-        getPorcentajes('E - GASTOS DE OPERACION', 'ESTACIONES'),
-        getPorcentajesLastYear('E - GASTOS DE OPERACION', 'ESTACIONES'),
-        getBudgetRubro('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_estaciones'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'C - NOMINA', estaciones.nomina_estaciones || [],estacionesLastYear.nomina_estaciones || [],
-        getSumas('C - NOMINA', 'ESTACIONES'),
-        getSumasLastYear('C - NOMINA', 'ESTACIONES'),
-        getPorcentajes('C - NOMINA', 'ESTACIONES'),
-        getPorcentajesLastYear('C - NOMINA', 'ESTACIONES'),
-        getBudgetRubro('C - NOMINA'), getBudgetConceptos('nomina_estaciones'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'D - COSTO SOCIAL', estaciones.costo_social_estaciones || [],estacionesLastYear.costo_social_estaciones || [],
-        getSumas('D - COSTO SOCIAL', 'ESTACIONES'),
-        getSumasLastYear('D - COSTO SOCIAL', 'ESTACIONES'),
-        getPorcentajes('D - COSTO SOCIAL', 'ESTACIONES'),
-        getPorcentajesLastYear('D - COSTO SOCIAL', 'ESTACIONES'),
-        getBudgetRubro('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_estaciones'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'F - MANTENIMIENTO', estaciones.mantenimiento_estaciones || [],estacionesLastYear.mantenimiento_estaciones || [],
-        getSumas('F - MANTENIMIENTO', 'ESTACIONES'), 
-        getSumasLastYear('F - MANTENIMIENTO', 'ESTACIONES'),
-        getPorcentajes('F - MANTENIMIENTO', 'ESTACIONES'),
-        getPorcentajesLastYear('F - MANTENIMIENTO', 'ESTACIONES'),
-        getBudgetRubro('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_estaciones'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'H - GASTOS FIJOS', estaciones.gastos_fijos_estaciones || [],estacionesLastYear.gastos_fijos_estaciones || [],
-        getSumas('H - GASTOS FIJOS', 'ESTACIONES'), 
-        getSumasLastYear('H - GASTOS FIJOS', 'ESTACIONES'),
-        getPorcentajes('H - GASTOS FIJOS', 'ESTACIONES'), 
-        getPorcentajesLastYear('H - GASTOS FIJOS', 'ESTACIONES'),
-        getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months,BudgetTotalIngresos
-    );
-
-    renderDivider( 'GASTOS STAFF',numCols);
-    renderSection(
-         'E - GASTOS DE OPERACION', staff.gastos_operacion_staff || [],staffLastYear.gastos_operacion_staff || [],
-        getSumas('E - GASTOS DE OPERACION', 'STAFF'), 
-        getSumasLastYear('E - GASTOS DE OPERACION', 'STAFF'),
-        getPorcentajes('E - GASTOS DE OPERACION', 'STAFF'),
-        getPorcentajesLastYear('E - GASTOS DE OPERACION', 'STAFF'),
-        getBudgetRubroStaff('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_staff'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'C - NOMINA', staff.nomina_staff || [],staffLastYear.nomina_staff || [],
-        getSumas('C - NOMINA', 'STAFF'), 
-        getSumasLastYear('C - NOMINA', 'STAFF'),
-        getPorcentajes('C - NOMINA', 'STAFF'),
-        getPorcentajesLastYear('C - NOMINA', 'STAFF'),
-        getBudgetRubroStaff('C - NOMINA'), getBudgetConceptos('nomina_staff'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'D - COSTO SOCIAL', staff.costo_social_staff || [],staffLastYear.costo_social_staff || [],
-        getSumas('D - COSTO SOCIAL', 'STAFF'), 
-        getSumasLastYear('D - COSTO SOCIAL', 'STAFF'),
-        getPorcentajes('D - COSTO SOCIAL', 'STAFF'),
-        getPorcentajesLastYear('D - COSTO SOCIAL', 'STAFF'),
-        getBudgetRubroStaff('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_staff'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'F - MANTENIMIENTO', staff.mantenimiento_staff || [],staffLastYear.mantenimiento_staff || [],
-        getSumas('F - MANTENIMIENTO', 'STAFF'),
-        getSumasLastYear('F - MANTENIMIENTO', 'STAFF'),
-        getPorcentajes('F - MANTENIMIENTO', 'STAFF'),
-        getPorcentajesLastYear('F - MANTENIMIENTO', 'STAFF'),
-        getBudgetRubroStaff('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_staff'), months,BudgetTotalIngresos
-    );
-    renderSection(
-         'H - GASTOS FIJOS', staff.gastos_fijos_staff || [],staffLastYear.gastos_fijos_staff || [],
-        getSumas('H - GASTOS FIJOS', 'STAFF'),
-        getSumasLastYear('H - GASTOS FIJOS', 'STAFF'),
-        getPorcentajes('H - GASTOS FIJOS', 'STAFF'),
-        getPorcentajesLastYear('H - GASTOS FIJOS', 'STAFF'),
-        getBudgetRubroStaff('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_staff'), months,BudgetTotalIngresos
-    );
-
-}
-function renderDivider(label, numCols) {
-    var tbody = document.getElementById('bodyEstadoResultados');
-    const tr = document.createElement('tr');
-    tr.classList.add('table-primary', 'text-white', 'fw-bold', 'text-start', 'divider');
-
-    let inner = `<td><i class="fas fa-chevron-down pe-2"></i> ${label}</td>`;
-    for(let i = 1; i < numCols; i++) {
-        inner += '<td></td>';
+        const trSub = document.createElement('tr');
+        meses.forEach(() => {
+            trSub.innerHTML += `
+            <th class="sub_header_blue">${prevYear}</th>
+            <th class="sub_header_grey">% Part</th>
+            <th class="sub_header_blue">${year}</th>
+            <th class="sub_header_grey">% Part</th>
+            <th class="sub_header_blue">Ptto ${year}</th>
+            <th class="sub_header_grey">% Part</th>
+            <th class="sub_header_grey">Var AA%</th>
+            <th class="sub_header_grey">Var Ppto%</th>
+            `;
+        });
+        thead.appendChild(trSub);
     }
-    tr.innerHTML = inner;
-    tbody.appendChild(tr);
-}
+    function renderTableBody( api, months) {
 
+        var {
+            budget = {},
+            secciones_estaciones: estaciones = {},
+            secciones_estaciones_last_year: estacionesLastYear = {},
+            secciones_staff: staff = {},
+            secciones_staff_last_year: staffLastYear = {},
+            sumas_por_rubro_mes: sumasPorRubroMes = {},
+            sumas_por_rubro_mes_last_year: sumasPorRubroMesLastYear = {},
+            porcentajes_vs_ingresos: porcentajesVsIngresos = {},
+            porcentajes_vs_ingresos_last_year: porcentajesVsIngresosLastYear = {},
+            porcentajes_vs_ingresos_staff: porcentajesVsIngresosStaff = {}
+        } = api;
+        BudgetTotalIngresos = api.budget.rubro_estaciones.find(r => r.Rubro === 'A - INGRESOS') || {};
+        const getSumas = (rubro, type) => sumasPorRubroMes[rubro]?.[type] || {};
+        const getPorcentajes = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresos : porcentajesVsIngresosStaff)[rubro] || {};
+        const getBudgetRubro = (rubro) => budget.rubro_estaciones?.find(r => r.Rubro === rubro) || {};
+        const getBudgetRubroStaff = (rubro) => budget.rubro_staff?.find(r => r.Rubro === rubro) || {};
+        const getBudgetConceptos = (sectionType) => budget[sectionType] || [];
+        //////lastyear
+        const getSumasLastYear = (rubro, type) => sumasPorRubroMesLastYear[rubro]?.[type] || {};
+        const getPorcentajesLastYear = (rubro, type) => (type === 'ESTACIONES' ? porcentajesVsIngresosLastYear : porcentajesVsIngresosStaff)[rubro] || {};
+        const numCols = 1 + months.length * 8;
 
-function renderSection( titulo, data,data_last_year, sumas, sumas_last_year, porcentajes, porcentajes_last_year, budget_rubro, budget_conceptos, meses,BudgetTotalIngresos, soloMostrarTotal = false) {
-    var tbody = document.getElementById('bodyEstadoResultados');
-    const trTitulo = document.createElement('tr');
-    trTitulo.classList.add('table-light', 'fw-bold');
-    if (!soloMostrarTotal) trTitulo.setAttribute('onclick', 'toggleGroup(this)');
+        renderDivider('INGRESOS', numCols);
+        renderSection(
+            'A - INGRESOS', estaciones.ingresos_estaciones || [],estacionesLastYear.ingresos_estaciones || [],
+            getSumas('A - INGRESOS', 'ESTACIONES'), 
+            getSumasLastYear('A - INGRESOS', 'ESTACIONES'),
+            getPorcentajes('A - INGRESOS', 'ESTACIONES'),
+            getPorcentajesLastYear('A - INGRESOS', 'ESTACIONES'),
+            getBudgetRubro('A - INGRESOS'), getBudgetConceptos('ingresos_estaciones'), months, BudgetTotalIngresos
+        );
+        renderSection(
+            'B - COSTO DE VENTA', estaciones.costo_venta_estaciones || [],estacionesLastYear.costo_venta_estaciones || [],
+            getSumas('B - COSTO DE VENTA', 'ESTACIONES'),
+            getSumasLastYear('B - COSTO DE VENTA', 'ESTACIONES'),
+            getPorcentajes('B - COSTO DE VENTA', 'ESTACIONES'),
+            getPorcentajesLastYear('B - COSTO DE VENTA', 'ESTACIONES'),
+            getBudgetRubro('B - COSTO DE VENTA'), getBudgetConceptos('costoventa_estaciones'), months,BudgetTotalIngresos
+        );
+        renderDivider( 'GASTOS ESTACIONES',numCols);
+        renderSection(
+            'E - GASTOS DE OPERACION', estaciones.gastos_operacion_estaciones || [],estacionesLastYear.gastos_operacion_estaciones || [],
+            getSumas('E - GASTOS DE OPERACION', 'ESTACIONES'),
+            getSumasLastYear('E - GASTOS DE OPERACION', 'ESTACIONES'),
+            getPorcentajes('E - GASTOS DE OPERACION', 'ESTACIONES'),
+            getPorcentajesLastYear('E - GASTOS DE OPERACION', 'ESTACIONES'),
+            getBudgetRubro('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_estaciones'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'C - NOMINA', estaciones.nomina_estaciones || [],estacionesLastYear.nomina_estaciones || [],
+            getSumas('C - NOMINA', 'ESTACIONES'),
+            getSumasLastYear('C - NOMINA', 'ESTACIONES'),
+            getPorcentajes('C - NOMINA', 'ESTACIONES'),
+            getPorcentajesLastYear('C - NOMINA', 'ESTACIONES'),
+            getBudgetRubro('C - NOMINA'), getBudgetConceptos('nomina_estaciones'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'D - COSTO SOCIAL', estaciones.costo_social_estaciones || [],estacionesLastYear.costo_social_estaciones || [],
+            getSumas('D - COSTO SOCIAL', 'ESTACIONES'),
+            getSumasLastYear('D - COSTO SOCIAL', 'ESTACIONES'),
+            getPorcentajes('D - COSTO SOCIAL', 'ESTACIONES'),
+            getPorcentajesLastYear('D - COSTO SOCIAL', 'ESTACIONES'),
+            getBudgetRubro('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_estaciones'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'F - MANTENIMIENTO', estaciones.mantenimiento_estaciones || [],estacionesLastYear.mantenimiento_estaciones || [],
+            getSumas('F - MANTENIMIENTO', 'ESTACIONES'), 
+            getSumasLastYear('F - MANTENIMIENTO', 'ESTACIONES'),
+            getPorcentajes('F - MANTENIMIENTO', 'ESTACIONES'),
+            getPorcentajesLastYear('F - MANTENIMIENTO', 'ESTACIONES'),
+            getBudgetRubro('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_estaciones'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'H - GASTOS FIJOS', estaciones.gastos_fijos_estaciones || [],estacionesLastYear.gastos_fijos_estaciones || [],
+            getSumas('H - GASTOS FIJOS', 'ESTACIONES'), 
+            getSumasLastYear('H - GASTOS FIJOS', 'ESTACIONES'),
+            getPorcentajes('H - GASTOS FIJOS', 'ESTACIONES'), 
+            getPorcentajesLastYear('H - GASTOS FIJOS', 'ESTACIONES'),
+            getBudgetRubro('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_estaciones'), months,BudgetTotalIngresos
+        );
 
-    trTitulo.innerHTML = `<td><i class="fas fa-chevron-down pe-2"></i> ${titulo}</td>`;
-    meses.forEach(mes => {
-        const total = sumas?.[mes] ?? '-';
-        const total_last_year = sumas_last_year?.[mes] ?? '-';
-        const porcentaje = porcentajes?.[mes] ?? '-';
-        const porcentaje_last_year = porcentajes_last_year?.[mes] ?? '-';
-        const presupuesto = formatea(budget_rubro?.[mes]) ?? '-';
-        trTitulo.innerHTML += `
-        <td>${formatea(total_last_year)}</td><td>${porcentaje_last_year} %</td>
-        <td>${formatea(total)}</td>
-        <td>${porcentaje} %</td><td>${presupuesto}</td><td>-</td><td>-</td><td>-</td>
-        `;
-    });
-    tbody.appendChild(trTitulo);
+        renderDivider( 'GASTOS STAFF',numCols);
+        renderSection(
+            'E - GASTOS DE OPERACION', staff.gastos_operacion_staff || [],staffLastYear.gastos_operacion_staff || [],
+            getSumas('E - GASTOS DE OPERACION', 'STAFF'), 
+            getSumasLastYear('E - GASTOS DE OPERACION', 'STAFF'),
+            getPorcentajes('E - GASTOS DE OPERACION', 'STAFF'),
+            getPorcentajesLastYear('E - GASTOS DE OPERACION', 'STAFF'),
+            getBudgetRubroStaff('E - GASTOS DE OPERACION'), getBudgetConceptos('gastos_operacion_staff'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'C - NOMINA', staff.nomina_staff || [],staffLastYear.nomina_staff || [],
+            getSumas('C - NOMINA', 'STAFF'), 
+            getSumasLastYear('C - NOMINA', 'STAFF'),
+            getPorcentajes('C - NOMINA', 'STAFF'),
+            getPorcentajesLastYear('C - NOMINA', 'STAFF'),
+            getBudgetRubroStaff('C - NOMINA'), getBudgetConceptos('nomina_staff'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'D - COSTO SOCIAL', staff.costo_social_staff || [],staffLastYear.costo_social_staff || [],
+            getSumas('D - COSTO SOCIAL', 'STAFF'), 
+            getSumasLastYear('D - COSTO SOCIAL', 'STAFF'),
+            getPorcentajes('D - COSTO SOCIAL', 'STAFF'),
+            getPorcentajesLastYear('D - COSTO SOCIAL', 'STAFF'),
+            getBudgetRubroStaff('D - COSTO SOCIAL'), getBudgetConceptos('costo_social_staff'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'F - MANTENIMIENTO', staff.mantenimiento_staff || [],staffLastYear.mantenimiento_staff || [],
+            getSumas('F - MANTENIMIENTO', 'STAFF'),
+            getSumasLastYear('F - MANTENIMIENTO', 'STAFF'),
+            getPorcentajes('F - MANTENIMIENTO', 'STAFF'),
+            getPorcentajesLastYear('F - MANTENIMIENTO', 'STAFF'),
+            getBudgetRubroStaff('F - MANTENIMIENTO'), getBudgetConceptos('mantenimiento_staff'), months,BudgetTotalIngresos
+        );
+        renderSection(
+            'H - GASTOS FIJOS', staff.gastos_fijos_staff || [],staffLastYear.gastos_fijos_staff || [],
+            getSumas('H - GASTOS FIJOS', 'STAFF'),
+            getSumasLastYear('H - GASTOS FIJOS', 'STAFF'),
+            getPorcentajes('H - GASTOS FIJOS', 'STAFF'),
+            getPorcentajesLastYear('H - GASTOS FIJOS', 'STAFF'),
+            getBudgetRubroStaff('H - GASTOS FIJOS'), getBudgetConceptos('gastos_fijos_staff'), months,BudgetTotalIngresos
+        );
 
-    data.forEach(fila => {
-        const fila_last_year = data_last_year.find(f => f.concepto === fila.concepto) || {};
-        const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
+    }
+    function renderDivider(label, numCols) {
+        var tbody = document.getElementById('bodyEstadoResultados');
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td class='concept_td' >${fila.concepto}</td>`;
-        meses.forEach(mes => {
+        tr.classList.add('table-primary', 'text-white', 'fw-bold', 'text-start', 'divider');
 
-        const val = fila[mes]?.total ?? 0;
-        const val_last_year = fila_last_year[mes]?.total ?? 0;
-        const pct_last_year = fila_last_year[mes]?.porcentaje ?? '-';
-        const pct = fila[mes]?.porcentaje ?? '-';
-        const presupuesto = formatea(budget_concepto[mes]) ?? '-';
-        ingreso_presupuesto = BudgetTotalIngresos[mes] || 0;
-        var porcen_presupuesto =  (budget_concepto[mes]/ingreso_presupuesto) * 100 || 0;
-            porcen_presupuesto = porcen_presupuesto.toFixed(1);
-        let variacion = budget_concepto[mes] ? ((val / budget_concepto[mes]) - 1) *100: 0;
-            variacion = Number(variacion.toFixed(1)); // Para comparación numérica
-            const variacionClass = variacion < 0 ? 'variacion-negativa' : '';
-
-
-        tr.innerHTML += `
-            <td class="year_value">${formatea(val_last_year)}</td>
-            <td class="porcent_value">${pct_last_year}</td>
-            <td class="year_value" >${formatea(val)}</td>
-            <td class="porcent_value">${pct}</td>
-            <td class="year_value">${presupuesto}</td>
-            <td class="porcent_value">${(porcen_presupuesto)} %</td>
-            <td>-</td>
-            <td class="${variacionClass} year_value">${variacion} %</td>
-        `;
-        });
+        let inner = `<td><i class="fas fa-chevron-down pe-2"></i> ${label}</td>`;
+        for(let i = 1; i < numCols; i++) {
+            inner += '<td></td>';
+        }
+        tr.innerHTML = inner;
         tbody.appendChild(tr);
-    });
-}
-
-function formatea(valor) {
-  if (typeof valor === 'number') {
-    return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
-  }
-  return valor || '-';
-}
-async function fetchData(year) {
-  const response = await fetch('/accounting/drawAnnualTable', {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json, text/javascript, */*',
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    credentials: 'include',
-    body: `year=${year}`
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-
-  return response.json();
-}
-
-
-async function sales_petrotal_table(){
-    if ($.fn.DataTable.isDataTable('#sales_petrotal_table')) {
-        $('#sales_petrotal_table').DataTable().destroy();
-        $('#sales_petrotal_table thead .filter').remove();
-        // $('#sales_petrotal_table').DataTable().destroy();  // Destruye la tabla existente
-        // $('#sales_petrotal_table thead').empty(); // Limpia el encabezado
-        // $('#sales_petrotal_table tbody').empty(); // Limpia el cuerpo
-        // $('#sales_petrotal_table tfoot').empty(); // Limpia el pie de tabla si lo usas
     }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
+    function renderSection( titulo, data,data_last_year, sumas, sumas_last_year, porcentajes, porcentajes_last_year, budget_rubro, budget_conceptos, meses,BudgetTotalIngresos, soloMostrarTotal = false) {
+        var tbody = document.getElementById('bodyEstadoResultados');
+        const trTitulo = document.createElement('tr');
+        trTitulo.classList.add('table-light', 'fw-bold');
+        if (!soloMostrarTotal) trTitulo.setAttribute('onclick', 'toggleGroup(this)');
 
-    $('#sales_petrotal_table thead').prepend($('#sales_petrotal_table thead tr').clone().addClass('filter'));
-    $('#sales_petrotal_table thead tr.filter th').each(function (index) {
-        col = $('#sales_petrotal_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#sales_petrotal_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#sales_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let sales_petrotal_table =$('#sales_petrotal_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate
-            },
-            url: '/accounting/sales_petrotal_table',
-            timeout: 600000, 
-            error: function() {
-                $('#sales_petrotal_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-       columns: [
-            { data: 'anio' },
-            { data: 'mes_deuda' },
-            { data: 'fecha', className: 'text-nowrap' },
-            { data: 'factura' },
-            { data: 'num_estacion' },
-            { data: 'razon_social' },
-            { data: 'estacion' },
-            { data: 'cre_estacion' },
-            { data: 'fecha_descarga', className: 'text-nowrap' },
-            { data: 'proveedor' },
-            { data: 'codigo_proveedor' },
-            { data: 'cre_proveedor' },
-            { data: 'combustible' },
-            { data: 'factor_ieps', render: $.fn.dataTable.render.number(',', '.', 6) },
-            { data: 'litros', render: $.fn.dataTable.render.number(',', '.', 3) },
-            { data: 'precio', render: $.fn.dataTable.render.number(',', '.', 8) },
-            { data: 'precio_litro', render: $.fn.dataTable.render.number(',', '.', 8) },
-            { data: 'subtotal_con_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'subtotal_sin_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'costo', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'factura_compra' },
-            { data: 'utilidad_perdida', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'monto_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'iva_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'fecha_pago', className: 'text-nowrap' },
-            { data: 'uuid' },
-            { data: 'tasa_iva' },
-            { data: 'indicador_1' }
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-    });
-}
-async function save_spend_petrotal(){
-    var fecha =  document.getElementById('date_spent');
-    var gasto =  document.getElementById('gasto');
-    const formData = new FormData();
-    formData.append('fecha', fecha.value); // Agrega la fecha al FormData
-    formData.append('gasto', gasto.value); // Agrega el gasto al FormData
-    try {
-        $('.er_petrotal_heather').addClass('loading');
-        const response = await fetch('/accounting/save_spend_petrotal', {
-            method: 'POST',
-            body: formData
+        trTitulo.innerHTML = `<td><i class="fas fa-chevron-down pe-2"></i> ${titulo}</td>`;
+        meses.forEach(mes => {
+            const total = sumas?.[mes] ?? '-';
+            const total_last_year = sumas_last_year?.[mes] ?? '-';
+            const porcentaje = porcentajes?.[mes] ?? '-';
+            const porcentaje_last_year = porcentajes_last_year?.[mes] ?? '-';
+            const presupuesto = formatea(budget_rubro?.[mes]) ?? '-';
+            trTitulo.innerHTML += `
+            <td>${formatea(total_last_year)}</td><td>${porcentaje_last_year} %</td>
+            <td>${formatea(total)}</td>
+            <td>${porcentaje} %</td><td>${presupuesto}</td><td>-</td><td>-</td><td>-</td>
+            `;
         });
+        tbody.appendChild(trTitulo);
 
-        const data = await response.json();
+        data.forEach(fila => {
+            const fila_last_year = data_last_year.find(f => f.concepto === fila.concepto) || {};
+            const budget_concepto = budget_conceptos.find(b => b.Concepto === fila.concepto) || {};
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td class='concept_td' >${fila.concepto}</td>`;
+            meses.forEach(mes => {
 
-        if (data['success'] == false) {
-            toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
-            $('.er_petrotal_heather').removeClass('loading');
-            gasto.value = '';
-            fecha.value = '';
-            return;
-        }
+            const val = fila[mes]?.total ?? 0;
+            const val_last_year = fila_last_year[mes]?.total ?? 0;
+            const pct_last_year = fila_last_year[mes]?.porcentaje ?? '-';
+            const pct = fila[mes]?.porcentaje ?? '-';
+            const presupuesto = formatea(budget_concepto[mes]) ?? '-';
+            ingreso_presupuesto = BudgetTotalIngresos[mes] || 0;
+            var porcen_presupuesto =  (budget_concepto[mes]/ingreso_presupuesto) * 100 || 0;
+                porcen_presupuesto = porcen_presupuesto.toFixed(1);
+            let variacion = budget_concepto[mes] ? ((val / budget_concepto[mes]) - 1) *100: 0;
+                variacion = Number(variacion.toFixed(1)); // Para comparación numérica
+                const variacionClass = variacion < 0 ? 'variacion-negativa' : '';
 
-        if (data['success'] == true) {
-            toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
-            $('.er_petrotal_heather').removeClass('loading');
-            gasto.value = '';
-            spend_real();
-        }
-    } catch (error) {
-        console.error('Error al subir el archivo:', error);
-        $('.er_petrotal_heather').removeClass('loading');
-        toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+
+            tr.innerHTML += `
+                <td class="year_value">${formatea(val_last_year)}</td>
+                <td class="porcent_value">${pct_last_year}</td>
+                <td class="year_value" >${formatea(val)}</td>
+                <td class="porcent_value">${pct}</td>
+                <td class="year_value">${presupuesto}</td>
+                <td class="porcent_value">${(porcen_presupuesto)} %</td>
+                <td>-</td>
+                <td class="${variacionClass} year_value">${variacion} %</td>
+            `;
+            });
+            tbody.appendChild(tr);
+        });
     }
-    $('.er_petrotal_heather').removeClass('loading');
-
-}
-async function generateReport() {
-    er_petrotal_table();
-    console.log('Generando reporte de Petrotal...');
-    er_petrotal_concept();
-
-}
-
-async function er_petrotal_concept() {
-    var fromDate = document.getElementById('from2').value;
-    fromDate = fromDate + '-01';
-
-    // Llamada AJAX clásica, puedes usar fetch
-    const response = await fetch('/accounting/er_petrotal_concept', {
+    function formatea(valor) {
+    if (typeof valor === 'number') {
+        return valor.toLocaleString('es-MX', { minimumFractionDigits: 0 });
+    }
+    return valor || '-';
+    }
+    async function fetchData(year) {
+    const response = await fetch('/accounting/drawAnnualTable', {
         method: 'POST',
         headers: {
         'Accept': 'application/json, text/javascript, */*',
         'Content-Type': 'application/x-www-form-urlencoded'
         },
         credentials: 'include',
-            body: `date=${fromDate}`
-        });
-    const data = await response.json();
-
-    // Llena la tabla manualmente
-    const tbody = document.querySelector('#er_petrotal_concept_table tbody');
-    tbody.innerHTML = ''; // Limpia tabla
-    if(data.error){
-        alertify.error(
-            `<div class="text-light text-center ">
-                <h4 class=" text-danger">¡Error!</h4>
-            </div>
-            <div class="text-light">
-                <p class="text-center">${data.error}</p>
-            </div>`
-        );
-        return;
-    }
-
-    data.forEach(row => {
-        const tr = document.createElement('tr');
-        // Ajusta los nombres de columna según tu JSON
-        tr.innerHTML = `
-            <td>${row.rubro}</td>
-            <td>${row.cuenta}</td>
-            <td>${row.valor}</td>
-        `;
-        tbody.appendChild(tr);
+        body: `year=${year}`
     });
-}
 
-
-
-async function er_petrotal_table(){
-    if ($.fn.DataTable.isDataTable('#er_petrotal_table')) {
-        $('#er_petrotal_table').DataTable().destroy();
-        $('#er_petrotal_table thead .filter').remove();
-
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
     }
-    var fromDate = document.getElementById('from2').value;
-    fromDate = fromDate + '-01';
-    $('#er_petrotal_table thead').prepend($('#er_petrotal_table thead tr').clone().addClass('filter'));
-    $('#er_petrotal_table thead tr.filter th').each(function (index) {
-        col = $('#er_petrotal_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+
+    return response.json();
+    }
+    async function sales_petrotal_table(){
+        if ($.fn.DataTable.isDataTable('#sales_petrotal_table')) {
+            $('#sales_petrotal_table').DataTable().destroy();
+            $('#sales_petrotal_table thead .filter').remove();
+            // $('#sales_petrotal_table').DataTable().destroy();  // Destruye la tabla existente
+            // $('#sales_petrotal_table thead').empty(); // Limpia el encabezado
+            // $('#sales_petrotal_table tbody').empty(); // Limpia el cuerpo
+            // $('#sales_petrotal_table tfoot').empty(); // Limpia el pie de tabla si lo usas
         }
-    });
-    $('#er_petrotal_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#er_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let er_petrotal_table =$('#er_petrotal_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate
-            },
-            url: '/accounting/er_petrotal_table',
-            timeout: 600000, 
-            error: function() {
-                $('#er_petrotal_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
 
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
+        $('#sales_petrotal_table thead').prepend($('#sales_petrotal_table thead tr').clone().addClass('filter'));
+        $('#sales_petrotal_table thead tr.filter th').each(function (index) {
+            col = $('#sales_petrotal_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
             }
-        },
-        columns: [
-            { data: 'estacion', className: 'text-nowrap' },
-            { data: 'etiqueta' },
-            { data: 'diesel', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'premium', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'regular', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'diesel_porcent', className:'text-end'  },  // si llega como decimal
-            { data: 'premium_porcent', className:'text-end'  }, // si llega como decimal
-            { data: 'regular_porcent', className:'text-end'  },   // si llega como decimal
-            { data: 'diesel_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'premium_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'regular_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
-            { data: 'total', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) }
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-    });
-}
-
-function download_format_concept_petrotal(){
-    fetch('/accounting/download_format_concept_petrotal')
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Error en la descarga del archivo');
-        }
-        return response.blob();
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(new Blob([blob]));
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = 'FormatoConceptosPetrotal.xlsx'; // Nombre del archivo a descargar
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-    })
-    .catch(error => console.error('Error:', error));
-}
-async function form_save_adjustments(){
-    console.log("Guardar ajustes"); 
-    var form_save_adjustments = document.querySelector('.form_save_adjustments');
-    var formData = new FormData(form_save_adjustments);
-    fetch('/accounting/form_save_adjustments', {
-        method: 'POST',
-        body: formData
-    })
-        .then(response => response.json())
-        .then(data => {
-            console.log(data);
-
-            // if (data == 0) {
-            //     $('#EditAlertModal').modal('hide');
-            //     alert_active_table.clear().draw();
-            //     alert_active_table.ajax.reload();
-            //     $('div#loader').addClass('d-none');
-
-            //     alert_Inactive_table.clear().draw();
-            //     alert_Inactive_table.ajax.reload();
-            //     $('div#loader').addClass('d-none');
-            //   }
-            //   if (data == 1) {
-            //     alertify.error('No se Reactivo');
-            //   }
-        })
-        .catch(error => {
-            console.error(error);
         });
+        $('#sales_petrotal_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#sales_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let sales_petrotal_table =$('#sales_petrotal_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            // processing: true,  // Agregar esta línea
+            // serverSide: true,  // Agregar esta línea
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate
+                },
+                url: '/accounting/sales_petrotal_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#sales_petrotal_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
 
-}
-async function spend_real(){
-    const spend_real = document.getElementById('spend_real');
-    var fecha =  document.getElementById('date_spent').value;
-    const formData = new FormData();
-    formData.append('fecha', fecha); // Agrega la fecha al FormData
-    try {
-        const response = await fetch('/accounting/spend_real', {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+        columns: [
+                { data: 'anio' },
+                { data: 'mes_deuda' },
+                { data: 'fecha', className: 'text-nowrap' },
+                { data: 'factura' },
+                { data: 'num_estacion' },
+                { data: 'razon_social' },
+                { data: 'estacion' },
+                { data: 'cre_estacion' },
+                { data: 'fecha_descarga', className: 'text-nowrap' },
+                { data: 'proveedor' },
+                { data: 'codigo_proveedor' },
+                { data: 'cre_proveedor' },
+                { data: 'combustible' },
+                { data: 'factor_ieps', render: $.fn.dataTable.render.number(',', '.', 6) },
+                { data: 'litros', render: $.fn.dataTable.render.number(',', '.', 3) },
+                { data: 'precio', render: $.fn.dataTable.render.number(',', '.', 8) },
+                { data: 'precio_litro', render: $.fn.dataTable.render.number(',', '.', 8) },
+                { data: 'subtotal_con_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'subtotal_sin_ieps', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'iva', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'total', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'costo', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'factura_compra' },
+                { data: 'utilidad_perdida', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'monto_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'iva_pagado', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'fecha_pago', className: 'text-nowrap' },
+                { data: 'uuid' },
+                { data: 'tasa_iva' },
+                { data: 'indicador_1' }
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+            },
+        });
+    }
+    async function save_spend_petrotal(){
+        var fecha =  document.getElementById('date_spent');
+        var gasto =  document.getElementById('gasto');
+        const formData = new FormData();
+        formData.append('fecha', fecha.value); // Agrega la fecha al FormData
+        formData.append('gasto', gasto.value); // Agrega el gasto al FormData
+        try {
+            $('.er_petrotal_heather').addClass('loading');
+            const response = await fetch('/accounting/save_spend_petrotal', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data['success'] == false) {
+                toastr.error(data['message'], '¡Error!', { timeOut: 3000 });
+                $('.er_petrotal_heather').removeClass('loading');
+                gasto.value = '';
+                fecha.value = '';
+                return;
+            }
+
+            if (data['success'] == true) {
+                toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
+                $('.er_petrotal_heather').removeClass('loading');
+                gasto.value = '';
+                spend_real();
+            }
+        } catch (error) {
+            console.error('Error al subir el archivo:', error);
+            $('.er_petrotal_heather').removeClass('loading');
+            toastr.error('Hubo un problema al subir el archivo.', '¡Error!', { timeOut: 3000 });
+        }
+        $('.er_petrotal_heather').removeClass('loading');
+
+    }
+    async function generateReport() {
+        er_petrotal_table();
+        console.log('Generando reporte de Petrotal...');
+        er_petrotal_concept();
+
+    }
+    async function er_petrotal_concept() {
+        var fromDate = document.getElementById('from2').value;
+        fromDate = fromDate + '-01';
+
+        // Llamada AJAX clásica, puedes usar fetch
+        const response = await fetch('/accounting/er_petrotal_concept', {
+            method: 'POST',
+            headers: {
+            'Accept': 'application/json, text/javascript, */*',
+            'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            credentials: 'include',
+                body: `date=${fromDate}`
+            });
+        const data = await response.json();
+
+        // Llena la tabla manualmente
+        const tbody = document.querySelector('#er_petrotal_concept_table tbody');
+        tbody.innerHTML = ''; // Limpia tabla
+        if(data.error){
+            alertify.error(
+                `<div class="text-light text-center ">
+                    <h4 class=" text-danger">¡Error!</h4>
+                </div>
+                <div class="text-light">
+                    <p class="text-center">${data.error}</p>
+                </div>`
+            );
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            // Ajusta los nombres de columna según tu JSON
+            tr.innerHTML = `
+                <td>${row.rubro}</td>
+                <td>${row.cuenta}</td>
+                <td>${row.valor}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+    async function er_petrotal_table(){
+        if ($.fn.DataTable.isDataTable('#er_petrotal_table')) {
+            $('#er_petrotal_table').DataTable().destroy();
+            $('#er_petrotal_table thead .filter').remove();
+
+        }
+        var fromDate = document.getElementById('from2').value;
+        fromDate = fromDate + '-01';
+        $('#er_petrotal_table thead').prepend($('#er_petrotal_table thead tr').clone().addClass('filter'));
+        $('#er_petrotal_table thead tr.filter th').each(function (index) {
+            col = $('#er_petrotal_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#er_petrotal_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#er_petrotal_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let er_petrotal_table =$('#er_petrotal_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            // processing: true,  // Agregar esta línea
+            // serverSide: true,  // Agregar esta línea
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate
+                },
+                url: '/accounting/er_petrotal_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#er_petrotal_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                { data: 'estacion', className: 'text-nowrap' },
+                { data: 'etiqueta' },
+                { data: 'diesel', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'premium', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'regular', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'diesel_porcent', className:'text-end'  },  // si llega como decimal
+                { data: 'premium_porcent', className:'text-end'  }, // si llega como decimal
+                { data: 'regular_porcent', className:'text-end'  },   // si llega como decimal
+                { data: 'diesel_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'premium_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'regular_utilidad', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
+                { data: 'total', className:'text-end', render: $.fn.dataTable.render.number(',', '.', 2) }
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+            },
+        });
+    }
+    function download_format_concept_petrotal(){
+        fetch('/accounting/download_format_concept_petrotal')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Error en la descarga del archivo');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'FormatoConceptosPetrotal.xlsx'; // Nombre del archivo a descargar
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => console.error('Error:', error));
+    }
+    async function form_save_adjustments(){
+        console.log("Guardar ajustes"); 
+        var form_save_adjustments = document.querySelector('.form_save_adjustments');
+        var formData = new FormData(form_save_adjustments);
+        fetch('/accounting/form_save_adjustments', {
             method: 'POST',
             body: formData
-        });
+        })
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
 
-        const data = await response.json();
+                // if (data == 0) {
+                //     $('#EditAlertModal').modal('hide');
+                //     alert_active_table.clear().draw();
+                //     alert_active_table.ajax.reload();
+                //     $('div#loader').addClass('d-none');
 
-        if (data['success'] == true) {
-           spend_real.value = data['spend'];
-        }
-
-        // if (data['success'] == true) {
-        //     toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
-        //     $('.er_petrotal_heather').removeClass('loading');
-        //     gasto.value = '';
-        //     fecha.value = '';
-        // }
-    } catch (error) {
-        console.error('eror al consultar gasto real:', error);
-    }
-}
-
-
-async function movement_analysis_table(){
-    if ($.fn.DataTable.isDataTable('#movement_analysis_table')) {
-        $('#movement_analysis_table').DataTable().destroy();
-        $('#movement_analysis_table thead .filter').remove();
-    }
-    
-    // Validar que los elementos existan
-    var fromElement = document.getElementById('from');
-    var untilElement = document.getElementById('until');
-    var stationElement = document.getElementById('station');
-    var supplierElement = document.getElementById('supplier_val');
-    
-    if (!fromElement || !untilElement) {
-        alertify.error('Por favor complete los campos de fecha');
-        return;
-    }
-    
-    var fromDate = fromElement.value;
-    var untilDate = untilElement.value;
-    var codgas = stationElement ? (stationElement.value || 0) : 0;
-    var supplier = supplierElement ? supplierElement.value : '';
-    
-    if (!fromDate || !untilDate) {
-        alertify.error('Por favor seleccione las fechas');
-        return;
-    }
-    
-    // Validar que los elementos existan
-    var fromElement = document.getElementById('from');
-    var untilElement = document.getElementById('until');
-    var stationElement = document.getElementById('station');
-    var supplierElement = document.getElementById('supplier_val');
-    
-    if (!fromElement || !untilElement) {
-        alertify.error('Por favor complete los campos de fecha');
-        return;
-    }
-    
-    var fromDate = fromElement.value;
-    var untilDate = untilElement.value;
-    var codgas = stationElement ? (stationElement.value || 0) : 0;
-    var supplier = supplierElement ? supplierElement.value : '';
-    
-    if (!fromDate || !untilDate) {
-        alertify.error('Por favor seleccione las fechas');
-        return;
-    }
-
-    $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
-    $('#movement_analysis_table thead tr.filter th').each(function (index) {
-        col = $('#movement_analysis_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text();
-            var title = $(this).text();
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index();
-        var table = $('#movement_analysis_table').DataTable();
-        var index = $(this).parent().index();
-        var table = $('#movement_analysis_table').DataTable();
-        table
-            .column(index)
-            .search(this.value)
-            .draw();
-
-    });
-    
-
-    // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
-    $('#movement_analysis_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        paging: true,
-        pageLength: 100,
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-            {
-                text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
-                className: 'btn btn-primary',
-                action: function () {
-                    window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate + '/' + codgas + '/' + supplier, '_blank');
-                }
-            }
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate': fromDate,
-                'untilDate': untilDate,
-                'codgas': codgas,
-                'fromDate': fromDate,
-                'untilDate': untilDate,
-                'codgas': codgas,
-                'supplier': supplier
-            },
-            url: '/accounting/movement_analysis_table',
-            timeout: 600000, 
-            error: function() {
-                $('#movement_analysis_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
-                        <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
-                    </div>`
-                );
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
-            {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
-            {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
-            {'data': 'Fecha'},
-            {'data': 'Vencimiento'},
-            {'data': 'Producto'},
-            {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
-            {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
-            {'data': 'Estación'},
-            {'data': 'UUID'},
-            {'data': 'RFC'},
-            {'data': 'Remision'},
-            {'data': 'Vehiculo'},
-            {'data': 'Proveedor'},
-        ],
-        deferRender: true,
-        createdRow: function (row, data, dataIndex) {
-
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-        },
-        footerCallback: function (row, data, start, end, display) {
-
-        }
-    });
-}
-
-
-// vollet volumetricTable;
-
-async function actualizarDataTableVolumetric() {
-    const codgas = $('#codgas').val();
-    
-    if (!codgas) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Atención',
-            text: 'Por favor seleccione una estación',
-            confirmButtonColor: '#3085d6'
-        });
-        return;
-    }
-
-    Swal.fire({
-        title: 'Cargando datos...',
-        text: 'Por favor espere mientras se procesan los volumétricos',
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    if ($.fn.DataTable.isDataTable('#volumetric_table')) {
-        volumetricTable.destroy();
-        $('#volumetric_table thead').empty(); // ← Limpiar thead
-        $('#volumetric_table tbody').empty(); // ← Limpiar tbody
-        isTableInitialized = false;
-    }
-
-    const formData = new FormData();
-    formData.append('codgas', codgas);
-    
-    try {
-        const response = await fetch('/accounting/xmlCre', {
-            method: 'POST',
-            body: formData,
-        });
-
-        const data = await response.json();
-        
-        console.log('Respuesta completa:', data);
-
-        if (data.success === true) {
-            Swal.close();
-            
-            $('#no_selected').hide();
-            
-            if (data.dataOriginal) {
-                crearCollapseResumen(data.dataOriginal);
-            }
-            
-            inicializarTablaVolumetricos(data.data);
-            isTableInitialized = true;
-            
-            Swal.fire({
-                icon: 'success',
-                title: 'Éxito',
-                text: `Se cargaron ${data.data.length} registros del período ${data.periodo || ''}`,
-                timer: 2000,
-                showConfirmButton: false
+                //     alert_Inactive_table.clear().draw();
+                //     alert_Inactive_table.ajax.reload();
+                //     $('div#loader').addClass('d-none');
+                //   }
+                //   if (data == 1) {
+                //     alertify.error('No se Reactivo');
+                //   }
+            })
+            .catch(error => {
+                console.error(error);
             });
-        } else {
+
+    }
+    async function spend_real(){
+        const spend_real = document.getElementById('spend_real');
+        var fecha =  document.getElementById('date_spent').value;
+        const formData = new FormData();
+        formData.append('fecha', fecha); // Agrega la fecha al FormData
+        try {
+            const response = await fetch('/accounting/spend_real', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data['success'] == true) {
+            spend_real.value = data['spend'];
+            }
+
+            // if (data['success'] == true) {
+            //     toastr.success('Gasto guardado exitosamente ', '¡Éxito!', { timeOut: 3000 });
+            //     $('.er_petrotal_heather').removeClass('loading');
+            //     gasto.value = '';
+            //     fecha.value = '';
+            // }
+        } catch (error) {
+            console.error('eror al consultar gasto real:', error);
+        }
+    }
+    async function movement_analysis_table(){
+        if ($.fn.DataTable.isDataTable('#movement_analysis_table')) {
+            $('#movement_analysis_table').DataTable().destroy();
+            $('#movement_analysis_table thead .filter').remove();
+        }
+        
+        // Validar que los elementos existan
+        var fromElement = document.getElementById('from');
+        var untilElement = document.getElementById('until');
+        var stationElement = document.getElementById('station');
+        var supplierElement = document.getElementById('supplier_val');
+        
+        if (!fromElement || !untilElement) {
+            alertify.error('Por favor complete los campos de fecha');
+            return;
+        }
+        
+        var fromDate = fromElement.value;
+        var untilDate = untilElement.value;
+        var codgas = stationElement ? (stationElement.value || 0) : 0;
+        var supplier = supplierElement ? supplierElement.value : '';
+        
+        if (!fromDate || !untilDate) {
+            alertify.error('Por favor seleccione las fechas');
+            return;
+        }
+        
+        // Validar que los elementos existan
+        var fromElement = document.getElementById('from');
+        var untilElement = document.getElementById('until');
+        var stationElement = document.getElementById('station');
+        var supplierElement = document.getElementById('supplier_val');
+        
+        if (!fromElement || !untilElement) {
+            alertify.error('Por favor complete los campos de fecha');
+            return;
+        }
+        
+        var fromDate = fromElement.value;
+        var untilDate = untilElement.value;
+        var codgas = stationElement ? (stationElement.value || 0) : 0;
+        var supplier = supplierElement ? supplierElement.value : '';
+        
+        if (!fromDate || !untilDate) {
+            alertify.error('Por favor seleccione las fechas');
+            return;
+        }
+
+        $('#movement_analysis_table thead').prepend($('#movement_analysis_table thead tr').clone().addClass('filter'));
+        $('#movement_analysis_table thead tr.filter th').each(function (index) {
+            col = $('#movement_analysis_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text();
+                var title = $(this).text();
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#movement_analysis_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index();
+            var table = $('#movement_analysis_table').DataTable();
+            var index = $(this).parent().index();
+            var table = $('#movement_analysis_table').DataTable();
+            table
+                .column(index)
+                .search(this.value)
+                .draw();
+
+        });
+        
+
+        // CORREGIDO: Quité el "let movement_analysis_table =" porque genera conflicto
+        $('#movement_analysis_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            paging: true,
+            pageLength: 100,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+                {
+                    text: '<i class="ti ti-link"></i> Imprimir Comprobantes',
+                    className: 'btn btn-primary',
+                    action: function () {
+                        window.open('/accounting/print_purchase_receipts/' + fromDate + '/' + untilDate + '/' + codgas + '/' + supplier, '_blank');
+                    }
+                }
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate': fromDate,
+                    'untilDate': untilDate,
+                    'codgas': codgas,
+                    'fromDate': fromDate,
+                    'untilDate': untilDate,
+                    'codgas': codgas,
+                    'supplier': supplier
+                },
+                url: '/accounting/movement_analysis_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#movement_analysis_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                            <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                        </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                {'data': 'Número','render':$.fn.dataTable.render.number(',','.',0)},
+                {'data': 'Factura','render':$.fn.dataTable.render.number(',','.',0)},
+                {'data': 'Orden de Compra','render':$.fn.dataTable.render.number(',','.',0)},
+                {'data': 'Fecha'},
+                {'data': 'Vencimiento'},
+                {'data': 'Producto'},
+                {'data': 'VolumenRecibido','render':$.fn.dataTable.render.number(',','.',3)},
+                {'data': 'Facturado','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'Importe','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'IEPS','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'IVA','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'Recargos','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'TotalFactura','render':$.fn.dataTable.render.number(',','.',2)},
+                {'data': 'Estación'},
+                {'data': 'UUID'},
+                {'data': 'RFC'},
+                {'data': 'Remision'},
+                {'data': 'Vehiculo'},
+                {'data': 'Proveedor'},
+            ],
+            deferRender: true,
+            createdRow: function (row, data, dataIndex) {
+
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+            },
+            footerCallback: function (row, data, start, end, display) {
+
+            }
+        });
+    }
+    async function actualizarDataTableVolumetric() {
+        const codgas = $('#codgas').val();
+        
+        if (!codgas) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'Por favor seleccione una estación',
+                confirmButtonColor: '#3085d6'
+            });
+            return;
+        }
+
+        Swal.fire({
+            title: 'Cargando datos...',
+            text: 'Por favor espere mientras se procesan los volumétricos',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        if ($.fn.DataTable.isDataTable('#volumetric_table')) {
+            volumetricTable.destroy();
+            $('#volumetric_table thead').empty(); // ← Limpiar thead
+            $('#volumetric_table tbody').empty(); // ← Limpiar tbody
+            isTableInitialized = false;
+        }
+
+        const formData = new FormData();
+        formData.append('codgas', codgas);
+        
+        try {
+            const response = await fetch('/accounting/xmlCre', {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await response.json();
+            
+            console.log('Respuesta completa:', data);
+
+            if (data.success === true) {
+                Swal.close();
+                
+                $('#no_selected').hide();
+                
+                if (data.dataOriginal) {
+                    crearCollapseResumen(data.dataOriginal);
+                }
+                
+                inicializarTablaVolumetricos(data.data);
+                isTableInitialized = true;
+                
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Éxito',
+                    text: `Se cargaron ${data.data.length} registros del período ${data.periodo || ''}`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                Swal.close();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'No se encontraron datos para el período seleccionado'
+                });
+            }
+
+        } catch (error) {
             Swal.close();
+            console.error('Error al consultar volumétricos:', error);
             Swal.fire({
                 icon: 'error',
                 title: 'Error',
-                text: data.message || 'No se encontraron datos para el período seleccionado'
+                text: 'Ocurrió un error al procesar la solicitud'
             });
         }
-
-    } catch (error) {
-        Swal.close();
-        console.error('Error al consultar volumétricos:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: 'Ocurrió un error al procesar la solicitud'
-        });
     }
-}
-
-async function procesarTodasLasEstaciones() {
-    // Obtener todas las estaciones del select
-    const estaciones = [];
-    $('#codgas option').each(function() {
-        const codigo = $(this).val();
-        const nombre = $(this).text();
-        if (codigo) {
-            estaciones.push({ codigo, nombre });
+    async function procesarTodasLasEstaciones() {
+        // Obtener todas las estaciones del select
+        const estaciones = [];
+        $('#codgas option').each(function() {
+            const codigo = $(this).val();
+            const nombre = $(this).text();
+            if (codigo) {
+                estaciones.push({ codigo, nombre });
+            }
+        });
+        
+        if (estaciones.length === 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Atención',
+                text: 'No hay estaciones disponibles para procesar'
+            });
+            return;
         }
-    });
-    
-    if (estaciones.length === 0) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Atención',
-            text: 'No hay estaciones disponibles para procesar'
+        
+        // Confirmar acción
+        const confirmResult = await Swal.fire({
+            title: '¿Procesar todas las estaciones?',
+            html: `Se procesarán <strong>${estaciones.length}</strong> estaciones.<br>Este proceso puede tardar varios minutos.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, procesar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d'
         });
-        return;
-    }
-    
-    // Confirmar acción
-    const confirmResult = await Swal.fire({
-        title: '¿Procesar todas las estaciones?',
-        html: `Se procesarán <strong>${estaciones.length}</strong> estaciones.<br>Este proceso puede tardar varios minutos.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, procesar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#198754',
-        cancelButtonColor: '#6c757d'
-    });
-    
-    if (!confirmResult.isConfirmed) {
-        return;
-    }
-    
-    // Resetear datos globales
-    allStationsData = [];
-    
-    // Destruir tabla existente
-    if ($.fn.DataTable.isDataTable('#volumetric_table')) {
-        volumetricTable.destroy();
-        $('#volumetric_table tbody').empty();
-        isTableInitialized = false;
-    }
-    
-    // Mostrar contenedor de progreso
-    $('#progress-container').slideDown();
-    $('#results-summary').hide();
-    $('#results-list').empty();
-    $('#no_selected').hide();
-    $('#collapses-container').empty(); // Limpiar collapses
-    
-    // Deshabilitar botones
-    $('#search_volumetric_table, #process_all_stations').prop('disabled', true);
-    
-    // Variables de control
-    let successCount = 0;
-    let errorCount = 0;
-    const results = [];
-    
-    // Procesar cada estación secuencialmente
-    for (let i = 0; i < estaciones.length; i++) {
-        const estacion = estaciones[i];
-        const progress = ((i + 1) / estaciones.length) * 100;
         
-        // Actualizar UI
-        $('#current-station').text(estacion.nombre);
-        $('#progress-text').text(`${i + 1} / ${estaciones.length}`);
-        $('#progress-percentage').text(Math.round(progress));
-        $('#progress-bar')
-            .css('width', progress + '%')
-            .text(Math.round(progress) + '%');
+        if (!confirmResult.isConfirmed) {
+            return;
+        }
         
-        try {
-            // Procesar estación
-            const result = await procesarEstacion(estacion.codigo, estacion.nombre);
+        // Resetear datos globales
+        allStationsData = [];
+        
+        // Destruir tabla existente
+        if ($.fn.DataTable.isDataTable('#volumetric_table')) {
+            volumetricTable.destroy();
+            $('#volumetric_table tbody').empty();
+            isTableInitialized = false;
+        }
+        
+        // Mostrar contenedor de progreso
+        $('#progress-container').slideDown();
+        $('#results-summary').hide();
+        $('#results-list').empty();
+        $('#no_selected').hide();
+        $('#collapses-container').empty(); // Limpiar collapses
+        
+        // Deshabilitar botones
+        $('#search_volumetric_table, #process_all_stations').prop('disabled', true);
+        
+        // Variables de control
+        let successCount = 0;
+        let errorCount = 0;
+        const results = [];
+        
+        // Procesar cada estación secuencialmente
+        for (let i = 0; i < estaciones.length; i++) {
+            const estacion = estaciones[i];
+            const progress = ((i + 1) / estaciones.length) * 100;
             
-            if (result.success) {
-                successCount++;
-                results.push({
-                    estacion: estacion.nombre,
-                    success: true,
-                    registros: result.registros,
-                    periodo: result.periodo
-                });
+            // Actualizar UI
+            $('#current-station').text(estacion.nombre);
+            $('#progress-text').text(`${i + 1} / ${estaciones.length}`);
+            $('#progress-percentage').text(Math.round(progress));
+            $('#progress-bar')
+                .css('width', progress + '%')
+                .text(Math.round(progress) + '%');
+            
+            try {
+                // Procesar estación
+                const result = await procesarEstacion(estacion.codigo, estacion.nombre);
                 
-                // Agregar datos al acumulador global
-                if (result.data && Array.isArray(result.data)) {
-                    // Agregar nombre de estación a cada registro para mejor identificación
-                    const dataConEstacion = result.data.map(item => ({
-                        ...item,
-                        EstacionProcesada: estacion.nombre
-                    }));
+                if (result.success) {
+                    successCount++;
+                    results.push({
+                        estacion: estacion.nombre,
+                        success: true,
+                        registros: result.registros,
+                        periodo: result.periodo
+                    });
                     
-                    allStationsData = allStationsData.concat(dataConEstacion);
-                    
-                    // Actualizar tabla en tiempo real
-                    actualizarTablaProgresiva(allStationsData);
+                    // Agregar datos al acumulador global
+                    if (result.data && Array.isArray(result.data)) {
+                        // Agregar nombre de estación a cada registro para mejor identificación
+                        const dataConEstacion = result.data.map(item => ({
+                            ...item,
+                            EstacionProcesada: estacion.nombre
+                        }));
+                        
+                        allStationsData = allStationsData.concat(dataConEstacion);
+                        
+                        // Actualizar tabla en tiempo real
+                        actualizarTablaProgresiva(allStationsData);
+                    }
+                } else {
+                    errorCount++;
+                    results.push({
+                        estacion: estacion.nombre,
+                        success: false,
+                        error: result.error || 'Error desconocido'
+                    });
                 }
-            } else {
+            } catch (error) {
                 errorCount++;
                 results.push({
                     estacion: estacion.nombre,
                     success: false,
-                    error: result.error || 'Error desconocido'
+                    error: error.message || 'Error al procesar'
                 });
+                console.error(`Error procesando ${estacion.nombre}:`, error);
+            }
+            
+            // Actualizar contadores
+            $('#success-count').text(successCount);
+            $('#error-count').text(errorCount);
+        }
+        
+        // Completado
+        $('#progress-bar').removeClass('progress-bar-animated');
+        $('#current-station').text('Proceso completado');
+        
+        // Mostrar resumen
+        $('#results-summary').slideDown();
+        mostrarResumenResultados(results);
+        
+        // Rehabilitar botones
+        $('#search_volumetric_table, #process_all_stations').prop('disabled', false);
+        
+        // Notificación final
+        Swal.fire({
+            icon: successCount > 0 ? 'success' : 'error',
+            title: 'Proceso Completado',
+            html: `
+                <div style="text-align: left;">
+                    <p><strong>Estaciones procesadas:</strong> ${estaciones.length}</p>
+                    <p><strong>Exitosas:</strong> ${successCount}</p>
+                    <p><strong>Con errores:</strong> ${errorCount}</p>
+                    <p><strong>Total de registros:</strong> ${allStationsData.length}</p>
+                </div>
+            `,
+            confirmButtonText: 'Aceptar'
+        });
+    }
+    function actualizarTablaProgresiva(data) {
+        /**
+         * Actualiza la tabla agregando nuevos datos sin reinicializarla completamente
+         */
+        if (!isTableInitialized) {
+            // Primera vez: inicializar la tabla
+            inicializarTablaVolumetricos(data);
+            isTableInitialized = true;
+        } else {
+            // Tabla ya existe: limpiar y recargar con todos los datos
+            volumetricTable.clear();
+            volumetricTable.rows.add(data);
+            volumetricTable.draw(false); // false para mantener la página actual
+        }
+    }
+    async function procesarEstacion(codgas, nombreEstacion) {
+        const formData = new FormData();
+        formData.append('codgas', codgas);
+        
+        try {
+            const response = await fetch('/accounting/xmlCre', {
+                method: 'POST',
+                body: formData,
+            });
+            
+            const data = await response.json();
+            
+            if (data.success === true) {
+                return {
+                    success: true,
+                    data: data.data || [],
+                    registros: data.data ? data.data.length : 0,
+                    periodo: data.periodo
+                };
+            } else {
+                return {
+                    success: false,
+                    error: data.message || 'No se encontraron datos'
+                };
             }
         } catch (error) {
-            errorCount++;
-            results.push({
-                estacion: estacion.nombre,
+            return {
                 success: false,
-                error: error.message || 'Error al procesar'
-            });
-            console.error(`Error procesando ${estacion.nombre}:`, error);
+                error: error.message || 'Error de conexión'
+            };
         }
+    }
+    function mostrarResumenResultados(results) {
+        const resultsList = $('#results-list');
+        resultsList.empty();
         
-        // Actualizar contadores
-        $('#success-count').text(successCount);
-        $('#error-count').text(errorCount);
-    }
-    
-    // Completado
-    $('#progress-bar').removeClass('progress-bar-animated');
-    $('#current-station').text('Proceso completado');
-    
-    // Mostrar resumen
-    $('#results-summary').slideDown();
-    mostrarResumenResultados(results);
-    
-    // Rehabilitar botones
-    $('#search_volumetric_table, #process_all_stations').prop('disabled', false);
-    
-    // Notificación final
-    Swal.fire({
-        icon: successCount > 0 ? 'success' : 'error',
-        title: 'Proceso Completado',
-        html: `
-            <div style="text-align: left;">
-                <p><strong>Estaciones procesadas:</strong> ${estaciones.length}</p>
-                <p><strong>Exitosas:</strong> ${successCount}</p>
-                <p><strong>Con errores:</strong> ${errorCount}</p>
-                <p><strong>Total de registros:</strong> ${allStationsData.length}</p>
-            </div>
-        `,
-        confirmButtonText: 'Aceptar'
-    });
-}
-
-function actualizarTablaProgresiva(data) {
-    /**
-     * Actualiza la tabla agregando nuevos datos sin reinicializarla completamente
-     */
-    if (!isTableInitialized) {
-        // Primera vez: inicializar la tabla
-        inicializarTablaVolumetricos(data);
-        isTableInitialized = true;
-    } else {
-        // Tabla ya existe: limpiar y recargar con todos los datos
-        volumetricTable.clear();
-        volumetricTable.rows.add(data);
-        volumetricTable.draw(false); // false para mantener la página actual
-    }
-}
-
-async function procesarEstacion(codgas, nombreEstacion) {
-    const formData = new FormData();
-    formData.append('codgas', codgas);
-    
-    try {
-        const response = await fetch('/accounting/xmlCre', {
-            method: 'POST',
-            body: formData,
+        results.forEach(result => {
+            const itemClass = result.success ? 'result-success' : 'result-error';
+            const icon = result.success ? '✓' : '✗';
+            const mensaje = result.success 
+                ? `${result.registros} registros (${result.periodo})`
+                : result.error;
+            
+            const item = `
+                <div class="result-item ${itemClass}">
+                    <strong>${icon} ${result.estacion}:</strong> ${mensaje}
+                </div>
+            `;
+            resultsList.append(item);
         });
-        
-        const data = await response.json();
-        
-        if (data.success === true) {
-            return {
-                success: true,
-                data: data.data || [],
-                registros: data.data ? data.data.length : 0,
-                periodo: data.periodo
-            };
-        } else {
-            return {
-                success: false,
-                error: data.message || 'No se encontraron datos'
-            };
-        }
-    } catch (error) {
-        return {
-            success: false,
-            error: error.message || 'Error de conexión'
+    }
+    function mapearNombreProducto(claveProducto, claveSubProducto) {
+        const mapeo = {
+            '07-1': 'T-Maxima Regular',
+            '07-2': 'T-Super Premium',
+            '03-3': 'Diesel Automotriz'
         };
+        return mapeo[`${claveProducto}-${claveSubProducto}`] || 'Desconocido';
     }
-}
-
-function mostrarResumenResultados(results) {
-    const resultsList = $('#results-list');
-    resultsList.empty();
-    
-    results.forEach(result => {
-        const itemClass = result.success ? 'result-success' : 'result-error';
-        const icon = result.success ? '✓' : '✗';
-        const mensaje = result.success 
-            ? `${result.registros} registros (${result.periodo})`
-            : result.error;
+    function crearCollapseResumen(dataOriginal) {
+        const container = $('#collapses-container');
+        container.empty();
         
-        const item = `
-            <div class="result-item ${itemClass}">
-                <strong>${icon} ${result.estacion}:</strong> ${mensaje}
-            </div>
-        `;
-        resultsList.append(item);
-    });
-}
-
-function mapearNombreProducto(claveProducto, claveSubProducto) {
-    const mapeo = {
-        '07-1': 'T-Maxima Regular',
-        '07-2': 'T-Super Premium',
-        '03-3': 'Diesel Automotriz'
-    };
-    return mapeo[`${claveProducto}-${claveSubProducto}`] || 'Desconocido';
-}
-
-function crearCollapseResumen(dataOriginal) {
-    const container = $('#collapses-container');
-    container.empty();
-    
-    let collapseHTML = '<div class="accordion" id="accordionResumen">';
-    
-    if (dataOriginal.mensual && dataOriginal.mensual.length > 0) {
-        collapseHTML += crearAccordionItem(
-            'XML Mensual CRE', 
-            dataOriginal.mensual, 
-            0,
-            'SumaVolumenEntregadoMes_ValorNumerico',
-            'ImporteTotalEntregasMes',
-            'TotalEntregasMes'
-        );
-    }
-    
-    if (dataOriginal.despachos && dataOriginal.despachos.length > 0) {
-        collapseHTML += crearAccordionItem(
-            'Base de Datos (Despachos)', 
-            dataOriginal.despachos, 
-            1,
-            'SumaVolumenEntregadoMes_ValorNumerico',
-            'ImporteTotalEntregasMes',
-            'TotalEntregasMes'
-        );
-    }
-    
-    if (dataOriginal.diarios && dataOriginal.diarios.datos && dataOriginal.diarios.datos.length > 0) {
-        const datosConNombre = dataOriginal.diarios.datos.map(item => ({
-            ...item,
-            MarcaComercial: mapearNombreProducto(item.ClaveProducto, item.ClaveSubProducto),
-            SumaVolumenEntregadoMes_ValorNumerico: item.VolumenTotalMes,
-            ImporteTotalEntregasMes: item.ImporteTotalMes,
-            TotalEntregasMes: item.TotalTransaccionesMes
-        }));
+        let collapseHTML = '<div class="accordion" id="accordionResumen">';
         
-        collapseHTML += crearAccordionItem(
-            'XML Diarios Consolidados', 
-            datosConNombre, 
-            2,
-            'SumaVolumenEntregadoMes_ValorNumerico',
-            'ImporteTotalEntregasMes',
-            'TotalEntregasMes'
-        );
+        if (dataOriginal.mensual && dataOriginal.mensual.length > 0) {
+            collapseHTML += crearAccordionItem(
+                'XML Mensual CRE', 
+                dataOriginal.mensual, 
+                0,
+                'SumaVolumenEntregadoMes_ValorNumerico',
+                'ImporteTotalEntregasMes',
+                'TotalEntregasMes'
+            );
+        }
+        
+        if (dataOriginal.despachos && dataOriginal.despachos.length > 0) {
+            collapseHTML += crearAccordionItem(
+                'Base de Datos (Despachos)', 
+                dataOriginal.despachos, 
+                1,
+                'SumaVolumenEntregadoMes_ValorNumerico',
+                'ImporteTotalEntregasMes',
+                'TotalEntregasMes'
+            );
+        }
+        
+        if (dataOriginal.diarios && dataOriginal.diarios.datos && dataOriginal.diarios.datos.length > 0) {
+            const datosConNombre = dataOriginal.diarios.datos.map(item => ({
+                ...item,
+                MarcaComercial: mapearNombreProducto(item.ClaveProducto, item.ClaveSubProducto),
+                SumaVolumenEntregadoMes_ValorNumerico: item.VolumenTotalMes,
+                ImporteTotalEntregasMes: item.ImporteTotalMes,
+                TotalEntregasMes: item.TotalTransaccionesMes
+            }));
+            
+            collapseHTML += crearAccordionItem(
+                'XML Diarios Consolidados', 
+                datosConNombre, 
+                2,
+                'SumaVolumenEntregadoMes_ValorNumerico',
+                'ImporteTotalEntregasMes',
+                'TotalEntregasMes'
+            );
+        }
+        
+        collapseHTML += '</div>';
+        container.html(collapseHTML);
     }
-    
-    collapseHTML += '</div>';
-    container.html(collapseHTML);
-}
-
-function crearAccordionItem(titulo, datos, index, campoVolumen, campoImporte, campoEntregas) {
-    const collapseId = `collapse${index}`;
-    
-    const totalVolumen = datos.reduce((sum, item) => 
-        sum + (parseFloat(item[campoVolumen]) || 0), 0
-    );
-    const totalImporte = datos.reduce((sum, item) => 
-        sum + (parseFloat(item[campoImporte]) || 0), 0
-    );
-    
-    return `
-        <div class="accordion-item">
-            <h2 class="accordion-header" id="heading${index}">
-                <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
-                        data-bs-toggle="collapse" data-bs-target="#${collapseId}" 
-                        aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
-                    <strong>${titulo}</strong> 
-                    <span class="ms-3 text-muted">
-                        ${datos.length} productos | 
-                        Volumen: ${totalVolumen.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} L | 
-                        Importe: $${totalImporte.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                    </span>
-                </button>
-            </h2>
-            <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
-                 aria-labelledby="heading${index}" data-bs-parent="#accordionResumen">
-                <div class="accordion-body">
-                    <div class="row">
-                        ${datos.map(item => `
-                            <div class="col-md-4 mb-2">
-                                <div class="card">
-                                    <div class="card-body">
-                                        <h6 class="card-title">${item.MarcaComercial || item.Producto || 'N/A'}</h6>
-                                        <p class="card-text small mb-1">
-                                            <strong>Volumen:</strong> ${(parseFloat(item[campoVolumen]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 3})} L<br>
-                                            <strong>Importe:</strong> $${(parseFloat(item[campoImporte]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
-                                            <strong>Entregas:</strong> ${(item[campoEntregas] || 0).toLocaleString('es-MX')}
-                                        </p>
+    function crearAccordionItem(titulo, datos, index, campoVolumen, campoImporte, campoEntregas) {
+        const collapseId = `collapse${index}`;
+        
+        const totalVolumen = datos.reduce((sum, item) => 
+            sum + (parseFloat(item[campoVolumen]) || 0), 0
+        );
+        const totalImporte = datos.reduce((sum, item) => 
+            sum + (parseFloat(item[campoImporte]) || 0), 0
+        );
+        
+        return `
+            <div class="accordion-item">
+                <h2 class="accordion-header" id="heading${index}">
+                    <button class="accordion-button ${index === 0 ? '' : 'collapsed'}" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#${collapseId}" 
+                            aria-expanded="${index === 0 ? 'true' : 'false'}" aria-controls="${collapseId}">
+                        <strong>${titulo}</strong> 
+                        <span class="ms-3 text-muted">
+                            ${datos.length} productos | 
+                            Volumen: ${totalVolumen.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} L | 
+                            Importe: $${totalImporte.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </span>
+                    </button>
+                </h2>
+                <div id="${collapseId}" class="accordion-collapse collapse ${index === 0 ? 'show' : ''}" 
+                    aria-labelledby="heading${index}" data-bs-parent="#accordionResumen">
+                    <div class="accordion-body">
+                        <div class="row">
+                            ${datos.map(item => `
+                                <div class="col-md-4 mb-2">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">${item.MarcaComercial || item.Producto || 'N/A'}</h6>
+                                            <p class="card-text small mb-1">
+                                                <strong>Volumen:</strong> ${(parseFloat(item[campoVolumen]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 3})} L<br>
+                                                <strong>Importe:</strong> $${(parseFloat(item[campoImporte]) || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}<br>
+                                                <strong>Entregas:</strong> ${(item[campoEntregas] || 0).toLocaleString('es-MX')}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        `).join('')}
+                            `).join('')}
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
-}
-
-function inicializarTablaVolumetricos(data) {
-    volumetricTable = $('#volumetric_table').DataTable({
-        data: data,
-        columns: [
-            {'data': 'Origen'},
-            {'data': 'archivo'},
-            {
-                'data': 'Estación',
-                render: function(data, type, row) {
-                    // Si existe EstacionProcesada (de proceso masivo), mostrarla
-                    return row.EstacionProcesada || data || 'N/A';
+        `;
+    }
+    function inicializarTablaVolumetricos(data) {
+        volumetricTable = $('#volumetric_table').DataTable({
+            data: data,
+            columns: [
+                {'data': 'Origen'},
+                {'data': 'archivo'},
+                {
+                    'data': 'Estación',
+                    render: function(data, type, row) {
+                        // Si existe EstacionProcesada (de proceso masivo), mostrarla
+                        return row.EstacionProcesada || data || 'N/A';
+                    }
+                },
+                {'data': 'FechaYHoraReporteMes'},
+                {'data': 'MarcaComercial'},
+                {
+                    'data': 'TotalEntregasMes',
+                    render: function(data) {
+                        return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
+                    },
+                    className: 'text-end'
+                },
+                {
+                    'data': 'SumaVolumenEntregadoMes_ValorNumerico',
+                    render: function(data) {
+                        return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
+                    },
+                    className: 'text-end'
+                },
+                {
+                    'data': 'TotalDocumentosMes',
+                    render: function(data) {
+                        return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
+                    },
+                    className: 'text-end'
+                },
+                {
+                    'data': 'ImporteTotalEntregasMes',
+                    render: function(data) {
+                        return data && data !== 'N/A' ? '$' + Number(data).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') : '$0.00';
+                    },
+                    className: 'text-end'
+                },
+                {
+                    'data': 'SumaVolumenCFDIs',
+                    render: function(data) {
+                        return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
+                    },
+                    className: 'text-end'
                 }
+            ],
+            language: {
+                url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-MX.json'
             },
-            {'data': 'FechaYHoraReporteMes'},
-            {'data': 'MarcaComercial'},
-            {
-                'data': 'TotalEntregasMes',
-                render: function(data) {
-                    return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
-                },
-                className: 'text-end'
-            },
-            {
-                'data': 'SumaVolumenEntregadoMes_ValorNumerico',
-                render: function(data) {
-                    return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
-                },
-                className: 'text-end'
-            },
-            {
-                'data': 'TotalDocumentosMes',
-                render: function(data) {
-                    return data && data !== 'N/A' ? Number(data).toLocaleString('es-MX') : '0';
-                },
-                className: 'text-end'
-            },
-            {
-                'data': 'ImporteTotalEntregasMes',
-                render: function(data) {
-                    return data && data !== 'N/A' ? '$' + Number(data).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') : '$0.00';
-                },
-                className: 'text-end'
-            },
-            {
-                'data': 'SumaVolumenCFDIs',
-                render: function(data) {
-                    return data && data !== 'N/A' ? Number(data).toFixed(3) : '0.000';
-                },
-                className: 'text-end'
-            }
-        ],
-        language: {
-            url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-MX.json'
-        },
-        dom: 'Bfrtip',
-        buttons: [
-            {
-                extend: 'excelHtml5',
-                text: '<i class="fas fa-file-excel"></i> Excel',
-                className: 'btn btn-success btn-sm',
-                title: 'Comparativo Volumétricos',
-                exportOptions: {
-                    columns: ':visible',
-                    format: {
-                        body: function (data, row, column, node) {
-                            return column === 0 ? $(data).text() : data;
+            dom: 'Bfrtip',
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: '<i class="fas fa-file-excel"></i> Excel',
+                    className: 'btn btn-success btn-sm',
+                    title: 'Comparativo Volumétricos',
+                    exportOptions: {
+                        columns: ':visible',
+                        format: {
+                            body: function (data, row, column, node) {
+                                return column === 0 ? $(data).text() : data;
+                            }
                         }
                     }
+                },
+                {
+                    extend: 'pdfHtml5',
+                    text: '<i class="fas fa-file-pdf"></i> PDF',
+                    className: 'btn btn-danger btn-sm',
+                    orientation: 'landscape',
+                    pageSize: 'LEGAL',
+                    title: 'Comparativo Volumétricos'
+                },
+                {
+                    extend: 'print',
+                    text: '<i class="fas fa-print"></i> Imprimir',
+                    className: 'btn btn-info btn-sm'
+                },
+                {
+                    extend: 'colvis',
+                    text: '<i class="fas fa-columns"></i> Columnas',
+                    className: 'btn btn-secondary btn-sm'
+                }
+            ],
+            responsive: true,
+            pageLength: 25,
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
+            order: [[2, 'asc'], [4, 'asc']],
+            deferRender: true, // Mejora el rendimiento con muchos datos
+            processing: true, // Muestra indicador de procesamiento
+            rowCallback: function(row, data) {
+                if (data.OrigenRaw === 'XML_mensual') {
+                    $(row).addClass('table-primary');
+                } else if (data.OrigenRaw === 'DB_despachos') {
+                    $(row).addClass('table-success');
+                } else if (data.OrigenRaw === 'XML_diarios_consolidado') {
+                    $(row).addClass('table-info');
                 }
             },
-            {
-                extend: 'pdfHtml5',
-                text: '<i class="fas fa-file-pdf"></i> PDF',
-                className: 'btn btn-danger btn-sm',
-                orientation: 'landscape',
-                pageSize: 'LEGAL',
-                title: 'Comparativo Volumétricos'
-            },
-            {
-                extend: 'print',
-                text: '<i class="fas fa-print"></i> Imprimir',
-                className: 'btn btn-info btn-sm'
-            },
-            {
-                extend: 'colvis',
-                text: '<i class="fas fa-columns"></i> Columnas',
-                className: 'btn btn-secondary btn-sm'
+            footerCallback: function(row, data, start, end, display) {
+                const api = this.api();
+                
+                const totalVolumen = api.column(6, { search: 'applied' }).data()
+                    .reduce((a, b) => {
+                        const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
+                        return a + (val || 0);
+                    }, 0);
+                
+                const totalImporte = api.column(8, { search: 'applied' }).data()
+                    .reduce((a, b) => {
+                        const val = typeof b === 'string' ? b.replace(/[$,]/g, '') : b;
+                        return a + (parseFloat(val) || 0);
+                    }, 0);
+                
+                const totalCFDIs = api.column(9, { search: 'applied' }).data()
+                    .reduce((a, b) => {
+                        const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
+                        return a + (val || 0);
+                    }, 0);
+                
+                $(api.column(6).footer()).html('<strong>' + totalVolumen.toFixed(3) + '</strong>');
+                $(api.column(8).footer()).html('<strong>$' + totalImporte.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') + '</strong>');
+                $(api.column(9).footer()).html('<strong>' + totalCFDIs.toFixed(3) + '</strong>');
             }
-        ],
-        responsive: true,
-        pageLength: 25,
-        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "Todos"]],
-        order: [[2, 'asc'], [4, 'asc']],
-        deferRender: true, // Mejora el rendimiento con muchos datos
-        processing: true, // Muestra indicador de procesamiento
-        rowCallback: function(row, data) {
-            if (data.OrigenRaw === 'XML_mensual') {
-                $(row).addClass('table-primary');
-            } else if (data.OrigenRaw === 'DB_despachos') {
-                $(row).addClass('table-success');
-            } else if (data.OrigenRaw === 'XML_diarios_consolidado') {
-                $(row).addClass('table-info');
-            }
-        },
-        footerCallback: function(row, data, start, end, display) {
-            const api = this.api();
-            
-            const totalVolumen = api.column(6, { search: 'applied' }).data()
-                .reduce((a, b) => {
-                    const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
-                    return a + (val || 0);
-                }, 0);
-            
-            const totalImporte = api.column(8, { search: 'applied' }).data()
-                .reduce((a, b) => {
-                    const val = typeof b === 'string' ? b.replace(/[$,]/g, '') : b;
-                    return a + (parseFloat(val) || 0);
-                }, 0);
-            
-            const totalCFDIs = api.column(9, { search: 'applied' }).data()
-                .reduce((a, b) => {
-                    const val = typeof b === 'string' ? parseFloat(b.replace(/,/g, '')) : b;
-                    return a + (val || 0);
-                }, 0);
-            
-            $(api.column(6).footer()).html('<strong>' + totalVolumen.toFixed(3) + '</strong>');
-            $(api.column(8).footer()).html('<strong>$' + totalImporte.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,') + '</strong>');
-            $(api.column(9).footer()).html('<strong>' + totalCFDIs.toFixed(3) + '</strong>');
-        }
-    });
-}
-
-$(document).ready(function() {
-    $('#no_selected').show();
-});
-
-
-
-async function analysis_movement_table(){
-    if ($.fn.DataTable.isDataTable('#analysis_movement_table')) {
-        $('#analysis_movement_table').DataTable().destroy();
-        $('#analysis_movement_table thead .filter').remove();
-       
-    }
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-
-    $('#analysis_movement_table thead').prepend($('#analysis_movement_table thead tr').clone().addClass('filter'));
-    $('#analysis_movement_table thead tr.filter th').each(function (index) {
-        col = $('#analysis_movement_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text(); // Obtiene el nombre de la columna
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-    $('#analysis_movement_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index(); // Obtiene el índice de la columna
-        var table = $('#analysis_movement_table').DataTable(); // Obtiene la instancia de DataTable
-        table
-            .column(index)
-            .search(this.value) // Busca el valor del input
-            .draw(); // Redibuja la tabla
-    });
-    let analysis_movement_table =$('#analysis_movement_table').DataTable({
-        order: [0, "asc"],
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        // processing: true,  // Agregar esta línea
-        // serverSide: true,  // Agregar esta línea
-        buttons: [
-            {
-                extend: 'excel',
-                className: 'btn btn-success',
-                text: ' Excel'
-            },
-        ],
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-            },
-            url: '/accounting/analysis_movement_table',
-            timeout: 600000, 
-            error: function() {
-                $('#analysis_movement_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            }
-        },
-        columns: [
-            {'data': 'nro',className:'text-nowrap'},
-            {'data': 'abr',className:'text-nowrap'},
-            {'data': 'fecha',className:'text-nowrap'},
-            {'data': 'den',className:'text-nowrap'},
-            {'data': 'factura',className:'text-nowrap'},
-            {'data': 'mov_n',className:'text-nowrap'},
-            {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
-            {'data': 'satuid',className:'text-nowrap'},
-            {'data': 'txtref',className:'text-nowrap'},
-            
-
-        ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-           
-        },
-        initComplete: function () {
-            $('.table-responsive').removeClass('loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-
-        },
-        footerCallback: function (row, data, start, end, display) {
-
-        }
-    });
-}
-
-function initializeDataTable() {
-    if ($.fn.DataTable.isDataTable('#documentos_facturas_table')) {
-        $('#documentos_facturas_table').DataTable().destroy();
-        $('#documentos_facturas_table thead .filter').remove();
-    }
-
-    const from = $('#from').val();
-    const until = $('#until').val();
-    const codgas = $('#codgas').val();
-    const tipo_factura = $('#tipo_factura').val(); // 🎯 Nuevo parámetro
-
-    if (!from || !until) {
-        showAlert('Por favor seleccione un rango de fechas válido', 'warning');
-        return;
-    }
-
-    $('#documentos_facturas_table thead').prepend($('#documentos_facturas_table thead tr').clone().addClass('filter'));
-    $('#documentos_facturas_table thead tr.filter th').each(function (index) {
-        col = $('#documentos_facturas_table thead th').length/2;
-        if (index < col ) {
-            var title = $(this).text();
-            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
-        }
-    });
-
-    $('#documentos_facturas_table thead tr.filter th input').on('keyup change', function () {
-        var index = $(this).parent().index();
-        var table = $('#documentos_facturas_table').DataTable();
-        table.column(index).search(this.value).draw();
-    });
-
-    documentosTable = $('#documentos_facturas_table').DataTable({
-        colReorder: true,
-        dom: '<"top"Bf>rt<"bottom"lip>',
-        scrollY: '700px',
-        scrollX: true,
-        scrollCollapse: true,
-        paging: false,
-        order: [[2, 'desc']],
-        buttons: [
-            {
-                extend: 'excel',
-                text: 'Exportar a Excel',
-                className: 'btn btn-success',
-            }
-        ],
-        ajax: {
-            url: '/accounting/documentos_facturas_table',
-            type: 'POST',
-            timeout: 600000, 
-            data: {
-                from: from,
-                until: until,
-                codgas: codgas,
-                tipo_factura: tipo_factura // 🎯 Enviar tipo de factura
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-            },
-            dataSrc: function(json) {
-                if (json.error) {
-                    showAlert(json.error, 'danger');
-                    return [];
-                }
-                return json.data;
-            },
-            error: function(xhr, error, thrown) {
-                showAlert('Error al cargar los datos: ' + thrown, 'danger');
-                $('.table-responsive').removeClass('loading');
-            }
-        },
-        columns: [
-            { data: 'NumeroDocumento' },
-            { 
-                data: 'Serie',
-                className: 'text-center fw-bold',
-                render: function(data) {
-                    // Colores por serie
-                    const colores = {
-                        'W': 'badge bg-warning text-dark',
-                        'Z': 'badge bg-primary',
-                        'T': 'badge bg-info text-dark',
-                        'K': 'badge bg-success',
-                        'C': 'badge bg-danger',
-                        'D': 'badge bg-secondary',
-                        'I': 'badge bg-dark',
-                        'E': 'badge bg-light text-dark',
-                        'G': 'badge bg-purple'
-                    };
-                    const clase = colores[data] || 'badge bg-secondary';
-                    return data ? `<span class="${clase}">${data}</span>` : '';
-                }
-            },
-            { data: 'FacturaFormateada' },
-            { data: 'Fecha' },
-            { data: 'Vencimiento' },
-            { data: 'Estacion' },
-            {
-                data: 'TipoDocumento',
-                render: function(data) {
-                    let badgeClass = 'badge-venta';
-                    if (data === 'Compra') {
-                        badgeClass = 'badge-compra';
-                    } else if (data === 'Nota de Crédito') {
-                        badgeClass = 'badge-nota-credito';
-                    }
-                    return `<span class="badge ${badgeClass}">${data}</span>`;
-                }
-            },
-            { data: 'EntidadNombre' },
-            { data: 'Producto' },
-            { data: 'Cantidad', className: 'text-end' },
-            { data: 'Subtotal', className: 'text-end' },
-            { data: 'IVA', className: 'text-end' },
-            { data: 'IEPS', className: 'text-end' },
-            { data: 'Total', className: 'text-end fw-bold' },
-            { data: 'UUID', className: 'text-end' }
-        ],
-        initComplete: function() {
-            $('.table-responsive').removeClass('loading');
-            showAlert(`Se cargaron ${this.api().data().length} facturas`, 'success');
-
-            if (typeof feather !== 'undefined') {
-                feather.replace();
-            }
-        }
-    });
-}
-
-function showAlert(message, type = 'info') {
-    const alertHtml = `
-        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-            <strong>${type === 'danger' ? 'Error:' : 'Info:'}</strong> ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    `;
-    $('#alert-container').html(alertHtml);
-
-    setTimeout(() => {
-        $('.alert').fadeOut('slow', function() {
-            $(this).remove();
         });
-    }, 5000);
-}
-
-let invoice_puchase_table = null;
-async function invoice_puchase_table_function(){
-    $('#contenedor_pago_normal').addClass('is-loading');
-    var fromDate = document.getElementById('from1').value;
-    var untilDate = document.getElementById('until1').value;
-    var codgas = document.getElementById('station_id1').value;
-    var company = document.getElementById('company').value;
-    var proveedor = document.getElementById('proveedor_id').value;
-    if(!codgas || !company || !proveedor || codgas == 'Seleccione' || company == 'Seleccione' || proveedor == 'Seleccione'){
-        alertify.myAlert(
-            `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Debe seleccionar una estación para continuar.</p>
-            </div>`
-        );
-        return;
-    }
-     if (invoice_puchase_table) {
-
-        // Actualizar parámetros AJAX
-        invoice_puchase_table.settings()[0].ajax.data = {
-            'fromDate': fromDate,
-            'untilDate': untilDate,
-            'codgas': codgas,
-            'company': company,
-            'proveedor': proveedor
-        };
-
-        invoice_puchase_table.ajax.reload(function() {
-            $('.table-responsive').removeClass('loading');
-            $('#contenedor_pago_normal').removeClass('is-loading');
-
-        }, false);
-        return;
     }
 
-    console.log('🆕 Creando tabla por primera vez...');
+    async function analysis_movement_table(){
+        if ($.fn.DataTable.isDataTable('#analysis_movement_table')) {
+            $('#analysis_movement_table').DataTable().destroy();
+            $('#analysis_movement_table thead .filter').remove();
+        
+        }
+        var fromDate = document.getElementById('from').value;
+        var untilDate = document.getElementById('until').value;
 
-    invoice_puchase_table = $('#invoice_puchase_table').DataTable({
-        order: [[0, "desc"], [1, "desc"]],
-        colReorder: false,
-        dom: '<"top"f>rt<"bottom"lip>',
-        paging: true,
-        pageLength: 100,
-        ajax: {
-            method: 'POST',
-            data: {
-                'fromDate':fromDate,
-                'untilDate':untilDate,
-                'codgas':codgas,
-                'company':company,
-                'proveedor':proveedor
-            },
-            url: '/accounting/invoice_puchase_table',
-            timeout: 600000, 
-            error: function() {
-                $('#invoice_puchase_table').waitMe('hide');
-                $('.table-responsive').removeClass('loading');
-                $('#contenedor_pago_normal').removeClass('is-loading');
-
-                alertify.myAlert(
-                    `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`
-                );
-
-            },
-            beforeSend: function() {
-                $('.table-responsive').addClass('loading');
-                $('#stats-container').addClass('loading');
-            },
-            dataSrc: function(json) {
-                $('.table-responsive').removeClass('loading');
-                $('#stats-container').removeClass('loading');
-                $('#contenedor_pago_normal').removeClass('is-loading');
-
-                
-                if (json.error) {
-                    alertify.error(json.message || 'Error en la respuesta');
-                    return [];
-                }
-                
-                // ✨ CALCULAR Y MOSTRAR ESTADÍSTICAS
-                calculateAndDisplayStats(json.data);
-                
-                alertify.success(`Se cargaron ${json.data.length} registros`);
-                return json.data;
+        $('#analysis_movement_table thead').prepend($('#analysis_movement_table thead tr').clone().addClass('filter'));
+        $('#analysis_movement_table thead tr.filter th').each(function (index) {
+            col = $('#analysis_movement_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
             }
-        },
-        columns: [
-            {data: 'status'},
-            {data: 'nro'},
-            {data: 'Factura'},
-            {data: 'can',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
-            {data: 'volrec',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
-            {data: 'gasolinera', className: 'text-center text-nowrap' },
-            {data: 'proveedor', className: 'text-center text-nowrap' },
-            {data: 'fecha', className: 'text-center text-nowrap' },
-            {data: 'fechaVto', className: 'text-center text-nowrap' },
-            {data: 'total_fac',render: $.fn.dataTable.render.number(',', '.', 2, '$'),className: 'text-right font-weight-bold'},
-            {data: 'producto', className: 'text-center text-nowrap' },
-            {data: 'satuid', visible: false, searchable: false }
-        ],
-         columnDefs: [
-                    { orderable: false, targets: 0 }
-                ],
-        deferRender: true,
-        // destroy: true, 
-        createdRow: function (row, data, dataIndex) {
-           switch(data.status) {
+        });
+        $('#analysis_movement_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#analysis_movement_table').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+        let analysis_movement_table =$('#analysis_movement_table').DataTable({
+            order: [0, "asc"],
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            // processing: true,  // Agregar esta línea
+            // serverSide: true,  // Agregar esta línea
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel'
+                },
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                },
+                url: '/accounting/analysis_movement_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#analysis_movement_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                }
+            },
+            columns: [
+                {'data': 'nro',className:'text-nowrap'},
+                {'data': 'abr',className:'text-nowrap'},
+                {'data': 'fecha',className:'text-nowrap'},
+                {'data': 'den',className:'text-nowrap'},
+                {'data': 'factura',className:'text-nowrap'},
+                {'data': 'mov_n',className:'text-nowrap'},
+                {'data': 'mtoapl',className:'text-nowrap','render':$.fn.dataTable.render.number(',','.',2) },
+                {'data': 'satuid',className:'text-nowrap'},
+                {'data': 'txtref',className:'text-nowrap'},
+                
+
+            ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            
+            },
+            initComplete: function () {
+                $('.table-responsive').removeClass('loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+
+            },
+            footerCallback: function (row, data, start, end, display) {
+
+            }
+        });
+    }
+
+    function initializeDataTable() {
+        if ($.fn.DataTable.isDataTable('#documentos_facturas_table')) {
+            $('#documentos_facturas_table').DataTable().destroy();
+            $('#documentos_facturas_table thead .filter').remove();
+        }
+
+        const from = $('#from').val();
+        const until = $('#until').val();
+        const codgas = $('#codgas').val();
+        const tipo_factura = $('#tipo_factura').val(); // 🎯 Nuevo parámetro
+
+        if (!from || !until) {
+            showAlert('Por favor seleccione un rango de fechas válido', 'warning');
+            return;
+        }
+
+        $('#documentos_facturas_table thead').prepend($('#documentos_facturas_table thead tr').clone().addClass('filter'));
+        $('#documentos_facturas_table thead tr.filter th').each(function (index) {
+            col = $('#documentos_facturas_table thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text();
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+
+        $('#documentos_facturas_table thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index();
+            var table = $('#documentos_facturas_table').DataTable();
+            table.column(index).search(this.value).draw();
+        });
+
+        documentosTable = $('#documentos_facturas_table').DataTable({
+            colReorder: true,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            order: [[2, 'desc']],
+            buttons: [
+                {
+                    extend: 'excel',
+                    text: 'Exportar a Excel',
+                    className: 'btn btn-success',
+                }
+            ],
+            ajax: {
+                url: '/accounting/documentos_facturas_table',
+                type: 'POST',
+                timeout: 600000, 
+                data: {
+                    from: from,
+                    until: until,
+                    codgas: codgas,
+                    tipo_factura: tipo_factura // 🎯 Enviar tipo de factura
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                dataSrc: function(json) {
+                    if (json.error) {
+                        showAlert(json.error, 'danger');
+                        return [];
+                    }
+                    return json.data;
+                },
+                error: function(xhr, error, thrown) {
+                    showAlert('Error al cargar los datos: ' + thrown, 'danger');
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            columns: [
+                { data: 'NumeroDocumento' },
+                { 
+                    data: 'Serie',
+                    className: 'text-center fw-bold',
+                    render: function(data) {
+                        // Colores por serie
+                        const colores = {
+                            'W': 'badge bg-warning text-dark',
+                            'Z': 'badge bg-primary',
+                            'T': 'badge bg-info text-dark',
+                            'K': 'badge bg-success',
+                            'C': 'badge bg-danger',
+                            'D': 'badge bg-secondary',
+                            'I': 'badge bg-dark',
+                            'E': 'badge bg-light text-dark',
+                            'G': 'badge bg-purple'
+                        };
+                        const clase = colores[data] || 'badge bg-secondary';
+                        return data ? `<span class="${clase}">${data}</span>` : '';
+                    }
+                },
+                { data: 'FacturaFormateada' },
+                { data: 'Fecha' },
+                { data: 'Vencimiento' },
+                { data: 'Estacion' },
+                {
+                    data: 'TipoDocumento',
+                    render: function(data) {
+                        let badgeClass = 'badge-venta';
+                        if (data === 'Compra') {
+                            badgeClass = 'badge-compra';
+                        } else if (data === 'Nota de Crédito') {
+                            badgeClass = 'badge-nota-credito';
+                        }
+                        return `<span class="badge ${badgeClass}">${data}</span>`;
+                    }
+                },
+                { data: 'EntidadNombre' },
+                { data: 'Producto' },
+                { data: 'Cantidad', className: 'text-end' },
+                { data: 'Subtotal', className: 'text-end' },
+                { data: 'IVA', className: 'text-end' },
+                { data: 'IEPS', className: 'text-end' },
+                { data: 'Total', className: 'text-end fw-bold' },
+                { data: 'UUID', className: 'text-end' }
+            ],
+            initComplete: function() {
+                $('.table-responsive').removeClass('loading');
+                showAlert(`Se cargaron ${this.api().data().length} facturas`, 'success');
+
+                if (typeof feather !== 'undefined') {
+                    feather.replace();
+                }
+            }
+        });
+    }
+
+    function showAlert(message, type = 'info') {
+        const alertHtml = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                <strong>${type === 'danger' ? 'Error:' : 'Info:'}</strong> ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        `;
+        $('#alert-container').html(alertHtml);
+
+        setTimeout(() => {
+            $('.alert').fadeOut('slow', function() {
+                $(this).remove();
+            });
+        }, 5000);
+    }
+
+    let invoice_puchase_table = null;
+    async function invoice_puchase_table_function(){
+        $('#contenedor_pago_normal').addClass('is-loading');
+        var fromDate = document.getElementById('from1').value;
+        var untilDate = document.getElementById('until1').value;
+        var codgas = document.getElementById('station_id1').value;
+        var company = document.getElementById('company').value;
+        var proveedor = document.getElementById('proveedor_id').value;
+        if(!codgas || !company || !proveedor || codgas == 'Seleccione' || company == 'Seleccione' || proveedor == 'Seleccione'){
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Error!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">Debe seleccionar una estación para continuar.</p>
+                </div>`
+            );
+            return;
+        }
+        if (invoice_puchase_table) {
+
+            // Actualizar parámetros AJAX
+            invoice_puchase_table.settings()[0].ajax.data = {
+                'fromDate': fromDate,
+                'untilDate': untilDate,
+                'codgas': codgas,
+                'company': company,
+                'proveedor': proveedor
+            };
+
+            invoice_puchase_table.ajax.reload(function() {
+                $('.table-responsive').removeClass('loading');
+                $('#contenedor_pago_normal').removeClass('is-loading');
+
+            }, false);
+            return;
+        }
+
+        console.log('🆕 Creando tabla por primera vez...');
+
+        invoice_puchase_table = $('#invoice_puchase_table').DataTable({
+            order: [[0, "desc"], [1, "desc"]],
+            colReorder: false,
+            dom: '<"top"f>rt<"bottom"lip>',
+            paging: true,
+            pageLength: 100,
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate':fromDate,
+                    'untilDate':untilDate,
+                    'codgas':codgas,
+                    'company':company,
+                    'proveedor':proveedor
+                },
+                url: '/accounting/invoice_puchase_table',
+                timeout: 600000, 
+                error: function() {
+                    $('#invoice_puchase_table').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+                    $('#contenedor_pago_normal').removeClass('is-loading');
+
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                    $('#stats-container').addClass('loading');
+                },
+                dataSrc: function(json) {
+                    $('.table-responsive').removeClass('loading');
+                    $('#stats-container').removeClass('loading');
+                    $('#contenedor_pago_normal').removeClass('is-loading');
+
+                    
+                    if (json.error) {
+                        alertify.error(json.message || 'Error en la respuesta');
+                        return [];
+                    }
+                    
+                    // ✨ CALCULAR Y MOSTRAR ESTADÍSTICAS
+                    calculateAndDisplayStats(json.data);
+                    
+                    alertify.success(`Se cargaron ${json.data.length} registros`);
+                    return json.data;
+                }
+            },
+            columns: [
+                {data: 'status'},
+                {data: 'nro'},
+                {data: 'Factura'},
+                {data: 'can',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
+                {data: 'volrec',render: $.fn.dataTable.render.number(',', '.', 2),className: 'text-right'},
+                {data: 'gasolinera', className: 'text-center text-nowrap' },
+                {data: 'proveedor', className: 'text-center text-nowrap' },
+                {data: 'fecha', className: 'text-center text-nowrap' },
+                {data: 'fechaVto', className: 'text-center text-nowrap' },
+                {data: 'total_fac',render: $.fn.dataTable.render.number(',', '.', 2, '$'),className: 'text-right font-weight-bold'},
+                {data: 'producto', className: 'text-center text-nowrap' },
+                {data: 'satuid', visible: false, searchable: false }
+            ],
+            columnDefs: [
+                        { orderable: false, targets: 0 }
+                    ],
+            deferRender: true,
+            // destroy: true, 
+            createdRow: function (row, data, dataIndex) {
+            switch(data.status) {
+                    case 'Sin Descarga':
+                        $(row).addClass('table-danger');
+                        break;
+                    case 'Sin Factura':
+                        $(row).addClass('table-warning');
+                        break;
+                    case 'Diferencia Cantidad':
+                        $(row).addClass('table-info');
+                        break;
+                }
+            },
+            initComplete: function () {
+                const api = this.api();
+
+                if ($('#invoice_puchase_table thead tr.filter').length === 0) {
+                    const filterRow = $('<tr class="filter"></tr>');
+
+                    $('#invoice_puchase_table thead tr:first th').each(function (index) {
+                    
+                            // ✅ RESTO DE COLUMNAS: Con filtro
+                            filterRow.append(
+                                `<th>
+                                    <input type="text"
+                                        class="form-control form-control-sm"
+                                        placeholder="${$(this).text().trim()}">
+                                </th>`
+                            );
+                    });
+
+                    $('#invoice_puchase_table thead').prepend(filterRow);
+
+                    // Eventos de búsqueda
+                    $('#invoice_puchase_table thead tr.filter input')
+                        .on('keyup change', function () {
+                            const colIndex = $(this).parent().index();
+                            api.column(colIndex).search(this.value).draw();
+                        });
+                }
+                $('.table-responsive').removeClass('loading');
+    $('#contenedor_pago_normal').removeClass('is-loading');
+                // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
+                console.log('🎯 Filtros agregados:', $('#invoice_puchase_table thead tr.filter').length);
+
+            },
+            drawCallback: function(settings) {
+            },
+            footerCallback: function (row, data, start, end, display) {
+
+                const api = this.api();
+                
+                // Calcular totales solo de la página actual
+                let totalFacturas = 0;
+                let totalCantidad = 0;
+                let totalDescargado = 0;
+                
+                api.rows({page: 'current'}).every(function() {
+                    const d = this.data();
+                    totalFacturas += parseFloat(d.total_fac) || 0;
+                    totalCantidad += parseFloat(d.can) || 0;
+                    totalDescargado += parseFloat(d.volrec) || 0;
+                });
+                
+                // Mostrar en consola o en un elemento
+                console.log('Totales página actual:', {
+                    facturas: totalFacturas,
+                    cantidad: totalCantidad,
+                    descargado: totalDescargado
+                });
+            }
+        });
+    }
+    function filtrarEstacionesPorEmpresa() {
+        const empresaSel = $('#company').val();
+        const $station = $('#station_id1');
+
+        // Si no se ha seleccionado empresa, mantener estaciones deshabilitadas
+        if (empresaSel === null || empresaSel === '') {
+            $station.prop('disabled', true);
+            $station.selectpicker('refresh');
+            return;
+        }
+
+        // Habilitar el select de estaciones
+        $station.prop('disabled', false);
+
+        // Destruir selectpicker para reconstruir opciones
+        $station.selectpicker('destroy');
+
+        // Limpiar todas las opciones
+        $station.empty();
+
+        // Agregar opción placeholder (NO seleccionada por defecto)
+        $station.append('<option value="" disabled selected >Seleccione una estación</option>');
+
+        // Agregar opción "Todas las estaciones"
+        if (empresaSel === '0') {
+            $station.append('<option value="0">Todas las estaciones</option>');
+        } else {
+            $station.append('<option value="0">Todas las estaciones de esta empresa</option>');
+        }
+
+        
+        // Obtener y filtrar estaciones desde los datos originales
+        if (window.originalStationOptions) {
+            const $tempDiv = $('<div>').html(window.originalStationOptions);
+            
+            $tempDiv.find('option[data-emp]').each(function() {
+                const emp = $(this).attr('data-emp');
+                const stationValue = $(this).attr('value');
+                const stationText = $(this).text();
+                if (empresaSel === '0' || emp === empresaSel) {
+                    $station.append('<option value="' + stationValue + '" data-emp="' + emp + '">' + stationText + '</option>');
+                }
+            });
+        } else {
+            console.error('No se encontraron opciones originales');
+        }
+
+        // Seleccionar "Todas las estaciones" por defecto
+        $station.val('0');
+
+        // Reinicializar selectpicker
+        $station.selectpicker({
+            liveSearch: true,
+            title: 'Seleccione una estación'
+        });
+        
+        // $station.find('option').each(function() {
+        //     console.log('Opción:', $(this).text(), 'Valor:', $(this).val());
+        // });
+    }
+
+    function calculateAndDisplayStats(data) {
+        if (!data || data.length === 0) {
+            $('#stats-container').hide();
+            return;
+        }
+
+        // Mostrar contenedor de stats
+        $('#stats-container').show();
+
+        // Calcular totales generales
+        const total = data.length;
+        const correctos = data.filter(d => d.status === 'Correcto').length;
+        const sinFactura = data.filter(d => d.status === 'Sin Factura').length;
+        const sinDescarga = data.filter(d => d.status === 'Sin Descarga').length;
+        const sinAmbos = data.filter(d => d.status === 'Sin Factura y Descarga').length;
+
+        // Actualizar cards principales
+        $('#total-docs').text(total.toLocaleString());
+        $('#total-correctos').text(correctos.toLocaleString());
+        $('#percent-correctos').text(((correctos / total) * 100).toFixed(1) + '%');
+        
+        $('#total-sin-factura').text((sinFactura + sinAmbos).toLocaleString());
+        $('#percent-sin-factura').text((((sinFactura + sinAmbos) / total) * 100).toFixed(1) + '%');
+        
+        $('#total-sin-descarga').text((sinDescarga + sinAmbos).toLocaleString());
+        $('#percent-sin-descarga').text((((sinDescarga + sinAmbos) / total) * 100).toFixed(1) + '%');
+
+        // Calcular por estación
+        const stationStats = calculateStationStats(data);
+        displayStationCards(stationStats);
+
+        // Calcular por proveedor
+        const providerStats = calculateProviderStats(data);
+        displayProviderCards(providerStats);
+    }
+
+    function calculateStationStats(data) {
+        const stats = {};
+
+        data.forEach(row => {
+            const station = row.gasolinera;
+            if (!stats[station]) {
+                stats[station] = {
+                    name: station,
+                    codgas: row.codgas,
+                    total: 0,
+                    sinDescarga: 0,
+                    sinFactura: 0,
+                    correctos: 0
+                };
+            }
+
+            stats[station].total++;
+            
+            switch(row.status) {
                 case 'Sin Descarga':
-                    $(row).addClass('table-danger');
+                case 'Sin Factura y Descarga':
+                    stats[station].sinDescarga++;
                     break;
                 case 'Sin Factura':
-                    $(row).addClass('table-warning');
+                    stats[station].sinFactura++;
                     break;
-                case 'Diferencia Cantidad':
-                    $(row).addClass('table-info');
+                case 'Correcto':
+                    stats[station].correctos++;
                     break;
-            }
-        },
-        initComplete: function () {
-            const api = this.api();
-
-            if ($('#invoice_puchase_table thead tr.filter').length === 0) {
-                const filterRow = $('<tr class="filter"></tr>');
-
-                $('#invoice_puchase_table thead tr:first th').each(function (index) {
-                   
-                        // ✅ RESTO DE COLUMNAS: Con filtro
-                        filterRow.append(
-                            `<th>
-                                <input type="text"
-                                    class="form-control form-control-sm"
-                                    placeholder="${$(this).text().trim()}">
-                            </th>`
-                        );
-                });
-
-                $('#invoice_puchase_table thead').prepend(filterRow);
-
-                // Eventos de búsqueda
-                $('#invoice_puchase_table thead tr.filter input')
-                    .on('keyup change', function () {
-                        const colIndex = $(this).parent().index();
-                        api.column(colIndex).search(this.value).draw();
-                    });
-            }
-            $('.table-responsive').removeClass('loading');
-$('#contenedor_pago_normal').removeClass('is-loading');
-            // addStationSummaryRow(dynamicColumns);  // Agregar fila de sumatoria por estación
-            console.log('🎯 Filtros agregados:', $('#invoice_puchase_table thead tr.filter').length);
-
-        },
-         drawCallback: function(settings) {
-        },
-        footerCallback: function (row, data, start, end, display) {
-
-             const api = this.api();
-            
-            // Calcular totales solo de la página actual
-            let totalFacturas = 0;
-            let totalCantidad = 0;
-            let totalDescargado = 0;
-            
-            api.rows({page: 'current'}).every(function() {
-                const d = this.data();
-                totalFacturas += parseFloat(d.total_fac) || 0;
-                totalCantidad += parseFloat(d.can) || 0;
-                totalDescargado += parseFloat(d.volrec) || 0;
-            });
-            
-            // Mostrar en consola o en un elemento
-            console.log('Totales página actual:', {
-                facturas: totalFacturas,
-                cantidad: totalCantidad,
-                descargado: totalDescargado
-            });
-        }
-    });
-}
-function filtrarEstacionesPorEmpresa() {
-    const empresaSel = $('#company').val();
-    const $station = $('#station_id1');
-
-    // Si no se ha seleccionado empresa, mantener estaciones deshabilitadas
-    if (empresaSel === null || empresaSel === '') {
-        $station.prop('disabled', true);
-        $station.selectpicker('refresh');
-        return;
-    }
-
-    // Habilitar el select de estaciones
-    $station.prop('disabled', false);
-
-    // Destruir selectpicker para reconstruir opciones
-    $station.selectpicker('destroy');
-
-    // Limpiar todas las opciones
-    $station.empty();
-
-    // Agregar opción placeholder (NO seleccionada por defecto)
-    $station.append('<option value="" disabled selected >Seleccione una estación</option>');
-
-    // Agregar opción "Todas las estaciones"
-    if (empresaSel === '0') {
-        $station.append('<option value="0">Todas las estaciones</option>');
-    } else {
-        $station.append('<option value="0">Todas las estaciones de esta empresa</option>');
-    }
-
-    
-    // Obtener y filtrar estaciones desde los datos originales
-    if (window.originalStationOptions) {
-        const $tempDiv = $('<div>').html(window.originalStationOptions);
-        
-        $tempDiv.find('option[data-emp]').each(function() {
-            const emp = $(this).attr('data-emp');
-            const stationValue = $(this).attr('value');
-            const stationText = $(this).text();
-            if (empresaSel === '0' || emp === empresaSel) {
-                $station.append('<option value="' + stationValue + '" data-emp="' + emp + '">' + stationText + '</option>');
             }
         });
-    } else {
-        console.error('No se encontraron opciones originales');
+
+        // Convertir a array y ordenar por cantidad sin descarga
+        return Object.values(stats)
+            .sort((a, b) => b.sinDescarga - a.sinDescarga);
     }
 
-    // Seleccionar "Todas las estaciones" por defecto
-    $station.val('0');
+    function displayStationCards(stationStats) {
+        const container = $('#stations-without-descarga');
+        container.empty();
 
-    // Reinicializar selectpicker
-    $station.selectpicker({
-        liveSearch: true,
-        title: 'Seleccione una estación'
-    });
-    
-    // $station.find('option').each(function() {
-    //     console.log('Opción:', $(this).text(), 'Valor:', $(this).val());
-    // });
-}
+        // Filtrar solo estaciones con problemas
+        const stationsWithIssues = stationStats.filter(s => s.sinDescarga > 0);
 
-/**
- * Calcula y muestra estadísticas del reporte
- */
-function calculateAndDisplayStats(data) {
-    if (!data || data.length === 0) {
-        $('#stats-container').hide();
-        return;
-    }
-
-    // Mostrar contenedor de stats
-    $('#stats-container').show();
-
-    // Calcular totales generales
-    const total = data.length;
-    const correctos = data.filter(d => d.status === 'Correcto').length;
-    const sinFactura = data.filter(d => d.status === 'Sin Factura').length;
-    const sinDescarga = data.filter(d => d.status === 'Sin Descarga').length;
-    const sinAmbos = data.filter(d => d.status === 'Sin Factura y Descarga').length;
-
-    // Actualizar cards principales
-    $('#total-docs').text(total.toLocaleString());
-    $('#total-correctos').text(correctos.toLocaleString());
-    $('#percent-correctos').text(((correctos / total) * 100).toFixed(1) + '%');
-    
-    $('#total-sin-factura').text((sinFactura + sinAmbos).toLocaleString());
-    $('#percent-sin-factura').text((((sinFactura + sinAmbos) / total) * 100).toFixed(1) + '%');
-    
-    $('#total-sin-descarga').text((sinDescarga + sinAmbos).toLocaleString());
-    $('#percent-sin-descarga').text((((sinDescarga + sinAmbos) / total) * 100).toFixed(1) + '%');
-
-    // Calcular por estación
-    const stationStats = calculateStationStats(data);
-    displayStationCards(stationStats);
-
-    // Calcular por proveedor
-    const providerStats = calculateProviderStats(data);
-    displayProviderCards(providerStats);
-}
-
-/**
- * Calcula estadísticas por estación
- */
-function calculateStationStats(data) {
-    const stats = {};
-
-    data.forEach(row => {
-        const station = row.gasolinera;
-        if (!stats[station]) {
-            stats[station] = {
-                name: station,
-                codgas: row.codgas,
-                total: 0,
-                sinDescarga: 0,
-                sinFactura: 0,
-                correctos: 0
-            };
+        if (stationsWithIssues.length === 0) {
+            container.html(`
+                <div class="col-12 text-center text-success py-4">
+                    <i class="fas fa-check-circle fa-3x mb-2"></i>
+                    <p class="mb-0"><strong>¡Excelente!</strong> Todas las estaciones tienen sus descargas correctas</p>
+                </div>
+            `);
+            return;
         }
 
-        stats[station].total++;
-        
-        switch(row.status) {
-            case 'Sin Descarga':
-            case 'Sin Factura y Descarga':
-                stats[station].sinDescarga++;
-                break;
-            case 'Sin Factura':
-                stats[station].sinFactura++;
-                break;
-            case 'Correcto':
-                stats[station].correctos++;
-                break;
-        }
-    });
-
-    // Convertir a array y ordenar por cantidad sin descarga
-    return Object.values(stats)
-        .sort((a, b) => b.sinDescarga - a.sinDescarga);
-}
-
-/**
- * Muestra cards de estaciones
- */
-function displayStationCards(stationStats) {
-    const container = $('#stations-without-descarga');
-    container.empty();
-
-    // Filtrar solo estaciones con problemas
-    const stationsWithIssues = stationStats.filter(s => s.sinDescarga > 0);
-
-    if (stationsWithIssues.length === 0) {
-        container.html(`
-            <div class="col-12 text-center text-success py-4">
-                <i class="fas fa-check-circle fa-3x mb-2"></i>
-                <p class="mb-0"><strong>¡Excelente!</strong> Todas las estaciones tienen sus descargas correctas</p>
-            </div>
-        `);
-        return;
-    }
-
-    stationsWithIssues.forEach((station, index) => {
-        const percentSinDescarga = ((station.sinDescarga / station.total) * 100).toFixed(1);
-        const percentCorrectos = ((station.correctos / station.total) * 100).toFixed(1);
-        
-        const card = `
-            <div class="col-md-4 col-lg-3 mb-3" style="animation-delay: ${index * 0.1}s">
-                <div class="card station-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <h6 class="mb-0 font-weight-bold">${station.name}</h6>
-                            <span class="badge badge-danger">${station.sinDescarga}</span>
-                        </div>
-                        
-                        <div class="small text-muted mb-2">
-                            <i class="fas fa-hashtag"></i> Código: ${station.codgas}
-                        </div>
-                        
-                        <div class="mb-2">
-                            <div class="d-flex justify-content-between small">
-                                <span>Total documentos:</span>
-                                <strong>${station.total}</strong>
+        stationsWithIssues.forEach((station, index) => {
+            const percentSinDescarga = ((station.sinDescarga / station.total) * 100).toFixed(1);
+            const percentCorrectos = ((station.correctos / station.total) * 100).toFixed(1);
+            
+            const card = `
+                <div class="col-md-4 col-lg-3 mb-3" style="animation-delay: ${index * 0.1}s">
+                    <div class="card station-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="mb-0 font-weight-bold">${station.name}</h6>
+                                <span class="badge badge-danger">${station.sinDescarga}</span>
                             </div>
-                            <div class="d-flex justify-content-between small text-danger">
-                                <span>Sin descarga:</span>
-                                <strong>${station.sinDescarga} (${percentSinDescarga}%)</strong>
+                            
+                            <div class="small text-muted mb-2">
+                                <i class="fas fa-hashtag"></i> Código: ${station.codgas}
                             </div>
-                            <div class="d-flex justify-content-between small text-warning">
-                                <span>Sin factura:</span>
-                                <strong>${station.sinFactura}</strong>
+                            
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between small">
+                                    <span>Total documentos:</span>
+                                    <strong>${station.total}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small text-danger">
+                                    <span>Sin descarga:</span>
+                                    <strong>${station.sinDescarga} (${percentSinDescarga}%)</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small text-warning">
+                                    <span>Sin factura:</span>
+                                    <strong>${station.sinFactura}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small text-success">
+                                    <span>Correctos:</span>
+                                    <strong>${station.correctos} (${percentCorrectos}%)</strong>
+                                </div>
                             </div>
-                            <div class="d-flex justify-content-between small text-success">
-                                <span>Correctos:</span>
-                                <strong>${station.correctos} (${percentCorrectos}%)</strong>
+                            
+                            <div class="mini-progress">
+                                <div class="mini-progress-bar progress-danger" 
+                                    style="width: ${percentSinDescarga}%"></div>
                             </div>
-                        </div>
-                        
-                        <div class="mini-progress">
-                            <div class="mini-progress-bar progress-danger" 
-                                 style="width: ${percentSinDescarga}%"></div>
                         </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        container.append(card);
-    });
-}
-
-/**
- * Calcula estadísticas por proveedor
- */
-function calculateProviderStats(data) {
-    const stats = {};
-
-    data.forEach(row => {
-        const provider = row.proveedor;
-        if (!stats[provider]) {
-            stats[provider] = {
-                name: provider,
-                codigo: row.proveedor_codigo,
-                total: 0,
-                sinDescarga: 0,
-                sinFactura: 0,
-                correctos: 0,
-                totalMonto: 0
-            };
-        }
-
-        stats[provider].total++;
-        stats[provider].totalMonto += parseFloat(row.total_fac) || 0;
-        
-        switch(row.status) {
-            case 'Sin Descarga':
-            case 'Sin Factura y Descarga':
-                stats[provider].sinDescarga++;
-                break;
-            case 'Sin Factura':
-                stats[provider].sinFactura++;
-                break;
-            case 'Correcto':
-                stats[provider].correctos++;
-                break;
-        }
-    });
-
-    // Convertir a array y ordenar por total de documentos
-    return Object.values(stats)
-        .sort((a, b) => b.total - a.total);
-}
-
-/**
- * Muestra cards de proveedores
- */
-function displayProviderCards(providerStats) {
-    const container = $('#provider-stats');
-    container.empty();
-
-    if (providerStats.length === 0) {
-        container.html(`
-            <div class="col-12 text-center text-muted py-4">
-                <i class="fas fa-info-circle fa-2x mb-2"></i>
-                <p>No hay datos de proveedores</p>
-            </div>
-        `);
-        return;
+            `;
+            
+            container.append(card);
+        });
     }
 
-    providerStats.forEach((provider, index) => {
-        const percentCorrectos = ((provider.correctos / provider.total) * 100).toFixed(1);
-        const percentProblemas = (((provider.sinDescarga + provider.sinFactura) / provider.total) * 100).toFixed(1);
-        
-        const card = `
-            <div class="col-md-6 col-lg-4 mb-3" style="animation-delay: ${index * 0.1}s">
-                <div class="card provider-card h-100">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                                <h6 class="mb-0 font-weight-bold">${provider.name}</h6>
-                                <small class="text-muted">Código: ${provider.codigo}</small>
+    function calculateProviderStats(data) {
+        const stats = {};
+
+        data.forEach(row => {
+            const provider = row.proveedor;
+            if (!stats[provider]) {
+                stats[provider] = {
+                    name: provider,
+                    codigo: row.proveedor_codigo,
+                    total: 0,
+                    sinDescarga: 0,
+                    sinFactura: 0,
+                    correctos: 0,
+                    totalMonto: 0
+                };
+            }
+
+            stats[provider].total++;
+            stats[provider].totalMonto += parseFloat(row.total_fac) || 0;
+            
+            switch(row.status) {
+                case 'Sin Descarga':
+                case 'Sin Factura y Descarga':
+                    stats[provider].sinDescarga++;
+                    break;
+                case 'Sin Factura':
+                    stats[provider].sinFactura++;
+                    break;
+                case 'Correcto':
+                    stats[provider].correctos++;
+                    break;
+            }
+        });
+
+        // Convertir a array y ordenar por total de documentos
+        return Object.values(stats)
+            .sort((a, b) => b.total - a.total);
+    }
+
+    function displayProviderCards(providerStats) {
+        const container = $('#provider-stats');
+        container.empty();
+
+        if (providerStats.length === 0) {
+            container.html(`
+                <div class="col-12 text-center text-muted py-4">
+                    <i class="fas fa-info-circle fa-2x mb-2"></i>
+                    <p>No hay datos de proveedores</p>
+                </div>
+            `);
+            return;
+        }
+
+        providerStats.forEach((provider, index) => {
+            const percentCorrectos = ((provider.correctos / provider.total) * 100).toFixed(1);
+            const percentProblemas = (((provider.sinDescarga + provider.sinFactura) / provider.total) * 100).toFixed(1);
+            
+            const card = `
+                <div class="col-md-6 col-lg-4 mb-3" style="animation-delay: ${index * 0.1}s">
+                    <div class="card provider-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-3">
+                                <div>
+                                    <h6 class="mb-0 font-weight-bold">${provider.name}</h6>
+                                    <small class="text-muted">Código: ${provider.codigo}</small>
+                                </div>
+                                <span class="badge badge-primary badge-lg">${provider.total}</span>
                             </div>
-                            <span class="badge badge-primary badge-lg">${provider.total}</span>
+                            
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="fas fa-check-circle text-success"></i> Correctos:</span>
+                                    <strong class="text-success">${provider.correctos} (${percentCorrectos}%)</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="fas fa-times-circle text-danger"></i> Sin descarga:</span>
+                                    <strong class="text-danger">${provider.sinDescarga}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="fas fa-exclamation-triangle text-warning"></i> Sin factura:</span>
+                                    <strong class="text-warning">${provider.sinFactura}</strong>
+                                </div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="fas fa-dollar-sign text-info"></i> Total monto:</span>
+                                    <strong class="text-info">$${provider.totalMonto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                                </div>
+                            </div>
+                            
+                            <div class="mini-progress">
+                                <div class="mini-progress-bar progress-success" 
+                                    style="width: ${percentCorrectos}%"></div>
+                            </div>
+                            
+                            ${provider.sinDescarga > 0 || provider.sinFactura > 0 ? `
+                                <div class="alert alert-warning alert-sm mt-2 mb-0 py-1 px-2" role="alert">
+                                    <small><i class="fas fa-exclamation-circle"></i> ${percentProblemas}% con problemas</small>
+                                </div>
+                            ` : ''}
                         </div>
-                        
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="fas fa-check-circle text-success"></i> Correctos:</span>
-                                <strong class="text-success">${provider.correctos} (${percentCorrectos}%)</strong>
-                            </div>
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="fas fa-times-circle text-danger"></i> Sin descarga:</span>
-                                <strong class="text-danger">${provider.sinDescarga}</strong>
-                            </div>
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="fas fa-exclamation-triangle text-warning"></i> Sin factura:</span>
-                                <strong class="text-warning">${provider.sinFactura}</strong>
-                            </div>
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span><i class="fas fa-dollar-sign text-info"></i> Total monto:</span>
-                                <strong class="text-info">$${provider.totalMonto.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
-                            </div>
-                        </div>
-                        
-                        <div class="mini-progress">
-                            <div class="mini-progress-bar progress-success" 
-                                 style="width: ${percentCorrectos}%"></div>
-                        </div>
-                        
-                        ${provider.sinDescarga > 0 || provider.sinFactura > 0 ? `
-                            <div class="alert alert-warning alert-sm mt-2 mb-0 py-1 px-2" role="alert">
-                                <small><i class="fas fa-exclamation-circle"></i> ${percentProblemas}% con problemas</small>
-                            </div>
-                        ` : ''}
                     </div>
                 </div>
-            </div>
-        `;
-        
-        container.append(card);
-    });
-}
+            `;
+            
+            container.append(card);
+        });
+    }

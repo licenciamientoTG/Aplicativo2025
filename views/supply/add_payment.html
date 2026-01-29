@@ -1,20 +1,17 @@
 {# add_payment.html #}
 {% extends "views/layouts/base.html" %}
-{% block title %}Facturas de combustible{% endblock %}
+{% block title %}Crear Pago{% endblock %}
 {% block mycss %}{% endblock %}
 {% block menutitle %}
 <div style="display: flex;justify-content: space-between;" >
-
-    Facturas de combustible 
+    Crear Pago
     <a onclick="ReturnListPayment()" class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i> Regresar</a>
-
 </div>
 {% endblock %}
 {% block content %}
 
 <style>
 
-    /* Loader Overlay */
 .payment-loader-overlay {
     position: fixed;
     top: 0;
@@ -69,7 +66,6 @@
     font-size: 14px;
 }
 
-/* Alternativa: Spinner más moderno */
 .payment-loader-spinner-modern {
     width: 60px;
     height: 60px;
@@ -320,21 +316,24 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                         </div>
                         <div class="col-2 " >
                             <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
-                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 5px;"><i class="fas fa-angles-right me-1"></i>Agregar Todas</button>
                         </div>
                     </div>
                 </div>
     
                 <div class="card-body table-responsive" >
                      <!-- Agregar esto justo antes de la tabla payment_create_table -->
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div>
-                            <button type="button" class="btn btn-sm btn-primary" onclick="addSelectedInvoices()">
+                    <div class="d-flex justify-content-between  align-items-center mb-2">
+                        <div class="d-flex flex-row gap-2 col-8">
+                            <button type="button" class="btn btn-sm btn-primary m-1" onclick="addSelectedInvoices()">
                                 <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
-                                <i class="fas fa-check-square"></i> Seleccionar Todo
+                            <button type="button" id="filter-vencidas" class="btn btn-sm btn-warning m-1" onclick="toggleFilterVencidas()">
+                                <i class="fas fa-exclamation-triangle" ></i> Mostrar Vencidas
                             </button>
+                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success m-1" >
+                                <i class="fas fa-angles-right me-1"></i>Agregar Todas
+                            </button>
+
                         </div>
                         <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
                     </div>
@@ -404,17 +403,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 </div>
 <div id="paymentLoader" class="payment-loader-overlay">
     <div class="payment-loader-content">
-        <!-- Opción 1: Spinner simple -->
         <div class="payment-loader-spinner"></div>
-        
-        <!-- Opción 2: Spinner moderno (comentar el anterior y descomentar este) -->
-        <!-- <div class="payment-loader-spinner-modern">
-            <div></div>
-            <div></div>
-            <div></div>
-            <div></div>
-        </div> -->
-        
         <div class="payment-loader-text">Procesando pago...</div>
         <div class="payment-loader-subtext">Por favor espere</div>
     </div>
@@ -428,18 +417,49 @@ let currentProvider = null;
 let paymentItems = [];
 
 
+let filterVencidas = false;
 $(document).ready(function() {
+
     window.originalStationOptions = $('#station_id1').html();
     var company = document.getElementById('company');
     company.addEventListener('change', function() {
         filtrarEstacionesPorEmpresa();
     });
 
-    // $('#generar-pago').on('click', generatePayment);
     $('#clear-basket').on('click', clearAllPayments);
-    
+
     updatePaymentSummary();
-}); 
+});
+
+
+
+function toggleFilterVencidas() {
+    console.log('Todo');
+    const btn = $('#filter-vencidas');
+    
+    if (!filterVencidas) {
+        // ✅ Activar filtro
+        paymentTable.column(9).search('Vencido').draw();
+        
+        btn.removeClass('btn-warning')
+           .addClass('btn-danger')
+           .html('<i class="fas fa-filter-circle-xmark"></i> Quitar Filtro');
+        
+        filterVencidas = true;
+    } else {
+        // ✅ Desactivar filtro
+        paymentTable.column(9).search('').draw();
+        
+        btn.removeClass('btn-danger')
+           .addClass('btn-warning')
+           .html('<i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas');
+        
+        filterVencidas = false;
+    }
+    
+    updateSelectedCount();
+}
+
 </script>
 
 {% endblock %}

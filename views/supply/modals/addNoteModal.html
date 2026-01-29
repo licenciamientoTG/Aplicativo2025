@@ -1,0 +1,143 @@
+
+    <form id="addNoteForm" enctype="multipart/form-data">
+        <div class="modal-body">
+            <!-- Tipo de nota -->
+            <div class="form-group">
+                <label>Tipo de Documento *</label>
+                <select name="note_type" class="form-control" required>
+                    <option value="">Seleccione...</option>
+                    <option value="CREDIT">Nota de Crédito (Reducción de monto)</option>
+                    <option value="DEBIT">Nota de Cargo (Incremento de monto)</option>
+                </select>
+            </div>
+            
+            <!-- Información básica -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label>Número de Nota</label>
+                        <input type="text" name="note_number" class="form-control" 
+                                placeholder="Ej: NC-12345">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label>Fecha *</label>
+                        <input type="date" name="note_date" class="form-control" value="{{ now|date('Y-m-d') }}" required>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Monto -->
+            <div class="form-group">
+                <label>Monto *</label>
+                <input type="number" name="amount" class="form-control" 
+                        step="0.01" min="0.01" required 
+                        placeholder="0.00">
+            </div>
+            
+            <!-- Descripción/Motivo -->
+            <div class="form-group">
+                <label>Descripción/Motivo *</label>
+                <textarea name="description" class="form-control" rows="3" 
+                            required placeholder="Describa el motivo de la nota"></textarea>
+            </div>
+            
+            <!-- Código de razón (opcional) -->
+            <div class="form-group">
+                <label>Motivo</label>
+                <select name="reason_code" class="form-control">
+                    <option value="">Seleccione...</option>
+                    <optgroup label="Notas de Crédito">
+                        <option value="DEVOLUCION">Devolución de producto</option>
+                        <option value="DESCUENTO">Descuento aplicado</option>
+                        <option value="ERROR_FACTURA">Error en factura</option>
+                        <option value="BONIFICACION">Bonificación</option>
+                    </optgroup>
+                    <optgroup label="Notas de Cargo">
+                        <option value="CARGO_EXTRA">Cargo extraordinario</option>
+                        <option value="SERVICIO_ADICIONAL">Servicio adicional</option>
+                        <option value="PENALIZACION">Penalización</option>
+                        <option value="AJUSTE">Ajuste de precio</option>
+                    </optgroup>
+                </select>
+            </div>
+            <!-- Archivo PDF -->
+            <div class="form-group">
+                <label>Archivo PDF *</label>
+                <div class="custom-file">
+                    <input type="file" class="custom-file-input" name="note_file" required
+                            id="noteFile" accept=".pdf" >
+                    <label class="custom-file-label" for="noteFile">
+                        Seleccionar archivo PDF...
+                    </label>
+                </div>
+                <small class="form-text text-muted">
+                    Solo archivos PDF. Máximo 10MB.
+                </small>
+            </div>
+            <!-- Asociación (oculto, lo pasamos desde el contexto) -->
+            <input hidden name="payment_request_id" value="{{ payment_request.id }}">
+            <input hidden name="provider_id" value="{{ payment_request.provider_cod }}">
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                Cancelar
+            </button>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Guardar Nota
+            </button>
+        </div>
+    </form>
+<script>
+
+    var addNoteForm = document.getElementById('addNoteForm');
+    addNoteForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+          Swal.fire({
+            title: 'Procesando...',
+            text: 'Guardando nota',
+            allowOutsideClick: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
+        fetch('/supply/addCreditDebitNote', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            Swal.close();
+            if (data.success) {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Éxito',
+                    text: data.message,
+                    timer: 2000
+                }).then(() => {
+                    location.reload();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message
+                });
+            }
+        })
+        .catch(error => {
+            Swal.close();
+            console.error('Error:', error);
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error al agregar la nota'
+            });
+        });
+    });
+</script>
