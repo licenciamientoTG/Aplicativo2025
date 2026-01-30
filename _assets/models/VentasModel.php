@@ -1552,10 +1552,10 @@ class VentasModel extends Model{
                 WITH SalesData AS (
                     SELECT  
                         CONVERT(VARCHAR, DATEADD(dd, fch - 1, 0), 103) AS 'Fecha',
-        YEAR(DATEADD(dd, fch - 1, 0)) as 'year',
-        DATENAME(month, DATEADD(dd, fch - 1, 0)) as 'mounth',
-        DATENAME(day, DATEADD(dd, fch - 1, 0)) as 'day1',
-                        isd.codgas AS CodGasolinera,
+                        YEAR(DATEADD(dd, fch - 1, 0)) as 'year',
+                        DATENAME(month, DATEADD(dd, fch - 1, 0)) as 'mounth',
+                        DATENAME(day, DATEADD(dd, fch - 1, 0)) as 'day1',
+                                        isd.codgas AS CodGasolinera,
                         case
 						when T3.den ='   T-Maxima Regular' then 'T-Maxima Regular'
 						when T3.den =' Gasolina Regular Menor a 91 Octanos' then 'T-Maxima Regular'
