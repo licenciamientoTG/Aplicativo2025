@@ -1730,7 +1730,7 @@ class VentasModel extends Model{
 
 
         if ($id_producto == 0) {
-           $producto  = "codprd IN (179, 18 0, 181, 2, 3, 1, 192, 193)";
+           $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
         }if ($id_producto == 1) {
             $producto  = "codprd IN (179, 192)";
         }elseif ($id_producto == 2) {
@@ -1746,10 +1746,10 @@ class VentasModel extends Model{
 
                 WITH SalesData AS (
                     SELECT
-                        CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
-                        datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
+                        CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
+YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
+DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
+DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day1',
                         isd.codgas AS CodGasolinera,
                         LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                         sum(canven) AS VentasReales,
