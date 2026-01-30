@@ -1187,10 +1187,11 @@ class VentasModel extends Model{
         $query = "
                   WITH SalesData AS (
                         SELECT
-                            CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                            Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
-                            datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                            datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day',
+                            CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
+                            -- Usar la fecha convertida para extraer componentes
+                            YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
+                            DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
+                            DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day',
                             isd.codgas AS CodGasolinera,
                             LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                             sum(canven) AS VentasReales,
@@ -1549,10 +1550,11 @@ class VentasModel extends Model{
 
                 WITH SalesData AS (
                     SELECT  
-                        CONVERT(VARCHAR, DATEADD(dd, fch - 1, 0), 103) AS 'Fecha',
-        YEAR(DATEADD(dd, fch - 1, 0)) as 'year',
-        DATENAME(month, DATEADD(dd, fch - 1, 0)) as 'mounth',
-        DATENAME(day, DATEADD(dd, fch - 1, 0)) as 'day1',
+                        CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
+                        -- Usar la fecha convertida para extraer componentes
+                        YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
+                        DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
+                        DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day',
                         isd.codgas AS CodGasolinera,
                         case
 						when T3.den ='   T-Maxima Regular' then 'T-Maxima Regular'
@@ -1744,10 +1746,12 @@ class VentasModel extends Model{
 
                 WITH SalesData AS (
                     SELECT
-                        CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
-                        datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
+                        CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
+        
+                        -- Usar la fecha convertida para extraer componentes
+                        YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
+                        DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
+                        DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day',
                         isd.codgas AS CodGasolinera,
                         LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                         sum(canven) AS VentasReales,
@@ -1769,14 +1773,14 @@ class VentasModel extends Model{
                     fch,
                     [year],
                     mounth,
-                    day1,
+                    day,
                     case
 					when turn is not null then turn
 					else 'Total'
 					end as turn,
                      {$columnsList}
                 FROM 
-                    (SELECT fch,Fecha, [year], day1,mounth, turn,  CodGasolinera, VentasReales
+                    (SELECT fch,Fecha, [year], day,mounth, turn,  CodGasolinera, VentasReales
                     FROM SalesData) AS SourceTable
                 PIVOT
                 (

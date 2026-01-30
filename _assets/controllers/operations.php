@@ -2244,7 +2244,7 @@ class Operations{
                 $entry = [
                     'year'    => $row['year'],
                     'mounth'  => $row['mounth'],
-                    'day'     => $row['day1'],
+                    'day'     => $row['day'],
                     'turn'    => $row['turn'],
                 ];
                 foreach ($estaciones as $estacion) {

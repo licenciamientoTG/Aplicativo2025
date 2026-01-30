@@ -762,80 +762,568 @@ class PaymentRequestsModel extends Model
     // }
 
     public function get_anticipos_para_layout(array $anticipo_ids) : array|false {
-    if (empty($anticipo_ids)) {
-        return false;
+        if (empty($anticipo_ids)) {
+            return false;
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($anticipo_ids), '?'));
+        
+        $query = "SELECT 
+                    t1.id as payment_request_id,
+                    t1.emp_cod as empresa_cod,
+                    t1.provider_cod as proveedor_codigo,
+                    t1.monto_total as monto_autorizado,
+                    emp.den as empresa_nombre,
+                    
+                    -- ✅ SANTANDER
+                    cb_propia_sant.CuentaLocal AS cuenta_cargo_empresa,
+                    cb_propia_sant.TitularCuenta AS titular_cargo,
+                    cb_tercero_sant.CuentaLocal AS clabe_beneficiario,
+                    cb_tercero_sant.Descripcion AS titular_beneficiario,
+                    cb_tercero_sant.Banco AS banco_beneficiario,
+                    cb_tercero_sant.Id AS cuenta_beneficiario_id,
+                    
+                    -- ✅ BANORTE
+                    cb_propia_banorte.CuentaLocal AS cuenta_cargo_banorte,
+                    cb_propia_banorte.TitularCuenta AS titular_cargo_banorte,
+                    
+                    prov.den as proveedor_nombre,
+                    'ANTICIPO' as tipo_pago,
+                    'ANTICIPO #' + CAST(t1.id AS VARCHAR) as folio,
+                    NULL as invoice_number,
+                    t1.request_date as fecha_pago,
+                    t1.comment as concepto
+                    
+                FROM [TG].[dbo].[payment_requests] t1
+                LEFT JOIN [SG12].[dbo].[Empresas] emp ON t1.emp_cod = emp.cod
+                LEFT JOIN [SG12].[dbo].[Proveedores] prov ON t1.provider_cod = prov.cod
+                
+                -- TERCEROS SANTANDER
+                LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
+                    ON cb_tercero_sant.Tipo = 'Terceros'
+                    AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
+                    AND cb_tercero_sant.Activo = 1
+                    AND (
+                        cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                        OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                    )
+
+                -- PROPIAS SANTANDER
+                LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant
+                    ON cb_propia_sant.emp_cod = emp.cod
+                    AND cb_propia_sant.Tipo = 'Propias'
+                    AND cb_propia_sant.Banco = 'SANTANDER'
+                    AND cb_propia_sant.Activo = 1
+                
+                -- PROPIAS BANORTE
+                LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_banorte
+                    ON cb_propia_banorte.emp_cod = emp.cod
+                    AND cb_propia_banorte.Tipo = 'Propias'
+                    AND cb_propia_banorte.Banco = 'BANORTE'
+                    AND cb_propia_banorte.Activo = 1
+                    
+                WHERE t1.id IN ($placeholders)
+                    AND t1.tipo = ?  -- Solo anticipos
+                    AND t1.status = ?  -- Solo autorizados
+                ORDER BY t1.emp_cod, t1.provider_cod
+        ";
+        
+        $params = array_merge(
+            $anticipo_ids, 
+            [1, PaymentRequestsModel::STATUS_AUTHORIZED]
+        );
+
+        return $this->sql->select($query, $params) ?: false;
     }
     
-    $placeholders = implode(',', array_fill(0, count($anticipo_ids), '?'));
-    
-    $query = "SELECT 
-                t1.id as payment_request_id,
-                t1.emp_cod as empresa_cod,
-                t1.provider_cod as proveedor_codigo,
-                t1.monto_total as monto_autorizado,
-                emp.den as empresa_nombre,
+    public function getPendingPaymentsForBulkAuthorization($permission_number) : array|false {
+    try {
+        $query = "
+            SELECT 
+                pr.id,
+                pr.request_date,
+                pr.user_id,
+                pr.comment,
+                pr.status,
+                pr.provider_cod,
+                pr.emp_cod,
+                pr.tipo,
+                pr.monto_total,
                 
-                -- ✅ SANTANDER
-                cb_propia_sant.CuentaLocal AS cuenta_cargo_empresa,
-                cb_propia_sant.TitularCuenta AS titular_cargo,
-                cb_tercero_sant.CuentaLocal AS clabe_beneficiario,
-                cb_tercero_sant.Descripcion AS titular_beneficiario,
-                cb_tercero_sant.Banco AS banco_beneficiario,
-                cb_tercero_sant.Id AS cuenta_beneficiario_id,
+                -- Usuario que solicitó
+                u.Nombre as usuario_nombre,
                 
-                -- ✅ BANORTE
-                cb_propia_banorte.CuentaLocal AS cuenta_cargo_banorte,
-                cb_propia_banorte.TitularCuenta AS titular_cargo_banorte,
-                
+                -- Proveedor
                 prov.den as proveedor_nombre,
-                'ANTICIPO' as tipo_pago,
-                'ANTICIPO #' + CAST(t1.id AS VARCHAR) as folio,
-                NULL as invoice_number,
-                t1.request_date as fecha_pago,
-                t1.comment as concepto
                 
-            FROM [TG].[dbo].[payment_requests] t1
-            LEFT JOIN [SG12].[dbo].[Empresas] emp ON t1.emp_cod = emp.cod
-            LEFT JOIN [SG12].[dbo].[Proveedores] prov ON t1.provider_cod = prov.cod
+                -- Empresa
+                emp.den as empresa_nombre,
+                emp.den as company_name,
+                
+                -- Resumen de facturas
+                ISNULL(inv_summary.total_invoices, 0) as num_facturas,
+                ISNULL(inv_summary.total_amount, 0) as total_amount,
+                
+                -- Autorizaciones ya realizadas
+                ISNULL(auth_summary.auth_abastos, 0) as auth_abastos,
+                ISNULL(auth_summary.auth_admin, 0) as auth_admin,
+                ISNULL(auth_summary.auth_tesoreria, 0) as auth_tesoreria,
+                
+                -- Fecha de vencimiento más cercana
+                inv_summary.fecha_vencimiento_min as fecha_vencimiento,
+                
+                -- Días hasta vencimiento
+                DATEDIFF(day, GETDATE(), inv_summary.fecha_vencimiento_min) as dias_vencimiento,
+                
+                -- Marcar si requiere revisión (monto alto)
+                CASE 
+                    WHEN pr.monto_total > 100000 THEN 1
+                    ELSE 0
+                END as requiere_revision,
+                
+                -- Marcar si es anticipo
+                CASE WHEN pr.tipo = 1 THEN 1 ELSE 0 END as es_anticipo
+                
+            FROM [TG].[dbo].[payment_requests] pr
             
-            -- TERCEROS SANTANDER
-            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
-                ON cb_tercero_sant.Tipo = 'Terceros'
-                AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
-                AND cb_tercero_sant.Activo = 1
+            LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov ON pr.provider_cod = prov.cod
+            LEFT JOIN [SG12].[dbo].[Empresas] emp ON pr.emp_cod = emp.cod
+            
+            -- Resumen de facturas
+            LEFT JOIN (
+                SELECT 
+                    payment_request_id,
+                    COUNT(*) as total_invoices,
+                    SUM(amount) as total_amount,
+                    MIN(expiration_date) as fecha_vencimiento_min
+                FROM [TG].[dbo].[payment_request_invoices]
+                GROUP BY payment_request_id
+            ) inv_summary ON pr.id = inv_summary.payment_request_id
+            
+            -- Resumen de autorizaciones
+            LEFT JOIN (
+                SELECT
+                    payment_request_id,
+                    MAX(CASE WHEN permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
+                    MAX(CASE WHEN permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
+                    MAX(CASE WHEN permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria
+                FROM [TG].[dbo].[payment_request_authorizations]
+                GROUP BY payment_request_id
+            ) auth_summary ON pr.id = auth_summary.payment_request_id
+            
+            WHERE 
+                pr.status = ?  -- Solo pendientes (STATUS_PENDING = 0)
                 AND (
-                    cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                    OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                    -- Nivel 66 (Abastos): sin ninguna autorización
+                    (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
+                    OR
+                    -- Nivel 67 (Admin): con autorización de abastos pero sin admin
+                    (? = 67 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    OR
+                    -- Nivel 68 (Tesorería): con autorizaciones de abastos y admin pero sin tesorería
+                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
                 )
-
-            -- PROPIAS SANTANDER
-            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant
-                ON cb_propia_sant.emp_cod = emp.cod
-                AND cb_propia_sant.Tipo = 'Propias'
-                AND cb_propia_sant.Banco = 'SANTANDER'
-                AND cb_propia_sant.Activo = 1
             
-            -- PROPIAS BANORTE
-            LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_banorte
-                ON cb_propia_banorte.emp_cod = emp.cod
-                AND cb_propia_banorte.Tipo = 'Propias'
-                AND cb_propia_banorte.Banco = 'BANORTE'
-                AND cb_propia_banorte.Activo = 1
+            ORDER BY 
+                CASE WHEN pr.monto_total > 100000 THEN 0 ELSE 1 END,
+                inv_summary.fecha_vencimiento_min ASC,
+                pr.request_date ASC
+        ";
+        
+        $params = [
+            self::STATUS_PENDING,
+            $permission_number,
+            $permission_number,
+            $permission_number
+        ];
+        
+        return $this->sql->select($query, $params) ?: [];
+        
+    } catch (Exception $e) {
+        error_log("Error en getPendingPaymentsForBulkAuthorization: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Validar límites de aprobación masiva
+ */
+public function validarLimitesAprobacionMasiva($paymentIds) : array {
+    try {
+        if (empty($paymentIds)) {
+            return [
+                'valido' => false,
+                'mensaje' => 'No se recibieron pagos para validar',
+                'detalles' => []
+            ];
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($paymentIds), '?'));
+        
+        $query = "
+            SELECT 
+                COUNT(*) as cantidad,
+                SUM(ISNULL(monto_total, 0)) as monto_total,
+                MAX(ISNULL(monto_total, 0)) as monto_maximo,
+                SUM(CASE WHEN monto_total > 100000 THEN 1 ELSE 0 END) as requieren_revision,
+                SUM(CASE WHEN tipo = 1 THEN 1 ELSE 0 END) as total_anticipos
+            FROM [TG].[dbo].[payment_requests]
+            WHERE id IN ($placeholders)
+        ";
+        
+        $resultado = $this->sql->select($query, $paymentIds);
+        
+        if (!$resultado || empty($resultado)) {
+            return [
+                'valido' => false,
+                'mensaje' => 'No se pudieron obtener datos de los pagos',
+                'detalles' => []
+            ];
+        }
+        
+        $datos = $resultado[0];
+        
+        // Límites configurables
+        $LIMITE_CANTIDAD = 20;
+        $LIMITE_MONTO = 500000;
+        
+        $validacion = [
+            'valido' => true,
+            'mensaje' => '',
+            'detalles' => $datos
+        ];
+        
+        if ($datos['cantidad'] > $LIMITE_CANTIDAD) {
+            $validacion['valido'] = false;
+            $validacion['mensaje'] = "Cantidad de pagos ({$datos['cantidad']}) excede el límite ({$LIMITE_CANTIDAD})";
+        }
+        
+        if ($datos['monto_total'] > $LIMITE_MONTO) {
+            $validacion['valido'] = false;
+            $validacion['mensaje'] .= ($validacion['mensaje'] ? ' | ' : '') . 
+                "Monto total ($" . number_format($datos['monto_total'], 2) . ") excede el límite ($" . number_format($LIMITE_MONTO, 2) . ")";
+        }
+        
+        // No permitir anticipos en aprobación masiva por ahora
+        if ($datos['total_anticipos'] > 0) {
+            $validacion['valido'] = false;
+            $validacion['mensaje'] .= ($validacion['mensaje'] ? ' | ' : '') . 
+                "No se pueden aprobar anticipos en bloque ({$datos['total_anticipos']} anticipos detectados)";
+        }
+        
+        return $validacion;
+        
+    } catch (Exception $e) {
+        error_log("Error en validarLimitesAprobacionMasiva: " . $e->getMessage());
+        return [
+            'valido' => false,
+            'mensaje' => 'Error al validar límites: ' . $e->getMessage(),
+            'detalles' => []
+        ];
+    }
+}
+
+/**
+ * Procesar aprobación masiva de pagos
+ */
+public function processBulkAuthorization($paymentIds, $permissionNumber, $userId, $userName, $comentario = '') : array {
+    try {
+        $this->sql->beginTransaction();
+        
+        // Crear registro de aprobación masiva
+        $bulkId = $this->crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario);
+        
+        $aprobados = 0;
+        $errores = 0;
+        $montoTotal = 0;
+        $detallesErrores = [];
+        
+        // Modelo de autorizaciones
+        $authModel = new PaymentRequestAuthorizationsModel();
+        
+        foreach ($paymentIds as $paymentId) {
+            try {
+                // Verificar que el pago esté pendiente de este nivel
+                $canAuthorize = $authModel->can_user_authorize($paymentId, $userId, $permissionNumber);
                 
-            WHERE t1.id IN ($placeholders)
-                AND t1.tipo = ?  -- Solo anticipos
-                AND t1.status = ?  -- Solo autorizados
-            ORDER BY t1.emp_cod, t1.provider_cod
+                if (!$canAuthorize['can_authorize']) {
+                    $errores++;
+                    $detallesErrores[] = "Pago ID $paymentId: {$canAuthorize['reason']}";
+                    continue;
+                }
+                
+                // Obtener monto del pago
+                $payment = $this->get_request_by_id($paymentId);
+                if (!$payment) {
+                    $errores++;
+                    $detallesErrores[] = "Pago ID $paymentId: no encontrado";
+                    continue;
+                }
+                
+                $monto = floatval($payment['monto_total'] ?? 0);
+                
+                // Insertar autorización
+                $authInserted = $authModel->insert_authorization($paymentId, $userId, $permissionNumber);
+                
+                if (!$authInserted) {
+                    throw new Exception("Error al insertar autorización para pago ID $paymentId");
+                }
+                
+                // Actualizar bulk_authorization_id en payment_request
+                $query = "
+                    UPDATE [TG].[dbo].[payment_requests]
+                    SET bulk_authorization_id = ?
+                    WHERE id = ?
+                ";
+                $this->sql->update($query, [$bulkId, $paymentId]);
+                
+                // Verificar si ya tiene todas las autorizaciones
+                $nextLevel = $authModel->get_next_authorization_level($paymentId);
+                
+                if ($nextLevel === null) {
+                    // Todas las autorizaciones completadas, actualizar status
+                    $this->update_request_status($paymentId, self::STATUS_AUTHORIZED);
+                }
+                
+                $aprobados++;
+                $montoTotal += $monto;
+                
+            } catch (Exception $e) {
+                $errores++;
+                $detallesErrores[] = "Error en pago ID $paymentId: " . $e->getMessage();
+                error_log("Error aprobando pago $paymentId: " . $e->getMessage());
+            }
+        }
+        
+        // Actualizar registro bulk con totales
+        $this->actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal);
+        
+        $this->sql->commit();
+        
+        return [
+            'success' => true,
+            'bulk_id' => $bulkId,
+            'aprobados' => $aprobados,
+            'errores' => $errores,
+            'monto_total' => $montoTotal,
+            'detalles' => $detallesErrores
+        ];
+        
+    } catch (Exception $e) {
+        $this->sql->rollBack();
+        error_log("Error en processBulkAuthorization: " . $e->getMessage());
+        
+        return [
+            'success' => false,
+            'message' => 'Error en la transacción: ' . $e->getMessage(),
+            'detalles' => []
+        ];
+    }
+}
+
+/**
+ * Crear registro de aprobación masiva
+ */
+private function crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario) {
+    $query = "
+        INSERT INTO [TG].[dbo].[payment_request_bulk_authorizations]
+        (authorization_level, user_id, payment_ids, comment, created_at)
+        VALUES (?, ?, ?, ?, GETDATE())
     ";
     
-    $params = array_merge(
-        $anticipo_ids, 
-        [1, PaymentRequestsModel::STATUS_AUTHORIZED]
-    );
-
-    return $this->sql->select($query, $params) ?: false;
-}
+    $paymentIdsJson = json_encode($paymentIds);
     
+    $inserted = $this->sql->insert($query, [$permissionNumber, $userId, $paymentIdsJson, $comentario]);
+    
+    return $inserted;
+}
+
+/**
+ * Actualizar registro bulk con totales
+ */
+private function actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal) {
+    $query = "
+        UPDATE [TG].[dbo].[payment_request_bulk_authorizations]
+        SET 
+            approved_count = ?,
+            error_count = ?,
+            total_amount = ?,
+            processed_at = GETDATE()
+        WHERE id = ?
+    ";
+    
+    return $this->sql->update($query, [$aprobados, $errores, $montoTotal, $bulkId]);
+}
+
+/**
+ * Obtener contador de pagos pendientes para un nivel
+ */
+public function getPendingAuthorizationCount($permissionNumber) : int {
+    try {
+        $query = "
+            SELECT COUNT(*) as total
+            FROM [TG].[dbo].[payment_requests] pr
+            
+            LEFT JOIN (
+                SELECT
+                    payment_request_id,
+                    MAX(CASE WHEN permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
+                    MAX(CASE WHEN permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
+                    MAX(CASE WHEN permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria
+                FROM [TG].[dbo].[payment_request_authorizations]
+                GROUP BY payment_request_id
+            ) auth_summary ON pr.id = auth_summary.payment_request_id
+            
+            WHERE 
+                pr.status = ?
+                AND (
+                    (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
+                    OR
+                    (? = 67 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    OR
+                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
+                )
+        ";
+        
+        $params = [
+            self::STATUS_PENDING,
+            $permissionNumber,
+            $permissionNumber,
+            $permissionNumber
+        ];
+        
+        $result = $this->sql->select($query, $params);
+        
+        return $result ? intval($result[0]['total']) : 0;
+        
+    } catch (Exception $e) {
+        error_log("Error en getPendingAuthorizationCount: " . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Deshacer aprobación masiva (solo dentro de ventana de tiempo)
+ */
+public function undoBulkAuthorization($bulkId, $userId) : array {
+    try {
+        $this->sql->beginTransaction();
+        
+        // Verificar que la aprobación masiva existe y está dentro de la ventana de tiempo
+        $query = "
+            SELECT 
+                ba.*, 
+                DATEDIFF(minute, ba.created_at, GETDATE()) as minutos_transcurridos
+            FROM [TG].[dbo].[payment_request_bulk_authorizations] ba
+            WHERE ba.id = ? AND ba.user_id = ?
+        ";
+        
+        $result = $this->sql->select($query, [$bulkId, $userId]);
+        
+        if (!$result || empty($result)) {
+            throw new Exception("Aprobación masiva no encontrada o no tienes permisos");
+        }
+        
+        $bulk = $result[0];
+        
+        // Ventana de 30 minutos para deshacer
+        if ($bulk['minutos_transcurridos'] > 30) {
+            throw new Exception("El tiempo para deshacer esta aprobación ha expirado (máximo 30 minutos)");
+        }
+        
+        // Verificar que ningún pago haya sido completamente pagado
+        $paymentIds = json_decode($bulk['payment_ids'], true);
+        
+        $placeholders = implode(',', array_fill(0, count($paymentIds), '?'));
+        $queryCheck = "
+            SELECT COUNT(*) as pagados
+            FROM [TG].[dbo].[payment_requests]
+            WHERE id IN ($placeholders)
+            AND status = ?
+        ";
+        
+        $params = array_merge($paymentIds, [self::STATUS_PAID]);
+        $checkResult = $this->sql->select($queryCheck, $params);
+        
+        if ($checkResult && $checkResult[0]['pagados'] > 0) {
+            throw new Exception("No se puede deshacer: algunos pagos ya han sido ejecutados");
+        }
+        
+        // Eliminar autorizaciones del nivel correspondiente
+        $authModel = new PaymentRequestAuthorizationsModel();
+        $permissionNumber = $bulk['authorization_level'];
+        
+        foreach ($paymentIds as $paymentId) {
+            // Eliminar la autorización específica
+            $queryDelete = "
+                DELETE FROM [TG].[dbo].[payment_request_authorizations]
+                WHERE payment_request_id = ? AND permission_number = ?
+            ";
+            $this->sql->delete($queryDelete, [$paymentId, $permissionNumber]);
+            
+            // Actualizar bulk_authorization_id a NULL
+            $queryUpdate = "
+                UPDATE [TG].[dbo].[payment_requests]
+                SET bulk_authorization_id = NULL
+                WHERE id = ?
+            ";
+            $this->sql->update($queryUpdate, [$paymentId]);
+        }
+        
+        // Marcar el bulk como deshecho
+        $queryMarkUndone = "
+            UPDATE [TG].[dbo].[payment_request_bulk_authorizations]
+            SET 
+                is_undone = 1,
+                undone_at = GETDATE()
+            WHERE id = ?
+        ";
+        
+        $this->sql->update($queryMarkUndone, [$bulkId]);
+        
+        $this->sql->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Aprobación masiva deshecha exitosamente',
+            'pagos_revertidos' => count($paymentIds)
+        ];
+        
+    } catch (Exception $e) {
+        $this->sql->rollBack();
+        error_log("Error en undoBulkAuthorization: " . $e->getMessage());
+        
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Obtener detalles de aprobación masiva
+ */
+public function getBulkAuthorizationDetails($bulkId) : array|false {
+    $query = "
+        SELECT 
+            ba.*,
+            u.Nombre as user_name,
+            CASE 
+                WHEN ba.authorization_level = 66 THEN 'Abastos'
+                WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
+                WHEN ba.authorization_level = 68 THEN 'Tesorería'
+                ELSE 'Desconocido'
+            END as nivel_nombre
+        FROM [TG].[dbo].[payment_request_bulk_authorizations] ba
+        LEFT JOIN [TG].[dbo].[Usuario] u ON ba.user_id = u.Id
+        WHERE ba.id = ?
+    ";
+    
+    $result = $this->sql->select($query, [$bulkId]);
+    
+    return $result ? $result[0] : false;
+}
 
 
 }

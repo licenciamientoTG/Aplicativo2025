@@ -5300,15 +5300,15 @@ class Supply{
     }
 
 
-    public function getPendingBulkAuthorization() {
+public function getPendingBulkAuthorization() {
     header('Content-Type: application/json');
     
     try {
-        // Obtener nivel de autorización del usuario actual
+        // Obtener permisos del usuario actual
         $userPermissions = $_SESSION['permissions'] ?? [];
-        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
         
-        if (!$nivelAutorizacion) {
+        if (!$permissionNumber) {
             echo json_encode([
                 'success' => false,
                 'message' => 'No tienes permisos de autorización'
@@ -5317,13 +5317,14 @@ class Supply{
         }
         
         // Obtener pagos pendientes
-        $pagosPendientes = $this->supplyModel->getPendingPaymentsForAuthorization($nivelAutorizacion);
+        $paymentModel = new PaymentRequestsModel();
+        $pagosPendientes = $paymentModel->getPendingPaymentsForBulkAuthorization($permissionNumber);
         
         echo json_encode([
             'success' => true,
-            'data' => $pagosPendientes,
-            'nivel_autorizacion' => $this->getNombreNivel($nivelAutorizacion),
-            'nivel_num' => $nivelAutorizacion
+            'data' => $pagosPendientes ?: [],
+            'nivel_autorizacion' => $this->getNombrePermiso($permissionNumber),
+            'permission_number' => $permissionNumber
         ]);
         
     } catch (Exception $e) {
@@ -5335,9 +5336,6 @@ class Supply{
     }
 }
 
-/**
- * Procesar aprobación masiva de pagos
- */
 public function processBulkAuthorization() {
     header('Content-Type: application/json');
     
@@ -5354,13 +5352,27 @@ public function processBulkAuthorization() {
             return;
         }
         
+        // Limpiar y validar IDs
+        $paymentIds = array_map('intval', $paymentIds);
+        $paymentIds = array_filter($paymentIds, function($id) {
+            return $id > 0;
+        });
+        
+        if (empty($paymentIds)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'IDs de pago inválidos'
+            ]);
+            return;
+        }
+        
         // Obtener información del usuario
         $userId = $_SESSION['user_id'] ?? 0;
         $userName = $_SESSION['user_name'] ?? 'Unknown';
         $userPermissions = $_SESSION['permissions'] ?? [];
-        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
         
-        if (!$nivelAutorizacion) {
+        if (!$permissionNumber) {
             echo json_encode([
                 'success' => false,
                 'message' => 'No tienes permisos para autorizar pagos'
@@ -5369,7 +5381,8 @@ public function processBulkAuthorization() {
         }
         
         // Validar límites antes de procesar
-        $validacion = $this->supplyModel->validarLimitesAprobacionMasiva($paymentIds);
+        $paymentModel = new PaymentRequestsModel();
+        $validacion = $paymentModel->validarLimitesAprobacionMasiva($paymentIds);
         
         if (!$validacion['valido']) {
             echo json_encode([
@@ -5381,9 +5394,9 @@ public function processBulkAuthorization() {
         }
         
         // Procesar aprobación masiva
-        $resultado = $this->supplyModel->processBulkAuthorization(
+        $resultado = $paymentModel->processBulkAuthorization(
             $paymentIds,
-            $nivelAutorizacion,
+            $permissionNumber,
             $userId,
             $userName,
             $comentario
@@ -5391,7 +5404,7 @@ public function processBulkAuthorization() {
         
         if ($resultado['success']) {
             // Enviar notificaciones si es necesario
-            $this->enviarNotificacionesAprobacionMasiva($resultado['bulk_id'], $paymentIds, $nivelAutorizacion);
+            $this->enviarNotificacionesAprobacionMasiva($resultado['bulk_id'], $paymentIds, $permissionNumber);
             
             echo json_encode([
                 'success' => true,
@@ -5428,9 +5441,9 @@ public function getPendingCounts() {
     
     try {
         $userPermissions = $_SESSION['permissions'] ?? [];
-        $nivelAutorizacion = $this->determinarNivelAutorizacion($userPermissions);
+        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
         
-        if (!$nivelAutorizacion) {
+        if (!$permissionNumber) {
             echo json_encode([
                 'success' => true,
                 'total' => 0
@@ -5438,12 +5451,13 @@ public function getPendingCounts() {
             return;
         }
         
-        $count = $this->supplyModel->getPendingAuthorizationCount($nivelAutorizacion);
+        $paymentModel = new PaymentRequestsModel();
+        $count = $paymentModel->getPendingAuthorizationCount($permissionNumber);
         
         echo json_encode([
             'success' => true,
             'total' => $count,
-            'nivel' => $nivelAutorizacion
+            'permission' => $permissionNumber
         ]);
         
     } catch (Exception $e) {
@@ -5473,7 +5487,8 @@ public function undoBulkAuthorization() {
             return;
         }
         
-        $resultado = $this->supplyModel->undoBulkAuthorization($bulkId, $userId);
+        $paymentModel = new PaymentRequestsModel();
+        $resultado = $paymentModel->undoBulkAuthorization($bulkId, $userId);
         
         echo json_encode($resultado);
         
@@ -5487,47 +5502,105 @@ public function undoBulkAuthorization() {
 }
 
 /**
- * Determinar el nivel de autorización del usuario según sus permisos
+ * Determinar el permiso de autorización del usuario según sus permisos
  */
-private function determinarNivelAutorizacion($permissions) {
+private function determinarPermisoAutorizacion($permissions) {
     if (in_array(66, $permissions)) { // Abastos
-        return 1;
+        return 66;
     } elseif (in_array(67, $permissions)) { // Administración y Finanzas
-        return 2;
+        return 67;
     } elseif (in_array(68, $permissions)) { // Tesorería
-        return 3;
+        return 68;
     }
     return null;
 }
 
 /**
- * Obtener nombre legible del nivel
+ * Obtener nombre legible del permiso
  */
-private function getNombreNivel($nivel) {
-    $niveles = [
-        1 => 'Abastos',
-        2 => 'Administración y Finanzas',
-        3 => 'Tesorería'
+private function getNombrePermiso($permissionNumber) {
+    $permisos = [
+        66 => 'Abastos',
+        67 => 'Administración y Finanzas',
+        68 => 'Tesorería'
     ];
-    return $niveles[$nivel] ?? 'Desconocido';
+    return $permisos[$permissionNumber] ?? 'Desconocido';
 }
 
 /**
  * Enviar notificaciones de aprobación masiva
  */
-private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $nivel) {
+private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber) {
     // Implementar según tu sistema de notificaciones existente
-    // Puede enviar emails a los siguientes niveles o supervisores
     try {
-        // Ejemplo básico de notificación
-        $detalles = $this->supplyModel->getBulkAuthorizationDetails($bulkId);
+        $paymentModel = new PaymentRequestsModel();
+        $detalles = $paymentModel->getBulkAuthorizationDetails($bulkId);
+        
+        if (!$detalles) {
+            return;
+        }
         
         // Aquí puedes usar tu sistema PHPMailer existente
-        // $this->enviarEmailNotificacion($detalles);
+        // Ejemplo:
+        /*
+        $to = 'supervisor@totalgas.com';
+        $subject = 'Aprobación Masiva de Pagos - ' . $detalles['nivel_nombre'];
+        $message = "Se ha realizado una aprobación masiva:\n\n";
+        $message .= "Usuario: " . $detalles['user_name'] . "\n";
+        $message .= "Nivel: " . $detalles['nivel_nombre'] . "\n";
+        $message .= "Pagos aprobados: " . $detalles['approved_count'] . "\n";
+        $message .= "Monto total: $" . number_format($detalles['total_amount'], 2) . "\n";
+        
+        // Enviar email
+        $this->sendEmail($to, $subject, $message);
+        */
         
     } catch (Exception $e) {
         error_log("Error al enviar notificaciones: " . $e->getMessage());
         // No detener el flujo si falla la notificación
+    }
+}
+
+/**
+ * Obtener historial de aprobaciones masivas
+ */
+public function getBulkAuthorizationHistory() {
+    header('Content-Type: application/json');
+    
+    try {
+        $userId = $_SESSION['user_id'] ?? 0;
+        
+        $query = "
+            SELECT 
+                ba.*,
+                u.Nombre as user_name,
+                CASE 
+                    WHEN ba.authorization_level = 66 THEN 'Abastos'
+                    WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
+                    WHEN ba.authorization_level = 68 THEN 'Tesorería'
+                    ELSE 'Desconocido'
+                END as nivel_nombre,
+                DATEDIFF(minute, ba.created_at, GETDATE()) as minutos_desde_creacion
+            FROM [TG].[dbo].[payment_request_bulk_authorizations] ba
+            LEFT JOIN [TG].[dbo].[Usuario] u ON ba.user_id = u.Id
+            WHERE ba.user_id = ?
+            ORDER BY ba.created_at DESC
+        ";
+        
+        $paymentModel = new PaymentRequestsModel();
+        $historial = $paymentModel->sql->select($query, [$userId]);
+        
+        echo json_encode([
+            'success' => true,
+            'data' => $historial ?: []
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("Error en getBulkAuthorizationHistory: " . $e->getMessage());
+        echo json_encode([
+            'success' => false,
+            'message' => 'Error al obtener historial'
+        ]);
     }
 }
 
