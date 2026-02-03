@@ -176,6 +176,50 @@
         display: none !important;
     }
 
+    /* ESTILOS AGRUPACIÓN TRANSACCIONES */
+    .tx-group-header {
+        background-color: #e9ecef;
+        padding: 8px 15px;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--primary-color);
+    }
+    .tx-group-header.active {
+        background-color: var(--selected-bg) !important;
+        border-left: 5px solid var(--selected-border);
+        color: #0f5132;
+    }
+    .tx-group-header:hover { background-color: #dde2e6; }
+    .tx-group-body { display: none; border-bottom: 2px solid #dee2e6; }
+    .tx-group-body.open { display: block; }
+    .tx-group-toggle-btn {
+        background: none; border: none; color: var(--accent-color);
+        font-size: 1.1rem; margin-right: 10px; width: 20px; text-align: center;
+    }
+
+    /* GHOST PANEL (TESORERIA) */
+    .ghost-panel {
+        opacity: 0.75;
+        background-color: #f8f9fa;
+    }
+    .ghost-panel .panel-header {
+        background-color: #6c757d !important; /* Force gray */
+        color: #e9ecef;
+    }
+    .ghost-panel .panel-content {
+        pointer-events: auto; /* Permitir interacción con el scrollbar */
+        overflow-y: auto !important;   /* Asegurar que el scroll esté habilitado */
+    }
+    /* Bloquear interacción solo con las filas */
+    .ghost-panel .row-item {
+        cursor: default;
+        pointer-events: none; 
+    }
+
 </style>
 
 <div class="container-fluid pt-3">
@@ -286,9 +330,9 @@
             </div>
         </div>
 
-        <div class="panel-split">
+        <div class="panel-split ghost-panel">
             <div class="panel-header" id="header-tesoreria">
-                <span><i class="fas fa-university mr-2"></i> Tesorería</span>
+                <span><i class="fas fa-university mr-2"></i> Tesorería <small class="text-white-50 ml-1">(Informativo)</small></span>
                 <span class="badge badge-light text-dark" id="bk-total">$0.00</span>
             </div>
             <div class="bg-warning text-dark p-2 small text-center font-weight-bold" id="bk-info-bar" style="display:none;"></div>
@@ -361,6 +405,154 @@
     </div>
 </div>
 
+<!-- Modal Detalle ControlGas -->
+<div class="modal fade" id="modalDetalleControlGas" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 15px; overflow: hidden;">
+            <div class="modal-header bg-dark text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold text-light">
+                    <i class="fas fa-gas-pump mr-2"></i> Detalle ControlGas
+                </h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDetalleControlGas').modal('hide')" style="font-size: 1.5rem; opacity: 0.8; text-decoration: none;">
+                    &times;
+                </button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <div class="row mb-4 border-bottom pb-3">
+                    <div class="col-12 text-center">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Total</label>
+                        <div class="h3 font-numeric val-total text-dark mb-0"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-3 bg-white p-2 rounded border mx-1 shadow-sm">
+                    <div class="col-12 d-flex justify-content-between align-items-center">
+                        <div>
+                            <label class="small text-muted font-weight-bold text-uppercase mb-0 d-block text-left">ID Único</label>
+                            <div class="val-id-unico font-numeric text-primary" style="font-size: 0.95rem; font-weight: 700;"></div>
+                        </div>
+                        <button class="btn btn-sm btn-light border" onclick="copyToClipboard($('.val-id-unico').text())" title="Copiar ID">
+                            <i class="far fa-copy text-secondary"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Estación</label>
+                        <div class="val-estacion" style="font-weight: 600;"></div>
+                    </div>
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Código</label>
+                        <div class="val-cod-estacion font-numeric" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Fecha</label>
+                        <div class="val-fecha font-numeric" style="font-weight: 600;"></div>
+                    </div>
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Turno</label>
+                        <div class="val-turno font-numeric" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-2">
+                    <div class="col-12">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Tipo</label>
+                        <div class="val-tipo" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+                
+                <div class="row mb-2">
+                    <div class="col-12">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Concepto</label>
+                        <div class="val-concepto" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-white border-0">
+                <button type="button" class="btn btn-secondary rounded-pill px-4" onclick="$('#modalDetalleControlGas').modal('hide')">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Detalle Transacción -->
+<div class="modal fade" id="modalDetalleTransaccion" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 15px; overflow: hidden;">
+            <div class="modal-header bg-info text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold text-light">
+                    <i class="fas fa-info-circle mr-2"></i> Detalle de Transacción
+                </h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDetalleTransaccion').modal('hide')" style="font-size: 1.5rem; opacity: 0.8; text-decoration: none;">
+                    &times;
+                </button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <div class="row mb-4 border-bottom pb-3">
+                    <div class="col-12 mb-3">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-1 d-block">ID / Control</label>
+                        <div class="d-flex align-items-center justify-content-between bg-white p-2 rounded border">
+                            <div class="font-numeric val-id text-truncate mr-2" style="font-size: 1rem; color: var(--primary-color);"></div>
+                            <button class="btn btn-sm btn-outline-secondary border-0" onclick="copyToClipboard($('.val-id').text())" title="Copiar ID">
+                                <i class="far fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 text-center">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Monto</label>
+                        <div class="h3 font-numeric val-monto text-primary mb-0"></div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Afiliación</label>
+                        <div class="val-afil" style="font-weight: 600; font-size: 0.95rem;"></div>
+                    </div>
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Terminal ID</label>
+                        <div class="val-terminal" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Hora</label>
+                        <div class="val-hora" style="font-weight: 600;"></div>
+                    </div>
+                    <div class="col-6">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Autorización</label>
+                        <div class="val-auth" style="font-weight: 600;"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-2 border-top pt-3">
+                    <div class="col-4 text-center">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-1">Transacción</label>
+                        <div class="val-fecha-trans font-numeric" style="font-size: 0.85rem;"></div>
+                    </div>
+                    <div class="col-4 text-center border-left border-right">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-1">Aplicación</label>
+                        <div class="val-fecha-apl font-numeric" style="font-size: 0.85rem;"></div>
+                    </div>
+                    <div class="col-4 text-center">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-1">Conciliación</label>
+                        <div class="val-fecha-conc font-numeric text-primary" style="font-weight: 700; font-size: 0.85rem;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer bg-white border-0">
+                <button type="button" class="btn btn-secondary rounded-pill px-4" onclick="$('#modalDetalleTransaccion').modal('hide')">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block myjs %}
@@ -370,7 +562,8 @@
     const URLS = {
         config: '/income/get_conciliacion_config',
         estaciones: '/income/get_estaciones_catalogo',
-        ventas: 'http://201.174.170.236:99/api/Ventas/GetConceptosValores',
+        //ventas: 'http://201.174.170.236:99/api/Ventas/GetConceptosValores',
+        ventas: '/income/get_ventas_local', // <-- NUEVA RUTA LOCAL
         transacciones: '/income/get_transacciones_banco',
         guardar: '/income/guardar_conciliacion',
         historial: '/income/get_conciliaciones_hechas',
@@ -379,7 +572,8 @@
         resumen_transito: '/income/get_resumen_transito',
         actualizar_detalle: '/income/actualizar_monto_detalle',
         desligar_detalle: '/income/desligar_movimiento',
-        borrar_transito: '/income/borrar_transito'
+        borrar_transito: '/income/borrar_transito',
+        update_date: '/income/update_transaction_date'
     };
 
     const ENTITY_CONFIG = {
@@ -395,7 +589,7 @@
     let todasLasEstaciones = [];
     const RS_MAPPING = { 'DGA930823KD3': 'DIAZ GAS', 'DGM880621FU5': 'GASOMEX', 'FORANEAS': 'FORANEAS' };
     
-    let selection = { left: [], center: [], right: [] }; 
+    let selection = { left: [], center: [] }; 
     let stationConfig = []; 
     let currentActiveRule = null;
     let historialConciliacion = []; 
@@ -407,6 +601,8 @@
         transito_pasado_count: 0
     };
     let transitoPasadoMap = {}; 
+    let currentTxData = []; 
+    let openGroups = new Set(); // SEGUIMIENTO DE GRUPOS ABIERTOS
 
     $(document).ready(function() {
         initWidget();
@@ -427,6 +623,15 @@
         return s.substring(0, 10); 
     }
 
+    function formatFechaVisual(iso) {
+        if(!iso) return "";
+        let s = String(iso).trim();
+        if(s.includes('/')) return s; 
+        const p = s.split('-');
+        if(p.length !== 3) return s;
+        return `${p[2]}/${p[1]}/${p[0]}`;
+    }
+
     function getColorForGroup(id) {
         if(!id) return '#95a5a6';
         const num = parseInt(String(id).replace(/\D/g, '')) || 0;
@@ -437,43 +642,27 @@
     function recalcTotals() {
         const sumL = selection.left.reduce((a,b) => a + b.monto, 0);
         const sumC = selection.center.reduce((a,b) => a + b.monto, 0);
-        const sumR = selection.right.reduce((a,b) => a + b.monto, 0);
+        // El lado derecho (Tesoreria) ya no suma para la conciliación
+        // const sumR = selection.right.reduce((a,b) => a + b.monto, 0);
 
         $('#count-cg').text(selection.left.length);
         $('#sum-cg').text(formatter.format(sumL));
-        $('#count-bk').text(selection.right.length);
-        $('#sum-bk').text(formatter.format(sumR));
+        // $('#count-bk').text(selection.right.length);
+        // $('#sum-bk').text(formatter.format(sumR));
 
-        // Calcular Diferencia Simple (Prioridad: Tesorería - ControlGas)
-        // Lógica visual: Si hay selección en derecha e izquierda, Right - Left
-        // Si hay centro y derecha, Right - Center
+        // Calcular Diferencia Simple (Prioridad: Transacciones - ControlGas)
         let diff = 0;
         let breakdownText = "";
 
         const hasL = selection.left.length > 0;
         const hasC = selection.center.length > 0;
-        const hasR = selection.right.length > 0;
 
-        if (hasL && hasR && !hasC) {
-            diff = sumR - sumL;
-            breakdownText = `CG: ${formatter.format(sumL)} vs BK: ${formatter.format(sumR)} = ${formatter.format(diff)}`;
-        } else if (hasC && hasR && !hasL) {
-            diff = sumR - sumC;
-            breakdownText = `TX: ${formatter.format(sumC)} vs BK: ${formatter.format(sumR)} = ${formatter.format(diff)}`;
-        } else if (hasL && hasC && !hasR) {
+        if (hasL && hasC) {
             diff = sumC - sumL;
             breakdownText = `CG: ${formatter.format(sumL)} vs TX: ${formatter.format(sumC)} = ${formatter.format(diff)}`;
-        } else if (hasL && hasC && hasR) {
-            // Caso 3 vías: Mostrar todo
-            // Asumimos diff principal BK - CG para el color
-            diff = sumR - sumL; 
-            breakdownText = `CG: ${formatter.format(sumL)} | TX: ${formatter.format(sumC)} | BK: ${formatter.format(sumR)}`;
         } else if (hasL) {
-            diff = sumL;
+            diff = -sumL; // Si solo selecciono CG, la diferencia es negativa respecto a 0 (o lo que falta)
             breakdownText = `CG: ${formatter.format(sumL)}`;
-        } else if (hasR) {
-            diff = sumR;
-            breakdownText = `BK: ${formatter.format(sumR)}`;
         } else if (hasC) {
             diff = sumC;
             breakdownText = `TX: ${formatter.format(sumC)}`;
@@ -500,31 +689,53 @@
             $('#diffValue, #diff-total-top').css('color', '#e74c3c'); // Rojo
         }
 
-        if(hasL || hasC || hasR) $('#conciliacionBar').addClass('visible');
+        if(hasL || hasC) $('#conciliacionBar').addClass('visible');
         else $('#conciliacionBar').removeClass('visible');
     }
 
     function limpiarSeleccion() {
         $('.row-item.active').removeClass('active');
-        selection = { left: [], center: [], right: [] };
+        selection = { left: [], center: [] };
         recalcTotals();
     }
 
-    function toggleItem(side, fecha, monto, concepto, el, transitIdsStr) {
+    function toggleItem(side, fecha, monto, concepto, el, transitIdsStr, txId) {
+        // --- CAMBIO: Lado Derecho es Informativo (No seleccionable) ---
+        if (side === 'right') return;
+
         if($(el).hasClass('conciliated') || $(el).hasClass('transit-locked') || $(el).hasClass('transit-completed')) return;
         const list = selection[side];
         if(!list) return;
 
-        const idx = list.findIndex(i => i.fecha === fecha && i.monto === monto);
+        // Use the element's ID (ui_id) as the unique identifier for selection
+        // Fallback to txId for center items if el.id isn't sufficient (though rowId should be unique)
+        // rowId structure: `item-${side}-${ui_id}`. We can extract ui_id or just store the rowId.
+        // Let's store the rowId to be safe and precise.
+        const uniqueId = el.id;
+
+        const idx = list.findIndex(i => i.elId === uniqueId);
+        
         if(idx >= 0) {
             list.splice(idx, 1);
             $(el).removeClass('active');
         } else {
             const tIds = transitIdsStr ? String(transitIdsStr).split(',') : [];
-            list.push({ fecha: fecha, monto: monto, concepto: concepto, elId: el.id, transitIds: tIds });
+            list.push({ 
+                fecha: fecha, 
+                monto: monto, 
+                concepto: concepto, 
+                elId: uniqueId, // Store unique DOM ID
+                transitIds: tIds 
+            });
             $(el).addClass('active');
         }
         recalcTotals();
+
+        // Actualizar estado visual del grupo (Header) si corresponde
+        if (side === 'left' || side === 'center') {
+            const groupId = $(el).closest('.tx-group-body').attr('id');
+            if (groupId) updateGroupHeaderState(groupId);
+        }
     }
 
     // ==========================================
@@ -616,6 +827,13 @@
     }
 
     async function actualizarTodo() {
+        // 1. Guardar posiciones de scroll actuales
+        const scrollPositions = {
+            cg: $('#cg-content').scrollTop(),
+            tx: $('#tx-content').scrollTop(),
+            bk: $('#bk-content').scrollTop()
+        };
+
         limpiarSeleccion(); 
         const ruleIdx = $('#afiliacionSelect').val();
         const eid = $('#bancoSelect').val();
@@ -630,69 +848,37 @@
         await cargarHistorial(); 
         await cargarResumenTransito(sid, currentActiveRule);
         
-                // Cargar tránsitos y separarlos
+        // Cargar tránsitos y separarlos
+        let transitosLeft = [];
+        let transitosCenter = [];
         
-                let transitosLeft = [];
-        
-                let transitosCenter = [];
-        
-                try {
-        
-                    // Normalizamos la afiliación actual para comparación
-        
-                    const currentAfil = String(currentActiveRule.afiliacion).trim().toUpperCase();
-        
-                    
-        
-                    const resTransitos = await $.get(URLS.get_transitos, { estacion_id: sid, afiliacion: currentAfil });
-        
-                    
-        
-                                if(resTransitos && resTransitos.status === 'success' && resTransitos.data) {
-        
-                    
-        
-                                    // Filtrado estricto pero flexible por afiliación
-        
-                    
-        
-                                    const transitosFiltrados = resTransitos.data.filter(t => {
-        
-                    
-        
-                                        const tAfil = String(t.afiliacion_asociada || '').trim().toUpperCase();
-        
-                    
-        
-                                        // Verifica bidireccionalmente para manejar "Principal (123)" vs "123"
-        
-                    
-        
-                                        return tAfil.includes(currentAfil) || (currentAfil.length > 3 && currentAfil.includes(tAfil));
-        
-                    
-        
-                                    });
-        
-                    
-        
-                    
-        
-                    
-        
-                                    // Separa por origen
-        
-                        transitosLeft = transitosFiltrados.filter(t => t.origen !== 'CENTER'); // LEFT o NULL
-        
-                        transitosCenter = transitosFiltrados.filter(t => t.origen === 'CENTER');
-        
-                    }
-        
-                } catch(e) { console.error("Error cargando tránsitos", e); }
+        try {
+            const currentAfil = String(currentActiveRule.afiliacion).trim().toUpperCase();
+            const resTransitos = await $.get(URLS.get_transitos, { estacion_id: sid, afiliacion: currentAfil });
+            
+            if(resTransitos && resTransitos.status === 'success' && resTransitos.data) {
+                const transitosFiltrados = resTransitos.data.filter(t => {
+                    const tAfil = String(t.afiliacion_asociada || '').trim().toUpperCase();
+                    return tAfil.includes(currentAfil) || (currentAfil.length > 3 && currentAfil.includes(tAfil));
+                });
+                transitosLeft = transitosFiltrados.filter(t => t.origen !== 'CENTER');
+                transitosCenter = transitosFiltrados.filter(t => t.origen === 'CENTER');
+            }
+        } catch(e) { console.error("Error cargando tránsitos", e); }
 
-        cargarControlGas(sid, currentActiveRule, transitosLeft);
-        cargarTransaccionesBanco(eid, currentActiveRule, transitosCenter);
-        cargarTesoreria(eid, currentActiveRule);
+        // 2. Ejecutar cargas en paralelo y esperar a que terminen
+        await Promise.all([
+            cargarControlGas(sid, currentActiveRule, transitosLeft),
+            cargarTransaccionesBanco(eid, currentActiveRule, transitosCenter),
+            cargarTesoreria(eid, currentActiveRule)
+        ]);
+
+        // 3. Restaurar posiciones de scroll (con un ligero delay para asegurar renderizado)
+        setTimeout(() => {
+            $('#cg-content').scrollTop(scrollPositions.cg);
+            $('#tx-content').scrollTop(scrollPositions.tx);
+            $('#bk-content').scrollTop(scrollPositions.bk);
+        }, 50);
     }
 
     async function cargarResumenTransito(sid, rule) {
@@ -711,8 +897,16 @@
 
     async function cargarHistorial() {
         const p = getPeriod();
+        const sid = $('#estacionSelect').val();
+        const afil = currentActiveRule ? currentActiveRule.afiliacion : '';
+        
         try {
-            const params = { fecha_inicio: p.fi, fecha_fin: p.ff };
+            const params = { 
+                fecha_inicio: p.fi, 
+                fecha_fin: p.ff,
+                estacion_id: sid,
+                afiliacion: afil
+            };
             const res = await $.get(URLS.historial, params);
             if(res && res.data) {
                 const uniqueSet = new Set();
@@ -734,74 +928,99 @@
         mapaDiferencias = {};
         resumenGlobal.historico_visible_diff = 0;
         resumenGlobal.historico_visible_count = 0;
-        const p = getPeriod(); 
-        const fechaLimiteMes = p.ff.substring(0, 4) + '-' + p.ff.substring(4, 6) + '-' + p.ff.substring(6, 8);
+        
         let tempGroups = {};
 
         historialConciliacion.forEach(row => {
             const gid = row.grupo_id;
             if (!tempGroups[gid]) {
-                tempGroups[gid] = { left: 0, right: 0, afil: row.afiliacion, maxRightDate: '', db_diff: parseFloat(row.diferencia) || 0 }; 
-            }
-            let val = parseFloat(row.monto);
-            if (row.lado === 'left') tempGroups[gid].left += val;
-            else if (row.lado === 'right') {
-                tempGroups[gid].right += val;
-                if (row.fecha > tempGroups[gid].maxRightDate) tempGroups[gid].maxRightDate = row.fecha;
+                tempGroups[gid] = { 
+                    db_diff: parseFloat(row.diferencia) || 0
+                }; 
             }
         });
 
         Object.keys(tempGroups).forEach(gid => {
             const g = tempGroups[gid];
-            if (currentActiveRule) {
-                const rowAfil = String(g.afil || '').trim().toUpperCase();
-                const filterAfil = String(currentActiveRule.afiliacion || '').trim().toUpperCase();
-                if (rowAfil !== filterAfil) return; 
-            }
-            mapaDiferencias[gid] = { real_diff: g.db_diff, left_visible: g.left, right_visible: g.right };
-            if (g.maxRightDate > fechaLimiteMes) return; 
-            let currentTotal = Math.round(resumenGlobal.historico_visible_diff * 100);
-            let addVal = Math.round(g.db_diff * 100);
-            resumenGlobal.historico_visible_diff = (currentTotal + addVal) / 100;
+            mapaDiferencias[gid] = { real_diff: g.db_diff };
             
-            // CORRECCIÓN: Solo contar si existe una diferencia real (ignorar ceros)
+            // Sumar al total del mes
+            resumenGlobal.historico_visible_diff += g.db_diff;
             if (Math.abs(g.db_diff) > 0.009) {
                 resumenGlobal.historico_visible_count++;
             }
         });
+        
         renderDiferenciasPanel();
     }
 
-    async function cargarControlGas(sid, rule, transitosLeft) {
+   async function cargarControlGas(sid, rule, transitosLeft) {
         const p = getPeriod();
         $('#cg-content').html('<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>');
+        
         try {
+            // Llamada al backend (ahora usa tu función PHP local)
             const resVentas = await fetch(URLS.ventas, {
                 method:'POST', headers:{'Content-Type':'application/json'},
                 body:JSON.stringify({Datos:{FechaInicial:p.fi, FechaFinal:p.ff, Gasolinera:parseInt(sid)}})
             }).then(r => r.json());
 
             const rawVentas = resVentas.respuesta || [];
+            
+            // Preparar keywords para filtrado
             const keywords = (rule.conceptos_cg || '').split(',').map(k => k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' '));
             
-            // 1. Convertir API a formato estándar
+            // 1. Filtrado y Mapeo (AQUÍ ESTÁ LA MAGIA DEL ID)
             let listaFinal = rawVentas.filter(i => {
                 let c = (i.Concepto || i.concepto || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim();
                 c = c.replace(/SMART\s*BT/g, 'SMARTBT'); 
-                return keywords.some(k => c.includes(k));
-            }).map(v => ({
-                Fecha: normalizarFecha(v.Fecha),
-                Total: parseFloat((v.Total || 0).toString().replace(/[^0-9.-]+/g,"")),
-                Concepto: v.Concepto,
-                _status: 'normal',
-                _transitId: null,
-                hidden: false
-            }));
+                
+                // Validación de concepto
+                const matchesKeyword = keywords.some(k => c.includes(k));
+                if (!matchesKeyword) return false;
 
-            // 2. Separar Tránsitos en Incoming (Pasado) y Outgoing (Mes Actual/Futuro)
-            // Usamos un MAPA para los Outgoing para manejar duplicados (mismo monto/fecha)
+                // Validación de monto
+                let valRaw = (i.Total || i.total || 0).toString().replace(/[^0-9.-]+/g,"");
+                let val = parseFloat(valRaw);
+                return !isNaN(val) && val > 0; 
+
+            }).map((v, index) => {
+                
+                // === CAMBIO 1: GENERACIÓN DE ID DETERMINISTA ===
+                // Usamos el ID_Unico que viene del PHP (Llave compuesta).
+                // Si por alguna razón falla, usamos el random como fallback.
+                let dbId = v.ID_Unico ? v.ID_Unico : `gen_${index}_${Math.random().toString(36).substr(2, 5)}`;
+                let finalUiId = `cg_${dbId}`;
+
+                // === CAMBIO 2: NORMALIZACIÓN DE FECHA ===
+                // El PHP nuevo devuelve 'FechaVisual' (28/01/2026). Lo pasamos a YYYY-MM-DD.
+                let fechaIso = "";
+                if(v.FechaVisual) {
+                    let partes = v.FechaVisual.split('/'); // [28, 01, 2026]
+                    if(partes.length === 3) fechaIso = `${partes[2]}-${partes[1]}-${partes[0]}`;
+                } else {
+                    // Fallback para API vieja o si falla el formato
+                    fechaIso = normalizarFecha(v.Fecha); 
+                }
+
+                let valRaw = (v.Total || v.total || 0).toString().replace(/[^0-9.-]+/g,"");
+                let turnoStr = v.Turno ? ` (T${v.Turno})` : '';
+
+                return {
+                    ui_id: finalUiId,      // ID Único y Persistente
+                    Fecha: fechaIso,       // Fecha estandarizada YYYY-MM-DD
+                    Total: parseFloat(valRaw),
+                    Concepto: v.Concepto + turnoStr,
+                    _status: 'normal',
+                    _transitId: null,
+                    hidden: false,
+                    originalData: v
+                };
+            });
+
+            // 2. Lógica de Tránsitos (Incoming / Outgoing)
             const inicioMesVista = `${widgetState.year}-${widgetState.month}-01`;
-            const outgoingMap = {}; // Key: "YYYY-MM-DD_Monto" -> Array of Objects
+            const outgoingMap = {}; // Mapa para ocultar duplicados que se fueron a tránsito
 
             if(transitosLeft && transitosLeft.length > 0) {
                 transitosLeft.forEach(t => {
@@ -810,53 +1029,59 @@
                     const tEstado = (t.estado || '').trim().toUpperCase();
 
                     if (tFecha < inicioMesVista) {
-                        // INCOMING: Viene del pasado, se agrega VISIBLE (Amarillo)
+                        // INCOMING (Pasado -> Presente): Se agregan a la lista
                         if(tEstado === 'PENDIENTE') {
                             listaFinal.push({ 
+                                ui_id: `transit_inc_${t.id}`, 
                                 Fecha: tFecha, 
                                 Total: tMonto, 
-                                Concepto: (t.concepto || 'Tránsito') + ' (Pendiente)', 
+                                Concepto: (t.concepto || 'Tránsito') + ' (Pte)', 
                                 _status: 'incoming', 
-                                _transitId: t.id 
+                                _transitId: t.id,
+                                dias_antiguedad: t.dias_antiguedad // Pasar antigüedad
                             });
                         }
                     } else {
-                        // OUTGOING: Pertenece a este mes (o futuro).
-                        // Lo guardamos en el mapa para buscarlo y ocultarlo/marcarlo en la lista original.
-                        const key = `${tFecha}_${Math.round(tMonto * 100)}`; // Key precisa con centavos
-                        if (!outgoingMap[key]) outgoingMap[key] = [];
-                        outgoingMap[key].push({ estado: tEstado, id: t.id });
+                        // OUTGOING (Presente -> Futuro): Se guardan en mapa para ocultar el original
+                        // USAMOS LA REFERENCIA EXTERNA (ID ÚNICO) PARA EL MATCH PERFECTO
+                        const key = t.referencia_externa;
+                        if (key) {
+                            if (!outgoingMap[key]) outgoingMap[key] = [];
+                            outgoingMap[key].push({ estado: tEstado, id: t.id });
+                        }
                     }
                 });
             }
 
-            // 3. Procesar Outgoing: Recorrer lista original y "consumir" los tránsitos del mapa
+            // 3. Procesar Outgoing (Ocultar o Marcar como Completado)
             listaFinal.forEach(item => {
-                if (item._status !== 'normal') return; // Solo procesar items originales del API
+                if (item._status !== 'normal') return; 
 
-                const key = `${item.Fecha}_${Math.round(item.Total * 100)}`;
+                const key = item.ui_id.replace('cg_', '');
                 
                 if (outgoingMap[key] && outgoingMap[key].length > 0) {
-                    // Tomamos uno de los tránsitos disponibles para esta fecha/monto
                     const match = outgoingMap[key].shift(); 
 
                     if (match.estado === 'PENDIENTE') {
-                        // REGLA: Si está PENDIENTE en el mes de origen, SE OCULTA.
-                        item.hidden = true;
+                        item.hidden = true; // Ocultar porque se movió al futuro
                         item._transitId = match.id;
                     } else if (match.estado === 'CONCILIADO') {
-                        // Si está CONCILIADO, se muestra verde
-                        item._status = 'transit_completed';
+                        item._status = 'transit_completed'; // Mostrar verde
                         item.Concepto += ' (Cobrado)';
                         item._transitId = match.id;
                     }
                 }
             });
 
+            // Ordenar y Renderizar
             listaFinal.sort((a,b) => new Date(a.Fecha) - new Date(b.Fecha));
             renderList('left', listaFinal, rule.descripcion || 'Venta');
             renderDiferenciasPanel();
-        } catch(e) { console.error(e); $('#cg-content').html('<div class="text-danger p-3">Error cargando datos</div>'); }
+
+        } catch(e) { 
+            console.error("Error en cargarControlGas:", e); 
+            $('#cg-content').html('<div class="text-danger p-3">Error cargando datos: ' + e.message + '</div>'); 
+        }
     }
 
     async function cargarTransaccionesBanco(eid, rule, transitosCenter) {
@@ -866,18 +1091,34 @@
             const params = { entidad_id: eid, afiliacion: rule.afiliacion, year: widgetState.year, month: widgetState.month };
             const res = await $.get(URLS.transacciones, params);
             
-            let listaFinal = [];
             if(res.status === 'success') {
-                listaFinal = res.data.map(i => ({
-                    Fecha: normalizarFecha(i.Fecha),
-                    Total: parseFloat((i.Total || 0).toString().replace(/[^0-9.-]+/g,"")),
-                    Concepto: i.Concepto || 'Transacción',
-                    _status: 'normal',
-                    _transitId: null,
-                    hidden: false
-                }));
-            }
+                currentTxData = res.data.map(i => {
+                    return {
+                        IdTransaccion: i.IdTransaccion,
+                        FechaTransaccion: normalizarFecha(i.FechaTransaccion),
+                        FechaAplicacion: normalizarFecha(i.FechaAplicacion),
+                        
+                        /* --- MODO DE PRUEBA: SWITCHEAR AQUÍ --- */
+                        FechaConciliacion: normalizarFecha(i.FechaConciliacion), // <-- MODO NORMAL
+                        //FechaConciliacion: normalizarFecha(i.FechaAplicacion),    // <-- MODO PRUEBA (APLICACIÓN)
+                        /* -------------------------------------- */
 
+                        Total: parseFloat(i.Total),
+                        Concepto: i.Concepto || 'Transacción',
+                        Hora: i.Hora || '',
+                        Afiliacion: i.Afiliacion || '',
+                        Terminal_ID: i.Terminal_ID || '',
+                        Codigo_Autorizacion: i.Codigo_Autorizacion || '',
+                        Tarjeta: i.Tarjeta || '',
+                        _status: 'normal',
+                        _transitId: null,
+                        hidden: false
+                    };
+                });
+            } else {
+                currentTxData = [];
+            }
+            
             // Lógica Idéntica a ControlGas para Tránsitos (Center)
             const inicioMesVista = `${widgetState.year}-${widgetState.month}-01`;
             const outgoingMap = {};
@@ -891,28 +1132,36 @@
                     if (tFecha < inicioMesVista) {
                         // INCOMING
                         if(tEstado === 'PENDIENTE') {
-                            listaFinal.push({ 
-                                Fecha: tFecha, 
+                            const transitIdForTx = t.id || `transit_tx_${tFecha}_${tMonto}`;
+                            currentTxData.push({ 
+                                IdTransaccion: transitIdForTx,
+                                FechaTransaccion: tFecha, 
+                                FechaAplicacion: tFecha, 
+                                FechaConciliacion: tFecha,
                                 Total: tMonto, 
-                                Concepto: (t.concepto || 'Transacción') + ' (Pendiente)', 
+                                Concepto: (t.concepto || 'Transacción') + ' (Pte)', 
                                 _status: 'incoming', 
-                                _transitId: t.id 
+                                _transitId: t.id,
+                                dias_antiguedad: t.dias_antiguedad, // Pasar antigüedad
+                                hidden: false
                             });
                         }
                     } else {
                         // OUTGOING
-                        const key = `${tFecha}_${Math.round(tMonto * 100)}`;
-                        if (!outgoingMap[key]) outgoingMap[key] = [];
-                        outgoingMap[key].push({ estado: tEstado, id: t.id });
+                        const key = t.referencia_externa;
+                        if (key) {
+                            if (!outgoingMap[key]) outgoingMap[key] = [];
+                            outgoingMap[key].push({ estado: tEstado, id: t.id });
+                        }
                     }
                 });
             }
 
             // Match y Ocultar/Marcar
-            listaFinal.forEach(item => {
-                if (item._status !== 'normal') return;
+            currentTxData.forEach(item => {
+                if (item._status !== 'normal') return; // Only process original API items
 
-                const key = `${item.Fecha}_${Math.round(item.Total * 100)}`;
+                const key = String(item.IdTransaccion);
                 
                 if (outgoingMap[key] && outgoingMap[key].length > 0) {
                     const match = outgoingMap[key].shift();
@@ -928,8 +1177,8 @@
                 }
             });
 
-            listaFinal.sort((a,b) => new Date(a.Fecha) - new Date(b.Fecha));
-            renderList('center', listaFinal, 'Transacción');
+            currentTxData.sort((a,b) => new Date(a.FechaConciliacion) - new Date(b.FechaConciliacion));
+            renderList('center', currentTxData, 'Transacción');
         } catch(e) { console.error(e); container.html('<div class="text-danger p-3">Error</div>'); }
     }
 
@@ -994,6 +1243,7 @@
             'center': { cont: '#tx-content', count: '#tx-counter', res: '#tx-resumen-total' },
             'right': { cont: '#bk-content', count: '#bk-total', res: '#bk-resumen-total' }
         };
+
         const config = mapping[side];
         const container = $(config.cont);
         const counter = $(config.count);
@@ -1008,180 +1258,469 @@
             return;
         }
 
-        const gruposLocales = {};
-        let grandTotal = 0;
-
-        rawData.forEach(item => {
-            if(!item.Fecha || item.hidden) return;
-            const fIso = normalizarFecha(item.Fecha);
-            let val = item.Total || item.Depositos || item.Importe || 0;
-            if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
-            if(isNaN(val)) val = 0;
-            const statusKey = item._status || 'normal';
-            const uniqueKey = `${fIso}_${statusKey}`;
-            if(!gruposLocales[uniqueKey]) gruposLocales[uniqueKey] = { fecha: fIso, monto: 0, desc: new Set(), status: statusKey, transitIds: [] };
-            gruposLocales[uniqueKey].monto += val;
-            grandTotal += val;
-            let d = side === 'left' ? (item.Concepto || 'Venta') : (item.Referencia || 'Depósito');
-            if (side === 'center') d = item.Concepto || 'Transacción';
-            gruposLocales[uniqueKey].desc.add(d);
-            if(item._transitId) gruposLocales[uniqueKey].transitIds.push(item._transitId);
-        });
-
-        const keys = Object.keys(gruposLocales).sort();
+        // Variable para seguimiento de items ya conciliados en esta renderización
         const coincidenciasUsadas = new Set();
-
-        keys.forEach(key => { 
-            const g = gruposLocales[key];
-            const partes = g.fecha.split('-');
-            const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
-            let descStr = Array.from(g.desc).join(', ');
-            const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
-            const rowId = `item-${side}-${g.fecha}-${g.status}`; 
-            const etiquetaSegura = label || 'Movimiento';
-            const etiquetaClean = etiquetaSegura.replace(/'/g, "");
-
-            const filterAfil = String(currentActiveRule.afiliacion || '').trim().toUpperCase();
-
-            // 1. Búsqueda Exacta
-            let coincidencia = historialConciliacion.find(h => 
-                !coincidenciasUsadas.has(h.id) &&
-                normalizarFecha(h.fecha) === g.fecha && 
-                h.lado === side &&
-                (
-                    String(h.afiliacion || '').trim().toUpperCase() === filterAfil ||
-                    h.afiliacion === 'Sin Afiliación' || 
-                    !h.afiliacion
-                ) &&
-                Math.abs(parseFloat(h.monto) - parseFloat(g.monto)) < 0.1
-            );
-
-            // 2. Búsqueda Flexible (Mismo día y lado, monto diferente)
-            if (!coincidencia) {
-                coincidencia = historialConciliacion.find(h => 
-                    !coincidenciasUsadas.has(h.id) &&
-                    normalizarFecha(h.fecha) === g.fecha && 
-                    h.lado === side &&
-                    (
-                        String(h.afiliacion || '').trim().toUpperCase() === filterAfil ||
-                        h.afiliacion === 'Sin Afiliación' || 
-                        !h.afiliacion
-                    )
-                );
-            }
-
-            // 3. Fallback Tránsito
-            if (!coincidencia && side === 'left') {
-                coincidencia = historialConciliacion.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id) && !coincidenciasUsadas.has(h.id));
-            }
-
-            if (coincidencia) coincidenciasUsadas.add(coincidencia.id);
-
-            let clasesExtra = ""; let badgeHtml = ""; let iconHtml = "";
-            let transitIdsParam = (g.transitIds && g.transitIds.length > 0) ? `'${g.transitIds.join(',')}'` : 'null';
-            let clickAction = `onclick="toggleItem('${side}', '${g.fecha}', ${g.monto}, '${etiquetaClean}', this, ${transitIdsParam})"`;
-            let estiloFondo = ""; let diffTagHtml = ""; let transitoPasadoHtml = ""; 
-            let buttonsHtml = "";
-
-            // --- LÓGICA DE TRÁNSITO ACTUALIZADA (Left y Center) ---
-            if (side === 'left' || side === 'center') {
-                if (g.status === 'outgoing') {
-                    // En Tránsito (Bloqueado - Mes Actual)
-                    clasesExtra += " transit-locked"; 
-                    iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>'; 
-                    clickAction = ""; // No seleccionable
-                    
-                } else if (g.status === 'incoming') {
-                    // Pendiente (Amarillo - Mes Siguiente)
-                    clasesExtra += " transit-incoming"; 
-                    iconHtml = '<span class="badge badge-warning text-dark mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-shipping-fast mr-1"></i> PENDIENTE</span>';
+        
+        // --- NUEVA LÓGICA: IZQUIERDA Y CENTRO AGRUPADOS POR FECHA ---
+        if (side === 'left' || side === 'center') {
+            // Agrupar por Fecha (Left: Fecha, Center: FechaConciliacion)
+            const groups = {};
+            rawData.forEach(item => {
+                if(item.hidden) return;
                 
-                    // BOTÓN ELIMINAR TRÁNSITO (Solo aquí, para cancelar si se envió por error)
-                    if (g.transitIds.length > 0) {
-                        // FIX: Usamos comillas simples para el HTML y escapamos las dobles del JSON
-                        const idsJson = JSON.stringify(g.transitIds).replace(/"/g, "&quot;");
-                        buttonsHtml += `
-                            <button class="btn-action-mini btn-unlink" onclick="eliminarTransito(${idsJson}); event.stopPropagation();" title="Quitar de Tránsito">
-                                <i class="fas fa-trash-alt"></i>
-                            </button>
-                        `;
-                    }
+                // Determinar fecha clave
+                let dateKey = item.Fecha; // Default (Left)
+                if (side === 'center') dateKey = item.FechaConciliacion;
                 
-                } else if (g.status === 'transit_completed') {
-                    // Cobrado (Verde)
-                    clasesExtra += " transit-completed"; 
-                    iconHtml = '<span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span>'; 
-                    clickAction = ""; 
+                if (!dateKey) return; // Skip invalid dates
+
+                if(!groups[dateKey]) groups[dateKey] = { date: dateKey, total: 0, items: [] };
+                
+                // Asegurar que el item tenga un ID único para la UI si no lo tiene
+                if (!item.ui_id) {
+                    item.ui_id = side === 'center' ? item.IdTransaccion : `cg_${dateKey}_${Math.random().toString(36).substr(2, 9)}`;
+                }
+
+                groups[dateKey].items.push(item);
+                
+                let val = item.Total || item.monto || 0; 
+                groups[dateKey].total += parseFloat(val);
+            });
+
+            // Ordenar grupos por fecha
+            const sortedDates = Object.keys(groups).sort();
+            
+            let grandTotal = 0;
+
+            sortedDates.forEach(dateKey => {
+                const group = groups[dateKey];
+                grandTotal += group.total;
+                // Renderizar el grupo
+                renderTransactionGroup(container, group, side, coincidenciasUsadas, label);
+            });
+
+            counter.text(formatter.format(grandTotal));
+            resume.text(formatter.format(grandTotal));
+            return; 
+        } else {
+            // Lógica estándar para Derecha (Tesorería) - Agregación por fecha+status
+            let processedData = rawData; 
+            const gruposLocales = {};
+            rawData.forEach(item => {
+                if(!item.Fecha || item.hidden) return;
+                const fIso = normalizarFecha(item.Fecha);
+                let val = item.Total || item.Depositos || item.Importe || 0;
+                if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
+                if(isNaN(val)) val = 0;
+                const statusKey = item._status || 'normal';
+                const uniqueKey = `${fIso}_${statusKey}`;
+                if(!gruposLocales[uniqueKey]) gruposLocales[uniqueKey] = { fecha: fIso, monto: 0, desc: new Set(), status: statusKey, transitIds: [] };
+                gruposLocales[uniqueKey].monto += val;
+                let d = item.Referencia || 'Depósito';
+                gruposLocales[uniqueKey].desc.add(d);
+                if(item._transitId) gruposLocales[uniqueKey].transitIds.push(item._transitId);
+            });
+            processedData = Object.values(gruposLocales).sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
+            
+            let grandTotal = 0;
+
+            processedData.forEach(g => { 
+                // Adaptar objeto agregado a formato 'item' para reutilizar renderRowItemHTML
+                // g tiene { fecha, monto, desc (Set), status, transitIds }
+                const itemAdaptado = {
+                    Fecha: g.fecha,
+                    Total: g.monto,
+                    Concepto: Array.from(g.desc || []).join(', '),
+                    _status: g.status,
+                    transitIds: g.transitIds,
+                    ui_id: `${g.fecha}-${g.status}` // ID sintético para el row
+                };
+                
+                grandTotal += g.monto;
+                const rowHtml = renderRowItemHTML(side, itemAdaptado, coincidenciasUsadas, label);
+                container.append(rowHtml);
+            });
+            
+            counter.text(formatter.format(grandTotal));
+            resume.text(formatter.format(grandTotal));
+        }
+    }
+
+    // --- RENDERIZAR GRUPO (HEADER + BODY) ---
+    function renderTransactionGroup(container, group, side, coincidenciasUsadas, label) {
+        const groupId = `group-${side}-${group.date}`;
+        const dateFmt = group.date.split('-').reverse().join('/');
+        const isGroupOpen = openGroups.has(groupId);
+        
+        // --- CALCULO DE DIFERENCIAS DIARIAS ---
+        let diffDia = 0;
+        let gruposProcesadosDia = new Set();
+        let itemsHtml = '';
+        let itemsConciliadosCount = 0;
+
+        group.items.forEach(item => {
+            const itemCleanId = (side === 'left') ? String(item.ui_id).replace('cg_', '') : String(item.IdTransaccion || item.ui_id);
+            const matching = historialConciliacion.find(h => h.lado === side && String(h.ref) === itemCleanId);
+            
+            if (matching) {
+                itemsConciliadosCount++;
+                if (!gruposProcesadosDia.has(matching.grupo_id)) {
+                    diffDia += parseFloat(matching.diferencia) || 0;
+                    gruposProcesadosDia.add(matching.grupo_id);
                 }
             }
-
-            if (coincidencia) {
-                clasesExtra += " conciliated"; 
-                clickAction = ""; 
-                const color = getColorForGroup(coincidencia.grupo_id);
-                if (g.status !== 'transit_completed') estiloFondo = `style="background-color: ${color}40;"`;
-                badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
-
-                buttonsHtml += `
-                    <button class="btn-action-mini btn-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer">
-                        <i class="fas fa-unlink"></i>
-                    </button>
-                `;
-
-                if (side === 'left') {
-                    const montoBd = parseFloat(coincidencia.monto);
-                    if(Math.abs(g.monto - montoBd) > 0.1) {
-                        clasesExtra += " desync"; 
-                        buttonsHtml = `
-                            <button class="btn-action-mini btn-sync-db" 
-                                onclick="sincronizarMonto(${coincidencia.id}, ${g.monto})"
-                                title="Actualizar BD a ${formatter.format(g.monto)}">
-                                <i class="fas fa-sync-alt"></i> Actualizar
-                            </button>
-                            ${buttonsHtml} 
-                        `;
-                    }
-                }
-
-                if(side === 'right') {
-                    const stats = mapaDiferencias[coincidencia.grupo_id];
-                    if(stats) {
-                        let diff = stats.real_diff; 
-                        const isOk = Math.abs(diff) < 0.01; 
-                        const claseTag = isOk ? 'ok' : 'warn';
-                        let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
-                        let iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
-                        diffTagHtml = `<span class="diff-tag ${claseTag}" title="Diferencia registrada en BD">${iconDiff}${textoTag}</span>`;
-                    }
-                    if (transitoPasadoMap.hasOwnProperty(coincidencia.grupo_id)) {
-                        transitoPasadoHtml = `<div class="mt-1"><span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span></div>`;
-                    }
-                }
-            }
-
-            container.append(`
-                <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}>
-                    <div>
-                        <div class="d-flex align-items-center mb-1">
-                            ${badgeHtml} ${iconHtml}
-                            <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
-                        </div>
-                        <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">${tooltip}</small>
-                        ${transitoPasadoHtml} 
-                    </div>
-                    <div class="d-flex align-items-center">
-                        ${diffTagHtml}
-                        <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
-                            ${formatter.format(g.monto)}
-                        </div>
-                        ${buttonsHtml}
-                    </div>
-                </div>
-            `);
+            itemsHtml += renderRowItemHTML(side, item, coincidenciasUsadas, label);
         });
 
-        counter.text(formatter.format(grandTotal));
-        resume.text(formatter.format(grandTotal));
+        // Lógica de color y texto para el tag del día
+        let diffTagDia = "";
+        let headerStyle = "";
+        const todoConciliado = itemsConciliadosCount === group.items.length;
+        const algoConciliado = itemsConciliadosCount > 0;
+
+        // 1. DETERMINAR COLOR DEL ENCABEZADO (PARA AMBAS COLUMNAS)
+        if (todoConciliado && group.items.length > 0) {
+            if (Math.abs(diffDia) > 0.009) {
+                headerStyle = "border-left: 5px solid #ffc107; background-color: #fffbeb;"; // Completado con diferencias
+            } else {
+                headerStyle = "border-left: 5px solid #28a745; background-color: #f0fff4;"; // OK Perfecto
+            }
+        } else if (algoConciliado) {
+            headerStyle = "border-left: 5px solid #007bff; background-color: #f0f7ff;"; // En proceso
+        }
+
+        // 2. DETERMINAR TAG NUMÉRICO (SÓLO PARA TRANSACCIONES)
+        if (side === 'center') {
+            let tagColor = '#ffc107'; 
+            let tagText = `Dif: ${formatter.format(diffDia)}`;
+            let mostrarTag = Math.abs(diffDia) > 0.009;
+
+            if (diffDia > 0.009) {
+                tagColor = '#28a745'; 
+            } else if (diffDia < -0.009) {
+                tagColor = '#dc3545'; 
+            } else if (todoConciliado && group.items.length > 0) {
+                tagColor = '#28a745';
+                tagText = '<i class="fas fa-check-circle mr-1"></i> OK';
+                mostrarTag = true;
+            }
+
+            if (mostrarTag) {
+                diffTagDia = `<span class="badge badge-pill ml-2" style="background-color:${tagColor}; color:white; font-family:consolas; font-size:0.75rem; padding: 4px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${tagText}</span>`;
+            }
+        }
+
+        const itemsProgressLabel = `${itemsConciliadosCount}/${group.items.length} items`;
+        const iconClass = isGroupOpen ? 'fa-chevron-down' : 'fa-chevron-right';
+        const bodyClass = isGroupOpen ? 'open' : '';
+
+        const headerHtml = `
+            <div class="tx-group-header" style="${headerStyle}" onclick="toggleGroup('${groupId}', '${group.date}', ${group.total}, this)">
+                <div>
+                    <button class="tx-group-toggle-btn" onclick="event.stopPropagation(); toggleGroupDetails('${groupId}', this)">
+                        <i class="fas ${iconClass}"></i>
+                    </button>
+                    <span class="mr-2"><i class="far fa-calendar-alt"></i> ${dateFmt}</span>
+                    <span class="badge badge-pill badge-light border text-muted">${itemsProgressLabel}</span>
+                    ${diffTagDia}
+                </div>
+                <div class="font-numeric">${formatter.format(group.total)}</div>
+            </div>
+        `;
+
+        const bodyHtml = `<div class="tx-group-body ${bodyClass}" id="${groupId}">${itemsHtml}</div>`;
+        container.append(headerHtml + bodyHtml);
+    }
+
+    // --- NUEVO HELPER UNIFICADO PARA RENDERIZAR FILAS ---
+    function renderRowItemHTML(side, g, coincidenciasUsadas, label) {
+        // g = item (rawData item or aggregated item)
+        // Normalizar propiedades
+        const effectiveDate = (side === 'center') ? g.FechaConciliacion : (g.Fecha || g.fecha); 
+        const monto = g.Total || g.monto;
+        const descStr = g.Concepto || g.Concepto || ''; // Fallback
+        
+        // Identificadores
+        const rowId = `item-${side}-${g.ui_id}`;
+        
+        // Tooltip y Formato
+        const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
+        const partes = effectiveDate.split('-');
+        const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+
+        // Lógica de Matching (Buscar en Historial por ID Único V2)
+        const itemCleanId = (side === 'left') ? String(g.ui_id).replace('cg_', '') : String(g.IdTransaccion || g.ui_id);
+        
+        let coincidencia = historialConciliacion.find(h => 
+            !coincidenciasUsadas.has(h.id) &&
+            h.lado === side &&
+            String(h.ref) === itemCleanId
+        );
+
+        // Fallback Tránsito (Solo Left/ControlGas) - Mantener si es necesario, pero idealmente también por ID
+        if (!coincidencia && side === 'left') {
+            coincidencia = historialConciliacion.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id) && !coincidenciasUsadas.has(h.id));
+        }
+
+        if (coincidencia) coincidenciasUsadas.add(coincidencia.id);
+
+        // Variables de Estado Visual
+        let clasesExtra = ""; 
+        let badgeHtml = ""; 
+        let iconHtml = "";
+        let estiloFondo = ""; 
+        let transitoPasadoHtml = ""; 
+        let buttonsHtml = "";
+        let dateDetailsHtml = ""; 
+
+        // Params para toggleItem
+        let transitIdsParam = (g.transitIds && g.transitIds.length > 0) ? `'${g.transitIds.join(',')}'` : (g._transitId ? `'${g._transitId}'` : 'null');
+        let toggleItemTransactionIdParam = side === 'center' ? `'${g.IdTransaccion}'` : 'null';
+        let clickAction = `onclick="toggleItem('${side}', '${effectiveDate}', ${monto}, '${descStr.replace(/'/g, "&apos;")}', this, ${transitIdsParam}, ${toggleItemTransactionIdParam})"`;
+
+        // 1. Estados de Tránsito (Left/Center)
+        if (side === 'left' || side === 'center') {
+            if (g._status === 'outgoing') { 
+                clasesExtra += " transit-locked"; 
+                iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>'; 
+                clickAction = ""; 
+            } else if (g._status === 'incoming') { 
+                // Lógica de Semáforo para Tránsito (Aging)
+                const dias = parseInt(g.dias_antiguedad) || 0;
+                let colorClass = 'badge-success'; // 0-30 días
+                if (dias > 60) colorClass = 'badge-danger'; // Crítico
+                else if (dias > 30) colorClass = 'badge-warning text-dark'; // Atención
+
+                clasesExtra += " transit-incoming"; 
+                iconHtml = `<span class="badge ${colorClass} mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-history mr-1"></i> PENDIENTE (${dias} d)</span>`;
+                
+                if (g._transitId || (g.transitIds && g.transitIds.length)) { 
+                    const idsJson = JSON.stringify(g.transitIds || [g._transitId]).replace(/"/g, "&quot;");
+                    buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="eliminarTransito(${idsJson}); event.stopPropagation();" title="Quitar de Tránsito"><i class="fas fa-trash-alt"></i></button>`;
+                }
+            } else if (g._status === 'transit_completed') { 
+                clasesExtra += " transit-completed"; 
+                iconHtml = '<span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span>'; 
+                clickAction = ""; 
+            }
+        }
+
+        // 2. Detalles de Fecha (Center)
+        if (side === 'center') {
+            const isDiff = g.FechaTransaccion !== g.FechaAplicacion;
+            if (isDiff) {
+                if (g.FechaConciliacion === g.FechaTransaccion) {
+                    dateDetailsHtml = `<small class="text-muted d-block mt-1">Apl: ${formatFechaVisual(g.FechaAplicacion)} <button class="btn btn-sm btn-outline-info ml-1 p-0 px-1" onclick="event.stopPropagation(); changeTxReconcileDate('${g.IdTransaccion}', '${g.FechaAplicacion}')" title="Usar Fecha de Aplicación">Usar Apl.</button></small>`;
+                } else {
+                    dateDetailsHtml = `<small class="text-info d-block mt-1">Trans: ${formatFechaVisual(g.FechaTransaccion)} <button class="btn btn-sm btn-outline-secondary ml-1 p-0 px-1" onclick="event.stopPropagation(); changeTxReconcileDate('${g.IdTransaccion}', '${g.FechaTransaccion}')" title="Usar Fecha de Transacción">Usar Trans.</button></small>`;
+                }
+            }
+            
+            // Botón Info Detalles (SIEMPRE DISPONIBLE)
+            const dataJson = JSON.stringify(g).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+            buttonsHtml += `<button class="btn-action-mini btn-info ml-1" onclick="event.stopPropagation(); verDetalleTransaccion('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
+            
+            // Botón Mover Fecha (Solo si no está conciliado)
+            if(!coincidencia) {
+                buttonsHtml += `<button class="btn-action-mini btn-light border ml-1" onclick="event.stopPropagation(); changeTransactionDate('${g.IdTransaccion}', '${g.FechaConciliacion}')" title="Mover Fecha"><i class="fas fa-calendar-day text-primary"></i></button>`;
+            }
+        }
+
+        // 2.1 Botón Detalle ControlGas (SIEMPRE DISPONIBLE)
+        if (side === 'left' && g.originalData) {
+             const dataJson = JSON.stringify(g.originalData).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
+             buttonsHtml += `<button class="btn-action-mini btn-dark ml-1" onclick="event.stopPropagation(); verDetalleControlGas('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
+        }
+
+        // 3. Estado Conciliado
+        let diffTagHtml = ""; // DEFINICIÓN LOCAL LIMPIA
+        if (coincidencia) {
+            clasesExtra += " conciliated"; 
+            clickAction = ""; 
+            const color = getColorForGroup(coincidencia.grupo_id);
+            if (g._status !== 'transit_completed') estiloFondo = `style="background-color: ${color}40;"`; 
+            badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
+
+            buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer"><i class="fas fa-unlink"></i></button>`;
+
+            // MOSTRAR DIFERENCIA DE GRUPO (SÓLO SI ES LA COLUMNA DE TRANSACCIONES)
+            if(side === 'center') {
+                const stats = mapaDiferencias[coincidencia.grupo_id];
+                if(stats) {
+                    let diff = stats.real_diff; 
+                    const isOk = Math.abs(diff) < 0.01; 
+                    const claseTag = isOk ? 'ok' : 'warn';
+                    let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
+                    let iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
+                    diffTagHtml = `<span class="diff-tag ${claseTag}" title="Diferencia de Grupo">${iconDiff}${textoTag}</span>`;
+                }
+            }
+
+            if (side === 'left') {
+                const montoBd = parseFloat(coincidencia.monto);
+                if(Math.abs(monto - montoBd) > 0.1) {
+                    clasesExtra += " desync"; 
+                    buttonsHtml = `<button class="btn-action-mini btn-sync-db" onclick="sincronizarMonto(${coincidencia.id}, ${monto})" title="Actualizar BD"><i class="fas fa-sync-alt"></i> Actualizar</button>${buttonsHtml}`;
+                }
+            }
+
+            if(side === 'right') {
+                if (transitoPasadoMap.hasOwnProperty(coincidencia.grupo_id)) {
+                    transitoPasadoHtml = `<div class="mt-1"><span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span></div>`;
+                }
+            }
+        }
+
+        // --- BLOQUEO FINAL: Lado derecho no es clickable ---
+        if (side === 'right') clickAction = "";
+
+        // Render Final
+        return `
+            <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}>
+                <div>
+                    <div class="d-flex align-items-center mb-1">
+                        ${badgeHtml} ${iconHtml}
+                        <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
+                    </div>
+                    <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">${tooltip}</small>
+                    ${dateDetailsHtml} 
+                    ${transitoPasadoHtml} 
+                </div>
+                <div class="d-flex align-items-center">
+                    ${(side === 'center') ? diffTagHtml : ''}
+                    <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
+                        ${formatter.format(monto)}
+                    </div>
+                    ${buttonsHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // --- ACCIONES DE GRUPO ---
+    function toggleGroupDetails(groupId, btn) {
+        const $body = $(`#${groupId}`);
+        const $icon = $(btn).find('i');
+        
+        if ($body.hasClass('open')) {
+            $body.removeClass('open');
+            $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+            openGroups.delete(groupId); // Quitar de seguimiento
+        } else {
+            $body.addClass('open');
+            $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+            openGroups.add(groupId); // Agregar a seguimiento
+        }
+    }
+
+    function toggleGroup(groupId, date, total, headerEl) {
+        // Seleccionar solo items operables (ni conciliados, ni bloqueados por tránsito)
+        const $items = $(`#${groupId} .row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)`);
+        
+        if ($items.length === 0) return;
+
+        // Lógica inteligente: Si hay ALGUNO sin seleccionar, seleccionamos todo. 
+        // Solo si TODOS están seleccionados, deseleccionamos todo.
+        const anyUnselected = $items.toArray().some(el => !$(el).hasClass('active'));
+        
+        $items.each(function() {
+            if (anyUnselected) {
+                // Modo: Llenar todo (Select All)
+                if (!$(this).hasClass('active')) $(this).click(); 
+            } else {
+                // Modo: Limpiar todo (Deselect All)
+                if ($(this).hasClass('active')) $(this).click(); 
+            }
+        });
+    }
+
+    function updateGroupHeaderState(groupId) {
+        const $body = $(`#${groupId}`);
+        const $header = $body.prev('.tx-group-header');
+        const $items = $body.find('.row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)');
+        
+        if ($items.length > 0 && $items.length === $items.filter('.active').length) {
+            $header.addClass('active');
+        } else {
+            $header.removeClass('active');
+        }
+    }
+
+    function changeTransactionDate(id, currentDate) {
+        const dateFmt = formatFechaVisual(currentDate);
+        const newDateRaw = prompt("Ingrese la nueva fecha (DD/MM/YYYY):", dateFmt);
+        if (newDateRaw && newDateRaw !== dateFmt) {
+            const isoDate = normalizarFecha(newDateRaw);
+            const eid = $('#bancoSelect').val();
+            $.ajax({
+                url: URLS.update_date, type: 'POST', contentType: 'application/json',
+                data: JSON.stringify({ id: id, new_date: isoDate, entidad_id: eid }),
+                success: function(r) { if(r.status==='success') actualizarTodo(); else alert(r.message); }
+            });
+        }
+    }
+
+    function changeTxReconcileDate(id, targetDate) {
+        const eid = $('#bancoSelect').val();
+        $.ajax({
+            url: URLS.update_date, type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ id: id, new_date: targetDate, entidad_id: eid }),
+            success: function(r) { if(r.status==='success') actualizarTodo(); else alert(r.message); }
+        });
+    }
+
+   function verDetalleControlGas(dataJson) {
+        // 1. Convertir el texto JSON a objeto
+        const data = JSON.parse(dataJson);
+        const $modal = $('#modalDetalleControlGas');
+        
+        // --- AQUÍ ESTÁ LA CLAVE PARA QUE IMPRIMA EL ID ---
+        // Busca el elemento con clase 'val-id-unico' y le pone el valor data.ID_Unico
+        $modal.find('.val-id-unico').text(data.ID_Unico || 'N/A');
+
+        // 2. Llenar el resto de los campos
+        $modal.find('.val-estacion').text(data.Estacion || 'N/A');
+        $modal.find('.val-cod-estacion').text(data.CodEstacion || 'N/A');
+        
+        // Usamos FechaVisual si viene del PHP nuevo, o Fecha como fallback
+        $modal.find('.val-fecha').text(data.FechaVisual || data.Fecha || 'N/A');
+        
+        $modal.find('.val-turno').text(data.Turno || 'N/A');
+        $modal.find('.val-tipo').text(data.Tipo || 'N/A');
+        $modal.find('.val-concepto').text(data.Concepto || 'N/A');
+        
+        // Formatear el total a moneda
+        $modal.find('.val-total').text(formatter.format(data.Total || 0));
+
+        // 3. Mostrar el modal
+        $modal.modal('show');
+    }
+
+    function verDetalleTransaccion(dataJson) {
+        const data = JSON.parse(dataJson);
+        const $modal = $('#modalDetalleTransaccion');
+        
+        $modal.find('.val-id').text(data.IdTransaccion);
+        $modal.find('.val-monto').text(formatter.format(data.Total));
+        $modal.find('.val-afil').text(data.Afiliacion || 'N/A');
+        $modal.find('.val-terminal').text(data.Terminal_ID || 'N/A');
+        $modal.find('.val-hora').text(data.Hora || 'N/A');
+        $modal.find('.val-auth').text(data.Codigo_Autorizacion || 'N/A');
+        
+        $modal.find('.val-fecha-trans').text(formatFechaVisual(data.FechaTransaccion));
+        $modal.find('.val-fecha-apl').text(formatFechaVisual(data.FechaAplicacion));
+        $modal.find('.val-fecha-conc').text(formatFechaVisual(data.FechaConciliacion));
+
+        $modal.modal('show');
+    }
+
+    function copyToClipboard(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(function() {
+            alert("ID copiado: " + text);
+        }).catch(function(err) {
+            console.error('Error al copiar: ', err);
+        });
     }
 
     function renderDiferenciasPanel() {
@@ -1219,66 +1758,74 @@
     let currentPayload = null; // Variable temporal para guardar los datos antes de enviar
 
     function confirmarConciliacion() {
-        // 1. Validar selección mínima
-        if(selection.left.length === 0 && selection.right.length === 0 && selection.center.length === 0) {
-            alert("Debe seleccionar registros para conciliar."); return;
+        // 1. Validar selección mínima (Solo Izquierda y Centro)
+        if(selection.left.length === 0 && selection.center.length === 0) {
+            alert("Debe seleccionar registros para conciliar (ControlGas y/o Transacciones)."); return;
         }
 
         // 2. Calcular Sumas
         let sumL = selection.left.reduce((a,b) => a + b.monto, 0);   // ControlGas (CG)
         let sumC = selection.center.reduce((a,b) => a + b.monto, 0); // Transacciones (TX)
-        let sumR = selection.right.reduce((a,b) => a + b.monto, 0);  // Tesorería (BK)
+        
+        // El banco ya no se valida aquí (sumR = 0 o ignorado)
 
         // Redondear a 2 decimales para evitar errores de punto flotante
         sumL = Number(sumL.toFixed(2));
         sumC = Number(sumC.toFixed(2));
-        sumR = Number(sumR.toFixed(2));
+
+        // Determinar Fecha Operativa (Para auditoría V2)
+        let fechaOp = "";
+        if (selection.left.length > 0) {
+            fechaOp = normalizarFecha(selection.left[0].fecha);
+        } else if (selection.center.length > 0) {
+            // Si es una transacción, intentar normalizarla
+            fechaOp = normalizarFecha(selection.center[0].fecha);
+        }
 
         // 3. Preparar Payload base
         currentPayload = {
             total_cg: sumL,
-            total_bk: sumR,
+            total_bk: 0, 
             total_tx: sumC,
-            diferencia: 0, // Se definirá más adelante
+            diferencia: 0, 
+            estacion_id: $('#estacionSelect').val(), 
+            fecha_operativa: fechaOp,
             left_rows: selection.left.map(i => ({ 
                 fecha: normalizarFecha(i.fecha), 
                 monto: i.monto, 
                 concepto: i.concepto, 
-                ref: (i.transitIds && i.transitIds.length) ? i.transitIds.join(',') : '', 
-                transit_ids: i.transitIds 
+                ref: i.elId.replace('item-left-cg_', '') 
             })),
             center_rows: selection.center.map(i => ({ 
                 fecha: normalizarFecha(i.fecha), 
                 monto: i.monto, 
                 concepto: i.concepto, 
-                ref: (i.transitIds && i.transitIds.length) ? i.transitIds.join(',') : '',
-                transit_ids: i.transitIds 
+                ref: i.elId.replace('item-center-', '') 
             })),
-            right_rows: selection.right.map(i => ({ fecha: normalizarFecha(i.fecha), monto: i.monto, afiliacion: $('#afiliacionSelect option:selected').text(), origen: 'Manual' }))
+            transit_ids_to_close: [] 
         };
 
-        // 4. Verificar si todo cuadra perfecto (Las 3 sumas son iguales o cero si no hay selección)
-        // Nota: Si una columna no tiene selección, su suma es 0.
-        const allEqual = (sumL === sumR) && (sumR === sumC) && (sumL === sumC);
-        
-        // Caso especial: A veces no seleccionan centro (Transacciones), validamos si CG == BK
-        const ignoreCenter = selection.center.length === 0;
-        const cgBkEqual = (sumL === sumR);
+        // Recolectar IDs de tránsito que se están cerrando
+        selection.left.forEach(i => { if(i.transitIds) currentPayload.transit_ids_to_close.push(...i.transitIds); });
+        selection.center.forEach(i => { if(i.transitIds) currentPayload.transit_ids_to_close.push(...i.transitIds); });
 
-        if (allEqual || (ignoreCenter && cgBkEqual)) {
+        // 4. Verificar diferencia (Ahora es binaria: CG vs TX)
+        const match = (Math.abs(sumL - sumC) < 0.01);
+
+        if (match) {
             // No hay diferencia, guardar directo con diferencia 0
             currentPayload.diferencia = 0;
             enviarAlBackend(currentPayload);
         } else {
-            // 5. Hay diferencias: Calcular las 3 opciones
-            mostrarModalDiferencias(sumL, sumC, sumR);
+            // 5. Hay diferencias: Calcular las 3 opciones (En este caso solo 1)
+            // Pasamos 0 como sumBK para no romper la firma, pero el modal lo sabrá manejar
+            mostrarModalDiferencias(sumL, sumC, 0);
         }
     }
 
     function mostrarModalDiferencias(sumCG, sumTX, sumBK) {
-        const diff_CG_BK = Number((sumBK - sumCG).toFixed(2)); // Tesorería vs ControlGas (Clásica)
-        const diff_CG_TX = Number((sumTX - sumCG).toFixed(2)); // Transacción vs ControlGas (Venta vs Banco Intermedio)
-        const diff_TX_BK = Number((sumBK - sumTX).toFixed(2)); // Tesorería vs Transacción (Banco Final vs Intermedio)
+        // En lógica 2 vías, solo nos importa CG vs TX
+        const diff_CG_TX = Number((sumTX - sumCG).toFixed(2)); // Transacción vs ControlGas
 
         const $list = $('#listaDiferencias').empty();
 
@@ -1302,18 +1849,8 @@
             `;
         };
 
-        // Opción 1: ControlGas vs Tesorería (Lo que entró al banco final vs Sistema)
-        $list.append(createOption(diff_CG_BK, 'ControlGas vs Tesorería', 'Diferencia entre Sistema y Depósito Final', true));
-
-        // Opción 2: ControlGas vs Transacciones (Lo que reportó el banco intermedio vs Sistema)
-        if(selection.center.length > 0) {
-            $list.append(createOption(diff_CG_TX, 'ControlGas vs Transacciones', 'Diferencia entre Sistema y Reporte de Transacciones'));
-        }
-
-        // Opción 3: Transacciones vs Tesorería (Comisión o diferencia de liquidación)
-        if(selection.center.length > 0 && selection.right.length > 0) {
-            $list.append(createOption(diff_TX_BK, 'Transacciones vs Tesorería', 'Diferencia entre Transacciones y Depósito Final'));
-        }
+        // Única Opción Relevante: ControlGas vs Transacciones
+        $list.append(createOption(diff_CG_TX, 'ControlGas vs Transacciones', 'Diferencia entre Sistema y Reporte de Transacciones', true));
 
         $('#modalDiferencias').modal('show');
     }
@@ -1342,11 +1879,11 @@
             type: 'POST', 
             contentType: 'application/json', 
             data: JSON.stringify(payload),
-            success: function(resp) {
+            success: async function(resp) {
                 if(resp.status === 'success') { 
-                    actualizarTodo(); 
                     limpiarSeleccion(); 
-                    // Toast o alerta suave
+                    // Refrescar datos sin perder el estado de los grupos abiertos
+                    await actualizarTodo(); 
                 } else { 
                     alert("Error: " + resp.message); 
                 }
@@ -1364,17 +1901,14 @@
             return; 
         }
         
-        if (selection.right.length > 0) { 
-            alert("No puedes enviar a tránsito los movimientos del Banco (Derecha). Desárcalos."); 
-            return; 
-        }
+        // La validación de selección de la derecha ya no es necesaria porque no se permite seleccionar.
 
         const countTotal = selection.left.length + selection.center.length;
         const montoTotal = selection.left.reduce((a,b)=>a+b.monto, 0) + selection.center.reduce((a,b)=>a+b.monto, 0);
 
         if(!confirm(`¿Mover ${countTotal} movimientos por ${formatter.format(montoTotal)} al siguiente mes?\n\nSe guardarán para conciliación futura y se bloquearán de este mes.`)) return;
         
-        // Construimos las filas con su origen
+        // Construimos las filas con su origen e ID REAL
         const rowsToSend = [];
         
         selection.left.forEach(i => {
@@ -1382,7 +1916,8 @@
                 fecha: normalizarFecha(i.fecha), 
                 monto: i.monto, 
                 concepto: i.concepto,
-                origen: 'LEFT' // Importante
+                origen: 'LEFT',
+                ref: i.elId.replace('item-left-cg_', '') // ID Compuesto puro
             });
         });
 
@@ -1391,7 +1926,8 @@
                 fecha: normalizarFecha(i.fecha), 
                 monto: i.monto, 
                 concepto: i.concepto,
-                origen: 'CENTER' // Importante
+                origen: 'CENTER',
+                ref: i.elId.replace('item-center-', '') // ID Transacción puro
             });
         });
 
@@ -1403,12 +1939,12 @@
 
         $.ajax({
             url: URLS.guardar_transito, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
-            success: function(resp) {
+            success: async function(resp) {
                 const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
                 if(r.status === 'success') { 
                     alert("Movimientos enviados a tránsito exitosamente."); 
-                    actualizarTodo(); 
                     limpiarSeleccion(); 
+                    await actualizarTodo(); 
                 } else { 
                     alert("Error: " + r.message); 
                 }
