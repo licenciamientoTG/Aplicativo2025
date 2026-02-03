@@ -75,7 +75,7 @@ class Operations{
      */
     function datatables_top_tabulators() : void {
         $data = [];
-        if ($tabulators = $this->tabulatorModel->all(3000, (isset($_SESSION['tg_user']['IdEstacion']) ? $_SESSION['tg_user']['IdEstacion'] : 0))) {
+        if ($tabulators = $this->tabulatorModel->all(8000, (isset($_SESSION['tg_user']['IdEstacion']) ? $_SESSION['tg_user']['IdEstacion'] : 0))) {
             $data = array_map(function ($tab) {
                 $actions = "
                     <div class='dropdown'>
