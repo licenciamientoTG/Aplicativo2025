@@ -3046,24 +3046,25 @@ public function anomalies_client_tickets()
         $file = $_GET['file'] ?? '';
         if (empty($file)) exit("Archivo no especificado");
 
-        // Ruta absoluta según requerimiento
-        $baseDir = "C:/inetpub/wwwroot/TG_PHP/_assets/uploads/";
-        $fullPath = $baseDir . $file;
+        // Ruta relativa al controlador (_assets/controllers/ -> _assets/uploads/)
+        $baseDir = realpath(__DIR__ . '/../uploads/') . DIRECTORY_SEPARATOR;
+        $fullPath = $baseDir . str_replace(['../', '..\\'], '', $file); // Seguridad básica
 
         if (!file_exists($fullPath)) {
-            // Intentar con ruta relativa si la absoluta falla (para entornos de prueba)
-            $fallbackPath = __DIR__ . '/../uploads/' . $file;
-            if (file_exists($fallbackPath)) $fullPath = $fallbackPath;
-            else exit("El reporte original no se encuentra en el servidor: " . $file);
+            exit("El reporte original no se encuentra en la carpeta de carga del proyecto: " . $file);
         }
 
         $ext = pathinfo($fullPath, PATHINFO_EXTENSION);
         $ctype = "";
-        switch ($ext) {
+        switch (strtolower($ext)) {
             case "xlsx": $ctype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; break;
+            case "xls":  $ctype = "application/vnd.ms-excel"; break;
             case "csv":  $ctype = "text/csv"; break;
             default:     $ctype = "application/octet-stream";
         }
+
+        // Limpiar cualquier salida previa para evitar corrupción de descarga
+        if (ob_get_level()) ob_end_clean();
 
         header('Content-Description: File Transfer');
         header('Content-Type: ' . $ctype);
@@ -3072,6 +3073,7 @@ public function anomalies_client_tickets()
         header('Cache-Control: must-revalidate');
         header('Pragma: public');
         header('Content-Length: ' . filesize($fullPath));
+        
         readfile($fullPath);
         exit;
     }
