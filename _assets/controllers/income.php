@@ -2144,15 +2144,8 @@ public function anomalies_client_tickets()
         return trim($s, '_');
     }
     private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
-        $stmt = $conn->prepare("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ?");
-        $stmt->execute([$tabla]);
-        $actuales = array_map('strtolower', $stmt->fetchAll(PDO::FETCH_COLUMN));
-
-        foreach ($cleanCols as $col) {
-            if (!in_array(strtolower($col), $actuales)) {
-                $conn->exec("ALTER TABLE [$tabla] ADD [$col] VARCHAR(MAX)");
-            }
-        }
+        // FUNCIÓN DESACTIVADA PARA MANTENER ESTÁNDAR DE TABLAS
+        return;
     }
 
     public function process_bank_upload() {
@@ -2166,23 +2159,43 @@ public function anomalies_client_tickets()
             exit;
         }
 
-        $bankType = $_POST['bank_type'] ?? '';
+        $bankType = $_POST['bank_type'] ?? 'OTROS';
         $filePath = '';
         $isTempFile = false;
+        
+        // Estructura de carpetas: _assets/uploads/BANCO/AÑO/MES/
+        $baseUploadsDir = __DIR__ . '/../uploads/';
+        $subPath = $bankType . '/' . date('Y') . '/' . date('m') . '/';
+        $targetDir = $baseUploadsDir . $subPath;
 
-        // Soporte para datos en Base64 (para saltar límites de upload_max_filesize)
+        if (!file_exists($targetDir)) {
+            mkdir($targetDir, 0777, true);
+        }
+
+        // Nombre de archivo seguro
+        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'archivo.tmp');
+        $safeName = date('His') . '_' . basename($originalName);
+        $targetFile = $targetDir . $safeName;
+        
+        // RUTA RELATIVA PARA LA BASE DE DATOS (Trazabilidad)
+        $dbFilePath = $subPath . $safeName;
+
+        // Soporte para datos en Base64
         if (!empty($_POST['file_data'])) {
-            $fileName = $_POST['file_name'] ?? 'uploaded_file.tmp';
-            $filePath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . uniqid('bank_') . '_' . $fileName;
-            if (file_put_contents($filePath, base64_decode($_POST['file_data'])) === false) {
-                echo json_encode(['status' => 'error', 'message' => 'Error al procesar los datos del archivo']);
+            if (file_put_contents($targetFile, base64_decode($_POST['file_data'])) === false) {
+                echo json_encode(['status' => 'error', 'message' => 'Error al guardar el archivo']);
                 exit;
             }
-            $isTempFile = true;
+            $filePath = $targetFile;
         } 
         // Soporte para subida tradicional
         elseif (isset($_FILES['report_file']) && $_FILES['report_file']['error'] === UPLOAD_ERR_OK) {
-            $filePath = $_FILES['report_file']['tmp_name'];
+            if (move_uploaded_file($_FILES['report_file']['tmp_name'], $targetFile)) {
+                $filePath = $targetFile;
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Error al mover el archivo subido']);
+                exit;
+            }
         }
 
         if (empty($filePath)) {
@@ -2201,51 +2214,48 @@ public function anomalies_client_tickets()
         $coreMap = [
             'BANORTE' => [
                 'Afiliación' => 'Afiliacion',
-                'Nombre de Afiliación' => 'Nombre_Afiliacion',
-                'Moneda' => 'Moneda',
-                'Estatus de Transacción' => 'Estatus',
-                'Tipo transaccion' => 'Tipo_Transaccion',
-                'Tipo de Transacción' => 'Tipo_Transaccion',
-                'Número de Control' => 'Numero_Control',
-                'Número de Tarjeta' => 'Tarjeta',
-                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
+                'Afiliacion' => 'Afiliacion',
+                'Número de Control' => 'ID_Externo',          
+                'Numero de Control' => 'ID_Externo',
                 'Monto de Transacción Signo' => 'Monto',
+                'Monto de Transaccion Signo' => 'Monto',
                 'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha Transaccion' => 'Fecha_Transaccion',
                 'Código Autorización' => 'Codigo_Autorizacion',
-                'Fecha Aplicación' => 'Fecha_Aplicacion',
-                'Fecha AplicaciÃ³n' => 'Fecha_Aplicacion',
-                'Referencia' => 'Referencia',
-                'Terminal ID' => 'Terminal_ID',
-                'Lote de Transacción' => 'Lote',
+                'Codigo Autorizacion' => 'Codigo_Autorizacion',
+                'Terminal ID' => 'Terminal',                  
+                'Terminal' => 'Terminal',
                 'Hora de Transacción' => 'Hora',
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Fecha TransacciÃ³n' => 'Fecha_Transaccion', // Caso roto
-                'Descripción' => 'Descripcion',
-                'DescripciÃ³n' => 'Descripcion',
+                'Hora Transacción' => 'Hora',
+                'Hora' => 'Hora',
+                'Referencia Interbancaria' => 'Referencia',   
+                'Descripción' => 'Referencia',
+                'Descripcion' => 'Referencia',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
             ],
             'SANTANDER' => [
-                'ID movimiento' => 'ID_Movimiento',
+                'ID movimiento' => 'ID_Externo',              
                 'Fecha Transacción' => 'Fecha_Transaccion',
                 'Hora de Transacción' => 'Hora',
                 'Hora Transacción' => 'Hora',
                 'Afiliación' => 'Afiliacion',
-                'Nombre del comercio' => 'Comercio',
-                'Tipo de Transacción' => 'Tipo_Transaccion',
-                'Tipo Transacción' => 'Tipo_Transaccion',
-                'Tarjeta' => 'Tarjeta',
-                'Cod. Terminal' => 'Terminal',
+                'Cod. Terminal' => 'Terminal',                
                 'Terminal ID' => 'Terminal',
-                'Operación' => 'Operacion',
-                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
-                'Tipo Tarjeta' => 'Tipo_Tarjeta',
-                'Número de Tarjeta' => 'Tarjeta_Numero',
-                'Tarjeta Número' => 'Tarjeta_Numero',
-                'Código Autorización' => 'Cod_Autorizacion',
-                'Cod. Aut' => 'Cod_Autorizacion',
-                'Total' => 'Total',
-                'Monto de Transacción Signo' => 'Total',
-                'Comisión' => 'Comision'
+                'Código Autorización' => 'Codigo_Autorizacion',
+                'Cod. Aut' => 'Codigo_Autorizacion',
+                'Total' => 'Monto',                           
+                'Monto de Transacción Signo' => 'Monto',
+                'Referencia' => 'Referencia',                 
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito'
             ]
+        ];
+
+        // COLUMNAS OFICIALES PERMITIDAS (Definición Global)
+        $columnas_oficiales = [
+            'ID_Externo', 'Afiliacion', 'Fecha_Transaccion', 'Hora', 
+            'Monto', 'Codigo_Autorizacion', 'Terminal', 'Referencia', 'Fecha_Deposito', 'Nombre_Archivo'
         ];
 
         try {
@@ -2256,147 +2266,150 @@ public function anomalies_client_tickets()
             $skipped = 0;
 
             if ($bankType === 'BANORTE') {
-                $spreadsheet = PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
                 $sheet = $spreadsheet->getActiveSheet();
                 $rows = $sheet->toArray();
                 $rawHeader = array_shift($rows);
 
-                // 1. Sanitizar y Unificar Nombres de Columna
-                $cleanCols = [];
-                $seen = [];
-                foreach ($rawHeader as $h) {
-                    $name = $this->sanitizar_nombre_columna_php($h, 'BANORTE', $coreMap);
-                    if (isset($seen[$name])) {
-                        $seen[$name]++;
-                        $name = "{$name}_{$seen[$name]}";
-                    } else {
-                        $seen[$name] = 0;
+                $mappedIndices = [];
+                foreach ($rawHeader as $i => $h) {
+                    $stdName = $this->sanitizar_nombre_columna_php($h, 'BANORTE', $coreMap);
+                    if (in_array($stdName, $columnas_oficiales)) {
+                        $mappedIndices[$stdName] = $i;
                     }
-                    $cleanCols[] = $name;
                 }
 
-                // 2. Asegurar esquema
-                $this->asegurar_columnas_php($conn, 'banco_banorte', $cleanCols);
-
-                // 3. Huellas para duplicados
-                $stmt = $conn->query("SELECT Afiliacion, Numero_Control, Fecha_Transaccion, Monto FROM banco_banorte");
+                // Huellas para duplicados (8 CAMPOS CLAVE)
+                $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_banorte");
                 $huellas = [];
-                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
-                    $huellas[trim($r['Afiliacion']) . '|' . trim($r['Numero_Control']) . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '')] = true;
+                    $key = trim($r['Afiliacion']??'') . '|' . trim($r['ID_Externo']??'') . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '') . '|' . trim($r['Hora']??'') . '|' . trim($r['Codigo_Autorizacion']??'') . '|' . trim($r['Referencia']??'') . '|' . trim($r['Terminal']??'');
+                    $huellas[$key] = true;
                 }
 
-                // 4. Mapeo de índices core para la huella
-                $idxAfil = array_search('Afiliacion', $cleanCols);
-                $idxNCtrl = array_search('Numero_Control', $cleanCols);
-                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
-                $idxMonto = array_search('Monto', $cleanCols);
-
-                // 5. Preparar SQL Dinámico
-                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
-                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
-                $ins = $conn->prepare("INSERT INTO banco_banorte ($colsSql) VALUES ($placeholders)");
+                $sqlIns = "INSERT INTO banco_banorte (".implode(",", $columnas_oficiales).") VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).")";
+                $ins = $conn->prepare($sqlIns);
 
                 foreach ($rows as $row) {
                     if (empty(array_filter($row))) continue;
 
-                    $afil = ($idxAfil !== false) ? ltrim(trim($row[$idxAfil] ?? ''), '0') : '';
-                    $nctrl = ($idxNCtrl !== false) ? trim($row[$idxNCtrl] ?? '') : '';
-                    $monto = ($idxMonto !== false) ? (float)str_replace(['$', ','], '', $row[$idxMonto] ?? 0) : 0;
-                    
-                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
-                    $fechaSql = null;
-                    if ($fechaRaw) {
-                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
-                        if (!$d) $d = new DateTime($fechaRaw);
-                        if ($d) $fechaSql = $d->format('Y-m-d');
+                    $dataRow = [];
+                    foreach($columnas_oficiales as $col) {
+                        if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
+                        $val = isset($mappedIndices[$col]) ? $row[$mappedIndices[$col]] : null;
+                        
+                        if ($col === 'Monto') $val = (float)str_replace(['$', ','], '', $val ?? 0);
+                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
+                            if ($val) {
+                                $d = \DateTime::createFromFormat('d/m/Y', $val);
+                                if (!$d) $d = new \DateTime($val);
+                                $val = $d ? $d->format('Y-m-d') : null;
+                            }
+                        }
+                        if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                        $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
-                    $huella = $afil . '|' . $nctrl . '|' . $fechaSql . '|' . number_format($monto, 2, '.', '');
-                    if (isset($huellas[$huella])) { $skipped++; continue; }
+                    $keyRow = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'');
+                    if (isset($huellas[$keyRow])) { $skipped++; continue; }
 
-                    // Limpieza de valores para el insert
-                    $finalVals = [];
-                    foreach ($row as $i => $v) {
-                        if ($i === $idxFecha) $finalVals[] = $fechaSql;
-                        elseif ($i === $idxMonto) $finalVals[] = $monto;
-                        elseif ($i === $idxAfil) $finalVals[] = $afil;
-                        else $finalVals[] = ($v === null || $v === '') ? null : (string)$v;
-                    }
-
-                    $ins->execute($finalVals);
+                    $ins->execute(array_values($dataRow));
                     $inserted++;
                 }
-
-            } elseif ($bankType === 'SANTANDER') {
-                $handle = fopen($filePath, "r");
-                $rawHeader = fgetcsv($handle, 0, ",");
                 
-                // 1. Sanitizar y Unificar Nombres de Columna
-                $cleanCols = [];
-                $seen = [];
-                foreach ($rawHeader as $h) {
-                    $name = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
-                    if (isset($seen[$name])) {
-                        $seen[$name]++;
-                        $name = "{$name}_{$seen[$name]}";
-                    } else {
-                        $seen[$name] = 0;
-                    }
-                    $cleanCols[] = $name;
-                }
-
-                // 2. Asegurar esquema
-                $this->asegurar_columnas_php($conn, 'banco_getnet', $cleanCols);
-
-                // 3. Huellas (ID + Auth + Monto)
-                $stmt = $conn->query("SELECT ID_Movimiento, Cod_Autorizacion, Total FROM banco_getnet");
-                $huellas = [];
-                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                    $huellas[trim($r['ID_Movimiento']) . '|' . trim($r['Cod_Autorizacion']) . '|' . number_format((float)$r['Total'], 2, '.', '')] = true;
-                }
-
-                // 4. Mapeo de índices core
-                $idxIDM = array_search('ID_Movimiento', $cleanCols);
-                $idxAuth = array_search('Cod_Autorizacion', $cleanCols);
-                $idxTotal = array_search('Total', $cleanCols);
-                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
-
-                // 5. Preparar SQL Dinámico
-                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
-                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
-                $ins = $conn->prepare("INSERT INTO banco_getnet ($colsSql) VALUES ($placeholders)");
-
-                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
-                    $idm = ($idxIDM !== false) ? trim($row[$idxIDM] ?? '') : '';
-                    $auth = ($idxAuth !== false) ? trim($row[$idxAuth] ?? '') : '';
-                    $monto = ($idxTotal !== false) ? (float)str_replace(['$', ','], '', $row[$idxTotal] ?? 0) : 0;
-                    $montoStr = number_format($monto, 2, '.', '');
-
-                    $huella = $idm . '|' . $auth . '|' . $montoStr;
-                    if (isset($huellas[$huella])) { $skipped++; continue; }
-
-                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
-                    $fechaSql = null;
-                    if ($fechaRaw) {
-                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
-                        if (!$d) $d = new DateTime($fechaRaw);
-                        if ($d) $fechaSql = $d->format('Y-m-d');
-                    }
-
-                    // Limpieza de valores
-                    $finalVals = [];
-                    foreach ($row as $i => $v) {
-                        if ($i === $idxFecha) $finalVals[] = $fechaSql;
-                        elseif ($i === $idxTotal) $finalVals[] = $monto;
-                        else $finalVals[] = ($v === null || $v === '') ? null : (string)$v;
-                    }
-
-                    $ins->execute($finalVals);
-                    $inserted++;
-                }
-                fclose($handle);
-            }
+                            } elseif ($bankType === 'SANTANDER') {
+                                $handle = fopen($filePath, "r");
+                                $rawHeader = fgetcsv($handle, 0, ",");
+                                
+                                // 1. Sanitizar y Unificar Nombres de Columna
+                                $cleanCols = [];
+                                $seen = [];
+                                foreach ($rawHeader as $h) {
+                                    $name = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
+                                    if (isset($seen[$name])) {
+                                        $seen[$name]++;
+                                        $name = "{$name}_{$seen[$name]}";
+                                    } else {
+                                        $seen[$name] = 0;
+                                    }
+                                    $cleanCols[] = $name;
+                                }
+                
+                                // 2. Asegurar esquema
+                                $this->asegurar_columnas_php($conn, 'banco_getnet', $cleanCols);
+                
+                                // 3. Huellas para duplicados (8 CAMPOS CLAVE PARA CONSISTENCIA TOTAL)
+                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_getnet");
+                                $huellas = [];
+                                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                           trim($r['ID_Externo'] ?? '') . '|' . 
+                                           $fch . '|' . 
+                                           number_format((float)$r['Monto'], 2, '.', '') . '|' .
+                                           trim($r['Hora'] ?? '') . '|' .
+                                           trim($r['Codigo_Autorizacion'] ?? '') . '|' .
+                                           trim($r['Referencia'] ?? '') . '|' .
+                                           trim($r['Terminal'] ?? '');
+                                    $huellas[$key] = true;
+                                }
+                
+                                // 4. Mapeo de índices core
+                                $idxAfil = array_search('Afiliacion', $cleanCols);
+                                $idxIDM = array_search('ID_Externo', $cleanCols);
+                                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
+                                $idxTotal = array_search('Monto', $cleanCols);
+                                $idxHora = array_search('Hora', $cleanCols);
+                                $idxAuth = array_search('Codigo_Autorizacion', $cleanCols);
+                                $idxRef = array_search('Referencia', $cleanCols);
+                                $idxTerm = array_search('Terminal', $cleanCols);
+                
+                                // 5. Preparar SQL Dinámico
+                                $cleanCols[] = 'Nombre_Archivo'; // Agregar columna estándar
+                                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
+                                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
+                                $ins = $conn->prepare("INSERT INTO banco_getnet ($colsSql) VALUES ($placeholders)");
+                
+                                // Ruta relativa para la DB
+                                $dbFilePath = $subPath . $safeName;
+                
+                                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                    $afil = ($idxAfil !== false) ? trim($row[$idxAfil] ?? '') : '';
+                                    $idm = ($idxIDM !== false) ? trim($row[$idxIDM] ?? '') : '';
+                                    $auth = ($idxAuth !== false) ? trim($row[$idxAuth] ?? '') : '';
+                                    $monto = ($idxTotal !== false) ? (float)str_replace(['$', ','], '', $row[$idxTotal] ?? 0) : 0;
+                                    $hora = ($idxHora !== false) ? trim($row[$idxHora] ?? '') : '';
+                                    $ref = ($idxRef !== false) ? trim($row[$idxRef] ?? '') : '';
+                                    $term = ($idxTerm !== false) ? trim($row[$idxTerm] ?? '') : '';
+                                    
+                                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
+                                    $fechaSql = null;
+                                    if ($fechaRaw) {
+                                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
+                                        if (!$d) $d = new DateTime($fechaRaw);
+                                        if ($d) $fechaSql = $d->format('Y-m-d');
+                                    }
+                
+                                    // HUELLA DETERMINISTA IDÉNTICA A BANCOS.PY
+                                    $huella = $afil . '|' . $idm . '|' . $fechaSql . '|' . number_format($monto, 2, '.', '') . '|' . $hora . '|' . $auth . '|' . $ref . '|' . $term;
+                                    if (isset($huellas[$huella])) { $skipped++; continue; }
+                
+                                    // FILTRADO ESTRICTO DE COLUMNAS OFICIALES
+                                    $dataRow = [];
+                                    foreach($columnas_oficiales as $col) {
+                                        if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
+                                        $val = isset($mappedIndices[$col]) ? $row[$mappedIndices[$col]] : null;
+                                        if ($col === 'Monto') $val = $monto;
+                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') $val = $fechaSql;
+                                        $dataRow[$col] = ($val === null || $val === '') ? null : $val;
+                                    }
+                
+                                    $ins->execute(array_values($dataRow));
+                                    $inserted++;
+                                }
+                                fclose($handle);
+                            }
 
             // Limpiar logs de debug previos
             if (file_exists('debug_santander_upload.log')) @unlink('debug_santander_upload.log');
@@ -2959,108 +2972,107 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $tabla = "";
-            $colId = ""; // To store unique ID
-            $colFechaTransaccion = ""; // Original transaction date column name
-            $colFechaAplicacion = ""; // Application date column name
-            $colTotal = "";
-            $colAfil = "afiliacion"; // Default
+            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
             
-            // Nuevas columnas para detalle
-            $colTerminal = "";
-            $colHora = "";
-            $colAuth = "";
-
-            if ($eid == 1) { // Santander -> GetNet
-                $tabla = "banco_getnet";
-                $colId = "ID_Movimiento";
-                $colFechaTransaccion = "Fecha_Transaccion";
-                $colFechaAplicacion = "Fecha_Transaccion"; // Assuming no specific application date, use transaction date
-                $colTotal = "Total";
-                $colAfil = "Afiliacion";
-                
-                $colTerminal = "Terminal";
-                $colHora = "Hora";
-                $colAuth = "Cod_Autorizacion";
-            } else if ($eid == 4) { // Banorte
-                $tabla = "banco_banorte";
-                $colId = "Numero_Control";
-                $colFechaTransaccion = "Fecha_Transaccion";
-                $colFechaAplicacion = "Fecha_Aplicacion";
-                $colTotal = "Monto";
-                $colAfil = "Afiliacion"; // Banorte uses 'Afiliacion' with capital A
-
-                $colTerminal = "Terminal_ID";
-                $colHora = "Hora";
-                $colAuth = "Codigo_Autorizacion";
-            }
-
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
                 exit;
             }
 
+            // QUERY ESTANDARIZADA
             $sql = "SELECT 
-                        T.$colId as IdTransaccionRaw,
-                        T.$colFechaTransaccion as FechaTransaccionRaw, 
-                        T.Fecha_Aplicacion as FechaAplicacionRaw, 
-                        T.Fecha_Conciliacion as FechaConciliacionRaw,
-                        T.$colTotal as Total, 
-                        'Venta' as Concepto,
-                        T.$colAfil as Afiliacion,
-                        T.$colTerminal as Terminal_ID,
-                        T.$colHora as Hora,
-                        T.$colAuth as Codigo_Autorizacion
-                    FROM $tabla T
-                    WHERE YEAR(T.$colFechaTransaccion) = ? 
-                      AND MONTH(T.$colFechaTransaccion) = ? 
-                      AND T.$colAfil = ?
-                    ORDER BY T.$colFechaTransaccion ASC";
+                        ID_Externo,
+                        Fecha_Transaccion, 
+                        Monto, 
+                        Afiliacion,
+                        Terminal,
+                        Hora,
+                        Codigo_Autorizacion,
+                        Referencia,
+                        Nombre_Archivo
+                    FROM $tabla
+                    WHERE YEAR(Fecha_Transaccion) = ? 
+                      AND MONTH(Fecha_Transaccion) = ? 
+                      AND Afiliacion = ?
+                    ORDER BY Fecha_Transaccion ASC";
 
             $stmt = $conn->prepare($sql);
             $stmt->execute([$year, $month, $afiliacion]);
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                // GENERACIÓN DE ID DETERMINISTA SI NO EXISTE ID BANCARIO
-                // Usamos un hash de los datos de la fila para que el ID sea persistente
-                if (!empty($row['IdTransaccionRaw'])) {
-                    $idTransaccion = (string)$row['IdTransaccionRaw'];
-                } else {
-                    $hashData = $row['FechaTransaccionRaw'] . $row['Total'] . $row['Afiliacion'] . $row['Terminal_ID'] . $row['Hora'] . $row['Codigo_Autorizacion'];
-                    $idTransaccion = 'tx_' . md5($hashData);
-                }
+                // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
+                // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
+                $hashData = 
+                    (string)($row['Afiliacion'] ?? '') . 
+                    (string)($row['Fecha_Transaccion'] ?? '') . 
+                    (string)($row['Hora'] ?? '') . 
+                    (string)($row['Monto'] ?? '') . 
+                    (string)($row['Codigo_Autorizacion'] ?? '') .
+                    (string)($row['Terminal'] ?? '') .
+                    (string)($row['Referencia'] ?? '') .
+                    (string)($row['ID_Externo'] ?? ''); 
                 
-                $fechaTransaccionVal = $row['FechaTransaccionRaw'];
-                $fechaTransaccion = ($fechaTransaccionVal instanceof DateTime) ? $fechaTransaccionVal->format('Y-m-d') : substr((string)$fechaTransaccionVal, 0, 10);
+                $idTransaccion = 'tx_' . md5($hashData);
                 
-                $fechaAplicacionVal = $row['FechaAplicacionRaw'];
-                $fechaAplicacion = ($fechaAplicacionVal instanceof DateTime) ? $fechaAplicacionVal->format('Y-m-d') : substr((string)$fechaAplicacionVal, 0, 10);
-
-                $fechaConciliacionVal = $row['FechaConciliacionRaw'];
-                $fechaConciliacion = $fechaConciliacionVal ? (($fechaConciliacionVal instanceof DateTime) ? $fechaConciliacionVal->format('Y-m-d') : substr((string)$fechaConciliacionVal, 0, 10)) : $fechaTransaccion;
-                
-                $total = (float)$row['Total'];
+                $fechaVal = $row['Fecha_Transaccion'];
+                $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
 
                 $result[] = [
                     'IdTransaccion' => $idTransaccion,
-                    'FechaTransaccion' => $fechaTransaccion,
-                    'FechaAplicacion' => $fechaAplicacion,
-                    'FechaConciliacion' => $fechaConciliacion,
-                    'Total' => $total,
-                    'Concepto' => $row['Concepto'],
+                    'ID_Externo' => $row['ID_Externo'], 
+                    'FechaTransaccion' => $fechaIso,
+                    'FechaAplicacion' => $fechaIso,
+                    'FechaConciliacion' => $fechaIso,
+                    'Total' => (float)$row['Monto'],
+                    'Concepto' => 'Venta',
                     'Afiliacion' => $row['Afiliacion'],
-                    'Terminal_ID' => $row['Terminal_ID'],
+                    'Terminal_ID' => $row['Terminal'],
                     'Hora' => $row['Hora'],
-                    'Codigo_Autorizacion' => $row['Codigo_Autorizacion']
+                    'Codigo_Autorizacion' => $row['Codigo_Autorizacion'],
+                    'Referencia' => $row['Referencia'],
+                    'Nombre_Archivo' => $row['Nombre_Archivo'] // TRAZABILIDAD
                 ];
             }
 
             echo json_encode(["status" => "success", "data" => $result]);
 
-        } catch (PDOException $e) {
-            echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+        } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
+        exit;
+    }
+
+    // FUNCIÓN PARA SERVIR ARCHIVOS DEL BANCO
+    public function view_bank_file() {
+        $file = $_GET['file'] ?? '';
+        if (empty($file)) exit("Archivo no especificado");
+
+        // Ruta absoluta según requerimiento
+        $baseDir = "C:/inetpub/wwwroot/TG_PHP/_assets/uploads/";
+        $fullPath = $baseDir . $file;
+
+        if (!file_exists($fullPath)) {
+            // Intentar con ruta relativa si la absoluta falla (para entornos de prueba)
+            $fallbackPath = __DIR__ . '/../uploads/' . $file;
+            if (file_exists($fallbackPath)) $fullPath = $fallbackPath;
+            else exit("El reporte original no se encuentra en el servidor: " . $file);
         }
+
+        $ext = pathinfo($fullPath, PATHINFO_EXTENSION);
+        $ctype = "";
+        switch ($ext) {
+            case "xlsx": $ctype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; break;
+            case "csv":  $ctype = "text/csv"; break;
+            default:     $ctype = "application/octet-stream";
+        }
+
+        header('Content-Description: File Transfer');
+        header('Content-Type: ' . $ctype);
+        header('Content-Disposition: attachment; filename="' . basename($fullPath) . '"');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
         exit;
     }
 

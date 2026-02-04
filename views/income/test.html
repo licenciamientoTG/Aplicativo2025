@@ -531,6 +531,19 @@
                     </div>
                 </div>
 
+                <div class="row mb-3 row-referencia" style="display:none;">
+                    <div class="col-12">
+                        <label class="small text-muted font-weight-bold text-uppercase mb-0">Referencia</label>
+                        <div class="val-referencia font-numeric text-muted" style="font-size: 0.85rem;"></div>
+                    </div>
+                </div>
+
+                <div class="row mb-4 row-reporte" style="display:none;">
+                    <div class="col-12 text-center">
+                        <div class="val-reporte mt-2"></div>
+                    </div>
+                </div>
+
                 <div class="row mb-2 border-top pt-3">
                     <div class="col-4 text-center">
                         <label class="small text-muted font-weight-bold text-uppercase mb-1">Transacción</label>
@@ -1091,25 +1104,16 @@
             const params = { entidad_id: eid, afiliacion: rule.afiliacion, year: widgetState.year, month: widgetState.month };
             const res = await $.get(URLS.transacciones, params);
             
-            if(res.status === 'success') {
+            if(res.status === 'success' && res.data) {
                 currentTxData = res.data.map(i => {
                     return {
-                        IdTransaccion: i.IdTransaccion,
+                        ...i, // PASAR TODAS LAS PROPIEDADES ORIGINALES (IdTransaccion, ID_Externo, Referencia, etc.)
+                        
+                        // Asegurar normalización de campos clave
                         FechaTransaccion: normalizarFecha(i.FechaTransaccion),
                         FechaAplicacion: normalizarFecha(i.FechaAplicacion),
-                        
-                        /* --- MODO DE PRUEBA: SWITCHEAR AQUÍ --- */
-                        FechaConciliacion: normalizarFecha(i.FechaConciliacion), // <-- MODO NORMAL
-                        //FechaConciliacion: normalizarFecha(i.FechaAplicacion),    // <-- MODO PRUEBA (APLICACIÓN)
-                        /* -------------------------------------- */
-
+                        FechaConciliacion: normalizarFecha(i.FechaConciliacion),
                         Total: parseFloat(i.Total),
-                        Concepto: i.Concepto || 'Transacción',
-                        Hora: i.Hora || '',
-                        Afiliacion: i.Afiliacion || '',
-                        Terminal_ID: i.Terminal_ID || '',
-                        Codigo_Autorizacion: i.Codigo_Autorizacion || '',
-                        Tarjeta: i.Tarjeta || '',
                         _status: 'normal',
                         _transitId: null,
                         hidden: false
@@ -1276,9 +1280,14 @@
 
                 if(!groups[dateKey]) groups[dateKey] = { date: dateKey, total: 0, items: [] };
                 
-                // Asegurar que el item tenga un ID único para la UI si no lo tiene
+                // --- MEJORA: ASIGNACIÓN DE ID ÚNICO INFALIBLE ---
                 if (!item.ui_id) {
-                    item.ui_id = side === 'center' ? item.IdTransaccion : `cg_${dateKey}_${Math.random().toString(36).substr(2, 9)}`;
+                    if (side === 'center') {
+                        item.ui_id = item.IdTransaccion;
+                    } else {
+                        // Para ControlGas usamos el ID_Unico que viene de la BD (compuesto)
+                        item.ui_id = item.originalData ? item.originalData.ID_Unico : `cg_gen_${Math.random().toString(36).substr(2, 9)}`;
+                    }
                 }
 
                 groups[dateKey].items.push(item);
@@ -1295,6 +1304,16 @@
             sortedDates.forEach(dateKey => {
                 const group = groups[dateKey];
                 grandTotal += group.total;
+
+                // --- NUEVO: ORDENAR POR HORA DENTRO DEL GRUPO (CRONOLÓGICO) ---
+                if (group.items && group.items.length > 1) {
+                    group.items.sort((a, b) => {
+                        const hA = a.Hora || '00:00:00';
+                        const hB = b.Hora || '00:00:00';
+                        return hA.localeCompare(hB);
+                    });
+                }
+
                 // Renderizar el grupo
                 renderTransactionGroup(container, group, side, coincidenciasUsadas, label);
             });
@@ -1446,7 +1465,12 @@
         // Tooltip y Formato
         const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
         const partes = effectiveDate.split('-');
-        const fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        let fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+
+        // --- MOSTRAR HORA SI ES TRANSACCIÓN (CENTER) ---
+        if (side === 'center' && g.Hora) {
+            fechaFmt += ` <span class="badge badge-light border text-muted ml-1" style="font-size:0.7rem; font-weight:normal;"><i class="far fa-clock mr-1"></i>${g.Hora}</span>`;
+        }
 
         // Lógica de Matching (Buscar en Historial por ID Único V2)
         const itemCleanId = (side === 'left') ? String(g.ui_id).replace('cg_', '') : String(g.IdTransaccion || g.ui_id);
@@ -1569,6 +1593,9 @@
                     transitoPasadoHtml = `<div class="mt-1"><span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span></div>`;
                 }
             }
+        } else {
+            // No imprimir nada extra si no está conciliado (Limpieza según solicitud)
+            badgeHtml = "";
         }
 
         // --- BLOQUEO FINAL: Lado derecho no es clickable ---
@@ -1598,6 +1625,7 @@
     }
 
     // --- ACCIONES DE GRUPO ---
+    let isMirroring = false; // Flag para evitar bucles infinitos
     function toggleGroupDetails(groupId, btn) {
         const $body = $(`#${groupId}`);
         const $icon = $(btn).find('i');
@@ -1605,31 +1633,63 @@
         if ($body.hasClass('open')) {
             $body.removeClass('open');
             $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
-            openGroups.delete(groupId); // Quitar de seguimiento
+            openGroups.delete(groupId); 
         } else {
             $body.addClass('open');
             $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
-            openGroups.add(groupId); // Agregar a seguimiento
+            openGroups.add(groupId); 
+
+            // --- AUTO-FOCUS EN EL LADO ESPEJO ---
+            if (!isMirroring) {
+                const parts = groupId.split('-'); // group, side, YYYY, MM, DD
+                const side = parts[1];
+                const date = parts.slice(2).join('-'); // Reconstruir fecha YYYY-MM-DD correctamente
+                const otherSide = (side === 'left') ? 'center' : (side === 'center' ? 'left' : null);
+
+                if (otherSide) {
+                    const mirrorGroupId = `group-${otherSide}-${date}`;
+                    const $mirrorBody = $(`#${mirrorGroupId}`);
+                    const $mirrorHeader = $mirrorBody.prev('.tx-group-header');
+
+                    if ($mirrorHeader.length) {
+                        isMirroring = true; // Activar bloqueo
+                        
+                        // 1. Asegurar que el espejo esté abierto
+                        if (!$mirrorBody.hasClass('open')) {
+                            const $mirrorBtn = $mirrorHeader.find('.tx-group-toggle-btn');
+                            toggleGroupDetails(mirrorGroupId, $mirrorBtn[0]);
+                        }
+
+                        // 2. Sincronizar Scroll
+                        const containerId = (otherSide === 'left') ? '#cg-content' : '#tx-content';
+                        const $container = $(containerId);
+                        
+                        // Calculamos la posición del header respecto al contenedor
+                        const offsetTop = $mirrorHeader.offset().top - $container.offset().top + $container.scrollTop();
+                        
+                        $container.stop().animate({ scrollTop: offsetTop - 5 }, 400);
+                        
+                        isMirroring = false; // Liberar bloqueo
+                    }
+                }
+            }
         }
     }
 
     function toggleGroup(groupId, date, total, headerEl) {
-        // Seleccionar solo items operables (ni conciliados, ni bloqueados por tránsito)
         const $items = $(`#${groupId} .row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)`);
-        
         if ($items.length === 0) return;
 
-        // Lógica inteligente: Si hay ALGUNO sin seleccionar, seleccionamos todo. 
-        // Solo si TODOS están seleccionados, deseleccionamos todo.
+        // Lógica: Si hay al menos uno sin seleccionar, seleccionamos todos.
+        // Si todos están seleccionados, deseleccionamos todos.
         const anyUnselected = $items.toArray().some(el => !$(el).hasClass('active'));
         
         $items.each(function() {
-            if (anyUnselected) {
-                // Modo: Llenar todo (Select All)
-                if (!$(this).hasClass('active')) $(this).click(); 
-            } else {
-                // Modo: Limpiar todo (Deselect All)
-                if ($(this).hasClass('active')) $(this).click(); 
+            const isActive = $(this).hasClass('active');
+            if (anyUnselected && !isActive) {
+                $(this).click(); 
+            } else if (!anyUnselected && isActive) {
+                $(this).click(); 
             }
         });
     }
@@ -1700,16 +1760,34 @@
         const data = JSON.parse(dataJson);
         const $modal = $('#modalDetalleTransaccion');
         
-        $modal.find('.val-id').text(data.IdTransaccion);
+        // Mostrar el ID del banco (ID_Externo) o el generado si no existe
+        $modal.find('.val-id').text(data.ID_Externo || data.IdTransaccion);
         $modal.find('.val-monto').text(formatter.format(data.Total));
         $modal.find('.val-afil').text(data.Afiliacion || 'N/A');
         $modal.find('.val-terminal').text(data.Terminal_ID || 'N/A');
         $modal.find('.val-hora').text(data.Hora || 'N/A');
         $modal.find('.val-auth').text(data.Codigo_Autorizacion || 'N/A');
         
+        // Agregar Referencia si existe (útil para Banorte/Santander)
+        if (data.Referencia) {
+            $modal.find('.val-referencia').text(data.Referencia);
+            $modal.find('.row-referencia').show();
+        } else {
+            $modal.find('.row-referencia').hide();
+        }
+        
         $modal.find('.val-fecha-trans').text(formatFechaVisual(data.FechaTransaccion));
         $modal.find('.val-fecha-apl').text(formatFechaVisual(data.FechaAplicacion));
         $modal.find('.val-fecha-conc').text(formatFechaVisual(data.FechaConciliacion));
+
+        // LINK AL REPORTE ORIGINAL (TRAZABILIDAD)
+        const $reportRow = $modal.find('.row-reporte');
+        if (data.Nombre_Archivo) {
+            $modal.find('.val-reporte').html(`<a href="/income/view_bank_file?file=${data.Nombre_Archivo}" class="btn btn-sm btn-outline-success rounded-pill"><i class="fas fa-file-download mr-1"></i> Descargar Reporte Original</a>`);
+            $reportRow.show();
+        } else {
+            $reportRow.hide();
+        }
 
         $modal.modal('show');
     }
