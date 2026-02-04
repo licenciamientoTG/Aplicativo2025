@@ -3043,37 +3043,48 @@ public function anomalies_client_tickets()
 
     // FUNCIÓN PARA SERVIR ARCHIVOS DEL BANCO
     public function view_bank_file() {
-        $file = $_GET['file'] ?? '';
-        if (empty($file)) exit("Archivo no especificado");
+        // Limpiar cualquier búfer de salida inmediatamente
+        while (ob_get_level()) ob_end_clean();
 
-        // Ruta relativa al controlador (_assets/controllers/ -> _assets/uploads/)
-        $baseDir = realpath(__DIR__ . '/../uploads/') . DIRECTORY_SEPARATOR;
-        $fullPath = $baseDir . str_replace(['../', '..\\'], '', $file); // Seguridad básica
+        $file = $_GET['file'] ?? '';
+        if (empty($file)) {
+            http_response_code(400);
+            exit("Archivo no especificado");
+        }
+
+        // Normalizar ruta (evitar ataques de navegación de directorios)
+        $file = str_replace(['../', '..\\'], '', $file);
+        
+        // Construir ruta absoluta basada en la ubicación del controlador
+        // _assets/controllers/income.php -> _assets/uploads/
+        $baseDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
+        $fullPath = $baseDir . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
 
         if (!file_exists($fullPath)) {
-            exit("El reporte original no se encuentra en la carpeta de carga del proyecto: " . $file);
+            http_response_code(404);
+            exit("El reporte original no se encuentra en el servidor: " . $file);
         }
 
-        $ext = pathinfo($fullPath, PATHINFO_EXTENSION);
-        $ctype = "";
-        switch (strtolower($ext)) {
-            case "xlsx": $ctype = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; break;
-            case "xls":  $ctype = "application/vnd.ms-excel"; break;
-            case "csv":  $ctype = "text/csv"; break;
-            default:     $ctype = "application/octet-stream";
-        }
+        $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+        $mimes = [
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'xls'  => 'application/vnd.ms-excel',
+            'csv'  => 'text/csv',
+            'pdf'  => 'application/pdf'
+        ];
+        $ctype = $mimes[$ext] ?? 'application/octet-stream';
 
-        // Limpiar cualquier salida previa para evitar corrupción de descarga
-        if (ob_get_level()) ob_end_clean();
-
+        // Configurar Headers para descarga forzada
         header('Content-Description: File Transfer');
         header('Content-Type: ' . $ctype);
         header('Content-Disposition: attachment; filename="' . basename($fullPath) . '"');
+        header('Content-Transfer-Encoding: binary');
         header('Expires: 0');
-        header('Cache-Control: must-revalidate');
+        header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
         header('Pragma: public');
         header('Content-Length: ' . filesize($fullPath));
         
+        // Leer archivo y terminar ejecución
         readfile($fullPath);
         exit;
     }
