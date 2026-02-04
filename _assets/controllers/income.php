@@ -3116,10 +3116,10 @@ public function anomalies_client_tickets()
 
             if ($data['entidad_id'] == 1) { // Santander
                 $tabla = "banco_getnet";
-                $colId = "ID_Movimiento";
+                $colId = "ID_Externo";
             } else if ($data['entidad_id'] == 4) { // Banorte
                 $tabla = "banco_banorte";
-                $colId = "Numero_Control";
+                $colId = "ID_Externo";
             }
 
             $sql = "UPDATE $tabla SET $colFecha = ? WHERE $colId = ?";
@@ -3329,9 +3329,9 @@ public function anomalies_client_tickets()
                         SELECT 1 
                         FROM Conciliacion_V2_Detalles D_Check
                         INNER JOIN (
-                            SELECT ID_Movimiento as id_ref, Afiliacion FROM banco_getnet
+                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                             UNION ALL
-                            SELECT Numero_Control, Afiliacion FROM banco_banorte
+                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
                         ) AS TX_AFIL ON D_Check.referencia_externa = TX_AFIL.id_ref
                         WHERE D_Check.grupo_id = G.id AND D_Check.origen = 'TX' AND TX_AFIL.Afiliacion = ?
                     )
@@ -3411,16 +3411,16 @@ public function get_resumen_transito() {
                     SELECT DISTINCT G.grupo_id, G.diferencia
                     FROM Conciliacion_Transito CT
                     
-                    INNER JOIN Conciliaciones_Detalles DL ON 
-                        DL.fecha = CT.fecha_original AND 
+                    INNER JOIN Conciliacion_V2_Detalles DL ON 
+                        DL.fecha_operativa = CT.fecha_original AND 
                         DL.monto = CT.monto AND 
-                        DL.lado = 'LEFT'
+                        DL.lado = 'left'
                         
-                    INNER JOIN Conciliaciones_Grupos G ON G.grupo_id = DL.grupo_id
+                    INNER JOIN Conciliacion_V2_Grupos G ON G.grupo_id = DL.grupo_id
 
-                    INNER JOIN Conciliaciones_Detalles DR ON 
+                    INNER JOIN Conciliacion_V2_Detalles DR ON 
                         DR.grupo_id = G.grupo_id AND 
-                        DR.lado = 'RIGHT'
+                        DR.lado = 'center'
 
                     WHERE 
                         CT.estacion_id = ? 
@@ -4133,7 +4133,7 @@ public function stamped_invoices_detail(): void
                         FROM Conciliacion_V2_Grupos G
                         INNER JOIN Conciliacion_V2_Detalles D ON G.id = D.grupo_id AND D.origen = 'TX'
                         INNER JOIN (
-                            SELECT ID_Movimiento as id_ref, Afiliacion FROM banco_getnet
+                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                             UNION ALL
                             SELECT Numero_Control, Afiliacion FROM banco_banorte
                         ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
@@ -4154,7 +4154,7 @@ public function stamped_invoices_detail(): void
                            LEFT JOIN Estaciones E ON G.estacion_id = E.Codigo
                            INNER JOIN Conciliacion_V2_Detalles D ON G.id = D.grupo_id AND D.origen = 'TX'
                            INNER JOIN (
-                               SELECT ID_Movimiento as id_ref, Afiliacion FROM banco_getnet
+                               SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                                UNION ALL
                                SELECT Numero_Control, Afiliacion FROM banco_banorte
                            ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
@@ -4254,9 +4254,9 @@ public function stamped_invoices_detail(): void
                                 SELECT TOP 1 TE.Nombre + ' (' + CC.afiliacion + ')' as label
                                 FROM Conciliacion_V2_Detalles D
                                 INNER JOIN (
-                                    SELECT ID_Movimiento as id_ref, Afiliacion FROM banco_getnet
+                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                                     UNION ALL
-                                    SELECT Numero_Control, Afiliacion FROM banco_banorte
+                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
                                 ) AS TX_SRC ON D.referencia_externa = TX_SRC.id_ref
                                 INNER JOIN Conciliacion_Configuracion CC ON TX_SRC.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
                                 INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
@@ -4282,9 +4282,9 @@ public function stamped_invoices_detail(): void
                                 SELECT TOP 1 CC.afiliacion + ' - ' + E.Nombre as label
                                 FROM Conciliacion_V2_Detalles D
                                 INNER JOIN (
-                                    SELECT ID_Movimiento as id_ref, Afiliacion FROM banco_getnet
+                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                                     UNION ALL
-                                    SELECT Numero_Control, Afiliacion FROM banco_banorte
+                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
                                 ) AS TX_SRC ON D.referencia_externa = TX_SRC.id_ref
                                 INNER JOIN Conciliacion_Configuracion CC ON TX_SRC.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
                                 INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
