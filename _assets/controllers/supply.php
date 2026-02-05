@@ -3096,14 +3096,6 @@ class Supply
                             <i class="fas fa-eye"></i>
                         </a>';
 
-                // Solo permitir aplicar si tiene saldo disponible y está autorizado
-                if ($saldo > 0 && $row['status'] == 1) {
-                    $actions .= '
-                        <button class="btn btn-success" onclick="aplicarAnticipo(' . $row['id'] . ')" title="Aplicar a factura">
-                            <i class="fas fa-hand-holding-usd"></i>
-                        </button>';
-                }
-
                 $actions .= '
                         <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
                             <i class="fas fa-trash"></i>

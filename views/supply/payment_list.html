@@ -145,71 +145,98 @@
         color: #000 !important;
         font-weight: 600;
     }
+
+    /* Estilos para sección colapsable de aprobación masiva */
+    #collapseAprobacionMasiva {
+        transition: all 0.3s ease;
+    }
+
+    .card-header[data-bs-toggle="collapse"] {
+        transition: background-color 0.2s ease;
+    }
+
+    .card-header[data-bs-toggle="collapse"]:hover {
+        background-color: #e9ecef !important;
+    }
+
+    .card-header[data-bs-toggle="collapse"] .fa-chevron-down {
+        transition: transform 0.3s ease;
+    }
+
+    .card-header[data-bs-toggle="collapse"][aria-expanded="true"] .fa-chevron-down {
+        transform: rotate(180deg);
+    }
 </style>
 
 <!-- Agregar después de la sección de tabs, antes del tab-content -->
-<div class="card mb-3 bg-light">
-    <div class="card-body">
-        <div class="row">
-            <div class="col-12">
-                <h6 class="mb-3"><i class="fas fa-bolt"></i> Aprobación Masiva de Pagos</h6>
-            </div>
-        </div>
-        <div class="row g-3">
-            <!-- Botón Abastos -->
-            <div class="col-md-4">
-                <div class="card border-primary h-100" id="card-abastos">
-                    <div class="card-body text-center">
-                        <i class="fas fa-truck fa-2x text-primary mb-2"></i>
-                        <h6>Abastos</h6>
-                        <p class="text-muted small mb-2">Nivel 1</p>
-                        <div class="mb-3">
-                            <span class="badge bg-warning text-dark fs-6" id="count-abastos">0</span>
-                            <small class="d-block text-muted">pendientes</small>
+<div class="card mb-3 bg-light border border-secondary border-opacity-25 shadow-sm">
+    <!-- Header colapsable -->
+    <div class="card-header bg-light" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapseAprobacionMasiva" aria-expanded="false">
+        <h6 class="mb-0">
+            <i class="fas fa-bolt text-warning"></i> Aprobación Masiva de Pagos
+            <i class="fas fa-chevron-down float-end text-muted"></i>
+        </h6>
+    </div>
+
+    <!-- Contenido colapsable (cerrado por defecto) -->
+    <div class="collapse" id="collapseAprobacionMasiva">
+        <div class="card-body">
+            <div class="row g-3">
+                <!-- Botón Abastos -->
+                <div class="col-md-4">
+                    <div class="card border-primary h-100" id="card-abastos">
+                        <div class="card-body text-center">
+                            <i class="fas fa-truck fa-2x text-primary mb-2"></i>
+                            <h6>Abastos</h6>
+                            <p class="text-muted small mb-2">Nivel 1</p>
+                            <div class="mb-3">
+                                <span class="badge bg-warning text-dark fs-6" id="count-abastos">0</span>
+                                <small class="d-block text-muted">pendientes</small>
+                            </div>
+                            <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(66, 'Abastos')"
+                                id="btn-aprobar-abastos" disabled>
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 1
+                            </button>
                         </div>
-                        <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(66, 'Abastos')"
-                            id="btn-aprobar-abastos" disabled>
-                            <i class="fas fa-check-double"></i> Aprobar Nivel 1
-                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Botón Administración y Finanzas -->
-            <div class="col-md-4">
-                <div class="card border-success h-100" id="card-admin">
-                    <div class="card-body text-center">
-                        <i class="fas fa-calculator fa-2x text-success mb-2"></i>
-                        <h6>Administración y Finanzas</h6>
-                        <p class="text-muted small mb-2">Nivel 2</p>
-                        <div class="mb-3">
-                            <span class="badge bg-warning text-dark fs-6" id="count-admin">0</span>
-                            <small class="d-block text-muted">pendientes</small>
+                <!-- Botón Administración y Finanzas -->
+                <div class="col-md-4">
+                    <div class="card border-success h-100" id="card-admin">
+                        <div class="card-body text-center">
+                            <i class="fas fa-calculator fa-2x text-success mb-2"></i>
+                            <h6>Administración y Finanzas</h6>
+                            <p class="text-muted small mb-2">Nivel 2</p>
+                            <div class="mb-3">
+                                <span class="badge bg-warning text-dark fs-6" id="count-admin">0</span>
+                                <small class="d-block text-muted">pendientes</small>
+                            </div>
+                            <button class="btn btn-success btn-sm w-100"
+                                onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin"
+                                disabled>
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 2
+                            </button>
                         </div>
-                        <button class="btn btn-success btn-sm w-100"
-                            onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin"
-                            disabled>
-                            <i class="fas fa-check-double"></i> Aprobar Nivel 2
-                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Botón Tesorería -->
-            <div class="col-md-4">
-                <div class="card border-info h-100" id="card-tesoreria">
-                    <div class="card-body text-center">
-                        <i class="fas fa-money-check-alt fa-2x text-info mb-2"></i>
-                        <h6>Tesorería</h6>
-                        <p class="text-muted small mb-2">Nivel 3</p>
-                        <div class="mb-3">
-                            <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
-                            <small class="d-block text-muted">pendientes</small>
+                <!-- Botón Tesorería -->
+                <div class="col-md-4">
+                    <div class="card border-info h-100" id="card-tesoreria">
+                        <div class="card-body text-center">
+                            <i class="fas fa-money-check-alt fa-2x text-info mb-2"></i>
+                            <h6>Tesorería</h6>
+                            <p class="text-muted small mb-2">Nivel 3</p>
+                            <div class="mb-3">
+                                <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
+                                <small class="d-block text-muted">pendientes</small>
+                            </div>
+                            <button class="btn btn-info btn-sm w-100" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
+                                id="btn-aprobar-tesoreria" disabled>
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 3
+                            </button>
                         </div>
-                        <button class="btn btn-info btn-sm w-100" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
-                            id="btn-aprobar-tesoreria" disabled>
-                            <i class="fas fa-check-double"></i> Aprobar Nivel 3
-                        </button>
                     </div>
                 </div>
             </div>
@@ -771,6 +798,14 @@
 
         // Actualizar cada 2 minutos
         // setInterval(cargarContadoresPendientes, 120000);
+
+        // Manejar rotación del chevron en sección colapsable
+        $('#collapseAprobacionMasiva').on('show.bs.collapse', function () {
+            $('[data-bs-target="#collapseAprobacionMasiva"]').attr('aria-expanded', 'true');
+        });
+        $('#collapseAprobacionMasiva').on('hide.bs.collapse', function () {
+            $('[data-bs-target="#collapseAprobacionMasiva"]').attr('aria-expanded', 'false');
+        });
     });
 
 
