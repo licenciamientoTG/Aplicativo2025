@@ -1,0 +1,349 @@
+{% extends "views/layouts/base.html" %}
+
+{% block title %}Resumen de Resultados Auditable{% endblock %}
+{% block menutitle %}Resultados de Conciliación{% endblock %}
+
+{% block content %}
+<style>
+    .card-counter {
+        border-radius: 15px; border: none; transition: transform 0.3s;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    }
+    .card-counter:hover { transform: translateY(-5px); }
+    .val-numeric { font-family: 'Consolas', monospace; font-weight: bold; }
+    .text-success-v2 { color: #28a745; }
+    .text-danger-v2 { color: #dc3545; }
+    
+    .filter-bar {
+        background: #fff; padding: 20px; border-radius: 12px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px;
+    }
+    .nav-tabs { border-bottom: none; gap: 10px; }
+    .nav-tabs .nav-link { 
+        border: none; border-radius: 10px; background: #f1f3f5; color: #6c757d; 
+        font-weight: bold; padding: 10px 20px; transition: 0.3s;
+    }
+    .nav-tabs .nav-link.active { background: var(--primary-color); color: white; }
+    .audit-controls { background: #f8f9fa; border-radius: 12px; padding: 15px; margin-bottom: 20px; border: 1px solid #e9ecef; }
+</style>
+
+<div class="container-fluid pt-3">
+    
+    <!-- TABS PRINCIPALES -->
+    <ul class="nav nav-tabs mb-4" id="summaryTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="general-tab" data-toggle="tab" href="#general" role="tab"><i class="fas fa-chart-line mr-2"></i> Visión General</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="audit-tab" data-toggle="tab" href="#audit" role="tab"><i class="fas fa-search-dollar mr-2"></i> Explorador de Auditoría</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="summaryTabsContent">
+        
+        <!-- PESTAÑA 1: VISIÓN GENERAL (FILTROS ORIGINALES) -->
+        <div class="tab-pane fade show active" id="general" role="tabpanel">
+            <div class="filter-bar">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="btn-group shadow-sm rounded-pill overflow-hidden">
+                        <button class="btn btn-outline-primary btn-sm btn-rs active" onclick="setRS('DIAZ GAS', this)">DIAZ GAS</button>
+                        <button class="btn btn-outline-primary btn-sm btn-rs" onclick="setRS('GASOMEX', this)">GASOMEX</button>
+                        <button class="btn btn-outline-primary btn-sm btn-rs" onclick="setRS('FORANEAS', this)">FORANEAS</button>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <select id="yearFilter" class="form-control form-control-sm rounded-pill" style="width: 100px;"></select>
+                        <select id="monthFilter" class="form-control form-control-sm rounded-pill" style="width: 120px;"></select>
+                    </div>
+                </div>
+                <div class="row align-items-end">
+                    <div class="col-md-4">
+                        <label class="small font-weight-bold text-muted mb-1">ESTACIÓN</label>
+                        <select id="estacionSelect" class="form-control rounded-pill" onchange="alCambiarEstacion()"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small font-weight-bold text-muted mb-1">BANCO</label>
+                        <select id="bancoSelect" class="form-control rounded-pill" onchange="alCambiarBanco()"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small font-weight-bold text-muted mb-1">AFILIACIÓN</label>
+                        <select id="afiliacionSelect" class="form-control rounded-pill"></select>
+                    </div>
+                    <div class="col-md-2 text-right">
+                        <button class="btn btn-primary rounded-pill btn-block" onclick="loadSummary()">Consultar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="general-results">
+                <!-- TARJETAS -->
+                <div class="row mb-4">
+                    <div class="col-md-3"><div class="card card-counter bg-white text-center p-3"><div class="text-muted small text-uppercase font-weight-bold">Sistema (CG)</div><div class="h3 val-numeric mt-2" id="card-sistema">$0.00</div></div></div>
+                    <div class="col-md-3"><div class="card card-counter bg-white text-center p-3 border-left border-primary" style="border-left-width:5px !important;"><div class="text-muted small text-uppercase font-weight-bold">Bancos (TX)</div><div class="h3 val-numeric mt-2 text-primary" id="card-banco">$0.00</div></div></div>
+                    <div class="col-md-3"><div class="card card-counter bg-white text-center p-3"><div class="text-muted small text-uppercase font-weight-bold">Diferencia Neta</div><div class="h3 val-numeric mt-2" id="card-diferencia">$0.00</div></div></div>
+                    <div class="col-md-3"><div class="card card-counter bg-dark text-white text-center p-3"><div class="text-white-50 small text-uppercase font-weight-bold">Conciliaciones</div><div class="h3 val-numeric mt-2" id="card-count">0</div></div></div>
+                </div>
+                <!-- TABLAS -->
+                <div class="row">
+                    <div class="col-md-7">
+                        <div class="card shadow-sm border-0 rounded-lg">
+                            <div class="card-header bg-white border-0 py-3"><h6 class="mb-0 font-weight-bold">Diferencias por Día Operativo</h6></div>
+                            <div class="card-body p-0"><table class="table table-hover mb-0" id="table-days"><thead class="bg-light"><tr><th>Fecha</th><th class="text-right">Sistema</th><th class="text-right">Bancos</th><th class="text-right">Diferencia</th></tr></thead><tbody></tbody></table></div>
+                        </div>
+                    </div>
+                <div class="col-md-5">
+                    <div class="card shadow-sm border-0 rounded-lg">
+                        <div class="card-header bg-white border-0 py-3">
+                            <h6 class="mb-0 font-weight-bold"><i class="fas fa-shipping-fast mr-2 text-primary"></i> Partidas en Tránsito (Aging)</h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-hover mb-0" id="table-transit">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th>Antigüedad</th>
+                                        <th class="text-right">Casos</th>
+                                        <th class="text-right">Monto Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr id="row-aging-1"><td><span class="badge badge-success">0-30 días</span></td><td class="text-right val-count">0</td><td class="text-right font-numeric val-amount">$0.00</td></tr>
+                                    <tr id="row-aging-2"><td><span class="badge badge-warning text-dark">31-60 días</span></td><td class="text-right val-count">0</td><td class="text-right font-numeric val-amount">$0.00</td></tr>
+                                    <tr id="row-aging-3"><td><span class="badge badge-danger">Crítico (>60 d)</span></td><td class="text-right val-count">0</td><td class="text-right font-numeric val-amount">$0.00</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PESTAÑA 2: EXPLORADOR DE AUDITORÍA (INDEPENDIENTE) -->
+        <div class="tab-pane fade" id="audit" role="tabpanel">
+            <div class="audit-controls">
+                <div class="row align-items-end">
+                    <div class="col-md-2">
+                        <label class="small font-weight-bold text-muted mb-1">AÑO/MES</label>
+                        <div class="d-flex gap-1">
+                            <select id="auditYear" class="form-control form-control-sm"></select>
+                            <select id="auditMonth" class="form-control form-control-sm"></select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small font-weight-bold text-muted mb-1">AUDITAR POR:</label>
+                        <select id="auditMode" class="form-control rounded-pill" onchange="onAuditModeChange()">
+                            <option value="rs">Razón Social</option>
+                            <option value="station">Estación</option>
+                            <option value="bank">Banco</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label id="auditValueLabel" class="small font-weight-bold text-muted mb-1">SELECCIONAR:</label>
+                        <select id="auditValue" class="form-control rounded-pill"></select>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-dark rounded-pill btn-block" onclick="loadAuditPivot()">
+                            <i class="fas fa-eye mr-2"></i> Ver Diferencias
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0 rounded-lg">
+                <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 font-weight-bold text-primary" id="auditTitle">Resultados del Agrupamiento</h6>
+                    <button class="btn btn-sm btn-success" onclick="exportExcel()"><i class="fas fa-file-excel mr-1"></i> Exportar este Mes</button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0" id="table-audit-pivot">
+                        <thead class="bg-light">
+                            <tr>
+                                <th id="pivotColLabel">Descripción</th>
+                                <th class="text-right">Sistema (CG)</th>
+                                <th class="text-right">Bancos (TX)</th>
+                                <th class="text-right">Diferencia Neta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="4" class="text-center py-5 text-muted">Selecciona los filtros y presiona "Ver Diferencias"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+    const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    let todasLasEstaciones = [];
+    let stationConfig = [];
+    const RS_MAPPING = { 'DGA930823KD3': 'DIAZ GAS', 'DGM880621FU5': 'GASOMEX', 'FORANEAS': 'FORANEAS' };
+
+    $(document).ready(function() {
+        initFilters();
+        cargarEstaciones();
+    });
+
+    function initFilters() {
+        const currentYear = new Date().getFullYear();
+        const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
+        
+        // Llenar selects de años
+        ['#yearFilter', '#auditYear'].forEach(s => {
+            for(let i = currentYear; i >= 2024; i--) $(s).append(`<option value="${i}">${i}</option>`);
+        });
+
+        // Llenar selects de meses
+        const mNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        ['#monthFilter', '#auditMonth'].forEach(s => {
+            mNames.forEach((n, i) => $(s).append(`<option value="${(i+1).toString().padStart(2,'0')}">${n}</option>`));
+            $(s).val(currentMonth);
+        });
+    }
+
+    // --- LOGICA PESTAÑA 1 (GENERAL) ---
+    let currentRS = 'DIAZ GAS';
+    function setRS(rs, btn) { $('.btn-rs').removeClass('active'); $(btn).addClass('active'); currentRS = rs; filtrarEstaciones(); }
+    function cargarEstaciones() {
+        $.get('/income/get_estaciones_catalogo', function(r) {
+            if(r.status==='success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); onAuditModeChange(); }
+        });
+    }
+    function filtrarEstaciones() {
+        const $s = $('#estacionSelect').empty().append('<option value="0">-- Estación --</option>');
+        todasLasEstaciones.forEach(e => { if((RS_MAPPING[e.RFC] || 'FORANEAS') === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`); });
+        alCambiarEstacion();
+    }
+    async function alCambiarEstacion() {
+        $('#bancoSelect').empty().append('<option value="0">-- Banco --</option>');
+        $('#afiliacionSelect').empty().append('<option value="">-- Afiliación --</option>');
+        const id = $('#estacionSelect').val(); if(id == "0") return;
+        try {
+            const res = await fetch(`/income/get_conciliacion_config?estacion_id=${id}`);
+            const json = await res.json();
+            if(json.status === 'success') { stationConfig = json.data || []; llenarBancos(); }
+        } catch(e) { console.error(e); }
+    }
+    function llenarBancos() {
+        const $sel = $('#bancoSelect').empty().append('<option value="0">-- Banco --</option>');
+        const unicos = new Map();
+        stationConfig.forEach(item => { if(!unicos.has(item.entidad_id)) unicos.set(item.entidad_id, item.nombre_banco || 'Banco ' + item.entidad_id); });
+        unicos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
+    }
+    function alCambiarBanco() {
+        const eid = $('#bancoSelect').val();
+        const $asel = $('#afiliacionSelect').empty().append('<option value="">-- Todas --</option>');
+        if(eid == "0") return;
+        stationConfig.filter(r => r.entidad_id == eid).forEach(c => $asel.append(`<option value="${c.afiliacion}">${c.descripcion || 'Cuenta'} (${c.afiliacion})</option>`));
+    }
+
+    function loadSummary() {
+        const params = { year: $('#yearFilter').val(), month: $('#monthFilter').val(), estacion_id: $('#estacionSelect').val(), banco_id: $('#bancoSelect').val(), afiliacion: $('#afiliacionSelect').val() };
+        $('#card-sistema, #card-banco, #card-diferencia, #card-count').text('...');
+        $('#table-days tbody').html(`<tr><td colspan="4" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>`);
+
+        $.get('/income/get_conciliacion_summary', params, function(resp) {
+            if(resp.status === 'success') {
+                renderDashboard(resp);
+                loadTransitAging(); 
+            }
+        });
+    }
+
+    function loadTransitAging() {
+        const eid = $('#estacionSelect').val();
+        if(eid == "0") {
+            // Reset table if no station
+            $('#row-aging-1 .val-count, #row-aging-2 .val-count, #row-aging-3 .val-count').text('0');
+            $('#row-aging-1 .val-amount, #row-aging-2 .val-amount, #row-aging-3 .val-amount').text('$0.00');
+            return;
+        }
+        $.get('/income/get_transitos_pendientes', { estacion_id: eid }, function(resp) {
+            if(resp.status === 'success') {
+                let aging = { one: {c:0, s:0}, two: {c:0, s:0}, three: {c:0, s:0} };
+                resp.data.forEach(t => {
+                    const d = parseInt(t.dias_antiguedad);
+                    if(d <= 30) { aging.one.c++; aging.one.s += parseFloat(t.monto); }
+                    else if(d <= 60) { aging.two.c++; aging.two.s += parseFloat(t.monto); }
+                    else { aging.three.c++; aging.three.s += parseFloat(t.monto); }
+                });
+                $('#row-aging-1 .val-count').text(aging.one.c); $('#row-aging-1 .val-amount').text(formatter.format(aging.one.s));
+                $('#row-aging-2 .val-count').text(aging.two.c); $('#row-aging-2 .val-amount').text(formatter.format(aging.two.s));
+                $('#row-aging-3 .val-count').text(aging.three.c); $('#row-aging-3 .val-amount').text(formatter.format(aging.three.s));
+            }
+        });
+    }
+
+    function renderDashboard(data) {
+        const t = data.totales;
+        $('#card-sistema').text(formatter.format(t.total_sistema));
+        $('#card-banco').text(formatter.format(t.total_banco));
+        $('#card-diferencia').text(formatter.format(t.total_diferencia)).css('color', Math.abs(t.total_diferencia) < 0.01 ? '#28a745' : '#dc3545');
+        $('#card-count').text(t.total_conciliaciones);
+
+        const $tbodyDays = $('#table-days tbody').empty();
+        data.dias.forEach(d => {
+            const dColor = Math.abs(d.diferencia) < 0.01 ? 'text-success-v2' : 'text-danger-v2';
+            $tbodyDays.append(`<tr><td>${d.fecha}</td><td class="text-right font-numeric">${formatter.format(d.sistema)}</td><td class="text-right font-numeric text-primary">${formatter.format(d.banco)}</td><td class="text-right font-numeric ${dColor}">${formatter.format(d.diferencia)}</td></tr>`);
+        });
+    }
+
+    // --- LOGICA PESTAÑA 2 (EXPLORADOR AUDITORÍA) ---
+    function onAuditModeChange() {
+        const mode = $('#auditMode').val();
+        const $val = $('#auditValue').empty();
+        const $valContainer = $('#auditValue').closest('.col-md-4');
+        
+        if (mode === 'rs') {
+            $valContainer.hide(); // Ocultar porque ya no se escoge nada
+            $('#pivotColLabel').text('Razón Social');
+        } else if (mode === 'station') {
+            $valContainer.show();
+            $('#auditValueLabel').text('SELECCIONAR ESTACIÓN:');
+            todasLasEstaciones.forEach(e => $val.append(`<option value="${e.Codigo}">${e.Nombre}</option>`));
+            $('#pivotColLabel').text('Banco / Afiliación');
+        } else if (mode === 'bank') {
+            $valContainer.show();
+            $('#auditValueLabel').text('SELECCIONAR BANCO:');
+            $val.append('<option value="1">SANTANDER (GETNET)</option><option value="4">BANORTE</option>');
+            $('#pivotColLabel').text('Afiliación - Estación');
+        }
+    }
+
+    function loadAuditPivot() {
+        const mode = $('#auditMode').val();
+        const params = { year: $('#auditYear').val(), month: $('#auditMonth').val(), mode: mode, value: $('#auditValue').val() };
+        
+        $('#table-audit-pivot tbody').html(`<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando auditoría...</td></tr>`);
+
+        $.get('/income/get_audit_pivoted_data', params, function(resp) {
+            const $tbody = $('#table-audit-pivot tbody').empty();
+            if(resp.status === 'success' && resp.data.length > 0) {
+                resp.data.forEach(r => {
+                    const color = Math.abs(r.diferencia) < 0.01 ? 'text-success-v2' : 'text-danger-v2';
+                    $tbody.append(`
+                        <tr>
+                            <td><strong>${r.label}</strong></td>
+                            <td class="text-right font-numeric">${formatter.format(r.sistema)}</td>
+                            <td class="text-right font-numeric text-primary">${formatter.format(r.banco)}</td>
+                            <td class="text-right font-numeric ${color}">${formatter.format(r.diferencia)}</td>
+                        </tr>
+                    `);
+                });
+            } else {
+                $tbody.append(`<tr><td colspan="4" class="text-center py-5 text-muted">No se encontraron diferencias para esta selección.</td></tr>`);
+            }
+        });
+    }
+
+    function exportExcel() {
+        const y = $('#auditYear').val();
+        const m = $('#auditMonth').val();
+        window.location.href = `/income/export_conciliacion_excel?year=${y}&month=${m}`;
+    }
+</script>
+{% endblock %}

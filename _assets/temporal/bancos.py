@@ -1,5 +1,6 @@
 import time
 import os
+import shutil
 import pyodbc
 import pandas as pd
 import unicodedata
@@ -15,27 +16,43 @@ USERNAME = 'cguser'
 PASSWORD = 'sahei1712'
 
 # Mapeo de nombres de archivo a nombres de BD existentes (para no romper el PHP)
+# Mapeo de nombres de archivo a nombres de BD ESTANDARIZADOS
 CORE_MAP = {
     'BANORTE': {
         'Afiliación': 'Afiliacion',
+        'Afiliacion': 'Afiliacion',
         'Nombre de Afiliación': 'Nombre_Afiliacion',
+        'Nombre de Afiliacion': 'Nombre_Afiliacion',
         'Moneda': 'Moneda',
         'Estatus de Transacción': 'Estatus',
+        'Estatus de Transaccion': 'Estatus',
         'Tipo transaccion': 'Tipo_Transaccion',
         'Tipo de Transacción': 'Tipo_Transaccion',
-        'Número de Control': 'Numero_Control',
+        'Tipo de Transaccion': 'Tipo_Transaccion',
+        'Número de Control': 'ID_Externo',          # ESTANDARIZADO
+        'Numero de Control': 'ID_Externo',
         'Número de Tarjeta': 'Tarjeta',
+        'Numero de Tarjeta': 'Tarjeta',
         'Tipo de Tarjeta': 'Tipo_Tarjeta',
         'Monto de Transacción Signo': 'Monto',
+        'Monto de Transaccion Signo': 'Monto',
         'Fecha Transacción': 'Fecha_Transaccion',
+        'Fecha Transaccion': 'Fecha_Transaccion',
+        'Fecha TransacciÃ³n': 'Fecha_Transaccion',
         'Código Autorización': 'Codigo_Autorizacion',
-        'Referencia': 'Referencia',
-        'Terminal ID': 'Terminal_ID',
+        'Codigo Autorizacion': 'Codigo_Autorizacion',
+        'Referencia': 'Referencia_Pago',            # Referencia normal (menos fuerte)
+        'Terminal ID': 'Terminal',                  # ESTANDARIZADO
+        'Terminal': 'Terminal',
         'Lote de Transacción': 'Lote',
-        'Hora de Transacción': 'Hora'
+        'Lote': 'Lote',
+        'Hora de Transacción': 'Hora',
+        'Hora Transacción': 'Hora',
+        'Hora': 'Hora',
+        'Referencia Interbancaria': 'Referencia'    # ESTANDARIZADO
     },
     'GETNET': {
-        'ID movimiento': 'ID_Movimiento',
+        'ID movimiento': 'ID_Externo',              # ESTANDARIZADO
         'Fecha Transacción': 'Fecha_Transaccion',
         'Hora de Transacción': 'Hora',
         'Hora Transacción': 'Hora',
@@ -44,18 +61,19 @@ CORE_MAP = {
         'Tipo de Transacción': 'Tipo_Transaccion',
         'Tipo Transacción': 'Tipo_Transaccion',
         'Tarjeta': 'Tarjeta',
-        'Cod. Terminal': 'Terminal',
+        'Cod. Terminal': 'Terminal',                # ESTANDARIZADO
         'Terminal ID': 'Terminal',
         'Operación': 'Operacion',
         'Tipo de Tarjeta': 'Tipo_Tarjeta',
         'Tipo Tarjeta': 'Tipo_Tarjeta',
         'Número de Tarjeta': 'Tarjeta_Numero',
         'Tarjeta Número': 'Tarjeta_Numero',
-        'Código Autorización': 'Cod_Autorizacion',
-        'Cod. Aut': 'Cod_Autorizacion',
-        'Total': 'Total',
-        'Monto de Transacción Signo': 'Total',
-        'Comisión': 'Comision'
+        'Código Autorización': 'Codigo_Autorizacion',
+        'Cod. Aut': 'Codigo_Autorizacion',
+        'Total': 'Monto',                           # ESTANDARIZADO
+        'Monto de Transacción Signo': 'Monto',
+        'Comisión': 'Comision',
+        'Referencia': 'Referencia'                  # ESTANDARIZADO
     }
 }
 
@@ -77,7 +95,6 @@ def limpiar_fecha(valor, formato_origen=None):
         try:
             return datetime.strptime(s, formato_origen).strftime('%Y-%m-%d')
         except: pass
-    
     formatos = ['%d/%m/%Y', '%Y-%m-%d', '%d-%m-%y', '%m/%d/%Y']
     for fmt in formatos:
         try:
@@ -105,108 +122,246 @@ def asegurar_columnas(cursor, tabla, df_columns):
             cursor.execute(f"ALTER TABLE {tabla} ADD [{col}] VARCHAR(MAX)")
 
 def crear_tablas_si_no_existen():
-    conn = obtener_conexion()
-    cursor = conn.cursor()
-    cursor.execute("""
-        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='banco_banorte' and xtype='U')
-        CREATE TABLE banco_banorte (
-            ID INT IDENTITY(1,1) PRIMARY KEY, Afiliacion VARCHAR(50), Nombre_Afiliacion VARCHAR(255), Moneda VARCHAR(10),
-            Estatus VARCHAR(50), Tipo_Transaccion VARCHAR(100), Numero_Control VARCHAR(50), Tarjeta VARCHAR(50),
-            Tipo_Tarjeta VARCHAR(50), Monto DECIMAL(18,2), Fecha_Transaccion DATE, Codigo_Autorizacion VARCHAR(50),
-            Referencia VARCHAR(255), Terminal_ID VARCHAR(50), Lote VARCHAR(50), Hora VARCHAR(20), Fecha_Carga DATETIME DEFAULT GETDATE()
-        )
-    """)
-    cursor.execute("""
-        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='banco_getnet' and xtype='U')
-        CREATE TABLE banco_getnet (
-            ID INT IDENTITY(1,1) PRIMARY KEY, ID_Movimiento VARCHAR(100), Fecha_Transaccion DATE, Hora VARCHAR(20),
-            Afiliacion VARCHAR(50), Comercio VARCHAR(255), Tipo_Transaccion VARCHAR(100), Tarjeta VARCHAR(50),
-            Terminal VARCHAR(50), Operacion VARCHAR(100), Tarjeta_Numero VARCHAR(50), Cod_Autorizacion VARCHAR(50),
-            Total DECIMAL(18,2), Comision VARCHAR(50), Referencia VARCHAR(255), Fecha_Carga DATETIME DEFAULT GETDATE()
-        )
-    """)
-    conn.commit()
-    conn.close()
+    # Las tablas ya fueron creadas con el esquema estandarizado desde PHP/PowerShell
+    pass
 
 def subir_a_db(file_path, tipo_banco):
     print(f"   >>> Procesando {file_path} ({tipo_banco})...")
     if not os.path.exists(file_path): return
+    
+    # LISTA BLANCA DE COLUMNAS ESTANDARIZADAS
+    COLUMNAS_OFICIALES = [
+        'ID_Externo', 'Afiliacion', 'Fecha_Transaccion', 'Hora', 
+        'Monto', 'Codigo_Autorizacion', 'Terminal', 'Referencia', 'Fecha_Deposito', 'Nombre_Archivo'
+    ]
+
     try:
-        crear_tablas_si_no_existen()
         conn = obtener_conexion(); cursor = conn.cursor()
         df = pd.read_excel(file_path) if tipo_banco == 'BANORTE' else pd.read_csv(file_path, encoding='utf-8-sig')
         if df.empty: conn.close(); return
-        original_cols = df.columns.tolist(); clean_cols = []; seen = {}
-        for c in original_cols:
+        
+        # 1. Mapear columnas según CORE_MAP
+        mapped_cols = {}
+        for c in df.columns:
             name = sanitizar_nombre_columna(c, tipo_banco)
-            if name in seen: seen[name] += 1; name = f"{name}_{seen[name]}"
-            else: seen[name] = 0
-            clean_cols.append(name)
-        df.columns = clean_cols
-        asegurar_columnas(cursor, 'banco_banorte' if tipo_banco == 'BANORTE' else 'banco_getnet', clean_cols)
-        if tipo_banco == 'BANORTE':
-            cursor.execute("SELECT Afiliacion, Numero_Control, Fecha_Transaccion, Monto FROM banco_banorte")
-            huellas = set(f"{str(r[0]).strip()}|{str(r[1]).strip()}|{str(r[2])[:10]}|{float(r[3]):.2f}" for r in cursor.fetchall())
-        else:
-            cursor.execute("SELECT ID_Movimiento, Cod_Autorizacion, Total FROM banco_getnet")
-            huellas = set(f"{str(r[0]).strip()}|{str(r[1]).strip()}|{float(r[2]):.2f}" for r in cursor.fetchall())
+            if name in COLUMNAS_OFICIALES:
+                mapped_cols[c] = name
+        
+        # 2. Filtrar el DataFrame solo con las columnas mapeadas y renombrarlas
+        df = df[list(mapped_cols.keys())].rename(columns=mapped_cols)
+        
+        # DEFINIR RUTA FINAL ANTES DE SUBIR PARA GUARDAR EL NOMBRE
+        ruta_base_abs = r"C:\inetpub\wwwroot\TG_PHP\_assets\uploads"
+        sub_ruta = os.path.join(tipo_banco, datetime.now().strftime('%Y'), datetime.now().strftime('%m'))
+        ruta_final = os.path.join(ruta_base_abs, sub_ruta)
+        
+        if not os.path.exists(ruta_final): os.makedirs(ruta_final)
+        
+        # Nombre único del archivo
+        nombre_solo = f"{datetime.now().strftime('%H%M%S')}_{os.path.basename(file_path)}"
+        nombre_relativo = os.path.join(sub_ruta, nombre_solo).replace("\\", "/") # Ruta para la DB
+        
+        # 3. Asegurar que todas las columnas oficiales existan
+        for col in COLUMNAS_OFICIALES:
+            if col not in df.columns:
+                df[col] = None
+        
+        # ASIGNAR EL NOMBRE DEL ARCHIVO A TODAS LAS FILAS
+        df['Nombre_Archivo'] = nombre_relativo
+
+        # 4. Limpieza de datos
+        df['Fecha_Transaccion'] = df['Fecha_Transaccion'].apply(lambda x: limpiar_fecha(x))
+        if 'Fecha_Deposito' in df.columns:
+            df['Fecha_Deposito'] = df['Fecha_Deposito'].apply(lambda x: limpiar_fecha(x))
+        
+        # Asegurar que Monto sea numérico
+        df['Monto'] = df['Monto'].apply(lambda x: limpiar_moneda(x))
+        df['Monto'] = pd.to_numeric(df['Monto'], errors='coerce').fillna(0.0)
+        
+        tabla = 'banco_banorte' if tipo_banco == 'BANORTE' else 'banco_getnet'
+        
+        # 5. Huellas Digitales
+        cursor.execute(f"SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM {tabla}")
+        huellas = set(f"{str(r[0]).strip()}|{str(r[1]).strip()}|{str(r[2])[:10]}|{float(r[3]):.2f}|{str(r[4]).strip()}|{str(r[5]).strip()}|{str(r[6]).strip()}|{str(r[7]).strip()}" for r in cursor.fetchall())
+        
+        records = df.to_dict('records')
         nuevos_rows = []
-        idx_fecha = [i for i, c in enumerate(clean_cols) if 'Fecha_Transaccion' in c]
-        idx_monto = [i for i, c in enumerate(clean_cols) if c == 'Monto']
-        idx_total = [i for i, c in enumerate(clean_cols) if c == 'Total']
-        idx_idm, idx_auth, idx_afil, idx_nctrl = [i for i,c in enumerate(clean_cols) if c=='ID_Movimiento'], [i for i,c in enumerate(clean_cols) if c=='Cod_Autorizacion'], [i for i,c in enumerate(clean_cols) if c=='Afiliacion'], [i for i,c in enumerate(clean_cols) if c=='Numero_Control']
-        for _, row in df.iterrows():
-            if tipo_banco == 'BANORTE':
-                huella = f"{str(row.iloc[idx_afil[0]]).strip()}|{str(row.iloc[idx_nctrl[0]]).strip()}|{limpiar_fecha(row.iloc[idx_fecha[0]])}|{limpiar_moneda(row.iloc[idx_monto[0]]):.2f}"
-            else:
-                huella = f"{str(row.iloc[idx_idm[0]]).strip()}|{str(row.iloc[idx_auth[0]]).strip()}|{limpiar_moneda(row.iloc[idx_total[0]]):.2f}"
+        for row in records:
+            val_afil = str(row.get('Afiliacion') or '').strip()
+            val_idex = str(row.get('ID_Externo') or '').strip()
+            val_fecha = str(row.get('Fecha_Transaccion') or '')
+            val_monto = float(row.get('Monto') or 0)
+            val_hora = str(row.get('Hora') or '').strip()
+            val_auth = str(row.get('Codigo_Autorizacion') or '').strip()
+            val_ref = str(row.get('Referencia') or '').strip()
+            val_term = str(row.get('Terminal') or '').strip()
+
+            huella = f"{val_afil}|{val_idex}|{val_fecha}|{val_monto:.2f}|{val_hora}|{val_auth}|{val_ref}|{val_term}"
             if huella in huellas: continue
-            vals = [ (None if pd.isna(v) else (limpiar_fecha(v) if i in idx_fecha else (limpiar_moneda(v) if i in (idx_monto+idx_total) else str(v)))) for i, v in enumerate(row.values) ]
-            nuevos_rows.append(tuple(vals))
+            
+            final_vals = []
+            for col in COLUMNAS_OFICIALES:
+                val = row.get(col)
+                final_vals.append(None if (pd.isna(val) or val == '') else val)
+            nuevos_rows.append(tuple(final_vals))
+            
         if nuevos_rows:
-            sql = f"INSERT INTO {'banco_banorte' if tipo_banco == 'BANORTE' else 'banco_getnet'} ({', '.join([f'[{c}]' for c in clean_cols])}) VALUES ({', '.join(['?' for _ in clean_cols])})"
-            for i in range(0, len(nuevos_rows), 1000): cursor.executemany(sql, nuevos_rows[i:i+1000])
-            conn.commit(); print(f"   ✅ {len(nuevos_rows)} insertados.")
-        conn.close(); os.remove(file_path)
-    except Exception as e: print(f"   ❌ Error: {e}"); traceback.print_exc()
+            placeholders = ", ".join(["?" for _ in COLUMNAS_OFICIALES])
+            cols_sql = ", ".join(COLUMNAS_OFICIALES)
+            sql = f"INSERT INTO {tabla} ({cols_sql}) VALUES ({placeholders})"
+            for i in range(0, len(nuevos_rows), 1000):
+                cursor.executemany(sql, nuevos_rows[i:i+1000])
+            conn.commit(); print(f"   ✅ {len(nuevos_rows)} insertados en {tabla}.")
+        
+        conn.close()
+        
+        # Mover archivo a la ruta definitiva (Absoluta C:\...)
+        destino_final = os.path.join(ruta_final, nombre_solo)
+        shutil.move(file_path, destino_final)
+        print(f"   📂 Archivado en: {destino_final}")
+        
+    except Exception as e:
+        print(f"   ❌ Error procesando {tipo_banco}: {e}"); traceback.print_exc()
+
+def get_last_banorte_date():
+    try:
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        # Filtro de seguridad: Ignorar fechas futuras que puedan estar corrompiendo el MAX
+        cursor.execute("SELECT MAX(Fecha_Transaccion) FROM banco_banorte WHERE Fecha_Transaccion <= GETDATE()")
+        res = cursor.fetchone()[0]
+        conn.close()
+        
+        if res is None: 
+            print("   ℹ️ No se encontraron registros. Iniciando desde hace 30 días.")
+            return datetime.now() - timedelta(days=30)
+        
+        # Si ya es un objeto de fecha/tiempo
+        if isinstance(res, (datetime, pd.Timestamp)):
+            print(f"   ℹ️ Última fecha en DB: {res.strftime('%Y-%m-%d')}")
+            return res
+            
+        # Si es string, limpiar y convertir
+        res_str = str(res).split(' ')[0] 
+        try:
+            val = datetime.strptime(res_str, '%Y-%m-%d')
+        except:
+            val = datetime.strptime(res_str, '%d/%m/%Y')
+            
+        print(f"   ℹ️ Última fecha en DB: {val.strftime('%Y-%m-%d')}")
+        return val
+    except Exception as e:
+        print(f"   ❌ Error consultando última fecha: {e}")
+        return datetime.now() - timedelta(days=30)
 
 def ejecutar_banorte(browser):
-    print("\n" + "="*50 + "\n>>> 1. INICIANDO PROCESO BANORTE\n" + "="*50)
+    print("\n" + "="*50 + "\n>>> 1. INICIANDO PROCESO BANORTE (MODO CONTINUIDAD)\n" + "="*50)
     USUARIO, PASSWORD = "israel.ibarra@totalgas.com", "TotGAS26@$"
-    fecha_hoy = datetime.now()
-    fecha_inicio = fecha_fin = (fecha_hoy - timedelta(days=1)).strftime("%d/%m/%Y")
-    context = browser.new_context(viewport={'width': 1366, 'height': 768}, permissions=['geolocation'], geolocation={'latitude': 19.4326, 'longitude': -99.1332}, locale='es-MX')
+    
+    fecha_inicio_dt = get_last_banorte_date() + timedelta(days=1)
+    fecha_hoy_dt = datetime.now()
+    
+    if fecha_inicio_dt > fecha_hoy_dt:
+        print(f"   ✅ Banorte está al día. Última fecha: {fecha_inicio_dt - timedelta(days=1)}")
+        return
+
+    # RESTAURACIÓN: Configuración original de contexto (Geolocalización y Permisos)
+    context = browser.new_context(
+        viewport={'width': 1366, 'height': 768}, 
+        permissions=['geolocation'], 
+        geolocation={'latitude': 19.4326, 'longitude': -99.1332}, 
+        locale='es-MX'
+    )
     page = context.new_page()
+    
     try:
         print("   Login..."); page.goto("https://multicobros.banorte.com/internet/CIBV2/homepublico")
-        page.wait_for_selector('input[formcontrolname="username"]', state="visible"); page.fill('input[formcontrolname="username"]', USUARIO); page.fill('input[formcontrolname="segu"]', PASSWORD); page.click('.login_box_btn_entrar')
-        time.sleep(3); print("   Abriendo menú Analítica..."); time.sleep(3)
+        page.wait_for_selector('input[formcontrolname="username"]', state="visible")
+        page.fill('input[formcontrolname="username"]', USUARIO)
+        page.fill('input[formcontrolname="segu"]', PASSWORD)
+        page.click('.login_box_btn_entrar')
+        time.sleep(5) # Espera un poco más para que cargue el dashboard o el error
+
+        # NUEVO: Detección de Sesión Abierta
+        if page.is_visible("text=abierta") or page.is_visible("text=Abierta") or page.is_visible("text=ABIERTA"):
+            print("   ⚠️ ALERTA: Se detectó una sesión ya abierta en otro dispositivo. Abortando proceso Banorte.")
+            return
+
+        print("   Abriendo menú Analítica...")
+        time.sleep(3)
         if page.is_visible("text=Analítica"): page.click("text=Analítica", force=True)
         else: page.click("a.nav-link:has-text('Analítica')", force=True)
-        time.sleep(1.5); selector_reportes = ".dropdown-menu-custom-opcion:has-text('Reportes')"
+        time.sleep(1.5)
+        
+        selector_reportes = ".dropdown-menu-custom-opcion:has-text('Reportes')"
         try: page.wait_for_selector(selector_reportes, timeout=1000); page.click(selector_reportes, force=True)
         except: page.click("text=Analítica", force=True); time.sleep(1); page.click(selector_reportes, force=True)
-        print("   Eligiendo Depósitos..."); page.wait_for_selector("button.icon_r-reporteDepositos"); page.click("button.icon_r-reporteDepositos", force=True)
-        print("   Llenando fechas..."); page.wait_for_selector('input[data-provide="datepicker"]')
-        i_ini = page.locator('input[data-provide="datepicker"]').nth(0); i_ini.click(); page.keyboard.press("Control+a"); page.keyboard.press("Backspace"); i_ini.type(fecha_inicio, delay=50); page.keyboard.press("Escape"); time.sleep(0.5)
-        i_fin = page.locator('input[data-provide="datepicker"]').nth(1); i_fin.click(); page.keyboard.press("Control+a"); page.keyboard.press("Backspace"); i_fin.type(fecha_fin, delay=50); page.keyboard.press("Escape")
-        print("   Buscando..."); page.click("button.btn-buscarn", force=True)
-        print("   Esperando tabla..."); 
-        try: page.wait_for_selector("table", timeout=30000)
-        except: pass
-        print("   Descargando..."); selector_excel = ".icon-excel-2"
-        if page.is_visible(selector_excel):
-            with page.expect_download(timeout=60000) as download_info: page.evaluate("document.querySelector('.icon-excel-2').click()")
-            download = download_info.value; nombre_archivo = f"Banorte_Final_{fecha_inicio.replace('/','-')}.xlsx"; download.save_as(nombre_archivo)
-            print(f"✅ Descarga Banorte: {nombre_archivo}"); subir_a_db(nombre_archivo, 'BANORTE')
-        else: print("❌ No se encontró el botón de Excel.")
-        print("   Limpiando popups..."); time.sleep(2); page.mouse.click(100, 100); page.keyboard.press("Escape"); time.sleep(0.5); page.keyboard.press("Escape"); time.sleep(1)
-        print("   Cerrando sesión...")
+        
+        print("   Eligiendo Depósitos...")
+        page.wait_for_selector("button.icon_r-reporteDepositos"); page.click("button.icon_r-reporteDepositos", force=True)
+        
+        # BUCLE DÍA POR DÍA
+        fecha_actual = fecha_inicio_dt
+        while fecha_actual <= fecha_hoy_dt:
+            fecha_str = fecha_actual.strftime("%d/%m/%Y")
+            print(f"\n   >>> Consultando día: {fecha_str}")
+            
+            page.wait_for_selector('input[data-provide="datepicker"]')
+            # Llenar fecha inicio
+            i_ini = page.locator('input[data-provide="datepicker"]').nth(0)
+            i_ini.click(); page.keyboard.press("Control+a"); page.keyboard.press("Backspace")
+            time.sleep(0.3); i_ini.type(fecha_str, delay=100); page.keyboard.press("Enter"); page.keyboard.press("Escape")
+            time.sleep(0.5)
+            # Llenar fecha fin (misma fecha)
+            i_fin = page.locator('input[data-provide="datepicker"]').nth(1)
+            i_fin.click(); page.keyboard.press("Control+a"); page.keyboard.press("Backspace")
+            time.sleep(0.3); i_fin.type(fecha_str, delay=100); page.keyboard.press("Enter"); page.keyboard.press("Escape")
+            
+            # NUEVO: Clic en espacio en blanco para asentar los inputs (fuerza el evento change/blur)
+            page.mouse.click(10, 10)
+            time.sleep(1.0) 
+            
+            page.click("button.btn-buscarn", force=True)
+            time.sleep(5) # Espera mayor para carga de resultados o detección de mensaje
+            
+            if page.is_visible("text=No existe información de acuerdo con los criterios seleccionados"):
+                print(f"   ⚠️ El banco aún no tiene datos para el {fecha_str}. Terminando proceso.")
+                break
+            
+            print("   Esperando tabla..."); 
+            try: page.wait_for_selector("table", timeout=15000)
+            except: pass
+
+            print("   Descargando Excel...")
+            selector_excel = ".icon-excel-2"
+            if page.is_visible(selector_excel):
+                with page.expect_download(timeout=60000) as download_info:
+                    page.evaluate("document.querySelector('.icon-excel-2').click()")
+                
+                download = download_info.value
+                nombre_archivo = f"Banorte_{fecha_str.replace('/','-')}.xlsx"
+                download.save_as(nombre_archivo)
+                
+                print(f"   ✅ Descarga Banorte: {nombre_archivo}")
+                subir_a_db(nombre_archivo, 'BANORTE')
+                
+                # RESTAURACIÓN: Limpiar popups después de cada descarga
+                print("   Limpiando popups..."); time.sleep(2); page.mouse.click(100, 100); page.keyboard.press("Escape"); time.sleep(0.5); page.keyboard.press("Escape"); time.sleep(1)
+                
+                fecha_actual += timedelta(days=1)
+            else:
+                print("   ❌ No se encontró el botón de Excel para este día.")
+                break
+
+        print("\n   Cerrando sesión...")
         try: page.locator("button.btn-close-session-xs").dispatch_event("click")
         except: page.click("button.btn-close-session-xs", force=True)
         time.sleep(3)
-    except Exception as e: print(f"❌ Error Banorte: {e}")
-    finally: context.close()
+
+    except Exception as e:
+        print(f"   ❌ Error Banorte: {e}")
+    finally:
+        context.close()
 
 def ejecutar_getnet(browser):
     print("\n" + "="*50 + "\n>>> 2. INICIANDO PROCESO GETNET (SANTANDER)\n" + "="*50)

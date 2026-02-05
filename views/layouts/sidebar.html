@@ -275,6 +275,7 @@
         </a>
         <ul id="income_conc" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item"><a class="sidebar-link" href="/income/conc_test">Test </a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/income/conc_results">Resultados</a></li>
           <li class="sidebar-item"><a class="sidebar-link" href="/income/upload_bank_reports">Subir Manual</a></li>
         </ul>
       </li>
@@ -453,7 +454,7 @@
 
 
 
-<!-- <script>
+<script>
 document.addEventListener("DOMContentLoaded", function() {
     // Get current path
     const currentPath = window.location.pathname;
@@ -473,11 +474,16 @@ document.addEventListener("DOMContentLoaded", function() {
         if (link.getAttribute('href') === currentPath) {
             // Add 'active' class to the link
             link.classList.add('active_item');
+            
+            // Prevent default click (reload)
+            link.addEventListener('click', function(e) { e.preventDefault(); });
+
             // Add 'active' class to parent sidebar-item
             const parentItem = link.closest('.sidebar-item');
-            parentItem.classList.add('active');
+            if(parentItem) parentItem.classList.add('active');
+            
             // Find and open the parent collapse menu if it exists
-            const parentCollapseMenu = parentItem.closest('ul.sidebar-dropdown');
+            const parentCollapseMenu = link.closest('ul.sidebar-dropdown');
             if (parentCollapseMenu) {
                 // Add 'show' class to the collapse menu
                 parentCollapseMenu.classList.add('show');
@@ -487,19 +493,19 @@ document.addEventListener("DOMContentLoaded", function() {
                     triggerLink.classList.remove('collapsed');
                     triggerLink.setAttribute('aria-expanded', 'true');
                 }
-                // Add 'show' class to all sibling collapse menus
-                const siblingCollapseMenus = document.querySelectorAll(`ul#${parentCollapseMenu.id}`);
-                siblingCollapseMenus.forEach(menu => {
-                    menu.classList.add('show');
-                });
-
+                
                 const header = findSidebarHeader(parentCollapseMenu.parentElement);
                 if (header) {
                     header.classList.add('active_header');
                 }
             }
+
+            // Scroll into view
+            setTimeout(() => {
+                link.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
         }
     });
 });
-</script> -->
+</script>
 
