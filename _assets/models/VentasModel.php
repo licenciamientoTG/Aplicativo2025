@@ -1747,7 +1747,7 @@ class VentasModel extends Model{
                 WITH SalesData AS (
                     SELECT
                         CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year',
+                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year', 
                         datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
                         datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
                         isd.codgas AS CodGasolinera,

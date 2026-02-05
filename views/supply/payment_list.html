@@ -3,101 +3,229 @@
 {% block title %}Pagos Programados{% endblock %}
 {% block menutitle %}Pagos Programados{% endblock %}
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <style>
-table.dataTable thead th {
-    background-color: #000000 !important;
-    color: #ffffff !important;
-}
+    /* Estilos para los cards de aprobación masiva */
+    .card.opacity-50 {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
 
-#tabla_anticipos  thead th {
-    background-color: rgb(108, 117, 125,1) !important;
-    color: #ffffff !important;
-}
-.auth-box {
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    font-size: 14px;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
+    .card.opacity-50 .btn {
+        pointer-events: none;
+    }
 
-.auth-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
-}
+    /* Animación para los badges de contador */
+    #count-abastos,
+    #count-admin,
+    #count-tesoreria {
+        display: inline-block;
+        min-width: 40px;
+        padding: 8px 12px;
+        transition: all 0.3s ease;
+    }
 
-.auth-box i {
-    font-size: 16px;
-}
+    #count-abastos.badge,
+    #count-admin.badge,
+    #count-tesoreria.badge {
+        animation: pulse-badge 2s infinite;
+    }
 
-/* Colores específicos */
-.auth-box.bg-success {
-    background-color: #28a745 !important;
-}
+    @keyframes pulse-badge {
 
-.auth-box.bg-warning {
-    background-color: #ffc107 !important;
-}
+        0%,
+        100% {
+            transform: scale(1);
+        }
 
-.auth-box.bg-info {
-    background-color: #17a2b8 !important;
-}
+        50% {
+            transform: scale(1.1);
+        }
+    }
 
-.auth-box.bg-secondary {
-    background-color: #6c757d !important;
-}
+    /* Hover effects en cards */
+    .card.border-primary:hover,
+    .card.border-success:hover,
+    .card.border-info:hover {
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        transform: translateY(-2px);
+        transition: all 0.3s ease;
+    }
 
-/* Espaciado entre cuadros */
-.d-flex.gap-1 {
-    gap: 0.5rem;
-}
+    /* Iconos de los cards */
+    .card-body .fa-2x {
+        margin-bottom: 1rem;
+    }
 
-#tabla_facturas_autorizadas .group-header {
-    background-color: #f8f9fa !important;
-    font-weight: bold;
-    border-top: 2px solid #dee2e6;
-    border-bottom: 2px solid #dee2e6;
-}
+    table.dataTable thead th {
+        background-color: #000000 !important;
+        color: #ffffff !important;
+    }
 
-#tabla_facturas_autorizadas .group-header td {
-    padding: 12px 8px !important;
-}
+    #tabla_anticipos thead th {
+        background-color: rgb(108, 117, 125, 1) !important;
+        color: #ffffff !important;
+    }
 
-/* Colores de banco */
-.badge[style*="C9302C"] {
-    background-color: #C9302C !important; /* Banorte */
-}
+    .auth-box {
+        width: 32px;
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        font-size: 14px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
 
-.badge[style*="EC1C24"] {
-    background-color: #EC1C24 !important; /* Santander */
-}
-/* Resaltar filas de anticipos */
-.table-warning {
-    --bs-table-bg: #fff3cd !important;
-    --bs-table-striped-bg: #ffe69c !important;
-}
+    .auth-box:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
 
-/* Badge de anticipo */
-.badge.bg-warning.text-dark {
-    background-color: #ffc107 !important;
-    color: #000 !important;
-    font-weight: 600;
-}
+    .auth-box i {
+        font-size: 16px;
+    }
+
+    /* Colores específicos */
+    .auth-box.bg-success {
+        background-color: #28a745 !important;
+    }
+
+    .auth-box.bg-warning {
+        background-color: #ffc107 !important;
+    }
+
+    .auth-box.bg-info {
+        background-color: #17a2b8 !important;
+    }
+
+    .auth-box.bg-secondary {
+        background-color: #6c757d !important;
+    }
+
+    /* Espaciado entre cuadros */
+    .d-flex.gap-1 {
+        gap: 0.5rem;
+    }
+
+    #tabla_facturas_autorizadas .group-header {
+        background-color: #f8f9fa !important;
+        font-weight: bold;
+        border-top: 2px solid #dee2e6;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    #tabla_facturas_autorizadas .group-header td {
+        padding: 12px 8px !important;
+    }
+
+    /* Colores de banco */
+    .badge[style*="C9302C"] {
+        background-color: #C9302C !important;
+        /* Banorte */
+    }
+
+    .badge[style*="EC1C24"] {
+        background-color: #EC1C24 !important;
+        /* Santander */
+    }
+
+    /* Resaltar filas de anticipos */
+    .table-warning {
+        --bs-table-bg: #fff3cd !important;
+        --bs-table-striped-bg: #ffe69c !important;
+    }
+
+    /* Badge de anticipo */
+    .badge.bg-warning.text-dark {
+        background-color: #ffc107 !important;
+        color: #000 !important;
+        font-weight: 600;
+    }
 </style>
+
+<!-- Agregar después de la sección de tabs, antes del tab-content -->
+<div class="card mb-3 bg-light">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-12">
+                <h6 class="mb-3"><i class="fas fa-bolt"></i> Aprobación Masiva de Pagos</h6>
+            </div>
+        </div>
+        <div class="row g-3">
+            <!-- Botón Abastos -->
+            <div class="col-md-4">
+                <div class="card border-primary h-100" id="card-abastos">
+                    <div class="card-body text-center">
+                        <i class="fas fa-truck fa-2x text-primary mb-2"></i>
+                        <h6>Abastos</h6>
+                        <p class="text-muted small mb-2">Nivel 1</p>
+                        <div class="mb-3">
+                            <span class="badge bg-warning text-dark fs-6" id="count-abastos">0</span>
+                            <small class="d-block text-muted">pendientes</small>
+                        </div>
+                        <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(66, 'Abastos')"
+                            id="btn-aprobar-abastos" disabled>
+                            <i class="fas fa-check-double"></i> Aprobar Nivel 1
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón Administración y Finanzas -->
+            <div class="col-md-4">
+                <div class="card border-success h-100" id="card-admin">
+                    <div class="card-body text-center">
+                        <i class="fas fa-calculator fa-2x text-success mb-2"></i>
+                        <h6>Administración y Finanzas</h6>
+                        <p class="text-muted small mb-2">Nivel 2</p>
+                        <div class="mb-3">
+                            <span class="badge bg-warning text-dark fs-6" id="count-admin">0</span>
+                            <small class="d-block text-muted">pendientes</small>
+                        </div>
+                        <button class="btn btn-success btn-sm w-100"
+                            onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin"
+                            disabled>
+                            <i class="fas fa-check-double"></i> Aprobar Nivel 2
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón Tesorería -->
+            <div class="col-md-4">
+                <div class="card border-info h-100" id="card-tesoreria">
+                    <div class="card-body text-center">
+                        <i class="fas fa-money-check-alt fa-2x text-info mb-2"></i>
+                        <h6>Tesorería</h6>
+                        <p class="text-muted small mb-2">Nivel 3</p>
+                        <div class="mb-3">
+                            <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
+                            <small class="d-block text-muted">pendientes</small>
+                        </div>
+                        <button class="btn btn-info btn-sm w-100" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
+                            id="btn-aprobar-tesoreria" disabled>
+                            <i class="fas fa-check-double"></i> Aprobar Nivel 3
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <a class="nav-link active" data-bs-toggle="tab" href="#tab_pagos"><i class="fas fa-list"></i> Pagos</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link " data-bs-toggle="tab" href="#tab_anticipos"><i class="fas fa-hand-holding-usd"></i> Anticipos</a>
+        <a class="nav-link " data-bs-toggle="tab" href="#tab_anticipos"><i class="fas fa-hand-holding-usd"></i>
+            Anticipos</a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab_facturas_autorizadas" >
+        <a class="nav-link" data-bs-toggle="tab" href="#tab_facturas_autorizadas">
             <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas para Pago
         </a>
     </li>
@@ -109,14 +237,6 @@ table.dataTable thead th {
 
 <div class="tab-content">
     <div class="tab-pane fade show active " id="tab_pagos">
-        <div class="alert alert-warning">
-    <i class="fas fa-bolt"></i> Tienes <strong>12 pagos</strong> 
-    pendientes de tu autorización (Nivel 2) - Total: <strong>$234,567.89</strong>
-    
-    <button class="btn btn-success float-end" onclick="abrirModalAprobacionMasiva()">
-        <i class="fas fa-check-double"></i> Revisar y Aprobar Todo
-    </button>
-</div>
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
@@ -131,12 +251,14 @@ table.dataTable thead th {
                         </select>
                     </div>
                     <div class="col-2">
-                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
+                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary"
+                            style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                     <div class="col-2">
-                        <a href="/supply/add_payment" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;"><i class="fas fa-plus"></i> Nuevo Pago</a>
+                        <a href="/supply/add_payment" class="btn btn-sm btn-success"
+                            style="width: 100%; margin-top: 15px;"><i class="fas fa-plus"></i> Nuevo Pago</a>
                     </div>
-                    
+
                 </div>
             </div>
         </div>
@@ -185,10 +307,12 @@ table.dataTable thead th {
                         </select>
                     </div>
                     <div class="col-2">
-                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
+                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary"
+                            style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                     <div class="col-2">
-                        <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-success" style="width: 100%; margin-top: 15px;">
+                        <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-success"
+                            style="width: 100%; margin-top: 15px;">
                             <i class="fas fa-plus"></i> Nuevo Anticipo
                         </button>
                     </div>
@@ -290,11 +414,12 @@ table.dataTable thead th {
                         </button>
                     </div>
                     <div class="col-md-3">
-                        <button class="btn btn-sm btn-success w-100" id="btnGenerarLayout" onclick="validarYGenerarLayout()" disabled>
+                        <button class="btn btn-sm btn-success w-100" id="btnGenerarLayout"
+                            onclick="validarYGenerarLayout()" disabled>
                             <i class="fas fa-file-excel"></i> Generar Layout de Pago
                         </button>
-                        <button type="button" class="btn btn-success" id="btnRegistrarPago" 
-                                onclick="abrirModalRegistroPago()">
+                        <button type="button" class="btn btn-success" id="btnRegistrarPago"
+                            onclick="abrirModalRegistroPago()">
                             <i class="fas fa-check-circle"></i> Registrar Pago
                         </button>
                     </div>
@@ -307,7 +432,7 @@ table.dataTable thead th {
             <div class="card-header bg-info text-white">
                 <div class="d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">
-                        <i class="fas fa-file-invoice-dollar"></i> 
+                        <i class="fas fa-file-invoice-dollar"></i>
                         Facturas Autorizadas Pendientes de Pago
                     </h6>
                     <button class="btn btn-sm btn-light" onclick="toggleSelectAll()">
@@ -493,16 +618,6 @@ table.dataTable thead th {
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <!-- Alertas de Configuración -->
-                <div class="alert alert-info mb-3">
-                    <strong><i class="fas fa-info-circle"></i> Límites de Aprobación Masiva:</strong>
-                    <ul class="mb-0 mt-2">
-                        <li>Monto máximo por aprobación: <strong id="limiteMontoMasivo">$500,000.00</strong></li>
-                        <li>Cantidad máxima de pagos: <strong id="limiteCantidadMasivo">20 pagos</strong></li>
-                        <li>Los anticipos y pagos marcados como "requiere revisión" se excluyen automáticamente</li>
-                    </ul>
-                </div>
-
                 <!-- Resumen Ejecutivo -->
                 <div class="row mb-4">
                     <div class="col-md-3">
@@ -542,41 +657,6 @@ table.dataTable thead th {
                     </div>
                 </div>
 
-                <!-- Filtros -->
-                <div class="card mb-3">
-                    <div class="card-header bg-light">
-                        <strong><i class="fas fa-filter"></i> Filtros de Pre-visualización</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-3">
-                                <label class="form-label-sm">Tipo:</label>
-                                <select class="form-select form-select-sm" id="filtroTipoMasivo">
-                                    <option value="all">Todos</option>
-                                    <option value="facturas" selected>Solo Facturas</option>
-                                    <option value="anticipos">Solo Anticipos</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label-sm">Proveedor:</label>
-                                <select class="form-select form-select-sm" id="filtroProveedorMasivo">
-                                    <option value="all">Todos</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label-sm">Empresa:</label>
-                                <select class="form-select form-select-sm" id="filtroEmpresaMasivo">
-                                    <option value="all">Todas</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <button class="btn btn-sm btn-primary w-100" onclick="aplicarFiltrosMasivos()" style="margin-top: 20px;">
-                                    <i class="fas fa-sync"></i> Aplicar Filtros
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 <!-- Tabla de Pagos a Aprobar -->
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
@@ -620,16 +700,10 @@ table.dataTable thead th {
                 <!-- Confirmación Final -->
                 <div class="card bg-light mt-3">
                     <div class="card-body">
-                        <div class="form-check mb-2">
-                            <input class="form-check-input" type="checkbox" id="confirmacionRevision">
-                            <label class="form-check-label" for="confirmacionRevision">
-                                <strong>He revisado todos los pagos seleccionados y confirmo que deseo aprobarlos</strong>
-                            </label>
-                        </div>
                         <div class="mb-2">
                             <label class="form-label-sm">Comentario (opcional):</label>
-                            <textarea class="form-control form-control-sm" id="comentarioAprobacionMasiva" 
-                                      rows="2" placeholder="Agrega un comentario sobre esta aprobación masiva..."></textarea>
+                            <textarea class="form-control form-control-sm" id="comentarioAprobacionMasiva" rows="2"
+                                placeholder="Agrega un comentario sobre esta aprobación masiva..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -638,8 +712,8 @@ table.dataTable thead th {
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times"></i> Cancelar
                 </button>
-                <button type="button" class="btn btn-success" id="btnConfirmarAprobacionMasiva" 
-                        onclick="confirmarAprobacionMasiva()" disabled>
+                <button type="button" class="btn btn-success" id="btnConfirmarAprobacionMasiva"
+                    onclick="confirmarAprobacionMasiva()" disabled>
                     <i class="fas fa-check-double"></i> Aprobar Seleccionados
                 </button>
             </div>
@@ -664,9 +738,6 @@ table.dataTable thead th {
                     <li>Por un monto total de <strong id="confirmMonto">$0.00</strong></li>
                     <li>Nivel de autorización: <strong id="confirmNivel">-</strong></li>
                 </ul>
-                <div class="alert alert-warning mb-0">
-                    <i class="fas fa-info-circle"></i> Esta acción puede deshacerse dentro de los próximos 30 minutos si no se ha ejecutado el pago.
-                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -683,412 +754,387 @@ table.dataTable thead th {
 <script src="{{ JS }}supply.js"></script>
 <script>
 
-let paymentListTable;
+    let paymentListTable;
 
-$(document).ready(function() {
-    loadPaymentList();
-    loadAnticiposList();
-    loadAuthorizedPendingInvoices();
-   $('#payment_list_table').on('draw.dt', function() {
-        $('[data-bs-toggle="tooltip"]').tooltip({
-            html: true,
-            placement: 'top'
+    $(document).ready(function () {
+        loadPaymentList();
+        loadAnticiposList();
+        loadAuthorizedPendingInvoices();
+        $('#payment_list_table').on('draw.dt', function () {
+            $('[data-bs-toggle="tooltip"]').tooltip({
+                html: true,
+                placement: 'top'
+            });
         });
+
+        cargarContadoresPendientes();
+
+        // Actualizar cada 2 minutos
+        // setInterval(cargarContadoresPendientes, 120000);
     });
-});
-// ============================================
-// APROBACIÓN MASIVA DE PAGOS
-// ============================================
 
-// Configuración de límites (puedes moverlos a base de datos después)
-const LIMITES_APROBACION_MASIVA = {
-    montoMaximo: 500000,
-    cantidadMaxima: 20,
-    montoAlerta: 100000, // Alerta si un pago individual supera esto
-    ventanaReversion: 30 // minutos para deshacer
-};
 
-let pagosPendientesAprobacion = [];
-let pagosSeleccionadosMasivo = [];
+    // ============================================
+    // FUNCIONES AUXILIARES DE UI (versión simple)
+    // ============================================
+    function mostrarCargando(mensaje) {
+        console.log('Cargando:', mensaje);
+    }
+    function ocultarCargando() {
+        console.log('Carga completada');
+    }
+    function mostrarExito(mensaje) {
+        alert('✓ ' + mensaje);
+    }
+    function mostrarError(mensaje) {
+        alert('✗ ' + mensaje);
+    }
+    function mostrarAdvertencia(mensaje) {
+        alert('⚠ ' + mensaje);
+    }
 
-/**
- * Abre el modal de aprobación masiva
- */
-function abrirModalAprobacionMasiva() {
-    cargarPagosPendientesAprobacion();
-    $('#modalAprobacionMasiva').modal('show');
-}
+    // ============================================
+    // APROBACIÓN MASIVA - Variables Globales
+    // ============================================
+    let pagosPendientesAprobacion = [];
+    let pagosSeleccionadosMasivo = [];
+    let permissionNumberActual = null;
+    let nombreNivelActual = '';
 
-/**
- * Carga los pagos pendientes de aprobación del usuario actual
- */
-function cargarPagosPendientesAprobacion() {
-    mostrarCargando();
-    
-    $.ajax({
-        url: '/supply/get_pending_bulk_authorization',
-        type: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success) {
-                pagosPendientesAprobacion = response.data;
-                
-                // Poblar filtros
-                poblarFiltrosMasivos(response.data);
-                
-                // Mostrar resumen
-                actualizarResumenMasivo(response.data);
-                
-                // Cargar tabla
-                cargarTablaPagosMasivos(response.data);
-                
-                // Mostrar nivel de autorización del usuario
-                $('#resumenNivelAuth').text(response.nivel_autorizacion || 'N/A');
-            } else {
-                mostrarError('No se pudieron cargar los pagos pendientes');
+
+    function cargarContadoresPendientes() {
+        $.ajax({
+            url: '/supply/get_pending_counts_all',
+            type: 'GET',
+            dataType: 'json',
+            success: function (response) {
+                if (response.success) {
+                    // Actualizar contadores
+                    $('#count-abastos').text(response.abastos || 0);
+                    $('#count-admin').text(response.admin || 0);
+                    $('#count-tesoreria').text(response.tesoreria || 0);
+
+                    // Habilitar/deshabilitar botones según permisos del usuario
+                    const userPermissions = response.user_permissions || [];
+
+                    // Abastos (66)
+                    if (userPermissions.includes(66)) {
+                        $('#btn-aprobar-abastos').prop('disabled', response.abastos === 0);
+                        $('#card-abastos').removeClass('opacity-50');
+                    } else {
+                        $('#card-abastos').addClass('opacity-50');
+                    }
+
+                    // Admin (67)
+                    if (userPermissions.includes(67)) {
+                        $('#btn-aprobar-admin').prop('disabled', response.admin === 0);
+                        $('#card-admin').removeClass('opacity-50');
+                    } else {
+                        $('#card-admin').addClass('opacity-50');
+                    }
+
+                    // Tesorería (68)
+                    if (userPermissions.includes(68)) {
+                        $('#btn-aprobar-tesoreria').prop('disabled', response.tesoreria === 0);
+                        $('#card-tesoreria').removeClass('opacity-50');
+                    } else {
+                        $('#card-tesoreria').addClass('opacity-50');
+                    }
+                }
+            },
+            error: function () {
+                console.error('Error al cargar contadores');
             }
-        },
-        error: function() {
-            mostrarError('Error al cargar pagos pendientes');
-        },
-        complete: function() {
-            ocultarCargando();
-        }
-    });
-}
+        });
+    }
 
-/**
- * Poblar los filtros con datos únicos
- */
-function poblarFiltrosMasivos(datos) {
-    // Proveedores únicos
-    const proveedores = [...new Set(datos.map(p => p.proveedor_nombre))];
-    const $filtroProveedor = $('#filtroProveedorMasivo');
-    $filtroProveedor.find('option:not(:first)').remove();
-    proveedores.forEach(prov => {
-        $filtroProveedor.append(`<option value="${prov}">${prov}</option>`);
-    });
-    
-    // Empresas únicas
-    const empresas = [...new Set(datos.map(p => p.company_code))];
-    const $filtroEmpresa = $('#filtroEmpresaMasivo');
-    $filtroEmpresa.find('option:not(:first)').remove();
-    empresas.forEach(emp => {
-        $filtroEmpresa.append(`<option value="${emp}">${emp}</option>`);
-    });
-}
 
-/**
- * Actualizar resumen ejecutivo
- */
-function actualizarResumenMasivo(datos) {
-    const total = datos.length;
-    const montoTotal = datos.reduce((sum, p) => sum + parseFloat(p.monto_total || 0), 0);
-    
-    $('#resumenCantidadTotal').text(total);
-    $('#resumenMontoTotal').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    
-    // Actualizar límites en UI
-    $('#limiteMontoMasivo').text('$' + LIMITES_APROBACION_MASIVA.montoMaximo.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    $('#limiteCantidadMasivo').text(LIMITES_APROBACION_MASIVA.cantidadMaxima + ' pagos');
-}
+    function abrirModalAprobacionMasiva(permissionNumber, nombreNivel) {
+        permissionNumberActual = permissionNumber;
+        nombreNivelActual = nombreNivel;
 
-/**
- * Cargar tabla de pagos masivos
- */
-function cargarTablaPagosMasivos(datos) {
-    const $tbody = $('#tablaPagosMasivos tbody');
-    $tbody.empty();
-    
-    if (datos.length === 0) {
-        $tbody.append(`
+        // Actualizar título del modal
+        $('#modalAprobacionMasiva .modal-title').html(
+            `<i class="fas fa-check-double"></i> Aprobación Masiva - ${nombreNivel}`
+        );
+
+        // Cargar pagos pendientes para este nivel
+        cargarPagosPendientesAprobacion(permissionNumber);
+
+        // Mostrar modal
+        $('#modalAprobacionMasiva').modal('show');
+        $('#selectAllMasivos').prop('checked', false);
+    }
+
+    /**
+     * Carga los pagos pendientes de aprobación para un nivel específico
+     */
+    function cargarPagosPendientesAprobacion(permissionNumber) {
+        mostrarCargando('Cargando pagos pendientes...');
+
+        $.ajax({
+            url: '/supply/get_pending_bulk_authorization',
+            type: 'GET',
+            dataType: 'json',
+            data: {
+                permission: permissionNumber
+            },
+            success: function (response) {
+                if (response.success) {
+                    pagosPendientesAprobacion = response.data;
+
+
+                    // Mostrar resumen
+                    actualizarResumenMasivo(response.data);
+
+                    // Cargar tabla
+                    cargarTablaPagosMasivos(response.data);
+
+                    // Mostrar nivel de autorización
+                    $('#resumenNivelAuth').text(nombreNivelActual);
+                } else {
+                    mostrarError(response.message || 'No se pudieron cargar los pagos pendientes');
+                }
+            },
+            error: function (xhr) {
+                console.error('Error:', xhr);
+                mostrarError('Error al cargar pagos pendientes');
+            },
+            complete: function () {
+                ocultarCargando();
+            }
+        });
+    }
+
+    function actualizarResumenMasivo(datos) {
+        const total = datos.length;
+        const montoTotal = datos.reduce((sum, p) => sum + parseFloat(p.monto_total || 0), 0);
+
+        $('#resumenCantidadTotal').text(total);
+        $('#resumenMontoTotal').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+
+        // Resetear selección
+        $('#resumenSeleccionados').text(0);
+        $('#resumenMontoSeleccionado').text('$0.00');
+        $('#resumenExcluidos').text(0);
+
+    }
+
+    /**
+     * Cargar tabla de pagos masivos
+     */
+    function cargarTablaPagosMasivos(datos) {
+        const $tbody = $('#tablaPagosMasivos tbody');
+        $tbody.empty();
+
+        if (datos.length === 0) {
+            $tbody.append(`
             <tr>
-                <td colspan="10" class="text-center text-muted">
-                    <i class="fas fa-inbox"></i> No hay pagos pendientes de tu autorización
+                <td colspan="10" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox fa-3x mb-3 d-block"></i>
+                    <p class="mb-0">No hay pagos pendientes de autorización para ${nombreNivelActual}</p>
                 </td>
             </tr>
         `);
-        return;
-    }
-    
-    datos.forEach(pago => {
-        const esAnticipo = pago.es_anticipo == 1;
-        const montoPago = parseFloat(pago.monto_total || 0);
-        const superaLimite = montoPago > LIMITES_APROBACION_MASIVA.montoAlerta;
-        const requiereRevision = pago.requiere_revision == 1;
-        
-        // Determinar si debe excluirse automáticamente
-        const excluir = requiereRevision || (esAnticipo && $('#filtroTipoMasivo').val() === 'facturas');
-        
-        const alertas = [];
-        if (superaLimite) alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> Monto alto</span>');
-        if (requiereRevision) alertas.push('<span class="badge bg-danger"><i class="fas fa-flag"></i> Requiere revisión</span>');
-        if (pago.dias_vencimiento && pago.dias_vencimiento < 0) {
-            alertas.push('<span class="badge bg-danger"><i class="fas fa-clock"></i> Vencido</span>');
-        } else if (pago.dias_vencimiento && pago.dias_vencimiento <= 3) {
-            alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Próximo a vencer</span>');
+            return;
         }
-        
-        const row = `
-            <tr data-payment-id="${pago.id}" class="${excluir ? 'table-secondary' : ''}">
+
+        datos.forEach(pago => {
+            const esAnticipo = pago.es_anticipo == 1;
+            const montoPago = parseFloat(pago.monto_total || 0);
+
+            // Determinar si debe excluirse automáticamente
+
+            const alertas = [];
+            // if (superaLimite) alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> Monto alto</span>');
+            // if (requiereRevision) alertas.push('<span class="badge bg-danger"><i class="fas fa-flag"></i> Requiere revisión</span>');
+            if (pago.dias_vencimiento && pago.dias_vencimiento < 0) {
+                alertas.push('<span class="badge bg-danger"><i class="fas fa-clock"></i> Vencido</span>');
+            } else if (pago.dias_vencimiento && pago.dias_vencimiento <= 3) {
+                alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Próximo a vencer</span>');
+            }
+
+            const row = `
+            <tr data-payment-id="${pago.id}">
                 <td>
                     <input type="checkbox" class="checkbox-pago-masivo" 
                            value="${pago.id}" 
                            data-monto="${montoPago}"
-                           ${excluir ? 'disabled' : ''}
                            onchange="actualizarSeleccionMasivo()">
                 </td>
                 <td>${pago.id}</td>
                 <td>
-                    ${esAnticipo ? 
-                        '<span class="badge bg-warning text-dark"><i class="fas fa-hand-holding-usd"></i> Anticipo</span>' : 
-                        '<span class="badge bg-info"><i class="fas fa-file-invoice"></i> Factura</span>'}
+                    ${esAnticipo ?
+                    '<span class="badge bg-warning text-dark"><i class="fas fa-hand-holding-usd"></i> Anticipo</span>' :
+                    '<span class="badge bg-info"><i class="fas fa-file-invoice"></i> Factura</span>'}
                 </td>
-                <td>${pago.company_code}</td>
-                <td>${pago.proveedor_nombre}</td>
+                <td><small>${pago.empresa_nombre || pago.company_name || 'N/A'}</small></td>
+                <td><small>${pago.proveedor_nombre || 'N/A'}</small></td>
                 <td class="text-center">${pago.num_facturas || 0}</td>
-                <td class="text-end">$${montoPago.toLocaleString('es-MX', {minimumFractionDigits: 2})}</td>
-                <td>${pago.fecha_vencimiento || 'N/A'}</td>
-                <td>${obtenerBadgeEstado(pago.authorization_status)}</td>
+                <td class="text-end"><strong>$${montoPago.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong></td>
+                <td><small>${pago.fecha_vencimiento || 'N/A'}</small></td>
+                <td>
+                    ${getBadgeAutorizacionPendiente(pago)}
+                </td>
                 <td>${alertas.join(' ')}</td>
             </tr>
         `;
-        
-        $tbody.append(row);
-    });
-}
 
-/**
- * Aplicar filtros a la tabla
- */
-function aplicarFiltrosMasivos() {
-    const tipo = $('#filtroTipoMasivo').val();
-    const proveedor = $('#filtroProveedorMasivo').val();
-    const empresa = $('#filtroEmpresaMasivo').val();
-    
-    let datosFiltrados = pagosPendientesAprobacion;
-    
-    if (tipo !== 'all') {
-        datosFiltrados = datosFiltrados.filter(p => {
-            if (tipo === 'facturas') return p.es_anticipo != 1;
-            if (tipo === 'anticipos') return p.es_anticipo == 1;
-            return true;
+            $tbody.append(row);
         });
     }
-    
-    if (proveedor !== 'all') {
-        datosFiltrados = datosFiltrados.filter(p => p.proveedor_nombre === proveedor);
-    }
-    
-    if (empresa !== 'all') {
-        datosFiltrados = datosFiltrados.filter(p => p.company_code === empresa);
-    }
-    
-    cargarTablaPagosMasivos(datosFiltrados);
-    actualizarResumenMasivo(datosFiltrados);
-}
 
-/**
- * Seleccionar/Deseleccionar todos
- */
-function toggleSelectAllMasivos() {
-    const checked = $('#selectAllMasivos').is(':checked');
-    $('.checkbox-pago-masivo:not(:disabled)').prop('checked', checked);
-    actualizarSeleccionMasivo();
-}
+    /**
+     * Obtener badge de estado de autorización
+     */
+    function getBadgeAutorizacionPendiente(pago) {
+        const badges = [];
 
-/**
- * Actualizar contadores de selección
- */
-function actualizarSeleccionMasivo() {
-    pagosSeleccionadosMasivo = [];
-    let montoTotal = 0;
-    
-    $('.checkbox-pago-masivo:checked').each(function() {
-        const id = $(this).val();
-        const monto = parseFloat($(this).data('monto'));
-        pagosSeleccionadosMasivo.push(id);
-        montoTotal += monto;
-    });
-    
-    // Actualizar UI
-    $('#resumenSeleccionados').text(pagosSeleccionadosMasivo.length);
-    $('#resumenMontoSeleccionado').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    $('#footerTotalMasivo').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    
-    // Validar límites
-    validarLimitesMasivos(pagosSeleccionadosMasivo.length, montoTotal);
-    
-    // Habilitar/Deshabilitar botón de aprobación
-    const puedeAprobar = pagosSeleccionadosMasivo.length > 0 && 
-                         $('#confirmacionRevision').is(':checked') &&
-                         montoTotal <= LIMITES_APROBACION_MASIVA.montoMaximo &&
-                         pagosSeleccionadosMasivo.length <= LIMITES_APROBACION_MASIVA.cantidadMaxima;
-    
-    $('#btnConfirmarAprobacionMasiva').prop('disabled', !puedeAprobar);
-}
-
-/**
- * Validar límites y mostrar alertas
- */
-function validarLimitesMasivos(cantidad, monto) {
-    const $alertas = $('#alertasValidacionMasiva');
-    $alertas.empty();
-    
-    if (cantidad > LIMITES_APROBACION_MASIVA.cantidadMaxima) {
-        $alertas.append(`
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i> 
-                <strong>Límite excedido:</strong> Has seleccionado ${cantidad} pagos, el máximo permitido es ${LIMITES_APROBACION_MASIVA.cantidadMaxima}
-            </div>
-        `);
-    }
-    
-    if (monto > LIMITES_APROBACION_MASIVA.montoMaximo) {
-        $alertas.append(`
-            <div class="alert alert-danger">
-                <i class="fas fa-exclamation-circle"></i> 
-                <strong>Límite excedido:</strong> El monto total es $${monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}, 
-                el máximo permitido es $${LIMITES_APROBACION_MASIVA.montoMaximo.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-            </div>
-        `);
-    }
-    
-    if (cantidad > 0 && monto <= LIMITES_APROBACION_MASIVA.montoMaximo && cantidad <= LIMITES_APROBACION_MASIVA.cantidadMaxima) {
-        $alertas.append(`
-            <div class="alert alert-success">
-                <i class="fas fa-check-circle"></i> 
-                Selección válida: ${cantidad} pago(s) por $${monto.toLocaleString('es-MX', {minimumFractionDigits: 2})}
-            </div>
-        `);
-    }
-}
-
-// Habilitar botón cuando se marca confirmación
-$('#confirmacionRevision').on('change', function() {
-    actualizarSeleccionMasivo();
-});
-
-/**
- * Confirmar aprobación masiva
- */
-function confirmarAprobacionMasiva() {
-    if (pagosSeleccionadosMasivo.length === 0) {
-        mostrarAdvertencia('Debes seleccionar al menos un pago');
-        return;
-    }
-    
-    const montoTotal = calcularMontoTotalSeleccionado();
-    
-    // Llenar modal de confirmación
-    $('#confirmCantidad').text(pagosSeleccionadosMasivo.length);
-    $('#confirmMonto').text('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits: 2}));
-    $('#confirmNivel').text($('#resumenNivelAuth').text());
-    
-    // Mostrar modal de confirmación
-    $('#modalConfirmacionAprobacion').modal('show');
-}
-
-/**
- * Ejecutar la aprobación masiva
- */
-function ejecutarAprobacionMasiva() {
-    const comentario = $('#comentarioAprobacionMasiva').val().trim();
-    
-    mostrarCargando('Procesando aprobación masiva...');
-    
-    $.ajax({
-        url: '/supply/process_bulk_authorization',
-        type: 'POST',
-        dataType: 'json',
-        data: {
-            payment_ids: pagosSeleccionadosMasivo,
-            comentario: comentario
-        },
-        success: function(response) {
-            if (response.success) {
-                mostrarExito(response.message || 'Aprobación masiva completada exitosamente');
-                
-                // Cerrar modales
-                $('#modalConfirmacionAprobacion').modal('hide');
-                $('#modalAprobacionMasiva').modal('hide');
-                
-                // Recargar listas
-                loadPaymentList();
-                loadAnticiposList();
-                
-                // Mostrar resumen de operación
-                if (response.resumen) {
-                    mostrarResumenAprobacion(response.resumen);
-                }
-            } else {
-                mostrarError(response.message || 'Error en la aprobación masiva');
-            }
-        },
-        error: function(xhr) {
-            mostrarError('Error al procesar la aprobación masiva');
-            console.error(xhr);
-        },
-        complete: function() {
-            ocultarCargando();
+        if (pago.auth_abastos == 1) {
+            badges.push('<i class="fas fa-check text-success" title="Abastos"></i>');
+        } else {
+            badges.push('<i class="fas fa-circle text-muted" title="Abastos pendiente"></i>');
         }
-    });
-}
 
-/**
- * Calcular monto total seleccionado
- */
-function calcularMontoTotalSeleccionado() {
-    let total = 0;
-    $('.checkbox-pago-masivo:checked').each(function() {
-        total += parseFloat($(this).data('monto'));
-    });
-    return total;
-}
-
-/**
- * Mostrar resumen de aprobación
- */
-function mostrarResumenAprobacion(resumen) {
-    Swal.fire({
-        title: 'Aprobación Completada',
-        html: `
-            <div class="text-start">
-                <p><strong>Pagos aprobados:</strong> ${resumen.aprobados}</p>
-                <p><strong>Monto total:</strong> $${resumen.monto_total}</p>
-                <p><strong>ID de grupo:</strong> ${resumen.bulk_id}</p>
-                ${resumen.errores > 0 ? `<p class="text-danger"><strong>Errores:</strong> ${resumen.errores}</p>` : ''}
-            </div>
-        `,
-        icon: 'success',
-        confirmButtonText: 'Entendido'
-    });
-}
-
-// Agregar indicador visual en tabs si hay pagos pendientes
-function actualizarIndicadoresPendientes() {
-    $.ajax({
-        url: '/supply/get_pending_counts',
-        type: 'GET',
-        dataType: 'json',
-        success: function(response) {
-            if (response.success && response.total > 0) {
-                const $tabPagos = $('a[href="#tab_pagos"]');
-                if (!$tabPagos.find('.badge').length) {
-                    $tabPagos.append(` <span class="badge bg-danger rounded-pill">${response.total}</span>`);
-                }
-            }
+        if (pago.auth_admin == 1) {
+            badges.push('<i class="fas fa-check text-success" title="Admin"></i>');
+        } else {
+            badges.push('<i class="fas fa-circle text-muted" title="Admin pendiente"></i>');
         }
-    });
-}
 
-// Llamar al cargar la página
-$(document).ready(function() {
-    actualizarIndicadoresPendientes();
-    
-    // Actualizar cada 2 minutos
-    setInterval(actualizarIndicadoresPendientes, 120000);
-});
+        if (pago.auth_tesoreria == 1) {
+            badges.push('<i class="fas fa-check text-success" title="Tesorería"></i>');
+        } else {
+            badges.push('<i class="fas fa-circle text-muted" title="Tesorería pendiente"></i>');
+        }
+
+        return badges.join(' ');
+    }
+
+
+    function toggleSelectAllMasivos() {
+        const checked = $('#selectAllMasivos').is(':checked');
+        $('.checkbox-pago-masivo:not(:disabled)').prop('checked', checked);
+        actualizarSeleccionMasivo();
+    }
+
+    /**
+     * Actualizar contadores de selección
+     */
+    function actualizarSeleccionMasivo() {
+        pagosSeleccionadosMasivo = [];
+        let montoTotal = 0;
+
+        $('.checkbox-pago-masivo:checked').each(function () {
+            const id = parseInt($(this).val());
+            const monto = parseFloat($(this).data('monto'));
+            pagosSeleccionadosMasivo.push(id);
+            montoTotal += monto;
+        });
+
+        // Actualizar UI
+        $('#resumenSeleccionados').text(pagosSeleccionadosMasivo.length);
+        $('#resumenMontoSeleccionado').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+        $('#footerTotalMasivo').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+
+        // Validar límites
+
+        // Habilitar/Deshabilitar botón de aprobación
+        const puedeAprobar = pagosSeleccionadosMasivo.length > 0;
+
+        $('#btnConfirmarAprobacionMasiva').prop('disabled', !puedeAprobar);
+    }
+
+
+    /**
+     * Confirmar aprobación masiva
+     */
+    function confirmarAprobacionMasiva() {
+        if (pagosSeleccionadosMasivo.length === 0) {
+            mostrarAdvertencia('Debes seleccionar al menos un pago');
+            return;
+        }
+
+        const montoTotal = calcularMontoTotalSeleccionado();
+
+        // Llenar modal de confirmación
+        $('#confirmCantidad').text(pagosSeleccionadosMasivo.length);
+        $('#confirmMonto').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+        $('#confirmNivel').text(nombreNivelActual);
+
+        // Mostrar modal de confirmación
+        $('#modalConfirmacionAprobacion').modal('show');
+    }
+
+    /**
+     * Ejecutar la aprobación masiva
+     */
+    function ejecutarAprobacionMasiva() {
+        const comentario = $('#comentarioAprobacionMasiva').val().trim();
+
+        mostrarCargando('Procesando aprobación masiva...');
+
+        $.ajax({
+            url: '/supply/process_bulk_authorization',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                payment_ids: pagosSeleccionadosMasivo,
+                permission_number: permissionNumberActual,
+                comentario: comentario
+            },
+            success: function (response) {
+                if (response.success) {
+                    // mostrarExito(response.message || 'Aprobación masiva completada exitosamente');
+                    // Cerrar modales
+                    $('#modalConfirmacionAprobacion').modal('hide');
+                    $('#modalAprobacionMasiva').modal('hide');
+
+                    // Recargar listas y contadores
+                    loadPaymentList();
+                    loadAnticiposList();
+                    cargarContadoresPendientes();
+
+                    // Mostrar resumen
+                    if (response.resumen) {
+                        setTimeout(() => {
+
+                            swal.fire({
+                                icon: 'success',
+                                title: 'Aprobación Completada',
+                                text: `Pagos aprobados: ${response.resumen.aprobados}\nMonto total: $${response.resumen.monto_total}\nID de grupo: ${response.resumen.bulk_id}`,
+                                showConfirmButton: false,
+                                timer: 5000
+                            });
+                        }, 500);
+                    }
+                } else {
+                    mostrarError(response.message || 'Error en la aprobación masiva');
+                }
+            },
+            error: function (xhr) {
+                mostrarError('Error al procesar la aprobación masiva');
+                console.error(xhr);
+            },
+            complete: function () {
+                ocultarCargando();
+            }
+        });
+    }
+
+    /**
+     * Calcular monto total seleccionado
+     */
+    function calcularMontoTotalSeleccionado() {
+        let total = 0;
+        $('.checkbox-pago-masivo:checked').each(function () {
+            total += parseFloat($(this).data('monto'));
+        });
+        return total;
+    }
+
+
+
 
 </script>
 {% endblock %}
