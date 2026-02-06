@@ -1,5 +1,6 @@
 <?php
-class VentasModel extends Model{
+class VentasModel extends Model
+{
     public $fch;
     public $codisl;
     public $nrotur;
@@ -12,7 +13,8 @@ class VentasModel extends Model{
     public $fchsyn;
     private $conn;
 
-    function get_sales($fch) : array|false {
+    function get_sales($fch): array|false
+    {
         $query = "
             SELECT
                 Fecha,
@@ -88,10 +90,11 @@ class VentasModel extends Model{
             ) AS PivotTable
             ORDER BY Fecha;";
 
-        return ($this->sql->select($query, [])) ?: false ;
+        return ($this->sql->select($query, [])) ?: false;
     }
 
-    function get_inventories($from, $until) {
+    function get_inventories($from, $until)
+    {
         $query = "
         DECLARE @from INT = {$from};
         DECLARE @until INT = {$until};
@@ -292,7 +295,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
 
-    function get_details($from, $until, $codgas, $codprd) {
+    function get_details($from, $until, $codgas, $codprd)
+    {
         $query = "
         DECLARE @from INT = {$from};
         DECLARE @until INT = {$until};
@@ -358,13 +362,13 @@ class VentasModel extends Model{
         ";
 
         return $this->sql->select($query, []);
-
     }
 
-    function get_month_sales(){
+    function get_month_sales()
+    {
         $inicio_anio_actual = date('Y-01-01'); // Primer día del año actual
         $dia_anterior = date('Y-d-m', strtotime('-1 day'));
-        $query="SELECT
+        $query = "SELECT
                 MONTH(DATEADD(DAY, fch - 1, '19000101')) AS Mes,
                 YEAR(DATEADD(DAY, fch - 1, '19000101')) AS Año,
                 SUM(canven) AS VentasReales
@@ -388,7 +392,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
 
-    function GetSalesIndicator($from,$until,$zona,$total){
+    function GetSalesIndicator($from, $until, $zona, $total)
+    {
         $zona_query = "";
         if (isset($zona) && $zona != 0) {
             $zona_query = "AND E.estructura = '{$zona}'";
@@ -412,7 +417,7 @@ class VentasModel extends Model{
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
-        $pivotColumns = implode(",\n", array_map(function($col) {
+        $pivotColumns = implode(",\n", array_map(function ($col) {
             return "MAX(CASE WHEN p.date_concat = '$col' THEN p.VentasCantidad END) AS Ventas_$col,
                     MAX(CASE WHEN p.date_concat = '$col' THEN p.ProyeccionMensual END) AS Proyeccion_$col,
                     MAX(CASE WHEN p.date_concat = '$col' THEN p.presupuesto_mensual END) AS Presupuesto_$col,
@@ -421,7 +426,7 @@ class VentasModel extends Model{
         }, $months));
         $producto_total = " p.producto,p.CodProducto,";
         $group_total = " p.codigo, p.Estacion, p.producto, p.CodProducto";
-        if($total == 'true'){
+        if ($total == 'true') {
             $producto_total = "  
             CASE WHEN GROUPING(p.producto) = 1 THEN 'TOTAL' ELSE p.producto END AS producto,
             CASE WHEN GROUPING(p.CodProducto) = 1 THEN NULL ELSE p.CodProducto END AS CodProducto,";
@@ -430,14 +435,13 @@ class VentasModel extends Model{
                                 (p.codigo, p.Estacion) -- Total por estación
                             )";
 
-            $pivotColumns = implode(",\n", array_map(function($col) {
+            $pivotColumns = implode(",\n", array_map(function ($col) {
                 return "SUM(CASE WHEN p.date_concat = '$col' THEN p.VentasCantidad END) AS Ventas_$col,
                         SUM(CASE WHEN p.date_concat = '$col' THEN p.ProyeccionMensual END) AS Proyeccion_$col,
                         SUM(CASE WHEN p.date_concat = '$col' THEN p.presupuesto_mensual END) AS Presupuesto_$col,
                         AVG(CASE WHEN p.date_concat = '$col' THEN p.CumplimientoPresupuesto END) AS Cumplimiento_$col,
                         SUM(CASE WHEN p.date_concat = '$col' THEN p.DiferenciaPresupuesto END) AS Diferencia_$col";
             }, $months));
-
         }
 
         $query = "
@@ -525,11 +529,12 @@ class VentasModel extends Model{
             GROUP BY $group_total
             ORDER BY p.Estacion, p.producto;";
 
-           
-            return $this->sql->select($query, []);
+
+        return $this->sql->select($query, []);
     }
 
-    function getSalesTypePayment($from, $until, $zona,$total) {
+    function getSalesTypePayment($from, $until, $zona, $total)
+    {
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
 
@@ -550,32 +555,31 @@ class VentasModel extends Model{
 
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
-            $months[] = "[".$year ."_". $monthNumber ."]";
+            $months[] = "[" . $year . "_" . $monthNumber . "]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
-        $pivotColumns_final = implode(' , ', array_map(function($col) {
+        $pivotColumns_final = implode(' , ', array_map(function ($col) {
             return "ISNULL($col, 0) as $col";
         }, $months));
         // Calcular la suma total dinámicamente
-        $totalSum = implode(' + ', array_map(function($col) {
+        $totalSum = implode(' + ', array_map(function ($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total=' empresa, Zona, Estacion, Descripcion, YEAR(Fecha), MONTH(Fecha)';
+        $group_total = ' empresa, Zona, Estacion, Descripcion, YEAR(Fecha), MONTH(Fecha)';
         $Descripcion = 'Descripcion,';
-        if($total == '1'){
+        if ($total == '1') {
 
             $group_total = " GROUPING SETS (
                                 (empresa, Zona, Estacion, Descripcion, YEAR(Fecha), MONTH(Fecha)), -- Agrupación normal por producto
                                 (empresa, Zona, Estacion, YEAR(Fecha), MONTH(Fecha)) -- Total por estación
                             )";
-            $Descripcion ='CASE
+            $Descripcion = 'CASE
                 WHEN Descripcion IS NULL THEN \'Total Estación\'
                 ELSE Descripcion
             END AS Descripcion,';
-
         }
 
         $query = "
@@ -632,7 +636,8 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getSalesTypePaymentTotal($from, $until, $zona) {
+    function getSalesTypePaymentTotal($from, $until, $zona)
+    {
 
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
@@ -655,19 +660,19 @@ class VentasModel extends Model{
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
             $monthName = ucfirst(strftime('%B', $currentDate->getTimestamp())); // Nombre del mes en español
-            $months[] = "[".$year ."_". $monthNumber ."]";
+            $months[] = "[" . $year . "_" . $monthNumber . "]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
 
-        $totalSum = implode(' + ', array_map(function($col) {
+        $totalSum = implode(' + ', array_map(function ($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $query ="
-                    DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '". $fromstring."') + 1;
-                    DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '". $untilstring."') + 1;
+        $query = "
+                    DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '" . $fromstring . "') + 1;
+                    DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '" . $untilstring . "') + 1;
                     declare  @cod_gas INT = NULL;
 
                     WITH ValuesTable as ( 
@@ -729,7 +734,8 @@ class VentasModel extends Model{
     }
 
 
-    function getMounthGruopPayment($from, $until, $grupo, $total) {
+    function getMounthGruopPayment($from, $until, $grupo, $total)
+    {
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
 
@@ -746,38 +752,37 @@ class VentasModel extends Model{
 
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
-            $months[] = "[".$year ."_". $monthNumber ."]";
+            $months[] = "[" . $year . "_" . $monthNumber . "]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
-        $pivotColumns_final = implode(' , ', array_map(function($col) {
+        $pivotColumns_final = implode(' , ', array_map(function ($col) {
             return "ISNULL($col, 0) as $col";
         }, $months));
         // Calcular la suma total dinámicamente
-        $totalSum = implode(' + ', array_map(function($col) {
+        $totalSum = implode(' + ', array_map(function ($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total='  Grupo,empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $group_total = '  Grupo,empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
         $Descripcion = 'Descripcion,';
-        if($total == '1'){
+        if ($total == '1') {
 
             $group_total = " GROUPING SETS (
                                  (Grupo,empresa, Descripcion, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)),
                                 (Grupo,empresa, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha))
                             )";
-            $Descripcion ='CASE
+            $Descripcion = 'CASE
                 WHEN Descripcion IS NULL THEN \'Total Estación\'
                 ELSE Descripcion
             END AS Descripcion,';
-
         }
 
-        $grupo_string ='';
+        $grupo_string = '';
 
-        if ($grupo != '0'){
-            $grupo_string ="and E.grupo = '{$grupo}' ";
+        if ($grupo != '0') {
+            $grupo_string = "and E.grupo = '{$grupo}' ";
         }
         $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
@@ -838,7 +843,8 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getMounthCompanyPayment($from, $until, $company, $total) {
+    function getMounthCompanyPayment($from, $until, $company, $total)
+    {
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
 
@@ -855,29 +861,29 @@ class VentasModel extends Model{
 
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
-            $months[] = "[".$year ."_". $monthNumber ."]";
+            $months[] = "[" . $year . "_" . $monthNumber . "]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
-        $pivotColumns_final = implode(' , ', array_map(function($col) {
+        $pivotColumns_final = implode(' , ', array_map(function ($col) {
             return "ISNULL($col, 0) as $col";
         }, $months));
         // Calcular la suma total dinámicamente
-        $totalSum = implode(' + ', array_map(function($col) {
+        $totalSum = implode(' + ', array_map(function ($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total='  empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $group_total = '  empresa, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
         $Descripcion = 'Descripcion,';
-        
 
-        $company_string ='';
 
-        if ($company != '0'){
-            $company_string ="and emp.cod = '{$company}' ";
+        $company_string = '';
+
+        if ($company != '0') {
+            $company_string = "and emp.cod = '{$company}' ";
         }
-        
+
         $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '$fromstring') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '$untilstring') + 1;
@@ -935,7 +941,8 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getMounthEstationPayment($from, $until, $estation, $total) {
+    function getMounthEstationPayment($from, $until, $estation, $total)
+    {
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
 
@@ -952,26 +959,26 @@ class VentasModel extends Model{
 
             $year = $currentDate->format('Y');
             $monthNumber = (int)$currentDate->format('m');
-            $months[] = "[".$year ."_". $monthNumber ."]";
+            $months[] = "[" . $year . "_" . $monthNumber . "]";
             $currentDate->modify('+1 month');
         }
         // Convertir el array en una cadena separada por comas
         $pivotColumns = implode(', ', $months);
-        $pivotColumns_final = implode(' , ', array_map(function($col) {
+        $pivotColumns_final = implode(' , ', array_map(function ($col) {
             return "ISNULL($col, 0) as $col";
         }, $months));
         // Calcular la suma total dinámicamente
-        $totalSum = implode(' + ', array_map(function($col) {
+        $totalSum = implode(' + ', array_map(function ($col) {
             return "ISNULL($col, 0)";
         }, $months));
 
-        $group_total='  Estacion, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
+        $group_total = '  Estacion, Descripcion,MedioPago, DATEPART(Year, Fecha), DATEPART(MONTH, Fecha)';
         $Descripcion = 'Descripcion,';
 
-        $estation_string ='';
+        $estation_string = '';
 
-        if ($estation != '0'){
-            $estation_string ="and i.codgas = '{$estation}' ";
+        if ($estation != '0') {
+            $estation_string = "and i.codgas = '{$estation}' ";
         }
 
         $query = "
@@ -1030,8 +1037,9 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getSalesMonthTotal($from, $until, $zona, $turn, $total) {
-     
+    function getSalesMonthTotal($from, $until, $zona, $turn, $total)
+    {
+
         $fromstring = date('Y-m-d', strtotime($from));
         $untilstring = date('Y-m-d', strtotime($until));
 
@@ -1039,24 +1047,24 @@ class VentasModel extends Model{
         if (!empty($zona) && $zona != 0) {
             $zona_query = "AND E.estructura = '{$zona}'";
         }
-    
+
         $dateFrom = DateTime::createFromFormat('Y-m-d', $from);
         $dateUntil = DateTime::createFromFormat('Y-m-d', $until);
-    
+
         $dateFrom->modify('first day of this month');
         $dateUntil->modify('first day of this month');
-    
+
         $months = [];
         $turns = [11, 21, 31, 41];
-        $turnstring ='';
-        if ($turn != '0'){
-            $turnstring ="and v.nrotur = '{$turn}' ";
+        $turnstring = '';
+        if ($turn != '0') {
+            $turnstring = "and v.nrotur = '{$turn}' ";
             $turns = [$turn];
         }
 
 
         $currentDate = clone $dateFrom;
-    
+
         while ($currentDate <= $dateUntil) {
             foreach ($turns as $turn) {
                 $year = $currentDate->format('Y');
@@ -1065,7 +1073,7 @@ class VentasModel extends Model{
             }
             $currentDate->modify('+1 month');
         }
-    
+
         $pivotColumns = implode(', ', $months);
         $totalSum = implode(' + ', array_map(fn($col) => "ISNULL($col, 0)", $months));
 
@@ -1080,7 +1088,7 @@ class VentasModel extends Model{
                 (DATEPART(YEAR, FechaReal), DATEPART(MONTH, FechaReal),v.nrotur, isd.codgas, g.abr)
             )';
         }
-       
+
         $query = "
             DECLARE @fecha_inicial_int INT = DATEDIFF(DAY, 0, '{$fromstring}') + 1;
             DECLARE @fecha_fin_int INT = DATEDIFF(DAY, 0, '{$untilstring}') + 1;
@@ -1133,11 +1141,11 @@ class VentasModel extends Model{
         ";
 
         return $this->sql->select($query, []);
-
     }
-    
 
-    function GetSalesMonthBase($from, $until, $zona){
+
+    function GetSalesMonthBase($from, $until, $zona)
+    {
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
 
@@ -1178,10 +1186,11 @@ class VentasModel extends Model{
 						E.estructura
                 )
                 select * from ValuesTable";
- 
+
         return $this->sql->select($query, []);
     }
-    function GetSalesDayTurnBase($from, $until, $zona){
+    function GetSalesDayTurnBase($from, $until, $zona)
+    {
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
         $query = "
@@ -1218,14 +1227,15 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
 
-    function getLubricants($from, $until){
+    function getLubricants($from, $until)
+    {
 
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);
         $untilDate = DateTime::createFromFormat('Y-m-d', $until);
         $fromInt = dateToInt($from);
         $untilInt = dateToInt($until);
         $currentDate = clone $fromDate;
-        
+
         $weeks = [];
         while ($currentDate <= $untilDate) {
             $weekNumber = $currentDate->format('W'); // Número de semana
@@ -1326,14 +1336,15 @@ class VentasModel extends Model{
 
         return $this->sql->select($query, []);
     }
-    function getLubricantsMonth($from, $until){
+    function getLubricantsMonth($from, $until)
+    {
 
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);
         $untilDate = DateTime::createFromFormat('Y-m-d', $until);
         $fromInt = dateToInt($from);
         $untilInt = dateToInt($until);
         $currentDate = clone $fromDate;
-        
+
         $months = [];
         while ($currentDate <= $untilDate) {
             $monthNumber = (int)$currentDate->format('m'); // Número de mes sin ceros a la izquierda
@@ -1341,7 +1352,7 @@ class VentasModel extends Model{
             $months[] = ['month' => $monthNumber, 'year' => $year];
             $currentDate->modify('first day of next month');
         }
-    
+
         // Generar columnas dinámicas para el PIVOT
         $columns = [];
         foreach ($months as $month) {
@@ -1349,7 +1360,7 @@ class VentasModel extends Model{
             $columns[] = "[{$month['year']}_{$month['month']}_cantidad]";
         }
         $columnsList = implode(',', $columns);
-    
+
         // Construir consulta SQL dinámica
         $query = "
                 WITH DatosMensual AS (
@@ -1419,17 +1430,18 @@ class VentasModel extends Model{
         ) AS PivotTable
         ORDER BY codigo;
         ";
-        
+
         return $this->sql->select($query, []);
     }
 
-    function getSaleWeekZone($from, $until){
+    function getSaleWeekZone($from, $until)
+    {
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);
         $untilDate = DateTime::createFromFormat('Y-m-d', $until);
         $fromInt = dateToInt($from);
         $untilInt = dateToInt($until);
         $currentDate = clone $fromDate;
-        
+
         $weeks = [];
         while ($currentDate <= $untilDate) {
             $weekNumber = $currentDate->format('W'); // Número de semana
@@ -1514,7 +1526,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
 
-    function get_sales_day_product($from, $until,$id_shift,$id_producto,$estaciones){
+    function get_sales_day_product($from, $until, $id_shift, $id_producto, $estaciones)
+    {
         $columns = [];
         $columnsName = [];
 
@@ -1535,17 +1548,18 @@ class VentasModel extends Model{
 
 
         if ($id_producto == 0) {
-           $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
-        }if ($id_producto == 1) {
+            $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
+        }
+        if ($id_producto == 1) {
             $producto  = "codprd IN (179, 192)";
-        }elseif ($id_producto == 2) {
+        } elseif ($id_producto == 2) {
             $producto  = "codprd IN (180, 193)";
-        }elseif ($id_producto == 3) {
+        } elseif ($id_producto == 3) {
             $producto  = "codprd IN (181)";
         }
 
 
-        $query="
+        $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '{$from}') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '{$until}') + 1;
 
@@ -1619,10 +1633,10 @@ class VentasModel extends Model{
 
 
         return $this->sql->select($query, []);
-
     }
 
-    function GetSalesGlobalTotal($from, $until,$zona){
+    function GetSalesGlobalTotal($from, $until, $zona)
+    {
         $fromInt = dateToInt($from);
         $untilInt = dateToInt($until);
 
@@ -1708,7 +1722,8 @@ class VentasModel extends Model{
         return $this->sql->select($query, []);
     }
 
-    function get_sales_day_trn($from, $until,$id_shift,$id_producto,$estaciones){
+    function get_sales_day_trn($from, $until, $id_shift, $id_producto, $estaciones)
+    {
         $columns = [];
         $columnsName = [];
         // foreach ($estaciones as $estacion) {
@@ -1730,26 +1745,27 @@ class VentasModel extends Model{
 
 
         if ($id_producto == 0) {
-           $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
-        }if ($id_producto == 1) {
+            $producto  = "codprd IN (179, 180, 181, 2, 3, 1, 192, 193)";
+        }
+        if ($id_producto == 1) {
             $producto  = "codprd IN (179, 192)";
-        }elseif ($id_producto == 2) {
+        } elseif ($id_producto == 2) {
             $producto  = "codprd IN (180, 193)";
-        }elseif ($id_producto == 3) {
+        } elseif ($id_producto == 3) {
             $producto  = "codprd IN (181)";
         }
 
 
-        $query="
+        $query = "
                 DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '{$from}') + 1;
                 DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '{$until}') + 1;
 
                 WITH SalesData AS (
                     SELECT
-                        CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
-YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
-DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
-DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day1',
+                        CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
+                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year', 
+                        datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
+                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
                         isd.codgas AS CodGasolinera,
                         LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                         sum(canven) AS VentasReales,
@@ -1789,5 +1805,4 @@ DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day1',
 
         return $this->sql->select($query, []);
     }
-    
 }

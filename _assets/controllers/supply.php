@@ -24,7 +24,8 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Collection\CellsFactory;
 
 
-class Supply{
+class Supply
+{
     public $twig;
     public $route;
     public GasolinerasModel $gasolinerasModel;
@@ -61,7 +62,8 @@ class Supply{
     /**
      * @param $twig
      */
-    public function __construct($twig) {
+    public function __construct($twig)
+    {
         $this->twig                                              = $twig;
         $this->route                                             = 'views/supply/';
         $this->gasolinerasModel                                  = new GasolinerasModel;
@@ -87,30 +89,30 @@ class Supply{
         $this->proveedores                                       = new ProveedoresModel();
         $this->facturasRecibidasModel                            = new FacturasRecibidasModel();
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
-        $this->paymentRequestAuthorizationsModel                = new PaymentRequestAuthorizationsModel ();
+        $this->paymentRequestAuthorizationsModel                = new PaymentRequestAuthorizationsModel();
         $this->CuentasBancariasModel                            = new CuentasBancariasModel();
         $this->paymentTransactionsModel                        = new PaymentTransactionsModel();
         $this->UsuariosModel                                    = new UsuariosModel();
         $this->InvoiceCreditDebitNotesModel                     = new InvoiceCreditDebitNotesModel();
-
-
     }
 
     /**
      * @return void
      * @throws Exception
      */
-    function inventory() : void {
+    function inventory(): void
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-              echo $this->twig->render($this->route . 'inventory.html', compact('stations'));
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'inventory.html', compact('stations'));
         } else {
             $station_id = $_POST['station_id'] ?? 0;
             echo $this->twig->render($this->route . 'inventory.html', compact('stations', 'station_id'));
         }
     }
 
-    function inventory_table($station_id) : void {
+    function inventory_table($station_id): void
+    {
         $station_id = empty($station_id) ? 0 : $station_id;
         $data = [];
         if ($station_id == 0) {
@@ -124,9 +126,9 @@ class Supply{
                 $porcent_data = (($inventory['current_volume'] * 100) / $inventory['CapacidadOpe']);
                 $porcent = "
                     <div class=\"d-flex flex-column w-100\">
-                        <span class=\"me-2 mb-1 text-muted\">". number_format($porcent_data, 2, '.', ',') ."%</span>
-                        <div class=\"progress progress-sm bg-". ($porcent_data < 10 ? 'danger' : ($porcent_data < 30 ? 'warning' : 'success' ) ) ."-light w-100\">
-                            <div class=\"progress-bar bg-". ($porcent_data < 10 ? 'danger' : ($porcent_data < 30 ? 'warning' : 'success' ) ) ."\" role=\"progressbar\" style=\"width: ". $porcent_data ."%;\"></div>
+                        <span class=\"me-2 mb-1 text-muted\">" . number_format($porcent_data, 2, '.', ',') . "%</span>
+                        <div class=\"progress progress-sm bg-" . ($porcent_data < 10 ? 'danger' : ($porcent_data < 30 ? 'warning' : 'success')) . "-light w-100\">
+                            <div class=\"progress-bar bg-" . ($porcent_data < 10 ? 'danger' : ($porcent_data < 30 ? 'warning' : 'success')) . "\" role=\"progressbar\" style=\"width: " . $porcent_data . "%;\"></div>
                         </div>
                     </div>
                 ";
@@ -159,14 +161,15 @@ class Supply{
         foreach ($array as $item) {
             $station = $item['Estacion'];
             if (!isset($groupedArray[$station])) {
-                    $groupedArray[$station] = [];
+                $groupedArray[$station] = [];
             }
             $groupedArray[$station][] = $item;
         }
         return $groupedArray;
     }
 
-    public function inventory_mov() : void {
+    public function inventory_mov(): void
+    {
         //        Verificamos si date y station_id estan seteados
         $from = $_GET['from'] ?? date('Y-m-d');
         $station_id = $_GET['station_id'] ?? false;
@@ -174,7 +177,8 @@ class Supply{
         echo $this->twig->render($this->route . 'inventory_mov.html', compact('from', 'station_id', 'stations'));
     }
 
-    function inventory_mov_table($from, $station_id) : void {
+    function inventory_mov_table($from, $station_id): void
+    {
         $data = [];
         if ($movements = $this->tanquesModel->sp_obtener_inventarios_por_movimientos_tanque($from, $station_id)) {
             foreach ($movements as $movement) {
@@ -184,14 +188,15 @@ class Supply{
                     'PRODUCTO'   => $movement['Tanque'],
                     'CAP'        => $movement['CapacidadOpe'],
                     'VOLUMEN'    => $movement['current_volume'],
-                    'PORCENTAJE' => ( $movement['current_volume'] / $movement['CapacidadOpe'] ) * 100,
+                    'PORCENTAJE' => ($movement['current_volume'] / $movement['CapacidadOpe']) * 100,
                 ];
             }
         }
         json_output(array("data" => $data));
     }
 
-    function fuel_prices() : void {
+    function fuel_prices(): void
+    {
         $prices = $this->preciosModel->get_today_prices();
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Ingreso', 'Se ingresó a la pantalla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'fuel_prices');
         $stations = $this->gasolinerasModel->get_active_station_TG();
@@ -222,8 +227,10 @@ class Supply{
             }
             $mensajeFinal .= '<ul class="list-group">';
             foreach ($transformedArray as $station => $products) {
-                $mensajeFinal .= '<li class="list-group-item d-flex justify-content-between align-items-start p-1"><div class="ms-2 me-auto" style="font-size: x-small"><b>'. $station .' ('. $products[0]['Hora'] .')</b> | ';
-                foreach ($products as $product) { $mensajeFinal .= ' '. $product['Producto'] .' a $'. number_format($product['Precio'], 2) .''; }
+                $mensajeFinal .= '<li class="list-group-item d-flex justify-content-between align-items-start p-1"><div class="ms-2 me-auto" style="font-size: x-small"><b>' . $station . ' (' . $products[0]['Hora'] . ')</b> | ';
+                foreach ($products as $product) {
+                    $mensajeFinal .= ' ' . $product['Producto'] . ' a $' . number_format($product['Precio'], 2) . '';
+                }
                 $mensajeFinal .= '</div></li>';
             }
             $mensajeFinal .= '</ul>';
@@ -256,8 +263,10 @@ class Supply{
             }
             $mensajeFinal2 .= '<ul class="list-group">';
             foreach ($transformedArray as $station => $products) {
-                $mensajeFinal2 .= '<li class="list-group-item d-flex justify-content-between align-items-start p-1"><div class="ms-2 me-auto" style="font-size: x-small"><b>'. $station .' ('. $products[0]['Hora'] .')</b> | ';
-                foreach ($products as $product) { $mensajeFinal2 .= ' '. $product['Producto'] .' a $'. number_format($product['Precio'], 2) .''; }
+                $mensajeFinal2 .= '<li class="list-group-item d-flex justify-content-between align-items-start p-1"><div class="ms-2 me-auto" style="font-size: x-small"><b>' . $station . ' (' . $products[0]['Hora'] . ')</b> | ';
+                foreach ($products as $product) {
+                    $mensajeFinal2 .= ' ' . $product['Producto'] . ' a $' . number_format($product['Precio'], 2) . '';
+                }
                 $mensajeFinal2 .= '</div></li>';
             }
             $mensajeFinal2 .= '</ul>';
@@ -267,7 +276,8 @@ class Supply{
         echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices'));
     }
 
-    function datatable_product_prices() {
+    function datatable_product_prices()
+    {
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Visualización', 'Se visualizo la tabla de precios de combustibles', $_SERVER['REMOTE_ADDR'], 'supply.php', 'binnacle_register_prices');
         $data = [];
         $stations = $this->gasolinerasModel->get_active_station_TG();
@@ -285,12 +295,12 @@ class Supply{
                 $options_maxima = '
                 <div class="dropdown">
                     <a class="dropdown-toggle text-light" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        $'. number_format($item[0]['pre_actual_codprd_179'], 2, '.', ',') .'
+                        $' . number_format($item[0]['pre_actual_codprd_179'], 2, '.', ',') . '
                     </a>
         
                     <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(179, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_179'] .', '.$item[0]['hra_actual_codprd_179'].', '. number_format($item[0]['pre_actual_codprd_179'], 2, '.', ',') .')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(179, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_179'] .', '.$item[0]['hra_actual_codprd_179'].')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(179, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_179'] . ', ' . $item[0]['hra_actual_codprd_179'] . ', ' . number_format($item[0]['pre_actual_codprd_179'], 2, '.', ',') . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(179, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_179'] . ', ' . $item[0]['hra_actual_codprd_179'] . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
                     </div>
                 </div>
                 ';
@@ -298,12 +308,12 @@ class Supply{
                 $options_super = '
                 <div class="dropdown">
                     <a class="dropdown-toggle text-light" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        $'. number_format($item[0]['pre_actual_codprd_180'], 2, '.', ',') .'
+                        $' . number_format($item[0]['pre_actual_codprd_180'], 2, '.', ',') . '
                     </a>
         
                     <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(180, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_180'] .', '.$item[0]['hra_actual_codprd_180'].', '. number_format($item[0]['pre_actual_codprd_180'], 2, '.', ',') .')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(180, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_180'] .', '.$item[0]['hra_actual_codprd_180'].')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(180, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_180'] . ', ' . $item[0]['hra_actual_codprd_180'] . ', ' . number_format($item[0]['pre_actual_codprd_180'], 2, '.', ',') . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(180, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_180'] . ', ' . $item[0]['hra_actual_codprd_180'] . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
                     </div>
                 </div>
                 ';
@@ -311,27 +321,27 @@ class Supply{
                 $options_diesel = '
                 <div class="dropdown">
                     <a class="dropdown-toggle text-dark" href="#" role="button" id="dropdownMenuLink" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                        $'. number_format($item[0]['pre_actual_codprd_181'], 2, '.', ',') .'
+                        $' . number_format($item[0]['pre_actual_codprd_181'], 2, '.', ',') . '
                     </a>
         
                     <div class="dropdown-menu" aria-labelledby="dropdownMenuLink">
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(181, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_181'] .', '.$item[0]['hra_actual_codprd_181'].', '. number_format($item[0]['pre_actual_codprd_181'], 2, '.', ',') .')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
-                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(181, '. $item[0]['codgas'] .', '. $item[0]['fch_actual_codprd_181'] .', '.$item[0]['hra_actual_codprd_181'].')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="update_price(181, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_181'] . ', ' . $item[0]['hra_actual_codprd_181'] . ', ' . number_format($item[0]['pre_actual_codprd_181'], 2, '.', ',') . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle me-2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg> Editar</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="delete_price(181, ' . $item[0]['codgas'] . ', ' . $item[0]['fch_actual_codprd_181'] . ', ' . $item[0]['hra_actual_codprd_181'] . ')"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash-2 align-middle me-2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg> Eliminar</a>
                     </div>
                 </div>
                 ';
 
                 $data[] = array(
                     'CODEST'               => $item[0]['station'],
-                    'ESTACION'             => $item[0]['station_name'] . '<p class="m-0 p-0 text-nowrap">'. $item[0]['permisoCre'] .'</p>',
-                    'PRECIOANTERIORMAXIMA' => '<p class="m-0 p-0 text-center">$'. number_format($item[0]['pre_anterior_codprd_179'], 2, '.', ',') . '<p class="m-0 p-0 text-center">'. (intToDate($item[0]['fch_anterior_codprd_179'])) . '</p>',
-                    'PRECIONUEVOMAXIMA'    => $options_maxima . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: '. $item[0]['hra_actual_codprd_179'] .'">'. (intToDate($item[0]['fch_actual_codprd_179'])) . '</p>',
+                    'ESTACION'             => $item[0]['station_name'] . '<p class="m-0 p-0 text-nowrap">' . $item[0]['permisoCre'] . '</p>',
+                    'PRECIOANTERIORMAXIMA' => '<p class="m-0 p-0 text-center">$' . number_format($item[0]['pre_anterior_codprd_179'], 2, '.', ',') . '<p class="m-0 p-0 text-center">' . (intToDate($item[0]['fch_anterior_codprd_179'])) . '</p>',
+                    'PRECIONUEVOMAXIMA'    => $options_maxima . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: ' . $item[0]['hra_actual_codprd_179'] . '">' . (intToDate($item[0]['fch_actual_codprd_179'])) . '</p>',
                     'DIFERENCIAMAXIMA'     => (is_null($item[0]['pre_actual_codprd_179']) ? 'N/A' : ('$' . number_format($item[0]['pre_actual_codprd_179'] - $item[0]['pre_anterior_codprd_179'], 2, '.', ','))),
-                    'PRECIOANTERIORSUPER'  => (is_null($item[0]['pre_anterior_codprd_180']) ? 'N/A' : ('<p class="m-0 p-0 text-center">$'. number_format($item[0]['pre_anterior_codprd_180'], 2, '.', ',') .'</p> <p class="m-0 p-0 text-center">'. (intToDate($item[0]['fch_anterior_codprd_180'])) . '</p>')),
-                    'PRECIONUEVOSUPER'     => (is_null($item[0]['pre_actual_codprd_180']) ? 'N/A' : ( $options_super . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: '. $item[0]['hra_actual_codprd_180'] .'">'. (intToDate($item[0]['fch_actual_codprd_180'])) . '</p>')),
+                    'PRECIOANTERIORSUPER'  => (is_null($item[0]['pre_anterior_codprd_180']) ? 'N/A' : ('<p class="m-0 p-0 text-center">$' . number_format($item[0]['pre_anterior_codprd_180'], 2, '.', ',') . '</p> <p class="m-0 p-0 text-center">' . (intToDate($item[0]['fch_anterior_codprd_180'])) . '</p>')),
+                    'PRECIONUEVOSUPER'     => (is_null($item[0]['pre_actual_codprd_180']) ? 'N/A' : ($options_super . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: ' . $item[0]['hra_actual_codprd_180'] . '">' . (intToDate($item[0]['fch_actual_codprd_180'])) . '</p>')),
                     'DIFERENCIASUPER'      => (is_null($item[0]['pre_actual_codprd_180']) ? 'N/A' : ('$' . number_format($item[0]['pre_actual_codprd_180'] - $item[0]['pre_anterior_codprd_180'], 2, '.', ','))),
-                    'PRECIOANTERIORDIESEL' => (is_null($item[0]['pre_anterior_codprd_181']) ? 'N/A' : ('<p class="m-0 p-0 text-center">$'. number_format($item[0]['pre_anterior_codprd_181'], 2, '.', ',') .'</p> <p class="m-0 p-0 text-center">'. (intToDate($item[0]['fch_anterior_codprd_181'])) . '</p>')),
-                    'PRECIONUEVODIESEL'    => (is_null($item[0]['pre_actual_codprd_181']) ? 'N/A' : ( $options_diesel . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: '. $item[0]['hra_actual_codprd_181'] .'">'. (intToDate($item[0]['fch_actual_codprd_181'])) . '</p>')),
+                    'PRECIOANTERIORDIESEL' => (is_null($item[0]['pre_anterior_codprd_181']) ? 'N/A' : ('<p class="m-0 p-0 text-center">$' . number_format($item[0]['pre_anterior_codprd_181'], 2, '.', ',') . '</p> <p class="m-0 p-0 text-center">' . (intToDate($item[0]['fch_anterior_codprd_181'])) . '</p>')),
+                    'PRECIONUEVODIESEL'    => (is_null($item[0]['pre_actual_codprd_181']) ? 'N/A' : ($options_diesel . '<p class="m-0 p-0 text-center" data-toggle="tooltip" title="Hora: ' . $item[0]['hra_actual_codprd_181'] . '">' . (intToDate($item[0]['fch_actual_codprd_181'])) . '</p>')),
                     'DIFERENCIADIESEL'     => (is_null($item[0]['pre_actual_codprd_181']) ? 'N/A' : ('$' . number_format($item[0]['pre_actual_codprd_181'] - $item[0]['pre_anterior_codprd_181'], 2, '.', ',')))
                 );
             }
@@ -342,7 +352,8 @@ class Supply{
     // Función para construir el mensaje de una estación
 
 
-    function delete_price($codprd, $codgas, $fch, $hra) {
+    function delete_price($codprd, $codgas, $fch, $hra)
+    {
 
         binnacle_register_prices($_SESSION['tg_user']['Id'], 'Eliminación', "Se eliminó el siguiente registro: codprd: {$codprd}, codgas: {$codgas}, fch: {$fch}, hra: {$hra}.", $_SERVER['REMOTE_ADDR'], 'supply.php', 'delete_price');
         if ($this->preciosModel->delete_price($codprd, $codgas, $fch, $hra)) {
@@ -353,7 +364,8 @@ class Supply{
         header('Location: /supply/fuel_prices');
     }
 
-    function send_prices() {
+    function send_prices()
+    {
         $pre = $_GET['pre'];
         $fch = $_GET['from'];
         $hour = str_replace(":", "", $_GET['hour']);
@@ -389,7 +401,7 @@ class Supply{
                     $ieps_val = $ieps[1]['abr'];
                     break;
             }
-            if (in_array($codgas, [33, 34, 35, 36, 37,38])) { // Travel, Picachos, Ventanas, San Rafael, Puertecito
+            if (in_array($codgas, [33, 34, 35, 36, 37, 38])) { // Travel, Picachos, Ventanas, San Rafael, Puertecito
                 if ($codprd == 179) {
                     $codprd = 192;
                 } elseif ($codprd == 180) {
@@ -404,7 +416,8 @@ class Supply{
         redirect('/supply/fuel_prices');
     }
 
-    function get_ieps($codprd) {
+    function get_ieps($codprd)
+    {
         $ieps = $this->tvariasModel->get_ieps();
         switch ($codprd) {
             case 193:
@@ -426,7 +439,8 @@ class Supply{
         json_output($ieps);
     }
 
-    function update_price() {
+    function update_price()
+    {
         $codprd = $_POST['codprd'];
         $codgas = $_POST['codgas'];
         $fch = $_POST['fch'];
@@ -464,16 +478,19 @@ class Supply{
         json_output(['status' => 'Success', 'message' => 'Precio actualizado correctamente']);
     }
 
-    function get_binnacle() : void {
+    function get_binnacle(): void
+    {
         $binnacle = $this->binnaclePricesModel->get_binnacle();
         echo $this->twig->render($this->route . 'binnacle.html', compact('binnacle'));
     }
 
-    function changes() : void {
+    function changes(): void
+    {
         echo $this->twig->render($this->route . 'changes.html');
     }
 
-    function tgr01() {
+    function tgr01()
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
         isset($_GET['codgas']) ? $codgas = $_GET['codgas'] : $codgas = 7;
         isset($_GET['from']) ? $from = $_GET['from'] : $from = date('Y-m-d');
@@ -486,13 +503,15 @@ class Supply{
         echo $this->twig->render($this->route . 'tgr01.html', compact('stations', 'from', 'to', 'codgas', 'shift', 'product', 'data'));
     }
 
-    function creProducts() {
+    function creProducts()
+    {
         $stations = $this->gasolinerasModel->get_active_station_TG();
         $products = $this->creProductsModel->getRows();
         echo $this->twig->render($this->route . 'creProducts.html', compact('stations', 'products'));
     }
 
-    function datatable_creProducts() {
+    function datatable_creProducts()
+    {
         $data = [];
         if ($products = $this->creProductsByStationsModel->getRows()) {
             foreach ($products as $product) {
@@ -512,17 +531,20 @@ class Supply{
         json_output(array("data" => $data));
     }
 
-    function getSubProducts($productId) {
+    function getSubProducts($productId)
+    {
         $subProducts = $this->creSubProductosModel->getRowsByProduct($productId);
         json_output($subProducts);
     }
 
-    function getSubProductsBrand($subProductId) {
+    function getSubProductsBrand($subProductId)
+    {
         $subProductsBrand = $this->creSubProductosMarcaModel->getRowsBySubProduct($subProductId);
         json_output($subProductsBrand);
     }
 
-    function addCreProductForm() {
+    function addCreProductForm()
+    {
         $controlGasStationId = $_GET['controlGasStationId'];
         $creProductId = $_GET['creProductId'];
         $creSubProductId = $_GET['creSubProductId'];
@@ -534,7 +556,8 @@ class Supply{
         }
     }
 
-    function bulkUpload2() {
+    function bulkUpload2()
+    {
 
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
@@ -645,7 +668,7 @@ class Supply{
                     if (!isset($groupedData[$controlGasStationId])) {
                         $groupedData[$controlGasStationId] = [];
                     }
-                    $item['compras'] = $this->xsdEstacionServicioVolumenCompradoModel->getPurchaseByProduct2($item['xsdReportesVolumenesId'],$item['xsdEstacionServicioVolumenId'],$item['controlGasProductId']);
+                    $item['compras'] = $this->xsdEstacionServicioVolumenCompradoModel->getPurchaseByProduct2($item['xsdReportesVolumenesId'], $item['xsdEstacionServicioVolumenId'], $item['controlGasProductId']);
                     $groupedData[$controlGasStationId][] = $item;
                 }
                 $twigVars['groupedData'] = $groupedData;
@@ -658,7 +681,8 @@ class Supply{
         echo $this->twig->render($this->route . 'bulk_upload2.html', $twigVars);
     }
 
-    function bulkUpload() {
+    function bulkUpload()
+    {
         ini_set('memory_limit', '256M');
         ini_set('max_execution_time', 300);
 
@@ -707,9 +731,9 @@ class Supply{
 
                 // Procesa cada producto
                 foreach ($codgas_products as $item) {
-                    
 
-                    
+
+
                     // Inserta o recupera el registro de la estación en la tabla de volumen
                     $estacionServicioVolumen = $this->xsdEstacionServicioVolumenModel->getOrAddRow($reportId, $item['numeroPermisoCRE'], $item['rfc']);
 
@@ -756,8 +780,9 @@ class Supply{
         echo $this->twig->render($this->route . 'bulk_upload.html', $twigVars);
     }
 
-    function creSuppliers() {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])) {
+    function creSuppliers()
+    {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'creSuppliers.html');
         } else {
             $data = [];
@@ -775,8 +800,9 @@ class Supply{
         }
     }
 
-    function creCarriers() {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])) {
+    function creCarriers()
+    {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'creCarriers.html');
         } else {
             $data = [];
@@ -794,8 +820,9 @@ class Supply{
         }
     }
 
-    function updateForm() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function updateForm()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             $creProductId = $_POST['creProductId'];
             $creSubProductId = $_POST['creSubProductId'];
             $creSubProductBrandId = $_POST['creSubProductBrandId'];
@@ -811,8 +838,9 @@ class Supply{
         }
     }
 
-    function updateForm2() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function updateForm2()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             $creProductId = $_POST['creProductId'];
             $creSubProductId = $_POST['creSubProductId'];
             $controlGasProductId = $_POST['controlGasProductId'];
@@ -822,13 +850,14 @@ class Supply{
 
             $fchInt = dateToInt($_POST['from']);
             if ($station_inventory = $this->xsdEstacionServicioVolumenVendidoInventariosModel->get_inventory_product($station['id'], $creProductId, $creSubProductId)) {
-                $data = $this->xsdEstacionServicioVolumenVendidoInventariosModel->update_inventory_product2($station_inventory['id'], $_POST['InventarioInicial'], $_POST['InventarioFinal'], $_POST['codgas'], $controlGasProductId,$fchInt);
+                $data = $this->xsdEstacionServicioVolumenVendidoInventariosModel->update_inventory_product2($station_inventory['id'], $_POST['InventarioInicial'], $_POST['InventarioFinal'], $_POST['codgas'], $controlGasProductId, $fchInt);
                 json_output(['status' => 'success', 'message' => 'Datos actualizados correctamente', 'data' => $data]);
             }
         }
     }
 
-    function frmCapturaProveedor() {
+    function frmCapturaProveedor()
+    {
         // Verifica si la petición es de tipo POST
         if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             // Recibe los datos del formulario (productos, proveedor, precios, etc.)
@@ -934,7 +963,8 @@ class Supply{
         }
     }
 
-    function frmCapturaProveedor2() {
+    function frmCapturaProveedor2()
+    {
         // Verifica si la petición es de tipo POST
         if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             // Recibe los datos del formulario (productos, proveedor, precios, etc.)
@@ -999,7 +1029,8 @@ class Supply{
     }
 
 
-    function getPurchaseData($id) {
+    function getPurchaseData($id)
+    {
         if ($data = $this->xsdEstacionServicioVolumenCompradoModel->getRow($id)) {
             json_output(['status' => 'success', 'data' => $data]);
         } else {
@@ -1007,7 +1038,8 @@ class Supply{
         }
     }
 
-    function deletePurchase($id) {
+    function deletePurchase($id)
+    {
         if ($this->xsdEstacionServicioVolumenCompradoModel->delete($id)) {
             // Vamos a enviar un mensaje flash
             setFlashMessage('success', 'Compra eliminada correctamente');
@@ -1015,8 +1047,9 @@ class Supply{
         }
     }
 
-    function addCarrierModal() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function addCarrierModal()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             $companyName = $_POST['companyName'];
             $rfc = $_POST['rfc'];
             $crePermissionCarrier = $_POST['crePermissionCarrier'];
@@ -1034,8 +1067,9 @@ class Supply{
         }
     }
 
-    function editCarrierModal() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function editCarrierModal()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             if ($this->creCarriersModel->update($_POST['companyName'], $_POST['rfc'], $_POST['crePermissionCarrier'], $_POST['id'])) {
                 json_output(['status' => 'success', 'message' => 'Transportista actualizado correctamente']);
             } else {
@@ -1044,8 +1078,9 @@ class Supply{
         }
     }
 
-    function addSupplierModal() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function addSupplierModal()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             $companyName = $_POST['companyName'];
             $rfc = $_POST['rfc'];
             $crePermissionSupplier = $_POST['crePermissionSupplier'];
@@ -1063,8 +1098,9 @@ class Supply{
         }
     }
 
-    function editSupplierModal() {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
+    function editSupplierModal()
+    {
+        if (preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
             if ($this->creSuppliersModel->update($_POST['companyName'], $_POST['rfc'], $_POST['crePermissionSupplier'], $_POST['id'])) {
                 json_output(['status' => 'success', 'message' => 'Proveedor actualizado correctamente']);
             } else {
@@ -1073,7 +1109,8 @@ class Supply{
         }
     }
 
-    function frmCapturaCompra() {
+    function frmCapturaCompra()
+    {
         // Variables
         $codgas = $_POST['codgas'];
         $creProductId = $_POST['creProductId'];
@@ -1087,14 +1124,15 @@ class Supply{
         if ($reception = $this->xsdEstacionServicioVolumenCompradoModel->get_purchase($rowid)) {
 
             $suppliers = $this->creSuppliersModel->getRows();
-            $html = $this->twig->render($this->route . 'modals/frmCapturaCompra.html', compact('codgas','creProductId','creSubProductId','creSubProductBrandId','rowid','controlGasProductId','suppliers','reception','carriers','from'));
+            $html = $this->twig->render($this->route . 'modals/frmCapturaCompra.html', compact('codgas', 'creProductId', 'creSubProductId', 'creSubProductBrandId', 'rowid', 'controlGasProductId', 'suppliers', 'reception', 'carriers', 'from'));
             return json_output(['success' => true, 'html' => $html]);
         } else {
-            return json_output(['success' => false,'message' => 'No se encontró la compra']);
+            return json_output(['success' => false, 'message' => 'No se encontró la compra']);
         }
     }
 
-    function uploadXml() {
+    function uploadXml()
+    {
         $uploadDir = __DIR__ . '/../../_assets/uploads/creXMLs/';
 
         // Asegurarse que el directorio exista
@@ -1103,8 +1141,10 @@ class Supply{
         }
 
         // Validar que llegue el archivo y las variables necesarias
-        if (isset($_FILES['xmlFile']) && $_FILES['xmlFile']['error'] === UPLOAD_ERR_OK
-            && isset($_POST['companyDenominacion']) && isset($_POST['from'])) {
+        if (
+            isset($_FILES['xmlFile']) && $_FILES['xmlFile']['error'] === UPLOAD_ERR_OK
+            && isset($_POST['companyDenominacion']) && isset($_POST['from'])
+        ) {
 
             $fileTmpPath = $_FILES['xmlFile']['tmp_name'];
             $fileExtension = strtolower(pathinfo($_FILES['xmlFile']['name'], PATHINFO_EXTENSION));
@@ -1137,12 +1177,14 @@ class Supply{
         }
     }
 
-    function fuel_payments() {
+    function fuel_payments()
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
         echo $this->twig->render($this->route . 'fuel_payments.html', compact('stations'));
     }
 
-    function fuel_reconciliation() {
+    function fuel_reconciliation()
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
         $proveedores = [
             ['cod' => 'TESORO', 'den' => 'TESORO'],
@@ -1162,24 +1204,26 @@ class Supply{
     }
 
 
-    function prices_xml() {
+    function prices_xml()
+    {
         echo $this->twig->render($this->route . 'prices_xml.html');
     }
 
-    function generar_xml_precios() {
+    function generar_xml_precios()
+    {
         try {
             // Verificar que sea una petición POST
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 $this->responderJSON(false, 'Método no permitido. Use POST.');
             }
-            
+
             // Obtener y validar la hora
             $hora = isset($_POST['hora']) ? trim($_POST['hora']) : '';
-            
+
             if (empty($hora)) {
                 $this->responderJSON(false, 'La hora es requerida');
             }
-            
+
             // Validar formato de hora (HH:MM)
             if (!preg_match('/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/', $hora)) {
                 $this->responderJSON(false, 'Formato de hora inválido. Use HH:MM (ej: 14:00)');
@@ -1195,7 +1239,7 @@ class Supply{
                     $this->responderJSON(false, "El correo '$email' no es válido");
                 }
             }
-            
+
             // Crear instancia y ejecutar
             $generador = new GeneradorXMLPrecios();
 
@@ -1205,14 +1249,14 @@ class Supply{
             }
 
             $resultado = $generador->generarYEnviarXML($hora);
-            
+
             if ($resultado) {
                 // Contar archivos generados
                 $archivosXML = glob('xml_output/*.xml');
                 $totalArchivos = count($archivosXML);
-                
+
                 $this->responderJSON(
-                    true, 
+                    true,
                     "XMLs generados y enviados correctamente con hora de aplicación: $hora",
                     [
                         'archivos_generados' => $totalArchivos,
@@ -1223,16 +1267,15 @@ class Supply{
             } else {
                 $errores = $generador->getErrores(); // Necesitarás agregar este método
                 $this->responderJSON(
-                    false, 
+                    false,
                     'Error al generar o enviar los XMLs',
                     ['errores' => $errores]
                 );
             }
-            
         } catch (Exception $e) {
             // Log del error (opcional)
             error_log("Error en generar_xml.php: " . $e->getMessage());
-            
+
             $this->responderJSON(
                 false,
                 'Error del servidor: ' . $e->getMessage(),
@@ -1242,7 +1285,8 @@ class Supply{
     }
 
     // Función para responder en formato JSON
-    function responderJSON($success, $message, $data = []) {
+    function responderJSON($success, $message, $data = [])
+    {
         // Configuración de headers para respuestas JSON
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array_merge([
@@ -1253,32 +1297,35 @@ class Supply{
         exit;
     }
 
-    function shops_fuel() {
+    function shops_fuel()
+    {
         $stations = $this->gasolinerasModel->get_active_stations();
 
         echo $this->twig->render($this->route . 'shops_fuel.html', compact('stations'));
     }
-    function providers() {
+    function providers()
+    {
 
         echo $this->twig->render($this->route . 'providers.html');
     }
 
-    function add_payment(){
-       $all_stations = $this->gasolinerasModel->get_stations();
-    
+    function add_payment()
+    {
+        $all_stations = $this->gasolinerasModel->get_stations();
+
         // Filtrar estaciones para quitar la que tiene cod = 0
-        $stations = array_filter($all_stations, function($station) {
+        $stations = array_filter($all_stations, function ($station) {
             return $station['cod'] != 0; // o !== '0' si cod es string
         });
 
         $companys = $this->gasolinerasModel->get_company();
         $proveedores = $this->proveedores->get_actives();
         echo $this->twig->render($this->route . 'add_payment.html', compact('stations', 'companys', 'proveedores'));
-
     }
 
 
-    public function payment_control_table(){
+    public function payment_control_table()
+    {
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
@@ -1352,15 +1399,18 @@ class Supply{
     }
 
 
-    function uploadPdf() {
+    function uploadPdf()
+    {
         $uploadDir = __DIR__ . '/../../_assets/uploads/creAcuses/';
 
         if (!is_dir($uploadDir)) {
             mkdir($uploadDir, 0755, true);
         }
 
-        if (isset($_FILES['pdfFile']) && $_FILES['pdfFile']['error'] === UPLOAD_ERR_OK
-            && isset($_POST['companyDenominacion']) && isset($_POST['from'])) {
+        if (
+            isset($_FILES['pdfFile']) && $_FILES['pdfFile']['error'] === UPLOAD_ERR_OK
+            && isset($_POST['companyDenominacion']) && isset($_POST['from'])
+        ) {
             // Validar que llegue el archivo y las variables necesarias
             $fileTmpPath = $_FILES['pdfFile']['tmp_name'];
             $fileExtension = strtolower(pathinfo($_FILES['pdfFile']['name'], PATHINFO_EXTENSION));
@@ -1404,13 +1454,14 @@ class Supply{
     }
 
 
-    public function providers_table(){
+    public function providers_table()
+    {
         $data = [];
-        if ( $providers = $this->proveedores->get_rows()) {
+        if ($providers = $this->proveedores->get_rows()) {
 
             foreach ($providers as $row) {
-                if($row['total_facturado'] != 0){
-                    
+                if ($row['total_facturado'] != 0) {
+
                     $data[] = array(
                         'id'               => $row['id'],
                         'id_control_gas'   => $row['id_control_gas'],
@@ -1428,13 +1479,15 @@ class Supply{
         json_output(array("data" => $data));
     }
 
-    function descargar_facturas() {
+    function descargar_facturas()
+    {
         echo $this->twig->render($this->route . 'descargar_facturas.html');
     }
 
-   function procesar_uuids_facturas() {
+    function procesar_uuids_facturas()
+    {
         header('Content-Type: application/json');
-        
+
         try {
             // Validar que llegue el archivo
             if (!isset($_FILES['archivo_excel']) || $_FILES['archivo_excel']['error'] !== UPLOAD_ERR_OK) {
@@ -1445,11 +1498,11 @@ class Supply{
             $archivo = $_FILES['archivo_excel']['tmp_name'];
             $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($archivo);
             $sheet = $spreadsheet->getActiveSheet();
-            
+
             $uuidsValidos = [];
             $uuidsInvalidos = [];
             $highestRow = $sheet->getHighestRow();
-            
+
             // Leer TODOS los UUIDs de la primera columna
             for ($row = 2; $row <= $highestRow; $row++) {
                 $uuid = $sheet->getCell('A' . $row)->getValue();
@@ -1458,7 +1511,7 @@ class Supply{
                     $uuidOriginal = $uuid;
                     $uuid = strtoupper($uuid);
                     // Validar formato UUID
-                    if (strlen($uuid) !== 36) {                        
+                    if (strlen($uuid) !== 36) {
                         // UUID inválido - longitud incorrecta
                         $uuidsInvalidos[] = [
                             'fila' => $row,
@@ -1490,7 +1543,7 @@ class Supply{
                 return;
             }
 
-            
+
             // Buscar facturas en la base de datos (solo con UUIDs válidos)
             $facturas = [];
             if (!empty($uuidsValidos)) {
@@ -1526,13 +1579,13 @@ class Supply{
                             'uuid' => $factura['UUID'],
                             'folio' => $factura['Folio'],
                             'estado' => 'archivo_no_existe',
-                            'error' => 'Factura encontrada en BD pero archivo físico no existe: ' . 
-                                    ($factura['NombreArchivo'] ?? basename($factura['RutaArchivo'] ?? 'desconocido'))
+                            'error' => 'Factura encontrada en BD pero archivo físico no existe: ' .
+                                ($factura['NombreArchivo'] ?? basename($factura['RutaArchivo'] ?? 'desconocido'))
                         ];
                     }
                 }
             }
-            
+
             // Identificar UUIDs válidos que NO se encontraron en la BD
             // ✅ SOLUCIÓN: Ahora la comparación es case-insensitive (ambos en MAYÚSCULAS)
             foreach ($uuidsValidos as $uuid) {
@@ -1545,10 +1598,10 @@ class Supply{
                     ];
                 }
             }
-            
+
             // Agregar UUIDs con formato inválido a fallidas
             $facturasFallidas = array_merge($facturasFallidas, $uuidsInvalidos);
-            
+
             // Resultado final
             json_output([
                 'success' => true,
@@ -1558,7 +1611,6 @@ class Supply{
                 'total_encontrados' => count($facturasExitosas),
                 'total_fallidos' => count($facturasFallidas)
             ]);
-            
         } catch (Exception $e) {
             json_output([
                 'success' => false,
@@ -1570,40 +1622,40 @@ class Supply{
     /**
      * Descargar archivo de factura individual
      */
-    function descargar_factura($id) {
+    function descargar_factura($id)
+    {
         try {
             $factura = $this->facturasRecibidasModel->obtenerPorId($id);
-            
+
             if (!$factura) {
                 http_response_code(404);
                 echo json_encode(['message' => 'Factura no encontrada']);
                 return;
             }
-            
+
             if (empty($factura['RutaArchivo']) || !file_exists($factura['RutaArchivo'])) {
                 http_response_code(404);
                 echo json_encode(['message' => 'Archivo no encontrado en el servidor']);
                 return;
             }
-            
+
             $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
             $rutaArchivo = $factura['RutaArchivo'];
-            
+
             // Establecer headers para descarga
             header('Content-Type: application/pdf');
             header('Content-Disposition: attachment; filename="' . $nombreArchivo . '"');
             header('Content-Length: ' . filesize($rutaArchivo));
             header('Cache-Control: no-cache, must-revalidate');
             header('Pragma: public');
-            
+
             // Limpiar buffer de salida
             ob_clean();
             flush();
-            
+
             // Leer y enviar el archivo
             readfile($rutaArchivo);
             exit;
-            
         } catch (Exception $e) {
             http_response_code(500);
             echo json_encode(['message' => 'Error al descargar: ' . $e->getMessage()]);
@@ -1613,46 +1665,47 @@ class Supply{
     /**
      * Descargar múltiples facturas en un archivo ZIP
      */
-    function descargar_facturas_zip() {
+    function descargar_facturas_zip()
+    {
         header('Content-Type: application/json');
-        
+
         try {
             // Recibir los IDs de las facturas a descargar
             $input = json_decode(file_get_contents('php://input'), true);
             $ids = $input['ids'] ?? [];
-            
+
             if (empty($ids)) {
                 json_output(['success' => false, 'message' => 'No se proporcionaron IDs de facturas']);
                 return;
             }
-            
+
             // Crear directorio temporal si no existe
             $tempDir = __DIR__ . '/../temp/';
             if (!is_dir($tempDir)) {
                 mkdir($tempDir, 0777, true);
             }
-            
+
             // Nombre único para el archivo ZIP
             $zipFileName = 'facturas_' . date('YmdHis') . '_' . uniqid() . '.zip';
             $zipPath = $tempDir . $zipFileName;
-            
+
             // Crear archivo ZIP
             $zip = new ZipArchive();
             if ($zip->open($zipPath, ZipArchive::CREATE) !== TRUE) {
                 json_output(['success' => false, 'message' => 'No se pudo crear el archivo ZIP']);
                 return;
             }
-            
+
             $archivosAgregados = 0;
             $archivosNoEncontrados = [];
-            
+
             // Agregar cada factura al ZIP
             foreach ($ids as $id) {
                 $factura = $this->facturasRecibidasModel->obtenerPorId($id);
-                
+
                 if ($factura && !empty($factura['RutaArchivo']) && file_exists($factura['RutaArchivo'])) {
                     $nombreArchivo = $factura['NombreArchivo'] ?? basename($factura['RutaArchivo']);
-                    
+
                     // Agregar archivo al ZIP
                     if ($zip->addFile($factura['RutaArchivo'], $nombreArchivo)) {
                         $archivosAgregados++;
@@ -1663,20 +1716,20 @@ class Supply{
                     $archivosNoEncontrados[] = 'Factura ID: ' . $id;
                 }
             }
-            
+
             $zip->close();
-            
+
             // Verificar que se agregó al menos un archivo
             if ($archivosAgregados === 0) {
                 unlink($zipPath); // Eliminar ZIP vacío
                 json_output([
-                    'success' => false, 
+                    'success' => false,
                     'message' => 'No se encontraron archivos para descargar',
                     'archivos_no_encontrados' => $archivosNoEncontrados
                 ]);
                 return;
             }
-            
+
             // Retornar información del ZIP creado
             json_output([
                 'success' => true,
@@ -1685,7 +1738,6 @@ class Supply{
                 'archivos_no_encontrados' => $archivosNoEncontrados,
                 'download_url' => '/supply/download_zip/' . $zipFileName
             ]);
-            
         } catch (Exception $e) {
             json_output([
                 'success' => false,
@@ -1697,40 +1749,40 @@ class Supply{
     /**
      * Descargar el archivo ZIP generado
      */
-    function download_zip($zipFileName) {
+    function download_zip($zipFileName)
+    {
         try {
             // Validar nombre de archivo (seguridad)
             if (!preg_match('/^facturas_\d{14}_[a-z0-9]+\.zip$/', $zipFileName)) {
                 http_response_code(400);
                 die('Nombre de archivo inválido');
             }
-            
+
             $zipPath = __DIR__ . '/../temp/' . $zipFileName;
-            
+
             if (!file_exists($zipPath)) {
                 http_response_code(404);
                 die('Archivo ZIP no encontrado');
             }
-            
+
             // Limpiar buffer
             if (ob_get_level()) {
                 ob_end_clean();
             }
-            
+
             // Headers para descarga
             header('Content-Type: application/zip');
             header('Content-Disposition: attachment; filename="' . $zipFileName . '"');
             header('Content-Length: ' . filesize($zipPath));
             header('Cache-Control: no-cache, must-revalidate');
             header('Pragma: public');
-            
+
             // Enviar archivo
             readfile($zipPath);
-            
+
             // Eliminar archivo temporal después de enviarlo
             unlink($zipPath);
             exit;
-            
         } catch (Exception $e) {
             http_response_code(500);
             die('Error al descargar ZIP: ' . $e->getMessage());
@@ -1740,24 +1792,25 @@ class Supply{
     /**
      * Limpiar archivos ZIP antiguos (ejecutar periódicamente)
      */
-    function limpiar_zips_antiguos() {
+    function limpiar_zips_antiguos()
+    {
         $tempDir = __DIR__ . '/../temp/';
-        
+
         if (!is_dir($tempDir)) {
             return;
         }
-        
+
         $archivos = glob($tempDir . 'facturas_*.zip');
         $horaLimite = time() - (3600 * 2); // 2 horas
         $eliminados = 0;
-        
+
         foreach ($archivos as $archivo) {
             if (filemtime($archivo) < $horaLimite) {
                 unlink($archivo);
                 $eliminados++;
             }
         }
-        
+
         json_output([
             'success' => true,
             'archivos_eliminados' => $eliminados
@@ -3000,7 +3053,8 @@ class Supply{
     }
 
 
-    function loadAnticiposList(){
+    function loadAnticiposList()
+    {
         header('Content-Type: application/json');
 
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
@@ -3032,7 +3086,7 @@ class Supply{
                 // ✅ CALCULAR SALDO
                 $monto_total = floatval($row['monto_total']);
                 // $monto_aplicado = floatval($row['monto_aplicado']);
-                $monto_aplicado= '0';
+                $monto_aplicado = '0';
                 $saldo = $monto_total - $monto_aplicado;
 
                 // ✅ ACCIONES ESPECÍFICAS PARA ANTICIPOS
@@ -3041,15 +3095,7 @@ class Supply{
                         <a href="/supply/anticipo_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle">
                             <i class="fas fa-eye"></i>
                         </a>';
-                
-                // Solo permitir aplicar si tiene saldo disponible y está autorizado
-                if ($saldo > 0 && $row['status'] == 1) {
-                    $actions .= '
-                        <button class="btn btn-success" onclick="aplicarAnticipo(' . $row['id'] . ')" title="Aplicar a factura">
-                            <i class="fas fa-hand-holding-usd"></i>
-                        </button>';
-                }
-                
+
                 $actions .= '
                         <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
                             <i class="fas fa-trash"></i>
@@ -3202,13 +3248,13 @@ class Supply{
                 json_output(['success' => false, 'detail' => 'Código de proveedor requerido']);
                 return;
             }
-            $total_reques=0;
+            $total_reques = 0;
             foreach ($documents as $doc) {
                 $total_reques += $doc['total_fac'];
             }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod,$total_reques);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques);
 
             if ($result['success']) {
                 // $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
@@ -3236,85 +3282,89 @@ class Supply{
         }
     }
 
-    function payment_detail($payment_id){
+    function payment_detail($payment_id)
+    {
         // try {
-            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-            if (!$payment) {
-                setFlashMessage('error', 'Pago no encontrado');
-                redirect('/supply/payment_list');
-                return;
-            }
-            // $payment = $payment[0];
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        if (!$payment) {
+            setFlashMessage('error', 'Pago no encontrado');
+            redirect('/supply/payment_list');
+            return;
+        }
+        // $payment = $payment[0];
 
-            // ✅ Obtener facturas con cálculos desde el modelo
-            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
-            $facturas_autorizadas = 0;
-            $total_monto_autorizado = 0;
-            // Obtener autorizaciones
-            $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
-            $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
-            $invoice_credit_debit_notes = $this->InvoiceCreditDebitNotesModel->getCreditDebitNotes($payment_id);
-            $notes_totals = $this->InvoiceCreditDebitNotesModel->calculateNotesTotals($payment_id);
-            // Crear array con información de cada autorización
-            $auth_info = [
-                'abastos' => null,
-                'admin_finanzas' => null,
-                'tesoreria' => null
-            ];
-            if ($authorizations) {
-                foreach ($authorizations as $auth) {
-                    if ($auth['permission_number'] == 66) {
-                        $auth_info['abastos'] = $auth;
-                    } elseif ($auth['permission_number'] == 67) {
-                        $auth_info['admin_finanzas'] = $auth;
-                    } elseif ($auth['permission_number'] == 68) {
-                        $auth_info['tesoreria'] = $auth;
-                    }
+        // ✅ Obtener facturas con cálculos desde el modelo
+        $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+        $facturas_autorizadas = 0;
+        $total_monto_autorizado = 0;
+        // Obtener autorizaciones
+        $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
+        $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
+        $invoice_credit_debit_notes = $this->InvoiceCreditDebitNotesModel->getCreditDebitNotes($payment_id);
+        $notes_totals = $this->InvoiceCreditDebitNotesModel->calculateNotesTotals($payment_id);
+        // Crear array con información de cada autorización
+        $auth_info = [
+            'abastos' => null,
+            'admin_finanzas' => null,
+            'tesoreria' => null
+        ];
+        if ($authorizations) {
+            foreach ($authorizations as $auth) {
+                if ($auth['permission_number'] == 66) {
+                    $auth_info['abastos'] = $auth;
+                } elseif ($auth['permission_number'] == 67) {
+                    $auth_info['admin_finanzas'] = $auth;
+                } elseif ($auth['permission_number'] == 68) {
+                    $auth_info['tesoreria'] = $auth;
                 }
             }
-            $transactions = $this->paymentTransactionsModel->get_by_payment_request($payment_id);
+        }
+        $transactions = $this->paymentTransactionsModel->get_by_payment_request($payment_id);
 
-            // ✅ Obtener resumen desde el modelo
-            $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
-            $payment_calculation = [
-                'invoice_total' => $summary['total_amount'] ?? 0,
-                'advance_total' => $summary['total_advances'] ?? 0,
-                'credit_notes_total' => $notes_totals['total_credits'],
-                'debit_notes_total' => $notes_totals['total_debits'],
-                'net_adjustment' => $notes_totals['net_adjustment'],
-                'final_amount' => max(0, 
-                    ($summary['total_amount'] ?? 0) - 
-                    ($summary['total_advances'] ?? 0) - 
-                    $notes_totals['total_credits'] + 
+        // ✅ Obtener resumen desde el modelo
+        $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
+        $payment_calculation = [
+            'invoice_total' => $summary['total_amount'] ?? 0,
+            'advance_total' => $summary['total_advances'] ?? 0,
+            'credit_notes_total' => $notes_totals['total_credits'],
+            'debit_notes_total' => $notes_totals['total_debits'],
+            'net_adjustment' => $notes_totals['net_adjustment'],
+            'final_amount' => max(
+                0,
+                ($summary['total_amount'] ?? 0) -
+                    ($summary['total_advances'] ?? 0) -
+                    $notes_totals['total_credits'] +
                     $notes_totals['total_debits']
-                )
-            ];
-            echo $this->twig->render($this->route . 'payment_detail.html', compact(
-                'payment',
-                'invoices',
-                'authorizations',
-                'authorization_status',
-                'auth_info',
-                'summary',
-                'transactions',
-                'facturas_autorizadas',
-                'total_monto_autorizado',
-                'invoice_credit_debit_notes',
-                'notes_totals',
-                'payment_calculation'
-            ));
+            )
+        ];
+        echo $this->twig->render($this->route . 'payment_detail.html', compact(
+            'payment',
+            'invoices',
+            'authorizations',
+            'authorization_status',
+            'auth_info',
+            'summary',
+            'transactions',
+            'facturas_autorizadas',
+            'total_monto_autorizado',
+            'invoice_credit_debit_notes',
+            'notes_totals',
+            'payment_calculation'
+        ));
         // } catch (Exception $e) {
         //     setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
         //     redirect('/supply/payment_list');
         // }
     }
-    function addNoteModal(){
+    function addNoteModal()
+    {
         $payment_request_id = $_POST['payment_request_id'] ?? null;
         $payment_request = $this->PaymentRequestsModel->get_request_by_id($payment_request_id);
         echo $this->twig->render($this->route . 'modals/addNoteModal.html', compact('payment_request_id', 'payment_request'));
     }
 
-    public function addCreditDebitNote() {
+    public function addCreditDebitNote()
+    {
         try {
             // Validar que se recibió archivo
             if (!isset($_FILES['note_file']) || $_FILES['note_file']['error'] !== UPLOAD_ERR_OK) {
@@ -3388,7 +3438,6 @@ class Supply{
                 'message' => 'Nota guardada correctamente',
                 'note_id' => $noteId
             ]);
-
         } catch (Exception $e) {
             // Si hubo error y se subió archivo, eliminarlo
             if (isset($filePath) && file_exists($filePath)) {
@@ -3406,7 +3455,8 @@ class Supply{
     /**
      * Eliminar nota de crédito/cargo (soft delete)
      */
-    public function deleteCreditDebitNote($noteId) {
+    public function deleteCreditDebitNote($noteId)
+    {
         try {
             // Verificar que la nota existe y obtener su información
             $note = $this->InvoiceCreditDebitNotesModel->getNoteById($noteId);
@@ -3417,7 +3467,7 @@ class Supply{
 
             // Soft delete: cambiar status a 0
             $deleted = $this->InvoiceCreditDebitNotesModel->deleteCreditDebitNote(
-                $noteId, 
+                $noteId,
                 $_SESSION['tg_user']['Id']
             );
 
@@ -3556,98 +3606,99 @@ class Supply{
         };
     }
 
-    function authorize_payment_execution(){
-    header('Content-Type: application/json');
+    function authorize_payment_execution()
+    {
+        header('Content-Type: application/json');
 
-    try {
-        // Obtener datos JSON
-        $json = file_get_contents('php://input');
-        $data = json_decode($json, true);
-        
-        if ($data === null) {
-            json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
-            return;
-        }
+        try {
+            // Obtener datos JSON
+            $json = file_get_contents('php://input');
+            $data = json_decode($json, true);
 
-        $payment_id = $data['payment_id'] ?? null;
-        $facturas = $data['facturas'] ?? [];
-        $user_id = $_SESSION['tg_user']['Id'] ?? null;
-
-        // ========================================
-        // VALIDACIONES
-        // ========================================
-        
-        if (!$payment_id || !$user_id) {
-            json_output(['success' => false, 'message' => 'Datos incompletos']);
-            return;
-        }
-
-        if (empty($facturas)) {
-            json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
-            return;
-        }
-
-        // Verificar que el pago exista y esté AUTORIZADO (status = 1)
-        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
-
-        if (!$payment) {
-            json_output(['success' => false, 'message' => 'Solicitud de pago no encontrada']);
-            return;
-        }
-
-        if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-            json_output([
-                'success' => false, 
-                'message' => 'El pago debe estar completamente autorizado por los 3 niveles antes de autorizar facturas individuales'
-            ]);
-            return;
-        }
-
-        // Verificar que el usuario tenga permiso de Tesorería (68)
-        if (!authorized(68)) {
-            json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
-            return;
-        }
-
-        // ========================================
-        // PROCESAR AUTORIZACIONES USANDO EL MODELO
-        // ========================================
-        
-        $result = $this->paymentRequestInvoicesModel->authorize_invoices_for_payment(
-            $payment_id,
-            $facturas,
-            $user_id
-        );
-
-        // Responder con el resultado del modelo
-        if ($result['success']) {
-            // Construir mensaje con detalles
-            $mensaje = $result['message'];
-            
-            if (!empty($result['errores'])) {
-                $mensaje .= "\n\nAdvertencias:\n" . implode("\n", $result['errores']);
+            if ($data === null) {
+                json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
+                return;
             }
-            
-            json_output([
-                'success' => true,
-                'message' => $mensaje,
-                'facturas_autorizadas' => $result['facturas_autorizadas'],
-                'total_autorizado' => number_format($result['total_autorizado'], 2, '.', ''),
-                'errores' => $result['errores'] ?? []
-            ]);
-        } else {
-            json_output(['success' => false, 'message' => $result['message']]);
+
+            $payment_id = $data['payment_id'] ?? null;
+            $facturas = $data['facturas'] ?? [];
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+
+            // ========================================
+            // VALIDACIONES
+            // ========================================
+
+            if (!$payment_id || !$user_id) {
+                json_output(['success' => false, 'message' => 'Datos incompletos']);
+                return;
+            }
+
+            if (empty($facturas)) {
+                json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+                return;
+            }
+
+            // Verificar que el pago exista y esté AUTORIZADO (status = 1)
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+            if (!$payment) {
+                json_output(['success' => false, 'message' => 'Solicitud de pago no encontrada']);
+                return;
+            }
+
+            if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+                json_output([
+                    'success' => false,
+                    'message' => 'El pago debe estar completamente autorizado por los 3 niveles antes de autorizar facturas individuales'
+                ]);
+                return;
+            }
+
+            // Verificar que el usuario tenga permiso de Tesorería (68)
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+                return;
+            }
+
+            // ========================================
+            // PROCESAR AUTORIZACIONES USANDO EL MODELO
+            // ========================================
+
+            $result = $this->paymentRequestInvoicesModel->authorize_invoices_for_payment(
+                $payment_id,
+                $facturas,
+                $user_id
+            );
+
+            // Responder con el resultado del modelo
+            if ($result['success']) {
+                // Construir mensaje con detalles
+                $mensaje = $result['message'];
+
+                if (!empty($result['errores'])) {
+                    $mensaje .= "\n\nAdvertencias:\n" . implode("\n", $result['errores']);
+                }
+
+                json_output([
+                    'success' => true,
+                    'message' => $mensaje,
+                    'facturas_autorizadas' => $result['facturas_autorizadas'],
+                    'total_autorizado' => number_format($result['total_autorizado'], 2, '.', ''),
+                    'errores' => $result['errores'] ?? []
+                ]);
+            } else {
+                json_output(['success' => false, 'message' => $result['message']]);
+            }
+        } catch (Exception $e) {
+            error_log("Error en authorize_payment_execution: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
         }
-        
-    } catch (Exception $e) {
-        error_log("Error en authorize_payment_execution: " . $e->getMessage());
-        error_log("Stack trace: " . $e->getTraceAsString());
-        json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
-    }
     }
 
 
-    function execute_authorized_payments(){
+    function execute_authorized_payments()
+    {
         header('Content-Type: application/json');
         try {
             $invoice_ids = json_decode($_POST['invoice_ids'] ?? '[]', true);
@@ -3663,7 +3714,7 @@ class Supply{
             if (!$fecha_pago || !$referencia_bancaria) {
                 return $this->responderJSON(false, 'Faltan datos obligatorios: fecha y referencia bancaria');
             }
-            
+
             if (!$user_id) {
                 return $this->responderJSON(false, 'Usuario no identificado');
             }
@@ -3684,7 +3735,7 @@ class Supply{
             $facturas_procesar = [];
             $payment_request_ids_unicos = [];
             foreach ($facturas_data as $factura) {
-                 if ($factura['payment_authorized'] != 1) {
+                if ($factura['payment_authorized'] != 1) {
                     return $this->responderJSON(false, "La factura {$factura['folio']} no está autorizada");
                 }
                 $facturas_procesar[] = [
@@ -3695,7 +3746,7 @@ class Supply{
                     'payment_request_id' => $factura['payment_request_id'] // ✅ Incluir para el proceso
 
                 ];
-                
+
                 $payment_request_ids_unicos[$factura['payment_request_id']] = true;
             }
             // ✅ EJECUTAR PAGO MASIVO=====================================
@@ -3712,17 +3763,17 @@ class Supply{
             // ========================================
             // PROCESAR RESULTADO
             // ========================================
-            
-           // ✅ PROCESAR RESULTADO
+
+            // ✅ PROCESAR RESULTADO
             if ($result['success']) {
                 // ✅ REVISAR CADA PAYMENT_REQUEST_ID ÚNICO
                 $solicitudes_completadas = 0;
                 foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
                     $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
-                    
+
                     if ($all_paid) {
                         $this->PaymentRequestsModel->update_request_status(
-                            $payment_request_id, 
+                            $payment_request_id,
                             PaymentRequestsModel::STATUS_PAID,
                             "Pago ejecutado el " . date('d/m/Y', strtotime($fecha_pago)) . " - Ref: $referencia_bancaria"
                         );
@@ -3741,7 +3792,6 @@ class Supply{
             } else {
                 return $this->responderJSON(false, $result['message']);
             }
-
         } catch (Exception $e) {
             error_log("Error en execute_authorized_payments: " . $e->getMessage());
             error_log("Stack trace: " . $e->getTraceAsString());
@@ -3858,7 +3908,8 @@ class Supply{
             ]);
         }
     }
-    public function modalCrearAnticipo(){
+    public function modalCrearAnticipo()
+    {
         try {
             $proveedores = $this->proveedores->get_actives();
             $companys = $this->gasolinerasModel->get_company();
@@ -3881,7 +3932,8 @@ class Supply{
     /**
      * Crear un nuevo anticipo (pago sin factura)
      */
-    public function create_anticipo(){
+    public function create_anticipo()
+    {
         header('Content-Type: application/json');
         try {
             $json = file_get_contents('php://input');
@@ -3901,7 +3953,7 @@ class Supply{
             $monto = $data['monto'] ?? 0;
             $comentario = trim($data['comentario'] ?? '');
 
-            
+
             // Validaciones
             if (empty($provider_cod)) {
                 echo json_encode([
@@ -3910,7 +3962,7 @@ class Supply{
                 ]);
                 return;
             }
-            
+
             if (empty($empresa_cod)) {
                 echo json_encode([
                     'success' => false,
@@ -3918,7 +3970,7 @@ class Supply{
                 ]);
                 return;
             }
-            
+
             if (!is_numeric($monto) || $monto <= 0) {
                 echo json_encode([
                     'success' => false,
@@ -3926,7 +3978,7 @@ class Supply{
                 ]);
                 return;
             }
-            
+
             if (strlen($comentario) < 10) {
                 echo json_encode([
                     'success' => false,
@@ -3934,7 +3986,7 @@ class Supply{
                 ]);
                 return;
             }
-            
+
             // Obtener nombre del proveedor
             $proveedor = $this->proveedores->get_by_id($provider_cod);
             if (!$proveedor) {
@@ -3944,7 +3996,7 @@ class Supply{
                 ]);
                 return;
             }
-            
+
             // Preparar datos para el modelo
             $anticipo_data = [
                 'provider_cod' => $provider_cod,
@@ -3954,22 +4006,21 @@ class Supply{
                 'comentario' => $comentario,
                 'user_id' => $user_id
             ];
-            
+
             // Crear anticipo usando el modelo
             $result = $this->PaymentRequestsModel->create_anticipo($anticipo_data);
-            
+
             if ($result['success']) {
                 // Log de auditoría
                 error_log("ANTICIPO CREADO: ID={$result['anticipo_id']}, Provider=$provider_cod, Empresa=$empresa_cod, Monto=$monto, User=$user_id");
             }
-            
+
             // Retornar resultado
             echo json_encode($result);
-            
         } catch (Exception $e) {
             error_log('Error en create_anticipo: ' . $e->getMessage());
             error_log('Stack trace: ' . $e->getTraceAsString());
-            
+
             echo json_encode([
                 'success' => false,
                 'message' => 'Error al procesar la solicitud: ' . $e->getMessage()
@@ -3977,7 +4028,8 @@ class Supply{
         }
     }
 
-    function download_layout($filename){
+    function download_layout($filename)
+    {
         // ✅ Sanitizar filename (seguridad básica)
         $filename = basename($filename); // Elimina path traversal
         $filename = preg_replace('/[^a-zA-Z0-9_\-\.]/', '', $filename); // Solo caracteres seguros
@@ -4007,7 +4059,8 @@ class Supply{
             exit('Archivo no encontrado');
         }
     }
-    function delete_layout(){
+    function delete_layout()
+    {
         header('Content-Type: application/json');
 
         $filename = $_POST['filename'] ?? '';
@@ -4038,7 +4091,8 @@ class Supply{
         }
     }
 
-    public function configLayoutModal(){
+    public function configLayoutModal()
+    {
         try {
             $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
 
@@ -4095,48 +4149,49 @@ class Supply{
     }
 
 
-    public function anticipo_detail($anticipo_id) {
+    public function anticipo_detail($anticipo_id)
+    {
         //  try {
-            // Obtener datos del anticipo - USAR MÉTODO CORRECTO
-            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
-            if (!$anticipo || $anticipo['tipo'] != 1) { // tipo 1 = anticipo
-                $_SESSION['error'] = 'Anticipo no encontrado';
-                header('Location: /supply/payment_list');
-                return;
-            }
-            // Obtener aplicaciones del anticipo
-            $aplicaciones = $this->PaymentRequestsModel->get_anticipo_applications($anticipo_id);
-            // Obtener resumen (totales)
-            $summary = $this->PaymentRequestsModel->get_anticipo_summary($anticipo_id);
-            // Si no hay summary, crear uno vacío
-            if (!$summary) {
-                $summary = [
-                    'id' => $anticipo_id,
-                    'monto_original' => $anticipo['monto_total'],
-                    'total_aplicado' => 0,
-                    'saldo_disponible' => $anticipo['monto_total'],
-                    'total_aplicaciones' => 0
-                ];
-            }
-            // Obtener autorizaciones
-            $authorizations = $this->PaymentRequestsModel->getPaymentAuthorizations($anticipo_id);
-            // Estado de autorizaciones
-            $auth_status = $this->PaymentRequestsModel->getAuthorizationStatus($anticipo_id);
-            // Renderizar vista
-            // echo $this->twig->render($this->route . 'anticipo_detail.html', compact());
+        // Obtener datos del anticipo - USAR MÉTODO CORRECTO
+        $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
+        if (!$anticipo || $anticipo['tipo'] != 1) { // tipo 1 = anticipo
+            $_SESSION['error'] = 'Anticipo no encontrado';
+            header('Location: /supply/payment_list');
+            return;
+        }
+        // Obtener aplicaciones del anticipo
+        $aplicaciones = $this->PaymentRequestsModel->get_anticipo_applications($anticipo_id);
+        // Obtener resumen (totales)
+        $summary = $this->PaymentRequestsModel->get_anticipo_summary($anticipo_id);
+        // Si no hay summary, crear uno vacío
+        if (!$summary) {
+            $summary = [
+                'id' => $anticipo_id,
+                'monto_original' => $anticipo['monto_total'],
+                'total_aplicado' => 0,
+                'saldo_disponible' => $anticipo['monto_total'],
+                'total_aplicaciones' => 0
+            ];
+        }
+        // Obtener autorizaciones
+        $authorizations = $this->PaymentRequestsModel->getPaymentAuthorizations($anticipo_id);
+        // Estado de autorizaciones
+        $auth_status = $this->PaymentRequestsModel->getAuthorizationStatus($anticipo_id);
+        // Renderizar vista
+        // echo $this->twig->render($this->route . 'anticipo_detail.html', compact());
 
-            echo $this->twig->render($this->route . 'anticipo_detail.html', [
-                'anticipo' => $anticipo,
-                'aplicaciones' => $aplicaciones,
-                'summary' => $summary,
-                'authorizations' => $authorizations,
-                'authorization_status' => $auth_status,
-                'auth_info' => [
-                    'abastos' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 66),
-                    'admin_finanzas' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 67),
-                    'tesoreria' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 68)
-                ]
-            ]);
+        echo $this->twig->render($this->route . 'anticipo_detail.html', [
+            'anticipo' => $anticipo,
+            'aplicaciones' => $aplicaciones,
+            'summary' => $summary,
+            'authorizations' => $authorizations,
+            'authorization_status' => $auth_status,
+            'auth_info' => [
+                'abastos' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 66),
+                'admin_finanzas' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 67),
+                'tesoreria' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 68)
+            ]
+        ]);
         // } catch (Exception $e) {
         //     error_log("Error en anticipo_detail: " . $e->getMessage());
         //     $_SESSION['error'] = 'Error al cargar el detalle del anticipo';
@@ -4146,59 +4201,60 @@ class Supply{
         // }
     }
 
-    public function apply_anticipo_to_invoices() {
+    public function apply_anticipo_to_invoices()
+    {
         header('Content-Type: application/json');
-        
+
         try {
             $anticipo_id = $_POST['anticipo_id'] ?? null;
             $aplicaciones = json_decode($_POST['aplicaciones'] ?? '[]', true);
-            
+
             if (!$anticipo_id || empty($aplicaciones)) {
                 json_output(['success' => false, 'message' => 'Datos incompletos']);
                 return;
             }
-            
+
             // Validar saldo disponible
             $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
-            
+
             if (!$anticipo || $anticipo['tipo'] != 1) {
                 json_output(['success' => false, 'message' => 'Anticipo no válido']);
                 return;
             }
-            
+
             $saldo = $this->PaymentRequestsModel->get_saldo_disponible($anticipo_id);
             $total_aplicar = array_sum(array_column($aplicaciones, 'monto'));
-            
+
             if ($total_aplicar > $saldo) {
                 json_output(['success' => false, 'message' => 'Excede saldo disponible']);
                 return;
             }
-            
+
             // Registrar aplicaciones
             $result = $this->PaymentRequestsModel->register_anticipo_applications(
-                $anticipo_id, 
-                $aplicaciones, 
+                $anticipo_id,
+                $aplicaciones,
                 $_SESSION['tg_user']['Id']
             );
-            
+
             json_output($result);
-            
         } catch (Exception $e) {
             error_log("Error en apply_anticipo_to_invoices: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error del servidor']);
         }
     }
 
-    private function enviar_notificacion_nuevo_pago($payment_id,$provider_name,$total_documents,$total_amount,$comment,$created_by) {
+    private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
+    {
         try {
             // Obtener correos de usuarios con permiso de Abastos (66)
             $emails = $this->UsuariosModel->get_emails_by_permission(66);
-            
+
             if (empty($emails)) {
                 error_log("No hay usuarios con permiso de Abastos para notificar");
                 return;
             }
-            $emails = array_filter($emails, function($email) {
+            $emails = array_filter($emails, function ($email) {
                 return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
             });
 
@@ -4215,7 +4271,7 @@ class Supply{
 
             // Enviar correo
             $from = 'totalgasdesarrollo@gmail.com';
-            
+
             // Capturar salida para evitar problemas con JSON
             ob_start();
             $resultado = @send_mail2($subject, $body, $emails, $from);
@@ -4226,19 +4282,19 @@ class Supply{
             } else {
                 error_log("Error al enviar notificación de pago #{$payment_id}");
             }
-            
         } catch (Exception $e) {
             error_log("Error en enviar notificacion_nuevo_pago: " . $e->getMessage());
         }
     }
 
-    private function generar_html_notificacion_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by) {
+    private function generar_html_notificacion_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
+    {
         $fecha = date('d/m/Y H:i:s');
         $total_formatted = number_format($total_amount, 2, '.', ',');
-        
+
         // URL del detalle del pago (ajustar según tu dominio)
         $url_detalle = "http://totalgasonline.net:400/supply/payment_detail/{$payment_id}";
-        
+
         return "
         <!DOCTYPE html>
         <html lang='es'>
@@ -4437,7 +4493,8 @@ class Supply{
         </html>
         ";
     }
-    private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission,$user_id) {
+    private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission, $user_id)
+    {
         try {
             // Obtener correos del siguiente nivel
             $emails = $this->UsuariosModel->get_emails_by_permission($next_level_permission);
@@ -4449,7 +4506,7 @@ class Supply{
             // ============================================================
             // 🚧 BLOQUE TEMPORAL PARA PRUEBAS - REMOVER AL TERMINAR 🚧
             // ============================================================
-            $emails = array_filter($emails, function($email) {
+            $emails = array_filter($emails, function ($email) {
                 return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
             });
 
@@ -4492,7 +4549,7 @@ class Supply{
 
             // Enviar correo
             $from = 'totalgasdesarrollo@gmail.com';
-            
+
             ob_start();
             $resultado = @send_mail2($subject, $body, $emails, $from);
             ob_get_clean();
@@ -4502,7 +4559,6 @@ class Supply{
             } else {
                 error_log("Error al enviar notificación de autorización pendiente para pago #{$payment_id}");
             }
-            
         } catch (Exception $e) {
             error_log("Error en enviar notificacion_autorizacion_pendiente: " . $e->getMessage());
         }
@@ -4520,7 +4576,7 @@ class Supply{
         $fecha = date('d/m/Y H:i:s');
         $total_formatted = number_format($total_amount, 2, '.', ',');
         $url_detalle = "http://totalgasonline.net:400/supply/payment_detail/{$payment_id}";
-        
+
         return "
         <!DOCTYPE html>
         <html lang='es'>
@@ -4757,14 +4813,15 @@ class Supply{
         ";
     }
 
-    function authorized_pending_invoices(){
+    function authorized_pending_invoices()
+    {
         try {
             // Obtener facturas autorizadas pendientes
             $invoices = $this->paymentRequestInvoicesModel->get_authorized_pending_invoices();
-            
+
             // Obtener resumen por banco
             $summary_by_bank = $this->paymentRequestInvoicesModel->get_authorized_pending_summary_by_bank();
-            
+
             echo $this->twig->render($this->route . 'payment_list.html', compact(
                 'invoices',
                 'summary_by_bank'
@@ -4776,17 +4833,18 @@ class Supply{
     }
 
 
-    function authorized_pending_invoices_grouped_table(){
+    function authorized_pending_invoices_grouped_table()
+    {
         header('Content-Type: application/json');
-        
+
         try {
             $invoices = $this->paymentRequestInvoicesModel->get_authorized_pending_grouped();
-            
+
             if (!$invoices) {
                 json_output(['data' => []]);
                 return;
             }
-            
+
             $data = [];
             foreach ($invoices as $invoice) {
                 $data[] = [
@@ -4811,16 +4869,16 @@ class Supply{
                     'payment_request_id' => $invoice['payment_request_id']  // NUEVO (solo para anticipos)
                 ];
             }
-            
+
             json_output(['data' => $data]);
-            
         } catch (Exception $e) {
             error_log("Error en authorized_pending_invoices_grouped_table: " . $e->getMessage());
             json_output(['data' => [], 'error' => $e->getMessage()]);
         }
     }
 
-    function get_invoices_detail(){
+    function get_invoices_detail()
+    {
         header('Content-Type: application/json');
         try {
             $invoice_ids = $_POST['invoice_ids'] ?? '';
@@ -4859,20 +4917,20 @@ class Supply{
             }
 
             json_output(['success' => true, 'data' => $data]);
-
         } catch (Exception $e) {
             error_log("Error en get_invoices_detail: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
     }
-    public function generate_santander_layout() {
+    public function generate_santander_layout()
+    {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
             $invoice_ids = $input['invoice_ids'] ?? [];
             $anticipo_ids = $input['anticipo_ids'] ?? [];
 
 
-             if (empty($invoice_ids) && empty($anticipo_ids)) {
+            if (empty($invoice_ids) && empty($anticipo_ids)) {
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => 'No se proporcionaron facturas ni anticipos']);
                 return;
@@ -4894,7 +4952,7 @@ class Supply{
                 }
             }
 
-           if (empty($todos_los_datos)) {
+            if (empty($todos_los_datos)) {
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => 'No se encontraron datos válidos para generar el layout']);
                 return;
@@ -4903,15 +4961,15 @@ class Supply{
             // ✅ VALIDACIONES
             $sin_cuenta_cargo = [];
             $sin_clabe = [];
-            
+
             foreach ($todos_los_datos as $pago) {
                 if (!$pago['cuenta_cargo_empresa'] || strlen($pago['cuenta_cargo_empresa']) != 11) {
                     $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
                 }
                 if (!$pago['clabe_beneficiario'] || strlen($pago['clabe_beneficiario']) != 18) {
                     $tipo = $pago['tipo_pago'] ?? 'FACTURA';
-                    $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
-                        ? "Anticipo #{$pago['payment_request_id']}" 
+                    $referencia = $pago['tipo_pago'] === 'ANTICIPO'
+                        ? "Anticipo #{$pago['payment_request_id']}"
                         : "Folio {$pago['folio']}";
                     $sin_clabe[] = "{$referencia} - {$pago['proveedor_nombre']}";
                 }
@@ -4928,7 +4986,7 @@ class Supply{
                     $mensaje .= implode('<br>', array_unique($sin_clabe)) . '<br><br>';
                 }
                 $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
-                
+
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => $mensaje]);
                 return;
@@ -4942,8 +5000,8 @@ class Supply{
 
             // ✅ GENERAR NOMBRE DE ARCHIVO
             $empresas_unicas = array_unique(array_column($todos_los_datos, 'empresa_nombre'));
-            $empresa_label = count($empresas_unicas) === 1 
-                ? $empresas_unicas[0] 
+            $empresa_label = count($empresas_unicas) === 1
+                ? $empresas_unicas[0]
                 : 'MULTI_EMPRESAS';
 
             $filename = 'LAYOUT_SANTANDER_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
@@ -4957,7 +5015,6 @@ class Supply{
             header('Expires: 0');
             echo $layout_content;
             exit;
-
         } catch (Exception $e) {
             error_log('Error en generate_santander_layout: ' . $e->getMessage());
             header('Content-Type: application/json');
@@ -4966,7 +5023,8 @@ class Supply{
         }
     }
 
-    private function generar_layout_santander_multi_empresa($pagos, $email_notificacion) {
+    private function generar_layout_santander_multi_empresa($pagos, $email_notificacion)
+    {
         $lineas = [];
         $consolidados = [];
         foreach ($pagos as $pago) {
@@ -4999,11 +5057,11 @@ class Supply{
             $monto_centavos = intval($grupo['monto_total'] * 100);
             $monto_con_plaza = str_pad($monto_centavos, 19, '0', STR_PAD_LEFT) . '901';
             $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
-            
+
             // ✅ Concepto adaptado
             $cantidad_refs = count($grupo['referencias']);
             $primera_ref = $grupo['referencias'][0];
-            
+
             if ($grupo['es_anticipo']) {
                 // Para anticipos: "ANTICIPO #55 NOMBRE PROVEEDOR"
                 $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
@@ -5012,9 +5070,9 @@ class Supply{
             } else {
                 $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
             }
-            
+
             $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
-            
+
             $linea = sprintf(
                 "LTX05 %-11s       %-18s %-5s%-40s    1234%s  %-40s 00 00  %-28s",
                 $grupo['cuenta_cargo'],
@@ -5025,16 +5083,17 @@ class Supply{
                 $concepto,
                 substr($email_notificacion, 0, 28)
             );
-            
+
             $lineas[] = $linea;
         }
-        
+
         return implode("\r\n", $lineas);
     }
 
-    private function obtener_codigo_banco_desde_clabe($clabe) {
+    private function obtener_codigo_banco_desde_clabe($clabe)
+    {
         $codigo_banco_clabe = substr($clabe, 0, 3);
-        
+
         $mapeo_bancos = [
             '002' => 'BANCO', // Banxico
             '006' => 'BCEXT', // Bancomext
@@ -5086,11 +5145,12 @@ class Supply{
             '166' => 'BANSE', // Bansefi
             '168' => 'HIFED', // Hipotecaria Federal
         ];
-        
+
         return $mapeo_bancos[$codigo_banco_clabe] ?? 'BACOM';
     }
 
-    private function limpiar_texto_layout($texto, $max_length) {
+    private function limpiar_texto_layout($texto, $max_length)
+    {
         $texto = strtoupper($texto);
         $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
         $texto = preg_replace('/[^A-Z0-9 ]/', '', $texto);
@@ -5098,7 +5158,8 @@ class Supply{
         return substr($texto, 0, $max_length);
     }
 
-    public function generate_banorte_layout() {
+    public function generate_banorte_layout()
+    {
         try {
             $input = json_decode(file_get_contents('php://input'), true);
             $invoice_ids = $input['invoice_ids'] ?? [];
@@ -5138,18 +5199,18 @@ class Supply{
             $sin_cuenta_cargo = [];
             $sin_cuenta_abono = [];
 
-            
+
             foreach ($todos_los_datos as $pago) {
                 // Validar cuenta cargo de la empresa (debe ser de 10 dígitos)
                 if (!$pago['cuenta_cargo_banorte'] || strlen($pago['cuenta_cargo_banorte']) != 10) {
                     $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
                 }
-                
+
                 // Validar cuenta abono del proveedor (puede ser CLABE de 18 o cuenta de 10)
                 if (!$pago['clabe_beneficiario']) {
                     $tipo = $pago['tipo_pago'] ?? 'FACTURA';
-                    $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
-                        ? "Anticipo #{$pago['payment_request_id']}" 
+                    $referencia = $pago['tipo_pago'] === 'ANTICIPO'
+                        ? "Anticipo #{$pago['payment_request_id']}"
                         : "Folio {$pago['folio']}";
                     $sin_cuenta_abono[] = "{$referencia} - {$pago['proveedor_nombre']}";
                 } else {
@@ -5157,8 +5218,8 @@ class Supply{
                     $longitud = strlen($pago['clabe_beneficiario']);
                     if ($longitud != 10 && $longitud != 18) {
                         $tipo = $pago['tipo_pago'] ?? 'FACTURA';
-                        $referencia = $pago['tipo_pago'] === 'ANTICIPO' 
-                            ? "Anticipo #{$pago['payment_request_id']}" 
+                        $referencia = $pago['tipo_pago'] === 'ANTICIPO'
+                            ? "Anticipo #{$pago['payment_request_id']}"
                             : "Folio {$pago['folio']}";
                         $sin_cuenta_abono[] = "{$referencia} - {$pago['proveedor_nombre']} (cuenta inválida: {$longitud} dígitos)";
                     }
@@ -5176,7 +5237,7 @@ class Supply{
                     $mensaje .= implode('<br>', array_unique($sin_cuenta_abono)) . '<br><br>';
                 }
                 $mensaje .= '<small class="text-muted">Configure las cuentas faltantes en el catálogo de cuentas bancarias.</small>';
-                
+
                 header('Content-Type: application/json');
                 echo json_encode(['success' => false, 'message' => $mensaje]);
                 return;
@@ -5187,8 +5248,8 @@ class Supply{
 
             // ✅ GENERAR NOMBRE DE ARCHIVO
             $empresas_unicas = array_unique(array_column($todos_los_datos, 'empresa_nombre'));
-            $empresa_label = count($empresas_unicas) === 1 
-                ? $empresas_unicas[0] 
+            $empresa_label = count($empresas_unicas) === 1
+                ? $empresas_unicas[0]
                 : 'MULTI_EMPRESAS';
 
             $filename = 'LAYOUT_BANORTE_' . str_replace(' ', '_', $empresa_label) . '_' . date('YmdHis') . '.txt';
@@ -5202,7 +5263,6 @@ class Supply{
             header('Expires: 0');
             echo $layout_content;
             exit;
-
         } catch (Exception $e) {
             error_log('Error en generate_banorte_layout: ' . $e->getMessage());
             header('Content-Type: application/json');
@@ -5211,10 +5271,11 @@ class Supply{
         }
     }
 
-    private function generar_layout_banorte_multi_empresa($pagos) {
+    private function generar_layout_banorte_multi_empresa($pagos)
+    {
         $lineas = [];
         $consolidados = [];
-        
+
         // ✅ Consolidar por cuenta cargo + proveedor
         foreach ($pagos as $pago) {
             $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo'];
@@ -5222,7 +5283,7 @@ class Supply{
             if (!isset($consolidados[$key])) {
                 // ✅ Obtener cuenta de 10 dígitos del beneficiario
                 $cuenta_abono = $this->extraer_cuenta_banorte($pago['clabe_beneficiario']);
-                
+
                 $consolidados[$key] = [
                     'cuenta_cargo' => $pago['cuenta_cargo_banorte'],
                     'cuenta_abono' => $cuenta_abono,
@@ -5233,9 +5294,9 @@ class Supply{
                     'es_anticipo' => false
                 ];
             }
-            
+
             $consolidados[$key]['monto_total'] += floatval($pago['monto_autorizado']);
-            
+
             // ✅ Manejar referencias según tipo
             if ($pago['tipo_pago'] === 'ANTICIPO') {
                 $consolidados[$key]['referencias'][] = $pago['folio']; // "ANTICIPO #55"
@@ -5244,18 +5305,18 @@ class Supply{
                 $consolidados[$key]['referencias'][] = $pago['invoice_number'] ?? $pago['folio'];
             }
         }
-        
+
         // ✅ GENERAR LÍNEAS
         $fecha_operacion = date('dmY'); // Formato DDMMAAAA
-        
+
         foreach ($consolidados as $grupo) {
             // Monto en centavos (sin decimales)
             $monto_centavos = intval($grupo['monto_total'] * 100);
-            
+
             // ✅ Concepto adaptado
             $cantidad_refs = count($grupo['referencias']);
             $primera_ref = $grupo['referencias'][0];
-            
+
             if ($grupo['es_anticipo']) {
                 $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
             } else if ($cantidad_refs === 1) {
@@ -5263,9 +5324,9 @@ class Supply{
             } else {
                 $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
             }
-            
+
             $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
-            
+
             // ✅ Formato Banorte:
             // 01[TAB][TAB]cuenta_cargo[TAB]cuenta_abono[TAB]monto[TAB]19[TAB]concepto[TAB][TAB]0[TAB]fecha[TAB]concepto
             $linea = sprintf(
@@ -5277,16 +5338,17 @@ class Supply{
                 $fecha_operacion,
                 $concepto
             );
-            
+
             $lineas[] = $linea;
         }
-        
+
         return implode("\r\n", $lineas);
     }
 
-    private function extraer_cuenta_banorte($clabe_o_cuenta) {
+    private function extraer_cuenta_banorte($clabe_o_cuenta)
+    {
         $longitud = strlen($clabe_o_cuenta);
-        
+
         if ($longitud == 18) {
             // Es CLABE, extraer los 10 dígitos centrales (posición 3 a 12)
             return substr($clabe_o_cuenta, 3, 10);
@@ -5294,283 +5356,264 @@ class Supply{
             // Ya es cuenta de 10 dígitos
             return $clabe_o_cuenta;
         }
-        
+
         // Si no es ninguno de los dos, devolver tal cual (fallará en validación)
         return $clabe_o_cuenta;
     }
 
+    public function get_pending_counts_all()
+    {
+        header('Content-Type: application/json');
 
-public function getPendingBulkAuthorization() {
-    header('Content-Type: application/json');
-    
-    try {
-        // Obtener permisos del usuario actual
-        $userPermissions = $_SESSION['permissions'] ?? [];
-        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
-        
-        if (!$permissionNumber) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'No tienes permisos de autorización'
-            ]);
-            return;
-        }
-        
-        // Obtener pagos pendientes
-        $paymentModel = new PaymentRequestsModel();
-        $pagosPendientes = $paymentModel->getPendingPaymentsForBulkAuthorization($permissionNumber);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $pagosPendientes ?: [],
-            'nivel_autorizacion' => $this->getNombrePermiso($permissionNumber),
-            'permission_number' => $permissionNumber
-        ]);
-        
-    } catch (Exception $e) {
-        error_log("Error en getPendingBulkAuthorization: " . $e->getMessage());
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error al obtener pagos pendientes: ' . $e->getMessage()
-        ]);
-    }
-}
+        try {
+            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
 
-public function processBulkAuthorization() {
-    header('Content-Type: application/json');
-    
-    try {
-        // Validar datos de entrada
-        $paymentIds = $_POST['payment_ids'] ?? [];
-        $comentario = $_POST['comentario'] ?? '';
-        
-        if (empty($paymentIds) || !is_array($paymentIds)) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'No se recibieron pagos para aprobar'
-            ]);
-            return;
-        }
-        
-        // Limpiar y validar IDs
-        $paymentIds = array_map('intval', $paymentIds);
-        $paymentIds = array_filter($paymentIds, function($id) {
-            return $id > 0;
-        });
-        
-        if (empty($paymentIds)) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'IDs de pago inválidos'
-            ]);
-            return;
-        }
-        
-        // Obtener información del usuario
-        $userId = $_SESSION['user_id'] ?? 0;
-        $userName = $_SESSION['user_name'] ?? 'Unknown';
-        $userPermissions = $_SESSION['permissions'] ?? [];
-        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
-        
-        if (!$permissionNumber) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'No tienes permisos para autorizar pagos'
-            ]);
-            return;
-        }
-        
-        // Validar límites antes de procesar
-        $paymentModel = new PaymentRequestsModel();
-        $validacion = $paymentModel->validarLimitesAprobacionMasiva($paymentIds);
-        
-        if (!$validacion['valido']) {
-            echo json_encode([
-                'success' => false,
-                'message' => $validacion['mensaje'],
-                'detalles' => $validacion['detalles']
-            ]);
-            return;
-        }
-        
-        // Procesar aprobación masiva
-        $resultado = $paymentModel->processBulkAuthorization(
-            $paymentIds,
-            $permissionNumber,
-            $userId,
-            $userName,
-            $comentario
-        );
-        
-        if ($resultado['success']) {
-            // Enviar notificaciones si es necesario
-            $this->enviarNotificacionesAprobacionMasiva($resultado['bulk_id'], $paymentIds, $permissionNumber);
-            
+            // Convertir a array si es string
+            if (is_string($userPermissions)) {
+                $userPermissions = explode(',', $userPermissions);
+                $userPermissions = array_map('trim', $userPermissions);
+                $userPermissions = array_map('intval', $userPermissions);
+            }
+
+            // Obtener contadores para cada nivel
+            $countAbastos = $this->PaymentRequestsModel->getPendingAuthorizationCount(66);
+            $countAdmin = $this->PaymentRequestsModel->getPendingAuthorizationCount(67);
+            $countTesoreria = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
             echo json_encode([
                 'success' => true,
-                'message' => 'Aprobación masiva completada exitosamente',
-                'resumen' => [
-                    'aprobados' => $resultado['aprobados'],
-                    'errores' => $resultado['errores'],
-                    'monto_total' => number_format($resultado['monto_total'], 2),
-                    'bulk_id' => $resultado['bulk_id']
-                ]
+                'abastos' => $countAbastos,
+                'admin' => $countAdmin,
+                'tesoreria' => $countTesoreria,
+                'user_permissions' => $userPermissions
             ]);
-        } else {
+        } catch (Exception $e) {
+            error_log("Error en getPendingCountsAll: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
-                'message' => $resultado['message'],
-                'detalles' => $resultado['detalles'] ?? []
+                'message' => 'Error al obtener contadores'
             ]);
         }
-        
-    } catch (Exception $e) {
-        error_log("Error en processBulkAuthorization: " . $e->getMessage());
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error al procesar aprobación masiva: ' . $e->getMessage()
-        ]);
     }
-}
 
-/**
- * Obtener contadores de pagos pendientes
- */
-public function getPendingCounts() {
-    header('Content-Type: application/json');
-    
-    try {
-        $userPermissions = $_SESSION['permissions'] ?? [];
-        $permissionNumber = $this->determinarPermisoAutorizacion($userPermissions);
-        
-        if (!$permissionNumber) {
+
+    public function get_pending_bulk_authorization()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            // Obtener el nivel solicitado desde la petición
+            $permissionNumber = isset($_GET['permission']) ? intval($_GET['permission']) : null;
+
+            if (!$permissionNumber || !in_array($permissionNumber, [66, 67, 68])) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Nivel de autorización inválido'
+                ]);
+                return;
+            }
+
+            // Verificar que el usuario tiene ese permiso
+            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
+            if (is_string($userPermissions)) {
+                $userPermissions = explode(',', $userPermissions);
+                $userPermissions = array_map('trim', $userPermissions);
+                $userPermissions = array_map('intval', $userPermissions);
+            }
+            if (!in_array($permissionNumber, $userPermissions)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No tienes permisos para este nivel de autorización'
+                ]);
+                return;
+            }
+
+            $pagosPendientes = $this->PaymentRequestsModel->getPendingPaymentsForBulkAuthorization($permissionNumber);
             echo json_encode([
                 'success' => true,
-                'total' => 0
+                'data' => $pagosPendientes ?: [],
+                'nivel_autorizacion' => $this->getNombrePermiso($permissionNumber),
+                'permission_number' => $permissionNumber
             ]);
-            return;
-        }
-        
-        $paymentModel = new PaymentRequestsModel();
-        $count = $paymentModel->getPendingAuthorizationCount($permissionNumber);
-        
-        echo json_encode([
-            'success' => true,
-            'total' => $count,
-            'permission' => $permissionNumber
-        ]);
-        
-    } catch (Exception $e) {
-        error_log("Error en getPendingCounts: " . $e->getMessage());
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error al obtener contadores'
-        ]);
-    }
-}
-
-/**
- * Deshacer aprobación masiva (dentro de ventana de tiempo)
- */
-public function undoBulkAuthorization() {
-    header('Content-Type: application/json');
-    
-    try {
-        $bulkId = $_POST['bulk_id'] ?? 0;
-        $userId = $_SESSION['user_id'] ?? 0;
-        
-        if (!$bulkId) {
+        } catch (Exception $e) {
+            error_log("Error en getPendingBulkAuthorization: " . $e->getMessage());
             echo json_encode([
                 'success' => false,
-                'message' => 'ID de aprobación masiva no válido'
+                'message' => 'Error al obtener pagos pendientes: ' . $e->getMessage()
             ]);
-            return;
         }
-        
-        $paymentModel = new PaymentRequestsModel();
-        $resultado = $paymentModel->undoBulkAuthorization($bulkId, $userId);
-        
-        echo json_encode($resultado);
-        
-    } catch (Exception $e) {
-        error_log("Error en undoBulkAuthorization: " . $e->getMessage());
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error al deshacer aprobación masiva: ' . $e->getMessage()
-        ]);
     }
-}
+    public function process_bulk_authorization()
+    {
+        header('Content-Type: application/json');
+        try {
 
-/**
- * Determinar el permiso de autorización del usuario según sus permisos
- */
-private function determinarPermisoAutorizacion($permissions) {
-    if (in_array(66, $permissions)) { // Abastos
-        return 66;
-    } elseif (in_array(67, $permissions)) { // Administración y Finanzas
-        return 67;
-    } elseif (in_array(68, $permissions)) { // Tesorería
-        return 68;
-    }
-    return null;
-}
+            // Validar datos de entrada
+            $paymentIds = $_POST['payment_ids'] ?? [];
+            $permissionNumber = isset($_POST['permission_number']) ? intval($_POST['permission_number']) : null;
+            $comentario = $_POST['comentario'] ?? '';
 
-/**
- * Obtener nombre legible del permiso
- */
-private function getNombrePermiso($permissionNumber) {
-    $permisos = [
-        66 => 'Abastos',
-        67 => 'Administración y Finanzas',
-        68 => 'Tesorería'
-    ];
-    return $permisos[$permissionNumber] ?? 'Desconocido';
-}
+            if (empty($paymentIds) || !is_array($paymentIds)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se recibieron pagos para aprobar'
+                ]);
+                return;
+            }
 
-/**
- * Enviar notificaciones de aprobación masiva
- */
-private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber) {
-    // Implementar según tu sistema de notificaciones existente
-    try {
-        $paymentModel = new PaymentRequestsModel();
-        $detalles = $paymentModel->getBulkAuthorizationDetails($bulkId);
-        
-        if (!$detalles) {
-            return;
+            if (!$permissionNumber || !in_array($permissionNumber, [66, 67, 68])) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Nivel de autorización inválido'
+                ]);
+                return;
+            }
+
+            // Limpiar y validar IDs
+            $paymentIds = array_map('intval', $paymentIds);
+            $paymentIds = array_filter($paymentIds, function ($id) {
+                return $id > 0;
+            });
+
+            if (empty($paymentIds)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'IDs de pago inválidos'
+                ]);
+                return;
+            }
+
+
+            // Obtener información del usuario
+            $userId = $_SESSION['tg_user']['Id'] ?? 0;
+            $userName = $_SESSION['tg_user']['name'] ?? 'Unknown';
+            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
+
+            // Convertir a array si es string
+            if (is_string($userPermissions)) {
+                $userPermissions = explode(',', $userPermissions);
+                $userPermissions = array_map('trim', $userPermissions);
+                $userPermissions = array_map('intval', $userPermissions);
+            }
+
+            // Verificar que el usuario tiene el permiso solicitado
+            if (!in_array($permissionNumber, $userPermissions)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No tienes permisos para autorizar en este nivel'
+                ]);
+                return;
+            }
+
+            // Procesar aprobación masiva
+            $resultado = $this->PaymentRequestsModel->processBulkAuthorization(
+                $paymentIds,
+                $permissionNumber,
+                $userId,
+                $userName,
+                $comentario
+            );
+            if ($resultado['success']) {
+                // Enviar notificaciones si es necesario
+                $this->enviarNotificacionesAprobacionMasiva(
+                    $resultado['bulk_id'],
+                    $paymentIds,
+                    $permissionNumber
+                );
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Aprobación masiva completada exitosamente',
+                    'resumen' => [
+                        'aprobados' => $resultado['aprobados'],
+                        'errores' => $resultado['errores'],
+                        'monto_total' => number_format($resultado['monto_total'], 2),
+                        'bulk_id' => $resultado['bulk_id']
+                    ]
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => false,
+                    'message' => $resultado['message'],
+                    'detalles' => $resultado['detalles'] ?? []
+                ]);
+            }
+        } catch (Exception $e) {
+            error_log("Error en processBulkAuthorization: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al procesar aprobación masiva: ' . $e->getMessage()
+            ]);
         }
-        
-        // Aquí puedes usar tu sistema PHPMailer existente
-        // Ejemplo:
-        /*
-        $to = 'supervisor@totalgas.com';
-        $subject = 'Aprobación Masiva de Pagos - ' . $detalles['nivel_nombre'];
+    }
+
+    /**
+     * Obtener nombre legible del permiso
+     */
+    private function getNombrePermiso($permissionNumber)
+    {
+        $permisos = [
+            66 => 'Abastos',
+            67 => 'Administración y Finanzas',
+            68 => 'Tesorería'
+        ];
+        return $permisos[$permissionNumber] ?? 'Desconocido';
+    }
+
+    /**
+     * Enviar notificaciones de aprobación masiva
+     */
+    private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber)
+    {
+        try {
+            $paymentModel = new PaymentRequestsModel();
+            $detalles = $paymentModel->getBulkAuthorizationDetails($bulkId);
+
+            if (!$detalles) {
+                return;
+            }
+
+            // Log de la acción
+            error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: {$detalles['user_name']}, Nivel: {$detalles['nivel_nombre']}, Pagos: " . count($paymentIds));
+
+            // Aquí puedes implementar envío de emails si lo necesitas
+            // Ejemplo:
+            /*
+        $to = $this->getEmailSiguienteNivel($permissionNumber);
+        $subject = 'Nueva Aprobación Masiva - ' . $detalles['nivel_nombre'];
         $message = "Se ha realizado una aprobación masiva:\n\n";
         $message .= "Usuario: " . $detalles['user_name'] . "\n";
         $message .= "Nivel: " . $detalles['nivel_nombre'] . "\n";
         $message .= "Pagos aprobados: " . $detalles['approved_count'] . "\n";
         $message .= "Monto total: $" . number_format($detalles['total_amount'], 2) . "\n";
         
-        // Enviar email
         $this->sendEmail($to, $subject, $message);
         */
-        
-    } catch (Exception $e) {
-        error_log("Error al enviar notificaciones: " . $e->getMessage());
-        // No detener el flujo si falla la notificación
+        } catch (Exception $e) {
+            error_log("Error al enviar notificaciones: " . $e->getMessage());
+        }
     }
-}
 
-/**
- * Obtener historial de aprobaciones masivas
- */
-public function getBulkAuthorizationHistory() {
-    header('Content-Type: application/json');
-    
-    try {
-        $userId = $_SESSION['user_id'] ?? 0;
-        
-        $query = "
+    /**
+     * Obtener historial de aprobaciones masivas
+     */
+    public function getBulkAuthorizationHistory()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $userId = $_SESSION['tg_user']['id'] ?? 0;
+            $permissionNumber = isset($_GET['permission']) ? intval($_GET['permission']) : null;
+
+            $whereClause = "ba.user_id = ?";
+            $params = [$userId];
+
+            // Filtrar por nivel si se especifica
+            if ($permissionNumber && in_array($permissionNumber, [66, 67, 68])) {
+                $whereClause .= " AND ba.authorization_level = ?";
+                $params[] = $permissionNumber;
+            }
+
+            $query = "
             SELECT 
                 ba.*,
                 u.Nombre as user_name,
@@ -5580,29 +5623,61 @@ public function getBulkAuthorizationHistory() {
                     WHEN ba.authorization_level = 68 THEN 'Tesorería'
                     ELSE 'Desconocido'
                 END as nivel_nombre,
-                DATEDIFF(minute, ba.created_at, GETDATE()) as minutos_desde_creacion
+                DATEDIFF(minute, ba.created_at, GETDATE()) as minutos_desde_creacion,
+                CASE 
+                    WHEN ba.is_undone = 1 THEN 'Deshecha'
+                    WHEN ba.processed_at IS NOT NULL THEN 'Completada'
+                    ELSE 'En proceso'
+                END as estado
             FROM [TG].[dbo].[payment_request_bulk_authorizations] ba
             LEFT JOIN [TG].[dbo].[Usuario] u ON ba.user_id = u.Id
-            WHERE ba.user_id = ?
+            WHERE $whereClause
             ORDER BY ba.created_at DESC
         ";
-        
-        $paymentModel = new PaymentRequestsModel();
-        $historial = $paymentModel->sql->select($query, [$userId]);
-        
-        echo json_encode([
-            'success' => true,
-            'data' => $historial ?: []
-        ]);
-        
-    } catch (Exception $e) {
-        error_log("Error en getBulkAuthorizationHistory: " . $e->getMessage());
-        echo json_encode([
-            'success' => false,
-            'message' => 'Error al obtener historial'
-        ]);
+
+            $paymentModel = new PaymentRequestsModel();
+            $historial = $paymentModel->sql->select($query, $params);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $historial ?: []
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en getBulkAuthorizationHistory: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al obtener historial'
+            ]);
+        }
     }
-}
 
 
+    public function undoBulkAuthorization()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $bulkId = $_POST['bulk_id'] ?? 0;
+            $userId = $_SESSION['tg_user']['id'] ?? 0;
+
+            if (!$bulkId) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'ID de aprobación masiva no válido'
+                ]);
+                return;
+            }
+
+            $paymentModel = new PaymentRequestsModel();
+            $resultado = $paymentModel->undoBulkAuthorization($bulkId, $userId);
+
+            echo json_encode($resultado);
+        } catch (Exception $e) {
+            error_log("Error en undoBulkAuthorization: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al deshacer aprobación masiva: ' . $e->getMessage()
+            ]);
+        }
+    }
 }
