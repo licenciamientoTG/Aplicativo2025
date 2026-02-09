@@ -1233,10 +1233,10 @@ class PaymentRequestsModel extends Model
     public function getBulkAuthorizationDetails($bulkId): array|false
     {
         $query = "
-            SELECT 
+            SELECT
                 ba.*,
                 u.Nombre as user_name,
-                CASE 
+                CASE
                     WHEN ba.authorization_level = 66 THEN 'Abastos'
                     WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
                     WHEN ba.authorization_level = 68 THEN 'Tesorería'
@@ -1250,5 +1250,107 @@ class PaymentRequestsModel extends Model
         $result = $this->sql->select($query, [$bulkId]);
 
         return $result ? $result[0] : false;
+    }
+
+    /**
+     * Recalcula el monto total de un pago basado en sus facturas
+     * @param int $payment_request_id
+     * @return array
+     */
+    public function recalculate_payment_total($payment_request_id) : array {
+        try {
+            // Obtener suma de facturas
+            $query = "
+                SELECT ISNULL(SUM(amount), 0) as total
+                FROM [TG].[dbo].[payment_request_invoices]
+                WHERE payment_request_id = ?
+            ";
+
+            $result = $this->sql->select($query, [$payment_request_id]);
+
+            if (!$result) {
+                return [
+                    'success' => false,
+                    'message' => 'Error al calcular total'
+                ];
+            }
+
+            $new_total = $result[0]['total'];
+
+            // Actualizar monto_total en payment_requests
+            $query_update = "
+                UPDATE [TG].[dbo].[payment_requests]
+                SET monto_total = ?
+                WHERE id = ?
+            ";
+
+            $update_result = $this->sql->update($query_update, [$new_total, $payment_request_id]);
+
+            if ($update_result) {
+                return [
+                    'success' => true,
+                    'new_total' => $new_total
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Error al actualizar el total'
+                ];
+            }
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Reinicia las autorizaciones de un pago y lo vuelve a estado PENDING
+     * @param int $payment_request_id
+     * @return array
+     */
+    public function reset_authorizations($payment_request_id) : array {
+        $this->sql->beginTransaction();
+
+        try {
+            // Verificar que el pago no esté completamente pagado
+            $query_check = "
+                SELECT status
+                FROM [TG].[dbo].[payment_requests]
+                WHERE id = ?
+            ";
+
+            $payment = $this->sql->select($query_check, [$payment_request_id]);
+
+            if (!$payment || empty($payment)) {
+                throw new Exception('Pago no encontrado');
+            }
+
+            if ($payment[0]['status'] == self::STATUS_PAID) {
+                throw new Exception('No se pueden reiniciar autorizaciones de un pago ya ejecutado');
+            }
+
+            // Eliminar todas las autorizaciones
+            $authModel = new PaymentRequestAuthorizationsModel();
+            $authModel->delete_by_payment_request($payment_request_id);
+
+            // Cambiar status a PENDING
+            $this->update_request_status($payment_request_id, self::STATUS_PENDING);
+
+            $this->sql->commit();
+
+            return [
+                'success' => true,
+                'message' => 'Autorizaciones reiniciadas correctamente'
+            ];
+        } catch (Exception $e) {
+            $this->sql->rollback();
+
+            return [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ];
+        }
     }
 }

@@ -1323,6 +1323,154 @@ class Supply
         echo $this->twig->render($this->route . 'add_payment.html', compact('stations', 'companys', 'proveedores'));
     }
 
+    /**
+     * Vista para agregar más facturas a un pago existente
+     */
+    function add_more_invoices_to_payment()
+    {
+        $payment_id = $_GET['payment_id'] ?? 0;
+
+        if (!$payment_id) {
+            header('Location: /supply/payment_list');
+            return;
+        }
+
+        // Obtener información del pago
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+        if (!$payment) {
+            header('Location: /supply/payment_list');
+            return;
+        }
+
+        // Verificar que no esté pagado
+        if ($payment['status'] == PaymentRequestsModel::STATUS_PAID) {
+            header('Location: /supply/payment_detail?id=' . $payment_id);
+            return;
+        }
+
+        $all_stations = $this->gasolinerasModel->get_stations();
+
+        // Filtrar estaciones para quitar la que tiene cod = 0
+        $stations = array_filter($all_stations, function ($station) {
+            return $station['cod'] != 0;
+        });
+
+        $companys = $this->gasolinerasModel->get_company();
+        $proveedores = $this->proveedores->get_actives();
+
+        // Obtener facturas ya incluidas en el pago
+        $existing_invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+
+        // Pasar variables adicionales para modo edición
+        $edit_mode = true;
+        $selected_provider = $payment['provider_cod'];
+        $selected_company = $payment['emp_cod'];
+
+        echo $this->twig->render($this->route . 'add_payment.html', compact(
+            'stations',
+            'companys',
+            'proveedores',
+            'edit_mode',
+            'payment_id',
+            'payment',
+            'selected_provider',
+            'selected_company',
+            'existing_invoices'
+        ));
+    }
+
+    /**
+     * Agregar facturas adicionales a un pago existente
+     */
+    function add_invoices_bulk_to_payment()
+    {
+        header('Content-Type: application/json');
+        try {
+            $raw = file_get_contents('php://input');
+            $data = json_decode($raw, true);
+
+            $payment_id = $data['payment_id'] ?? 0;
+            $documents  = $data['documentos'] ?? [];
+
+            if (!$payment_id || empty($documents)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Datos inválidos'
+                ]);
+                return;
+            }
+
+            // Verificar que el pago existe y no está pagado
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+            if (!$payment) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Pago no encontrado'
+                ]);
+                return;
+            }
+
+            if ($payment['status'] == PaymentRequestsModel::STATUS_PAID) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se pueden modificar pagos ya ejecutados'
+                ]);
+                return;
+            }
+            // Comenzar transacción
+            // $this->PaymentRequestsModel->sql->beginTransaction();
+
+            $added = 0;
+            $skipped = 0;
+            $errors = [];
+
+            foreach ($documents as $doc) {
+                $result = $this->paymentRequestInvoicesModel->add_invoice_to_payment($payment_id, $doc);
+
+                if ($result['success']) {
+                    $added++;
+                } else {
+                    $skipped++;
+                    $errors[] = $result['message'];
+                }
+            }
+            echo '<pre>';
+            var_dump($added);
+            die();
+
+            if ($added > 0) {
+                $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+                $this->PaymentRequestsModel->reset_authorizations($payment_id);
+                // $this->PaymentRequestsModel->sql->commit();
+                echo json_encode([
+                    'success' => true,
+                    'message' => "Se agregaron {$added} factura(s). Las autorizaciones han sido reiniciadas.",
+                    'added' => $added,
+                    'skipped' => $skipped,
+                    'errors' => $errors,
+                    'payment_id' => $payment_id
+                ]);
+            } else {
+                // $this->PaymentRequestsModel->sql->rollback();
+
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se pudo agregar ninguna factura. ' . implode(', ', $errors)
+                ]);
+            }
+        } catch (Exception $e) {
+            $this->PaymentRequestsModel->sql->rollback();
+            error_log("Error en add_invoices_bulk_to_payment: " . $e->getMessage());
+
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
 
     public function payment_control_table()
     {
@@ -5677,6 +5825,205 @@ class Supply
             echo json_encode([
                 'success' => false,
                 'message' => 'Error al deshacer aprobación masiva: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Agregar factura a un pago existente
+     */
+    public function add_invoice_to_payment()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $payment_id = $_POST['payment_id'] ?? 0;
+            $document = $_POST['document'] ?? [];
+
+            if (!$payment_id || empty($document)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Datos inválidos'
+                ]);
+                return;
+            }
+
+            // Verificar que el pago existe y no está pagado
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+            if (!$payment) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Pago no encontrado'
+                ]);
+                return;
+            }
+
+            if ($payment['status'] == PaymentRequestsModel::STATUS_PAID) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se pueden modificar pagos ya ejecutados'
+                ]);
+                return;
+            }
+
+            // Agregar la factura
+            $result = $this->paymentRequestInvoicesModel->add_invoice_to_payment($payment_id, $document);
+
+            if (!$result['success']) {
+                echo json_encode($result);
+                return;
+            }
+
+            // Recalcular total
+            $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+
+            // Reiniciar autorizaciones
+            $this->PaymentRequestsModel->reset_authorizations($payment_id);
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Factura agregada correctamente. Las autorizaciones han sido reiniciadas.'
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en add_invoice_to_payment: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Quitar factura de un pago existente
+     */
+    public function remove_invoice_from_payment()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $invoice_id = $_POST['invoice_id'] ?? 0;
+            $payment_id = $_POST['payment_id'] ?? 0;
+
+            if (!$invoice_id || !$payment_id) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Datos inválidos'
+                ]);
+                return;
+            }
+
+            // Verificar que el pago existe y no está pagado
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+            if (!$payment) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Pago no encontrado'
+                ]);
+                return;
+            }
+
+            if ($payment['status'] == PaymentRequestsModel::STATUS_PAID) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se pueden modificar pagos ya ejecutados'
+                ]);
+                return;
+            }
+
+            // Quitar la factura
+            $result = $this->paymentRequestInvoicesModel->remove_invoice_from_payment($invoice_id);
+
+            if (!$result['success']) {
+                echo json_encode($result);
+                return;
+            }
+
+            // Recalcular total
+            $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
+
+            // Reiniciar autorizaciones
+            $this->PaymentRequestsModel->reset_authorizations($payment_id);
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Factura eliminada correctamente. Las autorizaciones han sido reiniciadas.'
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en remove_invoice_from_payment: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Buscar facturas disponibles para agregar a un pago (no incluidas en otros pagos)
+     */
+    public function search_available_invoices()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $provider_cod = $_GET['provider_cod'] ?? null;
+            $search = $_GET['search'] ?? '';
+
+            if (!$provider_cod) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Proveedor no especificado'
+                ]);
+                return;
+            }
+
+            // Buscar facturas del proveedor que NO estén en payment_request_invoices
+            $query = "
+                SELECT TOP 50
+                    dc.nro,
+                    dc.Factura,
+                    dc.codgas,
+                    dc.total_fac,
+                    dc.fechaVto,
+                    dc.satuid,
+                    g.abr as estacion_nombre,
+                    dc.fechaRec
+                FROM SG12.dbo.DocumentosC dc
+                LEFT JOIN SG12.dbo.Gasolineras g ON dc.codgas = g.cod
+                WHERE dc.codopr = ?
+                AND dc.tip = 1
+                AND dc.satuid IS NOT NULL
+                AND dc.satuid NOT IN (
+                    SELECT uuid
+                    FROM TG.dbo.payment_request_invoices
+                    WHERE uuid IS NOT NULL
+                )
+                AND (
+                    dc.Factura LIKE ?
+                    OR dc.nro LIKE ?
+                    OR g.abr LIKE ?
+                )
+                ORDER BY dc.fechaRec DESC
+            ";
+
+            $search_param = '%' . $search . '%';
+            $facturas = $this->documentosModel->sql->select($query, [
+                $provider_cod,
+                $search_param,
+                $search_param,
+                $search_param
+            ]);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $facturas ?: []
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en search_available_invoices: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al buscar facturas: ' . $e->getMessage()
             ]);
         }
     }

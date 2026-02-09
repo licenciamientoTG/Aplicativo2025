@@ -247,13 +247,6 @@
                                     <br><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
                                     {% endif %}
                                 </div>
-                                <div class="btn-group w-100" role="group" style="margin-top: 1rem;">
-                                    <button type="button" id="btnGenerarTransferencias" class="btn btn-outline-danger"
-                                        onclick="generarTransferenciasBancarias({{ payment.id }})" {% if
-                                        payment_status=='CANCELLED' %}disabled{% endif %}
-                                        title="Generar archivo de transferencias bancarias Santander"><i class="fas fa-university"></i> Transferencias Santander
-                                    </button>
-                                </div>
 
                                 {% if payment.status == 1 and authorized(68) %}
                                 <button class="btn btn-primary  mt-3 w-100" onclick="procesarPago()">
@@ -744,9 +737,11 @@
                             {% for invoice in invoices %}
                             {% set saldo = invoice.amount - invoice.paid_amount %}
                             {% if saldo > 0 %}
-                            <tr data-invoice-id="{{ invoice.id }}" data-folio="{{ invoice.folio }}" data-saldo="{{ saldo }}">
+                            <tr data-invoice-id="{{ invoice.id }}" data-folio="{{ invoice.folio }}"
+                                data-saldo="{{ saldo }}">
                                 <td>
-                                    <input type="checkbox" class="factura-checkbox" value="{{ invoice.id }}" onchange="updatePagoSummary()">
+                                    <input type="checkbox" class="factura-checkbox" value="{{ invoice.id }}"
+                                        onchange="updatePagoSummary()">
                                 </td>
                                 <td><strong>{{ invoice.folio }}</strong></td>
                                 <td>{{ invoice.invoice_number }}</td>
@@ -757,8 +752,9 @@
                                     <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
                                 </td>
                                 <td>
-                                    <input type="number" class="form-control form-control-sm monto-pago" step="0.01" min="0" max="{{ saldo }}"
-                                        placeholder="0.00" disabled onchange="updatePagoSummary()" onkeyup="updatePagoSummary()">
+                                    <input type="number" class="form-control form-control-sm monto-pago" step="0.01"
+                                        min="0" max="{{ saldo }}" placeholder="0.00" disabled
+                                        onchange="updatePagoSummary()" onkeyup="updatePagoSummary()">
                                 </td>
                             </tr>
                             {% endif %}

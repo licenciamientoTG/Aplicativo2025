@@ -1172,11 +1172,11 @@ class PaymentRequestInvoicesModel extends Model
         if (empty($invoice_ids)) {
             return false;
         }
-        
+
         $ids_str = implode(',', array_map('intval', $invoice_ids));
-        
+
         $query = "
-            SELECT 
+            SELECT
                 id,
                 payment_request_id,
                 folio,
@@ -1196,6 +1196,127 @@ class PaymentRequestInvoicesModel extends Model
             ORDER BY payment_request_id, id
         ";
         return $this->sql->select($query, [PaymentRequestsModel::STATUS_PAID]) ?: false;
+    }
+
+    /**
+     * Agrega una factura a un pago existente
+     * @param int $payment_request_id
+     * @param array $document - Datos de la factura (nro, Factura, codgas, total_fac, fechaVto, satuid)
+     * @return array
+     */
+    public function add_invoice_to_payment($payment_request_id, $document) : array {
+        try {
+            $folio = $document['nro'] ?? null;
+            $invoice_number = $document['Factura'] ?? null;
+            $codgas = $document['codgas'] ?? null;
+            $amount = $document['total_fac'] ?? 0;
+            $expiration_date = $document['fechaVto'] ?? null;
+            $uuid = $document['satuid'] ?? null;
+
+            // Validar UUID
+            if (empty($uuid)) {
+                return [
+                    'success' => false,
+                    'message' => 'La factura no tiene UUID SAT'
+                ];
+            }
+
+            // Verificar si ya existe en algún pago
+            if ($this->invoice_exists_by_uuid($uuid)) {
+                return [
+                    'success' => false,
+                    'message' => 'Esta factura ya está incluida en otro pago'
+                ];
+            }
+
+            $query = '
+                INSERT INTO [TG].[dbo].[payment_request_invoices]
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date, uuid)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ';
+
+            $result = $this->sql->insert($query, [
+                $payment_request_id,
+                $folio,
+                $invoice_number,
+                $codgas,
+                $amount,
+                self::STATUS_PENDING,
+                $expiration_date,
+                $uuid
+            ]);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Factura agregada correctamente',
+                    'invoice_id' => $result
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Error al agregar la factura'
+                ];
+            }
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Quita una factura de un pago (solo si no ha sido pagada)
+     * @param int $invoice_id
+     * @return array
+     */
+    public function remove_invoice_from_payment($invoice_id) : array {
+        try {
+            // Verificar que la factura no tenga pagos
+            $query_check = "
+                SELECT paid_amount, folio
+                FROM [TG].[dbo].[payment_request_invoices]
+                WHERE id = ?
+            ";
+
+            $invoice = $this->sql->select($query_check, [$invoice_id]);
+
+            if (!$invoice || empty($invoice)) {
+                return [
+                    'success' => false,
+                    'message' => 'Factura no encontrada'
+                ];
+            }
+
+            if ($invoice[0]['paid_amount'] > 0) {
+                return [
+                    'success' => false,
+                    'message' => 'No se puede quitar una factura que ya tiene pagos aplicados'
+                ];
+            }
+
+            // Eliminar la factura
+            $query_delete = "DELETE FROM [TG].[dbo].[payment_request_invoices] WHERE id = ?";
+            $result = $this->sql->delete($query_delete, [$invoice_id]);
+
+            if ($result) {
+                return [
+                    'success' => true,
+                    'message' => 'Factura eliminada del pago correctamente'
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Error al eliminar la factura'
+                ];
+            }
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ];
+        }
     }
 
 }

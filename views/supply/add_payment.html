@@ -1,343 +1,376 @@
 {# add_payment.html #}
 {% extends "views/layouts/base.html" %}
-{% block title %}Crear Pago{% endblock %}
+{% block title %}{{ edit_mode ? 'Agregar Facturas al Pago' : 'Crear Pago' }}{% endblock %}
 {% block mycss %}{% endblock %}
 {% block menutitle %}
-<div style="display: flex;justify-content: space-between;" >
-    Crear Pago
-    <a onclick="ReturnListPayment()" class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i> Regresar</a>
+<div style="display: flex;justify-content: space-between;">
+    {{ edit_mode ? 'Agregar Facturas al Pago' : 'Crear Pago' }}
+    <a onclick="{{ edit_mode ? 'window.location.href=\'/supply/payment_detail?id=' ~ payment_id ~ '\'' : 'ReturnListPayment()' }}"
+        class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i>
+        Regresar</a>
 </div>
 {% endblock %}
 {% block content %}
 
 <style>
+    .payment-loader-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        backdrop-filter: blur(3px);
+    }
 
-.payment-loader-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 9999;
-    backdrop-filter: blur(3px);
-}
+    .payment-loader-overlay.active {
+        display: flex;
+    }
 
-.payment-loader-overlay.active {
-    display: flex;
-}
+    .payment-loader-content {
+        background: white;
+        padding: 40px;
+        border-radius: 15px;
+        text-align: center;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        min-width: 300px;
+    }
 
-.payment-loader-content {
-    background: white;
-    padding: 40px;
-    border-radius: 15px;
-    text-align: center;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-    min-width: 300px;
-}
+    .payment-loader-spinner {
+        width: 60px;
+        height: 60px;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid #007bff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 20px;
+    }
 
-.payment-loader-spinner {
-    width: 60px;
-    height: 60px;
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid #007bff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-}
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
+        100% {
+            transform: rotate(360deg);
+        }
+    }
 
-.payment-loader-text {
-    color: #333;
-    font-size: 16px;
-    font-weight: 500;
-    margin-bottom: 10px;
-}
+    .payment-loader-text {
+        color: #333;
+        font-size: 16px;
+        font-weight: 500;
+        margin-bottom: 10px;
+    }
 
-.payment-loader-subtext {
-    color: #666;
-    font-size: 14px;
-}
+    .payment-loader-subtext {
+        color: #666;
+        font-size: 14px;
+    }
 
-.payment-loader-spinner-modern {
-    width: 60px;
-    height: 60px;
-    position: relative;
-    margin: 0 auto 20px;
-}
+    .payment-loader-spinner-modern {
+        width: 60px;
+        height: 60px;
+        position: relative;
+        margin: 0 auto 20px;
+    }
 
-.payment-loader-spinner-modern div {
-    box-sizing: border-box;
-    display: block;
-    position: absolute;
-    width: 48px;
-    height: 48px;
-    margin: 6px;
-    border: 6px solid #007bff;
-    border-radius: 50%;
-    animation: loader-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-    border-color: #007bff transparent transparent transparent;
-}
+    .payment-loader-spinner-modern div {
+        box-sizing: border-box;
+        display: block;
+        position: absolute;
+        width: 48px;
+        height: 48px;
+        margin: 6px;
+        border: 6px solid #007bff;
+        border-radius: 50%;
+        animation: loader-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        border-color: #007bff transparent transparent transparent;
+    }
 
-.payment-loader-spinner-modern div:nth-child(1) {
-    animation-delay: -0.45s;
-}
+    .payment-loader-spinner-modern div:nth-child(1) {
+        animation-delay: -0.45s;
+    }
 
-.payment-loader-spinner-modern div:nth-child(2) {
-    animation-delay: -0.3s;
-}
+    .payment-loader-spinner-modern div:nth-child(2) {
+        animation-delay: -0.3s;
+    }
 
-.payment-loader-spinner-modern div:nth-child(3) {
-    animation-delay: -0.15s;
-}
+    .payment-loader-spinner-modern div:nth-child(3) {
+        animation-delay: -0.15s;
+    }
 
-@keyframes loader-ring {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
+    @keyframes loader-ring {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
 
     .invoice-checkbox {
-    cursor: pointer;
-    width: 18px;
-    height: 18px;
-}
-
-#selectAllCheckbox {
-    cursor: pointer;
-    width: 18px;
-    height: 18px;
-}
-
-#selected-count {
-    font-size: 0.9rem;
-    padding: 0.5rem 1rem;
-}
-tr.group,
-tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.1) !important;
-}
-
-:root.dark tr.group,
-:root.dark tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.75) !important;
-}
-.column_estation{
-    background-color: #add5e6 !important;
-    color: white !important;
-}
-.total_bg{
-    background-color: #48A1C7 !important;
-    color: white !important;
-}
-.total_bg2{
-    background-color:#48A1C7 !important;
-    color: white !important;
-
-}
-
-.border_center{
-    border-top: 1px dotted  #358f92 !important;
-    border-bottom: 1px dotted  #358f92 !important;
-    border-left: 1px dotted #358f92 !important;
-    border-right: 1px dotted  #358f92 !important;
-}
-
-
-table.dataTable thead th, table.dataTable thead td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-
-table.dataTable tfoot th, table.dataTable tfoot td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-.border_OG{
-    border: 0.5px solid #0c202091 !important;
-    background-color: #6d7277e8;
-}
-#payment_search_card{
-    /* color: white !important; */
-    border-left: 5px solid #389235 !important;
-}
-/* Estilos para el drag and drop */
-.draggable-row {
-    cursor: move;
-    transition: all 0.2s ease;
-}
-
-.draggable-row:hover {
-    background-color: #e3f2fd !important;
-    transform: scale(1.01);
-}
-
-.dragging {
-    opacity: 0.5;
-    transform: rotate(2deg);
-    background-color: #bbdefb !important;
-}
-
-.drag-handle {
-    color: #6c757d;
-    cursor: move;
-    transition: color 0.2s ease;
-}
-
-.drag-handle:hover {
-    color: #007bff;
-}
-
-/* Área de drop */
-#payment-basket {
-    min-height: 400px;
-    height: 100%;
-    border: 2px dashed #ccc;
-    border-radius: 10px;
-    transition: all 0.3s ease;
-}
-
-#payment-basket.dragover {
-    border-color: #007bff;
-    background-color: #f8f9fa;
-    border-style: solid;
-    box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
-}
-
-/* Elementos del pago */
-.payment-item {
-    background: linear-gradient(45deg, #28a745, #20c997) !important;
-    color: white !important;
-    border: none !important;
-    margin-bottom: 10px;
-    border-radius: 8px;
-    animation: slideIn 0.3s ease;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(-100%);
-        opacity: 0;
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
     }
-    to {
-        transform: translateX(0);
-        opacity: 1;
+
+    #selectAllCheckbox {
+        cursor: pointer;
+        width: 18px;
+        height: 18px;
     }
-}
 
-/* Resumen del pago */
-.payment-summary {
-    background: linear-gradient(45deg, #007bff, #0056b3);
-    color: white;
-    border-radius: 10px;
-    padding: 15px;
-    margin-top: 10px;
-}
+    #selected-count {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
 
-/* Estados de botones */
-#generar-pago:disabled {
-    background-color: #6c757d !important;
-    border-color: #6c757d !important;
-}
+    tr.group,
+    tr.group:hover {
+        background-color: rgba(0, 0, 0, 0.1) !important;
+    }
 
-/* Mensaje vacío */
-.empty-basket-message {
-    text-align: center;
-    color: #6c757d;
-    font-style: italic;
-    padding: 50px 20px;
-    border: none !important;
-    background: transparent !important;
-}
+    :root.dark tr.group,
+    :root.dark tr.group:hover {
+        background-color: rgba(0, 0, 0, 0.75) !important;
+    }
 
-.bg_send{
-    background-color: #beebc2 !important;
-    color: #000000 !important;
-}
+    .column_estation {
+        background-color: #add5e6 !important;
+        color: white !important;
+    }
+
+    .total_bg {
+        background-color: #48A1C7 !important;
+        color: white !important;
+    }
+
+    .total_bg2 {
+        background-color: #48A1C7 !important;
+        color: white !important;
+
+    }
+
+    .border_center {
+        border-top: 1px dotted #358f92 !important;
+        border-bottom: 1px dotted #358f92 !important;
+        border-left: 1px dotted #358f92 !important;
+        border-right: 1px dotted #358f92 !important;
+    }
+
+
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 10px 18px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #3485a8 !important;
+        color: #ffffff !important;
+
+    }
+
+    table.dataTable tfoot th,
+    table.dataTable tfoot td {
+        padding: 10px 18px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #3485a8 !important;
+        color: #ffffff !important;
+
+    }
+
+    .border_OG {
+        border: 0.5px solid #0c202091 !important;
+        background-color: #6d7277e8;
+    }
+
+    #payment_search_card {
+        /* color: white !important; */
+        border-left: 5px solid #389235 !important;
+    }
+
+    /* Estilos para el drag and drop */
+    .draggable-row {
+        cursor: move;
+        transition: all 0.2s ease;
+    }
+
+    .draggable-row:hover {
+        background-color: #e3f2fd !important;
+        transform: scale(1.01);
+    }
+
+    .dragging {
+        opacity: 0.5;
+        transform: rotate(2deg);
+        background-color: #bbdefb !important;
+    }
+
+    .drag-handle {
+        color: #6c757d;
+        cursor: move;
+        transition: color 0.2s ease;
+    }
+
+    .drag-handle:hover {
+        color: #007bff;
+    }
+
+    /* Área de drop */
+    #payment-basket {
+        min-height: 400px;
+        height: 100%;
+        border: 2px dashed #ccc;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+    }
+
+    #payment-basket.dragover {
+        border-color: #007bff;
+        background-color: #f8f9fa;
+        border-style: solid;
+        box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
+    }
+
+    /* Elementos del pago */
+    .payment-item {
+        background: linear-gradient(45deg, #28a745, #20c997) !important;
+        color: white !important;
+        border: none !important;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+        from {
+            transform: translateX(-100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateX(0);
+            opacity: 1;
+        }
+    }
+
+    /* Resumen del pago */
+    .payment-summary {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        color: white;
+        border-radius: 10px;
+        padding: 15px;
+        margin-top: 10px;
+    }
+
+    /* Estados de botones */
+    #generar-pago:disabled {
+        background-color: #6c757d !important;
+        border-color: #6c757d !important;
+    }
+
+    /* Mensaje vacío */
+    .empty-basket-message {
+        text-align: center;
+        color: #6c757d;
+        font-style: italic;
+        padding: 50px 20px;
+        border: none !important;
+        background: transparent !important;
+    }
+
+    .bg_send {
+        background-color: #beebc2 !important;
+        color: #000000 !important;
+    }
 </style>
 
 
 
 <div id="contenedor_pago_normal">
     <div class="row">
-        
+
         <div class="col-8">
             <div class="card " id="payment_search_card">
                 <div class="card-body">
                     <div class="row" style="align-items: flex-end;">
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="from1">Desde: </label>
-                            <input type="date"  class="form-control form-control-sm" name="from1" id="from1" value="{{  'first day of this month'|date('Y-m-d') }}" required>
+                            <input type="date" class="form-control form-control-sm" name="from1" id="from1"
+                                value="{{  'first day of this month'|date('Y-m-d') }}" required>
                         </div>
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="until1">Hasta: </label>
-                            <input type="date" class="form-control form-control-sm" name="until1"  id="until1" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                            <input type="date" class="form-control form-control-sm" name="until1" id="until1"
+                                value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                         </div>
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="">Razon social </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="company" id="company" required>
-                                <option disabled selected> Seleccione</option>
+                            <select class="selectpicker w-100" data-live-search="true" name="company" id="company"
+                                required {{ edit_mode ? 'disabled' : '' }}>
+                                <option disabled {{ not edit_mode ? 'selected' : '' }}> Seleccione</option>
                                 <option value="0">Todas</option>
                                 {% for company in companys %}
-                                <option value="{{ company.codemp }}">{{ company.den }}</option>
+                                <option value="{{ company.codemp }}" {{ edit_mode and selected_company==company.codemp
+                                    ? 'selected' : '' }}>{{ company.den }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="until1">Estacion: </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="station_id1" id="station_id1" placeholder="Seleccione una estación" disabled>
+                            <select class="selectpicker w-100" data-live-search="true" name="station_id1"
+                                id="station_id1" placeholder="Seleccione una estación" disabled>
                                 <option disabled selected>Seleccione empresa primero</option>
                                 <option value="0" style="display:none;">Todas las estaciones</option>
                                 {% for station in stations %}
-                                    <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
+                                <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">
+                                    {{ station.abr }}</option>
                                 {% endfor %}
                             </select>
                         </div>
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="until1">Proveedor: </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor">
-                                <option value="0"  selected>Todos los proveedores</option>
+                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id"
+                                id="proveedor_id" placeholder="Proveedor" {{ edit_mode ? 'disabled' : '' }}>
+                                <option value="0" {{ not edit_mode or (edit_mode and selected_provider=='0' )
+                                    ? 'selected' : '' }}>Todos los proveedores</option>
                                 {% for proveedor in proveedores %}
-                                    <option value="{{ proveedor.id_control_gas }}" >{{ proveedor.den }}</option>
+                                <option value="{{ proveedor.id_control_gas }}" {{ edit_mode and
+                                    selected_provider==proveedor.id_control_gas ? 'selected' : '' }}>{{ proveedor.den }}
+                                </option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="col-2 " >
-                            <button onclick="payment_create_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                        <div class="col-2 ">
+                            <button onclick="payment_create_table()" class="btn btn-sm btn-primary"
+                                style="width: 100%; margin-top: 15px;">Generar Reporte</button>
                         </div>
                     </div>
                 </div>
-    
-                <div class="card-body table-responsive" >
-                     <!-- Agregar esto justo antes de la tabla payment_create_table -->
+
+                <div class="card-body table-responsive">
+                    <!-- Agregar esto justo antes de la tabla payment_create_table -->
                     <div class="d-flex justify-content-between  align-items-center mb-2">
                         <div class="d-flex flex-row gap-2 col-8">
                             <button type="button" class="btn btn-sm btn-primary m-1" onclick="addSelectedInvoices()">
                                 <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
                             </button>
-                            <button type="button" id="filter-vencidas" class="btn btn-sm btn-warning m-1" onclick="toggleFilterVencidas()">
-                                <i class="fas fa-exclamation-triangle" ></i> Mostrar Vencidas
+                            <button type="button" id="filter-vencidas" class="btn btn-sm btn-warning m-1"
+                                onclick="toggleFilterVencidas()">
+                                <i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas
                             </button>
-                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success m-1" >
+                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success m-1">
                                 <i class="fas fa-angles-right me-1"></i>Agregar Todas
                             </button>
 
                         </div>
                         <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
                     </div>
-    
+
                     <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
                         <thead>
                             <tr>
@@ -359,7 +392,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     </table>
                 </div>
             </div>
-        
+
         </div>
         <div class="col-4">
             <div class="card h-100">
@@ -368,12 +401,18 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                     <span id="item-count" class="badge bg-light text-dark">0 documentos</span>
                 </div>
                 <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                    <div style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
-    
-                        <button id="generar-pago" onclick="generatePayment()" style="width: 100%; margin: 5px;" class="btn btn-secondary mt-2 " > <i class="fas fa-credit-card me-2"></i>Generar Pago </button>
-                        <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;" class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i class="fas fa-trash me-2"></i>Limpiar Todo </button>
+                    <div
+                        style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
+
+                        <button id="generar-pago" onclick="generatePayment()" style="width: 100%; margin: 5px;"
+                            class="btn btn-secondary mt-2 "> <i
+                                class="fas {{ edit_mode ? 'fa-plus-circle' : 'fa-credit-card' }} me-2"></i>{{ edit_mode
+                            ? 'Agregar Facturas al Pago' : 'Generar Pago' }} </button>
+                        <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;"
+                            class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i
+                                class="fas fa-trash me-2"></i>Limpiar Todo </button>
                     </div>
-                     <div id="payment-summary" class="payment-summary" style="display: none;">
+                    <div id="payment-summary" class="payment-summary" style="display: none;">
                         <h6 class="mb-3 text-white">Resumen del Pago</h6>
                         <div class="row text-center">
                             <div class="col-6">
@@ -397,7 +436,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                 </div>
             </div>
         </div>
-    
+
     </div>
     <!-- Todo tu código actual de drag & drop -->
 </div>
@@ -413,52 +452,141 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 <script src="{{ JS }}supply.js"></script>
 <script>
-let currentProvider = null;
-let paymentItems = [];
+    let currentProvider = null;
+    let paymentItems = [];
 
+    // Variables para modo edición
+    const EDIT_MODE = {{ edit_mode ?'true': 'false' }};
+    const PAYMENT_ID = {{ payment_id|default ('null') }};
 
-let filterVencidas = false;
-$(document).ready(function() {
+    let filterVencidas = false;
+    $(document).ready(function () {
 
-    window.originalStationOptions = $('#station_id1').html();
-    var company = document.getElementById('company');
-    company.addEventListener('change', function() {
-        filtrarEstacionesPorEmpresa();
+        window.originalStationOptions = $('#station_id1').html();
+        var company = document.getElementById('company');
+        company.addEventListener('change', function () {
+            filtrarEstacionesPorEmpresa();
+        });
+
+        $('#clear-basket').on('click', clearAllPayments);
+
+        updatePaymentSummary();
+
+        // Si está en modo edición, pre-cargar la empresa seleccionada
+        {% if edit_mode %}
+        setTimeout(function () {
+            $('#company').selectpicker('val', '{{ selected_company }}');
+            $('#company').selectpicker('refresh');
+            filtrarEstacionesPorEmpresa();
+
+            setTimeout(function () {
+                $('#proveedor_id').selectpicker('val', '{{ selected_provider }}');
+                $('#proveedor_id').selectpicker('refresh');
+            }, 100);
+        }, 200);
+        {% endif %}
     });
 
-    $('#clear-basket').on('click', clearAllPayments);
-
-    updatePaymentSummary();
-});
 
 
+    function toggleFilterVencidas() {
+        console.log('Todo');
+        const btn = $('#filter-vencidas');
 
-function toggleFilterVencidas() {
-    console.log('Todo');
-    const btn = $('#filter-vencidas');
-    
-    if (!filterVencidas) {
-        // ✅ Activar filtro
-        paymentTable.column(9).search('Vencido').draw();
-        
-        btn.removeClass('btn-warning')
-           .addClass('btn-danger')
-           .html('<i class="fas fa-filter-circle-xmark"></i> Quitar Filtro');
-        
-        filterVencidas = true;
-    } else {
-        // ✅ Desactivar filtro
-        paymentTable.column(9).search('').draw();
-        
-        btn.removeClass('btn-danger')
-           .addClass('btn-warning')
-           .html('<i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas');
-        
-        filterVencidas = false;
+        if (!filterVencidas) {
+            // ✅ Activar filtro
+            paymentTable.column(9).search('Vencido').draw();
+
+            btn.removeClass('btn-warning')
+                .addClass('btn-danger')
+                .html('<i class="fas fa-filter-circle-xmark"></i> Quitar Filtro');
+
+            filterVencidas = true;
+        } else {
+            // ✅ Desactivar filtro
+            paymentTable.column(9).search('').draw();
+
+            btn.removeClass('btn-danger')
+                .addClass('btn-warning')
+                .html('<i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas');
+
+            filterVencidas = false;
+        }
+
+        updateSelectedCount();
     }
-    
-    updateSelectedCount();
-}
+
+    // Guardar la función original generatePayment
+    const originalGeneratePayment = window.generatePayment;
+
+    // Override para manejar modo edición
+    window.generatePayment = async function () {
+        if (EDIT_MODE) {
+            // Modo edición: agregar facturas a pago existente
+            await addInvoicesToExistingPayment();
+        } else {
+            // Modo normal: crear nuevo pago
+            await originalGeneratePayment();
+        }
+    };
+
+    // Función para agregar facturas a pago existente
+    async function addInvoicesToExistingPayment() {
+        if (paymentItems.length === 0) {
+            alertify.myAlert(
+                `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No hay documentos seleccionados para agregar.</p>
+            </div>`
+            );
+            return;
+        }
+
+        alertify.confirm(
+            '¿Agregar facturas al pago?',
+            `Se agregarán ${paymentItems.length} factura(s) al pago. Las autorizaciones serán reiniciadas. ¿Desea continuar?`,
+            async function () {
+                showPaymentLoader('Agregando facturas...', 'Procesando documentos');
+
+                const requestData = {
+                    payment_id: PAYMENT_ID,
+                    documentos: paymentItems
+                };
+                console.log(requestData);
+
+                try {
+                    const response = await fetch('/supply/add_invoices_bulk_to_payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestData)
+                    });
+
+                    const result = await response.json();
+                    hidePaymentLoader();
+
+                    if (result.success) {
+                        alertify.success(result.message || 'Facturas agregadas exitosamente');
+
+                        // Esperar 1 segundo antes de redirigir
+                        setTimeout(() => {
+                            window.location.href = '/supply/payment_detail?id=' + PAYMENT_ID;
+                        }, 1000);
+                    } else {
+                        alertify.error(result.message || 'Error al agregar las facturas');
+                    }
+                } catch (error) {
+                    hidePaymentLoader();
+                    console.error('Error:', error);
+                    alertify.error('Error de conexión al agregar las facturas');
+                }
+            },
+            function () {
+                alertify.error('Operación cancelada');
+            }
+        );
+    }
 
 </script>
 
