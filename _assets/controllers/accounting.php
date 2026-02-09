@@ -1895,7 +1895,7 @@ class Accounting{
             // 7️⃣ Agregar comillas simples a cada elemento y unir
             $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
             
-            if ($rows = $this->Documentos->movement_analysis_table4_optimized($facturasLimpio)) {
+            if ($rows = $this->Documentos->movement_analysis_table4_optimized($facturasArray)) {
                 // Crear una instancia de FPDF
                 $pdf = new PDF_Code128();
                 
