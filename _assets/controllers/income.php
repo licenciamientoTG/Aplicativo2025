@@ -2148,6 +2148,29 @@ public function anomalies_client_tickets()
         return;
     }
 
+    private function obtener_ajuste_juarez_php($fecha_trans) {
+        if (!$fecha_trans) return -1;
+        $dt = ($fecha_trans instanceof \DateTime) ? $fecha_trans : new \DateTime($fecha_trans);
+        $year = (int)$dt->format('Y');
+        
+        // 2do domingo de Marzo
+        $mar1 = new \DateTime("$year-03-01");
+        $dias_al_primero_mar = (7 - (int)$mar1->format('N')) % 7;
+        $segundo_dom_mar = $mar1->modify("+" . ($dias_al_primero_mar + 7) . " days");
+        
+        // 1er domingo de Noviembre
+        $nov1 = new \DateTime("$year-11-01");
+        $dias_al_primero_nov = (7 - (int)$nov1->format('N')) % 7;
+        $primer_dom_nov = $nov1->modify("+" . $dias_al_primero_nov . " days");
+        
+        // Horario Verano (UTC-6) vs Invierno (UTC-7)
+        if ($dt >= $segundo_dom_mar && $dt < $primer_dom_nov) {
+            return 0;
+        } else {
+            return -1;
+        }
+    }
+
     public function process_bank_upload() {
         set_time_limit(0);
         ini_set('memory_limit', '-1');
@@ -2215,22 +2238,34 @@ public function anomalies_client_tickets()
             'BANORTE' => [
                 'Afiliación' => 'Afiliacion',
                 'Afiliacion' => 'Afiliacion',
+                'Nombre de Afiliación' => 'Nombre_Afiliacion',
+                'Nombre de Afiliacion' => 'Nombre_Afiliacion',
+                'Moneda' => 'Moneda',
+                'Estatus de Transacción' => 'Estatus',
+                'Estatus de Transaccion' => 'Estatus',
+                'Tipo transaccion' => 'Tipo_Transaccion',
+                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Tipo de Transaccion' => 'Tipo_Transaccion',
                 'Número de Control' => 'ID_Externo',          
                 'Numero de Control' => 'ID_Externo',
+                'Número de Tarjeta' => 'Tarjeta',
+                'Numero de Tarjeta' => 'Tarjeta',
+                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
                 'Monto de Transacción Signo' => 'Monto',
                 'Monto de Transaccion Signo' => 'Monto',
                 'Fecha Transacción' => 'Fecha_Transaccion',
                 'Fecha Transaccion' => 'Fecha_Transaccion',
                 'Código Autorización' => 'Codigo_Autorizacion',
                 'Codigo Autorizacion' => 'Codigo_Autorizacion',
+                'Referencia' => 'Referencia_Pago',
                 'Terminal ID' => 'Terminal',                  
                 'Terminal' => 'Terminal',
+                'Lote de Transacción' => 'Lote',
+                'Lote' => 'Lote',
                 'Hora de Transacción' => 'Hora',
                 'Hora Transacción' => 'Hora',
                 'Hora' => 'Hora',
-                'Referencia Interbancaria' => 'Referencia',   
-                'Descripción' => 'Referencia',
-                'Descripcion' => 'Referencia',
+                'Referencia Interbancaria' => 'Referencia',
                 'Fecha Depósito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
             ],
@@ -2240,15 +2275,23 @@ public function anomalies_client_tickets()
                 'Hora de Transacción' => 'Hora',
                 'Hora Transacción' => 'Hora',
                 'Afiliación' => 'Afiliacion',
+                'Nombre del comercio' => 'Comercio',
+                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Tipo Transacción' => 'Tipo_Transaccion',
+                'Tarjeta' => 'Tarjeta',
                 'Cod. Terminal' => 'Terminal',                
                 'Terminal ID' => 'Terminal',
+                'Operación' => 'Operacion',
+                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
+                'Tipo Tarjeta' => 'Tipo_Tarjeta',
+                'Número de Tarjeta' => 'Tarjeta_Numero',
+                'Tarjeta Número' => 'Tarjeta_Numero',
                 'Código Autorización' => 'Codigo_Autorizacion',
                 'Cod. Aut' => 'Codigo_Autorizacion',
                 'Total' => 'Monto',                           
                 'Monto de Transacción Signo' => 'Monto',
-                'Referencia' => 'Referencia',                 
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha Deposito' => 'Fecha_Deposito'
+                'Comisión' => 'Comision',
+                'Referencia' => 'Referencia'                  
             ]
         ];
 
@@ -2308,6 +2351,17 @@ public function anomalies_client_tickets()
                             }
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                        if ($col === 'Hora' && $val && isset($dataRow['Fecha_Transaccion'])) {
+                            $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                            if ($ajuste !== 0) {
+                                try {
+                                    $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                    $dt_full->modify("$ajuste hours");
+                                    $val = $dt_full->format('H:i:s');
+                                    $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                } catch(\Exception $e) {}
+                            }
+                        }
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
@@ -2322,24 +2376,16 @@ public function anomalies_client_tickets()
                                 $handle = fopen($filePath, "r");
                                 $rawHeader = fgetcsv($handle, 0, ",");
                                 
-                                // 1. Sanitizar y Unificar Nombres de Columna
-                                $cleanCols = [];
-                                $seen = [];
-                                foreach ($rawHeader as $h) {
-                                    $name = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
-                                    if (isset($seen[$name])) {
-                                        $seen[$name]++;
-                                        $name = "{$name}_{$seen[$name]}";
-                                    } else {
-                                        $seen[$name] = 0;
+                                // 1. Mapear Índices
+                                $mappedIndices = [];
+                                foreach ($rawHeader as $i => $h) {
+                                    $stdName = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
+                                    if (in_array($stdName, $columnas_oficiales)) {
+                                        $mappedIndices[$stdName] = $i;
                                     }
-                                    $cleanCols[] = $name;
                                 }
                 
-                                // 2. Asegurar esquema
-                                $this->asegurar_columnas_php($conn, 'banco_getnet', $cleanCols);
-                
-                                // 3. Huellas para duplicados (8 CAMPOS CLAVE PARA CONSISTENCIA TOTAL)
+                                // 2. Huellas para duplicados (8 CAMPOS CLAVE)
                                 $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_getnet");
                                 $huellas = [];
                                 while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -2355,55 +2401,57 @@ public function anomalies_client_tickets()
                                     $huellas[$key] = true;
                                 }
                 
-                                // 4. Mapeo de índices core
-                                $idxAfil = array_search('Afiliacion', $cleanCols);
-                                $idxIDM = array_search('ID_Externo', $cleanCols);
-                                $idxFecha = array_search('Fecha_Transaccion', $cleanCols);
-                                $idxTotal = array_search('Monto', $cleanCols);
-                                $idxHora = array_search('Hora', $cleanCols);
-                                $idxAuth = array_search('Codigo_Autorizacion', $cleanCols);
-                                $idxRef = array_search('Referencia', $cleanCols);
-                                $idxTerm = array_search('Terminal', $cleanCols);
-                
-                                // 5. Preparar SQL Dinámico
-                                $cleanCols[] = 'Nombre_Archivo'; // Agregar columna estándar
-                                $colsSql = implode(", ", array_map(function($c){ return "[$c]"; }, $cleanCols));
-                                $placeholders = implode(", ", array_fill(0, count($cleanCols), "?"));
-                                $ins = $conn->prepare("INSERT INTO banco_getnet ($colsSql) VALUES ($placeholders)");
+                                // 3. Preparar SQL Estándar
+                                $sqlIns = "INSERT INTO banco_getnet (".implode(",", $columnas_oficiales).") VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).")";
+                                $ins = $conn->prepare($sqlIns);
                 
                                 // Ruta relativa para la DB
                                 $dbFilePath = $subPath . $safeName;
                 
                                 while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
-                                    $afil = ($idxAfil !== false) ? trim($row[$idxAfil] ?? '') : '';
-                                    $idm = ($idxIDM !== false) ? trim($row[$idxIDM] ?? '') : '';
-                                    $auth = ($idxAuth !== false) ? trim($row[$idxAuth] ?? '') : '';
-                                    $monto = ($idxTotal !== false) ? (float)str_replace(['$', ','], '', $row[$idxTotal] ?? 0) : 0;
-                                    $hora = ($idxHora !== false) ? trim($row[$idxHora] ?? '') : '';
-                                    $ref = ($idxRef !== false) ? trim($row[$idxRef] ?? '') : '';
-                                    $term = ($idxTerm !== false) ? trim($row[$idxTerm] ?? '') : '';
-                                    
-                                    $fechaRaw = ($idxFecha !== false) ? ($row[$idxFecha] ?? '') : '';
-                                    $fechaSql = null;
-                                    if ($fechaRaw) {
-                                        $d = DateTime::createFromFormat('d/m/Y', $fechaRaw);
-                                        if (!$d) $d = new DateTime($fechaRaw);
-                                        if ($d) $fechaSql = $d->format('Y-m-d');
-                                    }
-                
-                                    // HUELLA DETERMINISTA IDÉNTICA A BANCOS.PY
-                                    $huella = $afil . '|' . $idm . '|' . $fechaSql . '|' . number_format($monto, 2, '.', '') . '|' . $hora . '|' . $auth . '|' . $ref . '|' . $term;
-                                    if (isset($huellas[$huella])) { $skipped++; continue; }
-                
-                                    // FILTRADO ESTRICTO DE COLUMNAS OFICIALES
+                                    if (empty(array_filter($row))) continue;
+
                                     $dataRow = [];
                                     foreach($columnas_oficiales as $col) {
                                         if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
-                                        $val = isset($mappedIndices[$col]) ? $row[$mappedIndices[$col]] : null;
-                                        if ($col === 'Monto') $val = $monto;
-                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') $val = $fechaSql;
+                                        $val = isset($mappedIndices[$col]) ? ($row[$mappedIndices[$col]] ?? null) : null;
+                                        
+                                        if ($col === 'Monto') $val = (float)str_replace(['$', ','], '', $val ?? 0);
+                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
+                                            if ($val) {
+                                                $d = \DateTime::createFromFormat('d/m/Y', $val);
+                                                if (!$d) $d = new \DateTime($val);
+                                                $val = $d ? $d->format('Y-m-d') : null;
+                                            }
+                                        }
+                                        if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                                        if ($col === 'Hora' && $val) {
+                                            $h_clean = strtolower(trim($val));
+                                            if (strpos($h_clean, 'am') !== false || strpos($h_clean, 'pm') !== false) {
+                                                $d_h = \DateTime::createFromFormat('h:i:s a', str_replace(['am','pm'], [' am',' pm'], $h_clean));
+                                                if (!$d_h) $d_h = \DateTime::createFromFormat('g:i:s a', str_replace(['am','pm'], [' am',' pm'], $h_clean));
+                                                if ($d_h) $val = $d_h->format('H:i:s');
+                                            }
+                                            
+                                            // AJUSTE HORARIO JUAREZ
+                                            if (isset($dataRow['Fecha_Transaccion'])) {
+                                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                                if ($ajuste !== 0) {
+                                                    try {
+                                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                                        $dt_full->modify("$ajuste hours");
+                                                        $val = $dt_full->format('H:i:s');
+                                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                                    } catch(\Exception $e) {}
+                                                }
+                                            }
+                                        }
                                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                                     }
+                
+                                    // Huella para saltar duplicados
+                                    $huella = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'');
+                                    if (isset($huellas[$huella])) { $skipped++; continue; }
                 
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
@@ -3043,26 +3091,26 @@ public function anomalies_client_tickets()
 
     // FUNCIÓN PARA SERVIR ARCHIVOS DEL BANCO
     public function view_bank_file() {
-        // Limpiar cualquier búfer de salida inmediatamente
         while (ob_get_level()) ob_end_clean();
 
         $file = $_GET['file'] ?? '';
-        if (empty($file)) {
-            http_response_code(400);
-            exit("Archivo no especificado");
-        }
+        if (empty($file)) { http_response_code(400); exit("Archivo no especificado"); }
 
-        // Normalizar ruta (evitar ataques de navegación de directorios)
         $file = str_replace(['../', '..\\'], '', $file);
         
-        // Construir ruta absoluta basada en la ubicación del controlador
-        // _assets/controllers/income.php -> _assets/uploads/
-        $baseDir = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
-        $fullPath = $baseDir . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
+        // 1. Intentar ruta local del proyecto
+        $baseDirLocal = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR;
+        $fullPath = $baseDirLocal . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
+
+        if (!file_exists($fullPath)) {
+            // 2. Fallback a la ruta absoluta del IIS (Donde el bot guarda)
+            $baseDirIIS = "C:\\inetpub\\wwwroot\\TG_PHP\\_assets\\uploads\\";
+            $fullPath = $baseDirIIS . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $file);
+        }
 
         if (!file_exists($fullPath)) {
             http_response_code(404);
-            exit("El reporte original no se encuentra en el servidor: " . $file);
+            exit("El reporte original no se encuentra en ninguna de las rutas configuradas: " . $file);
         }
 
         $ext = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
@@ -3112,7 +3160,7 @@ public function anomalies_client_tickets()
 
             $tabla = "";
             $colId = "";
-            $colFecha = "Fecha_Conciliacion";
+            $colFecha = "Fecha_Transaccion";
 
             if ($data['entidad_id'] == 1) { // Santander
                 $tabla = "banco_getnet";
@@ -3408,25 +3456,25 @@ public function get_resumen_transito() {
                     COUNT(T.grupo_id) as total_conciliaciones,
                     ISNULL(SUM(T.diferencia), 0) as total_diferencia
                 FROM (
-                    SELECT DISTINCT G.grupo_id, G.diferencia
+                    SELECT DISTINCT G.id as grupo_id, G.diferencia
                     FROM Conciliacion_Transito CT
                     
                     INNER JOIN Conciliacion_V2_Detalles DL ON 
-                        DL.fecha_operativa = CT.fecha_original AND 
+                        DL.fecha_operacion = CT.fecha_original AND 
                         DL.monto = CT.monto AND 
-                        DL.lado = 'left'
+                        DL.origen = 'CG'
                         
-                    INNER JOIN Conciliacion_V2_Grupos G ON G.grupo_id = DL.grupo_id
+                    INNER JOIN Conciliacion_V2_Grupos G ON G.id = DL.grupo_id
 
                     INNER JOIN Conciliacion_V2_Detalles DR ON 
-                        DR.grupo_id = G.grupo_id AND 
-                        DR.lado = 'center'
+                        DR.grupo_id = G.id AND 
+                        DR.origen = 'TX'
 
                     WHERE 
                         CT.estacion_id = ? 
                         AND CT.estado = 'CONCILIADO'
                         AND CT.fecha_original < ? 
-                        AND DR.fecha BETWEEN ? AND ?
+                        AND DR.fecha_operacion BETWEEN ? AND ?
                 ";
 
         $params = [
@@ -4135,7 +4183,7 @@ public function stamped_invoices_detail(): void
                         INNER JOIN (
                             SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                             UNION ALL
-                            SELECT Numero_Control, Afiliacion FROM banco_banorte
+                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
                         ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
                         INNER JOIN Conciliacion_Configuracion CC ON TX_AFIL.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
                         INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
@@ -4156,7 +4204,7 @@ public function stamped_invoices_detail(): void
                            INNER JOIN (
                                SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
                                UNION ALL
-                               SELECT Numero_Control, Afiliacion FROM banco_banorte
+                               SELECT ID_Externo, Afiliacion FROM banco_banorte
                            ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
                            INNER JOIN Conciliacion_Configuracion CC ON TX_AFIL.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
                            INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
@@ -4243,7 +4291,6 @@ public function stamped_invoices_detail(): void
 
                 case 'station':
                     // MODO ESTACIÓN: Agrupado por el banco/afil predominante de cada grupo
-                    // Usamos una subconsulta para no duplicar el grupo si tiene múltiples detalles TX
                     $sql = "SELECT 
                                 Atribucion.label,
                                 SUM(G.total_sistema) as sistema,
