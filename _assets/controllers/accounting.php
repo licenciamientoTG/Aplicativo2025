@@ -1908,6 +1908,9 @@ class Accounting{
                 $pageNumber = 0; // Contador de páginas
                 
                 foreach ($rows as $key => $row) {
+                    echo '<pre>';
+                    var_dump($row);
+                    die();
                     // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
                     $pdf->AddPage('P');
                     $pageNumber++; // Incrementar contador
