@@ -1895,7 +1895,7 @@ class Accounting{
             // 7️⃣ Agregar comillas simples a cada elemento y unir
             $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
             
-            if ($rows = $this->Documentos->movement_analysis_table4_optimized($facturasArray)) {
+            if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio)) {
                 // Crear una instancia de FPDF
                 $pdf = new PDF_Code128();
                 
@@ -1908,9 +1908,6 @@ class Accounting{
                 $pageNumber = 0; // Contador de páginas
                 
                 foreach ($rows as $key => $row) {
-                    echo '<pre>';
-                    var_dump($row);
-                    die();
                     // Agregar página en formato horizontal de 85x54mm (tamaño tarjeta)
                     $pdf->AddPage('P');
                     $pageNumber++; // Incrementar contador
