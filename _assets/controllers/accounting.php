@@ -1895,7 +1895,7 @@ class Accounting{
             // 7️⃣ Agregar comillas simples a cada elemento y unir
             $facturasLimpio = "'" . implode("','", $facturasArray) . "'";
             
-            if ($rows = $this->Documentos->movement_analysis_table4($facturasLimpio)) {
+            if ($rows = $this->Documentos->movement_analysis_table4_optimized($facturasLimpio)) {
                 // Crear una instancia de FPDF
                 $pdf = new PDF_Code128();
                 
@@ -1928,13 +1928,13 @@ class Accounting{
                     $pdf->SetFont('Arial', 'IB', 7);
                     $pdf->Cell(200, 3, '', 0, 1, 'C');
                     $pdf->Cell(23, 3.6, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['Estación']), 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(
-    176,
-    3.6,
-    iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['DocDenominacion'] . ' (' . $row['nropcc'] . ')'),
-    0,
-    1,
-    'L'
-);
+                        176,
+                        3.6,
+                        iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['DocDenominacion'] . ' (' . $row['nropcc'] . ')'),
+                        0,
+                        1,
+                        'L'
+                    );
                     $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
                     $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
                     $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
@@ -2010,12 +2010,6 @@ class Accounting{
                     // Agregar los textos del pie
                     $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
                     $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
-
-
-
-
-
-
 
                     
                     // Restaurar la posición Y para el siguiente documento (si lo hay)

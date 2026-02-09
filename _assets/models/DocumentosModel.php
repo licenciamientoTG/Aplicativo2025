@@ -1213,6 +1213,101 @@ class DocumentosModel extends Model{
         return $this->sql->select($query, $params);
     }
 
+    function movement_analysis_table4_optimized(array $facturasArray) {
+        if (empty($facturasArray)) {
+            return [];
+        }
+        
+        // Usar parámetros seguros en lugar de concatenación
+        $placeholders = implode(',', array_fill(0, count($facturasArray), '?'));
+        
+        $query = "
+        SELECT
+            t1.nro AS [Número],
+            t1.Factura,
+            t1.nroref AS [Orden de Compra],
+            CONVERT(date, DATEADD(DAY, t1.fch, '1899-12-31')) AS Fecha,
+            CONVERT(date, DATEADD(DAY, t1.vto, '1899-12-31')) AS Vencimiento,
+            TRIM(t2.den) AS [Producto],
+            t3.VolumenRecibido,
+            ROUND(t1.can, 3) AS Facturado,
+            ROUND(t1.mto / 100.0, 2) AS Importe,
+            ROUND(t1.mtoiie / 100.0, 2) AS [I.E.P.S],
+            ROUND(t1.mtoiva / 100.0, 2) AS [I.V.A.],
+            ROUND(ISNULL(t4.Recargos, 0) / 100.0, 2) AS [Recargos],
+            ROUND(ISNULL(t7.iva_concepto, 0), 2) AS iva_concepto,
+            ROUND((t1.mto / 100.0) + (t1.mtoiva / 100.0), 2) AS TotalFactura,
+            t5.abr AS [Estación],
+            t1.satuid AS UUID,
+            t1.RFC,
+            t1.Remision AS Remision,
+            t1.Vehiculo,
+            t1.Entidad AS Proveedor,
+            -- Cálculo optimizado del turno
+            CASE 
+                WHEN t3.HrSel BETWEEN 0 AND 599 THEN '1 (00:00 a 06:00) [4]'
+                WHEN t3.HrSel BETWEEN 600 AND 1399 THEN '2 (06:01 a 14:00) [1]'
+                WHEN t3.HrSel BETWEEN 1400 AND 2199 THEN '3 (14:01 a 22:00) [2]'
+                WHEN t3.HrSel BETWEEN 2200 AND 2399 THEN '4 (22:01 a 23:59) [3]'
+                ELSE 'Sin turno'
+            END AS DocTurno
+        FROM [TG].[dbo].[vw_Documentos_Unificados] AS t1
+        LEFT JOIN [SG12].[dbo].[Productos] AS t2 ON t1.codprd = t2.cod
+        
+        -- Subconsulta optimizada con EXISTS en lugar de CROSS APPLY si no es necesario
+        LEFT JOIN (
+            SELECT 
+                s.nrodoc,
+                s.codgas,
+                s.VolumenRecibido,
+                s.HrSel
+            FROM (
+                SELECT
+                    mt.nrodoc,
+                    mt.codgas,
+                    ROUND(SUM(CAST(mt.volrec AS DECIMAL(14,3))), 3) AS VolumenRecibido,
+                    MAX(mt.hratrn) AS HrSel,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY mt.nrodoc, mt.codgas 
+                        ORDER BY CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END
+                    ) AS rn
+                FROM [SG12].[dbo].[MovimientosTan] AS mt
+                WHERE mt.tiptrn IN (3, 4)
+                    AND mt.nrodoc > 0
+                GROUP BY mt.nrodoc, mt.codgas, mt.tiptrn
+            ) AS s
+            WHERE s.rn = 1
+        ) AS t3 ON t1.codgas = t3.codgas AND t1.nro = t3.nrodoc
+        
+        LEFT JOIN (
+            SELECT SUM(mto) AS Recargos, nro, codgas
+            FROM [SG12].[dbo].[Documentos]
+            WHERE satdat = '@e:7'
+            GROUP BY nro, codgas
+        ) AS t4 ON t1.nro = t4.nro AND t1.codgas = t4.codgas
+        
+        LEFT JOIN [SG12].[dbo].[Gasolineras] AS t5 ON t1.codgas = t5.cod
+        LEFT JOIN [SG12].[dbo].[Empresas] AS t6 ON t5.codemp = t6.cod
+        
+        LEFT JOIN (
+            SELECT SUM(mto/100) AS iva_concepto, nro, codgas 
+            FROM [SG12].[dbo].Documentos 
+            WHERE codcpt > 0 
+                AND satdat = '@e:4' 
+                AND codcpt NOT IN (4) 
+            GROUP BY nro, codgas
+        ) AS t7 ON t1.nro = t7.nro AND t1.codgas = t7.codgas
+        
+        WHERE t1.Factura IN ({$placeholders})
+        
+        ORDER BY t1.nro ASC
+        OPTION (RECOMPILE); -- Para queries con parámetros variables
+        ";
+        
+        // Pasar parámetros como array
+        return $this->sql->select($query, $facturasArray);
+    }
+
     function get_concepts($codgas, $nro) {
         $query = "
         SELECT
