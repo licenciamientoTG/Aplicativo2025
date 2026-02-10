@@ -6935,6 +6935,70 @@ function deleteNote(noteId) {
   });
 }
 
+function openUploadNoteFileModal(noteId) {
+  document.getElementById("uploadNoteId").value = noteId;
+  document.getElementById("uploadNoteFileInput").value = "";
+  document.querySelector("#uploadNoteFileModal .custom-file-label").textContent =
+    "Seleccionar archivo PDF...";
+  $("#uploadNoteFileModal").modal("show");
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  var uploadNoteFileForm = document.getElementById("uploadNoteFileForm");
+  if (uploadNoteFileForm) {
+    document.getElementById("uploadNoteFileInput").addEventListener("change", function () {
+      var label = document.querySelector("#uploadNoteFileModal .custom-file-label");
+      label.textContent = this.files.length > 0 ? this.files[0].name : "Seleccionar archivo PDF...";
+    });
+
+    uploadNoteFileForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      var fileInput = document.getElementById("uploadNoteFileInput");
+      if (!fileInput.files || fileInput.files.length === 0) {
+        Swal.fire({ icon: "warning", title: "Archivo requerido", text: "Seleccione un archivo PDF." });
+        return;
+      }
+
+      var formData = new FormData(this);
+
+      Swal.fire({
+        title: "Subiendo...",
+        text: "Guardando archivo",
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); },
+      });
+
+      fetch("/supply/uploadNoteFile", {
+        method: "POST",
+        body: formData,
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          Swal.close();
+          if (data.success) {
+            Swal.fire({
+              icon: "success",
+              title: "Éxito",
+              text: data.message,
+              timer: 2000,
+            }).then(() => {
+              $("#uploadNoteFileModal").modal("hide");
+              location.reload();
+            });
+          } else {
+            Swal.fire({ icon: "error", title: "Error", text: data.message });
+          }
+        })
+        .catch((error) => {
+          Swal.close();
+          console.error("Error:", error);
+          Swal.fire({ icon: "error", title: "Error", text: "Error al subir el archivo" });
+        });
+    });
+  }
+});
+
 function removeInvoiceFromPayment(invoice_id, folio) {
   Swal.fire({
     title: "¿Quitar esta factura?",
@@ -7107,3 +7171,5 @@ function addInvoiceToPayment(document) {
     }
   });
 }
+
+

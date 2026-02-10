@@ -535,8 +535,7 @@
 								Total Facturas:
 							</td>
 							<td class="text-right">
-								<strong>${{ payment_calculation.invoice_total|number_format(2)
-                }}</strong>
+								<strong>${{ payment_calculation.invoice_total|number_format(2)}}</strong>
 							</td>
 						</tr>
 
@@ -664,18 +663,22 @@
 							</td>
 							<td class="text-center">{{ note.description }}</td>
 							<td class="text-center">
-								{% if note.documents_count > 0 %}
-									<button class="btn btn-sm btn-info view-docs-btn" 
-											data-note-id="{{ note.id }}"
-											data-docs-count="{{ note.documents_count }}">
-										<i class="fas fa-file-pdf"></i>
-										<span class="badge bg-light text-dark">{{ note.documents_count }}</span>
-									</button>
+								{% if note.documents and note.documents|length > 0 %}
+									{% for doc in note.documents %}
+										<button class="btn btn-sm btn-info view-doc-btn me-1" 
+												data-doc-id="{{ doc.id }}"
+												data-file-path="{{ doc.file_path }}">
+											<i class="fas fa-file-pdf"></i>
+										</button>
+									{% endfor %}
 								{% else %}
 									<span class="text-muted">Sin archivo</span>
 								{% endif %}
 							</td>
 							<td>
+								<button class="btn btn-sm btn-secondary me-1" onclick="openUploadNoteFileModal({{ note.id }})" title="Subir archivo">
+									<i class="fas fa-upload"></i>
+								</button>
 								<button class="btn btn-sm btn-danger" onclick="deleteNote({{ note.id }})" title="Eliminar nota">
 									<i class="fas fa-trash"></i>
 								</button>
@@ -1462,6 +1465,41 @@
 		</div>
 	</div>
 
+	<!-- Modal para Subir Archivo a Nota -->
+	<div class="modal fade" id="uploadNoteFileModal" tabindex="-1" aria-labelledby="uploadNoteFileModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="uploadNoteFileModalLabel">
+						<i class="fas fa-upload"></i> Subir Archivo a Nota
+					</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<form id="uploadNoteFileForm" enctype="multipart/form-data">
+					<div class="modal-body">
+						<input type="hidden" id="uploadNoteId" name="note_id" value="">
+						<div class="form-group">
+							<label>Archivo PDF *</label>
+							<div class="custom-file">
+								<input type="file" class="custom-file-input" name="note_file" id="uploadNoteFileInput" accept=".pdf" required>
+								<label class="custom-file-label" for="uploadNoteFileInput">
+									Seleccionar archivo PDF...
+								</label>
+							</div>
+							<small class="form-text text-muted">Solo archivos PDF. Máximo 10MB.</small>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+						<button type="submit" class="btn btn-primary">
+							<i class="fas fa-upload"></i> Subir
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
 	<!-- Modal para Agregar Factura -->
 	<div class="modal fade" id="addInvoiceModal" tabindex="-1">
 		<div class="modal-dialog modal-xl">
@@ -1515,27 +1553,36 @@
 		</div>
 	</div>
 
-	<div class="modal fade" id="documentsModal" tabindex="-1">
-		<div class="modal-dialog modal-lg">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">
-						<i class="fas fa-file-pdf"></i> Documentos adjuntos
-					</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<div id="documents-list">
-						<div class="text-center">
-							<div class="spinner-border text-primary" role="status">
-								<span class="visually-hidden">Cargando...</span>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
+<!-- Modal para ver PDF -->
+<div class="modal fade" id="pdfModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-file-pdf"></i> Documento #<span id="doc-id-title"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pdf-viewer" 
+                        style="width: 100%; height: 80vh;" 
+                        frameborder="0">
+                </iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="download-pdf-btn" 
+                   href="#" 
+                   target="_blank" 
+                   class="btn btn-primary">
+                    <i class="fas fa-download"></i> Descargar
+                </a>
+                <button type="button" class="btn btn-danger" id="delete-doc-btn">
+                    <i class="fas fa-trash"></i> Eliminar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 	<input type="number" id="paymentId" value="{{ payment.id }}" hidden/>
 
@@ -1558,64 +1605,63 @@
 		updatePagoSummary();
 		});
 
-// ========== FUNCIONES PARA AGREGAR/QUITAR FACTURAS ==========
 
-		function openAddInvoiceModal() {
-			$('#addInvoiceModal').modal('show');
-			$('#searchInvoiceInput').val('');
-			$('#availableInvoicesResults').html(`
-					<div class="text-center text-muted">
-						<i class="fas fa-search fa-2x"></i>
-						<p class="mt-2">Ingrese un término de búsqueda para encontrar facturas disponibles</p>
-					</div>
-				`);
-		}
-
-		function searchAvailableInvoices() {
-			const search = $('#searchInvoiceInput').val();
-			const provider_cod = {{ payment.provider_cod }};
-
-			if (! search || search.length < 2) {
-				Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
-				return;
-			}
-
+	function openAddInvoiceModal() {
+		$('#addInvoiceModal').modal('show');
+		$('#searchInvoiceInput').val('');
 		$('#availableInvoicesResults').html(`
-				<div class="text-center">
-					<i class="fas fa-spinner fa-spin fa-2x"></i>
-					<p class="mt-2">Buscando facturas...</p>
+				<div class="text-center text-muted">
+					<i class="fas fa-search fa-2x"></i>
+					<p class="mt-2">Ingrese un término de búsqueda para encontrar facturas disponibles</p>
 				</div>
 			`);
+	}
 
-			$.ajax({
-			url: '/supply/search_available_invoices',
-			type: 'GET',
-			data: {
-			provider_cod: provider_cod,
-			search: search
-			},
-			success: function (response) {
-			if (response.success) {
-			if (response.data.length === 0) {
-			$('#availableInvoicesResults').html(`
-									<div class="alert alert-info">
-										<i class="fas fa-info-circle"></i>
-										No se encontraron facturas disponibles
-									</div>
-								`);
-			} else {
-			renderAvailableInvoices(response.data);
-			}
-			} else {
-			Swal.fire({icon: 'error', title: 'Error', text: response.message});
-			}
-			},
-			error: function () {
-			Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
-			}
-			});
-		}
+		
+function searchAvailableInvoices() {
+    const search = $('#searchInvoiceInput').val();
+    const provider_cod = {{ payment.provider_cod }};
 
+    if (! search || search.length < 2) {
+      Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
+      return;
+    }
+
+    $('#availableInvoicesResults').html(`
+      <div class="text-center">
+        <i class="fas fa-spinner fa-spin fa-2x"></i>
+        <p class="mt-2">Buscando facturas...</p>
+      </div>
+    `);
+
+    $.ajax({
+    url: '/supply/search_available_invoices',
+    type: 'GET',
+    data: {
+    provider_cod: provider_cod,
+    search: search
+    },
+    success: function (response) {
+    if (response.success) {
+    if (response.data.length === 0) {
+    $('#availableInvoicesResults').html(`
+                <div class="alert alert-info">
+                  <i class="fas fa-info-circle"></i>
+                  No se encontraron facturas disponibles
+                </div>
+              `);
+    } else {
+    renderAvailableInvoices(response.data);
+    }
+    } else {
+    Swal.fire({icon: 'error', title: 'Error', text: response.message});
+    }
+    },
+    error: function () {
+    Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
+    }
+    });
+  }
 
  
 
@@ -1679,117 +1725,6 @@
 
 
 
-$(document).on('click', '.view-docs-btn', function() {
-    const noteId = $(this).data('note-id');
-    loadDocumentsModal(noteId);
-});
-
-
-
-function loadDocumentsModal(noteId) {
-    console.log('Cargar documentos para nota ID:', noteId);
-    // Abrir modal
-    const modal = new bootstrap.Modal(document.getElementById('documentsModal'));
-    modal.show();
-    
-    // Mostrar loading
-    $('#documents-list').html(`
-        <div class="text-center">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Cargando...</span>
-            </div>
-        </div>
-    `);
-    
-    // Cargar documentos vía AJAX
-    $.ajax({
-        url: 'controller.php?action=getNoteDocuments',
-        method: 'POST',
-        data: { note_id: noteId },
-        dataType: 'json',
-        success: function(response) {
-            if (response.success && response.documents.length > 0) {
-                let html = '<div class="list-group">';
-                
-                response.documents.forEach(function(doc) {
-                    const uploadDate = new Date(doc.created_at).toLocaleString('es-MX');
-                    
-                    html += `
-                        <div class="list-group-item">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <i class="fas fa-file-pdf text-danger"></i>
-                                    <strong>Documento #${doc.id}</strong>
-                                    <br>
-                                    <small class="text-muted">
-                                        <i class="fas fa-user"></i> ${doc.created_by_name || 'N/A'}
-                                        &nbsp;|&nbsp;
-                                        <i class="fas fa-clock"></i> ${uploadDate}
-                                    </small>
-                                </div>
-                                <div>
-                                    <a href="${doc.file_path}" 
-                                       target="_blank" 
-                                       class="btn btn-sm btn-primary me-2">
-                                        <i class="fas fa-eye"></i> Ver
-                                    </a>
-                                    <button class="btn btn-sm btn-danger delete-doc-btn" 
-                                            data-doc-id="${doc.id}"
-                                            data-note-id="${noteId}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += '</div>';
-                $('#documents-list').html(html);
-            } else {
-                $('#documents-list').html(`
-                    <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> No hay documentos adjuntos
-                    </div>
-                `);
-            }
-        },
-        error: function(xhr) {
-            $('#documents-list').html(`
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle"></i> Error al cargar documentos
-                </div>
-            `);
-        }
-    });
-}
-
-// Event listener para eliminar documento
-$(document).on('click', '.delete-doc-btn', function() {
-    console.log('Eliminar documento');
-    const docId = $(this).data('doc-id');
-    const noteId = $(this).data('note-id');
-    
-    if (confirm('¿Estás seguro de eliminar este documento?')) {
-        $.ajax({
-            url: 'controller.php?action=deleteNoteDocument',
-            method: 'POST',
-            data: { doc_id: docId },
-            dataType: 'json',
-            success: function(response) {
-                if (response.success) {
-                    // Recargar la lista de documentos
-                    loadDocumentsModal(noteId);
-                    
-                    // Opcional: recargar la tabla completa
-                    location.reload();
-                } else {
-                    alert('Error: ' + response.message);
-                }
-            }
-        });
-    }
-});
 
 
 	</script>

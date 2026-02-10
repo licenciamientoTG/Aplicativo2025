@@ -3447,6 +3447,12 @@ class Supply
         $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
         $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
         $invoice_credit_debit_notes = $this->InvoiceCreditDebitNotesModel->getCreditDebitNotes($payment_id);
+         if ($invoice_credit_debit_notes) {
+            foreach ($invoice_credit_debit_notes as &$note) {
+                $note['documents'] = $this->InvoiceCreditDebitNotesDocModel->getDocumentsByNoteId($note['id']);
+            }
+            unset($note); // Liberar referencia
+        }
         $notes_totals = $this->InvoiceCreditDebitNotesModel->calculateNotesTotals($payment_id);
         // Crear array con información de cada autorización
         $auth_info = [
@@ -3608,6 +3614,91 @@ class Supply
 
         } catch (Exception $e) {
             // Cleanup en caso de error
+            if (isset($fullPath) && file_exists($fullPath)) {
+                unlink($fullPath);
+            }
+
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Subir archivo a una nota de crédito/cargo existente
+     */
+    public function uploadNoteFile()
+    {
+        try {
+            if (empty($_POST['note_id'])) {
+                throw new Exception('El campo note_id es requerido');
+            }
+
+            $noteId = (int) $_POST['note_id'];
+
+            // Verificar que la nota existe
+            $note = $this->InvoiceCreditDebitNotesModel->getNoteById($noteId);
+            if (!$note) {
+                throw new Exception('Nota no encontrada');
+            }
+
+            if (!isset($_FILES['note_file']) || $_FILES['note_file']['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('No se recibió ningún archivo o ocurrió un error al subirlo');
+            }
+
+            // Validar tipo de archivo
+            $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
+            if ($fileType !== 'application/pdf') {
+                throw new Exception('Solo se permiten archivos PDF');
+            }
+
+            // Validar tamaño (10MB máximo)
+            if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
+                throw new Exception('El archivo no debe exceder 10MB');
+            }
+
+            $extension = pathinfo($_FILES['note_file']['name'], PATHINFO_EXTENSION);
+
+            // Crear registro del documento en BD
+            $docData = [
+                'credit_note_id' => $noteId,
+                'file_extension' => $extension,
+                'created_by' => $_SESSION['tg_user']['Id']
+            ];
+
+            $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord($docData);
+            if (!$docId) {
+                throw new Exception('Error al crear registro del documento');
+            }
+
+            // Subir el archivo
+            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $newFilename = "{$docId}.{$extension}";
+            $fullPath = $uploadDir . $newFilename;
+
+            if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $fullPath)) {
+                throw new Exception('Error al guardar el archivo');
+            }
+
+            // Actualizar ruta en el registro del documento
+            $filePath = 'uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/' . $newFilename;
+            if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
+                throw new Exception('Error al actualizar la ruta del archivo');
+            }
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Archivo subido correctamente',
+                'doc_id' => $docId
+            ]);
+
+        } catch (Exception $e) {
             if (isset($fullPath) && file_exists($fullPath)) {
                 unlink($fullPath);
             }
