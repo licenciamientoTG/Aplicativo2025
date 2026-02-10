@@ -2117,12 +2117,11 @@ public function anomalies_client_tickets()
         if (!$nombre) return "SinNombre";
         $orig = trim((string)$nombre);
 
-        // 1. Quitar BOM (Byte Order Mark) invisible
-        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE"], '', $orig);
+        // 1. Quitar BOM y normalizar espacios (incluyendo espacios no divisibles \xA0)
+        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', $orig);
+        $orig = trim(preg_replace('/\s+/', ' ', $orig));
 
-        // 2. REPARACIÓN DE CODIFICACIÓN (Nuevo)
-        // Si detectamos patrones como Ã³ (ó), Ã± (ñ), etc., intentamos arreglarlo.
-        // Esto convierte la cadena interpretada incorrectamente de vuelta a su caracter real.
+        // 2. REPARACIÓN DE CODIFICACIÓN
         if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
             $intento = @utf8_decode($orig);
             if ($intento && mb_check_encoding($intento, 'UTF-8')) {
@@ -2133,6 +2132,19 @@ public function anomalies_client_tickets()
         // 3. Revisar en el Mapa (Chequeo exacto)
         if (isset($coreMap[$bankType][$orig])) {
             return $coreMap[$bankType][$orig];
+        }
+
+        // 3.1. FUZZY MATCH ROBUSTO (Regex)
+        $norm = mb_strtoupper($orig, 'UTF-8');
+        $norm = str_replace(['Á', 'É', 'Í', 'Ó', 'Ú', 'Ü'], ['A', 'E', 'I', 'O', 'U', 'U'], $norm);
+        
+        if (preg_match('/FECHA/i', $norm)) {
+            if (preg_match('/DEPOSITO|APLICACION/i', $norm)) {
+                return 'Fecha_Deposito';
+            }
+            if (preg_match('/TRANSACCION/i', $norm)) {
+                return 'Fecha_Transaccion';
+            }
         }
 
         // 4. Limpieza estándar (Fallback)
@@ -2268,6 +2280,15 @@ public function anomalies_client_tickets()
                 'Referencia Interbancaria' => 'Referencia',
                 'Fecha Depósito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha de Deposito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
             ],
             'SANTANDER' => [
                 'ID movimiento' => 'ID_Externo',              
@@ -2291,7 +2312,18 @@ public function anomalies_client_tickets()
                 'Total' => 'Monto',                           
                 'Monto de Transacción Signo' => 'Monto',
                 'Comisión' => 'Comision',
-                'Referencia' => 'Referencia'                  
+                'Referencia' => 'Referencia',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha de Deposito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
             ]
         ];
 
@@ -2322,12 +2354,28 @@ public function anomalies_client_tickets()
                     }
                 }
 
-                // Huellas para duplicados (8 CAMPOS CLAVE)
-                $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_banorte");
+                // --- VALIDACION 100% FECHA DEPOSITO ---
+                if (!isset($mappedIndices['Fecha_Deposito'])) {
+                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Deposito/Aplicacion en el archivo.']);
+                    exit;
+                }
+                $idxDepo = $mappedIndices['Fecha_Deposito'];
+                foreach ($rows as $row) {
+                    if (empty(array_filter($row))) continue;
+                    $valDepo = $row[$idxDepo] ?? null;
+                    if (empty($valDepo)) {
+                        echo json_encode(['status' => 'error', 'message' => 'El archivo no cuenta con el 100% de las fechas de deposito/aplicacion. No se proceso ningun registro.']);
+                        exit;
+                    }
+                }
+
+                // Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
+                $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_banorte");
                 $huellas = [];
                 while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
-                    $key = trim($r['Afiliacion']??'') . '|' . trim($r['ID_Externo']??'') . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '') . '|' . trim($r['Hora']??'') . '|' . trim($r['Codigo_Autorizacion']??'') . '|' . trim($r['Referencia']??'') . '|' . trim($r['Terminal']??'');
+                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
+                    $key = trim($r['Afiliacion']??'') . '|' . trim($r['ID_Externo']??'') . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '') . '|' . trim($r['Hora']??'') . '|' . trim($r['Codigo_Autorizacion']??'') . '|' . trim($r['Referencia']??'') . '|' . trim($r['Terminal']??'') . '|' . $fch_dep;
                     $huellas[$key] = true;
                 }
 
@@ -2365,7 +2413,9 @@ public function anomalies_client_tickets()
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
-                    $keyRow = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'');
+                    $keyRow = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'') . '|' . ($dataRow['Fecha_Deposito']??'');
+                    
+                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
                     if (isset($huellas[$keyRow])) { $skipped++; continue; }
 
                     $ins->execute(array_values($dataRow));
@@ -2384,12 +2434,30 @@ public function anomalies_client_tickets()
                                         $mappedIndices[$stdName] = $i;
                                     }
                                 }
+
+                                // --- VALIDACION 100% FECHA DEPOSITO ---
+                                if (!isset($mappedIndices['Fecha_Deposito'])) {
+                                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Deposito en el archivo CSV.']);
+                                    exit;
+                                }
+                                $idxDepo = $mappedIndices['Fecha_Deposito'];
+                                $allRows = [];
+                                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                    if (empty(array_filter($row))) continue;
+                                    if (empty($row[$idxDepo] ?? null)) {
+                                        echo json_encode(['status' => 'error', 'message' => 'El archivo no cuenta con el 100% de las fechas de deposito. No se proceso ningun registro.']);
+                                        exit;
+                                    }
+                                    $allRows[] = $row;
+                                }
+                                fclose($handle);
                 
-                                // 2. Huellas para duplicados (8 CAMPOS CLAVE)
-                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_getnet");
+                                // 2. Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
+                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_getnet");
                                 $huellas = [];
                                 while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
                                     $key = trim($r['Afiliacion'] ?? '') . '|' . 
                                            trim($r['ID_Externo'] ?? '') . '|' . 
                                            $fch . '|' . 
@@ -2397,7 +2465,8 @@ public function anomalies_client_tickets()
                                            trim($r['Hora'] ?? '') . '|' .
                                            trim($r['Codigo_Autorizacion'] ?? '') . '|' .
                                            trim($r['Referencia'] ?? '') . '|' .
-                                           trim($r['Terminal'] ?? '');
+                                           trim($r['Terminal'] ?? '') . '|' .
+                                           $fch_dep;
                                     $huellas[$key] = true;
                                 }
                 
@@ -2408,9 +2477,7 @@ public function anomalies_client_tickets()
                                 // Ruta relativa para la DB
                                 $dbFilePath = $subPath . $safeName;
                 
-                                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
-                                    if (empty(array_filter($row))) continue;
-
+                                foreach ($allRows as $row) {
                                     $dataRow = [];
                                     foreach($columnas_oficiales as $col) {
                                         if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
@@ -2427,10 +2494,29 @@ public function anomalies_client_tickets()
                                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
                                         if ($col === 'Hora' && $val) {
                                             $h_clean = strtolower(trim($val));
+                                            
+                                            // Normalización robusta: quitar puntos, asegurar un solo espacio antes de am/pm
+                                            $h_clean = str_replace('.', '', $h_clean);
+                                            $h_clean = preg_replace('/([ap])\s*m/', '$1m', $h_clean); // unir a m -> am
+                                            $h_clean = str_replace(['am', 'pm'], [' am', ' pm'], $h_clean);
+                                            $h_clean = preg_replace('/\s+/', ' ', $h_clean);
+                                            $h_clean = trim($h_clean);
+
                                             if (strpos($h_clean, 'am') !== false || strpos($h_clean, 'pm') !== false) {
-                                                $d_h = \DateTime::createFromFormat('h:i:s a', str_replace(['am','pm'], [' am',' pm'], $h_clean));
-                                                if (!$d_h) $d_h = \DateTime::createFromFormat('g:i:s a', str_replace(['am','pm'], [' am',' pm'], $h_clean));
-                                                if ($d_h) $val = $d_h->format('H:i:s');
+                                                $d_h = \DateTime::createFromFormat('h:i:s a', $h_clean);
+                                                if (!$d_h) $d_h = \DateTime::createFromFormat('g:i:s a', $h_clean);
+                                                if (!$d_h) $d_h = \DateTime::createFromFormat('h:i a', $h_clean);
+                                                if (!$d_h) $d_h = \DateTime::createFromFormat('g:i a', $h_clean);
+                                                
+                                                if ($d_h) {
+                                                    $val = $d_h->format('H:i:s');
+                                                }
+                                            }
+                                            
+                                            // Asegurar ceros a la izquierda si ya es 24h pero falta el cero (ej: 9:05:00)
+                                            if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $val)) {
+                                                $parts = explode(':', $val);
+                                                $val = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
                                             }
                                             
                                             // AJUSTE HORARIO JUAREZ
@@ -2449,8 +2535,10 @@ public function anomalies_client_tickets()
                                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                                     }
                 
-                                    // Huella para saltar duplicados
-                                    $huella = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'');
+                                    // Huella para saltar duplicados (+ FECHA DEPOSITO)
+                                    $huella = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'') . '|' . ($dataRow['Fecha_Deposito']??'');
+                                    
+                                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
                                     if (isset($huellas[$huella])) { $skipped++; continue; }
                 
                                     $ins->execute(array_values($dataRow));
@@ -3037,7 +3125,8 @@ public function anomalies_client_tickets()
                         Hora,
                         Codigo_Autorizacion,
                         Referencia,
-                        Nombre_Archivo
+                        Nombre_Archivo,
+                        Fecha_Deposito
                     FROM $tabla
                     WHERE YEAR(Fecha_Transaccion) = ? 
                       AND MONTH(Fecha_Transaccion) = ? 
@@ -3065,12 +3154,18 @@ public function anomalies_client_tickets()
                 
                 $fechaVal = $row['Fecha_Transaccion'];
                 $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                
+                $fechaDepoVal = $row['Fecha_Deposito'];
+                $fechaDepoIso = null;
+                if ($fechaDepoVal) {
+                    $fechaDepoIso = ($fechaDepoVal instanceof DateTime) ? $fechaDepoVal->format('Y-m-d') : substr((string)$fechaDepoVal, 0, 10);
+                }
 
                 $result[] = [
                     'IdTransaccion' => $idTransaccion,
                     'ID_Externo' => $row['ID_Externo'], 
                     'FechaTransaccion' => $fechaIso,
-                    'FechaAplicacion' => $fechaIso,
+                    'FechaAplicacion' => $fechaDepoIso ?? $fechaIso,
                     'FechaConciliacion' => $fechaIso,
                     'Total' => (float)$row['Monto'],
                     'Concepto' => 'Venta',
@@ -3080,6 +3175,90 @@ public function anomalies_client_tickets()
                     'Codigo_Autorizacion' => $row['Codigo_Autorizacion'],
                     'Referencia' => $row['Referencia'],
                     'Nombre_Archivo' => $row['Nombre_Archivo'] // TRAZABILIDAD
+                ];
+            }
+
+            echo json_encode(["status" => "success", "data" => $result]);
+
+        } catch (PDOException $e) { echo json_encode(["status" => "error", "message" => $e->getMessage()]); }
+        exit;
+    }
+
+    public function get_transacciones_por_deposito() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $eid = $_GET['entidad_id'] ?? null;
+        $afiliacion = $_GET['afiliacion'] ?? null;
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
+        if (!$eid || !$afiliacion) {
+            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            exit;
+        }
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
+            
+            if (empty($tabla)) {
+                echo json_encode(["status" => "success", "data" => []]);
+                exit;
+            }
+
+            // BUSQUEDA POR FECHA DE DEPOSITO
+            $sql = "SELECT 
+                        ID_Externo,
+                        Fecha_Transaccion, 
+                        Monto, 
+                        Afiliacion,
+                        Terminal,
+                        Hora,
+                        Codigo_Autorizacion,
+                        Referencia,
+                        Nombre_Archivo,
+                        Fecha_Deposito
+                    FROM $tabla
+                    WHERE YEAR(Fecha_Deposito) = ? 
+                      AND MONTH(Fecha_Deposito) = ? 
+                      AND Afiliacion = ?
+                    ORDER BY Fecha_Deposito ASC";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$year, $month, $afiliacion]);
+            
+            $result = [];
+            while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                $hashData = 
+                    (string)($row['Afiliacion'] ?? '') . 
+                    (string)($row['Fecha_Transaccion'] ?? '') . 
+                    (string)($row['Hora'] ?? '') . 
+                    (string)($row['Monto'] ?? '') . 
+                    (string)($row['Codigo_Autorizacion'] ?? '') .
+                    (string)($row['Terminal'] ?? '') .
+                    (string)($row['Referencia'] ?? '') .
+                    (string)($row['ID_Externo'] ?? ''); 
+                
+                $idTransaccion = 'tx_' . md5($hashData);
+                
+                $fechaVal = $row['Fecha_Transaccion'];
+                $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
+                
+                $fechaDepoVal = $row['Fecha_Deposito'];
+                $fechaDepoIso = ($fechaDepoVal instanceof DateTime) ? $fechaDepoVal->format('Y-m-d') : substr((string)$fechaDepoVal, 0, 10);
+
+                $result[] = [
+                    'IdTransaccion' => $idTransaccion,
+                    'ID_Externo' => $row['ID_Externo'], 
+                    'FechaTransaccion' => $fechaIso,
+                    'Fecha_Deposito' => $fechaDepoIso,
+                    'Total' => (float)$row['Monto'],
+                    'Afiliacion' => $row['Afiliacion']
                 ];
             }
 
