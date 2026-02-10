@@ -28,6 +28,52 @@
         --desync-border: #ffc107;
     }
 
+    /* Estilo para el Spinner de TotalGas */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.7);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        backdrop-filter: blur(2px);
+    }
+
+    body.is-loading .loading-overlay {
+        display: flex;
+    }
+
+    .loading-spinner {
+        width: 120px;
+        height: 120px;
+        background-image: url('/_assets/images/logos/loading.gif');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+    }
+
+    .loading-column {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 200px;
+        width: 100%;
+    }
+
+    .loading-column::after {
+        content: "";
+        width: 60px;
+        height: 60px;
+        background-image: url('/_assets/images/logos/loading.gif');
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+    }
+
     body { background-color: #f4f6f9; overflow-x: hidden; }
 
     /* HEADER CONTROLS */
@@ -222,6 +268,10 @@
 
 </style>
 
+<div class="loading-overlay">
+    <div class="loading-spinner"></div>
+</div>
+
 <div class="container-fluid pt-3">
     
     <div class="controls-header">
@@ -275,6 +325,10 @@
                 <option value="">-- Seleccione --</option>
             </select>
         </div>
+
+        <button class="btn btn-info rounded-pill shadow-sm mr-2 font-weight-bold" onclick="abrirModoDepositos()">
+            <i class="fas fa-columns mr-1"></i> Modo Depósitos
+        </button>
 
         <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()">
             <i class="fas fa-sync-alt"></i>
@@ -369,6 +423,44 @@
 </div>
 
 <div class="dropdown-overlay" id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
+
+<!-- Modal Modo Depósitos -->
+<div class="modal fade" id="modalModoDepositos" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="height: 90vh; border-radius: 15px; overflow: hidden;">
+            <div class="modal-header bg-dark text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold text-light"><i class="fas fa-columns mr-2"></i> Comparativa por Fecha de Depósito</h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalModoDepositos').modal('hide')" style="font-size: 1.5rem; opacity: 0.8; text-decoration: none;">
+                    &times;
+                </button>
+            </div>
+            <div class="modal-body bg-light p-3" style="overflow: hidden;">
+                <div class="row h-100">
+                    <!-- Panel Izquierdo: Transacciones (Ordenado por Fecha Aplicación) -->
+                    <div class="col-6 h-100 d-flex flex-column">
+                        <div class="bg-primary text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
+                            <span><i class="fas fa-exchange-alt mr-2"></i> Transacciones (Por F. Depósito)</span>
+                            <span id="depo-tx-total" class="badge badge-light text-dark">$0.00</span>
+                        </div>
+                        <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y: auto;" id="modal-depo-tx">
+                            <div class="text-center py-5 text-muted">Cargando...</div>
+                        </div>
+                    </div>
+                    <!-- Panel Derecho: Tesorería -->
+                    <div class="col-6 h-100 d-flex flex-column">
+                        <div class="bg-dark text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
+                            <span><i class="fas fa-university mr-2"></i> Tesorería</span>
+                            <span id="depo-bk-total" class="badge badge-light text-dark">$0.00</span>
+                        </div>
+                        <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y: auto;" id="modal-depo-bk">
+                            <div class="text-center py-5 text-muted">Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Modal Selección Diferencia -->
 <div class="modal fade" id="modalDiferencias" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
@@ -578,6 +670,7 @@
         //ventas: 'http://201.174.170.236:99/api/Ventas/GetConceptosValores',
         ventas: '/income/get_ventas_local', // <-- NUEVA RUTA LOCAL
         transacciones: '/income/get_transacciones_banco',
+        depositos: '/income/get_transacciones_por_deposito',
         guardar: '/income/guardar_conciliacion',
         historial: '/income/get_conciliaciones_hechas',
         guardar_transito: '/income/guardar_transito',
@@ -615,7 +708,9 @@
     };
     let transitoPasadoMap = {}; 
     let currentTxData = []; 
+    let currentBkData = []; // Store Treasury Data globally
     let openGroups = new Set(); // SEGUIMIENTO DE GRUPOS ABIERTOS
+    let isBatchSelecting = false; // Optimización selección masiva
 
     $(document).ready(function() {
         initWidget();
@@ -653,6 +748,8 @@
     }
 
     function recalcTotals() {
+        if (isBatchSelecting) return; // NO RECALCULAR SI ESTAMOS EN SELECCION MASIVA
+        
         const sumL = selection.left.reduce((a,b) => a + b.monto, 0);
         const sumC = selection.center.reduce((a,b) => a + b.monto, 0);
         // El lado derecho (Tesoreria) ya no suma para la conciliación
@@ -1105,7 +1202,7 @@
             const res = await $.get(URLS.transacciones, params);
             
             if(res.status === 'success' && res.data) {
-                currentTxData = res.data.map(i => {
+                currentTxData = res.data.filter(item => parseFloat(item.Total) > 0).map(i => {
                     return {
                         ...i, // PASAR TODAS LAS PROPIEDADES ORIGINALES (IdTransaccion, ID_Externo, Referencia, etc.)
                         
@@ -1193,7 +1290,16 @@
         if(!conf || !conf.url) { container.html('<div class="p-4 text-center">Sin endpoint</div>'); return; }
         $.get(conf.url, {year: widgetState.year, month: widgetState.month}, function(resp){
             if(!resp.data) { container.html('<div class="p-3 text-center">Sin datos</div>'); return; }
-            const filtered = resp.data.filter(m => String(m.Afiliacion).trim() === String(rule.afiliacion).trim());
+            
+            // Guardar para Modo Depósitos
+            currentBkData = resp.data || [];
+
+            const filtered = resp.data.filter(m => {
+                const afilMatch = String(m.Afiliacion).trim() === String(rule.afiliacion).trim();
+                let val = m.Total || m.Depositos || m.Importe || 0;
+                if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
+                return afilMatch && val > 0;
+            });
             renderList('right', filtered, rule.descripcion || 'Depósito');
         });
     }
@@ -1603,7 +1709,9 @@
 
         // Render Final
         return `
-            <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}>
+            <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}
+                data-side="${side}" data-fecha="${effectiveDate}" data-monto="${monto}" 
+                data-concepto="${descStr.replace(/"/g, "&quot;")}" data-transit="${g.transitIds ? g.transitIds.join(',') : (g._transitId || '')}">
                 <div>
                     <div class="d-flex align-items-center mb-1">
                         ${badgeHtml} ${iconHtml}
@@ -1680,21 +1788,48 @@
         const $items = $(`#${groupId} .row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)`);
         if ($items.length === 0) return;
 
-        // Lógica: Si hay al menos uno sin seleccionar, seleccionamos todos.
-        // Si todos están seleccionados, deseleccionamos todos.
         const anyUnselected = $items.toArray().some(el => !$(el).hasClass('active'));
+        const side = groupId.split('-')[1]; // left o center
+        const list = selection[side];
         
-        $items.each(function() {
-            const isActive = $(this).hasClass('active');
-            if (anyUnselected && !isActive) {
-                $(this).click(); 
-            } else if (!anyUnselected && isActive) {
-                $(this).click(); 
-            }
-        });
+        isBatchSelecting = true;
+
+        if (anyUnselected) {
+            // SELECCIONAR TODO EL GRUPO
+            const existingIds = new Set(list.map(i => i.elId));
+            
+            $items.each(function() {
+                const elId = this.id;
+                if (!existingIds.has(elId)) {
+                    const $el = $(this);
+                    const tIdsStr = $el.attr('data-transit');
+                    list.push({
+                        fecha: $el.attr('data-fecha'),
+                        monto: parseFloat($el.attr('data-monto')),
+                        concepto: $el.attr('data-concepto'),
+                        elId: elId,
+                        transitIds: tIdsStr ? tIdsStr.split(',') : []
+                    });
+                    this.classList.add('active');
+                }
+            });
+        } else {
+            // DESELECCIONAR TODO EL GRUPO
+            const idsToRemove = new Set($items.toArray().map(el => el.id));
+            selection[side] = list.filter(i => !idsToRemove.has(i.elId));
+            $items.each(function() {
+                this.classList.remove('active');
+            });
+        }
+
+        isBatchSelecting = false;
+        recalcTotals();
+        updateGroupHeaderState(groupId);
     }
 
     function updateGroupHeaderState(groupId) {
+        if (isBatchSelecting) return; // NO HACER NADA SI ES BATCH
+        
         const $body = $(`#${groupId}`);
         const $header = $body.prev('.tx-group-header');
         const $items = $body.find('.row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)');
@@ -1790,6 +1925,144 @@
         }
 
         $modal.modal('show');
+    }
+
+    // ==========================================
+    // MODO DEPÓSITOS (COMPARATIVA RESUMIDA POR DÍA)
+    // ==========================================
+    async function abrirModoDepositos() {
+        if (!currentActiveRule || !currentActiveRule.afiliacion) {
+            alert("Primero seleccione una estación, banco y afiliación.");
+            return;
+        }
+
+        const $contTx = $('#modal-depo-tx').empty();
+        const $contBk = $('#modal-depo-bk').empty();
+        
+        // Mostrar modal y loaders
+        $('#modalModoDepositos').modal('show');
+        $contTx.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Consultando por Fecha Depósito...</div></div>');
+        $contBk.html('<div class="text-center py-5"><div class="spinner-border text-secondary"></div><div class="mt-2 small text-muted">Procesando Tesorería...</div></div>');
+
+        try {
+            // 1. Obtener datos del banco filtrados por FECHA DEPOSITO (desde BD)
+            const eid = $('#bancoSelect').val();
+            const params = { 
+                entidad_id: eid, 
+                afiliacion: currentActiveRule.afiliacion, 
+                year: widgetState.year, 
+                month: widgetState.month 
+            };
+            
+            const res = await $.get(URLS.depositos, params);
+            const depoTxData = (res.status === 'success' && res.data) ? res.data : [];
+
+            // 2. Obtener todas las fechas únicas del mes para alinear
+            const allDates = new Set();
+
+            // 3. Agrupar TRANSACCIONES (Usando los datos frescos)
+            const txGroups = {};
+            depoTxData.forEach(item => {
+                // item.Fecha_Deposito viene del endpoint get_transacciones_por_deposito
+                const fKey = item.Fecha_Deposito || item.FechaTransaccion;
+                if(!fKey) return;
+                
+                const normalized = normalizarFecha(fKey);
+                allDates.add(normalized);
+
+                if(!txGroups[normalized]) txGroups[normalized] = { total: 0, count: 0 };
+                txGroups[normalized].total += parseFloat(item.Total || 0);
+                txGroups[normalized].count++;
+            });
+
+            // 4. Agrupar TESORERIA (Usando currentBkData ya cargado)
+            const bkGroups = {};
+            const currentAfil = String(currentActiveRule.afiliacion).trim();
+            
+            if (currentBkData && currentBkData.length > 0) {
+                currentBkData.forEach(item => {
+                    if(String(item.Afiliacion).trim() !== currentAfil) return;
+                    
+                    const fKey = normalizarFecha(item.Fecha);
+                    if(!fKey) return;
+                    allDates.add(fKey);
+
+                    let val = item.Total || item.Depositos || item.Importe || 0;
+                    if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
+                    if(val <= 0) return;
+
+                    if(!bkGroups[fKey]) bkGroups[fKey] = { total: 0, count: 0 };
+                    bkGroups[fKey].total += val;
+                    bkGroups[fKey].count++;
+                });
+            }
+
+            // Limpiar loaders
+            $contTx.empty();
+            $contBk.empty();
+
+            // 5. Ordenar fechas y renderizar filas resumidas
+            const sortedDates = Array.from(allDates).sort();
+            
+            let grandTotalTx = 0;
+            let grandTotalBk = 0;
+
+            if (sortedDates.length === 0) {
+                $contTx.html('<div class="text-center py-5 text-muted">Sin datos</div>');
+                $contBk.html('<div class="text-center py-5 text-muted">Sin datos</div>');
+            } else {
+                sortedDates.forEach(dateKey => {
+                    const dateFmt = dateKey.split('-').reverse().join('/');
+                    const tx = txGroups[dateKey] || { total: 0, count: 0 };
+                    const bk = bkGroups[dateKey] || { total: 0, count: 0 };
+
+                    grandTotalTx += tx.total;
+                    grandTotalBk += bk.total;
+
+                    // Calculo diferencia
+                    const diff = bk.total - tx.total;
+                    let diffHtml = '';
+                    if (Math.abs(diff) < 0.01) {
+                        diffHtml = '<span class="badge ml-2" style="background-color: #28a745; color: white;">OK</span>';
+                    } else {
+                        diffHtml = `<span class="badge ml-2" style="background-color: #dc3545; color: white;">${formatter.format(diff)}</span>`;
+                    }
+
+                    // Fila de Transacciones
+                    const txRow = `
+                        <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${tx.total > 0 ? 'bg-white' : 'bg-light'}" style="height: 60px;">
+                            <div>
+                                <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
+                                <small class="badge badge-light border text-dark">${tx.count} txs</small>
+                            </div>
+                            <div class="font-numeric h6 mb-0 text-dark">${formatter.format(tx.total)}</div>
+                        </div>
+                    `;
+                    $contTx.append(txRow);
+
+                    // Fila de Tesorería
+                    const bkRow = `
+                        <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${bk.total > 0 ? 'bg-white' : 'bg-light'}" style="height: 60px;">
+                            <div>
+                                <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
+                                <small class="badge badge-light border text-dark">${bk.count} deps</small>
+                                ${diffHtml}
+                            </div>
+                            <div class="font-numeric h6 mb-0 text-dark">${formatter.format(bk.total)}</div>
+                        </div>
+                    `;
+                    $contBk.append(bkRow);
+                });
+            }
+
+            $('#depo-tx-total').text(formatter.format(grandTotalTx));
+            $('#depo-bk-total').text(formatter.format(grandTotalBk));
+
+        } catch (e) {
+            console.error("Error en Modo Depósitos:", e);
+            $contTx.html('<div class="text-danger p-3 text-center">Error al cargar datos del banco</div>');
+            $contBk.empty();
+        }
     }
 
     function copyToClipboard(text) {
@@ -1952,12 +2225,15 @@
     }
 
     function enviarAlBackend(payload) {
+        $('body').addClass('is-loading');
+
         $.ajax({
             url: URLS.guardar, 
             type: 'POST', 
             contentType: 'application/json', 
             data: JSON.stringify(payload),
             success: async function(resp) {
+                $('body').removeClass('is-loading');
                 if(resp.status === 'success') { 
                     limpiarSeleccion(); 
                     // Refrescar datos sin perder el estado de los grupos abiertos
@@ -1966,7 +2242,10 @@
                     alert("Error: " + resp.message); 
                 }
             },
-            error: function() { alert("Error de red al guardar conciliación."); }
+            error: function() { 
+                $('body').removeClass('is-loading');
+                alert("Error de red al guardar conciliación."); 
+            }
         });
     }
 
@@ -2015,9 +2294,12 @@
             rows: rowsToSend
         };
 
+        $('body').addClass('is-loading');
+
         $.ajax({
             url: URLS.guardar_transito, type: 'POST', contentType: 'application/json', data: JSON.stringify(payload),
             success: async function(resp) {
+                $('body').removeClass('is-loading');
                 const r = (typeof resp === 'string') ? JSON.parse(resp) : resp;
                 if(r.status === 'success') { 
                     alert("Movimientos enviados a tránsito exitosamente."); 
@@ -2027,7 +2309,11 @@
                     alert("Error: " + r.message); 
                 }
             },
-            error: function(err) { alert("Error de conexión al guardar tránsito"); console.error(err); }
+            error: function(err) { 
+                $('body').removeClass('is-loading');
+                alert("Error de conexión al guardar tránsito"); 
+                console.error(err); 
+            }
         });
     }
 
