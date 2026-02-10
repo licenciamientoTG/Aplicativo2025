@@ -530,64 +530,6 @@
         }
     };
 
-    // Función para agregar facturas a pago existente
-    async function addInvoicesToExistingPayment() {
-        if (paymentItems.length === 0) {
-            alertify.myAlert(
-                `<div class="container text-center text-warning">
-                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">No hay documentos seleccionados para agregar.</p>
-            </div>`
-            );
-            return;
-        }
-
-        alertify.confirm(
-            '¿Agregar facturas al pago?',
-            `Se agregarán ${paymentItems.length} factura(s) al pago. Las autorizaciones serán reiniciadas. ¿Desea continuar?`,
-            async function () {
-                showPaymentLoader('Agregando facturas...', 'Procesando documentos');
-
-                const requestData = {
-                    payment_id: PAYMENT_ID,
-                    documentos: paymentItems
-                };
-                console.log(requestData);
-
-                try {
-                    const response = await fetch('/supply/add_invoices_bulk_to_payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestData)
-                    });
-
-                    const result = await response.json();
-                    hidePaymentLoader();
-
-                    if (result.success) {
-                        alertify.success(result.message || 'Facturas agregadas exitosamente');
-
-                        // Esperar 1 segundo antes de redirigir
-                        setTimeout(() => {
-                            window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
-                        }, 1000);
-                    } else {
-                        alertify.error(result.message || 'Error al agregar las facturas');
-                    }
-                } catch (error) {
-                    hidePaymentLoader();
-                    console.error('Error:', error);
-                    alertify.error('Error de conexión al agregar las facturas');
-                }
-            },
-            function () {
-                alertify.error('Operación cancelada');
-            }
-        );
-    }
-
 </script>
 
 {% endblock %}

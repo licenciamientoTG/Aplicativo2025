@@ -26,14 +26,20 @@ class InvoiceCreditDebitNotesModel extends Model
      * Obtener notas de crédito/cargo para una solicitud de pago
      */
     public function getCreditDebitNotes($paymentRequestId) : array|false {
-        $query = '
-            SELECT 
-                t1.*,
-                t2.Nombre as created_by_name
-            FROM [tg].[dbo].invoice_credit_debit_notes t1
-            LEFT JOIN [TG].[dbo].[Usuario] t2 ON t1.created_by = t2.Id
-            WHERE t1.payment_request_id = ?  AND t1.status = 1
-            ORDER BY t1.created_at DESC';
+        $query = 'SELECT 
+                    t1.*,
+                    t2.Nombre as created_by_name,
+                    (SELECT COUNT(*) 
+                    FROM [tg].[dbo].invoice_credit_debit_notes_doc 
+                    WHERE credit_note_id = t1.id) as documents_count,
+                    (SELECT TOP 1 id 
+                    FROM [tg].[dbo].invoice_credit_debit_notes_doc 
+                    WHERE credit_note_id = t1.id 
+                    ORDER BY created_at DESC) as latest_doc_id
+                FROM [tg].[dbo].invoice_credit_debit_notes t1
+                LEFT JOIN [TG].[dbo].[Usuario] t2 ON t1.created_by = t2.Id
+                WHERE t1.payment_request_id = ? AND t1.status = 1
+                ORDER BY t1.created_at DESC';
         return $this->sql->select($query, [$paymentRequestId]);
     }
 

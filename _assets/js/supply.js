@@ -6934,3 +6934,176 @@ function deleteNote(noteId) {
     }
   });
 }
+
+function removeInvoiceFromPayment(invoice_id, folio) {
+  Swal.fire({
+    title: "¿Quitar esta factura?",
+    html: `
+              <p><strong>Folio:</strong> ${folio}</p>
+              <div class="alert alert-warning mt-3">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  Las autorizaciones serán reiniciadas
+              </div>
+          `,
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#6c757d",
+    confirmButtonText: "Sí, quitar",
+    cancelButtonText: "Cancelar",
+  }).then((result) => {
+    if (result.isConfirmed) {
+      $.ajax({
+        url: "/supply/remove_invoice_from_payment",
+        type: "POST",
+        data: {
+          invoice_id: invoice_id,
+          payment_id: paymentId,
+        },
+        success: function (response) {
+          if (response.success) {
+            Swal.fire({
+              icon: "success",
+              title: "Factura eliminada",
+              text: response.message,
+              confirmButtonText: "OK",
+            }).then(() => {
+              location.reload();
+            });
+          } else {
+            Swal.fire({
+              icon: "error",
+              title: "Error",
+              text: response.message,
+            });
+          }
+        },
+        error: function () {
+          Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Error al quitar la factura",
+          });
+        },
+      });
+    }
+  });
+}
+
+function renderAvailableInvoices(invoices) {
+  let html = `
+          <div class="table-responsive">
+              <table class="table table-sm table-hover">
+                  <thead class="table-light">
+                      <tr>
+                          <th>Folio</th>
+                          <th>Factura</th>
+                          <th>Estación</th>
+                          <th class="text-end">Monto</th>
+                          <th>Fecha Vto.</th>
+                          <th>Acciones</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+      `;
+
+  invoices.forEach(function (invoice) {
+    html += `
+              <tr>
+                  <td><strong>${invoice.nro}</strong></td>
+                  <td>${invoice.Factura}</td>
+                  <td>${invoice.estacion_nombre || "N/A"}</td>
+                  <td class="text-end">$${parseFloat(
+                    invoice.total_fac,
+                  ).toLocaleString("es-MX", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</td>
+                  <td>${
+                    invoice.fechaVto
+                      ? new Date(invoice.fechaVto).toLocaleDateString("es-MX")
+                      : "N/A"
+                  }</td>
+                  <td>
+                      <button class="btn btn-sm btn-success" onclick='addInvoiceToPayment(${JSON.stringify(
+                        invoice,
+                      )})'>
+                          <i class="fas fa-plus"></i> Agregar
+                      </button>
+                  </td>
+              </tr>
+          `;
+  });
+
+  html += `
+                  </tbody>
+              </table>
+          </div>
+      `;
+
+  $("#availableInvoicesResults").html(html);
+}
+
+function addInvoiceToPayment(document) {
+  Swal.fire({
+    title: "¿Agregar esta factura?",
+    html: `
+              <div class="text-start">
+                  <p><strong>Folio:</strong> ${document.nro}</p>
+                  <p><strong>Factura:</strong> ${document.Factura}</p>
+                  <p><strong>Monto:</strong> $${parseFloat(
+                    document.total_fac,
+                  ).toLocaleString("es-MX", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</p>
+                  <div class="alert alert-warning mt-3">
+                      <i class="fas fa-exclamation-triangle"></i>
+                      Las autorizaciones serán reiniciadas
+                  </div>
+              </div>
+          `,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonColor: "#3085d6",
+    cancelButtonColor: "#d33",
+    confirmButtonText: "Sí, agregar",
+    cancelButtonText: "Cancelar",
+  }).then((result) => {
+    if (result.isConfirmed) {
+      $.ajax({
+        url: "/supply/add_invoice_to_payment",
+        type: "POST",
+        data: {
+          payment_id: paymentId,
+          document: document,
+        },
+        success: function (response) {
+          if (response.success) {
+            Swal.fire({
+              icon: "success",
+              title: "Factura agregada",
+              text: response.message,
+              confirmButtonText: "OK",
+            }).then(() => {
+              location.reload();
+            });
+          } else {
+            Swal.fire({
+              icon: "error",
+              title: "Error",
+              text: response.message,
+            });
+          }
+        },
+        error: function () {
+          Swal.fire({
+            icon: "error",
+            title: "Error",
+            text: "Error al agregar la factura",
+          });
+        },
+      });
+    }
+  });
+}

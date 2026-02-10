@@ -660,16 +660,19 @@
 							<td>{{ note.note_date|date('d/m/Y') }}</td>
 							<td class="text-end">
 								{{ note.note_type == 'CREDIT' ? '-' : '+' }}
-								${{
-            note.amount|number_format(2) }}
+								${{note.amount|number_format(2) }}
 							</td>
 							<td class="text-center">{{ note.description }}</td>
-							<td>
-								{% if note.file_path %}
-									<a href="{{ note.file_path }}" target="_blank" class="btn btn-sm btn-info">
+							<td class="text-center">
+								{% if note.documents_count > 0 %}
+									<button class="btn btn-sm btn-info view-docs-btn" 
+											data-note-id="{{ note.id }}"
+											data-docs-count="{{ note.documents_count }}">
 										<i class="fas fa-file-pdf"></i>
-										Ver PDF
-									</a>
+										<span class="badge bg-light text-dark">{{ note.documents_count }}</span>
+									</button>
+								{% else %}
+									<span class="text-muted">Sin archivo</span>
 								{% endif %}
 							</td>
 							<td>
@@ -1512,6 +1515,28 @@
 		</div>
 	</div>
 
+	<div class="modal fade" id="documentsModal" tabindex="-1">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">
+						<i class="fas fa-file-pdf"></i> Documentos adjuntos
+					</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body">
+					<div id="documents-list">
+						<div class="text-center">
+							<div class="spinner-border text-primary" role="status">
+								<span class="visually-hidden">Cargando...</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<input type="number" id="paymentId" value="{{ payment.id }}" hidden/>
 
 {% endblock %}
@@ -1520,230 +1545,252 @@
 
 	<script>
 		var paymentId = document.getElementById('paymentId').value;
-let currentPermission = null;
+		let currentPermission = null;
 
 
-// Limpiar cuando se cierra el modal
-$('#modalProcesarPago').on('hidden.bs.modal', function () {
-$('.factura-checkbox').prop('checked', false);
-$('.monto-pago').val('').prop('disabled', true);
-$('#observacionesPago').val('');
-$('#referenciaPago').val('');
-$('#selectAllFacturas').prop('checked', false);
-updatePagoSummary();
-});
+		// Limpiar cuando se cierra el modal
+		$('#modalProcesarPago').on('hidden.bs.modal', function () {
+		$('.factura-checkbox').prop('checked', false);
+		$('.monto-pago').val('').prop('disabled', true);
+		$('#observacionesPago').val('');
+		$('#referenciaPago').val('');
+		$('#selectAllFacturas').prop('checked', false);
+		updatePagoSummary();
+		});
 
 // ========== FUNCIONES PARA AGREGAR/QUITAR FACTURAS ==========
 
-function openAddInvoiceModal() {
-$('#addInvoiceModal').modal('show');
-$('#searchInvoiceInput').val('');
-$('#availableInvoicesResults').html(`
-          <div class="text-center text-muted">
-              <i class="fas fa-search fa-2x"></i>
-              <p class="mt-2">Ingrese un término de búsqueda para encontrar facturas disponibles</p>
-          </div>
-      `);
-}
+		function openAddInvoiceModal() {
+			$('#addInvoiceModal').modal('show');
+			$('#searchInvoiceInput').val('');
+			$('#availableInvoicesResults').html(`
+					<div class="text-center text-muted">
+						<i class="fas fa-search fa-2x"></i>
+						<p class="mt-2">Ingrese un término de búsqueda para encontrar facturas disponibles</p>
+					</div>
+				`);
+		}
 
-function searchAvailableInvoices() {
-const search = $('#searchInvoiceInput').val();
-const provider_cod = {{ payment.provider_cod }};
+		function searchAvailableInvoices() {
+			const search = $('#searchInvoiceInput').val();
+			const provider_cod = {{ payment.provider_cod }};
 
-if (! search || search.length < 2) {
-Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
-return;
-}
+			if (! search || search.length < 2) {
+				Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
+				return;
+			}
 
-$('#availableInvoicesResults').html(`
-          <div class="text-center">
-              <i class="fas fa-spinner fa-spin fa-2x"></i>
-              <p class="mt-2">Buscando facturas...</p>
-          </div>
-      `);
+		$('#availableInvoicesResults').html(`
+				<div class="text-center">
+					<i class="fas fa-spinner fa-spin fa-2x"></i>
+					<p class="mt-2">Buscando facturas...</p>
+				</div>
+			`);
 
-$.ajax({
-url: '/supply/search_available_invoices',
-type: 'GET',
-data: {
-provider_cod: provider_cod,
-search: search
-},
-success: function (response) {
-if (response.success) {
-if (response.data.length === 0) {
-$('#availableInvoicesResults').html(`
-                          <div class="alert alert-info">
-                              <i class="fas fa-info-circle"></i>
-                              No se encontraron facturas disponibles
-                          </div>
-                      `);
-} else {
-renderAvailableInvoices(response.data);
-}
-} else {
-Swal.fire({icon: 'error', title: 'Error', text: response.message});
-}
-},
-error: function () {
-Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
-}
+			$.ajax({
+			url: '/supply/search_available_invoices',
+			type: 'GET',
+			data: {
+			provider_cod: provider_cod,
+			search: search
+			},
+			success: function (response) {
+			if (response.success) {
+			if (response.data.length === 0) {
+			$('#availableInvoicesResults').html(`
+									<div class="alert alert-info">
+										<i class="fas fa-info-circle"></i>
+										No se encontraron facturas disponibles
+									</div>
+								`);
+			} else {
+			renderAvailableInvoices(response.data);
+			}
+			} else {
+			Swal.fire({icon: 'error', title: 'Error', text: response.message});
+			}
+			},
+			error: function () {
+			Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
+			}
+			});
+		}
+
+
+ 
+
+    // Función para agregar facturas a pago existente
+    async function addInvoicesToExistingPayment() {
+        if (paymentItems.length === 0) {
+            alertify.myAlert(
+                `<div class="container text-center text-warning">
+                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No hay documentos seleccionados para agregar.</p>
+            </div>`
+            );
+            return;
+        }
+
+        alertify.confirm(
+            '¿Agregar facturas al pago?',
+            `Se agregarán ${paymentItems.length} factura(s) al pago. Las autorizaciones serán reiniciadas. ¿Desea continuar?`,
+            async function () {
+                showPaymentLoader('Agregando facturas...', 'Procesando documentos');
+
+                const requestData = {
+                    payment_id: PAYMENT_ID,
+                    documentos: paymentItems
+                };
+                console.log(requestData);
+
+                try {
+                    const response = await fetch('/supply/add_invoices_bulk_to_payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestData)
+                    });
+
+                    const result = await response.json();
+                    hidePaymentLoader();
+
+                    if (result.success) {
+                        alertify.success(result.message || 'Facturas agregadas exitosamente');
+
+                        // Esperar 1 segundo antes de redirigir
+                        setTimeout(() => {
+                            window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
+                        }, 1000);
+                    } else {
+                        alertify.error(result.message || 'Error al agregar las facturas');
+                    }
+                } catch (error) {
+                    hidePaymentLoader();
+                    console.error('Error:', error);
+                    alertify.error('Error de conexión al agregar las facturas');
+                }
+            },
+            function () {
+                alertify.error('Operación cancelada');
+            }
+        );
+    }
+
+
+
+$(document).on('click', '.view-docs-btn', function() {
+    const noteId = $(this).data('note-id');
+    loadDocumentsModal(noteId);
 });
+
+
+
+function loadDocumentsModal(noteId) {
+    console.log('Cargar documentos para nota ID:', noteId);
+    // Abrir modal
+    const modal = new bootstrap.Modal(document.getElementById('documentsModal'));
+    modal.show();
+    
+    // Mostrar loading
+    $('#documents-list').html(`
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+        </div>
+    `);
+    
+    // Cargar documentos vía AJAX
+    $.ajax({
+        url: 'controller.php?action=getNoteDocuments',
+        method: 'POST',
+        data: { note_id: noteId },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success && response.documents.length > 0) {
+                let html = '<div class="list-group">';
+                
+                response.documents.forEach(function(doc) {
+                    const uploadDate = new Date(doc.created_at).toLocaleString('es-MX');
+                    
+                    html += `
+                        <div class="list-group-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-file-pdf text-danger"></i>
+                                    <strong>Documento #${doc.id}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        <i class="fas fa-user"></i> ${doc.created_by_name || 'N/A'}
+                                        &nbsp;|&nbsp;
+                                        <i class="fas fa-clock"></i> ${uploadDate}
+                                    </small>
+                                </div>
+                                <div>
+                                    <a href="${doc.file_path}" 
+                                       target="_blank" 
+                                       class="btn btn-sm btn-primary me-2">
+                                        <i class="fas fa-eye"></i> Ver
+                                    </a>
+                                    <button class="btn btn-sm btn-danger delete-doc-btn" 
+                                            data-doc-id="${doc.id}"
+                                            data-note-id="${noteId}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                $('#documents-list').html(html);
+            } else {
+                $('#documents-list').html(`
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No hay documentos adjuntos
+                    </div>
+                `);
+            }
+        },
+        error: function(xhr) {
+            $('#documents-list').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error al cargar documentos
+                </div>
+            `);
+        }
+    });
 }
 
-function renderAvailableInvoices(invoices) {
-let html = `
-          <div class="table-responsive">
-              <table class="table table-sm table-hover">
-                  <thead class="table-light">
-                      <tr>
-                          <th>Folio</th>
-                          <th>Factura</th>
-                          <th>Estación</th>
-                          <th class="text-end">Monto</th>
-                          <th>Fecha Vto.</th>
-                          <th>Acciones</th>
-                      </tr>
-                  </thead>
-                  <tbody>
-      `;
-
-invoices.forEach(function (invoice) {
-html += `
-              <tr>
-                  <td><strong>${
-invoice.nro
-}</strong></td>
-                  <td>${
-invoice.Factura
-}</td>
-                  <td>${
-invoice.estacion_nombre || 'N/A'
-}</td>
-                  <td class="text-end">$${
-parseFloat(invoice.total_fac).toLocaleString('es-MX', {
-minimumFractionDigits: 2,
-maximumFractionDigits: 2
-})
-}</td>
-                  <td>${
-invoice.fechaVto ? new Date(invoice.fechaVto).toLocaleDateString('es-MX') : 'N/A'
-}</td>
-                  <td>
-                      <button class="btn btn-sm btn-success" onclick='addInvoiceToPayment(${
-JSON.stringify(invoice)
-})'>
-                          <i class="fas fa-plus"></i> Agregar
-                      </button>
-                  </td>
-              </tr>
-          `;
+// Event listener para eliminar documento
+$(document).on('click', '.delete-doc-btn', function() {
+    console.log('Eliminar documento');
+    const docId = $(this).data('doc-id');
+    const noteId = $(this).data('note-id');
+    
+    if (confirm('¿Estás seguro de eliminar este documento?')) {
+        $.ajax({
+            url: 'controller.php?action=deleteNoteDocument',
+            method: 'POST',
+            data: { doc_id: docId },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Recargar la lista de documentos
+                    loadDocumentsModal(noteId);
+                    
+                    // Opcional: recargar la tabla completa
+                    location.reload();
+                } else {
+                    alert('Error: ' + response.message);
+                }
+            }
+        });
+    }
 });
 
-html += `
-                  </tbody>
-              </table>
-          </div>
-      `;
 
-$('#availableInvoicesResults').html(html);
-}
-
-function addInvoiceToPayment(document) {
-Swal.fire({
-title: '¿Agregar esta factura?',
-html: `
-              <div class="text-start">
-                  <p><strong>Folio:</strong> ${
-document.nro
-}</p>
-                  <p><strong>Factura:</strong> ${
-document.Factura
-}</p>
-                  <p><strong>Monto:</strong> $${
-parseFloat(document.total_fac).toLocaleString('es-MX', {
-minimumFractionDigits: 2,
-maximumFractionDigits: 2
-})
-}</p>
-                  <div class="alert alert-warning mt-3">
-                      <i class="fas fa-exclamation-triangle"></i>
-                      Las autorizaciones serán reiniciadas
-                  </div>
-              </div>
-          `,
-icon: 'question',
-showCancelButton: true,
-confirmButtonColor: '#3085d6',
-cancelButtonColor: '#d33',
-confirmButtonText: 'Sí, agregar',
-cancelButtonText: 'Cancelar'
-}).then((result) => {
-if (result.isConfirmed) {
-$.ajax({
-url: '/supply/add_invoice_to_payment',
-type: 'POST',
-data: {
-payment_id: paymentId,
-document: document
-},
-success: function (response) {
-if (response.success) {
-Swal.fire({icon: 'success', title: 'Factura agregada', text: response.message, confirmButtonText: 'OK'}).then(() => {
-location.reload();
-});
-} else {
-Swal.fire({icon: 'error', title: 'Error', text: response.message});
-}
-},
-error: function () {
-Swal.fire({icon: 'error', title: 'Error', text: 'Error al agregar la factura'});
-}
-});
-}
-});
-}
-
-function removeInvoiceFromPayment(invoice_id, folio) {
-Swal.fire({
-title: '¿Quitar esta factura?',
-html: `
-              <p><strong>Folio:</strong> ${folio}</p>
-              <div class="alert alert-warning mt-3">
-                  <i class="fas fa-exclamation-triangle"></i>
-                  Las autorizaciones serán reiniciadas
-              </div>
-          `,
-icon: 'warning',
-showCancelButton: true,
-confirmButtonColor: '#d33',
-cancelButtonColor: '#6c757d',
-confirmButtonText: 'Sí, quitar',
-cancelButtonText: 'Cancelar'
-}).then((result) => {
-if (result.isConfirmed) {
-$.ajax({
-url: '/supply/remove_invoice_from_payment',
-type: 'POST',
-data: {
-invoice_id: invoice_id,
-payment_id: paymentId
-},
-success: function (response) {
-if (response.success) {
-Swal.fire({icon: 'success', title: 'Factura eliminada', text: response.message, confirmButtonText: 'OK'}).then(() => {
-location.reload();
-});
-} else {
-Swal.fire({icon: 'error', title: 'Error', text: response.message});
-}
-},
-error: function () {
-Swal.fire({icon: 'error', title: 'Error', text: 'Error al quitar la factura'});
-}
-});
-}
-});
-}
 	</script>
 {% endblock %}
