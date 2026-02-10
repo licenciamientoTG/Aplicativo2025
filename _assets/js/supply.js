@@ -2866,44 +2866,7 @@ function imprimirPDF() {
   }
 }
 
-/**
- * Cierra el modal y limpia el iframe
- */
-$("#modalVisorPDF").on("hidden.bs.modal", function () {
-  // Limpiar iframe
-  document.getElementById("iframe_pdf").src = "about:blank";
 
-  // Revocar blob URL para liberar memoria
-  if (pdfBlobUrl) {
-    URL.revokeObjectURL(pdfBlobUrl);
-    pdfBlobUrl = null;
-  }
-
-  facturaActualPDF = null;
-});
-$("#modalVisorPDF").on("shown.bs.modal", function () {
-  $(document).on("keydown.pdfmodal", function (e) {
-    // ESC para cerrar
-    if (e.key === "Escape") {
-      $("#modalVisorPDF").modal("hide");
-    }
-    // Ctrl+P para imprimir
-    if (e.ctrlKey && e.key === "p") {
-      e.preventDefault();
-      imprimirPDF();
-    }
-    // Ctrl+S para descargar
-    if (e.ctrlKey && e.key === "s") {
-      e.preventDefault();
-      descargarPDFDirecto();
-    }
-  });
-});
-
-$("#modalVisorPDF").on("hidden.bs.modal", function () {
-  // Remover event listener de teclas
-  $(document).off("keydown.pdfmodal");
-});
 
 function abrirModalAsignarFactura(factura) {
   // Si ya está asignada, mostrar la info del movimiento
@@ -6944,6 +6907,24 @@ function openUploadNoteFileModal(noteId) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  // Ver PDF de nota en el modal
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest(".view-doc-btn");
+    if (!btn) return;
+
+    var docId = btn.dataset.docId;
+    var pdfUrl = "/supply/viewNoteDocument/" + docId;
+
+    document.getElementById("doc-id-title").textContent = docId;
+    document.getElementById("pdf-viewer").src = pdfUrl;
+
+    var downloadBtn = document.getElementById("download-pdf-btn");
+    downloadBtn.href = pdfUrl;
+    downloadBtn.download = "documento_" + docId + ".pdf";
+
+    $("#pdfModal").modal("show");
+  });
+
   var uploadNoteFileForm = document.getElementById("uploadNoteFileForm");
   if (uploadNoteFileForm) {
     document.getElementById("uploadNoteFileInput").addEventListener("change", function () {

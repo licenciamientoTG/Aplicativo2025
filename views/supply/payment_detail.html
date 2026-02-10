@@ -101,7 +101,8 @@
 			animation: pulse-subtle 2s ease-in-out infinite;
 		}
 
-		@keyframes pulse-subtle {
+		/* @keyframes 
+			pulse-subtle {
 			0,
 			100% {
 				transform: scale(1);
@@ -109,7 +110,7 @@
 			50% {
 				transform: scale(1.02);
 			}
-		}
+		} */
 	</style>
 	<div class="row">
 		<div class="col-12">
@@ -1188,15 +1189,14 @@
 			</div>
 		</div>
 	</div>
-	<!-- Modal de Autorización -->
+
+
+
 	<div class="modal fade" id="authModal" tabindex="-1">
 		<div class="modal-dialog modal-dialog-centered">
 			<div class="modal-content">
 				<div class="modal-header bg-primary text-white">
-					<h5 class="modal-title">
-						<i class="fas fa-shield-alt"></i>
-						Autorizar Pago
-					</h5>
+					<h5 class="modal-title"><i class="fas fa-shield-alt"></i>Autorizar Pago</h5>
 					<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
 				</div>
 				<div class="modal-body">
@@ -1553,36 +1553,7 @@
 		</div>
 	</div>
 
-<!-- Modal para ver PDF -->
-<div class="modal fade" id="pdfModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-file-pdf"></i> Documento #<span id="doc-id-title"></span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0">
-                <iframe id="pdf-viewer" 
-                        style="width: 100%; height: 80vh;" 
-                        frameborder="0">
-                </iframe>
-            </div>
-            <div class="modal-footer">
-                <a id="download-pdf-btn" 
-                   href="#" 
-                   target="_blank" 
-                   class="btn btn-primary">
-                    <i class="fas fa-download"></i> Descargar
-                </a>
-                <button type="button" class="btn btn-danger" id="delete-doc-btn">
-                    <i class="fas fa-trash"></i> Eliminar
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+
 
 	<input type="number" id="paymentId" value="{{ payment.id }}" hidden/>
 
@@ -1617,113 +1588,56 @@
 			`);
 	}
 
-		
-function searchAvailableInvoices() {
-    const search = $('#searchInvoiceInput').val();
-    const provider_cod = {{ payment.provider_cod }};
 
-    if (! search || search.length < 2) {
-      Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
-      return;
-    }
+	function searchAvailableInvoices() {
+		const search = $('#searchInvoiceInput').val();
+		const provider_cod = {{ payment.provider_cod }};
 
-    $('#availableInvoicesResults').html(`
-      <div class="text-center">
-        <i class="fas fa-spinner fa-spin fa-2x"></i>
-        <p class="mt-2">Buscando facturas...</p>
-      </div>
-    `);
+		if (! search || search.length < 2) {
+		Swal.fire({icon: 'warning', title: 'Búsqueda', text: 'Ingrese al menos 2 caracteres para buscar'});
+		return;
+		}
 
-    $.ajax({
-    url: '/supply/search_available_invoices',
-    type: 'GET',
-    data: {
-    provider_cod: provider_cod,
-    search: search
-    },
-    success: function (response) {
-    if (response.success) {
-    if (response.data.length === 0) {
-    $('#availableInvoicesResults').html(`
-                <div class="alert alert-info">
-                  <i class="fas fa-info-circle"></i>
-                  No se encontraron facturas disponibles
-                </div>
-              `);
-    } else {
-    renderAvailableInvoices(response.data);
-    }
-    } else {
-    Swal.fire({icon: 'error', title: 'Error', text: response.message});
-    }
-    },
-    error: function () {
-    Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
-    }
-    });
-  }
+		$('#availableInvoicesResults').html(`
+		<div class="text-center">
+			<i class="fas fa-spinner fa-spin fa-2x"></i>
+			<p class="mt-2">Buscando facturas...</p>
+		</div>
+		`);
+
+		$.ajax({
+		url: '/supply/search_available_invoices',
+		type: 'GET',
+		data: {
+		provider_cod: provider_cod,
+		search: search
+		},
+		success: function (response) {
+		if (response.success) {
+		if (response.data.length === 0) {
+		$('#availableInvoicesResults').html(`
+					<div class="alert alert-info">
+					<i class="fas fa-info-circle"></i>
+					No se encontraron facturas disponibles
+					</div>
+				`);
+		} else {
+		renderAvailableInvoices(response.data);
+		}
+		} else {
+		Swal.fire({icon: 'error', title: 'Error', text: response.message});
+		}
+		},
+		error: function () {
+		Swal.fire({icon: 'error', title: 'Error', text: 'Error al buscar facturas'});
+		}
+		});
+	}
 
  
 
     // Función para agregar facturas a pago existente
-    async function addInvoicesToExistingPayment() {
-        if (paymentItems.length === 0) {
-            alertify.myAlert(
-                `<div class="container text-center text-warning">
-                <h4 class="mt-2 text-warning">¡Advertencia!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">No hay documentos seleccionados para agregar.</p>
-            </div>`
-            );
-            return;
-        }
-
-        alertify.confirm(
-            '¿Agregar facturas al pago?',
-            `Se agregarán ${paymentItems.length} factura(s) al pago. Las autorizaciones serán reiniciadas. ¿Desea continuar?`,
-            async function () {
-                showPaymentLoader('Agregando facturas...', 'Procesando documentos');
-
-                const requestData = {
-                    payment_id: PAYMENT_ID,
-                    documentos: paymentItems
-                };
-                console.log(requestData);
-
-                try {
-                    const response = await fetch('/supply/add_invoices_bulk_to_payment', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(requestData)
-                    });
-
-                    const result = await response.json();
-                    hidePaymentLoader();
-
-                    if (result.success) {
-                        alertify.success(result.message || 'Facturas agregadas exitosamente');
-
-                        // Esperar 1 segundo antes de redirigir
-                        setTimeout(() => {
-                            window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
-                        }, 1000);
-                    } else {
-                        alertify.error(result.message || 'Error al agregar las facturas');
-                    }
-                } catch (error) {
-                    hidePaymentLoader();
-                    console.error('Error:', error);
-                    alertify.error('Error de conexión al agregar las facturas');
-                }
-            },
-            function () {
-                alertify.error('Operación cancelada');
-            }
-        );
-    }
-
-
+   
 
 
 

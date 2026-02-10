@@ -3627,6 +3627,47 @@ class Supply
     }
 
     /**
+     * Servir el PDF de un documento de nota de crédito/cargo
+     */
+    public function viewNoteDocument($docId)
+    {
+        $doc = $this->InvoiceCreditDebitNotesDocModel->getDocumentById((int)$docId);
+
+        if (!$doc) {
+            http_response_code(404);
+            echo "Documento no encontrado";
+            exit;
+        }
+
+        if (empty($doc['file_path'])) {
+            http_response_code(404);
+            echo "Este documento no tiene archivo";
+            exit;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../' . $doc['file_path']);
+        $baseAllowed = realpath(__DIR__ . '/../uploads/credit_debit_notes');
+
+        if ($fullPath === false || $baseAllowed === false || strpos($fullPath, $baseAllowed) !== 0) {
+            http_response_code(403);
+            echo "Acceso denegado";
+            exit;
+        }
+
+        if (!file_exists($fullPath) || !is_readable($fullPath)) {
+            http_response_code(404);
+            echo "Archivo no encontrado";
+            exit;
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+        exit;
+    }
+
+    /**
      * Subir archivo a una nota de crédito/cargo existente
      */
     public function uploadNoteFile()
