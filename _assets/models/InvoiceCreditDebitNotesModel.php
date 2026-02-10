@@ -44,9 +44,8 @@ class InvoiceCreditDebitNotesModel extends Model
         $query = "
             INSERT INTO [tg].[dbo].invoice_credit_debit_notes 
                 (payment_request_id, provider_id, note_type, note_number, 
-                 note_date, amount, description, reason_code, 
-                 file_path, original_filename, created_by, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
+                note_date, amount, description, reason_code, created_by, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
 
         $params = [
             $data['payment_request_id'],
@@ -57,8 +56,6 @@ class InvoiceCreditDebitNotesModel extends Model
             $data['amount'],
             $data['description'],
             $data['reason_code'] ?? null,
-            $data['file_path'],
-            $data['original_filename'],
             $data['created_by']
         ];
 

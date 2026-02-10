@@ -59,6 +59,7 @@ class Supply
     public CuentasBancariasModel $CuentasBancariasModel;
     public UsuariosModel $UsuariosModel;
     public InvoiceCreditDebitNotesModel $InvoiceCreditDebitNotesModel;
+    public InvoiceCreditDebitNotesDocModel $InvoiceCreditDebitNotesDocModel;
     /**
      * @param $twig
      */
@@ -94,6 +95,7 @@ class Supply
         $this->paymentTransactionsModel                        = new PaymentTransactionsModel();
         $this->UsuariosModel                                    = new UsuariosModel();
         $this->InvoiceCreditDebitNotesModel                     = new InvoiceCreditDebitNotesModel();
+        $this->InvoiceCreditDebitNotesDocModel                     = new InvoiceCreditDebitNotesDocModel();
     }
 
     /**
@@ -1436,9 +1438,6 @@ class Supply
                     $errors[] = $result['message'];
                 }
             }
-            echo '<pre>';
-            var_dump($added);
-            die();
 
             if ($added > 0) {
                 $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
@@ -3439,7 +3438,6 @@ class Supply
             redirect('/supply/payment_list');
             return;
         }
-        // $payment = $payment[0];
 
         // ✅ Obtener facturas con cálculos desde el modelo
         $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
@@ -3514,24 +3512,8 @@ class Supply
     public function addCreditDebitNote()
     {
         try {
-            // Validar que se recibió archivo
-            if (!isset($_FILES['note_file']) || $_FILES['note_file']['error'] !== UPLOAD_ERR_OK) {
-                throw new Exception('No se recibió el archivo o hubo un error en la carga');
-            }
-
-            // Validar tipo de archivo
-            $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
-            if ($fileType !== 'application/pdf') {
-                throw new Exception('Solo se permiten archivos PDF');
-            }
-
-            // Validar tamaño (10MB máximo)
-            if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
-                throw new Exception('El archivo no debe exceder 10MB');
-            }
-
             // Validar datos requeridos
-            $requiredFields = ['note_type', 'note_date', 'amount', 'description', 'payment_request_id'];
+            $requiredFields = ['note_type', 'note_date', 'amount', 'payment_request_id'];
             foreach ($requiredFields as $field) {
                 if (empty($_POST[$field])) {
                     throw new Exception("El campo {$field} es requerido");
@@ -3543,25 +3525,8 @@ class Supply
                 throw new Exception('Tipo de nota inválido');
             }
 
-            // Crear directorio para almacenar archivos
-            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
-            }
-
-            // Generar nombre único para el archivo
-            $originalFilename = $_FILES['note_file']['name'];
-            $extension = pathinfo($originalFilename, PATHINFO_EXTENSION);
-            $newFilename = uniqid('note_') . '_' . time() . '.' . $extension;
-            $filePath = $uploadDir . $newFilename;
-
-            // Mover archivo
-            if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $filePath)) {
-                throw new Exception('Error al guardar el archivo');
-            }
-
-            // Preparar datos para el modelo
-            $data = [
+            // PASO 1: Guardar la nota en BD
+            $noteData = [
                 'payment_request_id' => $_POST['payment_request_id'],
                 'provider_id' => $_POST['provider_id'],
                 'note_type' => $_POST['note_type'],
@@ -3570,26 +3535,81 @@ class Supply
                 'amount' => $_POST['amount'],
                 'description' => $_POST['description'],
                 'reason_code' => $_POST['reason_code'] ?? null,
-                'file_path' => str_replace(__DIR__ . '/../', '', $filePath), // Ruta relativa
-                'original_filename' => $originalFilename,
                 'created_by' => $_SESSION['tg_user']['Id']
             ];
 
-            // Guardar en base de datos usando el modelo
-            $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote($data);
+            $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote($noteData);
             if (!$noteId) {
                 throw new Exception('Error al guardar la nota en la base de datos');
+            }
+
+            $filePath = null;
+            $docId = null;
+
+            // PASO 2: Procesar archivo si existe
+            if (isset($_FILES['note_file']) && $_FILES['note_file']['error'] === UPLOAD_ERR_OK) {
+                
+                // Validar tipo de archivo
+                $fileType = mime_content_type($_FILES['note_file']['tmp_name']);
+                if ($fileType !== 'application/pdf') {
+                    throw new Exception('Solo se permiten archivos PDF');
+                }
+
+                // Validar tamaño (10MB máximo)
+                if ($_FILES['note_file']['size'] > 10 * 1024 * 1024) {
+                    throw new Exception('El archivo no debe exceder 10MB');
+                }
+
+                $extension = pathinfo($_FILES['note_file']['name'], PATHINFO_EXTENSION);
+
+                // PASO 3: Crear registro del documento en BD
+                $docData = [
+                    'credit_note_id' => $noteId,
+                    'file_extension' => $extension,
+                    'created_by' => $_SESSION['tg_user']['Id']
+                ];
+
+                $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord($docData);
+                if (!$docId) {
+                    throw new Exception('Error al crear registro del documento');
+                }
+
+                // PASO 4: Renombrar archivo con el ID del documento y subirlo
+                $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+
+                // Nombre del archivo: note_{noteId}_doc_{docId}.pdf
+                $newFilename = "{$docId}.{$extension}";
+                $fullPath = $uploadDir . $newFilename;
+
+                // Mover archivo
+                if (!move_uploaded_file($_FILES['note_file']['tmp_name'], $fullPath)) {
+                    throw new Exception('Error al guardar el archivo');
+                }
+
+                // Ruta relativa para guardar en BD
+                $filePath = 'uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/' . $newFilename;
+
+                // PASO 5: Actualizar ruta en el registro del documento
+                if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
+                    throw new Exception('Error al actualizar la ruta del archivo');
+                }
             }
 
             echo json_encode([
                 'success' => true,
                 'message' => 'Nota guardada correctamente',
-                'note_id' => $noteId
+                'note_id' => $noteId,
+                'doc_id' => $docId,
+                'has_file' => $filePath !== null
             ]);
+
         } catch (Exception $e) {
-            // Si hubo error y se subió archivo, eliminarlo
-            if (isset($filePath) && file_exists($filePath)) {
-                unlink($filePath);
+            // Cleanup en caso de error
+            if (isset($fullPath) && file_exists($fullPath)) {
+                unlink($fullPath);
             }
 
             http_response_code(400);
@@ -5829,9 +5849,7 @@ class Supply
         }
     }
 
-    /**
-     * Agregar factura a un pago existente
-     */
+
     public function add_invoice_to_payment()
     {
         header('Content-Type: application/json');

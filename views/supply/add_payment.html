@@ -571,7 +571,7 @@
 
                         // Esperar 1 segundo antes de redirigir
                         setTimeout(() => {
-                            window.location.href = '/supply/payment_detail?id=' + PAYMENT_ID;
+                            window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
                         }, 1000);
                     } else {
                         alertify.error(result.message || 'Error al agregar las facturas');
