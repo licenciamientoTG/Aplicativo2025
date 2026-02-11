@@ -2670,7 +2670,7 @@ public function anomalies_client_tickets()
                     CAST(i.mto AS FLOAT) AS Total,
                     
                     -- COLUMNAS QUE FALTABAN
-                    i.codgas AS CodEstacion,
+                    i.codgas AS CodEstacion,  -- <--- FALTABA ESTO
                     g.abr AS Estacion,
 
                     -- LÓGICA DE TIPO (RESTAURADA)
@@ -3115,10 +3115,18 @@ public function anomalies_client_tickets()
                 exit;
             }
 
-            // Paso 1: Obtener todas las transacciones candidatas del mes
+            // QUERY ESTANDARIZADA
             $sql = "SELECT 
-                        ID_Externo, Fecha_Transaccion, Monto, Afiliacion, Terminal,
-                        Hora, Codigo_Autorizacion, Referencia, Nombre_Archivo, Fecha_Deposito
+                        ID_Externo,
+                        Fecha_Transaccion, 
+                        Monto, 
+                        Afiliacion,
+                        Terminal,
+                        Hora,
+                        Codigo_Autorizacion,
+                        Referencia,
+                        Nombre_Archivo,
+                        Fecha_Deposito
                     FROM $tabla
                     WHERE YEAR(Fecha_Transaccion) = ? 
                       AND MONTH(Fecha_Transaccion) = ? 
@@ -3130,11 +3138,20 @@ public function anomalies_client_tickets()
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
+                // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
-                    (string)($row['Afiliacion'] ?? '') . (string)($row['Fecha_Transaccion'] ?? '') . (string)($row['Hora'] ?? '') . (string)($row['Monto'] ?? '') . (string)($row['Codigo_Autorizacion'] ?? '') .
-                    (string)($row['Terminal'] ?? '') . (string)($row['Referencia'] ?? '') . (string)($row['ID_Externo'] ?? ''); 
+                    (string)($row['Afiliacion'] ?? '') . 
+                    (string)($row['Fecha_Transaccion'] ?? '') . 
+                    (string)($row['Hora'] ?? '') . 
+                    (string)($row['Monto'] ?? '') . 
+                    (string)($row['Codigo_Autorizacion'] ?? '') .
+                    (string)($row['Terminal'] ?? '') .
+                    (string)($row['Referencia'] ?? '') .
+                    (string)($row['ID_Externo'] ?? ''); 
                 
                 $idTransaccion = 'tx_' . md5($hashData);
+                
                 $fechaVal = $row['Fecha_Transaccion'];
                 $fechaIso = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 
@@ -3145,11 +3162,19 @@ public function anomalies_client_tickets()
                 }
 
                 $result[] = [
-                    'IdTransaccion' => $idTransaccion, 'ID_Externo' => $row['ID_Externo'], 'FechaTransaccion' => $fechaIso,
-                    'FechaAplicacion' => $fechaDepoIso ?? $fechaIso, 'FechaConciliacion' => $fechaIso, 'Total' => (float)$row['Monto'],
-                    'Concepto' => 'Venta', 'Afiliacion' => $row['Afiliacion'], 'Terminal_ID' => $row['Terminal'],
-                    'Hora' => $row['Hora'], 'Codigo_Autorizacion' => $row['Codigo_Autorizacion'],
-                    'Referencia' => $row['Referencia'], 'Nombre_Archivo' => $row['Nombre_Archivo']
+                    'IdTransaccion' => $idTransaccion,
+                    'ID_Externo' => $row['ID_Externo'], 
+                    'FechaTransaccion' => $fechaIso,
+                    'FechaAplicacion' => $fechaDepoIso ?? $fechaIso,
+                    'FechaConciliacion' => $fechaIso,
+                    'Total' => (float)$row['Monto'],
+                    'Concepto' => 'Venta',
+                    'Afiliacion' => $row['Afiliacion'],
+                    'Terminal_ID' => $row['Terminal'],
+                    'Hora' => $row['Hora'],
+                    'Codigo_Autorizacion' => $row['Codigo_Autorizacion'],
+                    'Referencia' => $row['Referencia'],
+                    'Nombre_Archivo' => $row['Nombre_Archivo'] // TRAZABILIDAD
                 ];
             }
 
@@ -3481,94 +3506,96 @@ public function anomalies_client_tickets()
     }
 
     public function get_conciliaciones_hechas() {
-    ob_clean();
-    header('Content-Type: application/json');
+        ob_clean();
+        header('Content-Type: application/json');
 
-    $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
-    $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
-    $estacion_id   = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
-    $afiliacion    = trim(filter_input(INPUT_GET, 'afiliacion'));
+        $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
+        $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
+        $estacion_id   = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parámetro
+        $afiliacion    = trim(filter_input(INPUT_GET, 'afiliacion'));
 
-    if (!$fecha_ini_raw || !$fecha_fin_raw) {
-        $fecha_ini_raw = date('Ymd');
-        $fecha_fin_raw = date('Ymd');
-    }
-
-    $fecha_ini = date('Y-m-d', strtotime($fecha_ini_raw));
-    $fecha_fin = date('Y-m-d', strtotime($fecha_fin_raw));
-
-    $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
-
-    try {
-        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-        // Consulta V4 Optimizada: Carga solo GRUPOS. Los detalles se cargarán bajo demanda.
-        $sql = "SELECT DISTINCT
-                    G.id as grupo_id,
-                    G.diferencia,
-                    G.fecha_operativa as fecha -- <-- CAMBIO: Usamos fecha_operativa para que aparezca en el día correcto
-                FROM Conciliacion_V2_Grupos G
-                WHERE G.estacion_id = ?
-                  AND G.fecha_operativa BETWEEN ? AND ?"; // <-- Filtro simplificado y más rápido por fecha operativa
-
-        $params = [$estacion_id, $fecha_ini, $fecha_fin];
-
-        if (!empty($afiliacion)) {
-            $sql .= " AND (
-                        EXISTS (
-                            SELECT 1 FROM Conciliacion_V2_Detalles D_Check
-                            INNER JOIN banco_getnet BG ON D_Check.referencia_externa = BG.ID_Externo
-                            WHERE D_Check.grupo_id = G.id AND D_Check.origen = 'TX' AND BG.Afiliacion = ?
-                        )
-                        OR EXISTS (
-                            SELECT 1 FROM Conciliacion_V2_Detalles D_Check
-                            INNER JOIN banco_banorte BB ON D_Check.referencia_externa = BB.ID_Externo
-                            WHERE D_Check.grupo_id = G.id AND D_Check.origen = 'TX' AND BB.Afiliacion = ?
-                        )
-                        OR EXISTS (
-                            SELECT 1 FROM Conciliacion_V2_Detalles D_Syn
-                            WHERE D_Syn.grupo_id = G.id AND D_Syn.origen = 'TX' AND D_Syn.referencia_externa LIKE 'tx_%'
-                        )
-                    )";
-            $params[] = $afiliacion;
-            $params[] = $afiliacion; // Se añade por segunda vez para el segundo placeholder
+        if (!$fecha_ini_raw || !$fecha_fin_raw) {
+            $fecha_ini_raw = date('Ymd');
+            $fecha_fin_raw = date('Ymd');
         }
 
-        $sql .= " ORDER BY G.id";
+        $fecha_ini = date('Y-m-d', strtotime($fecha_ini_raw));
+        $fecha_fin = date('Y-m-d', strtotime($fecha_fin_raw));
 
-        $stmt = $conn->prepare($sql);
-        $stmt->execute($params);
-        $grupos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712"; 
 
-        // --- NUEVO: Obtener lista plana de IDs ya conciliados ---
-        $sqlIds = "SELECT D.referencia_externa, D.origen 
-                   FROM Conciliacion_V2_Detalles D
-                   INNER JOIN Conciliacion_V2_Grupos G ON D.grupo_id = G.id
-                   WHERE G.estacion_id = ? AND G.fecha_operativa BETWEEN ? AND ?";
-        $stmtIds = $conn->prepare($sqlIds);
-        $stmtIds->execute([$estacion_id, $fecha_ini, $fecha_fin]);
-        $refs = $stmtIds->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        $data = [
-            'grupos' => array_map(function($g) {
-                return [
-                    'grupo_id'   => $g['grupo_id'],
-                    'diferencia' => (float) $g['diferencia'],
-                    'fecha'      => $g['fecha']
+            // Determinar la tabla de banco específica para optimizar
+            $tablaBanco = "";
+            if ($entidad_id == 1) $tablaBanco = "banco_getnet";
+            elseif ($entidad_id == 4) $tablaBanco = "banco_banorte";
+
+            // Consulta V2 Optimizada: 
+            // 1. Filtramos por Estación y Fecha Operativa del Grupo directamente.
+            // 2. Si hay afiliación, nos aseguramos de traer TODAS las filas de los grupos que tengan al menos una TX.
+            $sql = "SELECT 
+                        D.id,
+                        D.fecha_operacion as fecha, 
+                        D.monto, 
+                        D.grupo_id, 
+                        D.origen,
+                        D.referencia_externa,
+                        D.concepto as descripcion,
+                        G.diferencia
+                    FROM Conciliacion_V2_Detalles D
+                    INNER JOIN Conciliacion_V2_Grupos G ON D.grupo_id = G.id
+                    WHERE G.estacion_id = ? 
+                      AND G.fecha_operativa BETWEEN ? AND ? ";
+            
+            $params = [$estacion_id, $fecha_ini, $fecha_fin];
+
+            if (!empty($afiliacion)) {
+                // Filtro de Afiliación a nivel de GRUPO:
+                // Esto garantiza que si el grupo es de esta afiliación, se incluyan sus filas CG y TX.
+                $sql .= " AND EXISTS (
+                    SELECT 1 
+                    FROM Conciliacion_V2_Detalles D_Check
+                    WHERE D_Check.grupo_id = G.id 
+                      AND D_Check.origen = 'TX' 
+                      AND (D_Check.referencia_externa LIKE 'tx_%' " . 
+                      (!empty($tablaBanco) ? " OR EXISTS (SELECT 1 FROM $tablaBanco B WHERE B.ID_Externo = D_Check.referencia_externa AND B.Afiliacion = ?)" : "") . 
+                      ")
+                )";
+                if (!empty($tablaBanco)) $params[] = $afiliacion;
+            }
+
+            $sql .= " ORDER BY G.id, D.origen";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            
+            $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $data = [];
+            foreach($filas as $fila) {
+                $lado = ($fila['origen'] === 'CG') ? 'left' : 'center';
+                $data[] = [
+                    'id'         => $fila['id'],
+                    'fecha'      => $fila['fecha'], 
+                    'monto'      => (float) $fila['monto'],
+                    'grupo_id'   => $fila['grupo_id'],
+                    'lado'       => $lado,
+                    'ref'        => $fila['referencia_externa'],
+                    'diferencia' => (float) $fila['diferencia'], 
+                    'afiliacion' => $afiliacion, 
+                    'concepto'   => $fila['descripcion']
                 ];
-            }, $grupos),
-            'conciliated_ids' => $refs 
-        ];
+            }
+            
+            echo json_encode(['status' => 'success', 'data' => $data]);
 
-        echo json_encode(['status' => 'success', 'data' => $data]);
-
-    } catch (PDOException $e) { 
-        http_response_code(500); // Send a proper error code
-        echo json_encode(['status' => 'error', 'message' => 'Error en get_conciliaciones_hechas: ' . $e->getMessage()]);
+        } catch (PDOException $e) { echo json_encode(['status' => 'error', 'message' => $e->getMessage()]); }
+        exit;
     }
-    exit;
-}
 
 
 public function get_resumen_transito() {
@@ -4573,56 +4600,6 @@ public function stamped_invoices_detail(): void
 
         } catch (Exception $e) {
             echo "Error generando Excel: " . $e->getMessage();
-        }
-        exit;
-    }
-
-    public function get_detalles_grupo() {
-        ob_clean();
-        header('Content-Type: application/json');
-
-        $grupo_id = filter_input(INPUT_GET, 'grupo_id', FILTER_VALIDATE_INT);
-
-        if (!$grupo_id) {
-            http_response_code(400);
-            echo json_encode(['status' => 'error', 'message' => 'ID de grupo no válido.']);
-            exit;
-        }
-
-        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
-
-        try {
-            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-            $sql = "SELECT
-                        id, fecha_operacion as fecha, monto, grupo_id, origen,
-                        referencia_externa, concepto
-                    FROM Conciliacion_V2_Detalles
-                    WHERE grupo_id = ?
-                    ORDER BY origen, fecha_operacion";
-
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$grupo_id]);
-            $filas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $data = array_map(function($fila) {
-                return [
-                    'id'      => $fila['id'],
-                    'fecha'   => $fila['fecha'],
-                    'monto'   => (float) $fila['monto'],
-                    'grupo_id'=> $fila['grupo_id'],
-                    'lado'    => ($fila['origen'] === 'CG') ? 'left' : 'center',
-                    'ref'     => $fila['referencia_externa'],
-                    'concepto'=> $fila['concepto']
-                ];
-            }, $filas);
-
-            echo json_encode(['status' => 'success', 'data' => $data]);
-
-        } catch (PDOException $e) {
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Error en get_detalles_grupo: ' . $e->getMessage()]);
         }
         exit;
     }
