@@ -679,7 +679,8 @@
         actualizar_detalle: '/income/actualizar_monto_detalle',
         desligar_detalle: '/income/desligar_movimiento',
         borrar_transito: '/income/borrar_transito',
-        update_date: '/income/update_transaction_date'
+        update_date: '/income/update_transaction_date',
+        detalles_grupo: '/income/get_detalles_grupo' // <-- NUEVO ENDPOINT
     };
 
     const ENTITY_CONFIG = {
@@ -976,12 +977,10 @@
             }
         } catch(e) { console.error("Error cargando tránsitos", e); }
 
-        // 2. Ejecutar cargas en paralelo y esperar a que terminen
-        await Promise.all([
-            cargarControlGas(sid, currentActiveRule, transitosLeft),
-            cargarTransaccionesBanco(eid, currentActiveRule, transitosCenter),
-            cargarTesoreria(eid, currentActiveRule)
-        ]);
+        // 2. Ejecutar cargas de forma secuencial para depurar rendimiento
+        await cargarControlGas(sid, currentActiveRule, transitosLeft);
+        await cargarTransaccionesBanco(eid, currentActiveRule, transitosCenter);
+        await cargarTesoreria(eid, currentActiveRule);
 
         // 3. Restaurar posiciones de scroll (con un ligero delay para asegurar renderizado)
         setTimeout(() => {
@@ -1005,6 +1004,8 @@
         } catch(e) { console.error("Error cargando resumen tránsito", e); }
     }
 
+    let conciliatedIdsMap = new Set(); // Mapa para bloqueo visual rápido
+
     async function cargarHistorial() {
         const p = getPeriod();
         const sid = $('#estacionSelect').val();
@@ -1018,19 +1019,18 @@
                 afiliacion: afil
             };
             const res = await $.get(URLS.historial, params);
-            if(res && res.data) {
-                const uniqueSet = new Set();
-                historialConciliacion = res.data.filter(item => {
-                    const key = JSON.stringify(item);
-                    if (uniqueSet.has(key)) return false;
-                    uniqueSet.add(key);
-                    return true;
-                });
-            } else { historialConciliacion = []; }
-            procesarDiferenciasVisibles();
+            if (res && res.status === 'success' && res.data) {
+                historialConciliacion = res.data.grupos || [];
+                // Llenar el mapa de IDs conciliados
+                conciliatedIdsMap = new Set((res.data.conciliated_ids || []).map(r => String(r.referencia_externa)));
+            } else {
+                historialConciliacion = [];
+                conciliatedIdsMap = new Set();
+            }
         } catch(e) { 
             console.error("Error historial", e);
-            historialConciliacion = []; mapaDiferencias = {};
+            historialConciliacion = []; 
+            conciliatedIdsMap = new Set();
         }
     }
 
@@ -1283,25 +1283,37 @@
         } catch(e) { console.error(e); container.html('<div class="text-danger p-3">Error</div>'); }
     }
 
-    function cargarTesoreria(eid, rule) {
+    async function cargarTesoreria(eid, rule) {
         const container = $('#bk-content');
         container.html('<div class="text-center py-5"><div class="spinner-border text-secondary"></div></div>');
         const conf = ENTITY_CONFIG[eid];
-        if(!conf || !conf.url) { container.html('<div class="p-4 text-center">Sin endpoint</div>'); return; }
-        $.get(conf.url, {year: widgetState.year, month: widgetState.month}, function(resp){
-            if(!resp.data) { container.html('<div class="p-3 text-center">Sin datos</div>'); return; }
-            
-            // Guardar para Modo Depósitos
-            currentBkData = resp.data || [];
+        if (!conf || !conf.url) {
+            container.html('<div class="p-4 text-center">Sin endpoint</div>');
+            return Promise.resolve(); // Return a resolved promise to not break the chain
+        }
 
-            const filtered = resp.data.filter(m => {
-                const afilMatch = String(m.Afiliacion).trim() === String(rule.afiliacion).trim();
-                let val = m.Total || m.Depositos || m.Importe || 0;
-                if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
-                return afilMatch && val > 0;
+        // Return the promise from $.get to make the function awaitable
+        return $.get(conf.url, { year: widgetState.year, month: widgetState.month })
+            .then(function(resp) {
+                if (!resp.data) {
+                    container.html('<div class="p-3 text-center">Sin datos</div>');
+                    return;
+                }
+
+                // Guardar para Modo Depósitos
+                currentBkData = resp.data || [];
+
+                const filtered = resp.data.filter(m => {
+                    const afilMatch = String(m.Afiliacion).trim() === String(rule.afiliacion).trim();
+                    let val = m.Total || m.Depositos || m.Importe || 0;
+                    if (typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g, ""));
+                    return afilMatch && val > 0;
+                });
+                renderList('right', filtered, rule.descripcion || 'Depósito');
+            })
+            .fail(function() {
+                container.html('<div class="p-3 text-center text-danger">Error al cargar Tesorería</div>');
             });
-            renderList('right', filtered, rule.descripcion || 'Depósito');
-        });
     }
 
     function eliminarTransito(idsArray) {
@@ -1347,474 +1359,278 @@
     // 5. RENDERIZADO MEJORADO
     // ==========================================
 
-    function renderList(side, rawData, label) {
+    function renderList(side, data, label) {
         const mapping = {
             'left': { cont: '#cg-content', count: '#cg-counter', res: '#cg-resumen-total' },
             'center': { cont: '#tx-content', count: '#tx-counter', res: '#tx-resumen-total' },
             'right': { cont: '#bk-content', count: '#bk-total', res: '#bk-resumen-total' }
         };
-
         const config = mapping[side];
-        const container = $(config.cont);
-        const counter = $(config.count);
-        const resume = $(config.res);
-        
-        container.empty();
+        if (!config) return;
 
-        if (!rawData || rawData.length === 0) {
-            container.html('<div class="text-muted text-center py-5">Sin movimientos</div>');
-            counter.text('$0.00');
-            resume.text('$0.00');
+        const container = $(config.cont).empty();
+        let grandTotal = 0;
+
+        if (side === 'right') {
+            if (!data || data.length === 0) {
+                container.html('<div class="text-muted text-center py-5">Sin movimientos</div>');
+            } else {
+                data.forEach(item => {
+                    let val = parseFloat(item.Total || item.Depositos || item.Importe || 0);
+                    if(isNaN(val)) val = 0;
+                    grandTotal += val;
+                    const rowHtml = renderRowItemHTML('right', item, label);
+                    container.append(rowHtml);
+                });
+            }
+            $(config.count).text(formatter.format(grandTotal));
+            $(config.res).text(formatter.format(grandTotal));
             return;
         }
 
-        // Variable para seguimiento de items ya conciliados en esta renderización
-        const coincidenciasUsadas = new Set();
-        
-        // --- NUEVA LÓGICA: IZQUIERDA Y CENTRO AGRUPADOS POR FECHA ---
-        if (side === 'left' || side === 'center') {
-            // Agrupar por Fecha (Left: Fecha, Center: FechaConciliacion)
-            const groups = {};
-            rawData.forEach(item => {
-                if(item.hidden) return;
-                
-                // Determinar fecha clave
-                let dateKey = item.Fecha; // Default (Left)
-                if (side === 'center') dateKey = item.FechaConciliacion;
-                
-                if (!dateKey) return; // Skip invalid dates
-
-                if(!groups[dateKey]) groups[dateKey] = { date: dateKey, total: 0, items: [] };
-                
-                // --- MEJORA: ASIGNACIÓN DE ID ÚNICO INFALIBLE ---
-                if (!item.ui_id) {
-                    if (side === 'center') {
-                        item.ui_id = item.IdTransaccion;
-                    } else {
-                        // Para ControlGas usamos el ID_Unico que viene de la BD (compuesto)
-                        item.ui_id = item.originalData ? item.originalData.ID_Unico : `cg_gen_${Math.random().toString(36).substr(2, 9)}`;
-                    }
-                }
-
-                groups[dateKey].items.push(item);
-                
-                let val = item.Total || item.monto || 0; 
-                groups[dateKey].total += parseFloat(val);
-            });
-
-            // Ordenar grupos por fecha
-            const sortedDates = Object.keys(groups).sort();
-            
-            let grandTotal = 0;
-
-            sortedDates.forEach(dateKey => {
-                const group = groups[dateKey];
-                grandTotal += group.total;
-
-                // --- NUEVO: ORDENAR POR HORA DENTRO DEL GRUPO (CRONOLÓGICO) ---
-                if (group.items && group.items.length > 1) {
-                    group.items.sort((a, b) => {
-                        const hA = a.Hora || '00:00:00';
-                        const hB = b.Hora || '00:00:00';
-                        return hA.localeCompare(hB);
-                    });
-                }
-
-                // Renderizar el grupo
-                renderTransactionGroup(container, group, side, coincidenciasUsadas, label);
-            });
-
-            counter.text(formatter.format(grandTotal));
-            resume.text(formatter.format(grandTotal));
-            return; 
-        } else {
-            // Lógica estándar para Derecha (Tesorería) - Agregación por fecha+status
-            let processedData = rawData; 
-            const gruposLocales = {};
-            rawData.forEach(item => {
-                if(!item.Fecha || item.hidden) return;
-                const fIso = normalizarFecha(item.Fecha);
-                let val = item.Total || item.Depositos || item.Importe || 0;
-                if(typeof val === 'string') val = parseFloat(val.replace(/[^0-9.-]+/g,""));
-                if(isNaN(val)) val = 0;
-                const statusKey = item._status || 'normal';
-                const uniqueKey = `${fIso}_${statusKey}`;
-                if(!gruposLocales[uniqueKey]) gruposLocales[uniqueKey] = { fecha: fIso, monto: 0, desc: new Set(), status: statusKey, transitIds: [] };
-                gruposLocales[uniqueKey].monto += val;
-                let d = item.Referencia || 'Depósito';
-                gruposLocales[uniqueKey].desc.add(d);
-                if(item._transitId) gruposLocales[uniqueKey].transitIds.push(item._transitId);
-            });
-            processedData = Object.values(gruposLocales).sort((a,b) => new Date(a.fecha) - new Date(b.fecha));
-            
-            let grandTotal = 0;
-
-            processedData.forEach(g => { 
-                // Adaptar objeto agregado a formato 'item' para reutilizar renderRowItemHTML
-                // g tiene { fecha, monto, desc (Set), status, transitIds }
-                const itemAdaptado = {
-                    Fecha: g.fecha,
-                    Total: g.monto,
-                    Concepto: Array.from(g.desc || []).join(', '),
-                    _status: g.status,
-                    transitIds: g.transitIds,
-                    ui_id: `${g.fecha}-${g.status}` // ID sintético para el row
-                };
-                
-                grandTotal += g.monto;
-                const rowHtml = renderRowItemHTML(side, itemAdaptado, coincidenciasUsadas, label);
-                container.append(rowHtml);
-            });
-            
-            counter.text(formatter.format(grandTotal));
-            resume.text(formatter.format(grandTotal));
-        }
-    }
-
-    // --- RENDERIZAR GRUPO (HEADER + BODY) ---
-    function renderTransactionGroup(container, group, side, coincidenciasUsadas, label) {
-        const groupId = `group-${side}-${group.date}`;
-        const dateFmt = group.date.split('-').reverse().join('/');
-        const isGroupOpen = openGroups.has(groupId);
-        
-        // --- CALCULO DE DIFERENCIAS DIARIAS ---
-        let diffDia = 0;
-        let gruposProcesadosDia = new Set();
-        let itemsHtml = '';
-        let itemsConciliadosCount = 0;
-
-        group.items.forEach(item => {
-            const itemCleanId = (side === 'left') ? String(item.ui_id).replace('cg_', '') : String(item.IdTransaccion || item.ui_id);
-            const matching = historialConciliacion.find(h => h.lado === side && String(h.ref) === itemCleanId);
-            
-            if (matching) {
-                itemsConciliadosCount++;
-                if (!gruposProcesadosDia.has(matching.grupo_id)) {
-                    diffDia += parseFloat(matching.diferencia) || 0;
-                    gruposProcesadosDia.add(matching.grupo_id);
-                }
-            }
-            itemsHtml += renderRowItemHTML(side, item, coincidenciasUsadas, label);
+        // 1. Identificar qué ítems individuales ya están conciliados (para no duplicarlos)
+        const idsConciliados = new Set();
+        historialConciliacion.forEach(h => {
+            if (h.lado === side) idsConciliados.add(String(h.ref));
         });
 
-        // Lógica de color y texto para el tag del día
-        let diffTagDia = "";
-        let headerStyle = "";
-        const todoConciliado = itemsConciliadosCount === group.items.length;
-        const algoConciliado = itemsConciliadosCount > 0;
+        // 2. Unificar ítems NO conciliados y grupos conciliados
+        let renderables = [];
+        
+        // Añadir ítems (solo si NO están conciliados)
+        data.forEach(item => {
+            const itemCleanId = (side === 'left') ? String(item.ui_id).replace('cg_', '') : String(item.IdTransaccion || item.ui_id);
+            if (!idsConciliados.has(itemCleanId)) {
+                renderables.push({
+                    type: 'item',
+                    date: (side === 'center') ? (item.FechaConciliacion || item.FechaTransaccion) : item.Fecha,
+                    sortKey: ((side === 'center' ? (item.FechaConciliacion || item.FechaTransaccion) : item.Fecha) || '0000-00-00') + (item.Hora || '00:00:00'),
+                    data: item
+                });
+            }
+        });
 
-        // 1. DETERMINAR COLOR DEL ENCABEZADO (PARA AMBAS COLUMNAS)
-        if (todoConciliado && group.items.length > 0) {
-            if (Math.abs(diffDia) > 0.009) {
-                headerStyle = "border-left: 5px solid #ffc107; background-color: #fffbeb;"; // Completado con diferencias
+        // Añadir grupos conciliados a ambos paneles
+        historialConciliacion.forEach(group => {
+            const groupDate = normalizarFecha(group.fecha);
+            renderables.push({
+                type: 'group',
+                date: groupDate,
+                sortKey: groupDate + '23:59:59',
+                data: group
+            });
+        });
+        
+        // 3. Ordenar y agrupar por fecha
+        renderables.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+        const groupsByDate = renderables.reduce((acc, r) => {
+            if (!r.date) return acc;
+            if (!acc[r.date]) acc[r.date] = { 
+                date: r.date, items: [], totalUnconciliated: 0, conciliatedCount: 0, dayTotalDiff: 0 
+            };
+            acc[r.date].items.push(r);
+            if (r.type === 'item') {
+                const val = parseFloat(r.data.Total || 0);
+                grandTotal += val;
+                acc[r.date].totalUnconciliated += val;
             } else {
-                headerStyle = "border-left: 5px solid #28a745; background-color: #f0fff4;"; // OK Perfecto
+                acc[r.date].conciliatedCount++;
+                acc[r.date].dayTotalDiff += parseFloat(r.data.diferencia || 0);
             }
-        } else if (algoConciliado) {
-            headerStyle = "border-left: 5px solid #007bff; background-color: #f0f7ff;"; // En proceso
+            return acc;
+        }, {});
+        
+        // 4. Renderizar
+        if (Object.keys(groupsByDate).length === 0) {
+            container.html('<div class="text-muted text-center py-5">Sin movimientos</div>');
+        } else {
+            Object.keys(groupsByDate).sort().forEach(dateKey => {
+                renderDayGroup(container, groupsByDate[dateKey], side, label);
+            });
         }
 
-        // 2. DETERMINAR TAG NUMÉRICO (SÓLO PARA TRANSACCIONES)
-        if (side === 'center') {
-            let tagColor = '#ffc107'; 
-            let tagText = `Dif: ${formatter.format(diffDia)}`;
-            let mostrarTag = Math.abs(diffDia) > 0.009;
-
-            if (diffDia > 0.009) {
-                tagColor = '#28a745'; 
-            } else if (diffDia < -0.009) {
-                tagColor = '#dc3545'; 
-            } else if (todoConciliado && group.items.length > 0) {
-                tagColor = '#28a745';
-                tagText = '<i class="fas fa-check-circle mr-1"></i> OK';
-                mostrarTag = true;
-            }
-
-            if (mostrarTag) {
-                diffTagDia = `<span class="badge badge-pill ml-2" style="background-color:${tagColor}; color:white; font-family:consolas; font-size:0.75rem; padding: 4px 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${tagText}</span>`;
-            }
-        }
-
-        const itemsProgressLabel = `${itemsConciliadosCount}/${group.items.length} items`;
-        const iconClass = isGroupOpen ? 'fa-chevron-down' : 'fa-chevron-right';
-        const bodyClass = isGroupOpen ? 'open' : '';
-
-        const headerHtml = `
-            <div class="tx-group-header" style="${headerStyle}" onclick="toggleGroup('${groupId}', '${group.date}', ${group.total}, this)">
-                <div>
-                    <button class="tx-group-toggle-btn" onclick="event.stopPropagation(); toggleGroupDetails('${groupId}', this)">
-                        <i class="fas ${iconClass}"></i>
-                    </button>
-                    <span class="mr-2"><i class="far fa-calendar-alt"></i> ${dateFmt}</span>
-                    <span class="badge badge-pill badge-light border text-muted">${itemsProgressLabel}</span>
-                    ${diffTagDia}
-                </div>
-                <div class="font-numeric">${formatter.format(group.total)}</div>
-            </div>
-        `;
-
-        const bodyHtml = `<div class="tx-group-body ${bodyClass}" id="${groupId}">${itemsHtml}</div>`;
-        container.append(headerHtml + bodyHtml);
+        $(config.count).text(formatter.format(grandTotal));
+        $(config.res).text(formatter.format(grandTotal));
     }
 
-    // --- NUEVO HELPER UNIFICADO PARA RENDERIZAR FILAS ---
-    function renderRowItemHTML(side, g, coincidenciasUsadas, label) {
-        // g = item (rawData item or aggregated item)
-        // Normalizar propiedades
-        const effectiveDate = (side === 'center') ? g.FechaConciliacion : (g.Fecha || g.fecha); 
-        const monto = g.Total || g.monto;
-        const descStr = g.Concepto || g.Concepto || ''; // Fallback
+    function renderDayGroup(container, group, side, label) {
+        const dateFmt = formatFechaVisual(group.date);
+        const groupId = `group-${side}-${group.date}`;
         
-        // Identificadores
-        const rowId = `item-${side}-${g.ui_id}`;
+        // --- LÓGICA DE COLOR Y ESTADO ---
+        const hasUnconciliated = group.items.some(r => r.type === 'item');
+        const hasConciliated = group.conciliatedCount > 0;
         
-        // Tooltip y Formato
-        const tooltip = descStr.substring(0, 100) + (descStr.length > 100 ? '...' : '');
-        const partes = effectiveDate.split('-');
-        let fechaFmt = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        let headerStyle = "background-color: #f8f9fa; border-left: 5px solid #dee2e6;"; // Default (Nada conciliado)
+        let diffTagHtml = "";
 
-        // --- MOSTRAR HORA SI ES TRANSACCIÓN (CENTER) ---
+        if (hasConciliated) {
+            if (!hasUnconciliated) {
+                // Todo conciliado
+                if (Math.abs(group.dayTotalDiff) < 0.01) {
+                    headerStyle = "background-color: #d1e7dd; border-left: 5px solid #28a745;"; // Verde (OK)
+                    diffTagHtml = `<span class="badge badge-pill badge-success ml-2 shadow-sm" style="font-size:0.75rem;"><i class="fas fa-check-circle mr-1"></i> OK</span>`;
+                } else {
+                    headerStyle = "background-color: #fff3cd; border-left: 5px solid #ffc107;"; // Amarillo (Dif)
+                    diffTagHtml = `<span class="badge badge-pill badge-warning ml-2 shadow-sm text-dark" style="font-size:0.75rem;"><i class="fas fa-exclamation-triangle mr-1"></i> Dif: ${formatter.format(group.dayTotalDiff)}</span>`;
+                }
+            } else {
+                // Parcialmente conciliado
+                headerStyle = "background-color: #e7f1ff; border-left: 5px solid #0d6efd;"; // Azul
+                const diffTxt = Math.abs(group.dayTotalDiff) < 0.01 ? "OK" : formatter.format(group.dayTotalDiff);
+                diffTagHtml = `<span class="badge badge-pill badge-primary ml-2 shadow-sm" style="font-size:0.75rem;"><i class="fas fa-tasks mr-1"></i> Parcial: ${diffTxt}</span>`;
+            }
+        }
+
+        const headerHtml = `
+            <div class="tx-group-header" style="${headerStyle}" onclick="toggleDayGroup('${groupId}', this)">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-chevron-right toggle-icon mr-3" style="width: 15px; text-align: center;"></i>
+                    <span class="mr-2"><i class="far fa-calendar-alt"></i> ${dateFmt}</span>
+                    ${diffTagHtml}
+                </div>
+                <div class="font-numeric">${formatter.format(group.totalUnconciliated)}</div>
+            </div>`;
+        container.append(headerHtml);
+
+        const bodyHtml = group.items.map(r => r.type === 'item' ? renderRowItemHTML(side, r.data, label) : renderConciliatedGroupHTML(r.data)).join('');
+        container.append(`<div class="tx-group-body" id="${groupId}" style="display:none;">${bodyHtml}</div>`);
+    }
+
+    function toggleDayGroup(groupId, headerEl) {
+        const $body = $(`#${groupId}`);
+        const $icon = $(headerEl).find('.toggle-icon');
+        
+        if ($body.is(':visible')) {
+            $body.slideUp(200);
+            $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        } else {
+            $body.slideDown(200);
+            $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+        }
+    }
+    
+    // Nueva función para renderizar el HEADER de un grupo ya conciliado
+    function renderConciliatedGroupHTML(group) {
+        const color = getColorForGroup(group.grupo_id);
+        const diff = parseFloat(group.diferencia);
+        const isOk = Math.abs(diff) < 0.01;
+        const claseTag = isOk ? 'ok' : 'warn';
+        const textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
+        const iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
+        const diffTagHtml = `<span class="diff-tag ${claseTag}">${iconDiff}${textoTag}</span>`;
+
+        // Se usa un `onclick` que llama a la nueva función de toggle
+        return `
+            <div class="conciliated-group-header" style="border-left-color: ${color};" onclick="toggleConciliatedGroupDetails('details-body-${group.grupo_id}', this, ${group.grupo_id})">
+                <div class="d-flex align-items-center">
+                    <span class="nexus-badge" style="background:${color}">#${group.grupo_id}</span>
+                    <i class="fas fa-chevron-right toggle-icon mr-2"></i>
+                    <strong>Grupo Conciliado</strong>
+                </div>
+                ${diffTagHtml}
+            </div>
+            <div class="conciliated-group-body" id="details-body-${group.grupo_id}" data-loaded="false" style="display:none;"></div>
+        `;
+    }
+
+    // Renderizador SIMPLIFICADO para items no conciliados (y panel derecho)
+    function renderRowItemHTML(side, g, label) {
+        const isRightPanel = side === 'right';
+        const effectiveDate = isRightPanel ? g.Fecha : ((side === 'center') ? g.FechaConciliacion : g.Fecha);
+        const monto = parseFloat(g.Total || g.Depositos || g.Importe || 0);
+        let descStr = g.Concepto || '';
+        if (isRightPanel) { // Tesorería puede tener 'desc' como un Set agregado
+            descStr = Array.isArray(g.desc) ? g.desc.join(', ') : (g.Referencia || 'Depósito');
+        }
+        
+        // --- Lógica de Bloqueo y Color ---
+        const itemCleanId = (side === 'left') ? String(g.ui_id).replace('cg_', '') : String(g.IdTransaccion || g.ui_id);
+        const isConciliated = !isRightPanel && conciliatedIdsMap.has(itemCleanId);
+        let clasesExtra = isConciliated ? " conciliated" : "";
+
+        const ui_id = g.ui_id || (isRightPanel ? `${g.fecha}-${g.status}`: g.IdTransaccion);
+        const rowId = `item-${side}-${ui_id}`;
+        
+        let fechaFmt = formatFechaVisual(effectiveDate);
         if (side === 'center' && g.Hora) {
             fechaFmt += ` <span class="badge badge-light border text-muted ml-1" style="font-size:0.7rem; font-weight:normal;"><i class="far fa-clock mr-1"></i>${g.Hora}</span>`;
         }
 
-        // Lógica de Matching (Buscar en Historial por ID Único V2)
-        const itemCleanId = (side === 'left') ? String(g.ui_id).replace('cg_', '') : String(g.IdTransaccion || g.ui_id);
-        
-        let coincidencia = historialConciliacion.find(h => 
-            !coincidenciasUsadas.has(h.id) &&
-            h.lado === side &&
-            String(h.ref) === itemCleanId
-        );
+        const clickAction = (isRightPanel || isConciliated) ? '' : `onclick="toggleItem('${side}', '${effectiveDate}', ${monto}, '${descStr.replace(/'/g, "&apos;")}', this, null, '${g.IdTransaccion || ''}')"`;
 
-        // Fallback Tránsito (Solo Left/ControlGas) - Mantener si es necesario, pero idealmente también por ID
-        if (!coincidencia && side === 'left') {
-            coincidencia = historialConciliacion.find(h => transitoPasadoMap.hasOwnProperty(h.grupo_id) && !coincidenciasUsadas.has(h.id));
-        }
-
-        if (coincidencia) coincidenciasUsadas.add(coincidencia.id);
-
-        // Variables de Estado Visual
-        let clasesExtra = ""; 
-        let badgeHtml = ""; 
-        let iconHtml = "";
-        let estiloFondo = ""; 
-        let transitoPasadoHtml = ""; 
-        let buttonsHtml = "";
-        let dateDetailsHtml = ""; 
-
-        // Params para toggleItem
-        let transitIdsParam = (g.transitIds && g.transitIds.length > 0) ? `'${g.transitIds.join(',')}'` : (g._transitId ? `'${g._transitId}'` : 'null');
-        let toggleItemTransactionIdParam = side === 'center' ? `'${g.IdTransaccion}'` : 'null';
-        let clickAction = `onclick="toggleItem('${side}', '${effectiveDate}', ${monto}, '${descStr.replace(/'/g, "&apos;")}', this, ${transitIdsParam}, ${toggleItemTransactionIdParam})"`;
-
-        // 1. Estados de Tránsito (Left/Center)
-        if (side === 'left' || side === 'center') {
-            if (g._status === 'outgoing') { 
-                clasesExtra += " transit-locked"; 
-                iconHtml = '<i class="fas fa-arrow-right text-secondary mr-2" title="Enviado a Tránsito"></i>'; 
-                clickAction = ""; 
-            } else if (g._status === 'incoming') { 
-                // Lógica de Semáforo para Tránsito (Aging)
-                const dias = parseInt(g.dias_antiguedad) || 0;
-                let colorClass = 'badge-success'; // 0-30 días
-                if (dias > 60) colorClass = 'badge-danger'; // Crítico
-                else if (dias > 30) colorClass = 'badge-warning text-dark'; // Atención
-
-                clasesExtra += " transit-incoming"; 
-                iconHtml = `<span class="badge ${colorClass} mr-2 shadow-sm" style="font-size:0.7rem;"><i class="fas fa-history mr-1"></i> PENDIENTE (${dias} d)</span>`;
-                
-                if (g._transitId || (g.transitIds && g.transitIds.length)) { 
-                    const idsJson = JSON.stringify(g.transitIds || [g._transitId]).replace(/"/g, "&quot;");
-                    buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="eliminarTransito(${idsJson}); event.stopPropagation();" title="Quitar de Tránsito"><i class="fas fa-trash-alt"></i></button>`;
-                }
-            } else if (g._status === 'transit_completed') { 
-                clasesExtra += " transit-completed"; 
-                iconHtml = '<span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span>'; 
-                clickAction = ""; 
-            }
-        }
-
-        // 2. Detalles de Fecha (Center)
-        if (side === 'center') {
-            const isDiff = g.FechaTransaccion !== g.FechaAplicacion;
-            if (isDiff) {
-                if (g.FechaConciliacion === g.FechaTransaccion) {
-                    dateDetailsHtml = `<small class="text-muted d-block mt-1">Apl: ${formatFechaVisual(g.FechaAplicacion)} <button class="btn btn-sm btn-outline-info ml-1 p-0 px-1" onclick="event.stopPropagation(); changeTxReconcileDate('${g.IdTransaccion}', '${g.FechaAplicacion}')" title="Usar Fecha de Aplicación">Usar Apl.</button></small>`;
-                } else {
-                    dateDetailsHtml = `<small class="text-info d-block mt-1">Trans: ${formatFechaVisual(g.FechaTransaccion)} <button class="btn btn-sm btn-outline-secondary ml-1 p-0 px-1" onclick="event.stopPropagation(); changeTxReconcileDate('${g.IdTransaccion}', '${g.FechaTransaccion}')" title="Usar Fecha de Transacción">Usar Trans.</button></small>`;
-                }
-            }
-            
-            // Botón Info Detalles (SIEMPRE DISPONIBLE)
-            const dataJson = JSON.stringify(g).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-            buttonsHtml += `<button class="btn-action-mini btn-info ml-1" onclick="event.stopPropagation(); verDetalleTransaccion('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
-            
-            // Botón Mover Fecha (Solo si no está conciliado)
-            if(!coincidencia) {
-                buttonsHtml += `<button class="btn-action-mini btn-light border ml-1" onclick="event.stopPropagation(); changeTransactionDate('${g.IdTransaccion}', '${g.FechaConciliacion}')" title="Mover Fecha"><i class="fas fa-calendar-day text-primary"></i></button>`;
-            }
-        }
-
-        // 2.1 Botón Detalle ControlGas (SIEMPRE DISPONIBLE)
-        if (side === 'left' && g.originalData) {
-             const dataJson = JSON.stringify(g.originalData).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-             buttonsHtml += `<button class="btn-action-mini btn-dark ml-1" onclick="event.stopPropagation(); verDetalleControlGas('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
-        }
-
-        // 3. Estado Conciliado
-        let diffTagHtml = ""; // DEFINICIÓN LOCAL LIMPIA
-        if (coincidencia) {
-            clasesExtra += " conciliated"; 
-            clickAction = ""; 
-            const color = getColorForGroup(coincidencia.grupo_id);
-            if (g._status !== 'transit_completed') estiloFondo = `style="background-color: ${color}40;"`; 
-            badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
-
-            buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer"><i class="fas fa-unlink"></i></button>`;
-
-            // MOSTRAR DIFERENCIA DE GRUPO (SÓLO SI ES LA COLUMNA DE TRANSACCIONES)
-            if(side === 'center') {
-                const stats = mapaDiferencias[coincidencia.grupo_id];
-                if(stats) {
-                    let diff = stats.real_diff; 
-                    const isOk = Math.abs(diff) < 0.01; 
-                    const claseTag = isOk ? 'ok' : 'warn';
-                    let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
-                    let iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
-                    diffTagHtml = `<span class="diff-tag ${claseTag}" title="Diferencia de Grupo">${iconDiff}${textoTag}</span>`;
-                }
-            }
-
-            if (side === 'left') {
-                const montoBd = parseFloat(coincidencia.monto);
-                if(Math.abs(monto - montoBd) > 0.1) {
-                    clasesExtra += " desync"; 
-                    buttonsHtml = `<button class="btn-action-mini btn-sync-db" onclick="sincronizarMonto(${coincidencia.id}, ${monto})" title="Actualizar BD"><i class="fas fa-sync-alt"></i> Actualizar</button>${buttonsHtml}`;
-                }
-            }
-
-            if(side === 'right') {
-                if (transitoPasadoMap.hasOwnProperty(coincidencia.grupo_id)) {
-                    transitoPasadoHtml = `<div class="mt-1"><span class="badge badge-success shadow-sm" style="font-size:0.7rem;"><i class="fas fa-check-circle mr-1"></i> TRÁNSITO EXITOSO</span></div>`;
-                }
-            }
-        } else {
-            // No imprimir nada extra si no está conciliado (Limpieza según solicitud)
-            badgeHtml = "";
-        }
-
-        // --- BLOQUEO FINAL: Lado derecho no es clickable ---
-        if (side === 'right') clickAction = "";
-
-        // Render Final
         return `
-            <div class="row-item ${clasesExtra}" id="${rowId}" ${estiloFondo} ${clickAction}
-                data-side="${side}" data-fecha="${effectiveDate}" data-monto="${monto}" 
-                data-concepto="${descStr.replace(/"/g, "&quot;")}" data-transit="${g.transitIds ? g.transitIds.join(',') : (g._transitId || '')}">
+            <div class="row-item${clasesExtra}" id="${rowId}" ${clickAction} data-monto="${monto}">
                 <div>
-                    <div class="d-flex align-items-center mb-1">
-                        ${badgeHtml} ${iconHtml}
-                        <span class="font-numeric text-dark mr-2" style="font-size:1.05rem;">${fechaFmt}</span>
-                    </div>
-                    <small class="text-muted d-block text-truncate" style="max-width:200px;" title="${tooltip}">${tooltip}</small>
-                    ${dateDetailsHtml} 
-                    ${transitoPasadoHtml} 
+                    <div class="font-numeric text-dark">${fechaFmt}</div>
+                    <small class="text-muted d-block text-truncate" style="max-width:200px;">${descStr}</small>
                 </div>
-                <div class="d-flex align-items-center">
-                    ${(side === 'center') ? diffTagHtml : ''}
-                    <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">
-                        ${formatter.format(monto)}
-                    </div>
-                    ${buttonsHtml}
-                </div>
-            </div>
-        `;
+                <div class="font-numeric text-dark font-weight-bold" style="font-size:1.1rem;">${formatter.format(monto)}</div>
+            </div>`;
     }
 
     // --- ACCIONES DE GRUPO ---
-    let isMirroring = false; // Flag para evitar bucles infinitos
-    function toggleGroupDetails(groupId, btn) {
-        const $body = $(`#${groupId}`);
-        const $icon = $(btn).find('i');
-        
-        if ($body.hasClass('open')) {
-            $body.removeClass('open');
+    async function toggleConciliatedGroupDetails(bodyId, headerEl, groupId) {
+        const $body = $(`#${bodyId}`);
+        const $icon = $(headerEl).find('.toggle-icon');
+        const isLoaded = $body.attr('data-loaded') === 'true';
+
+        if ($body.is(':visible')) {
+            $body.slideUp(200);
             $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
-            openGroups.delete(groupId); 
         } else {
-            $body.addClass('open');
+            $body.slideDown(200);
             $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
-            openGroups.add(groupId); 
-
-            // --- AUTO-FOCUS EN EL LADO ESPEJO ---
-            if (!isMirroring) {
-                const parts = groupId.split('-'); // group, side, YYYY, MM, DD
-                const side = parts[1];
-                const date = parts.slice(2).join('-'); // Reconstruir fecha YYYY-MM-DD correctamente
-                const otherSide = (side === 'left') ? 'center' : (side === 'center' ? 'left' : null);
-
-                if (otherSide) {
-                    const mirrorGroupId = `group-${otherSide}-${date}`;
-                    const $mirrorBody = $(`#${mirrorGroupId}`);
-                    const $mirrorHeader = $mirrorBody.prev('.tx-group-header');
-
-                    if ($mirrorHeader.length) {
-                        isMirroring = true; // Activar bloqueo
-                        
-                        // 1. Asegurar que el espejo esté abierto
-                        if (!$mirrorBody.hasClass('open')) {
-                            const $mirrorBtn = $mirrorHeader.find('.tx-group-toggle-btn');
-                            toggleGroupDetails(mirrorGroupId, $mirrorBtn[0]);
-                        }
-
-                        // 2. Sincronizar Scroll
-                        const containerId = (otherSide === 'left') ? '#cg-content' : '#tx-content';
-                        const $container = $(containerId);
-                        
-                        // Calculamos la posición del header respecto al contenedor
-                        const offsetTop = $mirrorHeader.offset().top - $container.offset().top + $container.scrollTop();
-                        
-                        $container.stop().animate({ scrollTop: offsetTop - 5 }, 400);
-                        
-                        isMirroring = false; // Liberar bloqueo
-                    }
-                }
+            if (!isLoaded) {
+                $body.html('<div class="text-center py-3 small text-muted"><div class="spinner-border spinner-border-sm"></div> Cargando...</div>');
+                try {
+                    const resp = await $.get(URLS.detalles_grupo, { grupo_id: groupId });
+                    if (resp.status === 'success' && resp.data) {
+                        $body.html(resp.data.map(renderDetailRow).join(''));
+                        $body.attr('data-loaded', 'true');
+                    } else { $body.html('<div class="text-danger p-3">Error al cargar detalles: ' + (resp.message || 'Respuesta vacía') + '</div>'); }
+                } catch (err) { $body.html('<div class="text-danger p-3">Error de red al cargar detalles.</div>'); }
             }
         }
     }
 
+    function renderDetailRow(item) {
+        const panelLabel = item.lado === 'left' ? 'CG' : 'TX';
+        return `
+            <div class="row-item conciliated" style="padding-left: 25px; background: #f8f9fa;">
+                <div><div class="font-numeric"><span class="badge badge-secondary mr-2">${panelLabel}</span>${formatFechaVisual(item.fecha)}</div><small class="text-muted d-block">${item.concepto}</small></div>
+                <div class="font-numeric text-dark">${formatter.format(item.monto)}</div>
+            </div>`;
+    }
+
+    // El toggleGroup original para seleccionar items no conciliados sigue siendo necesario
     function toggleGroup(groupId, date, total, headerEl) {
-        const $items = $(`#${groupId} .row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)`);
+        const $items = $(`#${groupId} .row-item`); // Ahora solo items NO conciliados están aquí
         if ($items.length === 0) return;
 
         const anyUnselected = $items.toArray().some(el => !$(el).hasClass('active'));
-        const side = groupId.split('-')[1]; // left o center
+        const side = groupId.split('-')[1];
         const list = selection[side];
         
         isBatchSelecting = true;
 
         if (anyUnselected) {
-            // SELECCIONAR TODO EL GRUPO
             const existingIds = new Set(list.map(i => i.elId));
-            
             $items.each(function() {
                 const elId = this.id;
                 if (!existingIds.has(elId)) {
                     const $el = $(this);
-                    const tIdsStr = $el.attr('data-transit');
                     list.push({
                         fecha: $el.attr('data-fecha'),
                         monto: parseFloat($el.attr('data-monto')),
                         concepto: $el.attr('data-concepto'),
                         elId: elId,
-                        transitIds: tIdsStr ? tIdsStr.split(',') : []
                     });
                     this.classList.add('active');
                 }
             });
         } else {
-            // DESELECCIONAR TODO EL GRUPO
             const idsToRemove = new Set($items.toArray().map(el => el.id));
             selection[side] = list.filter(i => !idsToRemove.has(i.elId));
             $items.each(function() {
@@ -1824,21 +1640,13 @@
 
         isBatchSelecting = false;
         recalcTotals();
-        updateGroupHeaderState(groupId);
     }
 
+    // updateGroupHeaderState ya no es tan relevante, pero se mantiene para evitar romper referencias
+    // Su lógica se puede refactorizar o eliminar si no se usa después de estos cambios
     function updateGroupHeaderState(groupId) {
-        if (isBatchSelecting) return; // NO HACER NADA SI ES BATCH
-        
-        const $body = $(`#${groupId}`);
-        const $header = $body.prev('.tx-group-header');
-        const $items = $body.find('.row-item:not(.conciliated):not(.transit-locked):not(.transit-completed)');
-        
-        if ($items.length > 0 && $items.length === $items.filter('.active').length) {
-            $header.addClass('active');
-        } else {
-            $header.removeClass('active');
-        }
+        // No se usa en esta nueva implementación, pero se mantiene para evitar errores de referencia
+        // Si se elimina, también hay que eliminar su llamada en toggleItem
     }
 
     function changeTransactionDate(id, currentDate) {
