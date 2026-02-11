@@ -1,0 +1,407 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Notas de Crédito y Cargo{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Notas de Crédito y Cargo{% endblock %}
+{% block content %}
+
+<div class="container-fluid">
+
+    <!-- Encabezado -->
+    <div class="row mb-3">
+        <div class="col-12 d-flex justify-content-between align-items-center">
+            <h4><i class="fas fa-file-invoice-dollar"></i> Notas de Crédito y Cargo</h4>
+            <button class="btn btn-primary" onclick="openNewNoteModal()">
+                <i class="fas fa-plus"></i> Nueva Nota
+            </button>
+        </div>
+    </div>
+
+    <!-- Filtro por proveedor -->
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <label class="form-label mb-0">Proveedor</label>
+                    <select id="filterProvider" class="form-control" onchange="loadProviderNotes()">
+                        <option value="">-- Seleccione un proveedor --</option>
+                        {% for p in proveedores %}
+                            <option value="{{ p.id_control_gas }}">{{ p.den }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2 mt-3">
+                    <button class="btn btn-secondary" onclick="loadProviderNotes()">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de notas -->
+    <div class="card">
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0" id="notesTable">
+                <thead class="thead-light">
+                    <tr>
+                        <th class="text-center">Tipo</th>
+                        <th>Número</th>
+                        <th class="text-center">Fecha</th>
+                        <th class="text-right">Monto Total</th>
+                        <th class="text-right">Aplicado</th>
+                        <th class="text-right">Saldo Disponible</th>
+                        <th>Descripción</th>
+                        <th class="text-center">Docs</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="notesTableBody">
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="fas fa-arrow-up fa-2x d-block mb-2"></i>
+                            Seleccione un proveedor para ver sus notas
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nueva Nota -->
+<div class="modal fade" id="newNoteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-plus-circle"></i> Nueva Nota de Crédito / Cargo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="newNoteForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Proveedor *</label>
+                                <select name="provider_id" id="newNoteProvider" class="form-control" required>
+                                    <option value="">Seleccione...</option>
+                                    {% for p in proveedores %}
+                                        <option value="{{ p.id_control_gas }}">{{ p.den }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Tipo *</label>
+                                <select name="note_type" class="form-control" required>
+                                    <option value="">Seleccione...</option>
+                                    <option value="CREDIT">Nota de Crédito (Reducción)</option>
+                                    <option value="DEBIT">Nota de Cargo (Incremento)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Número de Nota</label>
+                                <input type="text" name="note_number" class="form-control" placeholder="Ej: NC-12345">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label>Fecha *</label>
+                                <input type="date" name="note_date" class="form-control" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Monto *</label>
+                        <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción / Motivo *</label>
+                        <textarea name="description" class="form-control" rows="2" required placeholder="Describa el motivo de la nota"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Motivo</label>
+                        <select name="reason_code" class="form-control">
+                            <option value="">Seleccione...</option>
+                            <optgroup label="Notas de Crédito">
+                                <option value="DEVOLUCION">Devolución de producto</option>
+                                <option value="DESCUENTO">Descuento aplicado</option>
+                                <option value="ERROR_FACTURA">Error en factura</option>
+                                <option value="BONIFICACION">Bonificación</option>
+                            </optgroup>
+                            <optgroup label="Notas de Cargo">
+                                <option value="CARGO_EXTRA">Cargo extraordinario</option>
+                                <option value="SERVICIO_ADICIONAL">Servicio adicional</option>
+                                <option value="PENALIZACION">Penalización</option>
+                                <option value="AJUSTE">Ajuste de precio</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Archivo PDF (opcional)</label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" name="note_file" id="newNoteFile" accept=".pdf">
+                            <label class="custom-file-label" for="newNoteFile">Seleccionar archivo PDF...</label>
+                        </div>
+                        <small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal subir archivo a nota existente -->
+<div class="modal fade" id="uploadDocModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-upload"></i> Subir Archivo</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="uploadDocForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" id="uploadDocNoteId" name="note_id">
+                    <div class="form-group">
+                        <label>Archivo PDF *</label>
+                        <div class="custom-file">
+                            <input type="file" class="custom-file-input" name="note_file" id="uploadDocFile" accept=".pdf" required>
+                            <label class="custom-file-label" for="uploadDocFile">Seleccionar archivo PDF...</label>
+                        </div>
+                        <small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Subir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ver PDF -->
+<div class="modal fade" id="pdfModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-pdf"></i> Documento #<span id="doc-id-title"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <iframe id="pdf-viewer" style="width:100%;height:80vh;" frameborder="0"></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="download-pdf-btn" href="#" target="_blank" class="btn btn-primary">
+                    <i class="fas fa-download"></i> Descargar
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+// ── Cargar notas del proveedor seleccionado ──────────────────────────────────
+function loadProviderNotes() {
+    const providerId = document.getElementById('filterProvider').value;
+    if (!providerId) return;
+
+    const tbody = document.getElementById('notesTableBody');
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
+
+    fetch('/supply/getAllProviderNotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'include',
+        body: 'provider_id=' + providerId
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) throw new Error(data.message);
+        renderNotesTable(data.notes);
+    })
+    .catch(err => {
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${err.message}</td></tr>`;
+    });
+}
+
+function renderNotesTable(notes) {
+    const tbody = document.getElementById('notesTableBody');
+    if (!notes || notes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No hay notas para este proveedor</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = notes.map(n => {
+        const isCredit   = n.note_type === 'CREDIT';
+        const badge      = isCredit
+            ? '<span class="badge bg-success">Crédito</span>'
+            : '<span class="badge bg-warning text-dark">Cargo</span>';
+        const rowClass   = isCredit ? 'table-success' : 'table-warning';
+        const balance    = parseFloat(n.available_balance);
+        const balClass   = balance > 0 ? 'text-success font-weight-bold' : 'text-muted';
+
+        const docsBtn = parseInt(n.documents_count) > 0
+            ? `<button class="btn btn-sm btn-info view-note-docs-btn" data-note-id="${n.id}" title="Ver documentos">
+                   <i class="fas fa-file-pdf"></i> ${n.documents_count}
+               </button>`
+            : '<span class="text-muted">—</span>';
+
+        return `<tr class="${rowClass}">
+            <td class="text-center">${badge}</td>
+            <td>${n.note_number || '—'}</td>
+            <td class="text-center">${n.note_date ? n.note_date.substring(0,10) : ''}</td>
+            <td class="text-right">$${parseFloat(n.amount).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+            <td class="text-right text-muted">$${parseFloat(n.total_applied).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+            <td class="text-right ${balClass}">$${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+            <td>${n.description || ''}</td>
+            <td class="text-center">${docsBtn}</td>
+            <td class="text-center">
+                <button class="btn btn-sm btn-secondary me-1" onclick="openUploadDocModal(${n.id})" title="Subir archivo">
+                    <i class="fas fa-upload"></i>
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteNoteFromCatalog(${n.id})" title="Eliminar nota">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ── Abrir modal nueva nota ───────────────────────────────────────────────────
+function openNewNoteModal() {
+    const sel = document.getElementById('filterProvider');
+    if (sel.value) {
+        document.getElementById('newNoteProvider').value = sel.value;
+    }
+    document.getElementById('newNoteForm').reset();
+    document.querySelector('#newNoteModal .custom-file-label').textContent = 'Seleccionar archivo PDF...';
+    $('#newNoteModal').modal('show');
+}
+
+// ── Submit nueva nota ────────────────────────────────────────────────────────
+document.getElementById('newNoteForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+
+    Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    fetch('/supply/addCreditDebitNote', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        Swal.close();
+        if (data.success) {
+            Swal.fire({ icon: 'success', title: 'Guardado', text: data.message, timer: 2000 })
+            .then(() => { $('#newNoteModal').modal('hide'); loadProviderNotes(); });
+        } else {
+            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
+        }
+    })
+    .catch(() => { Swal.close(); Swal.fire({ icon: 'error', title: 'Error', text: 'Error al guardar la nota' }); });
+});
+
+// ── Subir archivo a nota existente ──────────────────────────────────────────
+function openUploadDocModal(noteId) {
+    document.getElementById('uploadDocNoteId').value = noteId;
+    document.getElementById('uploadDocFile').value = '';
+    document.querySelector('#uploadDocModal .custom-file-label').textContent = 'Seleccionar archivo PDF...';
+    $('#uploadDocModal').modal('show');
+}
+
+document.getElementById('uploadDocForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+
+    Swal.fire({ title: 'Subiendo...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    fetch('/supply/uploadNoteFile', { method: 'POST', body: formData })
+    .then(r => r.json())
+    .then(data => {
+        Swal.close();
+        if (data.success) {
+            Swal.fire({ icon: 'success', title: 'Éxito', text: data.message, timer: 2000 })
+            .then(() => { $('#uploadDocModal').modal('hide'); loadProviderNotes(); });
+        } else {
+            Swal.fire({ icon: 'error', title: 'Error', text: data.message });
+        }
+    })
+    .catch(() => { Swal.close(); Swal.fire({ icon: 'error', title: 'Error', text: 'Error al subir el archivo' }); });
+});
+
+// ── Eliminar nota ────────────────────────────────────────────────────────────
+function deleteNoteFromCatalog(noteId) {
+    Swal.fire({
+        title: '¿Eliminar nota?',
+        text: 'Solo se puede eliminar si no tiene aplicaciones activas.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+        $.ajax({
+            url: '/supply/deleteCreditDebitNote/' + noteId,
+            type: 'DELETE',
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire({ icon: 'success', title: 'Eliminada', timer: 1500 })
+                    .then(() => loadProviderNotes());
+                } else {
+                    Swal.fire({ icon: 'error', title: 'Error', text: response.message });
+                }
+            },
+            error: function(xhr) {
+                Swal.fire({ icon: 'error', title: 'Error', text: xhr.responseText });
+            }
+        });
+    });
+}
+
+// ── Ver documentos de una nota (abre el primer PDF) ─────────────────────────
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.view-note-docs-btn');
+    if (!btn) return;
+    // Reutiliza el modal pdf del payment_detail (supply.js ya tiene el listener .view-doc-btn)
+    // Aquí cargamos el primer doc via el endpoint que ya existe
+    const noteId = btn.dataset.noteId;
+    fetch('/supply/getProviderNotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'include',
+        body: 'note_id=' + noteId
+    });
+    // Redirige a ver el doc directamente si hay uno
+    const pdfUrl = '/supply/viewNoteDocument/' + noteId;
+    document.getElementById('doc-id-title').textContent = noteId;
+    document.getElementById('pdf-viewer').src = pdfUrl;
+    document.getElementById('download-pdf-btn').href = pdfUrl;
+    $('#pdfModal').modal('show');
+});
+
+// ── custom-file-label ────────────────────────────────────────────────────────
+['newNoteFile', 'uploadDocFile'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener('change', function() {
+            const label = this.closest('.custom-file').querySelector('.custom-file-label');
+            label.textContent = this.files.length > 0 ? this.files[0].name : 'Seleccionar archivo PDF...';
+        });
+    }
+});
+</script>
+{% endblock %}

@@ -6,7 +6,8 @@
       "Bash(git add:*)",
       "Bash(cat:*)",
       "Bash(python3:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

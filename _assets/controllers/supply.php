@@ -60,6 +60,7 @@ class Supply
     public UsuariosModel $UsuariosModel;
     public InvoiceCreditDebitNotesModel $InvoiceCreditDebitNotesModel;
     public InvoiceCreditDebitNotesDocModel $InvoiceCreditDebitNotesDocModel;
+    public CreditNoteApplicationsModel $CreditNoteApplicationsModel;
     /**
      * @param $twig
      */
@@ -96,6 +97,7 @@ class Supply
         $this->UsuariosModel                                    = new UsuariosModel();
         $this->InvoiceCreditDebitNotesModel                     = new InvoiceCreditDebitNotesModel();
         $this->InvoiceCreditDebitNotesDocModel                     = new InvoiceCreditDebitNotesDocModel();
+        $this->CreditNoteApplicationsModel                       = new CreditNoteApplicationsModel();
     }
 
     /**
@@ -3446,14 +3448,9 @@ class Supply
         // Obtener autorizaciones
         $authorizations = $this->paymentRequestAuthorizationsModel->get_by_payment_request($payment_id);
         $authorization_status = $this->paymentRequestAuthorizationsModel->get_authorization_status($payment_id);
-        $invoice_credit_debit_notes = $this->InvoiceCreditDebitNotesModel->getCreditDebitNotes($payment_id);
-         if ($invoice_credit_debit_notes) {
-            foreach ($invoice_credit_debit_notes as &$note) {
-                $note['documents'] = $this->InvoiceCreditDebitNotesDocModel->getDocumentsByNoteId($note['id']);
-            }
-            unset($note); // Liberar referencia
-        }
-        $notes_totals = $this->InvoiceCreditDebitNotesModel->calculateNotesTotals($payment_id);
+        // Aplicaciones de notas de crédito/cargo ligadas a este pago
+        $note_applications = $this->CreditNoteApplicationsModel->getByPayment($payment_id);
+        $notes_totals      = $this->CreditNoteApplicationsModel->getTotalsByPayment($payment_id);
         // Crear array con información de cada autorización
         $auth_info = [
             'abastos' => null,
@@ -3499,7 +3496,7 @@ class Supply
             'transactions',
             'facturas_autorizadas',
             'total_monto_autorizado',
-            'invoice_credit_debit_notes',
+            'note_applications',
             'notes_totals',
             'payment_calculation'
         ));
@@ -3510,16 +3507,16 @@ class Supply
     }
     function addNoteModal()
     {
-        $payment_request_id = $_POST['payment_request_id'] ?? null;
-        $payment_request = $this->PaymentRequestsModel->get_request_by_id($payment_request_id);
-        echo $this->twig->render($this->route . 'modals/addNoteModal.html', compact('payment_request_id', 'payment_request'));
+        $provider_id = $_POST['provider_id'] ?? null;
+        $provider    = $this->proveedores->get_by_id($provider_id);
+        echo $this->twig->render($this->route . 'modals/addNoteModal.html', compact('provider_id', 'provider'));
     }
 
     public function addCreditDebitNote()
     {
         try {
             // Validar datos requeridos
-            $requiredFields = ['note_type', 'note_date', 'amount', 'payment_request_id'];
+            $requiredFields = ['note_type', 'note_date', 'amount', 'provider_id'];
             foreach ($requiredFields as $field) {
                 if (empty($_POST[$field])) {
                     throw new Exception("El campo {$field} es requerido");
@@ -3531,9 +3528,8 @@ class Supply
                 throw new Exception('Tipo de nota inválido');
             }
 
-            // PASO 1: Guardar la nota en BD
+            // PASO 1: Guardar la nota en BD (sin ligar a pago ni factura)
             $noteData = [
-                'payment_request_id' => $_POST['payment_request_id'],
                 'provider_id' => $_POST['provider_id'],
                 'note_type' => $_POST['note_type'],
                 'note_number' => $_POST['note_number'] ?? null,
@@ -3749,6 +3745,139 @@ class Supply
                 'success' => false,
                 'message' => $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * Pantalla independiente de gestión de notas de crédito/cargo
+     */
+    public function credit_notes()
+    {
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores'));
+    }
+
+    /**
+     * API JSON: notas disponibles (con saldo > 0) de un proveedor
+     */
+    public function getProviderNotes()
+    {
+        header('Content-Type: application/json');
+        try {
+            $provider_id = $_POST['provider_id'] ?? null;
+            if (!$provider_id) {
+                throw new Exception('provider_id es requerido');
+            }
+            $notes = $this->InvoiceCreditDebitNotesModel->getAvailableNotesByProvider($provider_id);
+            echo json_encode(['success' => true, 'notes' => $notes ?: []]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * API JSON: todas las notas de un proveedor (para la pantalla de catálogo)
+     */
+    public function getAllProviderNotes()
+    {
+        header('Content-Type: application/json');
+        try {
+            $provider_id = $_POST['provider_id'] ?? null;
+            if (!$provider_id) {
+                throw new Exception('provider_id es requerido');
+            }
+            $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
+            echo json_encode(['success' => true, 'notes' => $notes ?: []]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Aplicar una nota de crédito/cargo a una factura dentro de un pago
+     */
+    public function applyCreditNote()
+    {
+        header('Content-Type: application/json');
+        try {
+            $requiredFields = ['credit_note_id', 'payment_request_id', 'invoice_id', 'applied_amount'];
+            foreach ($requiredFields as $field) {
+                if (empty($_POST[$field])) {
+                    throw new Exception("El campo {$field} es requerido");
+                }
+            }
+
+            $creditNoteId     = (int)$_POST['credit_note_id'];
+            $paymentRequestId = (int)$_POST['payment_request_id'];
+            $invoiceId        = (int)$_POST['invoice_id'];
+            $appliedAmount    = (float)$_POST['applied_amount'];
+
+            if ($appliedAmount <= 0) {
+                throw new Exception('El monto a aplicar debe ser mayor a cero');
+            }
+
+            // Verificar que la nota existe
+            $note = $this->InvoiceCreditDebitNotesModel->getNoteById($creditNoteId);
+            if (!$note) {
+                throw new Exception('Nota no encontrada');
+            }
+
+            // Verificar saldo disponible
+            $available = $this->InvoiceCreditDebitNotesModel->getAvailableBalance($creditNoteId);
+            if ($appliedAmount > $available + 0.001) {
+                throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo disponible ($available)");
+            }
+
+            $appId = $this->CreditNoteApplicationsModel->applyNote([
+                'credit_note_id'     => $creditNoteId,
+                'payment_request_id' => $paymentRequestId,
+                'invoice_id'         => $invoiceId,
+                'applied_amount'     => $appliedAmount,
+                'created_by'         => $_SESSION['tg_user']['Id']
+            ]);
+
+            if (!$appId) {
+                throw new Exception('Error al registrar la aplicación');
+            }
+
+            echo json_encode([
+                'success'    => true,
+                'message'    => 'Nota aplicada correctamente',
+                'app_id'     => $appId
+            ]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Quitar una aplicación de nota (libera el saldo)
+     */
+    public function removeCreditNoteApplication()
+    {
+        header('Content-Type: application/json');
+        try {
+            $appId = $_POST['application_id'] ?? null;
+            if (!$appId) {
+                throw new Exception('application_id es requerido');
+            }
+
+            $app = $this->CreditNoteApplicationsModel->getById((int)$appId);
+            if (!$app) {
+                throw new Exception('Aplicación no encontrada');
+            }
+
+            if (!$this->CreditNoteApplicationsModel->removeApplication((int)$appId)) {
+                throw new Exception('Error al eliminar la aplicación');
+            }
+
+            echo json_encode(['success' => true, 'message' => 'Aplicación eliminada correctamente']);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
     }
 

@@ -10,13 +10,13 @@
                     <option value="DEBIT">Nota de Cargo (Incremento de monto)</option>
                 </select>
             </div>
-            
+
             <!-- Información básica -->
             <div class="row">
                 <div class="col-md-6">
                     <div class="form-group">
                         <label>Número de Nota</label>
-                        <input type="text" name="note_number" class="form-control" 
+                        <input type="text" name="note_number" class="form-control"
                                 placeholder="Ej: NC-12345">
                     </div>
                 </div>
@@ -27,22 +27,22 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Monto -->
             <div class="form-group">
                 <label>Monto *</label>
-                <input type="number" name="amount" class="form-control" 
-                        step="0.01" min="0.01" required 
+                <input type="number" name="amount" class="form-control"
+                        step="0.01" min="0.01" required
                         placeholder="0.00">
             </div>
-            
+
             <!-- Descripción/Motivo -->
             <div class="form-group">
                 <label>Descripción/Motivo *</label>
-                <textarea name="description" class="form-control" rows="3" 
+                <textarea name="description" class="form-control" rows="3"
                             required placeholder="Describa el motivo de la nota"></textarea>
             </div>
-            
+
             <!-- Código de razón (opcional) -->
             <div class="form-group">
                 <label>Motivo</label>
@@ -64,10 +64,10 @@
             </div>
             <!-- Archivo PDF -->
             <div class="form-group">
-                <label>Archivo PDF *</label>
+                <label>Archivo PDF (opcional)</label>
                 <div class="custom-file">
-                    <input type="file" class="custom-file-input" name="note_file" required
-                            id="noteFile" accept=".pdf" >
+                    <input type="file" class="custom-file-input" name="note_file"
+                            id="noteFile" accept=".pdf">
                     <label class="custom-file-label" for="noteFile">
                         Seleccionar archivo PDF...
                     </label>
@@ -76,9 +76,8 @@
                     Solo archivos PDF. Máximo 10MB.
                 </small>
             </div>
-            <!-- Asociación (oculto, lo pasamos desde el contexto) -->
-            <input hidden name="payment_request_id" value="{{ payment_request.id }}">
-            <input hidden name="provider_id" value="{{ payment_request.provider_cod }}">
+            <!-- Proveedor (oculto, viene del contexto del pago) -->
+            <input hidden name="provider_id" value="{{ provider_id }}">
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-dismiss="modal">
@@ -140,4 +139,13 @@
             });
         });
     });
+
+    // Actualizar label del input file
+    var noteFile = document.getElementById('noteFile');
+    if (noteFile) {
+        noteFile.addEventListener('change', function() {
+            var label = this.closest('.custom-file').querySelector('.custom-file-label');
+            label.textContent = this.files.length > 0 ? this.files[0].name : 'Seleccionar archivo PDF...';
+        });
+    }
 </script>

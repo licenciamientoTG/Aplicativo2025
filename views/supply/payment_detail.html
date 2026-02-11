@@ -621,103 +621,70 @@
 			<h5>
 				<i class="fas fa-file-invoice-dollar"></i>
 				Notas de Crédito y Cargo
+				<button type="button" class="btn btn-sm btn-secondary float-right ms-1" onclick="openApplyCreditNoteModal()">
+					<i class="fas fa-link"></i>
+					Aplicar Nota
+				</button>
 				<button type="button" class="btn btn-sm btn-primary float-right" onclick="addNoteModal()">
 					<i class="fas fa-plus"></i>
-					Agregar Nota
+					Nueva Nota
 				</button>
 			</h5>
 		</div>
-		<div class="card-body">
-			<table id="creditDebitNotesTable" class="table table-sm table-hover">
-				<thead>
+		<div class="card-body p-0">
+			<table class="table table-sm table-hover mb-0" id="noteApplicationsTable">
+				<thead class="thead-light">
 					<tr>
 						<th class="text-center">Tipo</th>
-						<th class="text-center">Número</th>
+						<th>Número de Nota</th>
 						<th class="text-center">Fecha</th>
-						<th class="text-center">Monto</th>
-						<th class="text-center">Descripción</th>
-						<th class="text-center">Archivo</th>
+						<th>Factura</th>
+						<th class="text-right">Monto Aplicado</th>
 						<th class="text-center">Acciones</th>
 					</tr>
 				</thead>
 				<tbody class="text-center">
-					{% for note in invoice_credit_debit_notes %}
-						<tr class="{{ note.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
-							<td>
-								{% if note.note_type == 'CREDIT' %}
-									<span class="badge bg-success text-dark">
-										<i class="fas fa-minus-circle"></i>
-										Crédito
-									</span>
-								{% else %}
-									<span class="badge bg-warning text-dark">
-										<i class="fas fa-plus-circle"></i>
-										Cargo
-									</span>
-								{% endif %}
-							</td>
-							<td>{{ note.note_number }}</td>
-							<td>{{ note.note_date|date('d/m/Y') }}</td>
-							<td class="text-end">
-								{{ note.note_type == 'CREDIT' ? '-' : '+' }}
-								${{note.amount|number_format(2) }}
-							</td>
-							<td class="text-center">{{ note.description }}</td>
-							<td class="text-center">
-								{% if note.documents and note.documents|length > 0 %}
-									{% for doc in note.documents %}
-										<button class="btn btn-sm btn-info view-doc-btn me-1" 
-												data-doc-id="{{ doc.id }}"
-												data-file-path="{{ doc.file_path }}">
-											<i class="fas fa-file-pdf"></i>
-										</button>
-									{% endfor %}
-								{% else %}
-									<span class="text-muted">Sin archivo</span>
-								{% endif %}
-							</td>
-							<td>
-								<button class="btn btn-sm btn-secondary me-1" onclick="openUploadNoteFileModal({{ note.id }})" title="Subir archivo">
-									<i class="fas fa-upload"></i>
-								</button>
-								<button class="btn btn-sm btn-danger" onclick="deleteNote({{ note.id }})" title="Eliminar nota">
-									<i class="fas fa-trash"></i>
-								</button>
-							</td>
-						</tr>
-					{% endfor %}
+					{% if note_applications and note_applications|length > 0 %}
+						{% for app in note_applications %}
+							<tr class="{{ app.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
+								<td>
+									{% if app.note_type == 'CREDIT' %}
+										<span class="badge bg-success"><i class="fas fa-minus-circle"></i> Crédito</span>
+									{% else %}
+										<span class="badge bg-warning text-dark"><i class="fas fa-plus-circle"></i> Cargo</span>
+									{% endif %}
+								</td>
+								<td>{{ app.note_number ?: '—' }}</td>
+								<td>{{ app.note_date|date('d/m/Y') }}</td>
+								<td>{{ app.invoice_folio }} — {{ app.invoice_number }}</td>
+								<td class="text-right">
+									{{ app.note_type == 'CREDIT' ? '-' : '+' }}
+									${{ app.applied_amount|number_format(2) }}
+								</td>
+								<td>
+									<button class="btn btn-sm btn-danger" onclick="removeApplication({{ app.id }})" title="Quitar aplicación">
+										<i class="fas fa-unlink"></i>
+									</button>
+								</td>
+							</tr>
+						{% endfor %}
+					{% else %}
+						<tr><td colspan="6" class="text-center text-muted py-3">Sin notas aplicadas a este pago</td></tr>
+					{% endif %}
 				</tbody>
 			</table>
 
 			<!-- Resumen de ajustes -->
-			<div class="row mt-3">
+			<div class="row mt-3 px-3 pb-3">
 				<div class="col-md-4 offset-md-8">
 					<table class="table table-sm">
 						<tr>
-							<td>
-								<strong>Total Notas de Crédito:</strong>
-							</td>
-							<td class="text-end text-success">
-								-${{ notes_totals.total_credits|number_format(2) }}
-							</td>
+							<td><strong>Total Crédito aplicado:</strong></td>
+							<td class="text-right text-success">-${{ notes_totals.total_credits|number_format(2) }}</td>
 						</tr>
 						<tr>
-							<td>
-								<strong>Total Notas de Cargo:</strong>
-							</td>
-							<td class="text-end text-warning">
-								+${{ notes_totals.total_debits|number_format(2) }}
-							</td>
-						</tr>
-						<tr class="border-top">
-							<td>
-								<strong>Ajuste Neto:</strong>
-							</td>
-							<td class="text-end">
-								<strong>{{ (notes_totals.total_credits - notes_totals.total_debits) >=
-                0 ? '+' : '' }}${{ (notes_totals.total_credits -
-                notes_totals.total_debits)|number_format(2) }}</strong>
-							</td>
+							<td><strong>Total Cargo aplicado:</strong></td>
+							<td class="text-right text-warning">+${{ notes_totals.total_debits|number_format(2) }}</td>
 						</tr>
 					</table>
 				</div>
@@ -1556,6 +1523,54 @@
 
 
 	<input type="number" id="paymentId" value="{{ payment.id }}" hidden/>
+	<input type="hidden" id="paymentProviderId" value="{{ payment.provider_cod }}" />
+
+	<!-- Modal: Aplicar Nota de Crédito/Cargo -->
+	<div class="modal fade" id="applyNoteModal" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="fas fa-link"></i> Aplicar Nota al Pago</h5>
+					<button type="button" class="close" data-dismiss="modal">
+						<span>&times;</span>
+					</button>
+				</div>
+				<form id="applyNoteForm">
+					<div class="modal-body">
+						<input type="hidden" id="applyNotePaymentId" name="payment_request_id" value="{{ payment.id }}">
+						<!-- Selector de nota -->
+						<div class="form-group">
+							<label>Nota de Crédito / Cargo *</label>
+							<select id="applyNoteSelect" name="credit_note_id" class="form-control" required>
+								<option value="">Cargando notas disponibles...</option>
+							</select>
+							<small class="form-text text-muted" id="applyNoteBalanceHint"></small>
+						</div>
+						<!-- Selector de factura -->
+						<div class="form-group">
+							<label>Factura *</label>
+							<select name="invoice_id" class="form-control" required>
+								<option value="">Seleccione una factura...</option>
+								{% for inv in invoices %}
+									<option value="{{ inv.id }}">{{ inv.folio }} — {{ inv.invoice_number }}</option>
+								{% endfor %}
+							</select>
+						</div>
+						<!-- Monto a aplicar -->
+						<div class="form-group">
+							<label>Monto a Aplicar *</label>
+							<input type="number" name="applied_amount" id="applyNoteAmount"
+								class="form-control" step="0.01" min="0.01" required placeholder="0.00">
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+						<button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Aplicar</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
 
 {% endblock %}
 {% block myjs %}

@@ -6839,8 +6839,9 @@ function mostrarResumenLayoutBanorte(
 
 async function addNoteModal(id) {
   try {
-    $("#addNoteModal").modal("show"); // Abre el modal
-    id = $("#paymentId").val();
+    $("#addNoteModal").modal("show");
+    const providerEl = document.getElementById("paymentProviderId");
+    const providerId = providerEl ? providerEl.value : "";
     const response = await fetch("/supply/addNoteModal", {
       method: "POST",
       headers: {
@@ -6848,15 +6849,159 @@ async function addNoteModal(id) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       credentials: "include",
-      body: `payment_request_id=${id}`,
+      body: `provider_id=${providerId}`,
     });
 
     const content = await response.text();
-    // Inserta el contenido en el modal
     $("#addNoteModal").find("#addNoteModalContent").html(content);
   } catch (error) {
     console.error(error);
   }
+}
+
+function openApplyCreditNoteModal() {
+  const providerEl = document.getElementById("paymentProviderId");
+  const providerId = providerEl ? providerEl.value : "";
+  const paymentId  = document.getElementById("paymentId").value;
+
+  fetch("/supply/getProviderNotes", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    credentials: "include",
+    body: `provider_id=${providerId}`,
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (!data.success) throw new Error(data.message);
+      renderApplyNoteModalNotes(data.notes);
+      document.getElementById("applyNotePaymentId").value = paymentId;
+      $("#applyNoteModal").modal("show");
+    })
+    .catch((err) => {
+      Swal.fire({ icon: "error", title: "Error", text: err.message });
+    });
+}
+
+function renderApplyNoteModalNotes(notes) {
+  const sel = document.getElementById("applyNoteSelect");
+  sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
+  if (!notes || notes.length === 0) {
+    sel.innerHTML += '<option disabled>Sin notas disponibles para este proveedor</option>';
+    return;
+  }
+  notes.forEach((n) => {
+    const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
+    const balance = parseFloat(n.available_balance).toFixed(2);
+    const date    = n.note_date ? n.note_date.substring(0, 10) : "";
+    sel.innerHTML += `<option value="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
+      [${type}] ${n.note_number || "S/N"} — ${date} — Saldo: $${balance}
+    </option>`;
+  });
+}
+
+// Update balance hint when a note is selected in the apply modal
+document.addEventListener("DOMContentLoaded", function () {
+  var applyNoteSelect = document.getElementById("applyNoteSelect");
+  if (applyNoteSelect) {
+    applyNoteSelect.addEventListener("change", function () {
+      var selected = this.options[this.selectedIndex];
+      var balance  = selected ? selected.getAttribute("data-balance") : null;
+      var hint     = document.getElementById("applyNoteBalanceHint");
+      var amtInput = document.getElementById("applyNoteAmount");
+      if (balance && parseFloat(balance) > 0) {
+        hint.textContent = "Saldo disponible: $" + parseFloat(balance).toFixed(2);
+        amtInput.max = balance;
+      } else {
+        hint.textContent = "";
+        amtInput.removeAttribute("max");
+      }
+    });
+  }
+
+  var applyNoteForm = document.getElementById("applyNoteForm");
+  if (applyNoteForm) {
+    applyNoteForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+
+      var sel     = document.getElementById("applyNoteSelect");
+      var balance = sel.options[sel.selectedIndex]
+        ? parseFloat(sel.options[sel.selectedIndex].getAttribute("data-balance") || 0)
+        : 0;
+      var amount  = parseFloat(document.getElementById("applyNoteAmount").value || 0);
+
+      if (amount <= 0) {
+        Swal.fire({ icon: "warning", title: "Monto inválido", text: "Ingrese un monto mayor a 0." });
+        return;
+      }
+      if (amount > balance) {
+        Swal.fire({ icon: "warning", title: "Monto excede saldo", text: "El monto no puede superar el saldo disponible de la nota ($" + balance.toFixed(2) + ")." });
+        return;
+      }
+
+      var formData = new FormData(applyNoteForm);
+
+      Swal.fire({
+        title: "Procesando...",
+        text: "Aplicando nota al pago",
+        allowOutsideClick: false,
+        didOpen: () => { Swal.showLoading(); }
+      });
+
+      fetch("/supply/applyCreditNote", {
+        method: "POST",
+        body: formData,
+        credentials: "include"
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          Swal.close();
+          if (data.success) {
+            Swal.fire({ icon: "success", title: "Nota aplicada", text: data.message, timer: 2000 })
+              .then(() => { location.reload(); });
+          } else {
+            Swal.fire({ icon: "error", title: "Error", text: data.message });
+          }
+        })
+        .catch(() => {
+          Swal.close();
+          Swal.fire({ icon: "error", title: "Error", text: "Error al aplicar la nota" });
+        });
+    });
+  }
+});
+
+function removeApplication(appId) {
+  Swal.fire({
+    title: "¿Quitar esta nota aplicada?",
+    text: "El saldo de la nota quedará disponible nuevamente.",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#6c757d",
+    confirmButtonText: "Sí, quitar",
+    cancelButtonText: "Cancelar",
+  }).then((result) => {
+    if (!result.isConfirmed) return;
+    fetch("/supply/removeCreditNoteApplication", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      credentials: "include",
+      body: `application_id=${appId}`,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) {
+          Swal.fire({ icon: "success", title: "Quitada", timer: 1500 }).then(
+            () => location.reload()
+          );
+        } else {
+          Swal.fire({ icon: "error", title: "Error", text: data.message });
+        }
+      })
+      .catch(() => {
+        Swal.fire({ icon: "error", title: "Error", text: "Error al quitar la aplicación" });
+      });
+  });
 }
 
 function deleteNote(noteId) {
