@@ -669,6 +669,166 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalProcesarPago" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-dollar-sign"></i> Procesar Pago - Solicitud #{{ payment.id }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Instrucciones:</strong> Seleccione las facturas que desea pagar y especifique el monto de
+                    cada una.
+                    Puede realizar pagos parciales si no desea pagar el monto completo.
+                </div>
+
+                <!-- Resumen del Pago -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <small class="text-muted">Monto Total Pendiente</small>
+                                <h4 class="mb-0 text-primary" id="totalPendiente">
+                                    ${{ summary.total_pending|number_format(2) }}
+                                </h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <small class="text-muted">Monto a Pagar</small>
+                                <h4 class="mb-0 text-success" id="totalAPagar">$0.00</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <small class="text-muted">Facturas Seleccionadas</small>
+                                <h4 class="mb-0 text-info" id="facturasSeleccionadas">0</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla de Facturas -->
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover" id="tablaPagoFacturas">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="50">
+                                    <input type="checkbox" id="selectAllFacturas" onchange="toggleSelectAllFacturas()">
+                                </th>
+                                <th>Folio</th>
+                                <th>Factura</th>
+                                <th>Estación</th>
+                                <th class="text-end">Monto Total</th>
+                                <th class="text-end">Pagado</th>
+                                <th class="text-end">Saldo</th>
+                                <th width="150">Monto a Pagar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for invoice in invoices %}
+                            {% set saldo = invoice.amount - invoice.paid_amount %}
+                            {% if saldo > 0 %}
+                            <tr data-invoice-id="{{ invoice.id }}" data-folio="{{ invoice.folio }}"
+                                data-saldo="{{ saldo }}">
+                                <td>
+                                    <input type="checkbox" class="factura-checkbox" value="{{ invoice.id }}"
+                                        onchange="updatePagoSummary()">
+                                </td>
+                                <td><strong>{{ invoice.folio }}</strong></td>
+                                <td>{{ invoice.invoice_number }}</td>
+                                <td>{{ invoice.estacion_nombre }}</td>
+                                <td class="text-end">${{ invoice.amount|number_format(2) }}</td>
+                                <td class="text-end">${{ invoice.paid_amount|number_format(2) }}</td>
+                                <td class="text-end">
+                                    <strong class="text-danger">${{ saldo|number_format(2) }}</strong>
+                                </td>
+                                <td>
+                                    <input type="number" class="form-control form-control-sm monto-pago" step="0.01"
+                                        min="0" max="{{ saldo }}" placeholder="0.00" disabled
+                                        onchange="updatePagoSummary()" onkeyup="updatePagoSummary()">
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Información Adicional -->
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <label class="form-label">Observaciones del Pago</label>
+                        <textarea class="form-control" id="observacionesPago" rows="2"
+                            placeholder="Agregue cualquier observación sobre este pago..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Referencia de Pago (opcional) -->
+                <div class="row mt-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Referencia/Folio de Pago</label>
+                        <input type="text" class="form-control" id="referenciaPago"
+                            placeholder="Ej: Transferencia #12345">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Fecha de Pago</label>
+                        <input type="date" class="form-control" id="fechaPago" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-success" id="btnConfirmarPago" onclick="confirmarProcesarPago()"
+                    disabled>
+                    <i class="fas fa-check"></i> Confirmar Pago
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Configurar Layout de Santander (Base vacía) -->
+<div class="modal fade" id="modalConfigLayout" tabindex="-1" aria-labelledby="modalConfigLayoutLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalConfigLayoutLabel">
+                    <i class="fas fa-file-invoice-dollar"></i> Configurar Layout de Santander
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="modalConfigLayoutContent">
+                <!-- Contenido cargado dinámicamente -->
+                <div class="text-center py-5">
+                    <i class="fas fa-spinner fa-spin fa-3x text-primary"></i>
+                    <p class="mt-3">Cargando configuración...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" id="btnConfirmarLayout" disabled
+                    onclick="confirmarGeneracionLayout()">
+                    <i class="fas fa-file-download"></i> Generar Layout
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <input type="number" id="anticipoId" value="{{ anticipo.id }}" hidden>
 {% endblock %}
@@ -682,6 +842,15 @@
     let currentPermission = null;
 
 
+    // Limpiar cuando se cierra el modal
+    $('#modalProcesarPago').on('hidden.bs.modal', function () {
+        $('.factura-checkbox').prop('checked', false);
+        $('.monto-pago').val('').prop('disabled', true);
+        $('#observacionesPago').val('');
+        $('#referenciaPago').val('');
+        $('#selectAllFacturas').prop('checked', false);
+        updatePagoSummary();
+    });
 </script>
 
 

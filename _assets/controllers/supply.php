@@ -6238,4 +6238,72 @@ class Supply
         }
     }
 
+    /**
+     * Buscar facturas disponibles para agregar a un pago (no incluidas en otros pagos)
+     */
+    public function search_available_invoices()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $provider_cod = $_GET['provider_cod'] ?? null;
+            $search = $_GET['search'] ?? '';
+
+            if (!$provider_cod) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Proveedor no especificado'
+                ]);
+                return;
+            }
+
+            // Buscar facturas del proveedor que NO estén en payment_request_invoices
+            $query = "
+                SELECT TOP 50
+                    dc.nro,
+                    dc.Factura,
+                    dc.codgas,
+                    dc.total_fac,
+                    dc.fechaVto,
+                    dc.satuid,
+                    g.abr as estacion_nombre,
+                    dc.fechaRec
+                FROM SG12.dbo.DocumentosC dc
+                LEFT JOIN SG12.dbo.Gasolineras g ON dc.codgas = g.cod
+                WHERE dc.codopr = ?
+                AND dc.tip = 1
+                AND dc.satuid IS NOT NULL
+                AND dc.satuid NOT IN (
+                    SELECT uuid
+                    FROM TG.dbo.payment_request_invoices
+                    WHERE uuid IS NOT NULL
+                )
+                AND (
+                    dc.Factura LIKE ?
+                    OR dc.nro LIKE ?
+                    OR g.abr LIKE ?
+                )
+                ORDER BY dc.fechaRec DESC
+            ";
+
+            $search_param = '%' . $search . '%';
+            $facturas = $this->documentosModel->sql->select($query, [
+                $provider_cod,
+                $search_param,
+                $search_param,
+                $search_param
+            ]);
+
+            echo json_encode([
+                'success' => true,
+                'data' => $facturas ?: []
+            ]);
+        } catch (Exception $e) {
+            error_log("Error en search_available_invoices: " . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error al buscar facturas: ' . $e->getMessage()
+            ]);
+        }
+    }
 }
