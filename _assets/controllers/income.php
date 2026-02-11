@@ -3554,18 +3554,38 @@ public function anomalies_client_tickets()
             $params = [$estacion_id, $fecha_ini, $fecha_fin];
 
             if (!empty($afiliacion)) {
-                // Filtro de Afiliación a nivel de GRUPO:
-                // Esto garantiza que si el grupo es de esta afiliación, se incluyan sus filas CG y TX.
-                $sql .= " AND EXISTS (
-                    SELECT 1 
-                    FROM Conciliacion_V2_Detalles D_Check
-                    WHERE D_Check.grupo_id = G.id 
-                      AND D_Check.origen = 'TX' 
-                      AND (D_Check.referencia_externa LIKE 'tx_%' " . 
-                      (!empty($tablaBanco) ? " OR EXISTS (SELECT 1 FROM $tablaBanco B WHERE B.ID_Externo = D_Check.referencia_externa AND B.Afiliacion = ?)" : "") . 
-                      ")
-                )";
-                if (!empty($tablaBanco)) $params[] = $afiliacion;
+                // Filtro de Afiliación:
+                // Intentamos ser lo más estrictos posible combinando coincidencia de ID o Heurística de Monto/Fecha para hashes tx_
+                if (!empty($tablaBanco)) {
+                    $sql .= " AND EXISTS (
+                        SELECT 1 
+                        FROM Conciliacion_V2_Detalles D_Check
+                        WHERE D_Check.grupo_id = G.id 
+                          AND D_Check.origen = 'TX' 
+                          AND (
+                              -- Caso 1: ID Directo
+                              EXISTS (SELECT 1 FROM $tablaBanco B WHERE B.ID_Externo = D_Check.referencia_externa AND B.Afiliacion = ?)
+                              -- Caso 2: Hash sintético tx_ (Heurística de validación por Monto y Fecha)
+                              OR (D_Check.referencia_externa LIKE 'tx_%' AND EXISTS (
+                                  SELECT 1 FROM $tablaBanco B2 
+                                  WHERE B2.Afiliacion = ? AND B2.Monto = D_Check.monto AND CAST(B2.Fecha_Transaccion AS DATE) = D_Check.fecha_operacion
+                              ))
+                          )
+                    )";
+                    $params[] = $afiliacion;
+                    $params[] = $afiliacion;
+                } else {
+                    // Fallback para casos sin tabla de banco definida
+                    $sql .= " AND EXISTS (
+                        SELECT 1 
+                        FROM Conciliacion_V2_Detalles D_Check
+                        WHERE D_Check.grupo_id = G.id 
+                          AND D_Check.origen = 'TX' 
+                          AND (D_Check.referencia_externa LIKE ? OR D_Check.concepto LIKE ? OR D_Check.referencia_externa LIKE 'tx_%')
+                    )";
+                    $params[] = "%$afiliacion%";
+                    $params[] = "%$afiliacion%";
+                }
             }
 
             $sql .= " ORDER BY G.id, D.origen";

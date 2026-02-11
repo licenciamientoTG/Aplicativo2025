@@ -1008,7 +1008,6 @@
     async function cargarHistorial() {
         const p = getPeriod();
         const sid = $('#estacionSelect').val();
-        const eid = $('#bancoSelect').val(); // Obtener el ID del banco
         const afil = currentActiveRule ? currentActiveRule.afiliacion : '';
         
         try {
@@ -1016,7 +1015,6 @@
                 fecha_inicio: p.fi, 
                 fecha_fin: p.ff,
                 estacion_id: sid,
-                entidad_id: eid, // Enviar el ID del banco para optimizar búsqueda
                 afiliacion: afil
             };
             const res = await $.get(URLS.historial, params);
