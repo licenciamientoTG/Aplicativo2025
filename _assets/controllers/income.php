@@ -3512,6 +3512,7 @@ public function anomalies_client_tickets()
         $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
         $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
         $estacion_id   = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parámetro
         $afiliacion    = trim(filter_input(INPUT_GET, 'afiliacion'));
 
         if (!$fecha_ini_raw || !$fecha_fin_raw) {
@@ -3528,7 +3529,14 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // Consulta V2 Mejorada: Filtramos por Estación y Afiliación
+            // Determinar la tabla de banco específica para optimizar
+            $tablaBanco = "";
+            if ($entidad_id == 1) $tablaBanco = "banco_getnet";
+            elseif ($entidad_id == 4) $tablaBanco = "banco_banorte";
+
+            // Consulta V2 Optimizada: 
+            // 1. Filtramos por Estación y Fecha Operativa del Grupo directamente.
+            // 2. Si hay afiliación, nos aseguramos de traer TODAS las filas de los grupos que tengan al menos una TX.
             $sql = "SELECT 
                         D.id,
                         D.fecha_operacion as fecha, 
@@ -3541,40 +3549,46 @@ public function anomalies_client_tickets()
                     FROM Conciliacion_V2_Detalles D
                     INNER JOIN Conciliacion_V2_Grupos G ON D.grupo_id = G.id
                     WHERE G.estacion_id = ? 
-                      AND G.id IN (
-                        SELECT DISTINCT subD.grupo_id 
-                        FROM Conciliacion_V2_Detalles subD
-                        WHERE subD.fecha_operacion BETWEEN ? AND ?
-                      )";
+                      AND G.fecha_operativa BETWEEN ? AND ? ";
             
             $params = [$estacion_id, $fecha_ini, $fecha_fin];
 
-            // Si hay una afiliación específica, filtramos que el grupo contenga al menos un movimiento de esa afiliación
             if (!empty($afiliacion)) {
-                $sql .= " AND (
-                    EXISTS (
+                // Filtro de Afiliación:
+                // Intentamos ser lo más estrictos posible combinando coincidencia de ID o Heurística de Monto/Fecha para hashes tx_
+                if (!empty($tablaBanco)) {
+                    $sql .= " AND EXISTS (
                         SELECT 1 
                         FROM Conciliacion_V2_Detalles D_Check
-                        INNER JOIN (
-                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
-                            UNION ALL
-                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
-                        ) AS TX_AFIL ON D_Check.referencia_externa = TX_AFIL.id_ref
-                        WHERE D_Check.grupo_id = G.id AND D_Check.origen = 'TX' AND TX_AFIL.Afiliacion = ?
-                    )
-                    OR EXISTS (
-                        -- FALLBACK: Permitir transacciones con ID sintético (tx_...)
-                        -- Al no tener ID en banco, no podemos validar afiliación por SQL JOIN.
-                        -- Se muestran si coinciden con la estación para evitar ocultarlas.
+                        WHERE D_Check.grupo_id = G.id 
+                          AND D_Check.origen = 'TX' 
+                          AND (
+                              -- Caso 1: ID Directo
+                              EXISTS (SELECT 1 FROM $tablaBanco B WHERE B.ID_Externo = D_Check.referencia_externa AND B.Afiliacion = ?)
+                              -- Caso 2: Hash sintético tx_ (Heurística de validación por Monto y Fecha)
+                              OR (D_Check.referencia_externa LIKE 'tx_%' AND EXISTS (
+                                  SELECT 1 FROM $tablaBanco B2 
+                                  WHERE B2.Afiliacion = ? AND B2.Monto = D_Check.monto AND CAST(B2.Fecha_Transaccion AS DATE) = D_Check.fecha_operacion
+                              ))
+                          )
+                    )";
+                    $params[] = $afiliacion;
+                    $params[] = $afiliacion;
+                } else {
+                    // Fallback para casos sin tabla de banco definida
+                    $sql .= " AND EXISTS (
                         SELECT 1 
-                        FROM Conciliacion_V2_Detalles D_Syn
-                        WHERE D_Syn.grupo_id = G.id AND D_Syn.origen = 'TX' AND D_Syn.referencia_externa LIKE 'tx_%'
-                    )
-                )";
-                $params[] = $afiliacion;
+                        FROM Conciliacion_V2_Detalles D_Check
+                        WHERE D_Check.grupo_id = G.id 
+                          AND D_Check.origen = 'TX' 
+                          AND (D_Check.referencia_externa LIKE ? OR D_Check.concepto LIKE ? OR D_Check.referencia_externa LIKE 'tx_%')
+                    )";
+                    $params[] = "%$afiliacion%";
+                    $params[] = "%$afiliacion%";
+                }
             }
 
-            $sql .= " ORDER BY D.grupo_id, D.origen";
+            $sql .= " ORDER BY G.id, D.origen";
 
             $stmt = $conn->prepare($sql);
             $stmt->execute($params);
@@ -3593,7 +3607,6 @@ public function anomalies_client_tickets()
                     'ref'        => $fila['referencia_externa'],
                     'diferencia' => (float) $fila['diferencia'], 
                     'afiliacion' => $afiliacion, 
-                    'banco'      => '', 
                     'concepto'   => $fila['descripcion']
                 ];
             }
