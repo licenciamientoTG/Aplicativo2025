@@ -3400,6 +3400,12 @@ public function anomalies_client_tickets()
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'fecha_operativa') 
                 ALTER TABLE Conciliacion_V2_Grupos ADD fecha_operativa DATE");
 
+            // NUEVO: Asegurar columnas de banco y afiliación en el Grupo
+            $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'entidad_id') 
+                ALTER TABLE Conciliacion_V2_Grupos ADD entidad_id INT");
+            $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'afiliacion') 
+                ALTER TABLE Conciliacion_V2_Grupos ADD afiliacion VARCHAR(50)");
+
             // Tabla Detalles V2 (Items individuales conciliados)
             $sqlDetalles = "
                 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Conciliacion_V2_Detalles' AND xtype='U')
@@ -3462,12 +3468,14 @@ public function anomalies_client_tickets()
             $total_tx = (float)$data['total_tx'];
             $diferencia = $total_tx - $total_cg;
             $estacion_id = isset($data['estacion_id']) ? (int)$data['estacion_id'] : 0; 
+            $entidad_id  = isset($data['entidad_id']) ? (int)$data['entidad_id'] : 0;
+            $afiliacion  = isset($data['afiliacion']) ? trim($data['afiliacion']) : '';
             $fecha_operativa = $data['fecha_operativa'] ?? date('Y-m-d');
 
             // 1. Crear Grupo
-            $sqlGroup = "INSERT INTO Conciliacion_V2_Grupos (total_sistema, total_banco, diferencia, estacion_id, fecha_creacion, fecha_operativa) VALUES (?, ?, ?, ?, GETDATE(), ?)";
+            $sqlGroup = "INSERT INTO Conciliacion_V2_Grupos (total_sistema, total_banco, diferencia, estacion_id, entidad_id, afiliacion, fecha_creacion, fecha_operativa) VALUES (?, ?, ?, ?, ?, ?, GETDATE(), ?)";
             $stmtGroup = $conn->prepare($sqlGroup);
-            $stmtGroup->execute([$total_cg, $total_tx, $diferencia, $estacion_id, $fecha_operativa]);
+            $stmtGroup->execute([$total_cg, $total_tx, $diferencia, $estacion_id, $entidad_id, $afiliacion, $fecha_operativa]);
             
             $groupId = $conn->query("SELECT @@IDENTITY")->fetchColumn();
 
@@ -3529,14 +3537,6 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // Determinar la tabla de banco específica para optimizar
-            $tablaBanco = "";
-            if ($entidad_id == 1) $tablaBanco = "banco_getnet";
-            elseif ($entidad_id == 4) $tablaBanco = "banco_banorte";
-
-            // Consulta V2 Optimizada: 
-            // 1. Filtramos por Estación y Fecha Operativa del Grupo directamente.
-            // 2. Si hay afiliación, nos aseguramos de traer TODAS las filas de los grupos que tengan al menos una TX.
             $sql = "SELECT 
                         D.id,
                         D.fecha_operacion as fecha, 
@@ -3554,38 +3554,27 @@ public function anomalies_client_tickets()
             $params = [$estacion_id, $fecha_ini, $fecha_fin];
 
             if (!empty($afiliacion)) {
-                // Filtro de Afiliación:
-                // Intentamos ser lo más estrictos posible combinando coincidencia de ID o Heurística de Monto/Fecha para hashes tx_
-                if (!empty($tablaBanco)) {
-                    $sql .= " AND EXISTS (
-                        SELECT 1 
-                        FROM Conciliacion_V2_Detalles D_Check
-                        WHERE D_Check.grupo_id = G.id 
-                          AND D_Check.origen = 'TX' 
-                          AND (
-                              -- Caso 1: ID Directo
-                              EXISTS (SELECT 1 FROM $tablaBanco B WHERE B.ID_Externo = D_Check.referencia_externa AND B.Afiliacion = ?)
-                              -- Caso 2: Hash sintético tx_ (Heurística de validación por Monto y Fecha)
-                              OR (D_Check.referencia_externa LIKE 'tx_%' AND EXISTS (
-                                  SELECT 1 FROM $tablaBanco B2 
-                                  WHERE B2.Afiliacion = ? AND B2.Monto = D_Check.monto AND CAST(B2.Fecha_Transaccion AS DATE) = D_Check.fecha_operacion
-                              ))
-                          )
-                    )";
-                    $params[] = $afiliacion;
-                    $params[] = $afiliacion;
-                } else {
-                    // Fallback para casos sin tabla de banco definida
-                    $sql .= " AND EXISTS (
-                        SELECT 1 
-                        FROM Conciliacion_V2_Detalles D_Check
-                        WHERE D_Check.grupo_id = G.id 
-                          AND D_Check.origen = 'TX' 
-                          AND (D_Check.referencia_externa LIKE ? OR D_Check.concepto LIKE ? OR D_Check.referencia_externa LIKE 'tx_%')
-                    )";
-                    $params[] = "%$afiliacion%";
-                    $params[] = "%$afiliacion%";
-                }
+                // Lógica Híbrida: 
+                // 1. Si el grupo ya tiene afiliación guardada (V2.1), comparar directo.
+                // 2. Si no la tiene (V2.0), buscar en los detalles de transacciones (TX)
+                $sql .= " AND (
+                            G.afiliacion = ? 
+                            OR (G.afiliacion IS NULL AND EXISTS (
+                                SELECT 1 FROM Conciliacion_V2_Detalles D2 
+                                WHERE D2.grupo_id = G.id 
+                                  AND D2.origen = 'TX' 
+                                  AND (D2.concepto LIKE ? OR D2.referencia_externa LIKE ?)
+                            ))
+                        )";
+                $params[] = $afiliacion;
+                $params[] = "%$afiliacion%";
+                $params[] = "%$afiliacion%";
+            }
+
+            if ($entidad_id > 0) {
+                // Solo filtrar por entidad si el registro la tiene definida
+                $sql .= " AND (G.entidad_id = ? OR G.entidad_id IS NULL)";
+                $params[] = $entidad_id;
             }
 
             $sql .= " ORDER BY G.id, D.origen";

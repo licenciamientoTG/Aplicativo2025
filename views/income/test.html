@@ -955,7 +955,7 @@
         
         resumenGlobal = { historico_visible_diff: 0, historico_visible_count: 0, transito_pasado_diff: 0, transito_pasado_count: 0 };
         
-        await cargarHistorial(); 
+        await cargarHistorial(eid); 
         await cargarResumenTransito(sid, currentActiveRule);
         
         // Cargar tránsitos y separarlos
@@ -1005,7 +1005,7 @@
         } catch(e) { console.error("Error cargando resumen tránsito", e); }
     }
 
-    async function cargarHistorial() {
+    async function cargarHistorial(eid) {
         const p = getPeriod();
         const sid = $('#estacionSelect').val();
         const afil = currentActiveRule ? currentActiveRule.afiliacion : '';
@@ -1015,6 +1015,7 @@
                 fecha_inicio: p.fi, 
                 fecha_fin: p.ff,
                 estacion_id: sid,
+                entidad_id: eid,
                 afiliacion: afil
             };
             const res = await $.get(URLS.historial, params);
@@ -2140,6 +2141,8 @@
             total_tx: sumC,
             diferencia: 0, 
             estacion_id: $('#estacionSelect').val(), 
+            entidad_id: $('#bancoSelect').val(),
+            afiliacion: currentActiveRule ? currentActiveRule.afiliacion : '',
             fecha_operativa: fechaOp,
             left_rows: selection.left.map(i => ({ 
                 fecha: normalizarFecha(i.fecha), 
