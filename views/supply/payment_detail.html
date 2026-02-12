@@ -635,6 +635,7 @@
 			<table class="table table-sm table-hover mb-0" id="noteApplicationsTable">
 				<thead class="thead-light">
 					<tr>
+						<th class="text-center">#ID</th>
 						<th class="text-center">Tipo</th>
 						<th>Número de Nota</th>
 						<th class="text-center">Fecha</th>
@@ -647,6 +648,7 @@
 					{% if note_applications and note_applications|length > 0 %}
 						{% for app in note_applications %}
 							<tr class="{{ app.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
+								<td class="text-muted small">{{ app.credit_note_id }}</td>
 								<td>
 									{% if app.note_type == 'CREDIT' %}
 										<span class="badge bg-success"><i class="fas fa-minus-circle"></i> Crédito</span>
@@ -661,15 +663,29 @@
 									{{ app.note_type == 'CREDIT' ? '-' : '+' }}
 									${{ app.applied_amount|number_format(2) }}
 								</td>
-								<td>
-									<button class="btn btn-sm btn-danger" onclick="removeApplication({{ app.id }})" title="Quitar aplicación">
+								<td style="white-space:nowrap">
+									{% if app.documents_count > 0 %}
+										<button class="btn btn-sm btn-info view-note-docs-btn mr-1"
+											data-note-id="{{ app.credit_note_id }}"
+											title="Ver PDF(s)">
+											<i class="fas fa-file-pdf"></i> {{ app.documents_count }}
+										</button>
+									{% endif %}
+									<button class="btn btn-sm btn-secondary mr-1"
+										onclick="openUploadDocModalPD({{ app.credit_note_id }})"
+										title="Subir PDF">
+										<i class="fas fa-upload"></i>
+									</button>
+									<button class="btn btn-sm btn-danger"
+										onclick="removeApplication({{ app.id }})"
+										title="Quitar aplicación">
 										<i class="fas fa-unlink"></i>
 									</button>
 								</td>
 							</tr>
 						{% endfor %}
 					{% else %}
-						<tr><td colspan="6" class="text-center text-muted py-3">Sin notas aplicadas a este pago</td></tr>
+						<tr><td colspan="7" class="text-center text-muted py-3">Sin notas aplicadas a este pago</td></tr>
 					{% endif %}
 				</tbody>
 			</table>
@@ -746,6 +762,9 @@
 								<th>Estado Pago</th>
 								<th>Autorización</th>
 								<th>Vencimiento</th>
+								<th>Notas de Crédito</th>
+								<th class="text-end">Total Notas</th>
+								<th class="text-end">Total Saldo</th>
 								<th>Acciones</th>
 							</tr>
 						</thead>
@@ -854,6 +873,52 @@
 										{% endif %}
 									</td>
 
+									{# Notas de Credito #}
+									<td>
+										{% if invoice.notas_count > 0 %}
+											<span class="badge bg-info text-dark" title="Notas aplicadas">
+												<i class="fas fa-sticky-note"></i>
+												{{ invoice.notas_count }} nota{{ invoice.notas_count != 1 ? 's' : '' }}
+											</span>
+											{% if invoice.total_notas_credito > 0 %}
+												<br/><small class="text-success"><i class="fas fa-minus-circle"></i> NC: ${{ invoice.total_notas_credito|number_format(2) }}</small>
+											{% endif %}
+											{% if invoice.total_notas_cargo > 0 %}
+												<br/><small class="text-danger"><i class="fas fa-plus-circle"></i> ND: ${{ invoice.total_notas_cargo|number_format(2) }}</small>
+											{% endif %}
+										{% else %}
+											<span class="text-muted">-</span>
+										{% endif %}
+									</td>
+									{# Total Notas (neto: cargo - credito) #}
+									{% set neto_notas = invoice.total_notas_cargo - invoice.total_notas_credito %}
+									<td class="text-end">
+										{% if invoice.notas_count > 0 %}
+											{% if neto_notas < 0 %}
+												<strong class="text-success">-${{ neto_notas|abs|number_format(2) }}</strong>
+												<br/><small class="text-muted">NC</small>
+											{% elseif neto_notas > 0 %}
+												<strong class="text-danger">+${{ neto_notas|number_format(2) }}</strong>
+												<br/><small class="text-muted">ND</small>
+											{% else %}
+												<span class="text-muted">$0.00</span>
+											{% endif %}
+										{% else %}
+											<span class="text-muted">-</span>
+										{% endif %}
+									</td>
+									{# Total Saldo (saldo factura +/- notas) #}
+									{% set saldo_neto = saldo + neto_notas %}
+									<td class="text-end">
+										{% if saldo_neto > 0 %}
+											<strong class="text-danger">${{ saldo_neto|number_format(2) }}</strong>
+										{% elseif saldo_neto < 0 %}
+											<strong class="text-warning">${{ saldo_neto|number_format(2) }}</strong>
+										{% else %}
+											<span class="text-success">$0.00</span>
+										{% endif %}
+									</td>
+
 									{# Acciones #}
 									<td class="text-center">
 										<button class="btn btn-sm btn-outline-info" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Ver historial de pagos">
@@ -871,7 +936,7 @@
 						</tbody>
 						<tfoot class="table-light">
 							<tr>
-								<th colspan="5" class="text-end">TOTALES:</th>
+								<th colspan="8" class="text-end">TOTALES:</th>
 								<th class="text-end">
 									{% set total_monto = 0 %}
 									{% for invoice in invoices %}
@@ -898,7 +963,7 @@
 								<th colspan="4"></th>
 							</tr>
 							<tr>
-								<th colspan="5" class="text-end">MONTO AUTORIZADO:</th>
+								<th colspan="8" class="text-end">MONTO AUTORIZADO:</th>
 								<th class="text-end" colspan="3">
 									{% set total_autorizado_tabla = 0 %}
 									{% for invoice in invoices
@@ -1568,6 +1633,62 @@
 						<button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Aplicar</button>
 					</div>
 				</form>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal: Subir PDF a nota de crédito (desde payment_detail) -->
+	<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
+					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+				</div>
+				<form id="uploadDocFormPD" enctype="multipart/form-data">
+					<div class="modal-body">
+						<input type="hidden" id="uploadDocNoteIdPD" name="note_id">
+						<div class="form-group">
+							<label>Archivo PDF *</label>
+							<div class="custom-file">
+								<input type="file" class="custom-file-input" name="note_file"
+									id="uploadDocFilePD" accept=".pdf" required>
+								<label class="custom-file-label" for="uploadDocFilePD">Seleccionar archivo PDF...</label>
+							</div>
+							<small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+						<button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Subir</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal: Ver documentos PDF de una nota -->
+	<div class="modal fade" id="noteDocsModalPD" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-xl modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">
+						<i class="fas fa-file-pdf text-danger"></i>
+						Documentos de la Nota <span id="noteDocsModalPDNoteId" class="badge badge-secondary ml-1"></span>
+					</h5>
+					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+				</div>
+				<div class="modal-body p-0">
+					<div id="noteDocsListPD" class="border-bottom px-3 py-2 d-flex align-items-center flex-wrap" style="gap:6px">
+					</div>
+					<iframe id="noteDocsViewerPD" style="width:100%;height:75vh;border:none;"></iframe>
+				</div>
+				<div class="modal-footer">
+					<a id="noteDocsDownloadBtnPD" href="#" target="_blank" class="btn btn-primary">
+						<i class="fas fa-download"></i> Descargar
+					</a>
+					<button type="button" class="btn btn-secondary" data-dismiss="modal">Cerrar</button>
+				</div>
 			</div>
 		</div>
 	</div>

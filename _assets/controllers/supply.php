@@ -3126,8 +3126,7 @@ class Supply
         exit;
     }
 
-    function payment_list()
-    {
+    function payment_list(){
         $stations = $this->gasolinerasModel->get_active_stations();
         $companys = $this->gasolinerasModel->get_company();
         $proveedores = $this->proveedores->get_actives();
@@ -3661,6 +3660,26 @@ class Supply
         header('Content-Length: ' . filesize($fullPath));
         readfile($fullPath);
         exit;
+    }
+
+    /**
+     * Devuelve la lista de documentos (PDFs) de una nota de crédito/cargo
+     */
+    public function getNoteDocuments()
+    {
+        try {
+            $noteId = (int) ($_POST['note_id'] ?? 0);
+            if (!$noteId) throw new Exception('note_id requerido');
+
+            $docs = $this->InvoiceCreditDebitNotesDocModel->getDocumentsByNoteId($noteId);
+
+            echo json_encode([
+                'success' => true,
+                'docs'    => $docs ?: []
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
     }
 
     /**

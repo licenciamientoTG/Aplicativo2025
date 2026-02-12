@@ -6899,6 +6899,65 @@ function renderApplyNoteModalNotes(notes) {
   });
 }
 
+// ── Subir PDF a nota desde payment_detail ────────────────────────────────────
+function openUploadDocModalPD(noteId) {
+  document.getElementById("uploadDocNoteIdPD").value = noteId;
+  document.getElementById("uploadDocFilePD").value = "";
+  document.querySelector("#uploadDocModalPD .custom-file-label").textContent =
+    "Seleccionar archivo PDF...";
+  $("#uploadDocModalPD").modal("show");
+}
+
+// ── Ver PDFs de una nota desde payment_detail ─────────────────────────────────
+function openNoteDocsModalPD(noteId) {
+  document.getElementById("noteDocsModalPDNoteId").textContent = "#" + noteId;
+  document.getElementById("noteDocsListPD").innerHTML =
+    '<span class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Cargando...</span>';
+  document.getElementById("noteDocsViewerPD").src = "";
+  document.getElementById("noteDocsDownloadBtnPD").href = "#";
+  $("#noteDocsModalPD").modal("show");
+
+  fetch("/supply/getNoteDocuments", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    credentials: "include",
+    body: "note_id=" + noteId,
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      const list = document.getElementById("noteDocsListPD");
+      if (!data.success || !data.docs || data.docs.length === 0) {
+        list.innerHTML = '<span class="text-muted small">Sin documentos</span>';
+        return;
+      }
+      list.innerHTML = data.docs
+        .map(
+          (doc, i) =>
+            `<button class="btn btn-sm btn-outline-danger note-doc-item-pd"
+                     data-doc-id="${doc.id}"
+                     title="Documento ${i + 1}">
+              <i class="fas fa-file-pdf"></i> Doc ${i + 1}
+            </button>`
+        )
+        .join("");
+      openNoteDocViewerPD(data.docs[0].id);
+    })
+    .catch(() => {
+      document.getElementById("noteDocsListPD").innerHTML =
+        '<span class="text-danger small">Error al cargar documentos</span>';
+    });
+}
+
+function openNoteDocViewerPD(docId) {
+  const pdfUrl = "/supply/viewNoteDocument/" + docId;
+  document.getElementById("noteDocsViewerPD").src = pdfUrl;
+  document.getElementById("noteDocsDownloadBtnPD").href = pdfUrl;
+  document.querySelectorAll(".note-doc-item-pd").forEach((b) => {
+    b.classList.toggle("btn-danger", b.dataset.docId == docId);
+    b.classList.toggle("btn-outline-danger", b.dataset.docId != docId);
+  });
+}
+
 // Update balance hint when a note is selected in the apply modal
 document.addEventListener("DOMContentLoaded", function () {
   var applyNoteSelect = document.getElementById("applyNoteSelect");
@@ -6968,6 +7027,56 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
   }
+});
+
+// ── Delegación: botón ver docs en payment_detail ──────────────────────────────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".view-note-docs-btn");
+  if (!btn) return;
+  openNoteDocsModalPD(btn.dataset.noteId);
+});
+
+// ── Delegación: selector de doc en noteDocsModalPD ───────────────────────────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".note-doc-item-pd");
+  if (!btn) return;
+  openNoteDocViewerPD(btn.dataset.docId);
+});
+
+// ── Submit: subir PDF desde payment_detail ────────────────────────────────────
+document.addEventListener("DOMContentLoaded", function () {
+  var uploadDocFormPD = document.getElementById("uploadDocFormPD");
+  if (!uploadDocFormPD) return;
+
+  document.getElementById("uploadDocFilePD").addEventListener("change", function () {
+    var label = this.closest(".custom-file").querySelector(".custom-file-label");
+    label.textContent = this.files.length > 0 ? this.files[0].name : "Seleccionar archivo PDF...";
+  });
+
+  uploadDocFormPD.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+
+    Swal.fire({ title: "Subiendo...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+    fetch("/supply/uploadNoteFile", { method: "POST", body: formData, credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        Swal.close();
+        if (data.success) {
+          Swal.fire({ icon: "success", title: "Éxito", text: data.message, timer: 2000 }).then(() => {
+            $("#uploadDocModalPD").modal("hide");
+            location.reload();
+          });
+        } else {
+          Swal.fire({ icon: "error", title: "Error", text: data.message });
+        }
+      })
+      .catch(() => {
+        Swal.close();
+        Swal.fire({ icon: "error", title: "Error", text: "Error al subir el archivo" });
+      });
+  });
 });
 
 function removeApplication(appId) {

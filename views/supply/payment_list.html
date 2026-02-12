@@ -652,7 +652,12 @@
                             <div class="card-body text-center p-3">
                                 <small class="text-muted">Pagos Pendientes</small>
                                 <h3 class="mb-0 text-primary" id="resumenCantidadTotal">0</h3>
-                                <small class="text-muted" id="resumenNivelAuth">Tu nivel de autorización</small>
+                                <small class="text-muted d-block" id="resumenNivelAuth">Tu nivel de autorización</small>
+                                <small class="text-muted">
+                                    <span id="resumenFacturasCount">0</span> fact.
+                                    &nbsp;|&nbsp;
+                                    <span id="resumenAnticiposCount">0</span> antic.
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -669,7 +674,12 @@
                             <div class="card-body text-center p-3">
                                 <small class="text-muted">Seleccionados</small>
                                 <h3 class="mb-0 text-warning" id="resumenSeleccionados">0</h3>
-                                <small class="text-muted" id="resumenMontoSeleccionado">$0.00</small>
+                                <small class="text-muted d-block" id="resumenMontoSeleccionado">$0.00</small>
+                                <small class="text-muted">
+                                    <span id="seleccionFacturasCount">0</span> fact.
+                                    &nbsp;|&nbsp;
+                                    <span id="seleccionAnticiposCount">0</span> antic.
+                                </small>
                             </div>
                         </div>
                     </div>
@@ -761,7 +771,9 @@
             <div class="modal-body">
                 <p><strong>Estás a punto de aprobar:</strong></p>
                 <ul>
-                    <li><strong id="confirmCantidad">0</strong> pagos</li>
+                    <li><strong id="confirmCantidad">0</strong> pagos
+                        (<span id="confirmFacturas">0</span> facturas + <span id="confirmAnticipos">0</span> anticipos)
+                    </li>
                     <li>Por un monto total de <strong id="confirmMonto">$0.00</strong></li>
                     <li>Nivel de autorización: <strong id="confirmNivel">-</strong></li>
                 </ul>
@@ -944,15 +956,20 @@
     function actualizarResumenMasivo(datos) {
         const total = datos.length;
         const montoTotal = datos.reduce((sum, p) => sum + parseFloat(p.monto_total || 0), 0);
+        const facturas = datos.filter(p => p.es_anticipo != 1).length;
+        const anticipos = datos.filter(p => p.es_anticipo == 1).length;
 
         $('#resumenCantidadTotal').text(total);
         $('#resumenMontoTotal').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+        $('#resumenFacturasCount').text(facturas);
+        $('#resumenAnticiposCount').text(anticipos);
 
         // Resetear selección
         $('#resumenSeleccionados').text(0);
         $('#resumenMontoSeleccionado').text('$0.00');
         $('#resumenExcluidos').text(0);
-
+        $('#seleccionFacturasCount').text(0);
+        $('#seleccionAnticiposCount').text(0);
     }
 
     /**
@@ -974,27 +991,56 @@
             return;
         }
 
-        datos.forEach(pago => {
+        // Ordenar: pagos regulares (facturas) primero, anticipos al final
+        const datosOrdenados = [...datos].sort((a, b) => {
+            return parseInt(a.es_anticipo || 0) - parseInt(b.es_anticipo || 0);
+        });
+
+        const hayFacturas = datosOrdenados.some(p => p.es_anticipo != 1);
+        const hayAnticipos = datosOrdenados.some(p => p.es_anticipo == 1);
+        let separadorInsertado = false;
+
+        datosOrdenados.forEach(pago => {
             const esAnticipo = pago.es_anticipo == 1;
             const montoPago = parseFloat(pago.monto_total || 0);
 
-            // Determinar si debe excluirse automáticamente
+            // Insertar separador visual entre facturas y anticipos
+            if (esAnticipo && !separadorInsertado && hayFacturas) {
+                separadorInsertado = true;
+                $tbody.append(`
+                    <tr class="table-secondary">
+                        <td colspan="10" class="py-1 px-3">
+                            <small class="fw-bold text-muted">
+                                <i class="fas fa-hand-holding-usd"></i> Anticipos
+                            </small>
+                        </td>
+                    </tr>
+                `);
+            }
 
             const alertas = [];
-            // if (superaLimite) alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle"></i> Monto alto</span>');
-            // if (requiereRevision) alertas.push('<span class="badge bg-danger"><i class="fas fa-flag"></i> Requiere revisión</span>');
             if (pago.dias_vencimiento && pago.dias_vencimiento < 0) {
                 alertas.push('<span class="badge bg-danger"><i class="fas fa-clock"></i> Vencido</span>');
             } else if (pago.dias_vencimiento && pago.dias_vencimiento <= 3) {
                 alertas.push('<span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Próximo a vencer</span>');
             }
 
+            // Columna Vencimiento: para anticipos mostrar fecha de solicitud
+            let vencimientoCell;
+            if (esAnticipo) {
+                const fechaSolicitud = pago.request_date ? pago.request_date.substring(0, 10) : 'N/A';
+                vencimientoCell = `<small class="text-muted"><i class="fas fa-calendar-plus"></i> Solicitado: ${fechaSolicitud}</small>`;
+            } else {
+                vencimientoCell = `<small>${pago.fecha_vencimiento || 'N/A'}</small>`;
+            }
+
             const row = `
-            <tr data-payment-id="${pago.id}">
+            <tr data-payment-id="${pago.id}" data-es-anticipo="${pago.es_anticipo || 0}">
                 <td>
-                    <input type="checkbox" class="checkbox-pago-masivo" 
-                           value="${pago.id}" 
+                    <input type="checkbox" class="checkbox-pago-masivo"
+                           value="${pago.id}"
                            data-monto="${montoPago}"
+                           data-es-anticipo="${pago.es_anticipo || 0}"
                            onchange="actualizarSeleccionMasivo()">
                 </td>
                 <td>${pago.id}</td>
@@ -1007,7 +1053,7 @@
                 <td><small>${pago.proveedor_nombre || 'N/A'}</small></td>
                 <td class="text-center">${pago.num_facturas || 0}</td>
                 <td class="text-end"><strong>$${montoPago.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong></td>
-                <td><small>${pago.fecha_vencimiento || 'N/A'}</small></td>
+                <td>${vencimientoCell}</td>
                 <td>
                     ${getBadgeAutorizacionPendiente(pago)}
                 </td>
@@ -1059,24 +1105,31 @@
     function actualizarSeleccionMasivo() {
         pagosSeleccionadosMasivo = [];
         let montoTotal = 0;
+        let selFacturas = 0;
+        let selAnticipos = 0;
 
         $('.checkbox-pago-masivo:checked').each(function () {
             const id = parseInt($(this).val());
             const monto = parseFloat($(this).data('monto'));
+            const esAnticipo = parseInt($(this).data('es-anticipo') || 0);
             pagosSeleccionadosMasivo.push(id);
             montoTotal += monto;
+            if (esAnticipo === 1) {
+                selAnticipos++;
+            } else {
+                selFacturas++;
+            }
         });
 
         // Actualizar UI
         $('#resumenSeleccionados').text(pagosSeleccionadosMasivo.length);
         $('#resumenMontoSeleccionado').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
         $('#footerTotalMasivo').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
-
-        // Validar límites
+        $('#seleccionFacturasCount').text(selFacturas);
+        $('#seleccionAnticiposCount').text(selAnticipos);
 
         // Habilitar/Deshabilitar botón de aprobación
         const puedeAprobar = pagosSeleccionadosMasivo.length > 0;
-
         $('#btnConfirmarAprobacionMasiva').prop('disabled', !puedeAprobar);
     }
 
@@ -1091,9 +1144,13 @@
         }
 
         const montoTotal = calcularMontoTotalSeleccionado();
+        const selFacturas = parseInt($('#seleccionFacturasCount').text()) || 0;
+        const selAnticipos = parseInt($('#seleccionAnticiposCount').text()) || 0;
 
         // Llenar modal de confirmación
         $('#confirmCantidad').text(pagosSeleccionadosMasivo.length);
+        $('#confirmFacturas').text(selFacturas);
+        $('#confirmAnticipos').text(selAnticipos);
         $('#confirmMonto').text('$' + montoTotal.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
         $('#confirmNivel').text(nombreNivelActual);
 
