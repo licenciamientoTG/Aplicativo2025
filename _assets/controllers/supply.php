@@ -4159,6 +4159,172 @@ class Supply
         }
     }
 
+    /**
+     * Endpoint para obtener todas las facturas pendientes de autorización de pago
+     * de todos los pagos autorizados. Para el modal masivo en payment_list.
+     */
+    function get_pending_payment_invoices()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede acceder a esta información']);
+                return;
+            }
+
+            $invoices = $this->paymentRequestInvoicesModel->get_all_pending_payment_invoices();
+
+            if (!$invoices) {
+                json_output(['success' => true, 'data' => [], 'message' => 'No hay facturas pendientes de autorización de pago']);
+                return;
+            }
+
+            $data = [];
+            foreach ($invoices as $invoice) {
+                $data[] = [
+                    'id' => $invoice['id'],
+                    'payment_request_id' => $invoice['payment_request_id'],
+                    'folio' => $invoice['folio'],
+                    'invoice_number' => $invoice['invoice_number'],
+                    'estacion_nombre' => $invoice['estacion_nombre'] ?? 'N/A',
+                    'amount' => floatval($invoice['amount']),
+                    'paid_amount' => floatval($invoice['paid_amount'] ?? 0),
+                    'saldo' => floatval($invoice['saldo']),
+                    'total_notas_credito' => floatval($invoice['total_notas_credito'] ?? 0),
+                    'total_notas_cargo' => floatval($invoice['total_notas_cargo'] ?? 0),
+                    'notas_count' => intval($invoice['notas_count'] ?? 0),
+                    'saldo_neto' => floatval($invoice['saldo_neto']),
+                    'expiration_date' => $invoice['expiration_date'],
+                    'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',
+                    'proveedor_nombre' => $invoice['proveedor_nombre'] ?? 'N/A',
+                    'uuid' => $invoice['uuid'],
+                    'pago_id' => $invoice['pago_id'],
+                    'pago_fecha' => $invoice['pago_fecha']
+                ];
+            }
+
+            json_output(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            error_log("Error en get_pending_payment_invoices: " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Autorización masiva de facturas para ejecución de pago.
+     * Maneja facturas de MÚLTIPLES payment_requests a la vez.
+     */
+    function bulk_authorize_payment_execution()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            $json = file_get_contents('php://input');
+            $data = json_decode($json, true);
+
+            if ($data === null) {
+                json_output(['success' => false, 'message' => 'Datos JSON inválidos']);
+                return;
+            }
+
+            $facturas = $data['facturas'] ?? [];
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+
+            if (empty($facturas)) {
+                json_output(['success' => false, 'message' => 'Debe seleccionar al menos una factura']);
+                return;
+            }
+
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+                return;
+            }
+
+            // Agrupar facturas por payment_request_id
+            $facturas_por_pago = [];
+            foreach ($facturas as $factura) {
+                $pid = $factura['payment_id'] ?? null;
+                if (!$pid) continue;
+                if (!isset($facturas_por_pago[$pid])) {
+                    $facturas_por_pago[$pid] = [];
+                }
+                $facturas_por_pago[$pid][] = $factura;
+            }
+
+            $total_autorizadas = 0;
+            $total_autorizado = 0;
+            $todos_errores = [];
+            $pagos_procesados = 0;
+
+            // Procesar cada grupo de facturas por pago
+            foreach ($facturas_por_pago as $payment_id => $facturas_del_pago) {
+                // Verificar que el pago exista y esté AUTORIZADO
+                $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+
+                if (!$payment) {
+                    $todos_errores[] = "Pago #{$payment_id}: no encontrado";
+                    continue;
+                }
+
+                if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
+                    $todos_errores[] = "Pago #{$payment_id}: no está autorizado";
+                    continue;
+                }
+
+                // Usar el mismo método del modelo que ya funciona
+                $result = $this->paymentRequestInvoicesModel->authorize_invoices_for_payment(
+                    $payment_id,
+                    $facturas_del_pago,
+                    $user_id
+                );
+
+                if ($result['success']) {
+                    $total_autorizadas += $result['facturas_autorizadas'];
+                    $total_autorizado += $result['total_autorizado'];
+                    $pagos_procesados++;
+                }
+
+                if (!empty($result['errores'])) {
+                    foreach ($result['errores'] as $err) {
+                        $todos_errores[] = "Pago #{$payment_id}: {$err}";
+                    }
+                }
+            }
+
+            if ($total_autorizadas > 0) {
+                $mensaje = "{$total_autorizadas} factura(s) autorizada(s) de {$pagos_procesados} pago(s)";
+                $mensaje .= " - Total: $" . number_format($total_autorizado, 2);
+
+                if (!empty($todos_errores)) {
+                    $mensaje .= "\n\nAdvertencias:\n" . implode("\n", $todos_errores);
+                }
+
+                json_output([
+                    'success' => true,
+                    'message' => $mensaje,
+                    'facturas_autorizadas' => $total_autorizadas,
+                    'total_autorizado' => number_format($total_autorizado, 2, '.', ''),
+                    'pagos_procesados' => $pagos_procesados,
+                    'errores' => $todos_errores
+                ]);
+            } else {
+                $msg = 'No se pudo autorizar ninguna factura';
+                if (!empty($todos_errores)) {
+                    $msg .= ': ' . implode(', ', $todos_errores);
+                }
+                json_output(['success' => false, 'message' => $msg]);
+            }
+        } catch (Exception $e) {
+            error_log("Error en bulk_authorize_payment_execution: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+    }
 
     function execute_authorized_payments()
     {

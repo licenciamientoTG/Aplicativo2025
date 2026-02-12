@@ -964,6 +964,106 @@ class PaymentRequestInvoicesModel extends Model
         return $this->sql->select($query) ?: false;
     }
 
+    /**
+     * Obtiene TODAS las facturas pendientes de autorización de pago
+     * de TODOS los payment_requests con status AUTHORIZED (1).
+     * Para el modal de autorización masiva de pago en payment_list.
+     */
+    public function get_all_pending_payment_invoices() : array|false {
+        $query = "
+            SELECT
+                pri.id,
+                pri.payment_request_id,
+                pri.folio,
+                pri.invoice_number,
+                pri.codgas,
+                pri.amount,
+                pri.paid_amount,
+                pri.authorized_amount,
+                pri.payment_authorized,
+                pri.authorized_by,
+                pri.authorized_at,
+                pri.status,
+                pri.expiration_date,
+                pri.uuid,
+
+                -- Saldo calculado
+                (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+
+                -- Notas de crédito y cargo por factura
+                ISNULL(notas.total_notas_credito, 0) as total_notas_credito,
+                ISNULL(notas.total_notas_cargo, 0)   as total_notas_cargo,
+                ISNULL(notas.notas_count, 0)          as notas_count,
+
+                -- Saldo neto (saldo - NC + ND)
+                (pri.amount - ISNULL(pri.paid_amount, 0))
+                    - ISNULL(notas.total_notas_credito, 0)
+                    + ISNULL(notas.total_notas_cargo, 0) as saldo_neto,
+
+                -- Información de payment_request
+                pr.id as pago_id,
+                pr.emp_cod,
+                pr.provider_cod,
+                pr.request_date as pago_fecha,
+
+                -- Información de la estación
+                g.abr as estacion_nombre,
+                g.den as estacion_completa,
+
+                -- Usuario que autorizó
+                u_auth.Nombre as authorized_by_name,
+
+                -- Proveedor
+                prov.den as proveedor_nombre,
+                prov.rfc as proveedor_rfc,
+
+                -- Empresa (razón social)
+                emp.den as empresa_nombre,
+                emp.rfc as empresa_rfc
+
+            FROM [TG].[dbo].[payment_request_invoices] pri
+
+            INNER JOIN [TG].[dbo].[payment_requests] pr
+                ON pri.payment_request_id = pr.id
+
+            LEFT JOIN [SG12].[dbo].[Gasolineras] g
+                ON pri.codgas = g.cod
+
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth
+                ON pri.authorized_by = u_auth.Id
+
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov
+                ON pr.provider_cod = prov.cod
+
+            LEFT JOIN [SG12].[dbo].[Empresas] emp
+                ON pr.emp_cod = emp.cod
+
+            LEFT JOIN (
+                SELECT
+                    a.invoice_id,
+                    SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount ELSE 0 END) as total_notas_credito,
+                    SUM(CASE WHEN n.note_type = 'DEBIT'  THEN a.applied_amount ELSE 0 END) as total_notas_cargo,
+                    COUNT(*) as notas_count
+                FROM [tg].[dbo].credit_note_applications a
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
+                WHERE a.status = 1
+                GROUP BY a.invoice_id
+            ) notas ON pri.id = notas.invoice_id
+
+            WHERE pr.status = ?
+                AND pri.payment_authorized = 0
+                AND pri.status != ?
+                AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+
+            ORDER BY pr.id, pri.expiration_date, pri.folio
+        ";
+
+        return $this->sql->select($query, [
+            1,  // STATUS_AUTHORIZED
+            4   // STATUS_CANCELLED
+        ]) ?: false;
+    }
+
     // public function get_facturas_para_layout($facturas_ids) {
     //     if (empty($facturas_ids)) return [];
         

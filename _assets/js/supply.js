@@ -5243,6 +5243,451 @@ $("#modalAutorizarPago").on("hidden.bs.modal", function () {
   updateAutorizacionSummary();
 });
 
+// ============================================
+// AUTORIZACIÓN MASIVA DE PAGO DE FACTURAS
+// ============================================
+
+function abrirModalAutorizarPagoMasivo() {
+  $("#modalAutorizarPagoMasivo").modal("show");
+  $("#loadingPagoMasivo").show();
+  $("#tablaPagoMasivoContainer").hide();
+  $("#sinFacturasPagoMasivo").hide();
+
+  $.ajax({
+    url: "/supply/get_pending_payment_invoices",
+    type: "GET",
+    success: function (response) {
+      $("#loadingPagoMasivo").hide();
+      if (response.success && response.data && response.data.length > 0) {
+        renderTablaPagoMasivo(response.data);
+        $("#tablaPagoMasivoContainer").show();
+      } else {
+        $("#sinFacturasPagoMasivo").show();
+      }
+    },
+    error: function () {
+      $("#loadingPagoMasivo").hide();
+      alertify.error("Error al cargar facturas pendientes");
+    },
+  });
+}
+
+function renderTablaPagoMasivo(facturas) {
+  const tbody = $("#tablaAutorizarPagoMasivo tbody");
+  tbody.empty();
+
+  const fmt = (val) =>
+    "$" +
+    parseFloat(val || 0).toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  // Agrupar facturas por payment_request_id
+  const grupos = {};
+  const ordenGrupos = [];
+  facturas.forEach(function (inv) {
+    const pid = inv.payment_request_id;
+    if (!grupos[pid]) {
+      grupos[pid] = {
+        payment_id: pid,
+        empresa: inv.empresa_nombre,
+        proveedor: inv.proveedor_nombre,
+        fecha: inv.pago_fecha,
+        facturas: [],
+      };
+      ordenGrupos.push(pid);
+    }
+    grupos[pid].facturas.push(inv);
+  });
+
+  let totalMonto = 0,
+    totalPagado = 0,
+    totalSaldo = 0,
+    totalNC = 0,
+    totalND = 0,
+    totalSaldoNeto = 0;
+  const totalCols = 11;
+
+  ordenGrupos.forEach(function (pid) {
+    const grupo = grupos[pid];
+    const numFacturas = grupo.facturas.length;
+
+    // Formatear fecha del pago
+    let fechaStr = "";
+    if (grupo.fecha) {
+      const d = new Date(grupo.fecha);
+      fechaStr = d.toLocaleDateString("es-MX");
+    }
+
+    // Calcular saldo neto del grupo para mostrar en encabezado
+    let grupoSaldoNeto = 0;
+    grupo.facturas.forEach(function (inv) {
+      grupoSaldoNeto += Math.max(0, parseFloat(inv.saldo_neto || 0));
+    });
+
+    // Fila encabezado del grupo
+    const headerRow = `<tr class="table-secondary group-header-row" data-group-id="${pid}" style="cursor: pointer;">
+      <td>
+        <input type="checkbox" class="group-select-all" data-group="${pid}"
+          onchange="toggleSelectGroupMasivo(${pid})" title="Seleccionar todas de este pago"/>
+      </td>
+      <td colspan="${totalCols - 1}" onclick="toggleGroupMasivo(${pid})">
+        <i class="fas fa-chevron-right group-toggle-icon" data-group="${pid}" style="transition: transform 0.2s; margin-right: 6px;"></i>
+        <strong>
+          <i class="fas fa-file-invoice-dollar text-info"></i>
+          Pago <a href="/supply/payment_detail/${pid}" target="_blank" class="text-info" onclick="event.stopPropagation()">#${pid}</a>
+        </strong>
+        <span class="mx-2">|</span>
+        <i class="fas fa-building"></i> ${grupo.empresa}
+        <span class="mx-2">|</span>
+        <i class="fas fa-truck"></i> ${grupo.proveedor}
+        <span class="mx-2">|</span>
+        <i class="fas fa-calendar"></i> ${fechaStr}
+        <span class="mx-2">|</span>
+        <span class="badge bg-info">${numFacturas} factura(s)</span>
+        <span class="mx-2">|</span>
+        <span class="text-primary fw-bold">${fmt(grupoSaldoNeto)}</span>
+      </td>
+    </tr>`;
+    tbody.append(headerRow);
+
+    // Filas de facturas del grupo
+    grupo.facturas.forEach(function (inv) {
+      const saldoNeto = Math.max(0, parseFloat(inv.saldo_neto || 0));
+      totalMonto += parseFloat(inv.amount);
+      totalPagado += parseFloat(inv.paid_amount);
+      totalSaldo += parseFloat(inv.saldo);
+      totalNC += parseFloat(inv.total_notas_credito);
+      totalND += parseFloat(inv.total_notas_cargo);
+      totalSaldoNeto += saldoNeto;
+
+      let notasHtml = '<span class="text-muted">-</span>';
+      if (inv.notas_count > 0) {
+        let parts = [];
+        if (inv.total_notas_credito > 0)
+          parts.push(
+            '<small class="text-success">-' + fmt(inv.total_notas_credito) + "</small>",
+          );
+        if (inv.total_notas_cargo > 0)
+          parts.push(
+            '<small class="text-danger">+' + fmt(inv.total_notas_cargo) + "</small>",
+          );
+        notasHtml = parts.join("<br>");
+      }
+
+      // Formatear vencimiento
+      let vencHtml = "-";
+      if (inv.expiration_date) {
+        const d = new Date(inv.expiration_date);
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const diffDias = Math.floor((d - hoy) / (1000 * 60 * 60 * 24));
+        let badge = "bg-secondary";
+        if (diffDias < 0) badge = "bg-danger";
+        else if (diffDias <= 7) badge = "bg-warning text-dark";
+        else if (diffDias <= 15) badge = "bg-info";
+        vencHtml =
+          '<span class="badge ' +
+          badge +
+          '">' +
+          d.toLocaleDateString("es-MX") +
+          "</span>";
+      }
+
+      const row = `<tr data-invoice-id="${inv.id}" data-payment-id="${inv.payment_request_id}" data-folio="${inv.folio}" data-saldo="${saldoNeto}" data-group="${pid}" class="group-row-${pid}" style="display: none;">
+        <td>
+          <input type="checkbox" class="factura-masivo-checkbox" value="${inv.id}" data-group="${pid}" onchange="updateAutorizacionMasivaSummary()"/>
+        </td>
+        <td><strong>${inv.folio}</strong></td>
+        <td>${inv.invoice_number || ""}</td>
+        <td>${inv.estacion_nombre}</td>
+        <td class="text-end">${fmt(inv.amount)}</td>
+        <td class="text-end">${fmt(inv.paid_amount)}</td>
+        <td class="text-end"><strong class="text-danger">${fmt(inv.saldo)}</strong></td>
+        <td class="text-end">${notasHtml}</td>
+        <td class="text-end"><strong>${fmt(saldoNeto)}</strong></td>
+        <td class="text-end">${vencHtml}</td>
+        <td>
+          <input type="number" class="form-control form-control-sm monto-autorizar-masivo"
+            step="0.01" min="0" max="${saldoNeto}" disabled
+            onchange="updateAutorizacionMasivaSummary()"
+            oninput="updateAutorizacionMasivaSummary()"/>
+        </td>
+      </tr>`;
+      tbody.append(row);
+    });
+  });
+
+  // Actualizar totales en footer
+  $("#footerMasivoPagoMonto").text(fmt(totalMonto));
+  $("#footerMasivoPagoPagado").text(fmt(totalPagado));
+  $("#footerMasivoPagoSaldo").text(fmt(totalSaldo));
+  $("#footerMasivoPagoNotas").html(
+    '<small class="text-success">-' +
+      fmt(totalNC) +
+      '</small><br><small class="text-danger">+' +
+      fmt(totalND) +
+      "</small>",
+  );
+  $("#footerMasivoPagoSaldoNeto").text(fmt(totalSaldoNeto));
+
+  // Actualizar cards de resumen
+  $("#masivoPagoMontoFacturas").text(fmt(totalMonto));
+  $("#masivoPagoNC").text("-" + fmt(totalNC));
+  $("#masivoPagoND").text("+" + fmt(totalND));
+  $("#masivoPagoSaldoNeto").text(fmt(totalSaldoNeto));
+
+  updateAutorizacionMasivaSummary();
+}
+
+function toggleGroupMasivo(groupId) {
+  const rows = $(`.group-row-${groupId}`);
+  const icon = $(`.group-toggle-icon[data-group="${groupId}"]`);
+  const isVisible = rows.first().is(":visible");
+
+  if (isVisible) {
+    rows.hide();
+    icon.css("transform", "rotate(0deg)");
+  } else {
+    rows.show();
+    icon.css("transform", "rotate(90deg)");
+  }
+}
+
+function toggleAllGroupsMasivo() {
+  const allRows = $("[class*='group-row-']");
+  const anyHidden = allRows.filter(":hidden").length > 0;
+
+  if (anyHidden) {
+    allRows.show();
+    $(".group-toggle-icon").css("transform", "rotate(90deg)");
+    $("#btnToggleAllGroups")
+      .html('<i class="fas fa-compress-alt"></i> Colapsar Todos');
+  } else {
+    allRows.hide();
+    $(".group-toggle-icon").css("transform", "rotate(0deg)");
+    $("#btnToggleAllGroups")
+      .html('<i class="fas fa-expand-alt"></i> Expandir Todos');
+  }
+}
+
+function toggleSelectGroupMasivo(groupId) {
+  const groupCheckbox = $(`.group-select-all[data-group="${groupId}"]`);
+  const isChecked = groupCheckbox.prop("checked");
+
+  $(`.factura-masivo-checkbox[data-group="${groupId}"]`).each(function () {
+    $(this).prop("checked", isChecked);
+    const row = $(this).closest("tr");
+    const montoInput = row.find(".monto-autorizar-masivo");
+
+    if (isChecked) {
+      const saldo = parseFloat(row.data("saldo"));
+      montoInput.prop("disabled", false).val(saldo.toFixed(2));
+    } else {
+      montoInput.prop("disabled", true).val("");
+    }
+  });
+
+  updateAutorizacionMasivaSummary();
+}
+
+function updateAutorizacionMasivaSummary() {
+  let totalAAutorizar = 0;
+  let facturasCount = 0;
+
+  $(".factura-masivo-checkbox:checked").each(function () {
+    const row = $(this).closest("tr");
+    const montoInput = row.find(".monto-autorizar-masivo");
+    const monto = parseFloat(montoInput.val()) || 0;
+    const saldo = parseFloat(row.data("saldo"));
+
+    montoInput.prop("disabled", !$(this).prop("checked"));
+
+    if ($(this).prop("checked") && montoInput.val() === "") {
+      montoInput.val(saldo.toFixed(2));
+    }
+
+    if (monto > saldo) {
+      montoInput.val(saldo.toFixed(2));
+      alertify.warning("El monto no puede exceder el saldo neto de la factura");
+    }
+
+    totalAAutorizar += parseFloat(montoInput.val()) || 0;
+    facturasCount++;
+  });
+
+  // Deshabilitar inputs de no seleccionadas
+  $(".factura-masivo-checkbox:not(:checked)").each(function () {
+    $(this).closest("tr").find(".monto-autorizar-masivo").prop("disabled", true);
+  });
+
+  const fmt = (val) =>
+    "$" +
+    parseFloat(val).toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  $("#masivoPagoTotalAutorizar").text(fmt(totalAAutorizar));
+  $("#masivoPagoSeleccionadas").text(facturasCount);
+
+  $("#btnConfirmarAutorizacionMasiva").prop(
+    "disabled",
+    facturasCount === 0 || totalAAutorizar === 0,
+  );
+
+  // Actualizar checkbox "Seleccionar Todas" global
+  const totalCheckboxes = $(".factura-masivo-checkbox").length;
+  const totalChecked = $(".factura-masivo-checkbox:checked").length;
+  $("#selectAllFacturasMasivo").prop(
+    "checked",
+    totalCheckboxes > 0 && totalCheckboxes === totalChecked,
+  );
+
+  // Actualizar checkboxes de grupo
+  $(".group-select-all").each(function () {
+    const gid = $(this).data("group");
+    const groupTotal = $(`.factura-masivo-checkbox[data-group="${gid}"]`).length;
+    const groupChecked = $(`.factura-masivo-checkbox[data-group="${gid}"]:checked`).length;
+    $(this).prop("checked", groupTotal > 0 && groupTotal === groupChecked);
+  });
+}
+
+function toggleSelectAllFacturasMasivo() {
+  const selectAll = $("#selectAllFacturasMasivo").prop("checked");
+  $(".factura-masivo-checkbox").each(function () {
+    $(this).prop("checked", selectAll);
+    const row = $(this).closest("tr");
+    const montoInput = row.find(".monto-autorizar-masivo");
+
+    if (selectAll) {
+      const saldo = parseFloat(row.data("saldo"));
+      montoInput.prop("disabled", false).val(saldo.toFixed(2));
+    } else {
+      montoInput.prop("disabled", true).val("");
+    }
+  });
+
+  // Sincronizar checkboxes de grupo
+  $(".group-select-all").prop("checked", selectAll);
+
+  updateAutorizacionMasivaSummary();
+}
+
+function confirmarAutorizarPagoMasivo() {
+  const facturasAutorizar = [];
+  let totalAAutorizar = 0;
+
+  $(".factura-masivo-checkbox:checked").each(function () {
+    const row = $(this).closest("tr");
+    const facturaId = $(this).val();
+    const monto = parseFloat(row.find(".monto-autorizar-masivo").val()) || 0;
+    const saldo = parseFloat(row.data("saldo"));
+    const folio = row.data("folio");
+    const paymentId = row.data("payment-id");
+
+    if (monto > 0 && monto <= saldo) {
+      facturasAutorizar.push({
+        invoice_id: facturaId,
+        payment_id: paymentId,
+        folio: folio,
+        monto_autorizado: monto,
+        saldo_anterior: saldo,
+      });
+      totalAAutorizar += monto;
+    }
+  });
+
+  if (facturasAutorizar.length === 0) {
+    alertify.error("Debe seleccionar al menos una factura con monto válido");
+    return;
+  }
+
+  // Contar pagos únicos
+  const pagosUnicos = [...new Set(facturasAutorizar.map((f) => f.payment_id))];
+
+  alertify
+    .confirm(
+      "Confirmar Autorización Masiva de Pago",
+      `<div class="text-center">
+        <i class="fas fa-check-circle text-info fa-3x mb-3"></i>
+        <p class="mb-3">¿Está seguro de autorizar el pago de <strong>${facturasAutorizar.length} factura(s)</strong> de <strong>${pagosUnicos.length} pago(s)</strong>?</p>
+        <div class="alert alert-info" style="display: flex;flex-direction: column;padding-bottom: 10px;">
+          <strong>Total a Autorizar:</strong><br>
+          <h4 class="text-info mb-0">$${totalAAutorizar.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</h4>
+        </div>
+        <small class="text-muted">La ejecución del pago será realizada posteriormente por el área correspondiente.</small>
+      </div>`,
+      function () {
+        ejecutarAutorizacionPagoMasivo(facturasAutorizar);
+      },
+      function () {
+        alertify.message("Operación cancelada");
+      },
+    )
+    .set("labels", { ok: "Autorizar", cancel: "Cancelar" });
+}
+
+function ejecutarAutorizacionPagoMasivo(facturasAutorizar) {
+  $("#btnConfirmarAutorizacionMasiva")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Autorizando...');
+
+  $.ajax({
+    url: "/supply/bulk_authorize_payment_execution",
+    type: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({
+      facturas: facturasAutorizar,
+    }),
+    success: function (response) {
+      if (response.success) {
+        alertify.success(response.message);
+        $("#modalAutorizarPagoMasivo").modal("hide");
+
+        setTimeout(() => {
+          location.reload();
+        }, 1500);
+      } else {
+        alertify.error(response.message);
+        $("#btnConfirmarAutorizacionMasiva")
+          .prop("disabled", false)
+          .html(
+            '<i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas',
+          );
+      }
+    },
+    error: function (xhr) {
+      const errorMsg =
+        xhr.responseJSON?.message || "Error al autorizar el pago masivo";
+      alertify.error(errorMsg);
+      $("#btnConfirmarAutorizacionMasiva")
+        .prop("disabled", false)
+        .html(
+          '<i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas',
+        );
+    },
+  });
+}
+
+// Limpiar cuando se cierra el modal masivo
+$("#modalAutorizarPagoMasivo").on("hidden.bs.modal", function () {
+  $("#tablaAutorizarPagoMasivo tbody").empty();
+  $("#selectAllFacturasMasivo").prop("checked", false);
+  $("#btnConfirmarAutorizacionMasiva")
+    .prop("disabled", true)
+    .html(
+      '<i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas',
+    );
+  $("#masivoPagoTotalAutorizar").text("$0.00");
+  $("#masivoPagoSeleccionadas").text("0");
+});
+
+// ============================================
+// FIN AUTORIZACIÓN MASIVA DE PAGO
+// ============================================
+
 function verHistorialPagos(invoiceId, folio) {
   $("#folioHistorial").text(folio);
   $("#modalHistorialPagos").modal("show");

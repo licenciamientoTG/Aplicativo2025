@@ -232,9 +232,12 @@
                                 <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
                                 <small class="d-block text-muted">pendientes</small>
                             </div>
-                            <button class="btn btn-info btn-sm w-100" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
+                            <button class="btn btn-info btn-sm w-100 mb-2" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
                                 id="btn-aprobar-tesoreria" disabled>
                                 <i class="fas fa-check-double"></i> Aprobar Nivel 3
+                            </button>
+                            <button class="btn btn-outline-info btn-sm w-100" onclick="abrirModalAutorizarPagoMasivo()">
+                                <i class="fas fa-money-check-alt"></i> Autorizar Pago Facturas
                             </button>
                         </div>
                     </div>
@@ -655,6 +658,142 @@
     </div>
 </div>
 
+
+<!-- Modal Autorizar Pago Masivo -->
+<div class="modal fade" id="modalAutorizarPagoMasivo" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-check-circle"></i>
+                    Autorizar Pago de Facturas - Todos los Pagos Autorizados
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info" style="width: 60%">
+                    <i class="fas fa-info-circle" style="margin: 5px"></i>
+                    Seleccione las facturas que autoriza para ejecución de pago. Se muestran todas las facturas de pagos ya autorizados por los 3 niveles.
+                </div>
+
+                <!-- Resumen -->
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Monto Facturas</small>
+                                <h5 class="mb-0 text-primary" id="masivoPagoMontoFacturas">$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Notas Crédito</small>
+                                <h5 class="mb-0 text-success" id="masivoPagoNC">-$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Notas Cargo</small>
+                                <h5 class="mb-0 text-warning" id="masivoPagoND">+$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-light border-primary">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Saldo Neto Total</small>
+                                <h5 class="mb-0 text-primary" id="masivoPagoSaldoNeto">$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Monto a Autorizar</small>
+                                <h5 class="mb-0 text-success" id="masivoPagoTotalAutorizar">$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Seleccionadas</small>
+                                <h5 class="mb-0 text-info" id="masivoPagoSeleccionadas">0</h5>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnToggleAllGroups" onclick="toggleAllGroupsMasivo()">
+                        <i class="fas fa-expand-alt"></i> Expandir Todos
+                    </button>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times"></i> Cancelar
+                        </button>
+                        <button type="button" class="btn btn-info" id="btnConfirmarAutorizacionMasiva" onclick="confirmarAutorizarPagoMasivo()" disabled>
+                            <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div id="loadingPagoMasivo" class="text-center py-4" style="display: none;">
+                    <i class="fas fa-spinner fa-spin fa-2x text-info"></i>
+                    <p class="mt-2 text-muted">Cargando facturas pendientes...</p>
+                </div>
+
+                <!-- Tabla de Facturas -->
+                <div class="table-responsive" id="tablaPagoMasivoContainer" style="display: none;">
+                    <table class="table table-sm table-hover table-bordered" id="tablaAutorizarPagoMasivo">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="40">
+                                    <input type="checkbox" id="selectAllFacturasMasivo" onchange="toggleSelectAllFacturasMasivo()"/>
+                                </th>
+                                <th>Folio</th>
+                                <th>Factura</th>
+                                <th>Estación</th>
+                                <th class="text-end">Monto</th>
+                                <th class="text-end">Pagado</th>
+                                <th class="text-end">Saldo</th>
+                                <th class="text-end">NC / ND</th>
+                                <th class="text-end">Saldo Neto</th>
+                                <th class="text-end">Vencimiento</th>
+                                <th width="140">Monto a Autorizar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dinámico vía JS -->
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="4" class="text-end">TOTALES:</th>
+                                <th class="text-end" id="footerMasivoPagoMonto">$0.00</th>
+                                <th class="text-end" id="footerMasivoPagoPagado">$0.00</th>
+                                <th class="text-end" id="footerMasivoPagoSaldo">$0.00</th>
+                                <th class="text-end" id="footerMasivoPagoNotas"></th>
+                                <th class="text-end" id="footerMasivoPagoSaldoNeto">$0.00</th>
+                                <th colspan="2"></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Sin datos -->
+                <div id="sinFacturasPagoMasivo" class="text-center py-4" style="display: none;">
+                    <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                    <p class="text-muted">No hay facturas pendientes de autorización de pago.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Modal Aprobación Masiva -->
 <div class="modal fade" id="modalAprobacionMasiva" tabindex="-1" aria-hidden="true">
