@@ -3666,6 +3666,29 @@ function loadPaymentList() {
       { data: "usuario" },
       { data: "total_invoices", className: "text-center" },
       { data: "total_amount", className: "text-end" },
+      {
+        data: "total_notas_credito",
+        className: "text-end",
+        render: function (data) {
+          var val = parseFloat(data) || 0;
+          if (val > 0) {
+            return '<small class="text-success">-$' + val.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</small>";
+          }
+          return '<small class="text-muted">$0.00</small>';
+        },
+      },
+      {
+        data: "total_notas_cargo",
+        className: "text-end",
+        render: function (data) {
+          var val = parseFloat(data) || 0;
+          if (val > 0) {
+            return '<small class="text-danger">+$' + val.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</small>";
+          }
+          return '<small class="text-muted">$0.00</small>';
+        },
+      },
+      { data: "monto_neto", className: "text-end fw-bold" },
       { data: "total_paid", className: "text-end" },
       {
         data: null,
@@ -5932,8 +5955,53 @@ function inicializarTablaDesglose(data) {
         className: "text-end",
         render: function (data) {
           return (
-            '<strong class="text-danger">$' +
+            "$" +
             parseFloat(data).toLocaleString("es-MX", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          );
+        },
+      },
+      {
+        // NC / ND
+        data: null,
+        className: "text-end",
+        render: function (data, type, row) {
+          var nc = parseFloat(row.total_notas_credito) || 0;
+          var nd = parseFloat(row.total_notas_cargo) || 0;
+          if (nc === 0 && nd === 0) {
+            return '<small class="text-muted">-</small>';
+          }
+          var html = "";
+          if (nc > 0) {
+            html +=
+              '<small class="text-success">-$' +
+              nc.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
+              "</small>";
+          }
+          if (nd > 0) {
+            html +=
+              (nc > 0 ? "<br>" : "") +
+              '<small class="text-danger">+$' +
+              nd.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
+              "</small>";
+          }
+          return html;
+        },
+      },
+      {
+        // Saldo Neto
+        data: "saldo_neto",
+        className: "text-end",
+        render: function (data) {
+          var val = parseFloat(data) || 0;
+          var color = val > 0 ? "text-danger" : "text-success";
+          return (
+            '<strong class="' +
+            color +
+            '">$' +
+            val.toLocaleString("es-MX", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             }) +
@@ -5976,42 +6044,10 @@ function inicializarTablaDesglose(data) {
           });
         },
       },
-      // {
-      //     data: null,
-      //     orderable: false,
-      //     className: 'text-center',
-      //     render: function(data, type, row) {
-      //         return `
-      //             <button class="btn btn-sm btn-outline-info"
-      //                     onclick="verDetallePago(${row.payment_request_id})"
-      //                     title="Ver solicitud de pago">
-      //                 <i class="fas fa-eye"></i>
-      //             </button>
-      //         `;
-      //     }
-      // }
     ],
-    order: [[7, "asc"]], // Ordenar por vencimiento
+    order: [[9, "asc"]], // Ordenar por vencimiento (ahora col 9)
     pageLength: 25,
     dom: "frtip",
-    // buttons: [
-    //     {
-    //         extend: 'excel',
-    //         text: '<i class="fas fa-file-excel"></i> Excel',
-    //         className: 'btn btn-success btn-sm',
-    //         exportOptions: {
-    //             columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    //         }
-    //     },
-    //     {
-    //         extend: 'pdf',
-    //         text: '<i class="fas fa-file-pdf"></i> PDF',
-    //         className: 'btn btn-danger btn-sm',
-    //         exportOptions: {
-    //             columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    //         }
-    //     }
-    // ],
     drawCallback: function () {
       actualizarTotalesDesglose(data);
     },
@@ -6027,32 +6063,37 @@ function actualizarTotalesDesglose(data) {
   let totalFacturas = data.length;
   let totalAutorizado = 0;
   let totalSaldo = 0;
+  let totalNC = 0;
+  let totalND = 0;
+  let totalSaldoNeto = 0;
 
   data.forEach(function (factura) {
     totalAutorizado += parseFloat(factura.authorized_amount);
     totalSaldo += parseFloat(factura.saldo);
+    totalNC += parseFloat(factura.total_notas_credito) || 0;
+    totalND += parseFloat(factura.total_notas_cargo) || 0;
+    totalSaldoNeto += parseFloat(factura.saldo_neto);
   });
+
+  var fmt = function (v) {
+    return "$" + v.toLocaleString("es-MX", { minimumFractionDigits: 2 });
+  };
 
   // Actualizar cards superiores
   $("#desgloseTotalFacturas").text(totalFacturas);
-  $("#desgloseMontoTotal").text(
-    "$" + totalAutorizado.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-  );
-  $("#desgloseSaldoTotal").text(
-    "$" + totalSaldo.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-  );
+  $("#desgloseMontoTotal").text(fmt(totalAutorizado));
+  $("#desgloseTotalNC").text("-" + fmt(totalNC));
+  $("#desgloseTotalND").text("+" + fmt(totalND));
+  $("#desgloseSaldoTotal").text(fmt(totalSaldoNeto));
 
   // Actualizar footer de la tabla
-  $("#footerDesgloseAutorizado").html(
-    "<strong>$" +
-      totalAutorizado.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
-      "</strong>",
-  );
-  $("#footerDesgloseSaldo").html(
-    "<strong>$" +
-      totalSaldo.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
-      "</strong>",
-  );
+  $("#footerDesgloseAutorizado").html("<strong>" + fmt(totalAutorizado) + "</strong>");
+  $("#footerDesgloseSaldo").html(fmt(totalSaldo));
+  var notasHtml = "";
+  if (totalNC > 0) notasHtml += '<small class="text-success">-' + fmt(totalNC) + "</small>";
+  if (totalND > 0) notasHtml += (totalNC > 0 ? "<br>" : "") + '<small class="text-danger">+' + fmt(totalND) + "</small>";
+  $("#footerDesgloseNotas").html(notasHtml);
+  $("#footerDesgloseSaldoNeto").html('<strong class="text-danger">' + fmt(totalSaldoNeto) + "</strong>");
 }
 
 /**

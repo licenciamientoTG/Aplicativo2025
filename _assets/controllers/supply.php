@@ -3176,6 +3176,11 @@ class Supply
                     </div>
                 ';
 
+                $totalFacturas = floatval($row['total_amount']);
+                $totalNC = floatval($row['total_notas_credito']);
+                $totalND = floatval($row['total_notas_cargo']);
+                $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
+
                 $data[] = [
                     'id'             => $row['id'],
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
@@ -3183,7 +3188,10 @@ class Supply
                     'provider_name'  => $row['provider_name'],
                     'emp_name'       => $row['emp_name'],
                     'total_invoices' => $row['total_invoices'],
-                    'total_amount'   => '$' . number_format($row['total_amount'], 2),
+                    'total_amount'   => '$' . number_format($totalFacturas, 2),
+                    'total_notas_credito' => $totalNC,
+                    'total_notas_cargo'   => $totalND,
+                    'monto_neto'     => '$' . number_format($montoNeto, 2),
                     'total_paid'     => '$' . number_format($row['total_paid'], 2),
                     'authorized_invoices_count' => $row['authorized_invoices_count'],
                     'authorized_amount_total' => '$' . number_format($row['authorized_amount_total'], 2),
@@ -3861,6 +3869,9 @@ class Supply
                 throw new Exception('Error al registrar la aplicación');
             }
 
+            // Recalcular totales de notas en payment_requests
+            $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
+
             echo json_encode([
                 'success'    => true,
                 'message'    => 'Nota aplicada correctamente',
@@ -3892,6 +3903,10 @@ class Supply
             if (!$this->CreditNoteApplicationsModel->removeApplication((int)$appId)) {
                 throw new Exception('Error al eliminar la aplicación');
             }
+
+            // Recalcular totales de notas en payment_requests
+            $paymentRequestId = $app['payment_request_id'];
+            $this->CreditNoteApplicationsModel->updatePaymentNoteTotals($paymentRequestId);
 
             echo json_encode(['success' => true, 'message' => 'Aplicación eliminada correctamente']);
         } catch (Exception $e) {
@@ -5355,6 +5370,10 @@ class Supply
                     'paid_amount' => $invoice['paid_amount'] ?? 0,
                     'authorized_amount' => $invoice['authorized_amount'],
                     'saldo' => $invoice['saldo'],
+                    'total_notas_credito' => floatval($invoice['total_notas_credito'] ?? 0),
+                    'total_notas_cargo' => floatval($invoice['total_notas_cargo'] ?? 0),
+                    'notas_count' => intval($invoice['notas_count'] ?? 0),
+                    'saldo_neto' => $invoice['saldo_neto'],
                     'expiration_date' => $invoice['expiration_date'],
                     'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
                     'authorized_at' => $invoice['authorized_at'],

@@ -166,35 +166,51 @@
 
 	<!-- Resumen Financiero -->
 	<div class="row mt-3">
-		<div class="col-md-3">
+		<div class="col">
 			<div class="card bg-primary text-white">
-				<div class="card-body">
-					<h6 class="mb-2">Total Facturas</h6>
-					<h3 class="mb-0">{{ summary.total_invoices }}</h3>
+				<div class="card-body py-2">
+					<h6 class="mb-1" style="font-size:0.8rem">Total Facturas ({{ summary.total_invoices }})</h6>
+					<h4 class="mb-0">${{ summary.total_amount|number_format(2) }}</h4>
 				</div>
 			</div>
 		</div>
-		<div class="col-md-3">
-			<div class="card bg-info text-white">
-				<div class="card-body">
-					<h6 class="mb-2">Monto Total</h6>
-					<h3 class="mb-0">${{ summary.total_amount|number_format(2) }}</h3>
-				</div>
-			</div>
-		</div>
-		<div class="col-md-3">
+		<div class="col">
 			<div class="card bg-success text-white">
-				<div class="card-body">
-					<h6 class="mb-2">Pagado</h6>
-					<h3 class="mb-0">${{ summary.total_paid|number_format(2) }}</h3>
+				<div class="card-body py-2">
+					<h6 class="mb-1" style="font-size:0.8rem"><i class="fas fa-minus-circle"></i> Notas de Crédito</h6>
+					<h4 class="mb-0">-${{ notes_totals.total_credits|number_format(2) }}</h4>
 				</div>
 			</div>
 		</div>
-		<div class="col-md-3">
+		<div class="col">
 			<div class="card bg-warning text-dark">
-				<div class="card-body">
-					<h6 class="mb-2">Pendiente</h6>
-					<h3 class="mb-0">${{ summary.total_pending|number_format(2) }}</h3>
+				<div class="card-body py-2">
+					<h6 class="mb-1" style="font-size:0.8rem"><i class="fas fa-plus-circle"></i> Notas de Cargo</h6>
+					<h4 class="mb-0">+${{ notes_totals.total_debits|number_format(2) }}</h4>
+				</div>
+			</div>
+		</div>
+		<div class="col">
+			<div class="card bg-info text-white">
+				<div class="card-body py-2">
+					<h6 class="mb-1" style="font-size:0.8rem"><i class="fas fa-equals"></i> Monto Total</h6>
+					<h4 class="mb-0">${{ payment_calculation.final_amount|number_format(2) }}</h4>
+				</div>
+			</div>
+		</div>
+		<div class="col">
+			<div class="card bg-success text-white">
+				<div class="card-body py-2">
+					<h6 class="mb-1" style="font-size:0.8rem">Pagado</h6>
+					<h4 class="mb-0">${{ summary.total_paid|number_format(2) }}</h4>
+				</div>
+			</div>
+		</div>
+		<div class="col">
+			<div class="card border-danger">
+				<div class="card-body py-2">
+					<h6 class="mb-1 text-danger" style="font-size:0.8rem">Pendiente</h6>
+					<h4 class="mb-0 text-danger">${{ (payment_calculation.final_amount - summary.total_paid)|number_format(2) }}</h4>
 				</div>
 			</div>
 		</div>
@@ -1285,45 +1301,69 @@
 
 					<!-- Resumen del Pago -->
 					<div class="row mb-3">
-						<div class="col-md-3">
+						<div class="col-md-2">
 							<div class="card bg-light">
 								<div class="card-body text-center p-2">
-									<small class="text-muted">Monto Total Pendiente</small>
-									<h4 class="mb-0 text-primary" id="totalPendiente">
-										${{ summary.total_pending|number_format(2) }}
-									</h4>
+									<small class="text-muted">Monto Facturas</small>
+									<h5 class="mb-0 text-primary">
+										${{ summary.total_amount|number_format(2) }}
+									</h5>
 								</div>
 							</div>
 						</div>
-						<div class="col-md-3">
+						<div class="col-md-2">
+							<div class="card bg-light">
+								<div class="card-body text-center p-2">
+									<small class="text-muted">Notas Crédito</small>
+									<h5 class="mb-0 text-success">
+										-${{ notes_totals.total_credits|number_format(2) }}
+									</h5>
+								</div>
+							</div>
+						</div>
+						<div class="col-md-2">
+							<div class="card bg-light">
+								<div class="card-body text-center p-2">
+									<small class="text-muted">Notas Cargo</small>
+									<h5 class="mb-0 text-warning">
+										+${{ notes_totals.total_debits|number_format(2) }}
+									</h5>
+								</div>
+							</div>
+						</div>
+						<div class="col-md-2">
+							<div class="card bg-light border-primary">
+								<div class="card-body text-center p-2">
+									<small class="text-muted">Monto Neto Pendiente</small>
+									<h5 class="mb-0 text-primary" id="totalPendiente">
+										${{ payment_calculation.final_amount|number_format(2) }}
+									</h5>
+								</div>
+							</div>
+						</div>
+						<div class="col-md-2">
 							<div class="card bg-light">
 								<div class="card-body text-center p-2">
 									<small class="text-muted">Monto a Autorizar</small>
-									<h4 class="mb-0 text-success" id="totalAAutorizar">$0.00</h4>
+									<h5 class="mb-0 text-success" id="totalAAutorizar">$0.00</h5>
 								</div>
 							</div>
 						</div>
-						<div class="col-md-3">
+						<div class="col-md-2">
 							<div class="card bg-light">
 								<div class="card-body text-center p-2">
-									<small class="text-muted">Facturas Seleccionadas</small>
-									<h4 class="mb-0 text-info" id="facturasSeleccionadas">0</h4>
-								</div>
-							</div>
-						</div>
-						<div class="col-md-3">
-							<div class="card bg-light">
-								<div class="card-body text-center p-2">
-									<small class="text-muted">Ya Autorizadas</small>
+									<small class="text-muted">Seleccionadas / Autorizadas</small>
 									{% set autorizadas = 0 %}
 									{% for invoice in invoices %}
-										{% if
-                invoice.payment_authorized == 1 %}
-											{% set autorizadas =
-                autorizadas + 1 %}
+										{% if invoice.payment_authorized == 1 %}
+											{% set autorizadas = autorizadas + 1 %}
 										{% endif %}
 									{% endfor %}
-									<h4 class="mb-0 text-success">{{ autorizadas }}</h4>
+									<h5 class="mb-0">
+										<span class="text-info" id="facturasSeleccionadas">0</span>
+										/
+										<span class="text-success">{{ autorizadas }}</span>
+									</h5>
 								</div>
 							</div>
 						</div>
@@ -1360,20 +1400,21 @@
 									<th class="text-end">Monto Total</th>
 									<th class="text-end">Pagado</th>
 									<th class="text-end">Saldo</th>
+									<th class="text-end">NC / ND</th>
+									<th class="text-end">Saldo Neto</th>
 									<th width="150">Monto a Autorizar</th>
 									<th>Autorizado Por</th>
 								</tr>
 							</thead>
 							<tbody>
 								{% for invoice in invoices %}
-									{% set saldo = invoice.amount -
-              invoice.paid_amount %}
-									{% set ya_autorizada =
-              invoice.payment_authorized == 1 %}
-									{# Solo mostrar si tiene saldo
-																		              pendiente #}
+									{% set saldo = invoice.amount - invoice.paid_amount %}
+									{% set neto_notas_modal = (invoice.total_notas_cargo ?? 0) - (invoice.total_notas_credito ?? 0) %}
+									{% set saldo_neto_modal = saldo + neto_notas_modal %}
+									{% set ya_autorizada = invoice.payment_authorized == 1 %}
+									{# Solo mostrar si tiene saldo pendiente #}
 									{% if saldo > 0 %}
-										<tr data-invoice-id="{{ invoice.id }}" data-folio="{{ invoice.folio }}" data-saldo="{{ saldo }}" {% if ya_autorizada %} class="table-success" {% endif %}>
+										<tr data-invoice-id="{{ invoice.id }}" data-folio="{{ invoice.folio }}" data-saldo="{{ saldo_neto_modal > 0 ? saldo_neto_modal : 0 }}" {% if ya_autorizada %} class="table-success" {% endif %}>
 											<td>
 												{% if ya_autorizada %}
 													<i class="fas fa-check-circle text-success" title="Ya autorizada"></i>
@@ -1412,10 +1453,28 @@
 											<td class="text-end">
 												<strong class="text-danger">${{ saldo|number_format(2) }}</strong>
 											</td>
+											<td class="text-end">
+												{% if invoice.notas_count > 0 %}
+													{% if invoice.total_notas_credito > 0 %}
+														<small class="text-success">-${{ invoice.total_notas_credito|number_format(2) }}</small>
+													{% endif %}
+													{% if invoice.total_notas_cargo > 0 %}
+														<small class="text-danger">+${{ invoice.total_notas_cargo|number_format(2) }}</small>
+													{% endif %}
+												{% else %}
+													<span class="text-muted">-</span>
+												{% endif %}
+											</td>
+											<td class="text-end">
+												{% if saldo_neto_modal != saldo %}
+													<strong class="{{ saldo_neto_modal > 0 ? 'text-danger' : 'text-success' }}">${{ saldo_neto_modal|number_format(2) }}</strong>
+												{% else %}
+													<strong class="text-danger">${{ saldo|number_format(2) }}</strong>
+												{% endif %}
+											</td>
 											<td>
 												{% if ya_autorizada %}
-													{# Mostrar monto autorizado en modo
-																										                  solo lectura #}
+													{# Mostrar monto autorizado en modo solo lectura #}
 													<div class="input-group input-group-sm">
 														<span class="input-group-text bg-success text-white">
 															<i class="fas fa-check"></i>
@@ -1423,8 +1482,8 @@
 														<input type="text" class="form-control form-control-sm text-end" value="{{ invoice.authorized_amount|number_format(2) }}" readonly style="background-color: #d1fae5"/>
 													</div>
 												{% else %}
-													{# Input editable para nuevas autorizaciones #}
-													<input type="number" class="form-control form-control-sm monto-autorizar" step="0.01" min="0" max="{{ saldo }}" placeholder="0.00" disabled onchange="updateAutorizacionSummary()" onkeyup="updateAutorizacionSummary()"/>
+													{# Input editable - max es el saldo neto #}
+													<input type="number" class="form-control form-control-sm monto-autorizar" step="0.01" min="0" max="{{ saldo_neto_modal > 0 ? saldo_neto_modal : 0 }}" placeholder="0.00" disabled onchange="updateAutorizacionSummary()" onkeyup="updateAutorizacionSummary()"/>
 												{% endif %}
 											</td>
 											<td>
@@ -1443,7 +1502,7 @@
 							</tbody>
 							<tfoot class="table-light">
 								<tr>
-									<th colspan="8" class="text-end">Totales:</th>
+									<th colspan="10" class="text-end">Totales:</th>
 									<th class="text-end">
 										<div id="totalNuevasAutorizaciones">$0.00</div>
 										<small class="text-muted">Nuevas</small>

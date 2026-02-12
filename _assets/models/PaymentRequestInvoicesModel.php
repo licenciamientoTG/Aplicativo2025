@@ -749,26 +749,30 @@ class PaymentRequestInvoicesModel extends Model
     public function get_authorized_pending_grouped() : array|false {
         $query = "
             -- PARTE 1: Facturas autorizadas pendientes (consulta original)
-            SELECT 
+            SELECT
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den as empresa_nombre,
                 emp.rfc as empresa_rfc,
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
-                CASE 
+                CASE
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                CASE 
+                CASE
                     WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
                     WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
                 COUNT(DISTINCT pri.id) as total_facturas,
                 SUM(pri.authorized_amount) as total_autorizado,
-                SUM(pri.amount - ISNULL(pri.paid_amount, 0)) as total_saldo,
+                SUM(
+                    (pri.amount - ISNULL(pri.paid_amount, 0))
+                    - ISNULL(notas.total_credito, 0)
+                    + ISNULL(notas.total_cargo, 0)
+                ) as total_saldo,
                 MIN(pri.expiration_date) as vencimiento_mas_proximo,
                 MAX(pri.expiration_date) as vencimiento_mas_lejano,
                 STRING_AGG(CAST(pri.id AS VARCHAR), ',') as invoice_ids,
@@ -778,19 +782,29 @@ class PaymentRequestInvoicesModel extends Model
                 'FACTURAS' as tipo_registro,
                 NULL as payment_request_id
             FROM [TG].[dbo].[payment_request_invoices] pri
-            INNER JOIN [TG].[dbo].[payment_requests] pr 
+            INNER JOIN [TG].[dbo].[payment_requests] pr
                 ON pri.payment_request_id = pr.id
-            LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth
                 ON pri.authorized_by = u_auth.Id
-            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov
                 ON pr.provider_cod = prov.cod
-            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+            LEFT JOIN [SG12].[dbo].[Empresas] emp
                 ON pr.emp_cod = emp.cod
+            LEFT JOIN (
+                SELECT
+                    a.invoice_id,
+                    SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount ELSE 0 END) as total_credito,
+                    SUM(CASE WHEN n.note_type = 'DEBIT'  THEN a.applied_amount ELSE 0 END) as total_cargo
+                FROM [tg].[dbo].credit_note_applications a
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
+                WHERE a.status = 1
+                GROUP BY a.invoice_id
+            ) notas ON pri.id = notas.invoice_id
             WHERE pri.payment_authorized = 1
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
-            GROUP BY 
+            GROUP BY
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den,
@@ -863,7 +877,7 @@ class PaymentRequestInvoicesModel extends Model
         $ids_string = implode(',', $ids);
         
         $query = "
-            SELECT 
+            SELECT
                 pri.id,
                 pri.payment_request_id,
                 pri.folio,
@@ -878,50 +892,72 @@ class PaymentRequestInvoicesModel extends Model
                 pri.status,
                 pri.expiration_date,
                 pri.uuid,
-                
+
                 -- Saldo calculado
                 (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
-                
+
+                -- Notas de crédito y cargo por factura
+                ISNULL(notas.total_notas_credito, 0) as total_notas_credito,
+                ISNULL(notas.total_notas_cargo, 0)   as total_notas_cargo,
+                ISNULL(notas.notas_count, 0)          as notas_count,
+
+                -- Saldo neto (saldo - NC + ND)
+                (pri.amount - ISNULL(pri.paid_amount, 0))
+                    - ISNULL(notas.total_notas_credito, 0)
+                    + ISNULL(notas.total_notas_cargo, 0) as saldo_neto,
+
                 -- Información de payment_request
                 pr.id as pago_id,
                 pr.emp_cod,
                 pr.provider_cod,
                 pr.request_date as pago_fecha,
-                
+
                 -- Información de la estación
                 g.abr as estacion_nombre,
                 g.den as estacion_completa,
-                
+
                 -- Usuario que autorizó
                 u_auth.Nombre as authorized_by_name,
-                
+
                 -- Proveedor
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
-                
+
                 -- Empresa (razón social)
                 emp.den as empresa_nombre,
                 emp.rfc as empresa_rfc
-                
+
             FROM [TG].[dbo].[payment_request_invoices] pri
-            
-            INNER JOIN [TG].[dbo].[payment_requests] pr 
+
+            INNER JOIN [TG].[dbo].[payment_requests] pr
                 ON pri.payment_request_id = pr.id
-            
-            LEFT JOIN [SG12].[dbo].[Gasolineras] g 
+
+            LEFT JOIN [SG12].[dbo].[Gasolineras] g
                 ON pri.codgas = g.cod
-            
-            LEFT JOIN [TG].[dbo].[Usuario] u_auth 
+
+            LEFT JOIN [TG].[dbo].[Usuario] u_auth
                 ON pri.authorized_by = u_auth.Id
-            
-            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov
                 ON pr.provider_cod = prov.cod
-            
-            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+
+            LEFT JOIN [SG12].[dbo].[Empresas] emp
                 ON pr.emp_cod = emp.cod
-            
+
+            LEFT JOIN (
+                SELECT
+                    a.invoice_id,
+                    SUM(CASE WHEN n.note_type = 'CREDIT' THEN a.applied_amount ELSE 0 END) as total_notas_credito,
+                    SUM(CASE WHEN n.note_type = 'DEBIT'  THEN a.applied_amount ELSE 0 END) as total_notas_cargo,
+                    COUNT(*) as notas_count
+                FROM [tg].[dbo].credit_note_applications a
+                INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
+                WHERE a.status = 1
+                GROUP BY a.invoice_id
+            ) notas ON pri.id = notas.invoice_id
+
             WHERE pri.id IN ($ids_string)
-            
+
             ORDER BY pri.expiration_date, pri.folio
         ";
         

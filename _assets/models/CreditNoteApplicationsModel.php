@@ -111,6 +111,25 @@ class CreditNoteApplicationsModel extends Model
     }
 
     /**
+     * Recalcula y actualiza total_notas_credito y total_notas_cargo en payment_requests
+     */
+    public function updatePaymentNoteTotals($paymentRequestId) : bool {
+        $totals = $this->getTotalsByPayment($paymentRequestId);
+
+        $query = "
+            UPDATE [TG].[dbo].[payment_requests]
+            SET total_notas_credito = ?,
+                total_notas_cargo = ?
+            WHERE id = ?";
+
+        return $this->sql->update($query, [
+            $totals['total_credits'],
+            $totals['total_debits'],
+            $paymentRequestId
+        ]);
+    }
+
+    /**
      * Obtener una aplicación por ID
      */
     public function getById($applicationId) : array|false {

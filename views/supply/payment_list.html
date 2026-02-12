@@ -305,9 +305,12 @@
                             <th>Proveedor</th>
                             <th>Usuario</th>
                             <th>Facturas</th>
+                            <th>Total Facturas</th>
+                            <th>NC</th>
+                            <th>ND</th>
                             <th>Monto Total</th>
                             <th>Pagado</th>
-                            <th>Autorizadas</th> <!-- ✅ NUEVA COLUMNA -->
+                            <th>Autorizadas</th>
                             <th>Estado</th>
                             <th>Autorizaciones</th>
                             <th>Comentario</th>
@@ -563,27 +566,43 @@
 
                 <!-- Resumen -->
                 <div class="row mb-3">
-                    <div class="col-md-4">
+                    <div class="col">
                         <div class="card bg-light">
                             <div class="card-body text-center p-2">
-                                <small class="text-muted">Total Facturas</small>
-                                <h4 class="mb-0 text-primary" id="desgloseTotalFacturas">0</h4>
+                                <small class="text-muted">Facturas</small>
+                                <h5 class="mb-0 text-primary" id="desgloseTotalFacturas">0</h5>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col">
                         <div class="card bg-light">
                             <div class="card-body text-center p-2">
-                                <small class="text-muted">Monto Total Autorizado</small>
-                                <h4 class="mb-0 text-success" id="desgloseMontoTotal">$0.00</h4>
+                                <small class="text-muted">Monto Autorizado</small>
+                                <h5 class="mb-0 text-success" id="desgloseMontoTotal">$0.00</h5>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col">
                         <div class="card bg-light">
                             <div class="card-body text-center p-2">
-                                <small class="text-muted">Saldo Total</small>
-                                <h4 class="mb-0 text-danger" id="desgloseSaldoTotal">$0.00</h4>
+                                <small class="text-muted">Notas Crédito</small>
+                                <h5 class="mb-0 text-success" id="desgloseTotalNC">-$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card bg-light">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Notas Cargo</small>
+                                <h5 class="mb-0 text-warning" id="desgloseTotalND">+$0.00</h5>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="card bg-light border-danger">
+                            <div class="card-body text-center p-2">
+                                <small class="text-muted">Saldo Neto</small>
+                                <h5 class="mb-0 text-danger" id="desgloseSaldoTotal">$0.00</h5>
                             </div>
                         </div>
                     </div>
@@ -601,10 +620,11 @@
                                 <th class="text-end">Pagado</th>
                                 <th class="text-end">Monto Autorizado</th>
                                 <th class="text-end">Saldo</th>
+                                <th class="text-end">NC / ND</th>
+                                <th class="text-end">Saldo Neto</th>
                                 <th>Vencimiento</th>
                                 <th>Autorizado Por</th>
                                 <th>Fecha Autorización</th>
-                                <!-- <th>Acciones</th> -->
                             </tr>
                         </thead>
                         <tbody>
@@ -615,6 +635,8 @@
                                 <th colspan="5" class="text-end">TOTALES:</th>
                                 <th class="text-end" id="footerDesgloseAutorizado">$0.00</th>
                                 <th class="text-end" id="footerDesgloseSaldo">$0.00</th>
+                                <th class="text-end" id="footerDesgloseNotas"></th>
+                                <th class="text-end" id="footerDesgloseSaldoNeto">$0.00</th>
                                 <th colspan="3"></th>
                             </tr>
                         </tfoot>

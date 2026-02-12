@@ -11,6 +11,8 @@ class PaymentRequestsModel extends Model
     public $emp_cod;
     public $tipo; // 0: Pago, 1: Anticipo
     public $monto_total; // NUEVO CAMPO
+    public $total_notas_credito;
+    public $total_notas_cargo;
 
 
     const STATUS_PENDING = 0;
@@ -185,7 +187,7 @@ class PaymentRequestsModel extends Model
             : "";
 
         $query = "
-            SELECT 
+            SELECT
                 t1.id,
                 t1.user_id,
                 t1.request_date,
@@ -198,6 +200,9 @@ class PaymentRequestsModel extends Model
                 ISNULL(t2.total_paid, 0)     AS total_paid,
                 ISNULL(t2.authorized_invoices_count, 0) AS authorized_invoices_count,
                 ISNULL(t2.authorized_amount_total, 0)   AS authorized_amount_total,
+                -- Notas de crédito y cargo
+                ISNULL(t1.total_notas_credito, 0) AS total_notas_credito,
+                ISNULL(t1.total_notas_cargo, 0)   AS total_notas_cargo,
                 -- Autorizaciones por nivel
                 ISNULL(t4.auth_abastos, 0)    AS auth_abastos,
                 ISNULL(t4.auth_admin, 0)      AS auth_admin,
