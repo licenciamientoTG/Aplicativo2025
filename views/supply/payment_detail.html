@@ -193,8 +193,19 @@
 		<div class="col-md-3">
 			<div class="card bg-warning text-dark">
 				<div class="card-body">
-					<h6 class="mb-2">Pendiente</h6>
-					<h3 class="mb-0">${{ summary.total_pending|number_format(2) }}</h3>
+					<h6 class="mb-2">Total a Pagar</h6>
+					<h3 class="mb-0">${{ payment_calculation.final_amount|number_format(2) }}</h3>
+					{% if notes_totals.total_credits > 0 or notes_totals.total_debits > 0 %}
+						<small class="d-block mt-1" style="font-size:0.75rem;">
+							Facturas: ${{ summary.total_pending|number_format(2) }}
+							{% if notes_totals.total_credits > 0 %}
+								<br/>NC: -${{ notes_totals.total_credits|number_format(2) }}
+							{% endif %}
+							{% if notes_totals.total_debits > 0 %}
+								<br/>ND: +${{ notes_totals.total_debits|number_format(2) }}
+							{% endif %}
+						</small>
+					{% endif %}
 				</div>
 			</div>
 		</div>
@@ -940,18 +951,14 @@
 								<th class="text-end">
 									{% set total_monto = 0 %}
 									{% for invoice in invoices %}
-										{% set
-                total_monto = total_monto + invoice.amount %}
+										{% set total_monto = total_monto + invoice.amount %}
 									{% endfor %}
-									${{
-                total_monto|number_format(2) }}
+									${{ total_monto|number_format(2) }}
 								</th>
 								<th class="text-end">
 									{% set total_pagado_calc = 0 %}
 									{% for invoice in invoices %}
-										{%
-                set total_pagado_calc = total_pagado_calc + invoice.paid_amount
-                %}
+										{% set total_pagado_calc = total_pagado_calc + invoice.paid_amount %}
 									{% endfor %}
 									${{ total_pagado_calc|number_format(2) }}
 								</th>
@@ -960,18 +967,36 @@
 										${{ (total_monto - total_pagado_calc)|number_format(2) }}
 									</strong>
 								</th>
-								<th colspan="4"></th>
+								<th></th>
+								<th></th>
+								<th></th>
+								<th class="text-end">
+									{% set neto_notas_tabla = notes_totals.total_debits - notes_totals.total_credits %}
+									{% if neto_notas_tabla < 0 %}
+										<strong class="text-success">-${{ neto_notas_tabla|abs|number_format(2) }}</strong>
+									{% elseif neto_notas_tabla > 0 %}
+										<strong class="text-danger">+${{ neto_notas_tabla|number_format(2) }}</strong>
+									{% else %}
+										<span class="text-muted">$0.00</span>
+									{% endif %}
+								</th>
+								<th class="text-end">
+									{% set total_saldo_neto_tabla = (total_monto - total_pagado_calc) + neto_notas_tabla %}
+									{% if total_saldo_neto_tabla > 0 %}
+										<strong class="text-danger">${{ total_saldo_neto_tabla|number_format(2) }}</strong>
+									{% else %}
+										<span class="text-success">$0.00</span>
+									{% endif %}
+								</th>
+								<th></th>
 							</tr>
 							<tr>
 								<th colspan="8" class="text-end">MONTO AUTORIZADO:</th>
 								<th class="text-end" colspan="3">
 									{% set total_autorizado_tabla = 0 %}
-									{% for invoice in invoices
-                %}
+									{% for invoice in invoices %}
 										{% if invoice.payment_authorized == 1 %}
-											{% set
-                total_autorizado_tabla = total_autorizado_tabla +
-                invoice.authorized_amount %}
+											{% set total_autorizado_tabla = total_autorizado_tabla + invoice.authorized_amount %}
 										{% endif %}
 									{% endfor %}
 									<strong class="text-success" style="font-size: 1.1rem">
@@ -980,11 +1005,7 @@
 								</th>
 								<th colspan="4">
 									<small class="text-muted">
-										{{ facturas_autorizadas }}
-										de
-										{{ total_facturas }}
-										facturas
-																				                  autorizadas
+										{{ facturas_autorizadas }} de {{ total_facturas }} facturas autorizadas
 									</small>
 								</th>
 							</tr>
