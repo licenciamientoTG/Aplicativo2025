@@ -3126,8 +3126,7 @@ class Supply
         exit;
     }
 
-    function payment_list()
-    {
+    function payment_list(){
         $stations = $this->gasolinerasModel->get_active_stations();
         $companys = $this->gasolinerasModel->get_company();
         $proveedores = $this->proveedores->get_actives();

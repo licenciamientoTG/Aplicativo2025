@@ -967,12 +967,13 @@ class PaymentRequestsModel extends Model
         try {
             // $this->sql->beginTransaction();
 
-            // Crear registro de aprobación masiva
-            $bulkId = $this->crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario);
+            // Crear registro de aprobación masiva (anticipo_count se actualizará al final)
+            $bulkId = $this->crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario, 0);
 
             $aprobados = 0;
             $errores = 0;
             $montoTotal = 0;
+            $anticipoCount = 0;
             $detallesErrores = [];
 
             // Modelo de autorizaciones
@@ -988,6 +989,12 @@ class PaymentRequestsModel extends Model
                     }
 
                     $monto = floatval($payment['monto_total'] ?? 0);
+
+                    // Contar anticipos aprobados
+                    if (isset($payment['tipo']) && intval($payment['tipo']) === 1) {
+                        $anticipoCount++;
+                    }
+
                     // Insertar autorización
                     $authInserted = $authModel->insert_authorization($paymentId, $userId, $permissionNumber);
 
@@ -1009,8 +1016,8 @@ class PaymentRequestsModel extends Model
                 }
             }
 
-            // Actualizar registro bulk con totales
-            $this->actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal);
+            // Actualizar registro bulk con totales incluyendo conteo de anticipos
+            $this->actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal, $anticipoCount);
             // $this->sql->commit();
 
             return [
@@ -1036,13 +1043,13 @@ class PaymentRequestsModel extends Model
     /**
      * Crear registro de aprobación masiva
      */
-    private function crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario = '')
+    private function crearRegistroBulkAuthorization($paymentIds, $permissionNumber, $userId, $comentario = '', $anticipoCount = 0)
     {
         try {
             $query = "
                 INSERT INTO [TG].[dbo].[payment_request_bulk_authorizations]
-                (authorization_level, user_id, payment_ids, comment, created_at)
-                VALUES (?, ?, ?, ?, GETDATE());";
+                (authorization_level, user_id, payment_ids, comment, anticipo_count, created_at)
+                VALUES (?, ?, ?, ?, ?, GETDATE());";
 
             $paymentIdsJson = json_encode($paymentIds);
 
@@ -1050,7 +1057,8 @@ class PaymentRequestsModel extends Model
                 $permissionNumber,
                 $userId,
                 $paymentIdsJson,
-                $comentario
+                $comentario,
+                $anticipoCount
             ]);
 
             if ($result) {
@@ -1067,19 +1075,20 @@ class PaymentRequestsModel extends Model
     /**
      * Actualizar registro bulk con totales
      */
-    private function actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal)
+    private function actualizarRegistroBulk($bulkId, $aprobados, $errores, $montoTotal, $anticipoCount = 0)
     {
         $query = "
             UPDATE [TG].[dbo].[payment_request_bulk_authorizations]
-            SET 
+            SET
                 approved_count = ?,
                 error_count = ?,
                 total_amount = ?,
+                anticipo_count = ?,
                 processed_at = GETDATE()
             WHERE id = ?
         ";
 
-        return $this->sql->update($query, [$aprobados, $errores, $montoTotal, $bulkId]);
+        return $this->sql->update($query, [$aprobados, $errores, $montoTotal, $anticipoCount, $bulkId]);
     }
 
     /**

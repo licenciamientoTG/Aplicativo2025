@@ -762,6 +762,9 @@
 								<th>Estado Pago</th>
 								<th>Autorización</th>
 								<th>Vencimiento</th>
+								<th>Notas de Crédito</th>
+								<th class="text-end">Total Notas</th>
+								<th class="text-end">Total Saldo</th>
 								<th>Acciones</th>
 							</tr>
 						</thead>
@@ -870,6 +873,52 @@
 										{% endif %}
 									</td>
 
+									{# Notas de Credito #}
+									<td>
+										{% if invoice.notas_count > 0 %}
+											<span class="badge bg-info text-dark" title="Notas aplicadas">
+												<i class="fas fa-sticky-note"></i>
+												{{ invoice.notas_count }} nota{{ invoice.notas_count != 1 ? 's' : '' }}
+											</span>
+											{% if invoice.total_notas_credito > 0 %}
+												<br/><small class="text-success"><i class="fas fa-minus-circle"></i> NC: ${{ invoice.total_notas_credito|number_format(2) }}</small>
+											{% endif %}
+											{% if invoice.total_notas_cargo > 0 %}
+												<br/><small class="text-danger"><i class="fas fa-plus-circle"></i> ND: ${{ invoice.total_notas_cargo|number_format(2) }}</small>
+											{% endif %}
+										{% else %}
+											<span class="text-muted">-</span>
+										{% endif %}
+									</td>
+									{# Total Notas (neto: cargo - credito) #}
+									{% set neto_notas = invoice.total_notas_cargo - invoice.total_notas_credito %}
+									<td class="text-end">
+										{% if invoice.notas_count > 0 %}
+											{% if neto_notas < 0 %}
+												<strong class="text-success">-${{ neto_notas|abs|number_format(2) }}</strong>
+												<br/><small class="text-muted">NC</small>
+											{% elseif neto_notas > 0 %}
+												<strong class="text-danger">+${{ neto_notas|number_format(2) }}</strong>
+												<br/><small class="text-muted">ND</small>
+											{% else %}
+												<span class="text-muted">$0.00</span>
+											{% endif %}
+										{% else %}
+											<span class="text-muted">-</span>
+										{% endif %}
+									</td>
+									{# Total Saldo (saldo factura +/- notas) #}
+									{% set saldo_neto = saldo + neto_notas %}
+									<td class="text-end">
+										{% if saldo_neto > 0 %}
+											<strong class="text-danger">${{ saldo_neto|number_format(2) }}</strong>
+										{% elseif saldo_neto < 0 %}
+											<strong class="text-warning">${{ saldo_neto|number_format(2) }}</strong>
+										{% else %}
+											<span class="text-success">$0.00</span>
+										{% endif %}
+									</td>
+
 									{# Acciones #}
 									<td class="text-center">
 										<button class="btn btn-sm btn-outline-info" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Ver historial de pagos">
@@ -887,7 +936,7 @@
 						</tbody>
 						<tfoot class="table-light">
 							<tr>
-								<th colspan="5" class="text-end">TOTALES:</th>
+								<th colspan="8" class="text-end">TOTALES:</th>
 								<th class="text-end">
 									{% set total_monto = 0 %}
 									{% for invoice in invoices %}
@@ -914,7 +963,7 @@
 								<th colspan="4"></th>
 							</tr>
 							<tr>
-								<th colspan="5" class="text-end">MONTO AUTORIZADO:</th>
+								<th colspan="8" class="text-end">MONTO AUTORIZADO:</th>
 								<th class="text-end" colspan="3">
 									{% set total_autorizado_tabla = 0 %}
 									{% for invoice in invoices

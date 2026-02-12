@@ -261,7 +261,7 @@ class PaymentRequestInvoicesModel extends Model
                     AND t1.status IN (1, 2)
                 ), 0) as paid_amount,
                 -- Calcular status dinámicamente
-                CASE 
+                CASE
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
@@ -275,7 +275,27 @@ class PaymentRequestInvoicesModel extends Model
                         AND t1.status IN (1, 2)
                     ), 0) < t1.amount THEN 3  -- Parcial
                     ELSE 2  -- Pagado
-                END as status
+                END as status,
+                -- Notas de crédito aplicadas a esta factura
+                ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] ca
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                    WHERE ca.invoice_id = t1.id AND ca.status = 1
+                ), 0) as total_notas_credito,
+                -- Notas de cargo aplicadas a esta factura
+                ISNULL((
+                    SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                    FROM [TG].[dbo].[credit_note_applications] ca
+                    INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                    WHERE ca.invoice_id = t1.id AND ca.status = 1
+                ), 0) as total_notas_cargo,
+                -- Conteo de notas aplicadas
+                ISNULL((
+                    SELECT COUNT(*)
+                    FROM [TG].[dbo].[credit_note_applications] ca
+                    WHERE ca.invoice_id = t1.id AND ca.status = 1
+                ), 0) as notas_count
                 FROM [TG].[dbo].[payment_request_invoices] t1
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
                 left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
