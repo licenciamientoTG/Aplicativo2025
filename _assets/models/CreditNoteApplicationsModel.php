@@ -45,7 +45,9 @@ class CreditNoteApplicationsModel extends Model
                 n.provider_id,
                 u.Nombre       as created_by_name,
                 pri.folio      as invoice_folio,
-                pri.invoice_number
+                pri.invoice_number,
+                (SELECT COUNT(*) FROM [tg].[dbo].invoice_credit_debit_notes_doc d
+                 WHERE d.credit_note_id = n.id AND d.file_path IS NOT NULL) as documents_count
             FROM [tg].[dbo].credit_note_applications a
             INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
             INNER JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
