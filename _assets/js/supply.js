@@ -7387,13 +7387,13 @@ function renderApplyNoteModalNotes(notes) {
 }
 
 // ── Subir PDF a nota desde payment_detail ────────────────────────────────────
-function openUploadDocModalPD(noteId) {
-  document.getElementById("uploadDocNoteIdPD").value = noteId;
-  document.getElementById("uploadDocFilePD").value = "";
-  document.querySelector("#uploadDocModalPD .custom-file-label").textContent =
-    "Seleccionar archivo PDF...";
-  $("#uploadDocModalPD").modal("show");
-}
+// function openUploadDocModalPD(noteId) {
+//   document.getElementById("uploadDocNoteIdPD").value = noteId;
+//   document.getElementById("uploadDocFilePD").value = "";
+//   document.querySelector("#uploadDocModalPD .custom-file-label").textContent =
+//     "Seleccionar archivo PDF...";
+//   $("#uploadDocModalPD").modal("show");
+// }
 
 // ── Ver PDFs de una nota desde payment_detail ─────────────────────────────────
 function openNoteDocsModalPD(noteId) {
@@ -7531,40 +7531,100 @@ document.addEventListener("click", function (e) {
 });
 
 // ── Submit: subir PDF desde payment_detail ────────────────────────────────────
-document.addEventListener("DOMContentLoaded", function () {
-  var uploadDocFormPD = document.getElementById("uploadDocFormPD");
-  if (!uploadDocFormPD) return;
+// Función para abrir el modal de subir PDF
+function openUploadDocModalPD(noteId) {
+    document.getElementById('uploadDocNoteIdPD').value = noteId;
+    document.getElementById('uploadDocFilePD').value = ''; // Limpiar input
+    $('#uploadDocModalPD').modal('show');
+}
 
-  document.getElementById("uploadDocFilePD").addEventListener("change", function () {
-    var label = this.closest(".custom-file").querySelector(".custom-file-label");
-    label.textContent = this.files.length > 0 ? this.files[0].name : "Seleccionar archivo PDF...";
-  });
+// Función para subir el PDF
+function subirPDFNota() {
+    const form = document.getElementById('uploadDocFormPD');
+    const fileInput = document.getElementById('uploadDocFilePD');
+    
+    // Validar que se haya seleccionado un archivo
+    if (!fileInput.files || fileInput.files.length === 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Archivo requerido',
+            text: 'Por favor selecciona un archivo PDF'
+        });
+        return;
+    }
 
-  uploadDocFormPD.addEventListener("submit", function (e) {
-    e.preventDefault();
-    var formData = new FormData(this);
+    // Validar que sea PDF
+    const file = fileInput.files[0];
+    if (file.type !== 'application/pdf') {
+        Swal.fire({
+            icon: 'error',
+            title: 'Formato inválido',
+            text: 'Solo se permiten archivos PDF'
+        });
+        return;
+    }
 
-    Swal.fire({ title: "Subiendo...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+    // Validar tamaño (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Archivo muy grande',
+            text: 'El archivo no debe superar los 10MB'
+        });
+        return;
+    }
 
-    fetch("/supply/uploadNoteFile", { method: "POST", body: formData, credentials: "include" })
-      .then((r) => r.json())
-      .then((data) => {
+    const formData = new FormData(form);
+
+    Swal.fire({
+        title: 'Subiendo archivo...',
+        html: `<div class="progress">
+                 <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                      role="progressbar" style="width: 100%">
+                 </div>
+               </div>`,
+        allowOutsideClick: false,
+        showConfirmButton: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    fetch('/supply/uploadNoteFile', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
         Swal.close();
         if (data.success) {
-          Swal.fire({ icon: "success", title: "Éxito", text: data.message, timer: 2000 }).then(() => {
-            $("#uploadDocModalPD").modal("hide");
-            location.reload();
-          });
+            Swal.fire({
+                icon: 'success',
+                title: '¡Éxito!',
+                text: data.message,
+                timer: 2000,
+                showConfirmButton: false
+            }).then(() => {
+                $('#uploadDocModalPD').modal('hide');
+                location.reload();
+            });
         } else {
-          Swal.fire({ icon: "error", title: "Error", text: data.message });
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: data.message || 'No se pudo subir el archivo'
+            });
         }
-      })
-      .catch(() => {
+    })
+    .catch(error => {
         Swal.close();
-        Swal.fire({ icon: "error", title: "Error", text: "Error al subir el archivo" });
-      });
-  });
-});
+        console.error('Error:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error de conexión',
+            text: 'No se pudo conectar con el servidor'
+        });
+    });
+}
 
 function removeApplication(appId) {
   Swal.fire({
@@ -7639,87 +7699,6 @@ function deleteNote(noteId) {
   });
 }
 
-function openUploadNoteFileModal(noteId) {
-  document.getElementById("uploadNoteId").value = noteId;
-  document.getElementById("uploadNoteFileInput").value = "";
-  document.querySelector("#uploadNoteFileModal .custom-file-label").textContent =
-    "Seleccionar archivo PDF...";
-  $("#uploadNoteFileModal").modal("show");
-}
-
-document.addEventListener("DOMContentLoaded", function () {
-  // Ver PDF de nota en el modal
-  document.addEventListener("click", function (e) {
-    var btn = e.target.closest(".view-doc-btn");
-    if (!btn) return;
-
-    var docId = btn.dataset.docId;
-    var pdfUrl = "/supply/viewNoteDocument/" + docId;
-
-    document.getElementById("doc-id-title").textContent = docId;
-    document.getElementById("pdf-viewer").src = pdfUrl;
-
-    var downloadBtn = document.getElementById("download-pdf-btn");
-    downloadBtn.href = pdfUrl;
-    downloadBtn.download = "documento_" + docId + ".pdf";
-
-    $("#pdfModal").modal("show");
-  });
-
-  var uploadNoteFileForm = document.getElementById("uploadNoteFileForm");
-  if (uploadNoteFileForm) {
-    document.getElementById("uploadNoteFileInput").addEventListener("change", function () {
-      var label = document.querySelector("#uploadNoteFileModal .custom-file-label");
-      label.textContent = this.files.length > 0 ? this.files[0].name : "Seleccionar archivo PDF...";
-    });
-
-    uploadNoteFileForm.addEventListener("submit", function (e) {
-      e.preventDefault();
-
-      var fileInput = document.getElementById("uploadNoteFileInput");
-      if (!fileInput.files || fileInput.files.length === 0) {
-        Swal.fire({ icon: "warning", title: "Archivo requerido", text: "Seleccione un archivo PDF." });
-        return;
-      }
-
-      var formData = new FormData(this);
-
-      Swal.fire({
-        title: "Subiendo...",
-        text: "Guardando archivo",
-        allowOutsideClick: false,
-        didOpen: () => { Swal.showLoading(); },
-      });
-
-      fetch("/supply/uploadNoteFile", {
-        method: "POST",
-        body: formData,
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          Swal.close();
-          if (data.success) {
-            Swal.fire({
-              icon: "success",
-              title: "Éxito",
-              text: data.message,
-              timer: 2000,
-            }).then(() => {
-              $("#uploadNoteFileModal").modal("hide");
-              location.reload();
-            });
-          } else {
-            Swal.fire({ icon: "error", title: "Error", text: data.message });
-          }
-        })
-        .catch((error) => {
-          Swal.close();
-          console.error("Error:", error);
-          Swal.fire({ icon: "error", title: "Error", text: "Error al subir el archivo" });
-        });
-    });
-  }
-});
 
 function removeInvoiceFromPayment(invoice_id, folio) {
   Swal.fire({

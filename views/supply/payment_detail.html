@@ -1697,34 +1697,39 @@
 	</div>
 
 	<!-- Modal: Subir PDF a nota de crédito (desde payment_detail) -->
-	<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
-					<button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-				</div>
-				<form id="uploadDocFormPD" enctype="multipart/form-data">
-					<div class="modal-body">
-						<input type="hidden" id="uploadDocNoteIdPD" name="note_id">
-						<div class="form-group">
-							<label>Archivo PDF *</label>
-							<div class="custom-file">
-								<input type="file" class="custom-file-input" name="note_file"
-									id="uploadDocFilePD" accept=".pdf" required>
-								<label class="custom-file-label" for="uploadDocFilePD">Seleccionar archivo PDF...</label>
-							</div>
-							<small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
-						<button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Subir</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
+<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="uploadDocFormPD" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <input type="hidden" id="uploadDocNoteIdPD" name="note_id">
+                    <div class="mb-3">
+                        <label class="form-label">Archivo PDF *</label>
+                        <input type="file" 
+                               class="form-control" 
+                               name="note_file"
+                               id="uploadDocFilePD" 
+                               accept=".pdf" 
+                               required>
+                        <small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="subirPDFNota()">
+                        <i class="fas fa-upload"></i> Subir
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 
 	<!-- Modal: Ver documentos PDF de una nota -->
 <!-- Modal: Ver documentos PDF de una nota -->

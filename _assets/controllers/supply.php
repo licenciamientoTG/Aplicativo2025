@@ -3751,7 +3751,7 @@ class Supply
             }
 
             // Actualizar ruta en el registro del documento
-            $filePath = 'uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/' . $newFilename;
+            $filePath = 'uploads/credit_debit_notes/' . $newFilename;
             if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
                 throw new Exception('Error al actualizar la ruta del archivo');
             }
