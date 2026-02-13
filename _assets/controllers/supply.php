@@ -3413,7 +3413,7 @@ class Supply
             $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques);
 
             if ($result['success']) {
-                // $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
+                $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
                 //se cambiara a uno pro dia
 
                 json_output([
@@ -4608,14 +4608,6 @@ class Supply
                 return;
             }
 
-            if (strlen($comentario) < 10) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'La justificación debe tener al menos 10 caracteres'
-                ]);
-                return;
-            }
-
             // Obtener nombre del proveedor
             $proveedor = $this->proveedores->get_by_id($provider_cod);
             if (!$proveedor) {
@@ -4642,6 +4634,15 @@ class Supply
             if ($result['success']) {
                 // Log de auditoría
                 error_log("ANTICIPO CREADO: ID={$result['anticipo_id']}, Provider=$provider_cod, Empresa=$empresa_cod, Monto=$monto, User=$user_id");
+
+                // Notificación por correo
+                $this->enviar_notificacion_nuevo_anticipo(
+                    $result['anticipo_id'],
+                    $proveedor['den'] ?? 'Proveedor',
+                    $monto,
+                    $comentario,
+                    $_SESSION['tg_user']['Nombre'] ?? 'Usuario'
+                );
             }
 
             // Retornar resultado
@@ -5122,6 +5123,239 @@ class Supply
         </html>
         ";
     }
+
+    private function enviar_notificacion_nuevo_anticipo($anticipo_id, $provider_name, $monto, $comentario, $created_by)
+    {
+        try {
+            $emails = $this->UsuariosModel->get_emails_by_permission(66);
+
+            if (empty($emails)) {
+                error_log("No hay usuarios con permiso de Abastos para notificar anticipo");
+                return;
+            }
+            $emails = array_filter($emails, function ($email) {
+                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
+            });
+
+            $subject = "Nuevo Anticipo Creado - ID #{$anticipo_id}";
+            $body = $this->generar_html_notificacion_anticipo(
+                $anticipo_id,
+                $provider_name,
+                $monto,
+                $comentario,
+                $created_by
+            );
+
+            $from = 'totalgasdesarrollo@gmail.com';
+
+            ob_start();
+            $resultado = @send_mail2($subject, $body, $emails, $from);
+            ob_get_clean();
+
+            if ($resultado) {
+                error_log("Notificación de anticipo #{$anticipo_id} enviada a: " . implode(', ', $emails));
+            } else {
+                error_log("Error al enviar notificación de anticipo #{$anticipo_id}");
+            }
+        } catch (Exception $e) {
+            error_log("Error en enviar_notificacion_nuevo_anticipo: " . $e->getMessage());
+        }
+    }
+
+    private function generar_html_notificacion_anticipo($anticipo_id, $provider_name, $monto, $comentario, $created_by)
+    {
+        $fecha = date('d/m/Y H:i:s');
+        $monto_formatted = number_format($monto, 2, '.', ',');
+        $url_detalle = "http://totalgasonline.net:400/supply/payment_detail/{$anticipo_id}";
+
+        return "
+        <!DOCTYPE html>
+        <html lang='es'>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 20px;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background: white;
+                    border-radius: 10px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                .header {
+                    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    color: white;
+                    padding: 30px;
+                    text-align: center;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .header p {
+                    margin: 5px 0 0 0;
+                    opacity: 0.9;
+                }
+                .content {
+                    padding: 30px;
+                }
+                .badge {
+                    display: inline-block;
+                    background: #f5576c;
+                    color: white;
+                    padding: 5px 15px;
+                    border-radius: 20px;
+                    font-size: 14px;
+                    margin-bottom: 20px;
+                }
+                .info-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 15px 0;
+                    border-bottom: 1px solid #eee;
+                }
+                .info-row:last-child {
+                    border-bottom: none;
+                }
+                .info-label {
+                    color: #666;
+                    font-weight: 500;
+                }
+                .info-value {
+                    color: #333;
+                    font-weight: 600;
+                }
+                .total-box {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin: 20px 0;
+                    text-align: center;
+                }
+                .total-label {
+                    color: #666;
+                    font-size: 14px;
+                    margin-bottom: 5px;
+                }
+                .total-amount {
+                    color: #f5576c;
+                    font-size: 32px;
+                    font-weight: bold;
+                }
+                .comment-box {
+                    background: #fff3cd;
+                    border-left: 4px solid #ffc107;
+                    padding: 15px;
+                    margin: 20px 0;
+                    border-radius: 4px;
+                }
+                .comment-label {
+                    font-weight: 600;
+                    color: #856404;
+                    margin-bottom: 5px;
+                }
+                .comment-text {
+                    color: #856404;
+                }
+                .button {
+                    display: inline-block;
+                    background: #f5576c;
+                    color: white;
+                    padding: 12px 30px;
+                    text-decoration: none;
+                    border-radius: 5px;
+                    margin: 20px 0;
+                    font-weight: 600;
+                }
+                .button:hover {
+                    background: #e04458;
+                }
+                .footer {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    text-align: center;
+                    color: #666;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    <h1>Nuevo Anticipo Creado</h1>
+                    <p>Sistema de Gestión de Pagos - TotalGas</p>
+                </div>
+
+                <div class='content'>
+                    <div class='badge'>Notificación - Departamento de Abastos</div>
+
+                    <p style='color: #333; line-height: 1.6;'>
+                        Se ha creado un nuevo anticipo que requiere autorización del departamento de Abastos.
+                    </p>
+
+                    <div style='margin: 20px 0;'>
+                        <div class='info-row'>
+                            <span class='info-label'>ID de Anticipo:</span>
+                            <span class='info-value'>#{$anticipo_id}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>Proveedor:</span>
+                            <span class='info-value'>{$provider_name}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>Creado por:</span>
+                            <span class='info-value'>{$created_by}</span>
+                        </div>
+                        <div class='info-row'>
+                            <span class='info-label'>Fecha:</span>
+                            <span class='info-value'>{$fecha}</span>
+                        </div>
+                    </div>
+
+                    <div class='total-box'>
+                        <div class='total-label'>Monto del Anticipo</div>
+                        <div class='total-amount'>\${$monto_formatted}</div>
+                    </div>
+
+                    " . (!empty($comentario) ? "
+                    <div class='comment-box'>
+                        <div class='comment-label'>Justificación:</div>
+                        <div class='comment-text'>{$comentario}</div>
+                    </div>
+                    " : "") . "
+
+                    <div style='text-align: center; margin-top: 30px;'>
+                        <a href='{$url_detalle}' class='button'>
+                            Ver Detalle del Anticipo
+                        </a>
+                    </div>
+
+                    <p style='color: #666; font-size: 14px; margin-top: 30px;'>
+                        Este anticipo requiere su autorización para poder continuar con el proceso.
+                        Por favor, revise la información y autorice según corresponda.
+                    </p>
+                </div>
+
+                <div class='footer'>
+                    <p><strong>TotalGas - Sistema de Gestión de Pagos</strong></p>
+                    <p>Este es un correo automático, por favor no responda a este mensaje.</p>
+                    <p style='margin-top: 10px; font-size: 11px;'>
+                        © " . date('Y') . " TotalGas. Todos los derechos reservados.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
+    }
+
     private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission, $user_id)
     {
         try {

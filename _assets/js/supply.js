@@ -3913,11 +3913,6 @@ function confirmarCreacionAnticipo() {
     return;
   }
 
-  if (!comentario || comentario.length < 10) {
-    alertify.error("La justificación debe tener al menos 10 caracteres");
-    return;
-  }
-
   // Obtener nombres para confirmación
   const proveedor_nombre = $("#anticipo_proveedor option:selected").text();
   const empresa_nombre = $("#anticipo_empresa option:selected").text();
@@ -3948,6 +3943,7 @@ function confirmarCreacionAnticipo() {
 /**
  * Ejecutar creación del anticipo (AJAX)
  */
+/////comentario anticipo
 async function ejecutarCreacionAnticipo(
   proveedor_cod,
   empresa_cod,
@@ -3972,8 +3968,9 @@ async function ejecutarCreacionAnticipo(
     });
 
     const data = await response.json();
-
+    console.log("Respuesta del servidor:", data); // Debug
     if (data.success) {
+      console.log("Anticipo creado exitosamente:", data);
       // Cerrar modal
       $("#modalCrearAnticipo").modal("hide");
 
@@ -4839,68 +4836,72 @@ function ejecutarGeneracionLayout(facturasIds) {
   });
 }
 
-async function crearAnticipo() {
-  const proveedor_cod = $("#anticipo_proveedor").val();
-  const monto = parseFloat($("#anticipo_monto").val());
-  const comentario = $("#anticipo_comentario").val().trim();
 
-  // Validaciones
-  if (!proveedor_cod) {
-    alertify.error("Debe seleccionar un proveedor");
-    return;
-  }
 
-  if (!monto || monto <= 0) {
-    alertify.error("El monto debe ser mayor a cero");
-    return;
-  }
+/////comentario anticipo
+// async function crearAnticipo() {
+//   const proveedor_cod = $("#anticipo_proveedor").val();
+//   const monto = parseFloat($("#anticipo_monto").val());
+//   const comentario = $("#anticipo_comentario").val().trim();
 
-  if (!comentario) {
-    alertify.error("Debe proporcionar una justificación");
-    return;
-  }
+//   // Validaciones
+//   if (!proveedor_cod) {
+//     alertify.error("Debe seleccionar un proveedor");
+//     return;
+//   }
 
-  alertify
-    .confirm(
-      "Confirmar Anticipo",
-      `¿Crear anticipo de <strong>$${monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong>?<br><br>` +
-        `<small>${comentario}</small>`,
-      async function () {
-        try {
-          const response = await fetch("/supply/create_anticipo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              provider_cod: proveedor_cod,
-              monto: monto,
-              comentario: comentario,
-            }),
-          });
+//   if (!monto || monto <= 0) {
+//     alertify.error("El monto debe ser mayor a cero");
+//     return;
+//   }
 
-          const data = await response.json();
+//   if (!comentario) {
+//     alertify.error("Debe proporcionar una justificación");
+//     return;
+//   }
 
-          if (data.success) {
-            alertify.success("Anticipo creado: ID #" + data.anticipo_id);
+//   alertify
+//     .confirm(
+//       "Confirmar Anticipo",
+//       `¿Crear anticipo de <strong>$${monto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong>?<br><br>` +
+//         `<small>${comentario}</small>`,
+//       async function () {
+//         try {
+//           const response = await fetch("/supply/create_anticipo", {
+//             method: "POST",
+//             headers: { "Content-Type": "application/json" },
+//             body: JSON.stringify({
+//               provider_cod: proveedor_cod,
+//               monto: monto,
+//               comentario: comentario,
+//             }),
+//           });
 
-            // Limpiar formulario
-            $("#anticipo_proveedor").val("").selectpicker("refresh");
-            $("#anticipo_monto").val("");
-            $("#anticipo_comentario").val("");
+//           const data = await response.json();
+//           console.log('data', data);
 
-            // Cambiar a tab de anticipos
-            $('a[href="#tab_anticipos"]').tab("show");
-            $("#tabla_anticipos").DataTable().ajax.reload();
-          } else {
-            alertify.error(data.message || "Error al crear anticipo");
-          }
-        } catch (error) {
-          console.error("Error:", error);
-          alertify.error("Error de conexión");
-        }
-      },
-    )
-    .set("labels", { ok: "Crear", cancel: "Cancelar" });
-}
+//           if (data.success) {
+//             alertify.success("Anticipo creado: ID #" + data.anticipo_id);
+
+//             // Limpiar formulario
+//             $("#anticipo_proveedor").val("").selectpicker("refresh");
+//             $("#anticipo_monto").val("");
+//             $("#anticipo_comentario").val("");
+
+//             // Cambiar a tab de anticipos
+//             $('a[href="#tab_anticipos"]').tab("show");
+//             $("#tabla_anticipos").DataTable().ajax.reload();
+//           } else {
+//             alertify.error(data.message || "Error al crear anticipo");
+//           }
+//         } catch (error) {
+//           console.error("Error:", error);
+//           alertify.error("Error de conexión");
+//         }
+//       },
+//     )
+//     .set("labels", { ok: "Crear", cancel: "Cancelar" });
+// }
 
 function cargarProveedoresAnticipo() {
   $.ajax({

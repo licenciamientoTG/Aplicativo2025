@@ -169,9 +169,6 @@ class MySqlPdoHandler{
 					$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
 	
 					echo $errorMessage; // Muestra el mensaje de error en pantalla
-					echo '<pre>';
-					var_dump($errorMessage);
-					die();
 					throw new Exception("Error en la base de datos", 1);
 				}
 		} else {
