@@ -256,13 +256,14 @@
 
     function loadTransitAging() {
         const eid = $('#estacionSelect').val();
+        const afil = $('#afiliacionSelect').val();
         if(eid == "0") {
             // Reset table if no station
             $('#row-aging-1 .val-count, #row-aging-2 .val-count, #row-aging-3 .val-count').text('0');
             $('#row-aging-1 .val-amount, #row-aging-2 .val-amount, #row-aging-3 .val-amount').text('$0.00');
             return;
         }
-        $.get('/income/get_transitos_pendientes', { estacion_id: eid }, function(resp) {
+        $.get('/income/get_transitos_pendientes', { estacion_id: eid, afiliacion: afil }, function(resp) {
             if(resp.status === 'success') {
                 let aging = { one: {c:0, s:0}, two: {c:0, s:0}, three: {c:0, s:0} };
                 resp.data.forEach(t => {
@@ -343,7 +344,10 @@
     function exportExcel() {
         const y = $('#auditYear').val();
         const m = $('#auditMonth').val();
-        window.location.href = `/income/export_conciliacion_excel?year=${y}&month=${m}`;
+        const sid = $('#estacionSelect').val();
+        const bid = $('#bancoSelect').val();
+        const afil = $('#afiliacionSelect').val();
+        window.location.href = `/income/export_conciliacion_excel?year=${y}&month=${m}&estacion_id=${sid}&banco_id=${bid}&afiliacion=${afil}`;
     }
 </script>
 {% endblock %}

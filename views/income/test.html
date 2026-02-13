@@ -790,13 +790,10 @@
             $('#diffValue').css('font-size', '1.5rem'); // Tamaño original aprox
         }
 
-        // El contador superior sigue mostrando solo la diferencia numérica
-        $('#diff-total-top').text(formatter.format(diff));
-
         if(Math.abs(diff) < 0.01) {
-            $('#diffValue, #diff-total-top').css('color', '#2ecc71');
+            $('#diffValue').css('color', '#2ecc71');
         } else {
-            $('#diffValue, #diff-total-top').css('color', '#e74c3c'); // Rojo
+            $('#diffValue').css('color', '#e74c3c'); // Rojo
         }
 
         if(hasL || hasC) $('#conciliacionBar').addClass('visible');
@@ -1882,7 +1879,10 @@
         // Usamos FechaVisual si viene del PHP nuevo, o Fecha como fallback
         $modal.find('.val-fecha').text(data.FechaVisual || data.Fecha || 'N/A');
         
-        $modal.find('.val-turno').text(data.Turno || 'N/A');
+        // Mostrar solo el primer dígito del turno (ej. 31 -> 3)
+        const turnoDisplay = data.Turno ? String(data.Turno).charAt(0) : 'N/A';
+        $modal.find('.val-turno').text(turnoDisplay);
+        
         $modal.find('.val-tipo').text(data.Tipo || 'N/A');
         $modal.find('.val-concepto').text(data.Concepto || 'N/A');
         

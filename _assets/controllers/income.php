@@ -2591,13 +2591,13 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // JOIN con Tesoreria_afil para usar EL MISMO criterio de RFC que los bancos
+            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuración/afiliación
             $sql = "SELECT DISTINCT 
                         T1.Codigo, 
                         T1.Nombre, 
-                        ISNULL(T2.rfc, 'FORANEAS') as RFC 
+                        T2.rfc as RFC 
                     FROM Estaciones T1
-                    LEFT JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
+                    INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
                     ORDER BY T1.Nombre";
 
             $stmt = $conn->query($sql);
@@ -2610,6 +2610,20 @@ public function anomalies_client_tickets()
                 }
                 $row['RFC'] = $rfc;
                 $result[] = $row;
+            }
+
+            // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
+            $foundColosio = false;
+            foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
+
+            if(!$foundColosio) {
+                $result[] = [
+                    'Codigo' => 333,
+                    'Nombre' => 'COLOSIO',
+                    'RFC'    => 'FORANEAS'
+                ];
+                // Reordenar alfabéticamente
+                usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
             }
             
             echo json_encode(["status" => "success", "respuesta" => $result]);
@@ -3115,6 +3129,10 @@ public function anomalies_client_tickets()
                 exit;
             }
 
+            // SOPORTE MULTI-AFILIACIÓN: Split por '/' y limpieza
+            $afil_parts = array_map('trim', explode('/', $afiliacion));
+            $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+
             // QUERY ESTANDARIZADA
             $sql = "SELECT 
                         ID_Externo,
@@ -3130,11 +3148,11 @@ public function anomalies_client_tickets()
                     FROM $tabla
                     WHERE YEAR(Fecha_Transaccion) = ? 
                       AND MONTH(Fecha_Transaccion) = ? 
-                      AND Afiliacion = ?
+                      AND Afiliacion IN ($placeholders)
                     ORDER BY Fecha_Transaccion ASC";
 
             $stmt = $conn->prepare($sql);
-            $stmt->execute([$year, $month, $afiliacion]);
+            $stmt->execute(array_merge([$year, $month], $afil_parts));
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
@@ -3211,6 +3229,10 @@ public function anomalies_client_tickets()
                 exit;
             }
 
+            // SOPORTE MULTI-AFILIACIÓN
+            $afil_parts = array_map('trim', explode('/', $afiliacion));
+            $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+
             // BUSQUEDA POR FECHA DE DEPOSITO
             $sql = "SELECT 
                         ID_Externo,
@@ -3226,11 +3248,11 @@ public function anomalies_client_tickets()
                     FROM $tabla
                     WHERE YEAR(Fecha_Deposito) = ? 
                       AND MONTH(Fecha_Deposito) = ? 
-                      AND Afiliacion = ?
+                      AND Afiliacion IN ($placeholders)
                     ORDER BY Fecha_Deposito ASC";
 
             $stmt = $conn->prepare($sql);
-            $stmt->execute([$year, $month, $afiliacion]);
+            $stmt->execute(array_merge([$year, $month], $afil_parts));
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
@@ -3554,21 +3576,32 @@ public function anomalies_client_tickets()
             $params = [$estacion_id, $fecha_ini, $fecha_fin];
 
             if (!empty($afiliacion)) {
-                // Lógica Híbrida: 
-                // 1. Si el grupo ya tiene afiliación guardada (V2.1), comparar directo.
-                // 2. Si no la tiene (V2.0), buscar en los detalles de transacciones (TX)
+                // SOPORTE MULTI-AFILIACIÓN
+                $afil_parts = array_map('trim', explode('/', $afiliacion));
+                $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+                
+                // Construir condiciones LIKE dinámicas para el fallback
+                $likeConditions = [];
+                $likeParams = [];
+                foreach ($afil_parts as $part) {
+                    $likeConditions[] = "(D2.concepto LIKE ? OR D2.referencia_externa LIKE ?)";
+                    $likeParams[] = "%$part%";
+                    $likeParams[] = "%$part%";
+                }
+                $fallbackSql = implode(" OR ", $likeConditions);
+
+                // Lógica Híbrida Multi-Afil: 
                 $sql .= " AND (
-                            G.afiliacion = ? 
+                            G.afiliacion IN ($placeholders) 
                             OR (G.afiliacion IS NULL AND EXISTS (
                                 SELECT 1 FROM Conciliacion_V2_Detalles D2 
                                 WHERE D2.grupo_id = G.id 
                                   AND D2.origen = 'TX' 
-                                  AND (D2.concepto LIKE ? OR D2.referencia_externa LIKE ?)
+                                  AND ($fallbackSql)
                             ))
                         )";
-                $params[] = $afiliacion;
-                $params[] = "%$afiliacion%";
-                $params[] = "%$afiliacion%";
+                
+                $params = array_merge($params, $afil_parts, $likeParams);
             }
 
             if ($entidad_id > 0) {
@@ -3786,8 +3819,16 @@ public function guardar_transito() {
             $params = [$estacion_id];
 
             if ($afiliacion) {
-                $sql .= " AND afiliacion_asociada LIKE ?";
-                $params[] = "%$afiliacion%";
+                // SOPORTE MULTI-AFILIACIÓN
+                $afil_parts = array_map('trim', explode('/', $afiliacion));
+                $likeConditions = [];
+                $likeParams = [];
+                foreach ($afil_parts as $part) {
+                    $likeConditions[] = "afiliacion_asociada LIKE ?";
+                    $likeParams[] = "%$part%";
+                }
+                $sql .= " AND (" . implode(" OR ", $likeConditions) . ")";
+                $params = array_merge($params, $likeParams);
             }
 
             $stmt = $conn->prepare($sql);
@@ -3881,6 +3922,23 @@ public function get_conciliacion_config() {
             $stmt = $conn->prepare($sql);
             $stmt->execute([$estacion_id]);
             $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // INYECCIÓN MANUAL COLOSIO (ID 333)
+            if ($estacion_id == 333) {
+                // Verificar si ya existe para no duplicar (aunque es improbable si no está en BD)
+                $existe = false;
+                foreach($reglas as $r) { if($r['afiliacion'] == '9274246') $existe = true; }
+                
+                if(!$existe) {
+                    $reglas[] = [
+                        'entidad_id'   => 1,
+                        'nombre_banco' => 'SANTANDER',
+                        'afiliacion'   => '9274246',
+                        'descripcion'  => 'Cuenta 9274246 (Manual)',
+                        'conceptos_cg' => 'VENTA,DEPOSITO'
+                    ];
+                }
+            }
             
             echo json_encode(['status' => 'success', 'data' => $reglas]);
 
@@ -4278,7 +4336,7 @@ public function stamped_invoices_detail(): void
         $month = $_GET['month'] ?? date('m');
         $estacion_id = (int)($_GET['estacion_id'] ?? 0);
         $entidad_id = (int)($_GET['banco_id'] ?? 0);
-        $afiliacion = $_GET['afiliacion'] ?? '';
+        $afiliacion = trim($_GET['afiliacion'] ?? '');
 
         $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712"; 
 
@@ -4286,17 +4344,45 @@ public function stamped_invoices_detail(): void
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // MIGRACIÓN RÁPIDA: Si hay registros sin fecha_operativa, intentar llenarlos con la fecha de sus detalles
-            $conn->exec("UPDATE G SET G.fecha_operativa = (SELECT TOP 1 D.fecha_operacion FROM Conciliacion_V2_Detalles D WHERE D.grupo_id = G.id ORDER BY D.origen DESC) 
-                         FROM Conciliacion_V2_Grupos G WHERE G.fecha_operativa IS NULL");
-
-            // 1. FILTRO DE GRUPOS (Por mes de la fecha operativa)
+            // 1. FILTRO DE GRUPOS (Lógica Híbrida similar a get_conciliaciones_hechas)
             $filterSql = " WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
             $params = [$year, $month];
 
             if ($estacion_id > 0) {
                 $filterSql .= " AND G.estacion_id = ? ";
                 $params[] = $estacion_id;
+            }
+
+            if ($entidad_id > 0) {
+                $filterSql .= " AND (G.entidad_id = ? OR G.entidad_id IS NULL) ";
+                $params[] = $entidad_id;
+            }
+
+            if (!empty($afiliacion)) {
+                // SOPORTE MULTI-AFILIACIÓN
+                $afil_parts = array_map('trim', explode('/', $afiliacion));
+                $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+                
+                // Construir condiciones LIKE dinámicas para el fallback
+                $likeConditions = [];
+                $likeParams = [];
+                foreach ($afil_parts as $part) {
+                    $likeConditions[] = "(D_Check.concepto LIKE ? OR D_Check.referencia_externa LIKE ?)";
+                    $likeParams[] = "%$part%";
+                    $likeParams[] = "%$part%";
+                }
+                $fallbackSql = implode(" OR ", $likeConditions);
+
+                $filterSql .= " AND (
+                                    G.afiliacion IN ($placeholders) 
+                                    OR (G.afiliacion IS NULL AND EXISTS (
+                                        SELECT 1 FROM Conciliacion_V2_Detalles D_Check 
+                                        WHERE D_Check.grupo_id = G.id 
+                                          AND D_Check.origen = 'TX' 
+                                          AND ($fallbackSql)
+                                    ))
+                                ) ";
+                $params = array_merge($params, $afil_parts, $likeParams);
             }
 
             // 2. QUERY PRINCIPAL
@@ -4337,18 +4423,12 @@ public function stamped_invoices_detail(): void
                                 SUM(G.diferencia) as diferencia
                             FROM Conciliacion_V2_Grupos G 
                             LEFT JOIN Estaciones E ON G.estacion_id = E.Codigo
-                            WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
+                            " . $filterSql;
             
-            $paramsEst = [$year, $month];
-            if ($estacion_id > 0) {
-                $sqlEstacion .= " AND G.estacion_id = ? ";
-                $paramsEst[] = $estacion_id;
-            }
-
             $sqlEstacion .= " GROUP BY E.Nombre HAVING SUM(G.diferencia) != 0 ORDER BY E.Nombre";
             
             $stmtEstacion = $conn->prepare($sqlEstacion);
-            $stmtEstacion->execute($paramsEst);
+            $stmtEstacion->execute($params);
             $porEstacion = $stmtEstacion->fetchAll(PDO::FETCH_ASSOC);
 
             // ==========================================================
@@ -4356,22 +4436,15 @@ public function stamped_invoices_detail(): void
             // ==========================================================
             $agrupados = [];
             
-            // A. Por Banco / Afiliación
-            $sqlBank = "SELECT TE.Nombre as Banco, TX_AFIL.Afiliacion, 
+            // A. Por Banco / Afiliación (Simplificado con nuevas columnas)
+            $sqlBank = "SELECT TE.Nombre as Banco, ISNULL(G.afiliacion, 'Sin Afil.') as Afiliacion, 
                                SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                         FROM Conciliacion_V2_Grupos G
-                        INNER JOIN Conciliacion_V2_Detalles D ON G.id = D.grupo_id AND D.origen = 'TX'
-                        INNER JOIN (
-                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
-                            UNION ALL
-                            SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
-                        ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
-                        INNER JOIN Conciliacion_Configuracion CC ON TX_AFIL.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
-                        INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
+                        LEFT JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
                         " . $filterSql . "
-                        GROUP BY TE.Nombre, TX_AFIL.Afiliacion
+                        GROUP BY TE.Nombre, G.afiliacion
                         HAVING SUM(G.diferencia) <> 0
-                        ORDER BY TE.Nombre, TX_AFIL.Afiliacion";
+                        ORDER BY TE.Nombre, G.afiliacion";
             $stmtBank = $conn->prepare($sqlBank);
             $stmtBank->execute($params);
             $agrupados['bancos'] = $stmtBank->fetchAll(PDO::FETCH_ASSOC);
@@ -4381,14 +4454,7 @@ public function stamped_invoices_detail(): void
                                   SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                            FROM Conciliacion_V2_Grupos G
                            LEFT JOIN Estaciones E ON G.estacion_id = E.Codigo
-                           INNER JOIN Conciliacion_V2_Detalles D ON G.id = D.grupo_id AND D.origen = 'TX'
-                           INNER JOIN (
-                               SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
-                               UNION ALL
-                               SELECT ID_Externo, Afiliacion FROM banco_banorte
-                           ) AS TX_AFIL ON D.referencia_externa = TX_AFIL.id_ref
-                           INNER JOIN Conciliacion_Configuracion CC ON TX_AFIL.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
-                           INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
+                           LEFT JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
                            " . $filterSql . "
                            GROUP BY E.Nombre, TE.Nombre
                            HAVING SUM(G.diferencia) <> 0
@@ -4471,59 +4537,35 @@ public function stamped_invoices_detail(): void
                     break;
 
                 case 'station':
-                    // MODO ESTACIÓN: Agrupado por el banco/afil predominante de cada grupo
+                    // MODO ESTACIÓN: Agrupado por el banco/afil predominante de cada grupo (Ahora directo en G)
                     $sql = "SELECT 
-                                Atribucion.label,
+                                TE.Nombre + ' (' + ISNULL(G.afiliacion, 'Sin Afil.') + ')' as label,
                                 SUM(G.total_sistema) as sistema,
                                 SUM(G.total_banco) as banco,
                                 SUM(G.diferencia) as diferencia
                             FROM Conciliacion_V2_Grupos G
-                            CROSS APPLY (
-                                SELECT TOP 1 TE.Nombre + ' (' + CC.afiliacion + ')' as label
-                                FROM Conciliacion_V2_Detalles D
-                                INNER JOIN (
-                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
-                                    UNION ALL
-                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
-                                ) AS TX_SRC ON D.referencia_externa = TX_SRC.id_ref
-                                INNER JOIN Conciliacion_Configuracion CC ON TX_SRC.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
-                                INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
-                                WHERE D.grupo_id = G.id AND D.origen = 'TX'
-                            ) AS Atribucion
+                            LEFT JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
                             WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? AND G.estacion_id = ?
-                            GROUP BY Atribucion.label
+                            GROUP BY TE.Nombre, G.afiliacion
                             HAVING SUM(G.diferencia) <> 0
-                            ORDER BY Atribucion.label";
+                            ORDER BY label";
                     $params[] = (int)$value;
                     break;
 
                 case 'bank':
                     // MODO BANCO: Suma de grupos que contienen transacciones del banco seleccionado
                     $sql = "SELECT 
-                                Atribucion.label,
+                                ISNULL(G.afiliacion, 'Sin Afil.') + ' - ' + E.Nombre as label,
                                 SUM(G.total_sistema) as sistema,
                                 SUM(G.total_banco) as banco,
                                 SUM(G.diferencia) as diferencia
                             FROM Conciliacion_V2_Grupos G
                             INNER JOIN Estaciones E ON G.estacion_id = E.Codigo
-                            CROSS APPLY (
-                                SELECT TOP 1 CC.afiliacion + ' - ' + E.Nombre as label
-                                FROM Conciliacion_V2_Detalles D
-                                INNER JOIN (
-                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_getnet
-                                    UNION ALL
-                                    SELECT ID_Externo as id_ref, Afiliacion FROM banco_banorte
-                                ) AS TX_SRC ON D.referencia_externa = TX_SRC.id_ref
-                                INNER JOIN Conciliacion_Configuracion CC ON TX_SRC.Afiliacion = CC.afiliacion AND G.estacion_id = CC.estacion_id
-                                INNER JOIN Tesoreria_Entidad TE ON CC.entidad_id = TE.id
-                                WHERE D.grupo_id = G.id AND D.origen = 'TX' AND CC.entidad_id = ?
-                            ) AS Atribucion
-                            WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ?
-                            GROUP BY Atribucion.label
+                            WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? AND G.entidad_id = ?
+                            GROUP BY G.afiliacion, E.Nombre
                             HAVING SUM(G.diferencia) <> 0
-                            ORDER BY Atribucion.label";
-                    // Reordenar params: EntidadID va primero en el CROSS APPLY
-                    $params = [(int)$value, $year, $month];
+                            ORDER BY label";
+                    $params[] = (int)$value;
                     break;
             }
 
@@ -4544,7 +4586,9 @@ public function stamped_invoices_detail(): void
         
         $year = $_GET['year'] ?? date('Y');
         $month = $_GET['month'] ?? date('m');
-        $estacion_id = $_GET['estacion_id'] ?? 0;
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id = (int)($_GET['entidad_id'] ?? 0);
+        $afiliacion = trim($_GET['afiliacion'] ?? '');
 
         $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712"; 
 
@@ -4555,21 +4599,32 @@ public function stamped_invoices_detail(): void
             $sql = "SELECT 
                         G.id as GrupoID,
                         E.Nombre as Estacion,
-                        FORMAT(G.fecha_creacion, 'yyyy-MM-dd HH:mm') as FechaConciliacion,
+                        TE.Nombre as Banco,
+                        ISNULL(G.afiliacion, 'Sin Afil.') as Afiliacion,
+                        FORMAT(G.fecha_operativa, 'yyyy-MM-dd') as FechaOperativa,
                         G.total_sistema as ControlGas,
-                        G.total_banco as Banco,
-                        G.diferencia as Diferencia,
-                        (SELECT STRING_AGG(referencia_externa, ', ') FROM Conciliacion_V2_Detalles WHERE grupo_id = G.id AND origen = 'TX') as RefsBanco
+                        G.total_banco as BancoTX,
+                        G.diferencia as Diferencia
                     FROM Conciliacion_V2_Grupos G
                     LEFT JOIN Estaciones E ON G.estacion_id = E.Codigo
-                    WHERE YEAR(G.fecha_creacion) = ? AND MONTH(G.fecha_creacion) = ? ";
+                    LEFT JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
+                    WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
             
             $params = [$year, $month];
             if ($estacion_id > 0) {
                 $sql .= " AND G.estacion_id = ? ";
                 $params[] = $estacion_id;
             }
-            $sql .= " ORDER BY G.fecha_creacion DESC";
+            if ($entidad_id > 0) {
+                $sql .= " AND G.entidad_id = ? ";
+                $params[] = $entidad_id;
+            }
+            if (!empty($afiliacion)) {
+                $sql .= " AND G.afiliacion = ? ";
+                $params[] = $afiliacion;
+            }
+
+            $sql .= " ORDER BY G.fecha_operativa DESC, G.id DESC";
 
             $stmt = $conn->prepare($sql);
             $stmt->execute($params);
@@ -4579,26 +4634,27 @@ public function stamped_invoices_detail(): void
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle("Conciliacion $year-$month");
 
-            $headers = ['Grupo ID', 'Estación', 'Fecha Conciliación', 'ControlGas', 'Banco (Transacciones)', 'Diferencia', 'Referencias Banco'];
+            $headers = ['Grupo ID', 'Estación', 'Banco', 'Afiliación', 'Fecha Operativa', 'ControlGas', 'Bancos (TX)', 'Diferencia'];
             $sheet->fromArray($headers, NULL, 'A1');
-            $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+            $sheet->getStyle('A1:H1')->getFont()->setBold(true);
 
             $rowIdx = 2;
             foreach ($rows as $r) {
                 $sheet->setCellValue('A'.$rowIdx, $r['GrupoID']);
                 $sheet->setCellValue('B'.$rowIdx, $r['Estacion']);
-                $sheet->setCellValue('C'.$rowIdx, $r['FechaConciliacion']);
-                $sheet->setCellValue('D'.$rowIdx, $r['ControlGas']);
-                $sheet->setCellValue('E'.$rowIdx, $r['Banco']);
-                $sheet->setCellValue('F'.$rowIdx, $r['Diferencia']);
-                $sheet->setCellValue('G'.$rowIdx, $r['RefsBanco']);
+                $sheet->setCellValue('C'.$rowIdx, $r['Banco']);
+                $sheet->setCellValue('D'.$rowIdx, $r['Afiliacion']);
+                $sheet->setCellValue('E'.$rowIdx, $r['FechaOperativa']);
+                $sheet->setCellValue('F'.$rowIdx, $r['ControlGas']);
+                $sheet->setCellValue('G'.$rowIdx, $r['BancoTX']);
+                $sheet->setCellValue('H'.$rowIdx, $r['Diferencia']);
                 if (abs($r['Diferencia']) > 0.01) {
-                    $sheet->getStyle('F'.$rowIdx)->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                    $sheet->getStyle('H'.$rowIdx)->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
                 }
                 $rowIdx++;
             }
 
-            foreach (range('A', 'G') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+            foreach (range('A', 'H') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
 
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             header('Content-Disposition: attachment;filename="Conciliacion_Resumen_'.$year.'_'.$month.'.xlsx"');
