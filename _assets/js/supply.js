@@ -7422,8 +7422,8 @@ function openNoteDocsModalPD(noteId) {
           (doc, i) =>
             `<button class="btn btn-sm btn-outline-danger note-doc-item-pd"
                      data-doc-id="${doc.id}"
-                     title="Documento ${i + 1}">
-              <i class="fas fa-file-pdf"></i> Doc ${i + 1}
+                     title="Documento ${doc.id}">
+              <i class="fas fa-file-pdf"></i> Doc ${doc.id}
             </button>`
         )
         .join("");
