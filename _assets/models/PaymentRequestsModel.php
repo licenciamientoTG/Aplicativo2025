@@ -60,7 +60,7 @@ class PaymentRequestsModel extends Model
                 $invoice_number = $doc['Factura'] ?? null;
                 $codgas = $doc['codgas'] ?? null;
                 $amount = $doc['total_fac'] ?? 0;
-                $expiration_date = $doc['fechaVto'] ?? null;
+                $expiration_date = $doc['fechaVto'] ?? null; // fechaVto ya viene resuelto como fecha_vencimiento_credito desde el controlador
                 $status = self::STATUS_PENDING; // 0
                 $uuid = $doc['satuid'] ?? null;
 

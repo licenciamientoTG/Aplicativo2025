@@ -1505,7 +1505,8 @@ class Supply
                 if (empty($row['satuid'])) {
                     continue; // Skip rows with empty 'nro'
                 }
-                $estaVencida = !empty($row['fechaVto']) && $row['fechaVto'] < $hoy;
+                $fechaVencimiento = !empty($row['fecha_vencimiento_credito']) ? $row['fecha_vencimiento_credito'] : ($row['fechaVto'] ?? null);
+                $estaVencida = !empty($fechaVencimiento) && $fechaVencimiento < $hoy;
                 $statusLabel = 'Pendiente';
                 if ($row['payment_status'] == '0') {
                     $statusLabel = '<span class="badge bg-light text-dark">Enviado</span>';
@@ -1521,7 +1522,7 @@ class Supply
                     'Factura'          => $row['Factura'],
                     'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
                     'fecha'            => $row['fecha'],
-                    'fechaVto'         => $row['fechaVto'],
+                    'fechaVto'         => $fechaVencimiento,
                     'producto'         => $row['producto'],
                     'proveedor'        => $row['proveedor'],
                     'proveedor_codigo' => $row['proveedor_codigo'],

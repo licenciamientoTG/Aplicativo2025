@@ -502,19 +502,21 @@ async function payment_create_table() {
             '<i class="fas fa-grip-vertical drag-handle me-2" style="color: #6c757d; cursor: move;"></i>',
           );
 
-        // data.fechaVto = 'YYYY-MM-DD'
-        const partes = data.fechaVto.split("-");
-        const fechaVto = new Date(
-          parseInt(partes[0]),
-          parseInt(partes[1]) - 1,
-          parseInt(partes[2]),
-        );
+        // data.fechaVto ya viene resuelto como fecha_vencimiento_credito (fecha + dias_credito del proveedor)
+        if (data.fechaVto) {
+          const partes = data.fechaVto.split("-");
+          const fechaVto = new Date(
+            parseInt(partes[0]),
+            parseInt(partes[1]) - 1,
+            parseInt(partes[2]),
+          );
 
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
 
-        if (fechaVto < hoy) {
-          $("td", row).eq(6).addClass("bg-danger text-white text-center");
+          if (fechaVto < hoy) {
+            $("td", row).eq(6).addClass("bg-danger text-white text-center");
+          }
         }
       }
     },
