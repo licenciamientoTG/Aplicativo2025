@@ -1472,7 +1472,9 @@ class Supply
         }
     }
 
-
+    /**
+     * Endpoint para obtener las facturas de compra según filtros en la vista de conciliación de pagos
+     */
     public function payment_control_table()
     {
         ini_set('max_execution_time', 5000);
@@ -1626,6 +1628,38 @@ class Supply
             }
         }
         json_output(array("data" => $data));
+    }
+
+    public function update_provider()
+    {
+        header('Content-Type: application/json');
+        try {
+            $data = json_decode(file_get_contents('php://input'), true);
+
+            $id_control_gas  = isset($data['id_control_gas'])  ? (int)$data['id_control_gas']  : null;
+            $dias_credito    = isset($data['dias_credito'])    ? (int)$data['dias_credito']    : null;
+            $limite_credito  = isset($data['limite_credito'])  ? (float)$data['limite_credito'] : null;
+
+            if (!$id_control_gas) {
+                json_output(['success' => false, 'message' => 'ID de proveedor requerido']);
+                return;
+            }
+            if ($dias_credito === null || $dias_credito < 0) {
+                json_output(['success' => false, 'message' => 'Días de crédito inválidos']);
+                return;
+            }
+            if ($limite_credito === null || $limite_credito < 0) {
+                json_output(['success' => false, 'message' => 'Límite de crédito inválido']);
+                return;
+            }
+
+            $result = $this->proveedores->update_credit_info($id_control_gas, $dias_credito, $limite_credito);
+
+            json_output($result);
+        } catch (Exception $e) {
+            error_log('Error en update_provider: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al actualizar el proveedor']);
+        }
     }
 
     function descargar_facturas()
@@ -3389,6 +3423,7 @@ class Supply
             $provider_cod = $data['provider_cod'] ?? null; // ✅ RECIBIR
             $provider_name = $data['provider_name'] ?? null; // ✅ OPCIONAL
             $empresa_cod = $data['empresa_cod'] ?? null; // ✅ OPCIONAL
+            $scheduled_payment_date = $data['fecha_pago'] ?? null;
 
 
             if (!$user) {
@@ -3410,7 +3445,7 @@ class Supply
             }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques, $scheduled_payment_date);
 
             if ($result['success']) {
                 $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
@@ -4581,6 +4616,7 @@ class Supply
             $empresa_cod = $data['empresa_cod'] ?? null;
             $monto = $data['monto'] ?? 0;
             $comentario = trim($data['comentario'] ?? '');
+            $scheduled_payment_date = $data['fecha_pago'] ?? null;
 
 
             // Validaciones
@@ -4625,7 +4661,8 @@ class Supply
                 'monto_total' => $monto,
                 'nombre_request' => 'ANTICIPO - ' . $proveedor['den'],
                 'comentario' => $comentario,
-                'user_id' => $user_id
+                'user_id' => $user_id,
+                'scheduled_payment_date' => $scheduled_payment_date
             ];
 
             // Crear anticipo usando el modelo

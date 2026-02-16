@@ -16,9 +16,10 @@ class ProveedoresModel extends Model{
 
     
     public function get_actives(){
-        $query = 'SELECT t1.*,t2.den   
-                    FROM [TG].[dbo].[Proveedores] t1
-                    left join SG12.dbo.Proveedores t2 on t1.id_control_gas = t2.cod WHERE t1.activo = 1';
+        $query = 'SELECT t1.*,t2.dias_credito  from SG12.dbo.[Proveedores] t1
+                    left join [TG].[dbo].[Proveedores] t2 on t1.cod = t2.id_control_gas
+                    where cod > 0
+                    order by cod';
         $params = [];
         return ($this->sql->select($query,$params)) ?: false ;
     }
@@ -29,6 +30,18 @@ class ProveedoresModel extends Model{
         $params = [$id];
         $rs = $this->sql->select($query,$params);
         return ($rs[0]) ?: false;
+    }
+
+    public function update_credit_info(int $id_control_gas, int $dias_credito, float $limite_credito): array
+    {
+        $query = 'UPDATE [TG].[dbo].[Proveedores]
+                  SET dias_credito = ?, limite_credito = ?, fecha_modificacion = GETDATE()
+                  WHERE id_control_gas = ?';
+        $result = $this->sql->update($query, [$dias_credito, $limite_credito, $id_control_gas]);
+        if ($result) {
+            return ['success' => true, 'message' => 'Proveedor actualizado correctamente'];
+        }
+        return ['success' => false, 'message' => 'No se encontró el proveedor o no hubo cambios'];
     }
 
     /**

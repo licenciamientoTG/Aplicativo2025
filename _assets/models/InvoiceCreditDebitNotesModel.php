@@ -18,10 +18,18 @@ class InvoiceCreditDebitNotesModel extends Model
      * Obtener todas las notas activas de un proveedor (con saldo disponible calculado)
      */
     public function getNotesByProvider($providerId) : array|false {
+        if($providerId == 1){
+            $where  = 'WHERE t1.status = 1';
+
+        } else{
+            $where  = 'WHERE t1.provider_id = ? AND t1.status = 1';
+        }
+
         $query = "
             SELECT
                 t1.*,
                 t2.Nombre as created_by_name,
+                t3.den as proveedor,
                 ISNULL((
                     SELECT SUM(a.applied_amount)
                     FROM [tg].[dbo].credit_note_applications a
@@ -37,7 +45,8 @@ class InvoiceCreditDebitNotesModel extends Model
                     WHERE credit_note_id = t1.id) as documents_count
             FROM [tg].[dbo].invoice_credit_debit_notes t1
             LEFT JOIN [TG].[dbo].[Usuario] t2 ON t1.created_by = t2.Id
-            WHERE t1.provider_id = ? AND t1.status = 1
+            LEFT JOIN SG12.dbo.Proveedores t3 on t3.cod = t1.provider_id
+                $where
             ORDER BY t1.created_at DESC";
         return $this->sql->select($query, [$providerId]);
     }

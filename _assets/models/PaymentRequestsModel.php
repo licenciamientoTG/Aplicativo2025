@@ -13,6 +13,7 @@ class PaymentRequestsModel extends Model
     public $monto_total; // NUEVO CAMPO
     public $total_notas_credito;
     public $total_notas_cargo;
+    public $scheduled_payment_date; // Fecha deseada de pago
 
 
     const STATUS_PENDING = 0;
@@ -21,7 +22,7 @@ class PaymentRequestsModel extends Model
     const STATUS_CANCELLED = 3;
 
 
-    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null, $monto_total = 0): array
+    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null, $monto_total = 0, $scheduled_payment_date = null): array
     {
         if (empty($documents) || !is_array($documents)) {
             return [
@@ -37,11 +38,11 @@ class PaymentRequestsModel extends Model
             $request_date = date('Y-m-d H:i:s');
             $status = self::STATUS_PENDING;
 
-            $query = 'INSERT INTO [TG].[dbo].[payment_requests] 
-                    (request_date, user_id, comment, [status],  provider_cod, emp_cod,monto_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?);';
+            $query = 'INSERT INTO [TG].[dbo].[payment_requests]
+                    (request_date, user_id, comment, [status],  provider_cod, emp_cod, monto_total, scheduled_payment_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);';
 
-            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status, $provider_cod, $empresa_cod, $monto_total]);
+            $payment_id = $this->sql->insert($query, [$request_date, $user_id, $comment, $status, $provider_cod, $empresa_cod, $monto_total, $scheduled_payment_date]);
 
             if (!$payment_id) {
                 throw new Exception('Error al crear la solicitud de pago');
@@ -278,13 +279,14 @@ class PaymentRequestsModel extends Model
             $monto_total = $data['monto_total'];
             $nombre_request = $data['nombre_request'] ?? 'ANTICIPO';
             $comentario = $data['comentario'] ?? '';
+            $scheduled_payment_date = $data['scheduled_payment_date'] ?? null;
             $tipo = 1; // 1 = Anticipo
             $status = self::STATUS_PENDING; // 0 = Pendiente
 
             // Query de inserción
-            $query = 'INSERT INTO [TG].[dbo].[payment_requests] 
-                    (request_date, user_id, comment, [status], provider_cod, emp_cod, tipo, monto_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);';
+            $query = 'INSERT INTO [TG].[dbo].[payment_requests]
+                    (request_date, user_id, comment, [status], provider_cod, emp_cod, tipo, monto_total, scheduled_payment_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);';
 
             $params = [
                 $request_date,
@@ -294,7 +296,8 @@ class PaymentRequestsModel extends Model
                 $provider_cod,
                 $empresa_cod,
                 $tipo,
-                $monto_total  // NUEVO PARÁMETRO
+                $monto_total,
+                $scheduled_payment_date
             ];
 
             // Insertar anticipo

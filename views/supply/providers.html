@@ -85,6 +85,7 @@ table.dataTable tfoot th, table.dataTable tfoot td {
                             <th>Condiciones Pago</th>
                             <th>Observaciones</th>
                             <th>Activo</th>
+                            <th>Acciones</th>
                         </tr>
                         </thead>
                     <tbody></tbody>
@@ -100,6 +101,50 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 
 
+<!-- Modal Editar Proveedor -->
+<div class="modal fade" id="modalEditarProveedor" tabindex="-1" aria-labelledby="modalEditarProveedorLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalEditarProveedorLabel">
+                    <i class="fas fa-edit me-2"></i>Editar Proveedor
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit_provider_id">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Proveedor</label>
+                    <input type="text" class="form-control" id="edit_provider_nombre" disabled>
+                </div>
+                <div class="row g-3">
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Días Crédito <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="edit_dias_credito" min="0" step="1" placeholder="0">
+                        <small class="text-muted">Días de plazo para pago</small>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold">Límite de Crédito <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="edit_limite_credito" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <small class="text-muted">Monto máximo de crédito</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Cancelar
+                </button>
+                <button type="button" class="btn btn-primary" onclick="guardarProveedor()">
+                    <i class="fas fa-save me-1"></i>Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
@@ -107,7 +152,60 @@ table.dataTable tfoot th, table.dataTable tfoot td {
 
 providers_table();
 
-</script>
+function abrirEditarProveedor(id, nombre, dias_credito, limite_credito) {
+    $('#edit_provider_id').val(id);
+    $('#edit_provider_nombre').val(nombre);
+    $('#edit_dias_credito').val(dias_credito);
+    $('#edit_limite_credito').val(limite_credito);
+    $('#modalEditarProveedor').modal('show');
+}
+
+async function guardarProveedor() {
+    const id = $('#edit_provider_id').val();
+    const dias_credito = $('#edit_dias_credito').val();
+    const limite_credito = $('#edit_limite_credito').val();
+
+    if (dias_credito === '' || dias_credito < 0) {
+        alertify.error('Los días de crédito deben ser 0 o mayor');
+        return;
+    }
+    if (limite_credito === '' || limite_credito < 0) {
+        alertify.error('El límite de crédito debe ser 0 o mayor');
+        return;
+    }
+
+    const btn = document.querySelector('#modalEditarProveedor .btn-primary');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Guardando...';
+
+    try {
+        const response = await fetch('/supply/update_provider', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id_control_gas: parseInt(id),
+                dias_credito: parseInt(dias_credito),
+                limite_credito: parseFloat(limite_credito)
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alertify.success('Proveedor actualizado correctamente');
+            $('#modalEditarProveedor').modal('hide');
+            providers_table();
+        } else {
+            alertify.error(data.message || 'Error al actualizar el proveedor');
+        }
+    } catch (error) {
+        alertify.error('Error de conexión');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save me-1"></i>Guardar';
+    }
+}
 
 </script>
+
 {% endblock %}

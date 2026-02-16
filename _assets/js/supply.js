@@ -654,6 +654,19 @@ async function providers_table() {
       { data: "condiciones_pago", className: "text-nowrap" }, // Condiciones Pago
       { data: "observaciones", className: "text-nowrap" }, // Observaciones
       { data: "activo", className: "text-nowrap" },
+      {
+        data: null,
+        orderable: false,
+        searchable: false,
+        className: "text-center text-nowrap",
+        render: function (data, type, row) {
+          return `<button class="btn btn-sm btn-outline-primary"
+                    onclick="abrirEditarProveedor(${row.id_control_gas}, '${(row.proveedor || '').replace(/'/g, "\\'")}', ${row.dias_credito || 0}, ${row.limite_credito || 0})"
+                    title="Editar crédito">
+                    <i class="fas fa-edit"></i>
+                  </button>`;
+        },
+      },
     ],
     deferRender: true,
     createdRow: function (row, data, dataIndex) {
@@ -3574,6 +3587,7 @@ async function generatePayment() {
     async function (evt, comment) {
       showPaymentLoader("Creando pago...", "Procesando documentos");
 
+      const scheduledDate = $("#scheduled_payment_date").val() || new Date().toISOString().split("T")[0];
       const paymentData = {
         documentos: paymentItems,
         total_documentos: paymentItems.length,
@@ -3581,7 +3595,7 @@ async function generatePayment() {
           (sum, item) => sum + (parseFloat(item.total_fac) || 0),
           0,
         ),
-        fecha_pago: new Date().toISOString().split("T")[0],
+        fecha_pago: scheduledDate,
         comment: comment || "Pago programado",
         provider_cod: proveedorCodigo, // ✅ AGREGADO
         provider_name: currentProvider, // ✅ OPCIONAL
@@ -3896,6 +3910,7 @@ function confirmarCreacionAnticipo() {
   const empresa_cod = $("#anticipo_empresa").val();
   const monto = parseFloat($("#anticipo_monto").val());
   const comentario = $("#anticipo_comentario").val().trim();
+  const fecha_pago = $("#anticipo_fecha_pago").val();
 
   // Validaciones
   if (!proveedor_cod) {
@@ -3910,6 +3925,11 @@ function confirmarCreacionAnticipo() {
 
   if (!monto || monto <= 0) {
     alertify.error("El monto debe ser mayor a cero");
+    return;
+  }
+
+  if (!fecha_pago) {
+    alertify.error("Debe ingresar la fecha de pago deseada");
     return;
   }
 
@@ -3931,7 +3951,7 @@ function confirmarCreacionAnticipo() {
             <small class="text-muted">Este anticipo requerirá autorización de 3 niveles antes de poder aplicarse.</small>
         </div>`,
       function () {
-        ejecutarCreacionAnticipo(proveedor_cod, empresa_cod, monto, comentario);
+        ejecutarCreacionAnticipo(proveedor_cod, empresa_cod, monto, comentario, fecha_pago);
       },
       function () {
         alertify.message("Operación cancelada");
@@ -3949,6 +3969,7 @@ async function ejecutarCreacionAnticipo(
   empresa_cod,
   monto,
   comentario,
+  fecha_pago,
 ) {
   try {
     // Deshabilitar botón
@@ -3964,6 +3985,7 @@ async function ejecutarCreacionAnticipo(
         empresa_cod: empresa_cod,
         monto: monto,
         comentario: comentario,
+        fecha_pago: fecha_pago,
       }),
     });
 
