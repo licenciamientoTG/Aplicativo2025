@@ -4080,8 +4080,58 @@ public function forzar_recalculo() {
     // =========================================================================
 // DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÍO) V2
 // =========================================================================
-public function desligar_movimiento() {
-    ob_clean();
+    public function eliminar_grupo_conciliacion() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+
+        if (!isset($data['grupo_id'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta ID de Grupo']);
+            exit;
+        }
+
+        $grupo_id = (int)$data['grupo_id'];
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn->beginTransaction();
+
+            // 1. Revertir Tránsitos asociados a los detalles de este grupo
+            $stmtRefs = $conn->prepare("SELECT referencia_externa FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
+            $stmtRefs->execute([$grupo_id]);
+            $refs = $stmtRefs->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($refs)) {
+                $placeholders = implode(',', array_fill(0, count($refs), '?'));
+                $sqlRevert = "UPDATE Conciliacion_Transito SET estado = 'PENDIENTE', fecha_marcado = NULL 
+                              WHERE referencia_externa IN ($placeholders) AND estado = 'CONCILIADO'";
+                $stmtRevert = $conn->prepare($sqlRevert);
+                $stmtRevert->execute($refs);
+            }
+
+            // 2. Eliminar detalles
+            $stmtDelDet = $conn->prepare("DELETE FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
+            $stmtDelDet->execute([$grupo_id]);
+
+            // 3. Eliminar grupo
+            $stmtDelGrp = $conn->prepare("DELETE FROM Conciliacion_V2_Grupos WHERE id = ?");
+            $stmtDelGrp->execute([$grupo_id]);
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'message' => 'Grupo eliminado y movimientos liberados.']);
+
+        } catch (Exception $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function desligar_movimiento() {    ob_clean();
     header('Content-Type: application/json');
 
     $json = file_get_contents('php://input');
@@ -4658,6 +4708,179 @@ public function stamped_invoices_detail(): void
 
             header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             header('Content-Disposition: attachment;filename="Conciliacion_Resumen_'.$year.'_'.$month.'.xlsx"');
+            header('Cache-Control: max-age=0');
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save('php://output');
+
+        } catch (Exception $e) {
+            echo "Error generando Excel: " . $e->getMessage();
+        }
+        exit;
+    }
+
+    public function export_resumen_general() {
+        ob_clean();
+        
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+        $rs_label = $_GET['rs'] ?? 'DIAZ GAS'; 
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712"; 
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $rfc_filter = "";
+            $rfc_filter_afil = "";
+            if ($rs_label === 'DIAZ GAS') {
+                $rfc_filter = "AND E.RFC = 'DGA930823KD3'";
+                $rfc_filter_afil = "AND A.rfc = 'DGA930823KD3'";
+            } else if ($rs_label === 'GASOMEX') {
+                $rfc_filter = "AND E.RFC = 'DGM880621FU5'";
+                $rfc_filter_afil = "AND A.rfc = 'DGM880621FU5'";
+            } else {
+                $rfc_filter = "AND (E.RFC NOT IN ('DGA930823KD3', 'DGM880621FU5') OR E.RFC IS NULL)";
+                $rfc_filter_afil = "AND (A.rfc NOT IN ('DGA930823KD3', 'DGM880621FU5') OR A.rfc IS NULL)";
+            }
+
+            // Query Completa: Grupos Reconciliados + Afiliaciones Pendientes (Pool Maestro)
+            $sql = "
+                -- Parte 1: Grupos ya conciliados (incluye multi-afiliación como una sola fila)
+                SELECT 
+                    TE.Nombre as Banco,
+                    G.afiliacion as Afiliacion,
+                    E.Nombre as Estacion,
+                    SUM(G.total_sistema) as Sistema,
+                    SUM(G.total_banco) as Bancos,
+                    SUM(G.diferencia) as Diferencia
+                FROM Conciliacion_V2_Grupos G
+                INNER JOIN Estaciones E ON G.estacion_id = E.Codigo
+                INNER JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
+                WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ?
+                  AND G.entidad_id IN (1, 3, 4, 13)
+                  $rfc_filter
+                GROUP BY TE.Nombre, G.afiliacion, E.Nombre
+
+                UNION ALL
+
+                -- Parte 2: Afiliaciones existentes en el catálogo que NO tienen conciliaciones este mes
+                SELECT 
+                    TE.Nombre as Banco,
+                    A.afiliacion as Afiliacion,
+                    E.Nombre as Estacion,
+                    0 as Sistema,
+                    0 as Bancos,
+                    0 as Diferencia
+                FROM Tesoreria_afil A
+                INNER JOIN Estaciones E ON A.estacion_id = E.Codigo
+                INNER JOIN Tesoreria_Entidad TE ON A.entidad_id = TE.id
+                WHERE A.entidad_id IN (1, 3, 4, 13)
+                  $rfc_filter_afil
+                  AND NOT EXISTS (
+                      SELECT 1 FROM Conciliacion_V2_Grupos G
+                      WHERE G.estacion_id = A.estacion_id
+                        AND G.entidad_id = A.entidad_id
+                        AND (G.afiliacion = A.afiliacion OR G.afiliacion LIKE '%' + A.afiliacion + '%')
+                        AND YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ?
+                  )
+                ORDER BY Banco, Estacion";
+
+            $stmt = $conn->prepare($sql);
+            // Parámetros: Parte 1 (Year, Month), Parte 2 (Year, Month)
+            $stmt->execute([$year, $month, $year, $month]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Agrupar por Banco
+            $dataByBank = [];
+            foreach ($rows as $r) {
+                $dataByBank[$r['Banco']][] = $r;
+            }
+
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle("Resumen General $rs_label");
+
+            // Título superior
+            $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÓN - $rs_label");
+            $sheet->mergeCells('A1:E1');
+            $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
+            $sheet->getStyle('A1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+            $sheet->setCellValue('A2', "Periodo: " . $this->getMonthNameEs((int)$month) . " $year");
+            $sheet->mergeCells('A2:E2');
+            $sheet->getStyle('A2')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+            $rowIdx = 4;
+            
+            // Estilos base
+            $headerStyle = [
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF3485A8']],
+                'font' => ['bold' => true, 'color' => ['argb' => \PhpOffice\PhpSpreadsheet\Style\Color::COLOR_WHITE]],
+                'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['argb' => 'FFDEE2E6']]]
+            ];
+            
+            $totalRowStyle = [
+                'font' => ['bold' => true],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFE9ECEF']],
+                'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN, 'color' => ['argb' => 'FFDEE2E6']]]
+            ];
+
+            foreach ($dataByBank as $bankName => $bankRows) {
+                // Header del Banco
+                $sheet->setCellValue('A' . $rowIdx, "INSTITUCIÓN: " . $bankName);
+                $sheet->mergeCells('A'.$rowIdx.':E'.$rowIdx);
+                $sheet->getStyle('A'.$rowIdx)->getFont()->setBold(true)->setSize(12);
+                $rowIdx++;
+
+                // Headers de tabla
+                $headers = ['AFILIACIÓN', 'ESTACIÓN', 'SISTEMA (CG)', 'BANCOS (TX)', 'DIFERENCIA'];
+                $sheet->fromArray($headers, NULL, 'A' . $rowIdx);
+                $sheet->getStyle('A'.$rowIdx.':E'.$rowIdx)->applyFromArray($headerStyle);
+                $rowIdx++;
+
+                $bankStartRow = $rowIdx;
+                $sumSis = 0; $sumBan = 0; $sumDif = 0;
+
+                foreach ($bankRows as $r) {
+                    $sheet->setCellValue('A'.$rowIdx, $r['Afiliacion']);
+                    $sheet->setCellValue('B'.$rowIdx, $r['Estacion']);
+                    $sheet->setCellValue('C'.$rowIdx, $r['Sistema']);
+                    $sheet->setCellValue('D'.$rowIdx, $r['Bancos']);
+                    $sheet->setCellValue('E'.$rowIdx, $r['Diferencia']);
+                    
+                    $sheet->getStyle('C'.$rowIdx.':E'.$rowIdx)->getNumberFormat()->setFormatCode('$#,##0.00');
+                    if (abs($r['Diferencia']) > 0.01) {
+                        $sheet->getStyle('E'.$rowIdx)->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                    }
+
+                    $sumSis += $r['Sistema'];
+                    $sumBan += $r['Bancos'];
+                    $sumDif += $r['Diferencia'];
+                    $rowIdx++;
+                }
+
+                // Totales por Banco
+                $sheet->setCellValue('A'.$rowIdx, 'SUBTOTAL ' . $bankName);
+                $sheet->mergeCells('A'.$rowIdx.':B'.$rowIdx);
+                $sheet->setCellValue('C'.$rowIdx, $sumSis);
+                $sheet->setCellValue('D'.$rowIdx, $sumBan);
+                $sheet->setCellValue('E'.$rowIdx, $sumDif);
+                
+                $sheet->getStyle('A'.$rowIdx.':E'.$rowIdx)->applyFromArray($totalRowStyle);
+                $sheet->getStyle('C'.$rowIdx.':E'.$rowIdx)->getNumberFormat()->setFormatCode('$#,##0.00');
+                if (abs($sumDif) > 0.01) {
+                    $sheet->getStyle('E'.$rowIdx)->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                }
+
+                $rowIdx += 2; // Espacio entre tablas
+            }
+
+            foreach (range('A', 'E') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="Resumen_General_'.str_replace(' ','_',$rs_label).'_'.$year.'_'.$month.'.xlsx"');
             header('Cache-Control: max-age=0');
 
             $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);

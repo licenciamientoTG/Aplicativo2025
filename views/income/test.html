@@ -173,30 +173,34 @@
 
     .font-numeric { font-family: 'Consolas', monospace; font-weight: 700; }
 
-    /* BOTONES DE ACCIÓN (UPDATE / UNLINK) */
+    /* BOTONES DE ACCIÓN MEJORADOS */
     .btn-action-mini {
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 0.75rem;
-        cursor: pointer;
-        margin-left: 5px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        transition: all 0.2s;
-        z-index: 100;
+        border: none; border-radius: 6px; padding: 4px 10px; font-size: 0.8rem;
+        cursor: pointer; margin-left: 6px; box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+        transition: all 0.2s ease; z-index: 100; display: inline-flex; align-items: center; justify-content: center;
     }
-    .btn-action-mini:hover { transform: scale(1.1); }
+    .btn-action-mini:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+    .btn-action-mini i { margin: 0; }
 
-    .btn-sync-db { background-color: #fd7e14; color: white; animation: pulse 2s infinite; }
-    .btn-sync-db:hover { background-color: #e67e22; }
+    .btn-action-info { background-color: #3498db; color: white; }
+    .btn-action-info:hover { background-color: #2980b9; }
 
-    .btn-unlink { background-color: #e74c3c; color: white; opacity: 0.7; }
-    .btn-unlink:hover { background-color: #c0392b; opacity: 1; }
+    .btn-action-calendar { background-color: #9b59b6; color: white; }
+    .btn-action-calendar:hover { background-color: #8e44ad; }
 
-    @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0.4); }
-        70% { box-shadow: 0 0 0 6px rgba(253, 126, 20, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(253, 126, 20, 0); }
+    .btn-action-sync { background-color: #f39c12; color: white; animation: pulse-orange 2s infinite; }
+    .btn-action-sync:hover { background-color: #e67e22; }
+
+    .btn-action-unlink { background-color: #e74c3c; color: white; opacity: 0.85; }
+    .btn-action-unlink:hover { background-color: #c0392b; opacity: 1; }
+
+    .btn-action-delete-group { background-color: #c0392b; color: white; }
+    .btn-action-delete-group:hover { background-color: #a93226; }
+
+    @keyframes pulse-orange {
+        0% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.5); }
+        70% { box-shadow: 0 0 0 8px rgba(243, 156, 18, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0); }
     }
 
     /* BARRA FLOTANTE */
@@ -679,7 +683,8 @@
         actualizar_detalle: '/income/actualizar_monto_detalle',
         desligar_detalle: '/income/desligar_movimiento',
         borrar_transito: '/income/borrar_transito',
-        update_date: '/income/update_transaction_date'
+        update_date: '/income/update_transaction_date',
+        eliminar_grupo: '/income/eliminar_grupo_conciliacion'
     };
 
     const ENTITY_CONFIG = {
@@ -882,6 +887,26 @@
                 } else alert("Error al desligar: " + resp.message);
             },
             error: function(err) { alert("Error de red"); console.error(err); }
+        });
+    }
+
+    function eliminarGrupo(grupoId) {
+        event.stopPropagation();
+        if(!confirm("¿Estás seguro de ELIMINAR TODO EL GRUPO #" + grupoId + "?\n\nTodos los movimientos de este grupo volverán a estar disponibles para conciliar.")) return;
+
+        $('body').addClass('is-loading');
+        $.ajax({
+            url: URLS.eliminar_grupo,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ grupo_id: grupoId }),
+            success: function(resp) {
+                $('body').removeClass('is-loading');
+                if(resp.status === 'success') {
+                    actualizarTodo();
+                } else alert("Error al eliminar grupo: " + resp.message);
+            },
+            error: function(err) { $('body').removeClass('is-loading'); alert("Error de red"); console.error(err); }
         });
     }
 
@@ -1625,7 +1650,7 @@
                 
                 if (g._transitId || (g.transitIds && g.transitIds.length)) { 
                     const idsJson = JSON.stringify(g.transitIds || [g._transitId]).replace(/"/g, "&quot;");
-                    buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="eliminarTransito(${idsJson}); event.stopPropagation();" title="Quitar de Tránsito"><i class="fas fa-trash-alt"></i></button>`;
+                    buttonsHtml += `<button class="btn-action-mini btn-action-unlink" onclick="eliminarTransito(${idsJson}); event.stopPropagation();" title="Quitar de Tránsito"><i class="fas fa-times"></i></button>`;
                 }
             } else if (g._status === 'transit_completed') { 
                 clasesExtra += " transit-completed"; 
@@ -1647,18 +1672,18 @@
             
             // Botón Info Detalles (SIEMPRE DISPONIBLE)
             const dataJson = JSON.stringify(g).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-            buttonsHtml += `<button class="btn-action-mini btn-info ml-1" onclick="event.stopPropagation(); verDetalleTransaccion('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
+            buttonsHtml += `<button class="btn-action-mini btn-action-info ml-1" onclick="event.stopPropagation(); verDetalleTransaccion('${dataJson}')" title="Ver Detalles"><i class="fas fa-search"></i></button>`;
             
             // Botón Mover Fecha (Solo si no está conciliado)
             if(!coincidencia) {
-                buttonsHtml += `<button class="btn-action-mini btn-light border ml-1" onclick="event.stopPropagation(); changeTransactionDate('${g.IdTransaccion}', '${g.FechaConciliacion}')" title="Mover Fecha"><i class="fas fa-calendar-day text-primary"></i></button>`;
+                buttonsHtml += `<button class="btn-action-mini btn-action-calendar ml-1" onclick="event.stopPropagation(); changeTransactionDate('${g.IdTransaccion}', '${g.FechaConciliacion}')" title="Mover Fecha"><i class="fas fa-calendar-alt"></i></button>`;
             }
         }
 
         // 2.1 Botón Detalle ControlGas (SIEMPRE DISPONIBLE)
         if (side === 'left' && g.originalData) {
              const dataJson = JSON.stringify(g.originalData).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-             buttonsHtml += `<button class="btn-action-mini btn-dark ml-1" onclick="event.stopPropagation(); verDetalleControlGas('${dataJson}')" title="Ver Detalles"><i class="fas fa-info-circle"></i></button>`;
+             buttonsHtml += `<button class="btn-action-mini btn-action-info ml-1" onclick="event.stopPropagation(); verDetalleControlGas('${dataJson}')" title="Ver Detalles"><i class="fas fa-search"></i></button>`;
         }
 
         // 3. Estado Conciliado
@@ -1670,7 +1695,8 @@
             if (g._status !== 'transit_completed') estiloFondo = `style="background-color: ${color}40;"`; 
             badgeHtml = `<span class="nexus-badge" style="background:${color}">#${coincidencia.grupo_id}</span>`;
 
-            buttonsHtml += `<button class="btn-action-mini btn-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer"><i class="fas fa-unlink"></i></button>`;
+            buttonsHtml += `<button class="btn-action-mini btn-action-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer este item"><i class="fas fa-unlink"></i></button>`;
+            buttonsHtml += `<button class="btn-action-mini btn-action-delete-group ml-1" onclick="eliminarGrupo(${coincidencia.grupo_id})" title="Deshacer TODO el Grupo"><i class="fas fa-trash-alt"></i></button>`;
 
             // MOSTRAR DIFERENCIA DE GRUPO (SÓLO SI ES LA COLUMNA DE TRANSACCIONES)
             if(side === 'center') {
@@ -1689,7 +1715,7 @@
                 const montoBd = parseFloat(coincidencia.monto);
                 if(Math.abs(monto - montoBd) > 0.1) {
                     clasesExtra += " desync"; 
-                    buttonsHtml = `<button class="btn-action-mini btn-sync-db" onclick="sincronizarMonto(${coincidencia.id}, ${monto})" title="Actualizar BD"><i class="fas fa-sync-alt"></i> Actualizar</button>${buttonsHtml}`;
+                    buttonsHtml = `<button class="btn-action-mini btn-action-sync" onclick="sincronizarMonto(${coincidencia.id}, ${monto})" title="Actualizar BD"><i class="fas fa-sync-alt"></i></button>${buttonsHtml}`;
                 }
             }
 
