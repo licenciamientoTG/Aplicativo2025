@@ -157,8 +157,8 @@
         </div>
 
         <!-- ROW 2: VISUAL ANALYTICS -->
-        <div class="row mb-4">
-            <div class="col-lg-6">
+        <div class="row mb-4" id="row-visual-analytics">
+            <div class="col-lg-6" id="col-trend">
                 <div class="card chart-card">
                     <div class="card-header bg-white border-0 py-3 d-flex justify-content-between">
                         <h6 class="mb-0 font-weight-bold">Tendencia Diaria: Sistema vs Bancos</h6>
@@ -171,7 +171,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3">
+            <div class="col-lg-3" id="col-station">
                 <div class="card chart-card">
                     <div class="card-header bg-white border-0 py-3">
                         <h6 class="mb-0 font-weight-bold">Por Estación</h6>
@@ -183,7 +183,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3">
+            <div class="col-lg-3" id="col-bank">
                 <div class="card chart-card">
                     <div class="card-header bg-white border-0 py-3">
                         <h6 class="mb-0 font-weight-bold">Por Banco</h6>
@@ -410,23 +410,41 @@
 
     // --- CARGA DE DATOS ---
     function loadDashboard() {
+        const sid = $('#estacionSelect').val();
+        const bid = $('#bancoSelect').val();
+        const afil = $('#afiliacionSelect').val();
+        
         const params = { 
             year: $('#yearFilter').val(), 
             month: $('#monthFilter').val(), 
-            estacion_id: $('#estacionSelect').val(), 
-            banco_id: $('#bancoSelect').val(), 
-            afiliacion: $('#afiliacionSelect').val() 
+            estacion_id: sid, 
+            banco_id: bid, 
+            afiliacion: afil 
         };
 
         // UI Reset
         $('.metric-value').text('...');
+
+        // Dinamismo de Gráficas: Ocultar si hay filtros específicos
+        const showStationChart = (sid == "0");
+        const showBankChart = (bid == "0");
+
+        $('#col-station').toggle(showStationChart);
+        $('#col-bank').toggle(showBankChart);
+
+        // Ajustar ancho de Tendencia
+        const colTrend = $('#col-trend');
+        colTrend.removeClass('col-lg-6 col-lg-9 col-lg-12');
+        if (!showStationChart && !showBankChart) colTrend.addClass('col-lg-12');
+        else if (!showStationChart || !showBankChart) colTrend.addClass('col-lg-9');
+        else colTrend.addClass('col-lg-6');
         
         $.get('/income/get_conciliacion_summary', params, function(resp) {
             if(resp.status === 'success') {
                 renderKPIs(resp.totales);
                 renderTrendChart(resp.dias);
-                renderStationChart(resp.estaciones);
-                renderBankChart(resp.agrupados.bancos);
+                if(showStationChart) renderStationChart(resp.estaciones);
+                if(showBankChart) renderBankChart(resp.agrupados.bancos);
                 renderTables(resp);
                 loadTransitAging();
             }
@@ -465,41 +483,84 @@
             const labels = sortedData.map(d => d.fecha.split('-')[2]); 
             const valsCG = sortedData.map(d => parseFloat(d.sistema));
             const valsBK = sortedData.map(d => parseFloat(d.banco));
+            const valsDiff = sortedData.map(d => parseFloat(d.diferencia));
+
+            const isExpanded = !($('#col-station').is(':visible')) && !($('#col-bank').is(':visible'));
+
+            const datasets = [
+                { 
+                    label: 'Sistema', 
+                    data: valsCG, 
+                    borderColor: '#3485a8', 
+                    backgroundColor: 'rgba(52, 133, 168, 0.05)', 
+                    fill: true, 
+                    tension: 0.4, 
+                    borderWidth: 2, 
+                    pointRadius: 3,
+                    yAxisID: 'y'
+                },
+                { 
+                    label: 'Bancos', 
+                    data: valsBK, 
+                    borderColor: '#2ecc71', 
+                    backgroundColor: 'transparent', 
+                    borderDash: [5, 5], 
+                    tension: 0.4, 
+                    borderWidth: 2, 
+                    pointRadius: 3,
+                    yAxisID: 'y'
+                }
+            ];
+
+            // Si estamos en vista filtrada (expandida), añadimos la barra de diferencias en el eje secundario
+            if (isExpanded) {
+                datasets.push({
+                    type: 'bar',
+                    label: 'Diferencia ($)',
+                    data: valsDiff,
+                    backgroundColor: valsDiff.map(v => Math.abs(v) > 0.01 ? 'rgba(231, 76, 60, 0.2)' : 'rgba(46, 204, 113, 0.1)'),
+                    borderColor: valsDiff.map(v => Math.abs(v) > 0.01 ? '#e74c3c' : '#2ecc71'),
+                    borderWidth: 1,
+                    yAxisID: 'y1',
+                    barPercentage: 0.5
+                });
+            }
 
             trendChart = new Chart(canvas, {
                 type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { 
-                            label: 'Sistema', 
-                            data: valsCG, 
-                            borderColor: '#3485a8', 
-                            backgroundColor: 'rgba(52, 133, 168, 0.05)', 
-                            fill: true, 
-                            tension: 0.4, 
-                            borderWidth: 3, 
-                            pointRadius: 4 
-                        },
-                        { 
-                            label: 'Bancos', 
-                            data: valsBK, 
-                            borderColor: '#2ecc71', 
-                            backgroundColor: 'transparent', 
-                            borderDash: [5, 5], 
-                            tension: 0.4, 
-                            borderWidth: 2, 
-                            pointRadius: 4 
-                        }
-                    ]
-                },
+                data: { labels: labels, datasets: datasets },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     interaction: { intersect: false, mode: 'index' },
-                    plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6 } } },
+                    plugins: { 
+                        legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6 } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) label += ': ';
+                                    if (context.parsed.y !== null) label += formatter.format(context.parsed.y);
+                                    return label;
+                                }
+                            }
+                        }
+                    },
                     scales: { 
-                        y: { beginAtZero: true, grid: { borderDash: [2, 2] }, ticks: { callback: v => formatter.format(v) } },
-                        x: { grid: { display: false } }
+                        y: { 
+                            type: 'linear', display: true, position: 'left',
+                            beginAtZero: true, 
+                            title: { display: isExpanded, text: 'Totales ($)', font: { size: 10, weight: 'bold' } },
+                            grid: { borderDash: [2, 2], drawOnChartArea: true }, 
+                            ticks: { callback: v => '$' + (v >= 1000 ? (v/1000).toFixed(0) + 'k' : v), font: { size: 9 } } 
+                        },
+                        y1: {
+                            type: 'linear', display: isExpanded, position: 'right',
+                            beginAtZero: true,
+                            title: { display: true, text: 'Diferencia ($)', font: { size: 10, weight: 'bold' } },
+                            grid: { drawOnChartArea: false },
+                            ticks: { font: { size: 9, weight: 'bold' }, color: '#e74c3c' }
+                        },
+                        x: { grid: { display: false }, ticks: { font: { size: 9 } } }
                     }
                 }
             });

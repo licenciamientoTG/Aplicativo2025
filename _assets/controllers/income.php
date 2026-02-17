@@ -3890,63 +3890,63 @@ public function borrar_transito() {
 }
 
 public function get_conciliacion_config() {
-        ob_clean();
-        header('Content-Type: application/json');
-        
-        $estacion_id = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
-        if (!$estacion_id) {
-            echo json_encode(['status' => 'error', 'message' => 'ID de estación inválido']);
-            exit;
-        }
-
-        $server = "192.168.0.6"; 
-        $db = "TG"; 
-        $user = "cguser"; 
-        $pass = "sahei1712"; 
-
-        try {
-            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            
-            // JOIN CORRECTO con Tesoreria_Entidad para obtener el nombre del banco
-            $sql = "SELECT 
-                        C.entidad_id, 
-                        E.Nombre as nombre_banco, 
-                        C.afiliacion, 
-                        C.descripcion, 
-                        C.conceptos_cg 
-                    FROM Conciliacion_Configuracion C
-                    INNER JOIN Tesoreria_Entidad E ON C.entidad_id = E.id
-                    WHERE C.estacion_id = ?";
-            
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$estacion_id]);
-            $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            // INYECCIÓN MANUAL COLOSIO (ID 333)
-            if ($estacion_id == 333) {
-                // Verificar si ya existe para no duplicar (aunque es improbable si no está en BD)
-                $existe = false;
-                foreach($reglas as $r) { if($r['afiliacion'] == '9274246') $existe = true; }
-                
-                if(!$existe) {
-                    $reglas[] = [
-                        'entidad_id'   => 1,
-                        'nombre_banco' => 'SANTANDER',
-                        'afiliacion'   => '9274246',
-                        'descripcion'  => 'Cuenta 9274246 (Manual)',
-                        'conceptos_cg' => 'VENTA,DEPOSITO'
-                    ];
-                }
-            }
-            
-            echo json_encode(['status' => 'success', 'data' => $reglas]);
-
-        } catch (PDOException $e) {
-            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-        }
+    ob_clean();
+    header('Content-Type: application/json');
+    
+    $estacion_id = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
+    if (!$estacion_id) {
+        echo json_encode(['status' => 'error', 'message' => 'ID de estación inválido']);
         exit;
     }
+
+    $server = "192.168.0.6"; 
+    $db = "TG"; 
+    $user = "cguser"; 
+    $pass = "sahei1712"; 
+
+    try {
+        $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+        // Query a Tesoreria_afil en lugar de Conciliacion_Configuracion
+        $sql = "SELECT 
+                    A.entidad_id, 
+                    E.Nombre as nombre_banco, 
+                    A.afiliacion,
+                    -- Construir una descripción si no existe una columna específica
+                    E.Nombre + ' (' + A.afiliacion + ')' as descripcion,
+                    '' as conceptos_cg -- Columna vacía para mantener compatibilidad si es necesario
+                FROM Tesoreria_afil A
+                INNER JOIN Tesoreria_Entidad E ON A.entidad_id = E.id
+                WHERE A.estacion_id = ?";
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->execute([$estacion_id]);
+        $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // INYECCIÓN MANUAL COLOSIO (ID 333)
+        if ($estacion_id == 333) {
+            $existe = false;
+            foreach($reglas as $r) { if($r['afiliacion'] == '9274246') $existe = true; }
+            
+            if(!$existe) {
+                $reglas[] = [
+                    'entidad_id'   => 1,
+                    'nombre_banco' => 'SANTANDER',
+                    'afiliacion'   => '9274246',
+                    'descripcion'  => 'SANTANDER (9274246)',
+                    'conceptos_cg' => ''
+                ];
+            }
+        }
+        
+        echo json_encode(['status' => 'success', 'data' => $reglas]);
+
+    } catch (PDOException $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    }
+    exit;
+}
 
     // =========================================================================
 // FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO (2 VÍAS: CG vs TX) V2
