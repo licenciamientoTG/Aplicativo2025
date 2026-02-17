@@ -2149,7 +2149,10 @@ public function anomalies_client_tickets()
 
         // 4. Limpieza estándar (Fallback)
         // iconv elimina acentos: 'Aplicación' -> 'Aplicacion'
-        $s = iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
+        $s = @iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
+        if ($s === false) {
+            $s = $orig;
+        }
         $s = preg_replace('/[^a-zA-Z0-9_]/', '_', $s);
         $s = preg_replace('/_+/', '_', $s);
         
@@ -2239,7 +2242,7 @@ public function anomalies_client_tickets()
             exit;
         }
 
-        $extension = pathinfo($_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? $filePath), PATHINFO_EXTENSION);
+        $extension = strtolower(pathinfo($_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? $filePath), PATHINFO_EXTENSION));
 
         $server = "192.168.0.6";
         $db = "TG";
@@ -2341,10 +2344,22 @@ public function anomalies_client_tickets()
             $skipped = 0;
 
             if ($bankType === 'BANORTE') {
-                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
-                $sheet = $spreadsheet->getActiveSheet();
-                $rows = $sheet->toArray();
-                $rawHeader = array_shift($rows);
+                $rows = [];
+                $rawHeader = [];
+
+                if ($extension === 'xlsx' || $extension === 'xls') {
+                    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                    $sheet = $spreadsheet->getActiveSheet();
+                    $rows = $sheet->toArray();
+                    $rawHeader = array_shift($rows);
+                } else {
+                    $handle = fopen($filePath, "r");
+                    $rawHeader = fgetcsv($handle, 0, ",");
+                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                        $rows[] = $row;
+                    }
+                    fclose($handle);
+                }
 
                 $mappedIndices = [];
                 foreach ($rawHeader as $i => $h) {
@@ -2423,8 +2438,22 @@ public function anomalies_client_tickets()
                 }
                 
                             } elseif ($bankType === 'SANTANDER') {
-                                $handle = fopen($filePath, "r");
-                                $rawHeader = fgetcsv($handle, 0, ",");
+                                $allRows = [];
+                                $rawHeader = [];
+
+                                if ($extension === 'xlsx' || $extension === 'xls') {
+                                    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($filePath);
+                                    $sheet = $spreadsheet->getActiveSheet();
+                                    $allRows = $sheet->toArray();
+                                    $rawHeader = array_shift($allRows);
+                                } else {
+                                    $handle = fopen($filePath, "r");
+                                    $rawHeader = fgetcsv($handle, 0, ",");
+                                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                        $allRows[] = $row;
+                                    }
+                                    fclose($handle);
+                                }
                                 
                                 // 1. Mapear Índices
                                 $mappedIndices = [];
@@ -2437,20 +2466,22 @@ public function anomalies_client_tickets()
 
                                 // --- VALIDACION 100% FECHA DEPOSITO ---
                                 if (!isset($mappedIndices['Fecha_Deposito'])) {
-                                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Deposito en el archivo CSV.']);
+                                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Deposito en el archivo.']);
                                     exit;
                                 }
                                 $idxDepo = $mappedIndices['Fecha_Deposito'];
-                                $allRows = [];
-                                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
-                                    if (empty(array_filter($row))) continue;
+                                
+                                // Validar que todas las filas tengan fecha de deposito
+                                foreach ($allRows as $rowIndex => $row) {
+                                    if (empty(array_filter($row))) {
+                                        unset($allRows[$rowIndex]);
+                                        continue;
+                                    }
                                     if (empty($row[$idxDepo] ?? null)) {
                                         echo json_encode(['status' => 'error', 'message' => 'El archivo no cuenta con el 100% de las fechas de deposito. No se proceso ningun registro.']);
                                         exit;
                                     }
-                                    $allRows[] = $row;
                                 }
-                                fclose($handle);
                 
                                 // 2. Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
                                 $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_getnet");
@@ -2544,7 +2575,6 @@ public function anomalies_client_tickets()
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
                                 }
-                                fclose($handle);
                             }
 
             // Limpiar logs de debug previos
