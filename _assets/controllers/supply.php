@@ -3219,6 +3219,7 @@ class Supply
                 $data[] = [
                     'id'             => $row['id'],
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
+                    'scheduled_payment_date' => $row['scheduled_payment_date'] ? date('d/m/Y', strtotime($row['scheduled_payment_date'])) : null,
                     'usuario'        => $row['usuario_nombre'],
                     'provider_name'  => $row['provider_name'],
                     'emp_name'       => $row['emp_name'],
@@ -6470,32 +6471,206 @@ class Supply
     private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber)
     {
         try {
-            $paymentModel = new PaymentRequestsModel();
-            $detalles = $paymentModel->getBulkAuthorizationDetails($bulkId);
+            $detalles = $this->PaymentRequestsModel->getBulkAuthorizationDetails($bulkId);
 
             if (!$detalles) {
+                error_log("Aprobación masiva #{$bulkId}: no se encontraron detalles para notificar");
                 return;
             }
 
-            // Log de la acción
             error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: {$detalles['user_name']}, Nivel: {$detalles['nivel_nombre']}, Pagos: " . count($paymentIds));
 
-            // Aquí puedes implementar envío de emails si lo necesitas
-            // Ejemplo:
-            /*
-        $to = $this->getEmailSiguienteNivel($permissionNumber);
-        $subject = 'Nueva Aprobación Masiva - ' . $detalles['nivel_nombre'];
-        $message = "Se ha realizado una aprobación masiva:\n\n";
-        $message .= "Usuario: " . $detalles['user_name'] . "\n";
-        $message .= "Nivel: " . $detalles['nivel_nombre'] . "\n";
-        $message .= "Pagos aprobados: " . $detalles['approved_count'] . "\n";
-        $message .= "Monto total: $" . number_format($detalles['total_amount'], 2) . "\n";
-        
-        $this->sendEmail($to, $subject, $message);
-        */
+            // Nivel siguiente al que se aprobó
+            $nextLevel = match ((int)$permissionNumber) {
+                66 => 67, // Abastos aprobó → notificar a Finanzas
+                67 => 68, // Finanzas aprobó → notificar a Tesorería
+                default => null
+            };
+
+            if ($nextLevel === null) {
+                // Tesorería aprobó: no hay siguiente nivel, no se envía correo
+                return;
+            }
+
+            $emails = $this->UsuariosModel->get_emails_by_permission($nextLevel);
+
+            if (empty($emails)) {
+                error_log("Aprobación masiva #{$bulkId}: no hay usuarios con permiso {$nextLevel} para notificar");
+                return;
+            }
+
+            $emails = array_filter($emails, function ($email) {
+                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
+            });
+            $emails = array_values($emails);
+
+            if (empty($emails)) {
+                error_log("Aprobación masiva #{$bulkId}: no hay correos disponibles después del filtro");
+                return;
+            }
+
+            $pagosDetalle = $this->PaymentRequestsModel->getBulkPaymentsDetail($paymentIds);
+
+            $authorized_department = $detalles['nivel_nombre'];
+            $next_department = match ($nextLevel) {
+                67 => 'Administración y Finanzas',
+                68 => 'Tesorería',
+                default => 'Desconocido'
+            };
+
+            $subject = "Aprobación Masiva - {$detalles['approved_count']} pago(s) requieren tu autorización - {$next_department}";
+            $body = $this->generar_html_notificacion_aprobacion_masiva(
+                $bulkId,
+                $detalles['user_name'],
+                $authorized_department,
+                $next_department,
+                $detalles['approved_count'],
+                $detalles['total_amount'],
+                $pagosDetalle
+            );
+
+            $from = 'totalgasdesarrollo@gmail.com';
+
+            ob_start();
+            $resultado = @send_mail2($subject, $body, $emails, $from);
+            ob_get_clean();
+
+            if ($resultado) {
+                error_log("Notificación de aprobación masiva #{$bulkId} enviada a {$next_department}: " . implode(', ', $emails));
+            } else {
+                error_log("Error al enviar notificación de aprobación masiva #{$bulkId}");
+            }
         } catch (Exception $e) {
-            error_log("Error al enviar notificaciones: " . $e->getMessage());
+            error_log("Error al enviar notificaciones de aprobación masiva: " . $e->getMessage());
         }
+    }
+
+    private function generar_html_notificacion_aprobacion_masiva(
+        $bulk_id,
+        $autorizado_por,
+        $authorized_department,
+        $next_department,
+        $total_pagos,
+        $monto_total,
+        $pagos
+    ) {
+        $fecha = date('d/m/Y H:i:s');
+        $monto_formatted = number_format($monto_total, 2, '.', ',');
+        $url_lista = "http://totalgasonline.net:400/supply/payment_list";
+
+        $filas_pagos = '';
+        foreach ($pagos as $pago) {
+            $monto_pago = number_format($pago['monto_total'], 2, '.', ',');
+            $proveedor = htmlspecialchars($pago['proveedor_nombre'] ?? 'N/A');
+            $empresa = htmlspecialchars($pago['empresa_nombre'] ?? 'N/A');
+            $filas_pagos .= "
+                <tr>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>#{$pago['id']}</td>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>{$proveedor}</td>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>{$empresa}</td>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333; text-align:center;'>{$pago['num_facturas']}</td>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#28a745; font-weight:600; text-align:right;'>\${$monto_pago}</td>
+                </tr>";
+        }
+
+        return "
+        <!DOCTYPE html>
+        <html lang='es'>
+        <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <style>
+                body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
+                .container { max-width: 680px; margin: 0 auto; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .header { background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white; padding: 30px; text-align: center; }
+                .header h1 { margin: 0; font-size: 24px; }
+                .header p { margin: 5px 0 0 0; opacity: 0.9; }
+                .content { padding: 30px; }
+                .badge { display: inline-block; background: #17a2b8; color: white; padding: 5px 15px; border-radius: 20px; font-size: 14px; margin-bottom: 20px; }
+                .alert-box { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; padding: 15px; border-radius: 8px; margin: 20px 0; }
+                .status-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 20px 0; }
+                .status-label { font-weight: 600; color: #495057; margin-bottom: 8px; }
+                .status-item { display: flex; align-items: center; padding: 6px 0; }
+                .status-completed { color: #28a745; }
+                .status-pending { color: #ffc107; }
+                .total-box { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
+                .total-label { color: #666; font-size: 14px; margin-bottom: 5px; }
+                .total-amount { color: #17a2b8; font-size: 32px; font-weight: bold; }
+                .button { display: inline-block; background: #17a2b8; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: 600; }
+                .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 12px; }
+                table { width: 100%; border-collapse: collapse; font-size: 13px; }
+                thead th { background: #17a2b8; color: white; padding: 10px; text-align: left; }
+                thead th:last-child { text-align: right; }
+                thead th:nth-child(4) { text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class='container'>
+                <div class='header'>
+                    <h1>⏳ Autorización Masiva Requerida</h1>
+                    <p>Sistema de Gestión de Pagos - TotalGas</p>
+                </div>
+
+                <div class='content'>
+                    <div class='badge'>🔔 Notificación - {$next_department}</div>
+
+                    <div class='alert-box'>
+                        <strong>{$autorizado_por}</strong> ({$authorized_department}) ha realizado una aprobación masiva de <strong>{$total_pagos} pago(s)</strong>.<br>
+                        Ahora requieren tu autorización para continuar con el proceso.
+                    </div>
+
+                    <div class='total-box'>
+                        <div class='total-label'>Monto Total Aprobado</div>
+                        <div class='total-amount'>\${$monto_formatted}</div>
+                    </div>
+
+                    <div class='status-box'>
+                        <div class='status-label'>📊 Estado de Autorizaciones:</div>
+                        <div class='status-item status-completed'>
+                            ✅ <span style='margin-left:8px;'><strong>{$authorized_department}:</strong> Autorizado</span>
+                        </div>
+                        <div class='status-item status-pending'>
+                            ⏳ <span style='margin-left:8px;'><strong>{$next_department}:</strong> Pendiente (Tu autorización)</span>
+                        </div>
+                    </div>
+
+                    <p style='font-weight:600; color:#333; margin-bottom:10px;'>📋 Pagos aprobados en esta autorización masiva:</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Proveedor</th>
+                                <th>Empresa</th>
+                                <th style='text-align:center;'>Facturas</th>
+                                <th style='text-align:right;'>Monto</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {$filas_pagos}
+                        </tbody>
+                    </table>
+
+                    <div style='text-align: center; margin-top: 30px;'>
+                        <a href='{$url_lista}' class='button'>
+                            Ir a Autorizaciones Masivas →
+                        </a>
+                    </div>
+
+                    <p style='color: #666; font-size: 14px; margin-top: 20px; text-align: center;'>
+                        <strong>⚠️ Acción Requerida:</strong><br>
+                        Estos pagos necesitan tu autorización para continuar con el flujo de aprobación.
+                    </p>
+                </div>
+
+                <div class='footer'>
+                    <p><strong>TotalGas - Sistema de Gestión de Pagos</strong></p>
+                    <p>Este es un correo automático, por favor no responda a este mensaje.</p>
+                    <p style='margin-top: 10px; font-size: 11px;'>© " . date('Y') . " TotalGas. Todos los derechos reservados.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        ";
     }
 
     /**

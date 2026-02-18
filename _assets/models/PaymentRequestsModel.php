@@ -192,6 +192,7 @@ class PaymentRequestsModel extends Model
                 t1.id,
                 t1.user_id,
                 t1.request_date,
+                t1.scheduled_payment_date,
                 t1.status,
                 t1.comment,
                 t3.Nombre AS usuario_nombre,
@@ -1267,6 +1268,38 @@ class PaymentRequestsModel extends Model
         $result = $this->sql->select($query, [$bulkId]);
 
         return $result ? $result[0] : false;
+    }
+
+    /**
+     * Obtener detalle de pagos por IDs para correo de aprobación masiva
+     */
+    public function getBulkPaymentsDetail(array $paymentIds): array
+    {
+        if (empty($paymentIds)) return [];
+
+        $placeholders = implode(',', array_fill(0, count($paymentIds), '?'));
+
+        $query = "
+            SELECT
+                pr.id,
+                pr.monto_total,
+                pr.comment,
+                prov.den as proveedor_nombre,
+                emp.den as empresa_nombre,
+                ISNULL(inv_sum.total_invoices, 0) as num_facturas
+            FROM [TG].[dbo].[payment_requests] pr
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov ON pr.provider_cod = prov.cod
+            LEFT JOIN [SG12].[dbo].[Empresas] emp ON pr.emp_cod = emp.cod
+            LEFT JOIN (
+                SELECT payment_request_id, COUNT(*) as total_invoices
+                FROM [TG].[dbo].[payment_request_invoices]
+                GROUP BY payment_request_id
+            ) inv_sum ON pr.id = inv_sum.payment_request_id
+            WHERE pr.id IN ($placeholders)
+            ORDER BY pr.id
+        ";
+
+        return $this->sql->select($query, $paymentIds) ?: [];
     }
 
     /**

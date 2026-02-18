@@ -882,8 +882,7 @@
 									{# Vencimiento #}
 									<td>
 										{% if invoice.expiration_date %}
-											{{
-                invoice.expiration_date|date('d/m/Y') }}
+											{{ invoice.expiration_date|date('d/m/Y') }}
 										{% else %}
 											<span class="text-muted">-</span>
 										{% endif %}
@@ -940,8 +939,7 @@
 										<button class="btn btn-sm btn-outline-info" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Ver historial de pagos">
 											<i class="fas fa-history"></i>
 										</button>
-										{% if payment.status == 0 or payment.status == 1 and
-                invoice.paid_amount == 0 %}
+										{% if payment.status == 0 or payment.status == 1 and invoice.paid_amount == 0 %}
 											<button class="btn btn-sm btn-outline-danger" onclick="removeInvoiceFromPayment({{ invoice.id }}, '{{ invoice.folio }}')" title="Quitar factura del pago">
 												<i class="fas fa-times"></i>
 											</button>
@@ -950,61 +948,55 @@
 								</tr>
 							{% endfor %}
 						</tbody>
-						<tfoot class="table-light">
-							<tr>
-								<th colspan="8" class="text-end">TOTALES:</th>
-								<th class="text-end">
-									{% set total_monto = 0 %}
-									{% for invoice in invoices %}
-										{% set
-                total_monto = total_monto + invoice.amount %}
-									{% endfor %}
-									${{
-                total_monto|number_format(2) }}
-								</th>
-								<th class="text-end">
-									{% set total_pagado_calc = 0 %}
-									{% for invoice in invoices %}
-										{%
-                set total_pagado_calc = total_pagado_calc + invoice.paid_amount
-                %}
-									{% endfor %}
-									${{ total_pagado_calc|number_format(2) }}
-								</th>
-								<th class="text-end">
-									<strong class="text-danger">
-										${{ (total_monto - total_pagado_calc)|number_format(2) }}
-									</strong>
-								</th>
-								<th colspan="4"></th>
-							</tr>
-							<tr>
-								<th colspan="8" class="text-end">MONTO AUTORIZADO:</th>
-								<th class="text-end" colspan="3">
-									{% set total_autorizado_tabla = 0 %}
-									{% for invoice in invoices
-                %}
-										{% if invoice.payment_authorized == 1 %}
-											{% set
-                total_autorizado_tabla = total_autorizado_tabla +
-                invoice.authorized_amount %}
-										{% endif %}
-									{% endfor %}
-									<strong class="text-success" style="font-size: 1.1rem">
-										${{ total_autorizado_tabla|number_format(2) }}
-									</strong>
-								</th>
-								<th colspan="4">
-									<small class="text-muted">
-										{{ facturas_autorizadas }}
-										de
-										{{ total_facturas }}
-										facturas
-																				                  autorizadas
-									</small>
-								</th>
-							</tr>
-						</tfoot>
+						{% set total_monto = 0 %}
+					{% set total_pagado_calc = 0 %}
+					{% set total_nc = 0 %}
+					{% set total_nd = 0 %}
+					{% set total_autorizado_tabla = 0 %}
+					{% for invoice in invoices %}
+						{% set total_monto = total_monto + invoice.amount %}
+						{% set total_pagado_calc = total_pagado_calc + invoice.paid_amount %}
+						{% set total_nc = total_nc + invoice.total_notas_credito %}
+						{% set total_nd = total_nd + invoice.total_notas_cargo %}
+						{% if invoice.payment_authorized == 1 %}
+							{% set total_autorizado_tabla = total_autorizado_tabla + invoice.authorized_amount %}
+						{% endif %}
+					{% endfor %}
+					{% set total_saldo = total_monto - total_pagado_calc %}
+					{% set total_neto_notas = total_nd - total_nc %}
+					{% set total_saldo_neto = total_saldo + total_neto_notas %}
+					<tfoot class="table-light">
+						<tr>
+							<th colspan="5" class="text-end">TOTALES:</th>
+							<th class="text-end">${{ total_monto|number_format(2) }}</th>
+							<th class="text-end">${{ total_pagado_calc|number_format(2) }}</th>
+							<th class="text-end"><strong class="text-danger">${{ total_saldo|number_format(2) }}</strong></th>
+							<th colspan="3"></th>
+							<th></th>
+							<th class="text-end">
+								{% if total_nc > 0 %}<small class="text-success d-block">-${{ total_nc|number_format(2) }} NC</small>{% endif %}
+								{% if total_nd > 0 %}<small class="text-danger d-block">+${{ total_nd|number_format(2) }} ND</small>{% endif %}
+								{% if total_nc == 0 and total_nd == 0 %}<span class="text-muted">-</span>{% endif %}
+							</th>
+							<th class="text-end">
+								{% if total_saldo_neto > 0 %}<strong class="text-danger">${{ total_saldo_neto|number_format(2) }}</strong>
+								{% elseif total_saldo_neto < 0 %}<strong class="text-warning">${{ total_saldo_neto|number_format(2) }}</strong>
+								{% else %}<span class="text-success">$0.00</span>{% endif %}
+							</th>
+							<th></th>
+						</tr>
+						<tr>
+							<th colspan="5" class="text-end">MONTO AUTORIZADO:</th>
+							<th class="text-end" colspan="3">
+								<strong class="text-success" style="font-size: 1.1rem">
+									${{ total_autorizado_tabla|number_format(2) }}
+								</strong>
+							</th>
+							<th colspan="7">
+								<small class="text-muted">{{ facturas_autorizadas }} de {{ total_facturas }} facturas autorizadas</small>
+							</th>
+						</tr>
+					</tfoot>
 					</table>
 				</div>
 			</div>
@@ -1655,9 +1647,7 @@
 			<div class="modal-content">
 				<div class="modal-header">
 					<h5 class="modal-title"><i class="fas fa-link"></i> Aplicar Nota al Pago</h5>
-					<button type="button" class="close" data-dismiss="modal">
-						<span>&times;</span>
-					</button>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
 				<form id="applyNoteForm">
 					<div class="modal-body">
@@ -1688,7 +1678,7 @@
 						</div>
 					</div>
 					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-dismiss="modal">Cancelar</button>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cancelar</button>
 						<button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Aplicar</button>
 					</div>
 				</form>
@@ -1697,66 +1687,66 @@
 	</div>
 
 	<!-- Modal: Subir PDF a nota de crédito (desde payment_detail) -->
-<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form id="uploadDocFormPD" enctype="multipart/form-data">
-                <div class="modal-body">
-                    <input type="hidden" id="uploadDocNoteIdPD" name="note_id">
-                    <div class="mb-3">
-                        <label class="form-label">Archivo PDF *</label>
-                        <input type="file" 
-                               class="form-control" 
-                               name="note_file"
-                               id="uploadDocFilePD" 
-                               accept=".pdf" 
-                               required>
-                        <small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                        <i class="fas fa-times"></i> Cancelar
-                    </button>
-                    <button type="button" class="btn btn-primary" onclick="subirPDFNota()">
-                        <i class="fas fa-upload"></i> Subir
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+	<div class="modal fade" id="uploadDocModalPD" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="fas fa-upload"></i> Subir PDF a Nota</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<form id="uploadDocFormPD" enctype="multipart/form-data">
+					<div class="modal-body">
+						<input type="hidden" id="uploadDocNoteIdPD" name="note_id">
+						<div class="mb-3">
+							<label class="form-label">Archivo PDF *</label>
+							<input type="file" 
+								class="form-control" 
+								name="note_file"
+								id="uploadDocFilePD" 
+								accept=".pdf" 
+								required>
+							<small class="form-text text-muted">Solo PDF. Máximo 10MB.</small>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+							<i class="fas fa-times"></i> Cancelar
+						</button>
+						<button type="button" class="btn btn-primary" onclick="subirPDFNota()">
+							<i class="fas fa-upload"></i> Subir
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
 
-<div class="modal fade" id="noteDocsModalPD" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-file-pdf text-danger"></i>
-                    Documentos de la Nota <span id="noteDocsModalPDNoteId" class="badge bg-secondary ms-1"></span>
-                </h5>
-                <!-- ✅ CAMBIO 1: data-dismiss → data-bs-dismiss -->
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-0">
-                <div id="noteDocsListPD" class="border-bottom px-3 py-2 d-flex align-items-center flex-wrap" style="gap:6px">
-                </div>
-                <iframe id="noteDocsViewerPD" style="width:100%;height:75vh;border:none;"></iframe>
-            </div>
-            <div class="modal-footer">
-                <a id="noteDocsDownloadBtnPD" href="#" target="_blank" class="btn btn-primary">
-                    <i class="fas fa-download"></i> Descargar
-                </a>
-                <!-- ✅ CAMBIO 2: data-dismiss → data-bs-dismiss -->
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-            </div>
-        </div>
-    </div>
-</div>
+	<div class="modal fade" id="noteDocsModalPD" tabindex="-1" aria-hidden="true">
+		<div class="modal-dialog modal-xl modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">
+						<i class="fas fa-file-pdf text-danger"></i>
+						Documentos de la Nota <span id="noteDocsModalPDNoteId" class="badge bg-secondary ms-1"></span>
+					</h5>
+					<!-- ✅ CAMBIO 1: data-dismiss → data-bs-dismiss -->
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body p-0">
+					<div id="noteDocsListPD" class="border-bottom px-3 py-2 d-flex align-items-center flex-wrap" style="gap:6px">
+					</div>
+					<iframe id="noteDocsViewerPD" style="width:100%;height:75vh;border:none;"></iframe>
+				</div>
+				<div class="modal-footer">
+					<a id="noteDocsDownloadBtnPD" href="#" target="_blank" class="btn btn-primary">
+						<i class="fas fa-download"></i> Descargar
+					</a>
+					<!-- ✅ CAMBIO 2: data-dismiss → data-bs-dismiss -->
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+				</div>
+			</div>
+		</div>
+	</div>
 
 {% endblock %}
 {% block myjs %}

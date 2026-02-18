@@ -304,6 +304,7 @@
                         <tr>
                             <th>ID</th>
                             <th>Fecha Solicitud</th>
+                            <th>Fecha Pago Esperada</th>
                             <th>Empresa</th>
                             <th>Proveedor</th>
                             <th>Usuario</th>
@@ -940,8 +941,8 @@
                 </ul>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-success" onclick="ejecutarAprobacionMasiva()">
+                <button type="button" class="btn btn-secondary" id="btnCancelarConfirmacion" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" id="btnSiAprobarAhora" onclick="ejecutarAprobacionMasiva()">
                     <i class="fas fa-check"></i> Sí, Aprobar Ahora
                 </button>
             </div>
@@ -971,6 +972,12 @@
 
         // Actualizar cada 2 minutos
         // setInterval(cargarContadoresPendientes, 120000);
+
+        // Restaurar botón de confirmación al cerrar el modal
+        $('#modalConfirmacionAprobacion').on('hidden.bs.modal', function () {
+            $('#btnSiAprobarAhora').prop('disabled', false).html('<i class="fas fa-check"></i> Sí, Aprobar Ahora');
+            $('#btnCancelarConfirmacion').prop('disabled', false);
+        });
 
         // Manejar rotación del chevron en sección colapsable
         $('#collapseAprobacionMasiva').on('show.bs.collapse', function () {
@@ -1323,9 +1330,13 @@
      * Ejecutar la aprobación masiva
      */
     function ejecutarAprobacionMasiva() {
+        const $btn = $('#btnSiAprobarAhora');
+        const $btnCancelar = $('#btnCancelarConfirmacion');
         const comentario = $('#comentarioAprobacionMasiva').val().trim();
 
-        mostrarCargando('Procesando aprobación masiva...');
+        // Deshabilitar botones y mostrar loading
+        $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+        $btnCancelar.prop('disabled', true);
 
         $.ajax({
             url: '/supply/process_bulk_authorization',
@@ -1338,20 +1349,15 @@
             },
             success: function (response) {
                 if (response.success) {
-                    // mostrarExito(response.message || 'Aprobación masiva completada exitosamente');
-                    // Cerrar modales
                     $('#modalConfirmacionAprobacion').modal('hide');
                     $('#modalAprobacionMasiva').modal('hide');
 
-                    // Recargar listas y contadores
                     loadPaymentList();
                     loadAnticiposList();
                     cargarContadoresPendientes();
 
-                    // Mostrar resumen
                     if (response.resumen) {
                         setTimeout(() => {
-
                             swal.fire({
                                 icon: 'success',
                                 title: 'Aprobación Completada',
@@ -1363,14 +1369,16 @@
                     }
                 } else {
                     mostrarError(response.message || 'Error en la aprobación masiva');
+                    // Restaurar botón solo en error para que pueda reintentar
+                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i> Sí, Aprobar Ahora');
+                    $btnCancelar.prop('disabled', false);
                 }
             },
             error: function (xhr) {
                 mostrarError('Error al procesar la aprobación masiva');
                 console.error(xhr);
-            },
-            complete: function () {
-                ocultarCargando();
+                $btn.prop('disabled', false).html('<i class="fas fa-check"></i> Sí, Aprobar Ahora');
+                $btnCancelar.prop('disabled', false);
             }
         });
     }
