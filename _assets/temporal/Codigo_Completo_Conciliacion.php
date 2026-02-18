@@ -1,2114 +1,8 @@
-<?php
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+﻿<?php
 
-require_once('./_assets/classes/code128.php');
+// RECOPILACIÓN DE FUNCIONES DEL SISTEMA DE CONCILIACIÓN
+// Extraídas de income.php
 
-class Income{
-    public $twig;
-    public $route;
-    public DespachosModel $despachosModel;
-    public GasolinerasModel $gasolinerasModel;
-    public EstacionesModel $estacionesModel;
-    public ClientesVehiculosModel $vehiclesModel;
-    public ClientesModel $clientesModel;
-    public InterlogicPaymentsModel $kioskos;
-    public IngresosModel $ingresosModel;
-    public ValesRModel $valesR;
-    public DocumentosModel $documentosModel;
-    Public FacturasModel $FacturasModel;
-
-    /**
-     * @param $twig
-     */
-    public function __construct($twig) {
-        $this->despachosModel   = new DespachosModel;
-        $this->gasolinerasModel = new GasolinerasModel;
-        $this->estacionesModel  = new EstacionesModel;
-        $this->vehiclesModel    = new ClientesVehiculosModel;
-        $this->kioskos          = new InterlogicPaymentsModel;
-        $this->ingresosModel    = new IngresosModel;
-        $this->valesR           = new ValesRModel;
-        $this->documentosModel  = new DocumentosModel;
-        $this->clientesModel    = new ClientesModel;
-        $this->FacturasModel    = new FacturasModel;
-        $this->twig             = $twig;
-        $this->route            = 'views/income/';
-
-    }
-
-    /**
-     * @return void
-     * @throws Exception
-     */
-    public function duplicate_dispatches() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])) {
-            $from = $_GET['from'] ?? false;
-            $until = $_GET['until'] ?? false;
-            $interval = $_GET['interval'] ?? false;
-            $codgas = $_GET['codgas'] ?? 0;
-            $clientName = $_GET['clientName'] ?? false;
-            $stations = $this->gasolinerasModel->get_stations();
-            echo $this->twig->render($this->route . 'duplicate_dispatches.html', compact('from', 'until', 'interval', 'codgas', 'clientName', 'stations'));
-        }
-    }
-    function cash_sales(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            $stations = $this->gasolinerasModel->get_active_stations();
-            echo $this->twig->render($this->route . 'cash_sales.html', compact('stations'));
-        }
-    }
-
-    function dolar_sales() {
-        echo $this->twig->render($this->route . 'dolar_sales.html');
-    }
-
-    public function clients(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'clients.html');
-        }
-    }
-
-// === Dentro de class Income ===
-
-// Reemplaza/Agrega este método
-// Reemplaza este método dentro de class Income
-public function balance_age_send_mail(){
-    if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
-        return json_output(['status'=>'error','message'=>'Método no permitido']);
-    }
-
-    // POST
-    $sentTo   = $_POST['sentTo']   ?? '';
-    $subject  = $_POST['subject']  ?? 'Balance por Cliente/Estación';
-    $filename = $_POST['filename'] ?? '';
-    $file_b64 = $_POST['file_b64'] ?? '';  // Excel en base64 (opcional)
-    $cta      = (int)($_POST['cta'] ?? 0);
-    $gas      = (int)($_POST['gas'] ?? 0);
-
-    // 🔹 NUEVO: mensaje opcional del formulario
-    $body     = (string)($_POST['body'] ?? ' ');
-
-    // Normaliza y valida correos (acepta ; o ,) y restringe a @totalgas.com
-    $rawList = str_replace(',', ';', (string)$sentTo);
-    $to = array_values(array_unique(array_filter(
-        array_map('trim', explode(';', $rawList)),
-        function($e){ return $e && filter_var($e, FILTER_VALIDATE_EMAIL) && preg_match('/@totalgas\.com$/i', $e); }
-    )));
-    if (!$to) return json_output(['status'=>'error','message'=>'Ingrese al menos un correo @totalgas.com válido.']);
-
-    // Mensaje dinámico fin de mes (sin cambios)
-    $fechaActual   = new DateTime();
-    $diaActual     = (int)$fechaActual->format('d');
-    $ultimoDiaMes  = (int)$fechaActual->format('t');
-
-    // Envío (con o sin adjunto)
-    $from = 'totalgasdesarrollo@gmail.com';
-    $ok   = false;
-    $tmp  = null;
-
-    // Si viene un dataURL, quítale el prefijo
-    if (!empty($file_b64) && strpos($file_b64, 'base64,') !== false) {
-        $file_b64 = explode('base64,', $file_b64, 2)[1] ?? $file_b64;
-    }
-
-    if (!empty($file_b64) && !empty($filename)) {
-        $safeName = preg_replace('/[^\w\.\-]+/', '_', $filename);
-        $tmp = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $safeName;
-        $bytes = @file_put_contents($tmp, base64_decode($file_b64, true));
-        if ($bytes === false) {
-            return json_output(['status'=>'error','message'=>'No se pudo procesar el archivo adjunto.']);
-        }
-
-        // Captura la salida del PHPMailer para depurar sin romper el JSON
-        ob_start();
-        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
-        $mailerOut = trim(ob_get_clean());
-
-        @unlink($tmp);
-    } else {
-        ob_start();
-        $ok = @send_mail2($subject, $body, $to, $from);
-        $mailerOut = trim(ob_get_clean());
-    }
-
-    if ($ok) {
-        return json_output([
-            'status'  => 'success',
-            'message' => !empty($filename) ? 'Correo enviado correctamente con adjunto.' : 'Correo enviado correctamente.'
-        ]);
-    }
-
-    // Error controlado (HTTP 200, pero con status=error)
-    return json_output([
-        'status'  => 'error',
-        'message' => 'No se pudo enviar el correo.',
-        'mailer'  => $mailerOut
-    ]);
-}
-
-/**
- * Construye una tabla HTML compacta para el TAB "Totales"
- */
-
-
-
-
-public function balance_age()
-{
-    // Catálogo de cuentas
-    $cuentas = [
-        101032000 => '101032000 - Facturas x cobrar',
-        101032001 => '101032001 - Facturas X Cobrar Administrativas',
-        101032004 => '101032004 - Facturas X Cobrar Arrendamiento',
-    ];
-
-    // === Filtrar gasolineras permitidas ===
-    $permitidas = [2, 24, 26, 29, 31];
-
-    // Lee todas y filtra por los códigos permitidos
-    $gas_all = $this->clientesModel->get_gasolineras(); // [['cod'=>..,'den'=>..],...]
-    $gasolineras = array_values(array_filter($gas_all, function ($g) use ($permitidas) {
-        return in_array((int)$g['cod'], $permitidas, true);
-    }));
-
-    // Lee filtros SIN default (para no disparar consulta)
-    $cta_sel = isset($_REQUEST['cta']) ? (int)$_REQUEST['cta'] : null;
-    $gas_sel = isset($_REQUEST['gas']) ? (int)$_REQUEST['gas'] : null;
-
-    // ¿El usuario ya dio "Consultar"?
-    $submitted = ($cta_sel !== null && $gas_sel !== null);
-
-    $rows     = [];
-    $rows_det = [];   // <<-- NUEVO (para la pestaña Facturas)
-
-    if ($submitted) {
-        // Valida selección contra catálogos ya filtrados
-        $validCta = array_key_exists($cta_sel, $cuentas);
-        $validGas = in_array(
-            $gas_sel,
-            array_map('intval', array_column($gasolineras, 'cod')),
-            true
-        );
-
-        if ($validCta && $validGas) {
-            $rows     = $this->clientesModel->get_balance_age($cta_sel, $gas_sel) ?: [];
-            $rows_det = $this->clientesModel->get_balance_age_detalle($cta_sel, $gas_sel) ?: []; // <<-- NUEVO
-        } else {
-            $submitted = false;
-        }
-    }
-
-    $user_email = $_SESSION['tg_user']['Correo'] ?? '';
-
-    echo $this->twig->render($this->route . 'balance_age.html', [
-        'rows'        => $rows,
-        'rows_det'    => $rows_det,     // <<-- NUEVO
-        'cuentas'     => $cuentas,
-        'gasolineras' => $gasolineras,
-        'cta_sel'     => $cta_sel,
-        'gas_sel'     => $gas_sel,
-        'submitted'   => $submitted,
-        'user_email'  => $user_email,  
-    ]);
-}
-
-
-
-    public function salesxcard(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'salesxcard.html');
-        }
-    }
-    public function cash_sales_table() {
-        $data = [];
-        $from = dateToInt($_POST['fromDate']);   // Asume que es un entero tipo fecha (e.g. 45747)
-        $until = dateToInt($_POST['untilDate']);
-        if ($ventas = $this->ingresosModel->get_cash_sales($from, $until, $_POST['codgas'])) {
-            foreach ($ventas as $venta) {
-                $data[] = array(
-                    'Fecha'              => $venta['Fecha'],
-                    'Gasolinera'           => $venta['Gasolinera'],
-                    'Turno'              => $venta['Turno'],
-                    'Mn'                 => round($venta['Mn'], 2),
-                    'Dolares'            => round($venta['Dolares'], 2),
-                    'Dolares2'            => round($venta['Dolares2'], 2),
-                    'Morralla'           => round($venta['Morralla'], 2),
-                    'Cheques'             => round($venta['Cheques'], 2),
-                    'INTERL - Efectivo'  => round($venta['INTERL - Efectivo'], 2),
-                );
-            }
-        }
-    
-        json_output(array("data" => $data));
-    }
-
-    public function clients_debit_table() {
-        $data = [];
-        if ($clients = $this->clientesModel->get_clients_debit($_POST['status'])) {
-            foreach ($clients as $client) {
-                $data[] = array(
-                    'cod'    => $client['cod'],
-                    'den'    => $client['den'],
-                    'status' => $client['status'],
-                    'status' => $client['status'],
-                    'dom'    => $client['dom'],
-                    'rfc'    => $client['rfc'],
-                    'debsdo'    => $client['debsdo'],
-                   
-                );
-            }
-        }
-    
-        json_output(array("data" => $data));
-    }
-   
-
-    /**
-     * @return void
-     * @throws Exception
-     */
-    function datatables_duplicate_dispatches() : void {
-
-        $data = [];
-        $interval = $_REQUEST['interval'] ?? false;
-        $client = isset($_REQUEST['client']) && trim($_REQUEST['client']) !== '' ? trim($_REQUEST['client']) : 0;
-
-        $from = $this->createDateTime($_REQUEST['from']);
-
-        $until = $this->createDateTime($_REQUEST['until']);
-
-        $dispatches[] = $this->despachosModel->sp_obtener_despachos_duplicados(dateToInt($from->format('Y-m-d')), dateToInt($until->format('Y-m-d')), $interval, $_GET['codgas'], $client);
-
-        foreach ($dispatches as $despachos) {
-            // Variable para almacenar el índice de la fila anterior que necesita ser actualizada
-            $indiceFilaAnterior = null;
-            foreach ($despachos as $indice => $despacho) {
-                $data[] = array(
-                    'Fecha'          => $despacho['Fecha'],
-                    'Hora'  => date("H:i", strtotime($despacho['hora_formateada'])),
-                    'Despacho'       => $despacho['Despacho'],
-                    'codcliente'     => $despacho['codcli'],
-                    'Cliente'        => $despacho['Cliente'],
-                    'Tipo'           => $despacho['Tipo'],
-                    'Placas'         => $despacho['Placas'],
-                    'Tarjeta'        => $despacho['Tarjeta'],
-                    'Grupo'          => $despacho['Grupo'],
-                    'Descripcion'    => $despacho['Descripcion'],
-                    'Cant despacho'  => $despacho['can'],
-                    'Monto despacho' => $despacho['mto'],
-                    'Forma pago'     => $despacho['Tipo'],
-                    'Producto'       => $despacho['Producto'],
-                    'Estación'       => $despacho['Estacion'],
-                    'Bomba'          => $despacho['Bomba'],
-                    'Check'          => $despacho['check'],
-                );
-
-                // Comprobar si el valor del campo "Check" en esta iteración es 1
-                if ($despacho['check'] == 1) {
-                    // Actualizar el valor del campo "Check" en la fila anterior si existe
-                    if ($indiceFilaAnterior !== null) {
-                        $data[$indiceFilaAnterior]['Check'] = 1;
-                    }
-                }
-
-                // Actualizar el índice de la fila anterior con el índice actual para la siguiente iteración
-                $indiceFilaAnterior = $indice;
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    /**
-     * @param $dateString
-     * @return DateTime|null
-     */
-    function createDateTime($dateString): ?DateTime
-    {
-        try {
-            return new DateTime($dateString);
-        } catch (Exception $e) {
-            echo 'Se produjo un error al crear el objeto DateTime: ' . $e->getMessage();
-            return null; // Otra opción es lanzar una nueva excepción aquí en lugar de devolver null.
-        }
-    }
-
-    /**
-     * @return void
-     * @throws Exception
-     */
-    function credit_debit_dispatches() : void {
-        $from = $_GET['from'] ?? false;
-        $until = $_GET['until'] ?? false;
-        $codgas = $_GET['codgas'] ?? false;
-        $client_type = $_GET['client_type'] ?? 0;
-        $stations = $this->gasolinerasModel->get_stations();
-        $clientName = $_GET['clientName'] ?? false;
-        echo $this->twig->render($this->route . 'credit_debit_dispatches.html', compact('stations', 'from', 'until', 'codgas', 'clientName', 'client_type'));
-    }
-    function relation_invoice_advance(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'relation_invoice_advance.html');
-        }
-    }
-    function relation_invoice_advance_table(){
-         ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($facturas = $this->documentosModel->relation_invoice_advance($from, $until)) {
-
-            foreach ($facturas as $factura) {
-                $data[] = array(
-                    'fecha'             => $factura['fecha'],
-                    'vigencia'          => $factura['vigencia'],
-                    'vencimiento'       => $factura['vencimiento'],
-                    'factura'           => $factura['factura'],
-                    'factura_anticipo'  => $factura['factura_anticipo'],
-                    'monto_aplicado'    => round($factura['monto_aplicado'],2),
-                    'client'            => $factura['client'],
-                    'UUID'              => $factura['UUID'],
-                    'uid_anticipo'      => $factura['uid_anticipo'],
-                    'monto_original'    => round($factura['monto_original'],2),
-                    'txt_anticipo'      => $factura['txt_anticipo'],
-                    'monto'              => round($factura['monto'],2),
-                    'mtoiva'             => round($factura['mtoiva'],2),
-                    'mto_fact_e'          => round($factura['mto_fact_e'],2),
-                    'mto_iva_e'          => round($factura['mto_iva_e'],2),
-                    'mto_total_e'          => round($factura['mto_total_e'],2),
-                    // 'concepto_anticipo' => $factura['concepto_anticipo'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function cash_invoices(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'cash_invoices.html');
-        }
-    }
-
-    function cash_invoices_table(){
-    ini_set('memory_limit', '512M');
-    set_time_limit(300);
-
-    $data  = [];
-    $from  = dateToInt($_POST['from']);
-    $until = dateToInt($_POST['until']);
-
-    if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
-        foreach ($rows as $r) {
-            $data[] = [
-                'codcli'       => $r['codcli'],
-                'cliente'      => $r['den'],
-                'n_despachos'  => (int)$r['n_despachos'],
-                'monto'        => (float)$r['monto'],
-            ];
-        }
-    }
-    json_output(['data' => $data]);
-}
-
-function invoice_client_desp(){
-    ini_set('memory_limit', '512M');
-    set_time_limit(300);
-
-    $data  = [];
-    $from  = dateToInt($_POST['from']);
-    $until = dateToInt($_POST['until']);
-
-    if ($rows = $this->despachosModel->invoice_client_desp($from, $until)) {
-        foreach ($rows as $r) {
-        $data[] = [
-            'fecha'       => $r['fecha'],
-            'codcli'      => $r['codcli'],
-            'cliente'     => $r['den'],
-            'monto'       => (float)$r['monto'],
-            'n_despachos' => (int)$r['n_despachos'],   // <<<<<< nuevo
-            'estacion'    => $r['abr'],
-            'factura'     => $r['factura'],
-            'metodo_pago' => $r['metodo_pago'],
-        ];
-
-        }
-    }
-    json_output(['data' => $data]);
-}
-
-
-
-    function relation_credit_table(){
-        $data = [];
-        $from = dateToInt($_POST['from']);
-        $until = dateToInt($_POST['until']);
-    
-        if ($facturas = $this->documentosModel->relation_credit_table($from, $until)) {
-             echo '<pre>';
-             var_dump($facturas);
-            die();
-            foreach ($facturas as $factura) {
-                $data[] = array(
-                    'fecha'             => $factura['fecha'],
-                    'vigencia'          => $factura['vigencia'],
-                    'vencimiento'       => $factura['vencimiento'],
-                    'factura'           => $factura['factura'],
-                    'factura_anticipo'  => $factura['factura_anticipo'],
-                    'monto_aplicado'    => round($factura['monto_aplicado'],2),
-                    'client'            => $factura['client'],
-                    'UUID'              => $factura['UUID'],
-                    'uid_anticipo'      => $factura['uid_anticipo'],
-                    'monto_original'    => round(floatval($factura['monto_original']),2),
-                    'txt_anticipo'      => $factura['txt_anticipo'],
-                    'txt_note_credit' => $factura['txt_note_credit'],
-                    'monto_iva' => $factura['monto_iva'],
-                    'monto_sub' => $factura['monto_sub'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-    function dispatches_clients_credit(){
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'dispatches_clients_credit.html');
-        }
-    }
-    function dispatches_credit_client_table(){
-        $data = [];
-        $from = $this->createDateTime($_POST['from']);
-        $until = $this->createDateTime($_POST['until']);
-        if ($despachos = $this->despachosModel->get_credit_dispatches($from->format('d-m-Y'), $until->format('d-m-Y'))) {
-            foreach ($despachos as $despacho) {
-                $data[] = array(
-                    'date'       => $despacho['date'],
-                    'station'    => $despacho['station'],
-                    'cod_client' => $despacho['cod_client'],
-                    'client'     => $despacho['client'],
-                    'product'    => $despacho['product'],
-                    'dispatch'   => $despacho['dispatch'],
-                    'import'     => $despacho['import'],
-                    'series'     => $despacho['series'],
-                    'nrofac'     => $despacho['nrofac'],
-                    'can'        => $despacho['can'],
-                   
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    /**
-     * @return void
-     * @throws Exception
-     */
-    function datatables_credit_debit() : void {
-        $data = [];
-        $from = $this->createDateTime($_REQUEST['from']);
-        $until = $this->createDateTime($_REQUEST['until']);
-        $codgas = $_REQUEST['codgas'];
-        $client_type = $_REQUEST['client_type'];
-        $client = isset($_REQUEST['client']) && trim($_REQUEST['client']) !== '' ? trim($_REQUEST['client']) : '0';
-
-        if ($despachos = $this->despachosModel->get_credit_and_debit_dispatches(dateToInt($from->format('Y-m-d')), dateToInt($until->format('Y-m-d')), $codgas, $client, $client_type)) {
-            foreach ($despachos as $despacho) {
-                $data[] = array(
-                    'Fecha'          => $despacho['Fecha'],
-                    'Hora'           => date("H:i", strtotime($despacho['hora_formateada'])),
-                    'Despacho'       => $despacho['Despacho'],
-                    'codcliente'     => $despacho['codcli'],
-                    'Cliente'        => $despacho['Cliente'],
-                    'Tipo'           => $despacho['Tipo'],
-                    'Placas'         => $despacho['Placas'],
-                    'Tarjeta'        => $despacho['Tarjeta'],
-                    'Grupo'          => $despacho['Grupo'],
-                    'Descripcion'    => $despacho['Descripcion'],
-                    'Cant despacho'  => $despacho['can'],
-                    'Monto despacho' => $despacho['mto'],
-                    'Forma pago'     => $despacho['Tipo'],
-                    'Producto'       => $despacho['Producto'],
-                    'Estación'       => $despacho['Estacion'],
-                    'Bomba'          => $despacho['Bomba'],
-                    'Factura'        => $despacho['Factura'],
-                    'UUID'           => $despacho['UUID'],
-                    'RFC'            => $despacho['RFC']
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    /**
-     * @return void
-     */
-    function vehicles() : void {
-        echo $this->twig->render($this->route . 'vehicles.html');
-    }
-
-    /**
-     * @return void
-     * @throws Exception
-     */
-    function datatables_vehicles() : void {
-        $data = [];
-        if ($vehicles = $this->vehiclesModel->get_vehicles()) {
-            foreach ($vehicles as $vehicle) {
-                $data[] = array(
-                    'CodCliente'  => ((is_null($vehicle['codcli']) or empty(trim($vehicle['codcli']))) ? '<b class="text-danger">Sin CodCliente</b>' : trim($vehicle['codcli']) ),
-                    'Cliente'     => ((is_null($vehicle['Cliente']) or empty(trim($vehicle['Cliente']))) ? '<b class="text-danger">Sin Nombre</b>' : trim($vehicle['Cliente']) ),
-                    'Tarjeta'     => ((is_null($vehicle['tar']) or empty(trim($vehicle['tar']))) ? '<b class="text-danger">Sin Tarjeta</b>' : trim($vehicle['tar']) ),
-                    'Placas'      => ((is_null($vehicle['plc']) or empty(trim($vehicle['plc']))) ? '<b class="text-danger">Sin Placas</b>' : trim($vehicle['plc']) ),
-                    'Económico'   => ((is_null($vehicle['nroeco']) or empty($vehicle['nroeco'])) ? '<b class="text-danger">Sin # Económico</b>' : trim($vehicle['nroeco']) ),
-                    'Vehículo'    => $vehicle['nroveh'],
-                    'Grupo'       => $vehicle['grp'],
-                    'Descripcion' => $vehicle['den'],
-                    'Status'      => $vehicle['est'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function kioskos() {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            $from = isset($_GET['from']) ? $_GET['from'] : date('Y-m-d', strtotime('-1 day'));
-            $until = isset($_GET['until']) ? $_GET['until'] : date('Y-m-d', strtotime('-1 day'));
-            echo $this->twig->render($this->route . 'kioskos.html', compact('from', 'until'));
-        } else {
-            $from = $_POST['from'] ?? false;
-            $until = $_POST['until'] ?? false;
-            echo $this->twig->render($this->route . 'kioskos.html', compact('from', 'until'));
-        }
-    }
-
-    function datatables_kioskos() {
-        $data = [];
-        $from = $_POST['from'] ?? false;
-        $until = $_POST['until'] ?? false;
-        if ($registers = $this->kioskos->get_rows($from, $until)) {
-            foreach ($registers AS $register) {
-                $actions = '<a href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#ticketModal" data-id="'. $register['id'] .'" class="btn btn-info btn-sm"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-printer align-middle me-2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Ticket</a>';
-                $data[] = array(
-                    'FECHA'         => $register['fecha'],
-                    'HORA'          => date('H:i:s', strtotime($register['hora'])),
-                    'NO_DESPACHO'   => $register['numDespacho'],
-                    'IMPORTE'       => $register['totalVenta'],
-                    'REF_BANCARIA'  => $register['Referencia'],
-                    'NO_TARJETA'    => $register['no_tarjeta'],
-                    'AUTORIZACION'  => $register['Autorizacion'],
-                    'AFI_BANCARIA'  => $register['afiliacion_bancaria'],
-                    'ACCIONES'      => $actions
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function get_voucher($id) {
-        $voucher = $this->kioskos->get_voucher($id);
-        json_output(array("voucher" => $voucher['voucher_tarjeta'], "despacho" => $voucher['numDespacho']));
-    }
-
-//    Desarrollo del día 2024-03-06
-    function diffs() : void {
-        $from = $_GET['from'] ?? false;
-        $until = $_GET['until'] ?? false;
-        $codgas = $_GET['codgas'] ?? false;
-        $stations = $this->gasolinerasModel->get_stations();
-        echo $this->twig->render($this->route . 'diffs.html', compact('from', 'until', 'codgas', 'stations'));
-    }
-
-    function datatables_diffs($from, $until, $codgas) : void {
-        $data = [];
-        if ($rows = $this->despachosModel->sp_obtener_diferencias_por_valor(dateToInt($from), dateToInt($until), $codgas)) {
-            foreach ($rows as $diff) {
-                $actions = '<a href="/income/diff_analisys/'. $diff['fch'] .'/'. $diff['codgas'] .'/'. round($diff['totalCorte'], 2) .'/'. round($diff['totalDespachado'], 2) .'/'. round($diff['totalValesR'], 2) .'/'. $diff['totalDiff'] .'"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-eye align-middle me-2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></a>';
-                $data[] = array(
-                    'FECHA'         => $diff['Fecha'],
-                    'ESTACION'      => $diff['Gasolinera'],
-                    'TOTALCORTE'    => round($diff['totalCorte'], 2),
-                    'TOTALDESPACHOS'=> round($diff['totalDespachado'], 2),
-                    'TOTALCONSUMOS' => round($diff['totalValesR'], 2),
-                    'DIFERENCIA'    => $diff['totalDiff'],
-                    'ACCIONES'      => $actions
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function diff_analisys($fch, $codgas, $totalCorte, $totalDespachado, $totalValesR, $real_diff) : void {
-        $fecha = intToDate($fch);
-        
-        $station = str_replace(' ', '_', $this->gasolinerasModel->get_station_by_code($codgas)[0]['abr']);
-
-        echo $this->twig->render($this->route . 'diff_analysis.html', compact(  'fch', 'codgas', 'totalCorte', 'totalDespachado', 'totalValesR', 'real_diff', 'fecha', 'station'));
-    }
-
-    function datatables_diff_analysis($fch, $codgas)
-    {
-        $data = [];
-        if ($dispatches = $this->despachosModel->get_mark_dispatches_by_island_shift($fch, $codgas)) {
-            foreach ($dispatches as $dispatch) {
-
-                $factura = get_invoice_series($dispatch['Factura']);
-                $data[] = array(
-                    'DESPACHO'     => $dispatch['Despacho'],
-                    'HORA'         => date("H:i", strtotime($dispatch['Hora'])),
-                    'CLIENTE'      => $dispatch['Cliente'],
-                    'TIPO'         => $dispatch['Tipo'],
-                    'TARJETA'      => $dispatch['tar'],
-                    'PRODUCTO'     => $dispatch['Producto'],
-                    'FACTURA'      => $factura,
-                    'PRECIO'       => number_format($dispatch['Precio'], 2),
-                    'MONTO'        => $dispatch['Monto'],
-                    'DATOS'        => (empty($dispatch['Valor']) ? 'N/A' : $dispatch['Valor']),
-                    'TURNO'        => $dispatch['turno'],
-                    'ISLA'        => $dispatch['Isla'],
-                    'FECHA'        => $dispatch['Fecha'],
-                    'ESTACIÓN'        => $dispatch['Estacion'],
-                    'COINCIDENCIA' => ($dispatch['CoincidenciaEncontrada'] == 1 ? '-SI-' : '-NO-')
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function datatables_consumes($fch, $codgas)
-    {
-        $data = [];
-        if ($dispatches = $this->valesR->get_consumes_by_island_shift($fch, $codgas)) {
-            foreach ($dispatches as $dispatch) {
-                $factura = get_invoice_series($dispatch['Factura']);
-                $data[] = array(
-                    'DESPACHO'     => abs($dispatch['sec']),
-                    'TURNO'        => $dispatch['turno'],
-                    'CLIENTE'      => $dispatch['Cliente'],
-                    'TIPO'         => $dispatch['Tipo'],
-                    'PRODUCTO'     => $dispatch['Producto'],
-                    'FACTURA'      => $factura,
-                    'PRECIO'       => number_format($dispatch['Precio'], 2),
-                    'MONTO'        => $dispatch['Monto'],
-                    'COINCIDENCIA' => ($dispatch['CoincidenciaEncontrada'] == 1 ? '-SI-' : '-NO-'),
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function pending_dispatches() : void {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
-            $from = $_GET['from'] ?? false;
-            $until = $_GET['until'] ?? false;
-            $type = $_GET['type'] ?? false;
-            $status = $_GET['status'] ?? false;
-            echo $this->twig->render($this->route . 'pending_dispatches.html', compact('from', 'until', 'type', 'status'));
-        }
-    }
-
-    function datatables_pending_dispatches_for_invoice($from, $until, $type, $status) : void {
-        $data = [];
-        if ($dispatches = $this->despachosModel->get_pending_dispatches_for_invoice(dateToInt($from),dateToInt($until), $type, $status)) {
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                    'FECHA'     => $dispatch['Fecha'],
-                    'DESPACHO'  => $dispatch['nrotrn'],
-                    'ESTACIÓN'  => $dispatch['Estacion'],
-                    'PRODUCTO'  => $dispatch['Producto'],
-                    'CANTIDAD'  => $dispatch['Volumen'],
-                    'MONTO'     => $dispatch['Monto'],
-                    'CODCLIENTE' => $dispatch['codcli'],
-                    'CLIENTE'   => $dispatch['Cliente'],
-                    'TIPO'      => $dispatch['Tipo'],
-                    'FACTURA'   => $dispatch['Factura'],
-                    'UUID'      => $dispatch['UUID'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-    function invoice_unstamped(){
-        $stations = $this->gasolinerasModel->get_active_stations();
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'invoice_unstamped.html', compact('stations'));
-        }
-    }
-    function invoiced_dispatched(){
-        $stations = $this->gasolinerasModel->get_active_stations();
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'invoiced_dispatched.html', compact('stations'));
-        }
-    }
-    function overall_invoice(){
-        $stations = $this->gasolinerasModel->get_active_stations();
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'overall_invoice.html', compact('stations'));
-        }
-    }
-
-        public function anomalies()
-    {
-        // Puedes pasar valores por defecto si quieres
-        echo $this->twig->render('views/income/invoiced_dispatches.html', [
-            'until' => false
-        ]);
-    }
-
-
-
-    // En tu Controller (IncomeController.php o similar)
-
-public function anomalies_clients_visual()
-{
-    set_time_limit(300);
-    ini_set('memory_limit', '512M'); 
-    header('Content-Type: application/json');
-
-    // RECIBIR DATOS DEL FRONTEND
-    $mode  = $_POST['mode'] ?? 'month';
-    $value = $_POST['target_value'] ?? date('Y-m');
-
-    $fechaTargetInicio = '';
-    $fechaTargetFin    = '';
-
-    // LÓGICA DE FECHAS
-    if ($mode === 'week') {
-        // Formato esperado: "2025-W35"
-        // Usamos DateTime para obtener el Lunes y Domingo de esa semana ISO
-        try {
-            $parts = explode('-W', $value);
-            $year = $parts[0];
-            $week = $parts[1];
-            
-            $dto = new DateTime();
-            $dto->setISODate($year, $week); // Pone la fecha en el Lunes de esa semana
-            
-            $fechaTargetInicio = $dto->format('Y-m-d');
-            $dto->modify('+6 days'); // Mueve al Domingo
-            $fechaTargetFin    = $dto->format('Y-m-d');
-
-        } catch (Exception $e) {
-            // Fallback por si falla
-            $fechaTargetInicio = date('Y-m-d');
-            $fechaTargetFin    = date('Y-m-d');
-        }
-
-    } else {
-        // MODO MENSUAL (Lógica original)
-        $fechaTargetInicio = $value . '-01';
-        $fechaTargetFin    = date("Y-m-t", strtotime($fechaTargetInicio));
-    }
-
-    // CALCULAR HISTÓRICO (Siempre 6 meses atrás desde el inicio del periodo evaluado)
-    $fechaHistInicio = date("Y-m-01", strtotime("-6 months", strtotime($fechaTargetInicio)));
-    $fechaHistFin    = date("Y-m-t", strtotime("-1 month", strtotime($fechaTargetInicio)));
-    
-    // Visualización fin de año
-    $yearStr = date("Y", strtotime($fechaTargetInicio));
-    $fechaVisualFin = $yearStr . '-12-31';
-
-    try {
-        $data = $this->despachosModel->get_anomalies_visual_data(
-            $fechaTargetInicio, 
-            $fechaTargetFin, 
-            $fechaHistInicio, 
-            $fechaHistFin,
-            $fechaVisualFin
-        );
-        echo json_encode(['data' => $data]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(['error' => $e->getMessage(), 'data' => []]);
-    }
-}
-
-
-/**
-     * Endpoint NUEVO para los modales de detalle (Pico, Días Críticos, Exceso).
-     * Recibe el rango seleccionado y calcula automáticamente el rango histórico (6 meses atrás)
-     * para enviárselo al modelo y que este pueda comparar (Media vs Real).
-     */
-    public function get_breakdown_ajax()
-    {
-        // 1. Validar sesión (opcional según tu framework)
-        // if (!Auth::validate()) { header('Content-Type: application/json'); echo json_encode(['error' => 'Auth']); return; }
-
-        // 2. Recibir parámetros del Frontend
-        $codopr = $_POST['codopr'] ?? 0;
-        $fini   = $_POST['fini'] ?? date('Y-m-01'); // Fecha inicio del periodo analizado
-        $ffin   = $_POST['ffin'] ?? date('Y-m-t');  // Fecha fin del periodo analizado
-
-        // 3. CALCULAR CONTEXTO HISTÓRICO (La clave de la detección)
-        // Para saber si un día es crítico, necesitamos compararlo contra la media de los 6 meses previos.
-        
-        // Fecha Inicio Histórico = Fecha Inicio Análisis - 6 Meses
-        $hist_ini = date("Y-m-01", strtotime("-6 months", strtotime($fini)));
-        
-        // Fecha Fin Histórico = El día anterior al inicio del análisis
-        $hist_fin = date("Y-m-d", strtotime("-1 day", strtotime($fini)));
-
-        // 4. Llamar al Modelo
-        // Se asume que cargaste el modelo como $this->despachosModel
-        $data = $this->despachosModel->get_client_anomaly_breakdown(
-            $codopr, 
-            $fini, 
-            $ffin, 
-            $hist_ini, 
-            $hist_fin
-        );
-
-        // 5. Retornar JSON
-        header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'data' => $data]);
-    }
-
-    /**
-     * Endpoint ACTUALIZADO para obtener tickets.
-     * Ahora calcula también el histórico para que el modelo pueda filtrar 
-     * únicamente los tickets de los días que superaron 4 sigmas.
-     */
-    public function get_suspicious_details_ajax()
-    {
-        $codopr     = $_POST['codopr'] ?? 0;
-        $month_date = $_POST['month_date'] ?? date('Y-m-01'); // Viene como '2025-11-01'
-
-        // 1. Definir rango del mes seleccionado (Target)
-        $t_ini = date("Y-m-01", strtotime($month_date));
-        $t_fin = date("Y-m-t", strtotime($month_date));
-
-        // 2. Definir rango histórico (6 meses atrás) para el cálculo de Sigma
-        $h_ini = date("Y-m-01", strtotime("-6 months", strtotime($t_ini)));
-        $h_fin = date("Y-m-t", strtotime("-1 month", strtotime($t_ini)));
-
-        // 3. Llamar al modelo
-        // Nota: Esta función del modelo ahora espera 5 parámetros para hacer el filtrado inteligente
-        $data = $this->despachosModel->get_suspicious_tickets_details(
-            $t_ini, 
-            $t_fin, 
-            $h_ini, 
-            $h_fin, 
-            $codopr
-        );
-
-        header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'data' => $data]);
-    }
-
-
-
-
-
-
-
-
-    public function anomalies_top_station()
-{
-    header('Content-Type: application/json; charset=UTF-8');
-    while (ob_get_level()) { ob_end_clean(); }
-    ob_start();
-
-    try {
-        ini_set('display_errors', '0');
-        set_time_limit(300);
-
-        $from  = $_POST['from']  ?? null;
-        $until = $_POST['until'] ?? null;
-
-        if (!$from || !$until) {
-            http_response_code(400);
-            echo json_encode([
-                'data'    => [],
-                'error'   => true,
-                'message' => 'Parámetros inválidos'
-            ]);
-            return;
-        }
-
-        $desde_eval_i = dateToInt($from);
-        $hasta_eval_i = dateToInt($until);
-
-        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
-            http_response_code(400);
-            echo json_encode([
-                'data'    => [],
-                'error'   => true,
-                'message' => 'Fechas inválidas'
-            ]);
-            return;
-        }
-
-        $rows = $this->despachosModel->anomalies_top_station(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i
-        );
-
-        $data = [];
-        foreach ($rows as $r) {
-            $data[] = [
-                'codgas'           => (int)($r['codgas'] ?? 0),
-                // en la vista el alias es Estacion con mayúscula
-                'estacion'         => $r['Estacion'] ?? ($r['estacion'] ?? ''),
-                'tickets_anomalos' => (int)($r['tickets_anomalos'] ?? 0),
-            ];
-        }
-
-        http_response_code(200);
-        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
-
-    } catch (\Throwable $e) {
-        error_log('ANOMALIES TOP STATION ERROR: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'data'    => [],
-            'error'   => true,
-            'message' => 'Error interno al calcular la estación con más tickets en días anómalos'
-        ]);
-    } finally {
-        ob_end_flush();
-    }
-}
-
-public function anomalies_client_summary()
-{
-    header('Content-Type: application/json; charset=UTF-8');
-    while (ob_get_level()) { ob_end_clean(); }
-    ob_start();
-
-    try {
-        ini_set('display_errors', '0');
-        set_time_limit(300);
-
-        $from   = $_POST['from']   ?? null;
-        $until  = $_POST['until']  ?? null;
-        $codopr = $_POST['codopr'] ?? null;
-
-        if (!$from || !$until || !$codopr) {
-            http_response_code(400);
-            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $desde_eval_i = dateToInt($from);
-        $hasta_eval_i = dateToInt($until);
-
-        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
-            http_response_code(400);
-            echo json_encode(['data_eval' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $codoprInt = (int)$codopr;
-
-        // 1) Totales del periodo evaluado
-        $rowsEval = $this->despachosModel->anomalies_client_totals_period(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i,
-            $codoprInt
-        );
-
-        // 2) Cálculo de los 3 meses históricos previos,
-        // igual que en anomalies_by_client (3 meses completos anteriores)
-        $desdeEvalDate = new \DateTime($from);
-
-        // mes -3: primer día 3 meses antes
-        $m1Start = (clone $desdeEvalDate)->modify('first day of -3 month');
-        $m1End   = (clone $m1Start)->modify('last day of this month');
-
-        // mes -2
-        $m2Start = (clone $m1Start)->modify('first day of +1 month');
-        $m2End   = (clone $m2Start)->modify('last day of this month');
-
-        // mes -1
-        $m3Start = (clone $m2Start)->modify('first day of +1 month');
-        $m3End   = (clone $m3Start)->modify('last day of this month');
-
-        // convertir a enteros fchtrn
-        $m1Desde_i = dateToInt($m1Start->format('Y-m-d'));
-        $m1Hasta_i = dateToInt($m1End->format('Y-m-d'));
-
-        $m2Desde_i = dateToInt($m2Start->format('Y-m-d'));
-        $m2Hasta_i = dateToInt($m2End->format('Y-m-d'));
-
-        $m3Desde_i = dateToInt($m3Start->format('Y-m-d'));
-        $m3Hasta_i = dateToInt($m3End->format('Y-m-d'));
-
-        $rowsM1 = $this->despachosModel->anomalies_client_totals_period(
-            (int)$m1Desde_i,
-            (int)$m1Hasta_i,
-            $codoprInt
-        );
-
-        $rowsM2 = $this->despachosModel->anomalies_client_totals_period(
-            (int)$m2Desde_i,
-            (int)$m2Hasta_i,
-            $codoprInt
-        );
-
-        $rowsM3 = $this->despachosModel->anomalies_client_totals_period(
-            (int)$m3Desde_i,
-            (int)$m3Hasta_i,
-            $codoprInt
-        );
-
-        // Labels sencillos (YYYY-MM)
-        $m1Label = $m1Start->format('Y-m');
-        $m2Label = $m2Start->format('Y-m');
-        $m3Label = $m3Start->format('Y-m');
-
-        // Formatear salida (si no hay filas, devolvemos arreglo vacío)
-        $fmt = function(array $rows): array {
-            if (empty($rows)) return [];
-            $out = [];
-            foreach ($rows as $r) {
-                $out[] = [
-                    'codopr'                  => (int)($r['codopr'] ?? 0),
-                    'nombreCliente'           => $r['nombreCliente'] ?? '',
-                    'n_despachos'             => (int)($r['n_despachos'] ?? 0),
-                    'facturas_unicas'         => (int)($r['facturas_unicas'] ?? 0),
-                    'facturas_codgas_unicas'  => (int)($r['facturas_codgas_unicas'] ?? 0),
-                    'total_cant'              => (float)($r['total_cant'] ?? 0),
-                    'total_mto'               => (float)($r['total_mto'] ?? 0),
-                ];
-            }
-            return $out;
-        };
-
-        $dataEval = $fmt($rowsEval);
-        $dataM1   = $fmt($rowsM1);
-        $dataM2   = $fmt($rowsM2);
-        $dataM3   = $fmt($rowsM3);
-
-        http_response_code(200);
-        echo json_encode([
-            'error'      => false,
-            'data_eval'  => $dataEval,
-            'data_m1'    => $dataM1,
-            'data_m2'    => $dataM2,
-            'data_m3'    => $dataM3,
-            'm1_label'   => $m1Label,
-            'm2_label'   => $m2Label,
-            'm3_label'   => $m3Label,
-        ], JSON_INVALID_UTF8_SUBSTITUTE);
-
-    } catch (\Throwable $e) {
-        error_log('ANOMALIES CLIENT SUMMARY ERROR: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'data_eval' => [],
-            'error'     => true,
-            'message'   => 'Error interno al generar el resumen del cliente'
-        ]);
-    } finally {
-        ob_end_flush();
-    }
-}
-
-    
-public function anomalies_clients_table()
-{
-    header('Content-Type: application/json; charset=UTF-8');
-    while (ob_get_level()) { ob_end_clean(); }
-    ob_start();
-
-    try {
-        ini_set('display_errors', '0');
-        set_time_limit(300);
-
-        $from  = $_POST['from']  ?? null;
-        $until = $_POST['until'] ?? null;
-
-        if (!$from || !$until) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $desde_eval_i = dateToInt($from);
-        $hasta_eval_i = dateToInt($until);
-
-        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i)) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Fechas inválidas']);
-            return;
-        }
-
-        // 1) Consulta de anomalías (ya existente)
-        $rowsAnom = $this->despachosModel->anomalies_by_client(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i
-        );
-
-        // 2) Nueva consulta de totales (despachos / facturas / monto)
-        $rowsTot = $this->despachosModel->anomalies_clients_totals(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i
-        );
-
-        // Indexar totales por codopr para merge rápido
-        $totalesPorCodopr = [];
-        foreach ($rowsTot as $t) {
-            $cod = $t['codopr'] ?? null;
-            if ($cod === null) continue;
-            $totalesPorCodopr[$cod] = $t;
-        }
-
-        $data = [];
-        foreach ($rowsAnom as $r) {
-            $codopr = $r['codopr'] ?? null;
-
-            $tot = $codopr !== null && isset($totalesPorCodopr[$codopr])
-                ? $totalesPorCodopr[$codopr]
-                : [
-                    'n_despachos'     => 0,
-                    'facturas_unicas' => 0,
-                    'total_mto'       => 0,
-                ];
-
-            $data[] = [
-                'codopr'       => $codopr,
-                'cliente'      => $r['cliente'] ?? '',
-
-                'dias_anomalos' => (int)($r['dias_anomalos'] ?? 0),
-                'prom_zscore'   => (float)($r['prom_zscore'] ?? 0),
-
-                // NUEVOS CAMPOS (de la segunda consulta)
-                'n_despachos'     => (int)($tot['n_despachos'] ?? 0),
-                'facturas_unicas' => (int)($tot['facturas_unicas'] ?? 0),
-                'total_mto'       => (float)($tot['total_mto'] ?? 0),
-
-                // Campos auxiliares para filtros
-                'max_facturas_dia'             => (int)($r['max_facturas_dia'] ?? 0),
-                'tiene_factura_multi_prod'     => (int)($r['tiene_factura_multi_prod'] ?? 0),
-                'tiene_factura_montos_diferentes' => (int)($r['tiene_factura_montos_diferentes'] ?? 0),
-            ];
-        }
-
-        http_response_code(200);
-        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
-
-    } catch (\Throwable $e) {
-        error_log('ANOMALIES TABLE ERROR: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'data' => [],
-            'error' => true,
-            'message' => 'Error interno al generar el reporte'
-        ]);
-    } finally {
-        ob_end_flush();
-    }
-}
-
-
-
-public function anomalies_client_days()
-{
-    header('Content-Type: application/json; charset=UTF-8');
-    while (ob_get_level()) { ob_end_clean(); }
-    ob_start();
-
-    try {
-        ini_set('display_errors', '0');
-        set_time_limit(300);
-
-        $from   = $_POST['from']   ?? null;
-        $until  = $_POST['until']  ?? null;
-        $codopr = $_POST['codopr'] ?? null;
-
-        if (!$from || !$until || !$codopr) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $desde_eval_i = dateToInt($from);
-        $hasta_eval_i = dateToInt($until);
-
-        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $rows = $this->despachosModel->anomalies_by_client_days(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i,
-            (int)$codopr
-        );
-
-        $data = [];
-        foreach ($rows as $r) {
-            $data[] = [
-                'codopr'                  => $r['codopr'] ?? null,
-                'fecha'                   => $r['fecha'] ?? null,
-                'facturas_dia'            => (int)($r['facturas_dia'] ?? 0),
-                'baseline_media_hist'     => (float)($r['baseline_media_hist'] ?? 0),
-                'baseline_desv_hist'      => (float)($r['baseline_desv_hist'] ?? 0),
-                'q1_hist'                 => (float)($r['q1_hist'] ?? 0),
-                'q3_hist'                 => (float)($r['q3_hist'] ?? 0),
-                'zscore_hist'             => (float)($r['zscore_hist'] ?? 0),
-                'incremento_pct_vs_hist'  => (float)($r['incremento_pct_vs_hist'] ?? 0),
-                'es_anomalia'             => (int)($r['es_anomalia'] ?? 0),
-            ];
-        }
-
-        http_response_code(200);
-        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
-
-    } catch (\Throwable $e) {
-        error_log('ANOMALIES CLIENT DAYS ERROR: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'data'    => [],
-            'error'   => true,
-            'message' => 'Error interno al generar el detalle de días'
-        ]);
-    } finally {
-        ob_end_flush();
-    }
-}
-
-
-public function anomalies_client_tickets()
-{
-    header('Content-Type: application/json; charset=UTF-8');
-    while (ob_get_level()) { ob_end_clean(); }
-    ob_start();
-
-    try {
-        ini_set('display_errors', '0');
-        set_time_limit(300);
-
-        $from   = $_POST['from']   ?? null;
-        $until  = $_POST['until']  ?? null;
-        $codopr = $_POST['codopr'] ?? null;
-
-        if (!$from || !$until || !$codopr) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $desde_eval_i = dateToInt($from);
-        $hasta_eval_i = dateToInt($until);
-
-        if (!is_numeric($desde_eval_i) || !is_numeric($hasta_eval_i) || !is_numeric($codopr)) {
-            http_response_code(400);
-            echo json_encode(['data' => [], 'error' => true, 'message' => 'Parámetros inválidos']);
-            return;
-        }
-
-        $rows = $this->despachosModel->anomalies_by_client_tickets(
-            (int)$desde_eval_i,
-            (int)$hasta_eval_i,
-            (int)$codopr
-        );
-
-        $data = [];
-        foreach ($rows as $r) {
-            $data[] = [
-                'fecha'          => $r['fecha'] ?? null,
-                'hratrn'         => $r['hratrn'] ?? null,
-                'nrotrn'         => (int)($r['nrotrn'] ?? 0),
-                'nrofac'         => (int)($r['nrofac'] ?? 0),
-                'factura'        => (int)($r['factura'] ?? 0),
-                'serie'          => $r['serie'] ?? '',
-                'conceptofac'    => $r['conceptofac'] ?? '',
-                'codgas'         => (int)($r['codgas'] ?? 0),
-                'estacion'       => $r['estacion'] ?? '',
-                'codprd'         => (int)($r['codprd'] ?? 0),
-                'nomPrd'         => $r['nomPrd'] ?? '',
-                'can'            => (float)($r['can'] ?? 0),
-                'mto'            => (float)($r['mto'] ?? 0),
-                'codcli_d'       => (int)($r['codcli_d'] ?? 0),
-                'nombreCliente'  => $r['nombreCliente'] ?? '',
-                'codopr_f'       => (int)($r['codopr_f'] ?? 0),
-                'isla'           => $r['isla'] ?? '',
-                'responsable'    => $r['responsable'] ?? '',
-                'tiptrn'         => $r['tiptrn'] ?? '',
-                'datref'         => $r['datref'] ?? '',
-                'satuid'         => $r['satuid'] ?? '',
-                'satrfc'         => $r['satrfc'] ?? '',
-                'turno'          => isset($r['nrotur']) ? substr((string)$r['nrotur'], 0, 1) : null,
-            ];
-        }
-
-        http_response_code(200);
-        echo json_encode(['data' => $data], JSON_INVALID_UTF8_SUBSTITUTE);
-
-    } catch (\Throwable $e) {
-        error_log('ANOMALIES CLIENT TICKETS ERROR: ' . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'data'    => [],
-            'error'   => true,
-            'message' => 'Error interno al generar la lista de tickets'
-        ]);
-    } finally {
-        ob_end_flush();
-    }
-}
-
-
-
-    /**
-     * @throws Exception
-     */
-    function control_dispatches() : void {
-        $stations = $this->gasolinerasModel->get_active_stations();
-        // $stations = array_filter($stations, fn($station) => !in_array($station['cod'], [ 20]));
-        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'control_dispatches.html', compact('stations'));
-
-        } else {
-
-            $from = $_POST['from'] ?? date('Y-m-d');
-            $until = $_POST['until'] ?? date('Y-m-d');
-            $codgas = $_POST['codgas'] == "" ? 0 : $_POST['codgas'] ;
-            echo $this->twig->render($this->route . 'control_dispatches.html', compact('from', 'until', 'codgas', 'stations'));
-
-        }
-    }
-
-    function overal_invoice_out_table(){
-        ini_set('memory_limit', '512M'); // o más si lo necesitas, como '1024M'
-        set_time_limit(300); // 300 segundos = 5 minutos. Puedes subirlo más si hace falta.
-        $data = [];
-        $codgas = $_POST['codgas'];
-        $status = $_POST['status'];
-        $estations= $this->gasolinerasModel->get_estations_servidor();
-        if ($codgas != 0) {
-            // Filtrar estaciones para quedarse solo con la que coincide con el codgas
-            $estations = array_filter($estations, function($station) use ($codgas) {
-                return $station['codigo'] == $codgas;
-            });
-        }
-        if ($invoices = $this->despachosModel->overal_invoice_out_table(dateToInt($_POST['from']), dateToInt($_POST['until']), $estations, $status)) {
-            foreach ($invoices as $invoice) {
-                $fechasConcatenadas = explode(', ', $invoice['FechasConcatenadas']);  // Convierte las fechas concatenadas en un arreglo
-                $fechaFactura = $invoice['vigencia'];  // Suponiendo que 'vigencia' es una fecha en formato 'YYYY-MM-DD'
-                $fechasConColor = '';
-                foreach ($fechasConcatenadas as $fecha) {
-                    if (date('Y-m', strtotime($fecha)) !== date('Y-m', strtotime($fechaFactura))) {
-                        $colorClass = 'fecha-roja';
-                    } else {
-                        $colorClass = 'fecha-normal';
-                    }
-                    $fechasConColor .= '<span class=" ' . $colorClass . '">' . $fecha . '</span> <br>';
-                }
-                $data[] = array(
-                    'nro'                => $invoice['nro'],
-                    'factura'            => $invoice['factura'],
-                    'satuid'             => $invoice['satuid'],
-                    'tip'                => $invoice['tip'],
-                    'fecha'              => $invoice['fecha'],
-                    'vigencia'           => $invoice['vigencia'],
-                    'FechasConcatenadas' => $fechasConColor,  // Cadena HTML con fechas únicas
-                    // 'FechasConcatenadas' => $invoice['FechasConcatenadas'],  // Cadena HTML con fechas únicas
-                    'txtref'             => $invoice['txtref'],
-                    'TipoPago'           => $invoice['TipoPago'],
-                    'NrotrnConcatenados' => $invoice['NrotrnConcatenados'] ,
-                    'estacion'           => $invoice['estacion'],
-                    'estado'           => $invoice['estado'],
-                    'estacion'           => $invoice['estacion']
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function datatables_dispatches() : void {
-        ini_set('memory_limit', '512M');
-        set_time_limit(300);
-        $data = [];
-        $codgas = $_POST['codgas'];
-        $billed = $_POST['billed'];
-        $tipo_cliente=0;
-
-        if ($dispatches = $this->despachosModel->control_dispatches2(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                   'fecha'                    => $dispatch['fecha'],
-                    'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-                    'turno'                   => $dispatch['turno'],
-                    'despacho'                => $dispatch['despacho'],
-                    'producto'                => $dispatch['producto'],
-                    'estacion'                => $dispatch['estacion'],
-                    'empresa'                 => $dispatch['empresa'],
-                    'cliente_des'             => $dispatch['cliente_des'],
-                    'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'FechaFactura'                => $dispatch['FechaFactura'],
-                    'cantidad'                => $dispatch['cantidad'],
-                    'importe'                 => $dispatch['importe'],
-                    'precio'                  => $dispatch['precio'],
-                    'despachador'             => $dispatch['despachador'],
-                    'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
-                    'rut'                     => $dispatch['rut'],
-                    'txtref'                  => $dispatch['txtref'],
-                    'denominacion'            => $dispatch['denominacion'],
-                    'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-                    'codval'                  => $dispatch['codval'],
-                    'tipo_cliente'            => $dispatch['tipo_cliente'],
-                    'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-                    'vehiculo'                => $dispatch['vehiculo'],
-                    'placas'                  => $dispatch['placas'],
-                    'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-                    'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function datatables_dispatches_est() : void {
-        ini_set('max_execution_time', 5000);
-        ini_set('memory_limit', '1024M');
-        set_time_limit(0); // sin límite
-        $data = [];
-        $codgas = $_POST['codgas'];
-        $billed = $_POST['billed'];
-        $tipo_cliente=0;
-        $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
-       
-
-        $postData = [
-            'from' => dateToInt($_POST['from']),
-            'until' => dateToInt($_POST['until']),
-            'codgas' => $codgas,
-            'uuid' => $_POST['uuid'],
-            'tipo_cliente' => $tipo_cliente,
-            'billed' => $billed,
-            'estation' => $estation,
-        ];
-        $ch = curl_init('http://192.168.0.3:388/api/control_despachos/getDispatches');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); // Espera máxima de 5 minutos
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Espera para establecer conexión
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-        curl_setopt($ch, CURLOPT_POST, true);   
-
-        // Ejecutar y obtener respuesta
-        $response = curl_exec($ch);
-        curl_close($ch);
-
-        // $apiData = json_decode($response, true);
-        if ($apiData = json_decode($response, true)) {
-            
-            foreach ($apiData['data'] as $dispatch) {
-                $data[] = array(
-                   'fecha'                    => $dispatch['fecha'],
-                    'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-                    'turno'                   => $dispatch['turno'],
-                    'despacho'                => $dispatch['despacho'],
-                    'producto'                => $dispatch['producto'],
-                    'estacion'                => $dispatch['estacion'],
-                    'empresa'                 => $dispatch['empresa'],
-                    'cliente_des'             => $dispatch['cliente_des'],
-                    'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'FechaFactura'            => $dispatch['FechaFactura'],
-                    'cantidad'                => $dispatch['cantidad'],
-                    'importe'                 => $dispatch['importe'],
-                    'precio'                  => $dispatch['precio'],
-                    'despachador'             => $dispatch['despachador'],
-                    'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
-                    'rut'                     => $dispatch['rut'],
-                    'rut'                     => $dispatch['rut'],
-                    'txtref'                  => $dispatch['txtref'],
-                    'denominacion'            => $dispatch['denominacion'],
-                    'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-                    'codval'                  => $dispatch['codval'],
-                    'tipo_cliente'            => $dispatch['tipo_cliente'],
-                    'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-                    'vehiculo'                => $dispatch['vehiculo'],
-                    'placas'                  => $dispatch['placas'],
-                    'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-                    'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-   
-
-    function pivot_daily_dispatches_table() : void {
-        $data = [];
-        $dates = [];
-        $codgas = $_POST['codgas'];
-        if ($dispatches = $this->despachosModel->pivot_daily_dispatches_table(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas)) {
-            foreach ($dispatches as $dispatch) {
-                $estacion = $dispatch['estacion'];
-                $codgas = $dispatch['codgas'];
-                $fecha = $dispatch['fecha'];
-                if (!isset($data[$estacion])) { $data[$estacion] = ['estacion' => $estacion]; } // Si la estación no existe en el array, inicialízala
-                if (!in_array($fecha, $dates)) { $dates[] = $fecha; } // Guardar las fechas para crear dinámicamente las columnas
-                $factura_global_value = number_format($dispatch['factura_global'], 2, '.', ',');
-                $factura_global_class = ($dispatch['factura_global'] == null || $dispatch['factura_global'] == 0) ? 'bg-danger text-white' : '';
-                $data[$estacion][$fecha . '_cliente_credito'] = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'cliente_credito\' )">'. number_format($dispatch['cliente_credito'], 2, '.', ','). '<a>';
-                $data[$estacion][$fecha . '_cliente_debito']  = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'cliente_debito\' )">'. number_format($dispatch['cliente_debito'], 2, '.', ','). '<a>';
-                $data[$estacion][$fecha . '_monedero']        = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'monedero\' )">'. number_format($dispatch['monedero'], 2, '.', ','). '<a>';
-                $data[$estacion][$fecha . '_contado']         = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'contado\' )">'. number_format($dispatch['contado'], 2, '.', ','). '<a>';
-                $data[$estacion][$fecha . '_factura_global']  = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'factura_global\' )" class="'.$factura_global_class.'">'. $factura_global_value . '<a>';
-                $data[$estacion][$fecha . '_NA']              = '<a href="javascript:void(0);" onClick="DispachesTypeModal(\''. $dispatch['fecha'] .'\',\''.$dispatch['codgas'].'\',\'N/A\' )">'. number_format($dispatch['N/A'], 2, '.', ','). '<a>';
-            }
-        }
-        // Enviar la respuesta en formato JSON
-        json_output([
-            "data" => array_values($data),  // Convierte los datos en un array de valores
-            "dates" => $dates  // Devuelve el array de fechas para las columnas dinámicas
-        ]);
-    }
-
-
-    function pivot_facturacion_diaria_table(){
-        $data = [];
-        $codgas = $_POST['codgas'];
-        $estations= $this->gasolinerasModel->get_estations_servidor();
-        if ($codgas != 0) {
-            // Filtrar estaciones para quedarse solo con la que coincide con el codgas
-            $estations = array_filter($estations, function($station) use ($codgas) {
-                return $station['codigo'] == $codgas;
-            });
-        }
-        // $estations = array_filter($estations, function($station) {
-        //     return self::checkServerConnectivity($station['servidor']);
-        // });
-
-        if ($dispatches = $this->despachosModel->pivot_facturacion_diaria_table(dateToInt($_POST['from']), dateToInt($_POST['until']),$_POST['from'],$_POST['until'],$estations)) {
-
-
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                    'fecha'         => $dispatch['fecha'],
-                    'lerdo'         => self::format_value(isset($dispatch['02_LERDO']) ? $dispatch['02_LERDO'] : 0),
-                    'delicias'      => self::format_value(isset($dispatch['03_DELICIAS']) ? $dispatch['03_DELICIAS'] : 0),
-                    'parral'        => self::format_value(isset($dispatch['04_PARRAL']) ? $dispatch['04_PARRAL'] : 0),
-                    'lopez_mateos'  => self::format_value(isset($dispatch['05_LOPEZ_MATEOS']) ? $dispatch['05_LOPEZ_MATEOS'] : 0),
-                    'gemela_chica'  => self::format_value(isset($dispatch['06_GEMELA_CHICA']) ? $dispatch['06_GEMELA_CHICA'] : 0),
-                    'gemel_grande'  => self::format_value(isset($dispatch['07_GEMEL_GRANDE']) ? $dispatch['07_GEMEL_GRANDE'] : 0),
-                    'plutarco'      => self::format_value(isset($dispatch['08_PLUTARCO']) ? $dispatch['08_PLUTARCO'] : 0),
-                    'mpio_libre'    => self::format_value(isset($dispatch['09_MPIO._LIBRE']) ? $dispatch['09_MPIO._LIBRE'] : 0),
-                    'aztecas'       => self::format_value(isset($dispatch['10_AZTECAS']) ? $dispatch['10_AZTECAS'] : 0),
-                    'misiones'      => self::format_value(isset($dispatch['11_MISIONES']) ? $dispatch['11_MISIONES'] : 0),
-                    'pto_de_palos'  => self::format_value(isset($dispatch['12_PTO_DE_PALOS']) ? $dispatch['12_PTO_DE_PALOS'] : 0),
-                    'miguel_d_mad'  => self::format_value(isset($dispatch['13_MIGUEL_D_MAD']) ? $dispatch['13_MIGUEL_D_MAD'] : 0),
-                    'permuta'       => self::format_value(isset($dispatch['14_PERMUTA']) ? $dispatch['14_PERMUTA'] : 0),
-                    'electrolux'    => self::format_value(isset($dispatch['15_ELECTROLUX']) ? $dispatch['15_ELECTROLUX'] : 0),
-                    'aeronautica'   => self::format_value(isset($dispatch['16_AERONAUTICA']) ? $dispatch['16_AERONAUTICA'] : 0),
-                    'custodia'      => self::format_value(isset($dispatch['17_CUSTODIA']) ? $dispatch['17_CUSTODIA'] : 0),
-                    'anapra'        => self::format_value(isset($dispatch['18_ANAPRA']) ? $dispatch['18_ANAPRA'] : 0),
-                    'independenci'  => self::format_value(isset($dispatch['19_INDEPENDENCI']) ? $dispatch['19_INDEPENDENCI'] : 0),
-                    'tecnologico'   => self::format_value(isset($dispatch['20_TECNOLOGICO']) ? $dispatch['20_TECNOLOGICO'] : 0),
-                    'ejercito_nal'  => self::format_value(isset($dispatch['21_EJERCITO_NAL']) ? $dispatch['21_EJERCITO_NAL'] : 0),
-                    'satellite'     => self::format_value(isset($dispatch['22_SATELITE']) ? $dispatch['22_SATELITE'] : 0),
-                    'las_fuentes'   => self::format_value(isset($dispatch['23_LAS_FUENTES']) ? $dispatch['23_LAS_FUENTES'] : 0),
-                    'clara'         => self::format_value(isset($dispatch['24_CLARA']) ? $dispatch['24_CLARA'] : 0),
-                    'solis'         => self::format_value(isset($dispatch['25_SOLIS']) ? $dispatch['25_SOLIS'] : 0),
-                    'santiago_tro'  => self::format_value(isset($dispatch['26_SANTIAGO_TRO']) ? $dispatch['26_SANTIAGO_TRO'] : 0),
-                    'jarudo'        => self::format_value(isset($dispatch['27_JARUDO']) ? $dispatch['27_JARUDO'] : 0),
-                    'hermanos_esc'  => self::format_value(isset($dispatch['28_HERMANOS_ESC']) ? $dispatch['28_HERMANOS_ESC'] : 0),
-                    'villa_ahumad'  => self::format_value(isset($dispatch['29_VILLA_AHUMAD']) ? $dispatch['29_VILLA_AHUMAD'] : 0),
-                    'el_castano'    => self::format_value(isset($dispatch['30_EL_CASTAÑO']) ? $dispatch['30_EL_CASTAÑO'] : 0),
-                    'travel_cente'  => self::format_value(isset($dispatch['31_TRAVEL_CENTE']) ? $dispatch['31_TRAVEL_CENTE'] : 0),
-                    'picachos'      => self::format_value(isset($dispatch['32_PICACHOS']) ? $dispatch['32_PICACHOS'] : 0),
-                    'ventanas'      => self::format_value(isset($dispatch['33_VENTANAS']) ? $dispatch['33_VENTANAS'] : 0),
-                    'san_rafael'    => self::format_value(isset($dispatch['34_SAN_RAFAEL']) ? $dispatch['34_SAN_RAFAEL'] : 0),
-                    'puertcito'     => self::format_value(isset($dispatch['35_PUERTECITO']) ? $dispatch['35_PUERTECITO'] : 0),
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-    function format_value($value) {
-        if ($value == 0) {
-            return '<span class="text-danger  text-end p-1">' . number_format($value, 2, '.', ',') . '</span>';
-        }
-        return '<span class="text-end">' . number_format($value, 2, '.', ',') . '</span>';
-    }
-    function pivot_dispatches_table() : void {
-        $data = [];
-        $codgas = $_POST['codgas'];
-        if ($dispatches = $this->despachosModel->pivot_dispatches(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas)) {
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                   'estacion'            => $dispatch['estacion'],
-                    'cliente_credito'    => $dispatch['cliente_credito'],
-                    'cliente_debito'     => $dispatch['cliente_debito'],
-                    'monedero'           => $dispatch['monedero'],
-                    'contado'            => $dispatch['contado'],
-                    'factura_global'     => $dispatch['factura_global'],
-                    'N_A'                => $dispatch['N/A'],
-                    'total'               => $dispatch['total'],
-                );
-            }
-        }
-
-        echo json_encode(array("data" => $data));
-
-    }
-
-
-    function datatables_dispatches_invoiced() : void {
-        $data = [];
-        $codgas = $_POST['codgas'];
-        $billed = $_POST['billed'];
-        $tipo_cliente=0;
-
-
-        if ($dispatches = $this->despachosModel->invoiced_dispatches_data(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
-
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                   'fecha'                    => $dispatch['fecha'],
-                    'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-                    'turno'                   => $dispatch['turno'],
-                    'despacho'                => $dispatch['despacho'],
-                    'producto'                => $dispatch['producto'],
-                    'estacion'                => $dispatch['estacion'],
-                    'empresa'                 => $dispatch['empresa'],
-                    'cliente_des'             => $dispatch['cliente_des'],
-                    'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'cantidad'                => $dispatch['cantidad'],
-                    'importe'                 => $dispatch['importe'],
-                    'precio'                  => $dispatch['precio'],
-                    'UUID_sat'                => $dispatch['UUID_sat'],
-                    'FechaTimbrado'           => $dispatch['FechaTimbrado'],
-                    'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
-                    'rut'                     => $dispatch['rut'],
-                    'txtref'                  => $dispatch['txtref'],
-                    'denominacion'            => $dispatch['denominacion'],
-                    'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-                    'codval'                  => $dispatch['codval'],
-                    'tipo_cliente'            => $dispatch['tipo_cliente'],
-                    'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-                    'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-                    'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function DispachesTypeModal(){
-
-        $codgas = $_POST['codgas'];
-        $from = $_POST['fecha'];
-        $until = $_POST['fecha'];
-        $tipo_cliente = $_POST['tipo_client'];
-        $uuid = 0;
-        $billed=0;
-        $dispatches = $this->despachosModel->control_dispatches2(dateToInt($from), dateToInt($until), $codgas,$uuid,$tipo_cliente,$billed);
-        echo $this->twig->render($this->route . 'modals/dispaches_modal.html', compact('dispatches'));
-
-    }
-
-    function checking_tickets() :void {
-        // Vamos a comprobar si $_GET['from'] y $_GET['codgas'] están definidos
-        if (isset($_GET['from'])) {
-            $from = $_GET['from'];
-        } else {
-            // Si no hay fecha definida, vamos a tomar la fecha actual y restarle un dia
-            $from = date('Y-m-d', strtotime(date('Y-m-d') . ' -1 day'));
-        }
-        $codgas = $_GET['codgas'] ?? 0;
-        $shift = $_GET['shift'] ?? 0;
-        $dispatch_type = $_GET['dispatch_type'] ?? 'Crédito';
-
-        $stations = $this->gasolinerasModel->get_active_station_TG();
-
-        echo $this->twig->render($this->route . 'checking_tickets.html', compact('stations', 'from', 'codgas', 'shift', 'dispatch_type'));
-    }
-
-    function print_labels() {
-        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'print_labels.html');
-        } else {
-            $station = $_POST['station'];
-            $from = $_POST['from'];
-            $until = $_POST['until'];
-            $barcode = '';
-
-            // Crear una instancia de FPDF
-            $pdf = new PDF_Code128();
-
-            // Establecer los márgenes
-            $pdf->SetMargins(3, 3, 3);  // Margen izquierdo, margen superior, margen derecho
-
-            // Establecer el margen inferior
-            $pdf->SetAutoPageBreak(true, 5);  // Activar los saltos automáticos de página y establecer el margen inferior a 5 mm
-
-            // Creamos un ciclo for
-            for ($i = $from; $i <= $until; $i++) {
-                $barcode = $station . '-' . $i + 10000;
-                // Establecer el tamaño de la página en milimetros (Ancho x Alto)
-                $pdf->AddPage('L', array(51, 36));
-
-                // Establecer el tamaño de la letra y el tipo de letra
-                $pdf->SetFont('Arial', 'B', 7);
-
-                // Logo
-                $pdf->SetXY(3, 3);
-                $pdf->multiCell(23, 8, '', 0, 'C');
-                $pdf->Image($_SERVER['DOCUMENT_ROOT'] . '/_assets/images/logo BN.jpg', 3.5, 3.5, 20, 6);
-
-                $pdf->Code128(3, 13, $barcode, 45, 12);
-                // Vamos a agregar el folio del ticket en la parte de abajo del código de barras
-                $pdf->SetXY(3, 25);
-                $pdf->Cell(45, 5, $barcode, 0, 0, 'C');
-            }
-            $pdf->Output();
-        }
-    }
-
-    function all_dispatches_table($from, $codgas, $shift, $dispatch_type) : void {
-
-        if ($dispatch_type == 'dbito') {
-            $dispatches = $this->despachosModel->get_debit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'crdito') {
-            $dispatches = $this->despachosModel->get_credit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'payworks') {
-            $dispatches = $this->despachosModel->get_payworks_dispatches_to_release($codgas, dateToInt($from), $shift);
-        }
-
-        $data = [];
-        if ($dispatches) {
-            foreach ($dispatches as $dispatch) {
-                $actions = '';
-                if ($dispatch['Verificador'] != 'Sin verificar') {
-                    $actions .= '<a href="javascript:void(0);" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#notesModal" data-id="'. $dispatch['id'] .'" data-despacho="'. $dispatch['Despacho'] .'" data-estacion="'. $dispatch['Estacion'] .'" data-comentario="'. $dispatch['notes'] .'"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-feather align-middle"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg> Notas</a>';
-                }
-                $data[] = array(
-                    'DESPACHO'     => $dispatch['Despacho'],
-                    'ESTACION'     => $dispatch['Estacion'],
-                    'ISLA'         => $dispatch['Isla'],
-                    'CODCLIENTE'   => $dispatch['codcli'],
-                    'CLIENTE'      => $dispatch['Cliente'],
-                    'VOLUMEN'      => $dispatch['Volumen'],
-                    'MONTO'        => $dispatch['Monto'],
-                    'TIPO'         => $dispatch['Tipo'],
-                    'TURNO'        => $dispatch['turno'],
-                    'FECHA'        => $from . ' ' . $dispatch['hora_formateada'],
-                    'PRODUCTO'     => trim($dispatch['Producto']),
-                    'STATUS'       => trim($dispatch['Verificador']),
-                    'COMENTARIO'   => trim($dispatch['notes']),
-                    'INCIDENCIA'   => $dispatch['incidencia'],
-                    'CASOESPECIAL' => ((($dispatch['rut'] == '' || $dispatch['rut'] == null) AND $dispatch['nroveh'] > 0 ) ? 0 : 1),
-                    'ACCIONES'     => $actions
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function checked_dispatches_table($from, $codgas, $shift) {
-        $data = [];
-        if ($dispatches = $this->despachosModel->get_credit_and_debit_dispatches_released($from, $codgas, $shift, $_GET['dispatch_type'])) {
-            foreach ($dispatches as $dispatch) {
-                $actions = '';
-                if ($dispatch['Verificador'] != 'Sin verificar') {
-                    $actions .= '<a href="javascript:void(0);" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#notesModal" data-id="'. $dispatch['id'] .'" data-despacho="'. $dispatch['Despacho'] .'" data-estacion="'. $dispatch['Estacion'] .'" data-comentario="'. $dispatch['notes'] .'"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-feather align-middle"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg> Notas</a>';
-                }
-                $data[] = array(
-                    'DESPACHO'   => $dispatch['Despacho'],
-                    'ESTACION'   => $dispatch['Estacion'],
-                    'ISLA'       => $dispatch['Isla'],
-                    'CODCLIENTE' => $dispatch['codcli'],
-                    'CLIENTE'    => $dispatch['Cliente'],
-                    'VOLUMEN'    => $dispatch['Volumen'],
-                    'MONTO'      => $dispatch['Monto'],
-                    'TIPO'       => $dispatch['Tipo'],
-                    'TURNO'      => $dispatch['turno'],
-                    'FECHA'      => $from . ' ' . $dispatch['hora_formateada'],
-                    'PRODUCTO'   => trim($dispatch['Producto']),
-                    'STATUS'=> trim($dispatch['Verificador']),
-                    'INCIDENCIA' => $dispatch['incidencia'],
-                    'ACCIONES'   => $actions
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function pending_dispatches_table($from, $codgas, $shift, $dispatch_type) : void {
-
-        if ($dispatch_type == 'payworks') {
-            $data = $this->despachosModel->get_payworks_dispatches_to_release($codgas, dateToInt($from), $shift);
-
-            foreach ($data as $key => $value) {
-                if ($value['Verificador'] == 'Sin verificar') {
-                    $dispatches[] = $value;
-                }
-            }
-        } else if ($dispatch_type == 'crdito') {
-            $dispatches = $this->despachosModel->get_credit_dispatches_just_to_release($from, $codgas, $shift);
-        } else if ($dispatch_type == 'dbito') {
-            $dispatches = $this->despachosModel->get_debit_dispatches_just_to_release($from, $codgas, $shift);
-        }
-        $data = [];
-        if ($dispatches) {
-            foreach ($dispatches as $dispatch) {
-                $actions = '';
-                if ($dispatch['Verificador'] != 'Sin verificar') {
-                    $actions .= '<a href="javascript:void(0);" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#notesModal" data-id="'. $dispatch['id'] .'" data-despacho="'. $dispatch['Despacho'] .'" data-estacion="'. $dispatch['Estacion'] .'" data-comentario="'. $dispatch['notes'] .'"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-feather align-middle"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"></path><line x1="16" y1="8" x2="2" y2="22"></line><line x1="17.5" y1="15" x2="9" y2="15"></line></svg> Notas</a>';
-                }
-                $data[] = array(
-                    'DESPACHO'   => $dispatch['Despacho'],
-                    'ESTACION'   => $dispatch['Estacion'],
-                    'ISLA'       => $dispatch['Isla'],
-                    'CODCLIENTE' => $dispatch['codcli'],
-                    'CLIENTE'    => $dispatch['Cliente'],
-                    'VOLUMEN'    => $dispatch['Volumen'],
-                    'MONTO'      => $dispatch['Monto'],
-                    'TIPO'       => $dispatch['Tipo'],
-                    'TURNO'      => $dispatch['turno'],
-                    'FECHA'      => $from . ' ' . $dispatch['hora_formateada'],
-                    'PRODUCTO'   => trim($dispatch['Producto']),
-                    'INCIDENCIA' => $dispatch['incidencia'],
-                    'STATUS'=> trim($dispatch['Verificador'])
-                );
-            }
-        }
-        json_output(array("data" => $data));
-    }
-
-    function form_find($nrotrn, $fch, $codgas, $shift) : void {
-        $fch = dateToInt($fch);
-        $payment_type = $_POST['dispatch_type'];
-
-        // Verificamos que el despacho exista
-        if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
-
-            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
-                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por este medio."));
-            }
-            // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
-            if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
-                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificación. Favor de verificar."));
-            } else {
-                // Ahora vamos a verificar que el registro no exista en la tabla de [TG].[dbo].[despachos_liberados]
-                if ($this->despachosModel->check_dispatch_released(intval($nrotrn), $codgas)) {
-                    json_output(array("status" => "warning", "message" => "Este despacho ya se encuentra liberado"));
-                } else {
-                    // Ahora vamos a liberar el despacho que es equivalente a ingresar el despacho en la tabla de [TG].[dbo].[despachos_liberados]
-                    if ($this->despachosModel->release_dispatch_TG($dispatch[0])) {
-                        // Ahora con json_output  vamos a lanzar un status y un mensaje
-                        json_output(array("status" => "success", "message" => "Despacho liberado correctamente."));
-                    } else {
-                        json_output(array("status" => "error", "message" => "No se pudo liberar el despacho."));
-                    }
-                }
-            }
-        } else {
-            // Vamos a verificar si el despacho existe en el día dado pero en otra estación o turno
-            if ($row = $this->despachosModel->get_dispatch_by_nrotrn_and_date(intval($nrotrn), $fch)) {
-                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estación o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
-            } else {
-                // Sí el despacho no existe, vamos a lanzar un mensaje de error
-                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estación especificada."));
-            }
-        }
-    }
-
-    function register_dispatch($nrotrn, $codgas, $fch) {
-        $fch = dateToInt($fch);
-        if ($dispatch = $this->despachosModel->check_dispatch($nrotrn, $codgas, $fch)) { // Si existe un despacho con el número de transacción
-            // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
-            if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
-                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificación. Favor de verificar."));
-            } else {
-                // Ahora vamos a verificar que el registro no exista en la tabla de [TG].[dbo].[despachos_liberados]
-                if ($this->despachosModel->check_dispatch_released(intval($nrotrn), $codgas)) {
-                    json_output(array("status" => "warning", "message" => "Este despacho ya se encuentra liberado"));
-                } else {
-                    // Ahora vamos a liberar el despacho que es equivalente a ingresar el despacho en la tabla de [TG].[dbo].[despachos_liberados]
-                    if ($this->despachosModel->release_dispatch_TG($dispatch[0])) {
-                        // Ahora con json_output  vamos a lanzar un status y un mensaje
-                        json_output(array("status" => "success", "message" => "Despacho liberado correctamente."));
-                    } else {
-                        json_output(array("status" => "error", "message" => "No se pudo liberar el despacho."));
-                    }
-                }
-            }
-        } else {
-            // Vamos a verificar si el despacho existe en el día dado pero en otra estación o turno
-            if ($row = $this->despachosModel->get_dispatch_by_nrotrn_and_date(intval($nrotrn), $fch)) {
-                json_output(array("status" => "warning", "message" => "Despacho encontrado en otra estación o turno.", "station" => $row['Estacion'], "shift" => $row['nrotur'], "codgas" => $row['codgas']));
-            } else {
-                // Sí el despacho no existe, vamos a lanzar un mensaje de error
-                json_output(array("status" => "error", "message" => "Despacho no encontrado en la estación especificada."));
-            }
-        }
-    }
-
-    function save_notes() : void {
-        if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])) {
-            $this->despachosModel->save_notes($_POST['id'], $_POST['input_notes']);
-            redirect();
-        }
-    }
-
-
-    
-    function send_mail($fch, $codgas, $shift, $dispatch_type, $sentTo) {
-
-        if ($dispatch_type == 'payworks') { // Verificado OK
-            $data = $this->despachosModel->get_payworks_dispatches_to_release($codgas, dateToInt($fch), $shift);
-            foreach ($data as $key => $value) {
-                if ($value['Verificador'] == 'Sin verificar') {
-                    $dispatches[] = $value;
-                }
-            }
-        } else if ($dispatch_type == 'crdito') {
-            $dispatches = $this->despachosModel->get_credit_dispatches_just_to_release($fch, $codgas, $shift);
-        } else if ($dispatch_type == 'dbito') {
-            $dispatches = $this->despachosModel->get_debit_dispatches_just_to_release($fch, $codgas, $shift);
-        }
-
-        // Fecha actual
-        $fechaActual = new DateTime();
-        $diaActual = $fechaActual->format('d');
-
-        // Último día del mes
-        $ultimoDiaMes = $fechaActual->format('t');
-
-        // Días restantes para el fin de mes
-        $diasRestantes = $ultimoDiaMes - $diaActual;
-
-        // Contenido dinámico
-        if ($diasRestantes >= 3) {
-            $mensajeDinamico = "<p>Agradecemos que puedan enviarnos los tickets pendientes en un plazo no mayor a 72 horas.</p>";
-        } else {
-            $mensajeDinamico = "<p>Es imprescindible que envíen los tickets de manera inmediata, ya que faltan menos de 3 días para el cierre de mes.</p>";
-        }
-
-        $body = '
-        <p>Estimados compañeros,</p>
-        <p>Se les solicita amablemente que envíen los tickets de venta faltantes o aquellos que no cuenten con la firma correspondiente de los clientes.</p>';
-        $body .= $mensajeDinamico;
-        $body .= '
-        <table border="1" cellpadding="5" cellspacing="0">
-          <thead>
-            <tr style="background-color: #add8e6;">
-              <th>Despacho</th>
-              <th>Fecha</th>
-              <th>Isla</th>
-              <th>Turno</th>
-              <th>Hora</th>
-              <th>Cliente</th>
-              <th>Tipo</th>
-              <th>Producto</th>
-              <th>Volumen</th>
-              <th>Monto</th>
-            </tr>
-          </thead>';
-        foreach ($dispatches as $dispatch) {
-            $body .= '
-            <tr>
-              <td>'. $dispatch['Despacho'] .'</td>
-              <td>'. $dispatch['Fecha'] .'</td>
-              <td>'. $dispatch['Isla'] .'</td>
-              <td>'. $dispatch['turno'] .'</td>
-              <td>'. $dispatch['hora_formateada'] .'</td>
-              <td>'. $dispatch['Cliente'] .'</td>
-              <td>'. $dispatch['Tipo'] .'</td>
-              <td>'. trim($dispatch['Producto']) .'</td>
-              <td>'. number_format($dispatch['Volumen'], 3, '.',',') .'</td>
-              <td>$'. number_format($dispatch['Monto'], 2, '.', ',') .'</td>
-            </tr>';
-        }
-        $body .= '
-        </table>
-        <p>Es importante cumplir con esta solicitud, ya que, de lo contrario, los tickets faltantes o sin firma serán enviados a egresos como faltantes. Si tienen dudas o necesitan apoyo, favor de dirigirse a la jefatura de ingresos.</p>
-        <p>Agradecemos su atención y colaboración. Quedamos pendientes de sus comentarios.</p>
-        ';
-
-        if (send_mail('Solicitud de tickets faltantes ' . $fch,$body,explode(';', $sentTo),'totalgasdesarrollo@gmail.com')) {
-            json_output(array("status" => "success", "message" => "Correo enviado correctamente."));
-        } else {
-            json_output(array("status" => "error", "message" => "No se pudo enviar el correo."));
-        }
-    }
-
-    function get_users_emails() {
-        $user_mail = $_SESSION['tg_user']['Correo'];
-        $station_mail = $this->estacionesModel->get_station_email($_GET['codgas']);
-
-        json_output(array("user_mail" => $user_mail, "station_mail" => $station_mail));
-    }
-
-    public function balance_age_get_user_email(): void
-    {
-        // Toma el correo del usuario autenticado desde la sesión
-        $user_mail = $_SESSION['tg_user']['Correo'] ?? '';
-
-        // Devuelve JSON (usa tu helper global)
-        json_output([
-            'ok' => true,
-            'user_mail' => $user_mail
-        ]);
-    }
-
-    function generateExcel($fecha) {
-        // Crear el objeto de hoja de cálculo
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-
-        $fch = dateToInt($fecha);
-
-        $dispatches = $this->despachosModel->get_all_dispatches_just_to_release($fch);
-        $columnIndex = 'A';
-        $sheet->setCellValue('A1', 'DESPACHO');
-        $sheet->setCellValue('B1', 'ESTACIÓN');
-        $sheet->setCellValue('C1', 'ISLA');
-        $sheet->setCellValue('D1', 'CODCLIENTE');
-        $sheet->setCellValue('E1', 'CLIENTE');
-        $sheet->setCellValue('F1', 'VOLUMEN');
-        $sheet->setCellValue('G1', 'MONTO');
-        $sheet->setCellValue('H1', 'TIPO');
-        $sheet->setCellValue('I1', 'TURNO');
-        $sheet->setCellValue('J1', 'FECHA');
-        $sheet->setCellValue('K1', 'PRODUCTO');
-        $sheet->setCellValue('L1', 'STATUS');
-
-        // Vamos a meter un setCellValue con negrita
-        $sheet->getStyle('A1:L1')->getFont()->setBold(true);
-
-        $rowIndex = 2;
-        foreach ($dispatches as $station) {
-            $sheet->setCellValue('A' . $rowIndex, $station['Despacho']);
-            $sheet->setCellValue('B' . $rowIndex, $station['Estacion']);
-            $sheet->setCellValue('C' . $rowIndex, $station['Isla']);
-            $sheet->setCellValue('D' . $rowIndex, $station['codcli']);
-            $sheet->setCellValue('E' . $rowIndex, $station['Cliente']);
-            $sheet->setCellValue('F' . $rowIndex, $station['Volumen']);
-            $sheet->setCellValue('G' . $rowIndex, $station['Monto']);
-            $sheet->setCellValue('H' . $rowIndex, $station['Tipo']);
-            $sheet->setCellValue('I' . $rowIndex, $station['turno']);
-            $sheet->setCellValue('J' . $rowIndex, $station['Fecha']);
-            $sheet->setCellValue('K' . $rowIndex, $station['Producto']);
-            $sheet->setCellValue('L' . $rowIndex, 'Pendiente');
-            $rowIndex++;
-        }
-
-        // Configurar encabezados HTTP para descargar el archivo
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment; filename="Pendientes'. $fecha .'.xlsx"');
-
-        // Crear y enviar el archivo Excel al navegador
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
-        exit;
-    }
-
-
-    // =========================================================================
-    // CARGA DE REPORTES BANCARIOS (Manual)
-    // =========================================================================
     public function upload_bank_reports() {
         echo $this->twig->render($this->route . 'upload_reports.html');
     }
@@ -2121,7 +15,7 @@ public function anomalies_client_tickets()
         $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', $orig);
         $orig = trim(preg_replace('/\s+/', ' ', $orig));
 
-        // 2. REPARACIÓN DE CODIFICACIÓN
+        // 2. REPARACIÃ“N DE CODIFICACIÃ“N
         if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
             $intento = @utf8_decode($orig);
             if ($intento && mb_check_encoding($intento, 'UTF-8')) {
@@ -2136,7 +30,7 @@ public function anomalies_client_tickets()
 
         // 3.1. FUZZY MATCH ROBUSTO (Regex)
         $norm = mb_strtoupper($orig, 'UTF-8');
-        $norm = str_replace(['Á', 'É', 'Í', 'Ó', 'Ú', 'Ü'], ['A', 'E', 'I', 'O', 'U', 'U'], $norm);
+        $norm = str_replace(['Ã', 'Ã‰', 'Ã', 'Ã“', 'Ãš', 'Ãœ'], ['A', 'E', 'I', 'O', 'U', 'U'], $norm);
         
         if (preg_match('/FECHA/i', $norm)) {
             if (preg_match('/DEPOSITO|APLICACION/i', $norm)) {
@@ -2147,8 +41,8 @@ public function anomalies_client_tickets()
             }
         }
 
-        // 4. Limpieza estándar (Fallback)
-        // iconv elimina acentos: 'Aplicación' -> 'Aplicacion'
+        // 4. Limpieza estÃ¡ndar (Fallback)
+        // iconv elimina acentos: 'AplicaciÃ³n' -> 'Aplicacion'
         $s = @iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
         if ($s === false) {
             $s = $orig;
@@ -2159,7 +53,7 @@ public function anomalies_client_tickets()
         return trim($s, '_');
     }
     private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
-        // FUNCIÓN DESACTIVADA PARA MANTENER ESTÁNDAR DE TABLAS
+        // FUNCIÃ“N DESACTIVADA PARA MANTENER ESTÃNDAR DE TABLAS
         return;
     }
 
@@ -2197,7 +91,7 @@ public function anomalies_client_tickets()
         header('Content-Type: application/json');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']);
+            echo json_encode(['status' => 'error', 'message' => 'MÃ©todo no permitido']);
             exit;
         }
 
@@ -2205,7 +99,7 @@ public function anomalies_client_tickets()
         $filePath = '';
         $isTempFile = false;
         
-        // Estructura de carpetas: _assets/uploads/BANCO/AÑO/MES/
+        // Estructura de carpetas: _assets/uploads/BANCO/AÃ‘O/MES/
         $baseUploadsDir = __DIR__ . '/../uploads/';
         $subPath = $bankType . '/' . date('Y') . '/' . date('m') . '/';
         $targetDir = $baseUploadsDir . $subPath;
@@ -2255,86 +149,86 @@ public function anomalies_client_tickets()
 
         $coreMap = [
             'BANORTE' => [
-                'Afiliación' => 'Afiliacion',
+                'AfiliaciÃ³n' => 'Afiliacion',
                 'Afiliacion' => 'Afiliacion',
-                'Nombre de Afiliación' => 'Nombre_Afiliacion',
+                'Nombre de AfiliaciÃ³n' => 'Nombre_Afiliacion',
                 'Nombre de Afiliacion' => 'Nombre_Afiliacion',
                 'Moneda' => 'Moneda',
-                'Estatus de Transacción' => 'Estatus',
+                'Estatus de TransacciÃ³n' => 'Estatus',
                 'Estatus de Transaccion' => 'Estatus',
                 'Tipo transaccion' => 'Tipo_Transaccion',
-                'Tipo de Transacción' => 'Tipo_Transaccion',
+                'Tipo de TransacciÃ³n' => 'Tipo_Transaccion',
                 'Tipo de Transaccion' => 'Tipo_Transaccion',
-                'Número de Control' => 'ID_Externo',          
+                'NÃºmero de Control' => 'ID_Externo',          
                 'Numero de Control' => 'ID_Externo',
-                'Número de Tarjeta' => 'Tarjeta',
+                'NÃºmero de Tarjeta' => 'Tarjeta',
                 'Numero de Tarjeta' => 'Tarjeta',
                 'Tipo de Tarjeta' => 'Tipo_Tarjeta',
-                'Monto de Transacción Signo' => 'Monto',
+                'Monto de TransacciÃ³n Signo' => 'Monto',
                 'Monto de Transaccion Signo' => 'Monto',
-                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
                 'Fecha Transaccion' => 'Fecha_Transaccion',
-                'Código Autorización' => 'Codigo_Autorizacion',
+                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Codigo Autorizacion' => 'Codigo_Autorizacion',
                 'Referencia' => 'Referencia_Pago',
                 'Terminal ID' => 'Terminal',                  
                 'Terminal' => 'Terminal',
-                'Lote de Transacción' => 'Lote',
+                'Lote de TransacciÃ³n' => 'Lote',
                 'Lote' => 'Lote',
-                'Hora de Transacción' => 'Hora',
-                'Hora Transacción' => 'Hora',
+                'Hora de TransacciÃ³n' => 'Hora',
+                'Hora TransacciÃ³n' => 'Hora',
                 'Hora' => 'Hora',
                 'Referencia Interbancaria' => 'Referencia',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha Aplicacion' => 'Fecha_Deposito',
                 'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha AplicaciÃƒÂ³n' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
             ],
             'SANTANDER' => [
                 'ID movimiento' => 'ID_Externo',              
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Hora de Transacción' => 'Hora',
-                'Hora Transacción' => 'Hora',
-                'Afiliación' => 'Afiliacion',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
+                'Hora de TransacciÃ³n' => 'Hora',
+                'Hora TransacciÃ³n' => 'Hora',
+                'AfiliaciÃ³n' => 'Afiliacion',
                 'Nombre del comercio' => 'Comercio',
-                'Tipo de Transacción' => 'Tipo_Transaccion',
-                'Tipo Transacción' => 'Tipo_Transaccion',
+                'Tipo de TransacciÃ³n' => 'Tipo_Transaccion',
+                'Tipo TransacciÃ³n' => 'Tipo_Transaccion',
                 'Tarjeta' => 'Tarjeta',
                 'Cod. Terminal' => 'Terminal',                
                 'Terminal ID' => 'Terminal',
-                'Operación' => 'Operacion',
+                'OperaciÃ³n' => 'Operacion',
                 'Tipo de Tarjeta' => 'Tipo_Tarjeta',
                 'Tipo Tarjeta' => 'Tipo_Tarjeta',
-                'Número de Tarjeta' => 'Tarjeta_Numero',
-                'Tarjeta Número' => 'Tarjeta_Numero',
-                'Código Autorización' => 'Codigo_Autorizacion',
+                'NÃºmero de Tarjeta' => 'Tarjeta_Numero',
+                'Tarjeta NÃºmero' => 'Tarjeta_Numero',
+                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Cod. Aut' => 'Codigo_Autorizacion',
                 'Total' => 'Monto',                           
-                'Monto de Transacción Signo' => 'Monto',
-                'Comisión' => 'Comision',
+                'Monto de TransacciÃ³n Signo' => 'Monto',
+                'ComisiÃ³n' => 'Comision',
                 'Referencia' => 'Referencia',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha Aplicacion' => 'Fecha_Deposito',
                 'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha AplicaciÃƒÂ³n' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
             ]
         ];
 
-        // COLUMNAS OFICIALES PERMITIDAS (Definición Global)
+        // COLUMNAS OFICIALES PERMITIDAS (DefiniciÃ³n Global)
         $columnas_oficiales = [
             'ID_Externo', 'Afiliacion', 'Fecha_Transaccion', 'Hora', 
             'Monto', 'Codigo_Autorizacion', 'Terminal', 'Referencia', 'Fecha_Deposito', 'Nombre_Archivo'
@@ -2465,7 +359,7 @@ public function anomalies_client_tickets()
                                     fclose($handle);
                                 }
                                 
-                                // 1. Mapear Índices
+                                // 1. Mapear Ãndices
                                 $mappedIndices = [];
                                 foreach ($rawHeader as $i => $h) {
                                     $stdName = $this->sanitizar_nombre_columna_php($h, 'SANTANDER', $coreMap);
@@ -2511,7 +405,7 @@ public function anomalies_client_tickets()
                                     $huellas[$key] = true;
                                 }
                 
-                                // 3. Preparar SQL Estándar
+                                // 3. Preparar SQL EstÃ¡ndar
                                 $sqlIns = "INSERT INTO banco_getnet (".implode(",", $columnas_oficiales).") VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).")";
                                 $ins = $conn->prepare($sqlIns);
                 
@@ -2542,7 +436,7 @@ public function anomalies_client_tickets()
                                         if ($col === 'Hora' && $val && trim((string)$val) !== '-') {
                                             $h_clean = strtolower(trim($val));
                                             
-                                            // Normalización robusta: quitar puntos, asegurar un solo espacio antes de am/pm
+                                            // NormalizaciÃ³n robusta: quitar puntos, asegurar un solo espacio antes de am/pm
                                             $h_clean = str_replace('.', '', $h_clean);
                                             $h_clean = preg_replace('/([ap])\s*m/', '$1m', $h_clean); // unir a m -> am
                                             $h_clean = str_replace(['am', 'pm'], [' am', ' pm'], $h_clean);
@@ -2597,7 +491,7 @@ public function anomalies_client_tickets()
             if (file_exists('debug_santander_upload.log')) @unlink('debug_santander_upload.log');
             if (file_exists('conciliacion_debug.log')) @unlink('conciliacion_debug.log');
 
-            // Limpiar archivo temporal si se creó desde Base64
+            // Limpiar archivo temporal si se creÃ³ desde Base64
             if ($isTempFile && file_exists($filePath)) {
                 @unlink($filePath);
             }
@@ -2622,7 +516,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // 1. OBTENER CATÁLOGO DE ESTACIONES (Para ControlGas) - UNIFICADO CON AFIL
+    // 1. OBTENER CATÃLOGO DE ESTACIONES (Para ControlGas) - UNIFICADO CON AFIL
     // =========================================================================
     public function get_estaciones_catalogo() {
         ob_clean();
@@ -2637,7 +531,7 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuración/afiliación
+            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuraciÃ³n/afiliaciÃ³n
             $sql = "SELECT DISTINCT 
                         T1.Codigo, 
                         T1.Nombre, 
@@ -2650,7 +544,7 @@ public function anomalies_client_tickets()
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                 $rfc = trim($row['RFC']);
-                // Normalizar valores vacíos
+                // Normalizar valores vacÃ­os
                 if($rfc === '' || $rfc === 'NULL') {
                     $rfc = 'FORANEAS';
                 }
@@ -2658,7 +552,7 @@ public function anomalies_client_tickets()
                 $result[] = $row;
             }
 
-            // INYECCIÓN MANUAL COLOSIO (Si no viene de BD)
+            // INYECCIÃ“N MANUAL COLOSIO (Si no viene de BD)
             $foundColosio = false;
             foreach($result as $r) { if($r['Codigo'] == 333) $foundColosio = true; }
 
@@ -2668,7 +562,7 @@ public function anomalies_client_tickets()
                     'Nombre' => 'COLOSIO',
                     'RFC'    => 'FORANEAS'
                 ];
-                // Reordenar alfabéticamente
+                // Reordenar alfabÃ©ticamente
                 usort($result, function($a, $b) { return strcmp($a['Nombre'], $b['Nombre']); });
             }
             
@@ -2690,9 +584,9 @@ public function anomalies_client_tickets()
         // 1. Leer el JSON entrante (Misma estructura que enviaba el JS a la API vieja)
         $input = json_decode(file_get_contents('php://input'), true);
         
-        // Validar datos básicos
+        // Validar datos bÃ¡sicos
         if (!isset($input['Datos']['FechaInicial']) || !isset($input['Datos']['Gasolinera'])) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -2700,7 +594,7 @@ public function anomalies_client_tickets()
         $fFinStr = $input['Datos']['FechaFinal'];   // YYYYMMDD
         $codGas  = intval($input['Datos']['Gasolinera']);
 
-        // Configuración BD (Usar tus credenciales)
+        // ConfiguraciÃ³n BD (Usar tus credenciales)
         $server = "192.168.0.6"; 
         $db = "TG"; 
         $user = "cguser"; 
@@ -2716,7 +610,7 @@ public function anomalies_client_tickets()
                 DECLARE @fFin INT    = DATEDIFF(dd, 0, :fFin) + 1;
 
                 SELECT 
-                    -- ID ÚNICO
+                    -- ID ÃšNICO
                     CAST(i.fch AS VARCHAR) + '-' + 
                     CAST(i.codisl AS VARCHAR) + '-' + 
                     CAST(i.nrotur AS VARCHAR) + '-' + 
@@ -2733,7 +627,7 @@ public function anomalies_client_tickets()
                     i.codgas AS CodEstacion,  -- <--- FALTABA ESTO
                     g.abr AS Estacion,
 
-                    -- LÓGICA DE TIPO (RESTAURADA)
+                    -- LÃ“GICA DE TIPO (RESTAURADA)
                     CASE
                         WHEN i.codval = 6 THEN 'EFECTIVO'
                         WHEN i.codval = 192 THEN 'MORALLA'
@@ -2766,7 +660,7 @@ public function anomalies_client_tickets()
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             // 3. Estructura de respuesta compatible con tu JS actual
-            // El JS espera: { respuesta: [ ...array... ] } (Basado en tu código anterior)
+            // El JS espera: { respuesta: [ ...array... ] } (Basado en tu cÃ³digo anterior)
             echo json_encode([
                 "status" => "success", 
                 "respuesta" => $data 
@@ -3158,7 +1052,7 @@ public function anomalies_client_tickets()
         $month = $_GET['month'] ?? date('m');
 
         if (!$eid || !$afiliacion) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -3175,7 +1069,7 @@ public function anomalies_client_tickets()
                 exit;
             }
 
-            // SOPORTE MULTI-AFILIACIÓN: Split por '/' y limpieza
+            // SOPORTE MULTI-AFILIACIÃ“N: Split por '/' y limpieza
             $afil_parts = array_map('trim', explode('/', $afiliacion));
             $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
 
@@ -3202,7 +1096,7 @@ public function anomalies_client_tickets()
             
             $result = [];
             while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                // GENERACIÓN DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
+                // GENERACIÃ“N DE ID DETERMINISTA ABSOLUTA (Huella Digital de 8 campos)
                 // Usamos hash siempre, ya que ID_Externo en Santander puede venir duplicado.
                 $hashData = 
                     (string)($row['Afiliacion'] ?? '') . 
@@ -3258,7 +1152,7 @@ public function anomalies_client_tickets()
         $month = $_GET['month'] ?? date('m');
 
         if (!$eid || !$afiliacion) {
-            echo json_encode(["status" => "error", "message" => "Faltan parámetros"]);
+            echo json_encode(["status" => "error", "message" => "Faltan parÃ¡metros"]);
             exit;
         }
 
@@ -3275,7 +1169,7 @@ public function anomalies_client_tickets()
                 exit;
             }
 
-            // SOPORTE MULTI-AFILIACIÓN
+            // SOPORTE MULTI-AFILIACIÃ“N
             $afil_parts = array_map('trim', explode('/', $afiliacion));
             $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
 
@@ -3336,7 +1230,7 @@ public function anomalies_client_tickets()
         exit;
     }
 
-    // FUNCIÓN PARA SERVIR ARCHIVOS DEL BANCO
+    // FUNCIÃ“N PARA SERVIR ARCHIVOS DEL BANCO
     public function view_bank_file() {
         while (ob_get_level()) ob_end_clean();
 
@@ -3379,13 +1273,13 @@ public function anomalies_client_tickets()
         header('Pragma: public');
         header('Content-Length: ' . filesize($fullPath));
         
-        // Leer archivo y terminar ejecución
+        // Leer archivo y terminar ejecuciÃ³n
         readfile($fullPath);
         exit;
     }
 
     // =========================================================================
-    // ACTUALIZAR FECHA DE TRANSACCIÓN (MOVER A OTRO DÍA)
+    // ACTUALIZAR FECHA DE TRANSACCIÃ“N (MOVER A OTRO DÃA)
     // =========================================================================
     public function update_transaction_date() {
         ob_clean();
@@ -3429,7 +1323,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // CONFIGURACIÓN INICIAL V2 (TABLAS)
+    // CONFIGURACIÃ“N INICIAL V2 (TABLAS)
     // =========================================================================
     public function setup_conciliacion_v2($silent = false) {
         if (!$silent) {
@@ -3446,7 +1340,7 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // Tabla de Grupos (Headers de conciliación)
+            // Tabla de Grupos (Headers de conciliaciÃ³n)
             $sqlGrupos = "
                 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Conciliacion_V2_Grupos' AND xtype='U')
                 CREATE TABLE Conciliacion_V2_Grupos (
@@ -3464,11 +1358,11 @@ public function anomalies_client_tickets()
             ";
             $conn->exec($sqlGrupos);
 
-            // Asegurar columna fecha_operativa si la tabla ya existía
+            // Asegurar columna fecha_operativa si la tabla ya existÃ­a
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'fecha_operativa') 
                 ALTER TABLE Conciliacion_V2_Grupos ADD fecha_operativa DATE");
 
-            // NUEVO: Asegurar columnas de banco y afiliación en el Grupo
+            // NUEVO: Asegurar columnas de banco y afiliaciÃ³n en el Grupo
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'entidad_id') 
                 ALTER TABLE Conciliacion_V2_Grupos ADD entidad_id INT");
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_V2_Grupos') AND name = 'afiliacion') 
@@ -3480,8 +1374,8 @@ public function anomalies_client_tickets()
                 CREATE TABLE Conciliacion_V2_Detalles (
                     id INT IDENTITY(1,1) PRIMARY KEY,
                     grupo_id INT NOT NULL,
-                    origen VARCHAR(10) NOT NULL, -- 'CG' (ControlGas) o 'TX' (Transacción Banco)
-                    referencia_externa VARCHAR(255) NOT NULL, -- ID único del sistema origen
+                    origen VARCHAR(10) NOT NULL, -- 'CG' (ControlGas) o 'TX' (TransacciÃ³n Banco)
+                    referencia_externa VARCHAR(255) NOT NULL, -- ID Ãºnico del sistema origen
                     fecha_operacion DATE,
                     monto DECIMAL(18,2),
                     concepto VARCHAR(255),
@@ -3490,11 +1384,11 @@ public function anomalies_client_tickets()
             ";
             $conn->exec($sqlDetalles);
 
-            // Índices para velocidad
+            // Ãndices para velocidad
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_V2_REF') CREATE INDEX IDX_V2_REF ON Conciliacion_V2_Detalles(referencia_externa)");
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IDX_V2_GRP') CREATE INDEX IDX_V2_GRP ON Conciliacion_V2_Detalles(grupo_id)");
 
-            // Asegurar columna en tabla de tránsito (Migración sutil)
+            // Asegurar columna en tabla de trÃ¡nsito (MigraciÃ³n sutil)
             $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conciliacion_Transito') AND name = 'referencia_externa') ALTER TABLE Conciliacion_Transito ADD referencia_externa VARCHAR(255)");
 
             if (!$silent) {
@@ -3511,7 +1405,7 @@ public function anomalies_client_tickets()
     }
 
     // =========================================================================
-    // GUARDAR CONCILIACIÓN V2 (Estricto CG vs TX con IDs Reales)
+    // GUARDAR CONCILIACIÃ“N V2 (Estricto CG vs TX con IDs Reales)
     // =========================================================================
     public function guardar_conciliacion() {
         ob_clean();
@@ -3562,7 +1456,7 @@ public function anomalies_client_tickets()
                 $stmtDet->execute([$groupId, 'TX', $row['ref'], $row['fecha'], $row['monto'], $row['concepto']]);
             }
 
-            // 3. Cerrar Tránsitos si aplica
+            // 3. Cerrar TrÃ¡nsitos si aplica
             if (isset($data['transit_ids_to_close']) && is_array($data['transit_ids_to_close']) && !empty($data['transit_ids_to_close'])) {
                 $ids = array_map('intval', $data['transit_ids_to_close']);
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
@@ -3588,7 +1482,7 @@ public function anomalies_client_tickets()
         $fecha_ini_raw = filter_input(INPUT_GET, 'fecha_inicio');
         $fecha_fin_raw = filter_input(INPUT_GET, 'fecha_fin');
         $estacion_id   = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
-        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parámetro
+        $entidad_id    = filter_input(INPUT_GET, 'entidad_id', FILTER_VALIDATE_INT); // Nuevo parÃ¡metro
         $afiliacion    = trim(filter_input(INPUT_GET, 'afiliacion'));
 
         if (!$fecha_ini_raw || !$fecha_fin_raw) {
@@ -3622,11 +1516,11 @@ public function anomalies_client_tickets()
             $params = [$estacion_id, $fecha_ini, $fecha_fin];
 
             if (!empty($afiliacion)) {
-                // SOPORTE MULTI-AFILIACIÓN
+                // SOPORTE MULTI-AFILIACIÃ“N
                 $afil_parts = array_map('trim', explode('/', $afiliacion));
                 $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
                 
-                // Construir condiciones LIKE dinámicas para el fallback
+                // Construir condiciones LIKE dinÃ¡micas para el fallback
                 $likeConditions = [];
                 $likeParams = [];
                 foreach ($afil_parts as $part) {
@@ -3636,7 +1530,7 @@ public function anomalies_client_tickets()
                 }
                 $fallbackSql = implode(" OR ", $likeConditions);
 
-                // Lógica Híbrida Multi-Afil: 
+                // LÃ³gica HÃ­brida Multi-Afil: 
                 $sql .= " AND (
                             G.afiliacion IN ($placeholders) 
                             OR (G.afiliacion IS NULL AND EXISTS (
@@ -3744,9 +1638,9 @@ public function get_resumen_transito() {
             $fecha_vista_fin
         ];
 
-        // --- CORRECCIÓN AQUÍ: USAMOS LIKE EN LUGAR DE IGUAL ---
+        // --- CORRECCIÃ“N AQUÃ: USAMOS LIKE EN LUGAR DE IGUAL ---
         if ($afiliacion) {
-            // Buscamos que el texto '7374424' esté CONTENIDO en 'Principal (7374424)'
+            // Buscamos que el texto '7374424' estÃ© CONTENIDO en 'Principal (7374424)'
             $sql .= " AND CT.afiliacion_asociada LIKE ?";
             $params[] = "%" . $afiliacion . "%";
         }
@@ -3772,7 +1666,7 @@ public function get_resumen_transito() {
     exit;
 }
 
-// 1. Guardar lo que marcas como "En Tránsito"
+// 1. Guardar lo que marcas como "En TrÃ¡nsito"
 public function guardar_transito() {
     ob_clean();
     header('Content-Type: application/json');
@@ -3794,7 +1688,7 @@ public function guardar_transito() {
     $conn = null;
 
     try {
-        // --- CONEXIÓN ---
+        // --- CONEXIÃ“N ---
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
@@ -3849,7 +1743,7 @@ public function guardar_transito() {
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             // TRAEMOS TODO LO PENDIENTE (POOL ABIERTO)
-            // Calculamos dias_antiguedad para el semáforo visual
+            // Calculamos dias_antiguedad para el semÃ¡foro visual
             $sql = "SELECT id, 
                            fecha_original as fecha, 
                            monto, 
@@ -3865,7 +1759,7 @@ public function guardar_transito() {
             $params = [$estacion_id];
 
             if ($afiliacion) {
-                // SOPORTE MULTI-AFILIACIÓN
+                // SOPORTE MULTI-AFILIACIÃ“N
                 $afil_parts = array_map('trim', explode('/', $afiliacion));
                 $likeConditions = [];
                 $likeParams = [];
@@ -3889,7 +1783,7 @@ public function guardar_transito() {
         exit;
     }
 
-// 3. Borrar registros de tránsito (Deshacer)
+// 3. Borrar registros de trÃ¡nsito (Deshacer)
 public function borrar_transito() {
     // Limpiar cualquier salida previa (errores, espacios, etc)
     while (ob_get_level()) { ob_end_clean(); }
@@ -3900,7 +1794,7 @@ public function borrar_transito() {
         $data = json_decode($input, true);
 
         if (!$data || !isset($data['ids']) || !is_array($data['ids']) || empty($data['ids'])) {
-            throw new Exception("Datos inválidos o lista de IDs vacía.");
+            throw new Exception("Datos invÃ¡lidos o lista de IDs vacÃ­a.");
         }
 
         $server = "192.168.0.6"; 
@@ -3916,7 +1810,7 @@ public function borrar_transito() {
         $ids = array_filter($ids, function($id) { return $id > 0; });
 
         if (empty($ids)) {
-            throw new Exception("No se proporcionaron IDs válidos para eliminar.");
+            throw new Exception("No se proporcionaron IDs vÃ¡lidos para eliminar.");
         }
 
         // Construir query segura
@@ -3941,7 +1835,7 @@ public function get_conciliacion_config() {
         
         $estacion_id = filter_input(INPUT_GET, 'estacion_id', FILTER_VALIDATE_INT);
         if (!$estacion_id) {
-            echo json_encode(['status' => 'error', 'message' => 'ID de estación inválido']);
+            echo json_encode(['status' => 'error', 'message' => 'ID de estaciÃ³n invÃ¡lido']);
             exit;
         }
 
@@ -3969,9 +1863,9 @@ public function get_conciliacion_config() {
             $stmt->execute([$estacion_id]);
             $reglas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // INYECCIÓN MANUAL COLOSIO (ID 333)
+            // INYECCIÃ“N MANUAL COLOSIO (ID 333)
             if ($estacion_id == 333) {
-                // Verificar si ya existe para no duplicar (aunque es improbable si no está en BD)
+                // Verificar si ya existe para no duplicar (aunque es improbable si no estÃ¡ en BD)
                 $existe = false;
                 foreach($reglas as $r) { if($r['afiliacion'] == '9274246') $existe = true; }
                 
@@ -3995,7 +1889,7 @@ public function get_conciliacion_config() {
     }
 
     // =========================================================================
-// FUNCIÓN PRIVADA: RECALCULAR TOTALES DE UN GRUPO (2 VÍAS: CG vs TX) V2
+// FUNCIÃ“N PRIVADA: RECALCULAR TOTALES DE UN GRUPO (2 VÃAS: CG vs TX) V2
 // =========================================================================
 private function recalcular_grupo_interno($conn, $grupo_id) {
     
@@ -4029,7 +1923,7 @@ private function recalcular_grupo_interno($conn, $grupo_id) {
 }
 
 // =========================================================================
-// RECALCULAR MANUALMENTE UN GRUPO (BOTÓN DE PÁNICO)
+// RECALCULAR MANUALMENTE UN GRUPO (BOTÃ“N DE PÃNICO)
 // =========================================================================
 public function forzar_recalculo() {
     ob_clean();
@@ -4049,7 +1943,7 @@ public function forzar_recalculo() {
         $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         
-        // Simplemente llamamos a la lógica de suma
+        // Simplemente llamamos a la lÃ³gica de suma
         $nuevos_totales = $this->recalcular_grupo_interno($conn, $data['grupo_id']);
 
         echo json_encode([
@@ -4124,7 +2018,7 @@ public function forzar_recalculo() {
         exit;
     }
     // =========================================================================
-// DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÍO) V2
+// DESLIGAR MOVIMIENTO (Y BORRAR GRUPO SI QUEDA VACÃO) V2
 // =========================================================================
     public function eliminar_grupo_conciliacion() {
         ob_clean();
@@ -4146,7 +2040,7 @@ public function forzar_recalculo() {
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $conn->beginTransaction();
 
-            // 1. Revertir Tránsitos asociados a los detalles de este grupo
+            // 1. Revertir TrÃ¡nsitos asociados a los detalles de este grupo
             $stmtRefs = $conn->prepare("SELECT referencia_externa FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
             $stmtRefs->execute([$grupo_id]);
             $refs = $stmtRefs->fetchAll(PDO::FETCH_COLUMN);
@@ -4207,32 +2101,32 @@ public function forzar_recalculo() {
         $ref      = $rowDet['referencia_externa'];
         $origen   = $rowDet['origen'];
 
-        // 2. Eliminar el detalle específico V2
+        // 2. Eliminar el detalle especÃ­fico V2
         $stmtDel = $conn->prepare("DELETE FROM Conciliacion_V2_Detalles WHERE id = ?");
         $stmtDel->execute([$id_detalle]);
 
-        // REVERSIÓN DE TRÁNSITO: Si era una referencia de tránsito, volver a PENDIENTE
-        // (Aunque ahora guardamos el ID real, la lógica de tránsito sigue siendo útil)
-        // Nota: Si el usuario movió a tránsito algo, su ID estará en Conciliacion_Transito.
-        // Si al conciliar marcamos ese ID como CONCILIADO, aquí deberíamos revertirlo.
+        // REVERSIÃ“N DE TRÃNSITO: Si era una referencia de trÃ¡nsito, volver a PENDIENTE
+        // (Aunque ahora guardamos el ID real, la lÃ³gica de trÃ¡nsito sigue siendo Ãºtil)
+        // Nota: Si el usuario moviÃ³ a trÃ¡nsito algo, su ID estarÃ¡ en Conciliacion_Transito.
+        // Si al conciliar marcamos ese ID como CONCILIADO, aquÃ­ deberÃ­amos revertirlo.
         // Pero espera, 'referencia_externa' en V2 guarda el ID de ControlGas o Banco.
         // La tabla Conciliacion_Transito usa sus propios IDs incrementales.
         
-        // Buscamos si este item que estamos desligando tiene un registro en tránsitos
+        // Buscamos si este item que estamos desligando tiene un registro en trÃ¡nsitos
         $sqlRevert = "UPDATE Conciliacion_Transito SET estado = 'PENDIENTE', fecha_marcado = NULL 
                       WHERE (fecha_original = ? OR 1=1) AND monto = ? AND estado = 'CONCILIADO'";
-        // TODO: Hacer la reversión de tránsito más precisa si es necesario.
+        // TODO: Hacer la reversiÃ³n de trÃ¡nsito mÃ¡s precisa si es necesario.
 
-        // 3. Verificar si queda vacío el grupo V2
+        // 3. Verificar si queda vacÃ­o el grupo V2
         $stmtCount = $conn->prepare("SELECT COUNT(*) FROM Conciliacion_V2_Detalles WHERE grupo_id = ?");
         $stmtCount->execute([$grupo_id]);
         $remaining = (int)$stmtCount->fetchColumn();
 
         if ($remaining === 0) {
-            // Grupo vacío -> Eliminar V2
+            // Grupo vacÃ­o -> Eliminar V2
             $stmtDelGroup = $conn->prepare("DELETE FROM Conciliacion_V2_Grupos WHERE id = ?");
             $stmtDelGroup->execute([$grupo_id]);
-            $mensaje = "Grupo eliminado por quedar vacío.";
+            $mensaje = "Grupo eliminado por quedar vacÃ­o.";
         } else {
             // Grupo con datos -> Recalcular V2
             $this->recalcular_grupo_interno($conn, $grupo_id);
@@ -4279,7 +2173,7 @@ public function stamped_invoices(): void
 {
 
     set_time_limit(300); 
-    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+    ini_set('memory_limit', '512M'); // TambiÃ©n aumentamos memoria por si son muchos datos
 
     if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) { return; }
 
@@ -4293,7 +2187,7 @@ public function stamped_invoices(): void
         $untilMonth = $_GET['until']  ?? null;
         $codEmp     = $_GET['codemp'] ?? null; // Recibimos ID de empresa
 
-        // Conversión a entero o null
+        // ConversiÃ³n a entero o null
         $codEmp = ($codEmp !== null && $codEmp !== '') ? (int)$codEmp : null;
 
         if (!$fromMonth || !$untilMonth) { echo json_encode(['error' => 'Faltan fechas.']); return; }
@@ -4301,7 +2195,7 @@ public function stamped_invoices(): void
         $fromDateObj  = \DateTime::createFromFormat('Y-m', $fromMonth);
         $untilDateObj = \DateTime::createFromFormat('Y-m', $untilMonth);
 
-        if (!$fromDateObj || !$untilDateObj) { echo json_encode(['error' => 'Fecha inválida.']); return; }
+        if (!$fromDateObj || !$untilDateObj) { echo json_encode(['error' => 'Fecha invÃ¡lida.']); return; }
         if ($fromDateObj > $untilDateObj) { [$fromDateObj, $untilDateObj] = [$untilDateObj, $fromDateObj]; }
 
         $fromDateObj->modify('first day of this month');
@@ -4368,7 +2262,7 @@ public function stamped_invoices_detail(): void
 {
 
     set_time_limit(300); 
-    ini_set('memory_limit', '512M'); // También aumentamos memoria por si son muchos datos
+    ini_set('memory_limit', '512M'); // TambiÃ©n aumentamos memoria por si son muchos datos
 
     if (!preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) return;
     header('Content-Type: application/json; charset=utf-8');
@@ -4440,7 +2334,7 @@ public function stamped_invoices_detail(): void
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            // 1. FILTRO DE GRUPOS (Lógica Híbrida similar a get_conciliaciones_hechas)
+            // 1. FILTRO DE GRUPOS (LÃ³gica HÃ­brida similar a get_conciliaciones_hechas)
             $filterSql = " WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
             $params = [$year, $month];
 
@@ -4455,11 +2349,11 @@ public function stamped_invoices_detail(): void
             }
 
             if (!empty($afiliacion)) {
-                // SOPORTE MULTI-AFILIACIÓN
+                // SOPORTE MULTI-AFILIACIÃ“N
                 $afil_parts = array_map('trim', explode('/', $afiliacion));
                 $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
                 
-                // Construir condiciones LIKE dinámicas para el fallback
+                // Construir condiciones LIKE dinÃ¡micas para el fallback
                 $likeConditions = [];
                 $likeParams = [];
                 foreach ($afil_parts as $part) {
@@ -4495,7 +2389,7 @@ public function stamped_invoices_detail(): void
             $stmtTotales->execute($params);
             $totales = $stmtTotales->fetch(PDO::FETCH_ASSOC);
 
-            // DESGLOSE POR DÍA OPERATIVO (SOLO DIFERENCIAS != 0)
+            // DESGLOSE POR DÃA OPERATIVO (SOLO DIFERENCIAS != 0)
             $sqlDias = "SELECT 
                             FORMAT(G.fecha_operativa, 'yyyy-MM-dd') as fecha,
                             COUNT(G.id) as count,
@@ -4511,7 +2405,7 @@ public function stamped_invoices_detail(): void
             $stmtDias->execute($params);
             $dias = $stmtDias->fetchAll(PDO::FETCH_ASSOC);
 
-            // 3. DESGLOSE POR ESTACIÓN (SOLO DIFERENCIAS != 0)
+            // 3. DESGLOSE POR ESTACIÃ“N (SOLO DIFERENCIAS != 0)
             $sqlEstacion = "SELECT 
                                 E.Nombre as estacion,
                                 SUM(G.total_sistema) as sistema,
@@ -4528,11 +2422,11 @@ public function stamped_invoices_detail(): void
             $porEstacion = $stmtEstacion->fetchAll(PDO::FETCH_ASSOC);
 
             // ==========================================================
-            // AGRUPAMIENTOS ADICIONALES PARA PESTAÑAS (AUDITORÍA)
+            // AGRUPAMIENTOS ADICIONALES PARA PESTAÃ‘AS (AUDITORÃA)
             // ==========================================================
             $agrupados = [];
             
-            // A. Por Banco / Afiliación (Simplificado con nuevas columnas)
+            // A. Por Banco / AfiliaciÃ³n (Simplificado con nuevas columnas)
             $sqlBank = "SELECT TE.Nombre as Banco, ISNULL(G.afiliacion, 'Sin Afil.') as Afiliacion, 
                                SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                         FROM Conciliacion_V2_Grupos G
@@ -4545,7 +2439,7 @@ public function stamped_invoices_detail(): void
             $stmtBank->execute($params);
             $agrupados['bancos'] = $stmtBank->fetchAll(PDO::FETCH_ASSOC);
 
-            // B. Por Estación / Banco
+            // B. Por EstaciÃ³n / Banco
             $sqlEstBank = "SELECT E.Nombre as Estacion, TE.Nombre as Banco, 
                                   SUM(G.total_sistema) as Sistema, SUM(G.total_banco) as BancoTotal, SUM(G.diferencia) as Diferencia
                            FROM Conciliacion_V2_Grupos G
@@ -4559,7 +2453,7 @@ public function stamped_invoices_detail(): void
             $stmtEstBank->execute($params);
             $agrupados['estacion_banco'] = $stmtEstBank->fetchAll(PDO::FETCH_ASSOC);
 
-            // C. Por Razón Social / Estación
+            // C. Por RazÃ³n Social / EstaciÃ³n
             $sqlRS = "SELECT CASE 
                                 WHEN E.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
                                 WHEN E.RFC = 'DGM880621FU5' THEN 'GASOMEX'
@@ -4609,7 +2503,7 @@ public function stamped_invoices_detail(): void
 
             switch ($mode) {
                 case 'rs':
-                    // MODO RAZÓN SOCIAL: Comparativa global entre empresas
+                    // MODO RAZÃ“N SOCIAL: Comparativa global entre empresas
                     $sql = "SELECT 
                                 CASE
                                     WHEN E.RFC = 'DGA930823KD3' THEN 'DIAZ GAS'
@@ -4633,7 +2527,7 @@ public function stamped_invoices_detail(): void
                     break;
 
                 case 'station':
-                    // MODO ESTACIÓN: Agrupado por el banco/afil predominante de cada grupo (Ahora directo en G)
+                    // MODO ESTACIÃ“N: Agrupado por el banco/afil predominante de cada grupo (Ahora directo en G)
                     $sql = "SELECT 
                                 TE.Nombre + ' (' + ISNULL(G.afiliacion, 'Sin Afil.') + ')' as label,
                                 SUM(G.total_sistema) as sistema,
@@ -4665,7 +2559,7 @@ public function stamped_invoices_detail(): void
                     break;
             }
 
-            if (!$sql) throw new Exception("Modo de auditoría no válido");
+            if (!$sql) throw new Exception("Modo de auditorÃ­a no vÃ¡lido");
 
             $stmt = $conn->prepare($sql);
             $stmt->execute($params);
@@ -4730,7 +2624,7 @@ public function stamped_invoices_detail(): void
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle("Conciliacion $year-$month");
 
-            $headers = ['Grupo ID', 'Estación', 'Banco', 'Afiliación', 'Fecha Operativa', 'ControlGas', 'Bancos (TX)', 'Diferencia'];
+            $headers = ['Grupo ID', 'EstaciÃ³n', 'Banco', 'AfiliaciÃ³n', 'Fecha Operativa', 'ControlGas', 'Bancos (TX)', 'Diferencia'];
             $sheet->fromArray($headers, NULL, 'A1');
             $sheet->getStyle('A1:H1')->getFont()->setBold(true);
 
@@ -4793,7 +2687,7 @@ public function stamped_invoices_detail(): void
 
             // Query Completa: Grupos Reconciliados + Afiliaciones Pendientes (Pool Maestro)
             $sql = "
-                -- Parte 1: Grupos ya conciliados (incluye multi-afiliación como una sola fila)
+                -- Parte 1: Grupos ya conciliados (incluye multi-afiliaciÃ³n como una sola fila)
                 SELECT 
                     TE.Nombre as Banco,
                     G.afiliacion as Afiliacion,
@@ -4811,7 +2705,7 @@ public function stamped_invoices_detail(): void
 
                 UNION ALL
 
-                -- Parte 2: Afiliaciones existentes en el catálogo que NO tienen conciliaciones este mes
+                -- Parte 2: Afiliaciones existentes en el catÃ¡logo que NO tienen conciliaciones este mes
                 SELECT 
                     TE.Nombre as Banco,
                     A.afiliacion as Afiliacion,
@@ -4834,7 +2728,7 @@ public function stamped_invoices_detail(): void
                 ORDER BY Banco, Estacion";
 
             $stmt = $conn->prepare($sql);
-            // Parámetros: Parte 1 (Year, Month), Parte 2 (Year, Month)
+            // ParÃ¡metros: Parte 1 (Year, Month), Parte 2 (Year, Month)
             $stmt->execute([$year, $month, $year, $month]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -4848,8 +2742,8 @@ public function stamped_invoices_detail(): void
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle("Resumen General $rs_label");
 
-            // Título superior
-            $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÓN - $rs_label");
+            // TÃ­tulo superior
+            $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÃ“N - $rs_label");
             $sheet->mergeCells('A1:E1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
             $sheet->getStyle('A1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
@@ -4875,13 +2769,13 @@ public function stamped_invoices_detail(): void
 
             foreach ($dataByBank as $bankName => $bankRows) {
                 // Header del Banco
-                $sheet->setCellValue('A' . $rowIdx, "INSTITUCIÓN: " . $bankName);
+                $sheet->setCellValue('A' . $rowIdx, "INSTITUCIÃ“N: " . $bankName);
                 $sheet->mergeCells('A'.$rowIdx.':E'.$rowIdx);
                 $sheet->getStyle('A'.$rowIdx)->getFont()->setBold(true)->setSize(12);
                 $rowIdx++;
 
                 // Headers de tabla
-                $headers = ['AFILIACIÓN', 'ESTACIÓN', 'SISTEMA (CG)', 'BANCOS (TX)', 'DIFERENCIA'];
+                $headers = ['AFILIACIÃ“N', 'ESTACIÃ“N', 'SISTEMA (CG)', 'BANCOS (TX)', 'DIFERENCIA'];
                 $sheet->fromArray($headers, NULL, 'A' . $rowIdx);
                 $sheet->getStyle('A'.$rowIdx.':E'.$rowIdx)->applyFromArray($headerStyle);
                 $rowIdx++;
