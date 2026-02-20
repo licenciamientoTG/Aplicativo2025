@@ -334,14 +334,10 @@
                         </div>
                         <div class="col-2 ">
                             <label class="col-form-label-sm" for="until1">Proveedor: </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id"
-                                id="proveedor_id" placeholder="Proveedor" {{ edit_mode ? 'disabled' : '' }}>
-                                <option value="0" {{ not edit_mode or (edit_mode and selected_provider=='0' )
-                                    ? 'selected' : '' }}>Todos los proveedores</option>
+                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor" {{ edit_mode ? 'disabled' : '' }}>
+                                <option value="0" {{ not edit_mode or (edit_mode and selected_provider=='0' ) ? 'selected' : '' }}>Todos los proveedores</option>
                                 {% for proveedor in proveedores %}
-                                <option value="{{ proveedor.id_control_gas }}" {{ edit_mode and
-                                    selected_provider==proveedor.id_control_gas ? 'selected' : '' }}>{{ proveedor.den }}
-                                </option>
+                                <option value="{{ proveedor.id_control_gas }}" {{ edit_mode and selected_provider==proveedor.id_control_gas ? 'selected' : '' }}>{{ proveedor.den }}</option>
                                 {% endfor %}
                             </select>
                         </div>

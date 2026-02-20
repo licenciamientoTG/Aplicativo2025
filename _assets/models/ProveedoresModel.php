@@ -16,7 +16,7 @@ class ProveedoresModel extends Model{
 
     
     public function get_actives(){
-        $query = 'SELECT t1.*,t2.dias_credito  from SG12.dbo.[Proveedores] t1
+        $query = 'SELECT t1.*,t2.dias_credito, t2.id_control_gas  from SG12.dbo.[Proveedores] t1
                     left join [TG].[dbo].[Proveedores] t2 on t1.cod = t2.id_control_gas
                     where cod > 0
                     order by cod';

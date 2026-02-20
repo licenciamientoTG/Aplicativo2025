@@ -1,201 +1,213 @@
 // Si el documento esta listo
 $(document).ready(function () {
-  // Table de Despachos de Crédito y Débito
-  let inventory_mov_table = $("#inventory_mov_table").DataTable({
-    colReorder: true,
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-      {
-        extend: "excel",
-        className: "d-none",
-      },
-      {
-        extend: "print", // Agrega el botón de impresión
-        className: "d-none",
-      },
-    ],
-    ajax: {
-      url:
-        "/supply/inventory_mov_table/" +
-        $("input#from").val() +
-        "/" +
-        $("select#station_id").val(),
-      error: function () {
-        $("#inventory_mov_table").waitMe("hide");
-        alertify.myAlert(
-          `<div class="container text-center text-danger">
-                    <h4 class="mt-2 text-danger">¡Error!</h4>
-                </div>
-                <div class="text-dark">
-                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                </div>`,
-        );
-      },
-    },
-    deferRender: true,
-    columns: [
-      { data: "ESTACION" },
-      { data: "TURNO" },
-      { data: "PRODUCTO" },
-      { data: "CAP", render: $.fn.dataTable.render.number(",", ".", 3) },
-      { data: "VOLUMEN", render: $.fn.dataTable.render.number(",", ".", 3) },
-      {
-        data: "PORCENTAJE",
-        render: $.fn.dataTable.render.number(",", ".", 0, "%"),
-      },
-    ],
-    createdRow: function (row, data, dataIndex) {},
-    initComplete: function () {
-      $(".dt-buttons").addClass("d-none");
-      $('[data-toggle="tooltip"]').tooltip();
-    },
-  });
 
-  // Agregar un evento clic de refresh
-  $(".refresh_inventory_mov_table").on("click", function () {
-    inventory_mov_table.clear().draw();
-    inventory_mov_table.ajax.reload();
-    $("#inventory_mov_table").waitMe("hide");
-  });
+	// var proveedor_id = document.getElementById("proveedor_id");
+	//  proveedor_id.addEventListener("change", function () {
+	//  	console.log("Proveedor seleccionado:", this.value);
+	//  });
+	
 
-  $("#ieps_value").text();
-  $("#product").on(
-    "changed.bs.select",
-    function (e, clickedIndex, isSelected, previousValue) {
-      var selectedValue = $(this).val();
-      $.getJSON("/supply/get_ieps/" + selectedValue, function (json) {
-        // Vamos a actualizar el contenido de la eqtiqueta <small> con el valor del IEPS
-        $("#ieps_value").text("IEPS: " + json.abr);
-      });
-    },
-  );
-  let movimientoActual = {};
-  let facturaProveedorSeleccionada = null;
-  let facturaPetrotalSeleccionada = null;
+	$("#payment_create_table").on("draw.dt", function () {
+		updateSelectedCount();
+	});
 
-  let datatable_product_prices = $("#datatable_product_prices").DataTable({
-    colReorder: true,
-    order: [0, "asc"],
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    pageLength: 100,
-    buttons: [
-      {
-        extend: "excel",
-        className: "d-none",
-        // Título del archivo de exportación
-        title: "Precios de Combustibles",
-      },
-    ],
-    ajax: {
-      url: "/supply/datatable_product_prices",
-      type: "POST",
-      error: function () {
-        $("#datatable_product_prices").waitMe("hide");
-        alertify.myAlert(
-          `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                    </div>`,
-        );
-      },
-      beforeSend: function () {
-        $(".table-responsive").addClass("loading");
-      },
-    },
-    deferRender: true,
-    columns: [
-      { data: "CODEST" },
-      { data: "ESTACION" },
-      { data: "PRECIOANTERIORMAXIMA" },
-      { data: "PRECIONUEVOMAXIMA" },
-      { data: "DIFERENCIAMAXIMA" },
-      { data: "PRECIOANTERIORSUPER" },
-      { data: "PRECIONUEVOSUPER" },
-      { data: "DIFERENCIASUPER" },
-      { data: "PRECIOANTERIORDIESEL" },
-      { data: "PRECIONUEVODIESEL" },
-      { data: "DIFERENCIADIESEL" },
-    ],
-    rowId: "CODEST",
-    createdRow: function (row, data, dataIndex) {
-      // Vamos a agregar la clase .bg-success a las celdas de la columna 2,3 y 4
-      // que tengan un valor mayor a 100
-      $("td", row).eq(2).addClass("bg-success text-white text-center");
-      $("td", row).eq(3).addClass("bg-success text-white text-center");
-      $("td", row).eq(4).addClass("bg-success text-white text-center");
 
-      $("td", row).eq(5).addClass("bg-primary text-white text-center");
-      $("td", row).eq(6).addClass("bg-primary text-white text-center");
-      $("td", row).eq(7).addClass("bg-primary text-white text-center");
 
-      // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
-      if ($("td", row).eq(6).text() === "N/A") {
-        $("td", row).eq(5).addClass("bg-black");
-        $("td", row).eq(6).addClass("bg-black");
-        $("td", row).eq(7).addClass("bg-black");
-      }
+	let inventory_mov_table = $("#inventory_mov_table").DataTable({
+	colReorder: true,
+	dom: '<"top"Bf>rt<"bottom"lip>',
+	pageLength: 100,
+	buttons: [
+		{
+		extend: "excel",
+		className: "d-none",
+		},
+		{
+		extend: "print", // Agrega el botón de impresión
+		className: "d-none",
+		},
+	],
+	ajax: {
+		url:
+		"/supply/inventory_mov_table/" +
+		$("input#from").val() +
+		"/" +
+		$("select#station_id").val(),
+		error: function () {
+		$("#inventory_mov_table").waitMe("hide");
+		alertify.myAlert(
+			`<div class="container text-center text-danger">
+					<h4 class="mt-2 text-danger">¡Error!</h4>
+				</div>
+				<div class="text-dark">
+					<p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+				</div>`,
+		);
+		},
+	},
+	deferRender: true,
+	columns: [
+		{ data: "ESTACION" },
+		{ data: "TURNO" },
+		{ data: "PRODUCTO" },
+		{ data: "CAP", render: $.fn.dataTable.render.number(",", ".", 3) },
+		{ data: "VOLUMEN", render: $.fn.dataTable.render.number(",", ".", 3) },
+		{
+		data: "PORCENTAJE",
+		render: $.fn.dataTable.render.number(",", ".", 0, "%"),
+		},
+	],
+	createdRow: function (row, data, dataIndex) {},
+	initComplete: function () {
+		$(".dt-buttons").addClass("d-none");
+		$('[data-toggle="tooltip"]').tooltip();
+	},
+	});
 
-      $("td", row).eq(8).addClass("table-warning text-center");
-      $("td", row).eq(9).addClass("table-warning text-center");
-      $("td", row).eq(10).addClass("table-warning text-center");
+	// Agregar un evento clic de refresh
+	$(".refresh_inventory_mov_table").on("click", function () {
+	inventory_mov_table.clear().draw();
+	inventory_mov_table.ajax.reload();
+	$("#inventory_mov_table").waitMe("hide");
+	});
 
-      // Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
-      if ($("td", row).eq(9).text() === "N/A") {
-        $("td", row).eq(8).addClass("bg-black text-white");
-        $("td", row).eq(9).addClass("bg-black text-white");
-        $("td", row).eq(10).addClass("bg-black text-white");
-      }
-    },
-    initComplete: function () {
-      $(".dt-buttons").addClass("d-none");
-      $(".table-responsive").removeClass("loading");
-    },
-  });
+	$("#ieps_value").text();
+	$("#product").on(
+	"changed.bs.select",
+	function (e, clickedIndex, isSelected, previousValue) {
+		var selectedValue = $(this).val();
+		$.getJSON("/supply/get_ieps/" + selectedValue, function (json) {
+		// Vamos a actualizar el contenido de la eqtiqueta <small> con el valor del IEPS
+		$("#ieps_value").text("IEPS: " + json.abr);
+		});
+	},
+	);
+	let movimientoActual = {};
+	let facturaProveedorSeleccionada = null;
+	let facturaPetrotalSeleccionada = null;
 
-  datatable_product_prices.on("draw", function () {
-    $('[data-toggle="tooltip"]').tooltip();
-  });
+	let datatable_product_prices = $("#datatable_product_prices").DataTable({
+	colReorder: true,
+	order: [0, "asc"],
+	dom: '<"top"Bf>rt<"bottom"lip>',
+	pageLength: 100,
+	buttons: [
+		{
+		extend: "excel",
+		className: "d-none",
+		// Título del archivo de exportación
+		title: "Precios de Combustibles",
+		},
+	],
+	ajax: {
+		url: "/supply/datatable_product_prices",
+		type: "POST",
+		error: function () {
+		$("#datatable_product_prices").waitMe("hide");
+		alertify.myAlert(
+			`<div class="container text-center text-danger">
+						<h4 class="mt-2 text-danger">¡Error!</h4>
+					</div>
+					<div class="text-dark">
+						<p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+					</div>`,
+		);
+		},
+		beforeSend: function () {
+		$(".table-responsive").addClass("loading");
+		},
+	},
+	deferRender: true,
+	columns: [
+		{ data: "CODEST" },
+		{ data: "ESTACION" },
+		{ data: "PRECIOANTERIORMAXIMA" },
+		{ data: "PRECIONUEVOMAXIMA" },
+		{ data: "DIFERENCIAMAXIMA" },
+		{ data: "PRECIOANTERIORSUPER" },
+		{ data: "PRECIONUEVOSUPER" },
+		{ data: "DIFERENCIASUPER" },
+		{ data: "PRECIOANTERIORDIESEL" },
+		{ data: "PRECIONUEVODIESEL" },
+		{ data: "DIFERENCIADIESEL" },
+	],
+	rowId: "CODEST",
+	createdRow: function (row, data, dataIndex) {
+		// Vamos a agregar la clase .bg-success a las celdas de la columna 2,3 y 4
+		// que tengan un valor mayor a 100
+		$("td", row).eq(2).addClass("bg-success text-white text-center");
+		$("td", row).eq(3).addClass("bg-success text-white text-center");
+		$("td", row).eq(4).addClass("bg-success text-white text-center");
 
-  // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-  $("#filtro-datatable_product_prices input").on(
-    "keyup change clear",
-    function () {
-      datatable_product_prices
-        .column(0)
-        .search($("#CODEST").val().trim())
-        .column(1)
-        .search($("#ESTACION").val().trim())
-        .column(2)
-        .search($("#PRECIOANTERIORMAXIMA").val().trim())
-        .column(3)
-        .search($("#PRECIONUEVOMAXIMA").val().trim())
-        .column(4)
-        .search($("#DIFERENCIAMAXIMA").val().trim())
-        .column(5)
-        .search($("#PRECIOANTERIORSUPER").val().trim())
-        .column(6)
-        .search($("#PRECIONUEVOSUPER").val().trim())
-        .column(7)
-        .search($("#DIFERENCIASUPER").val().trim())
-        .column(8)
-        .search($("#PRECIOANTERIORDIESEL").val().trim())
-        .column(9)
-        .search($("#PRECIONUEVODIESEL").val().trim())
-        .column(10)
-        .search($("#DIFERENCIADIESEL").val().trim())
-        .draw();
-    },
-  );
+		$("td", row).eq(5).addClass("bg-primary text-white text-center");
+		$("td", row).eq(6).addClass("bg-primary text-white text-center");
+		$("td", row).eq(7).addClass("bg-primary text-white text-center");
 
-  // Agregar un evento clic de refresh
-  $(".refresh_datatable_product_prices").on("click", function () {
-    datatable_product_prices.clear().draw();
-    datatable_product_prices.ajax.reload();
-    $("#datatable_product_prices").waitMe("hide");
-  });
+		// Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
+		if ($("td", row).eq(6).text() === "N/A") {
+		$("td", row).eq(5).addClass("bg-black");
+		$("td", row).eq(6).addClass("bg-black");
+		$("td", row).eq(7).addClass("bg-black");
+		}
+
+		$("td", row).eq(8).addClass("table-warning text-center");
+		$("td", row).eq(9).addClass("table-warning text-center");
+		$("td", row).eq(10).addClass("table-warning text-center");
+
+		// Vamos a agregar la clase .bg-warning a las celdas de la columna 5,6 y 7 si el contenido de la celda es 'N/A'
+		if ($("td", row).eq(9).text() === "N/A") {
+		$("td", row).eq(8).addClass("bg-black text-white");
+		$("td", row).eq(9).addClass("bg-black text-white");
+		$("td", row).eq(10).addClass("bg-black text-white");
+		}
+	},
+	initComplete: function () {
+		$(".dt-buttons").addClass("d-none");
+		$(".table-responsive").removeClass("loading");
+	},
+	});
+
+	datatable_product_prices.on("draw", function () {
+	$('[data-toggle="tooltip"]').tooltip();
+	});
+
+	// Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
+	$("#filtro-datatable_product_prices input").on(
+	"keyup change clear",
+	function () {
+		datatable_product_prices
+		.column(0)
+		.search($("#CODEST").val().trim())
+		.column(1)
+		.search($("#ESTACION").val().trim())
+		.column(2)
+		.search($("#PRECIOANTERIORMAXIMA").val().trim())
+		.column(3)
+		.search($("#PRECIONUEVOMAXIMA").val().trim())
+		.column(4)
+		.search($("#DIFERENCIAMAXIMA").val().trim())
+		.column(5)
+		.search($("#PRECIOANTERIORSUPER").val().trim())
+		.column(6)
+		.search($("#PRECIONUEVOSUPER").val().trim())
+		.column(7)
+		.search($("#DIFERENCIASUPER").val().trim())
+		.column(8)
+		.search($("#PRECIOANTERIORDIESEL").val().trim())
+		.column(9)
+		.search($("#PRECIONUEVODIESEL").val().trim())
+		.column(10)
+		.search($("#DIFERENCIADIESEL").val().trim())
+		.draw();
+	},
+	);
+
+	// Agregar un evento clic de refresh
+	$(".refresh_datatable_product_prices").on("click", function () {
+		datatable_product_prices.clear().draw();
+		datatable_product_prices.ajax.reload();
+		$("#datatable_product_prices").waitMe("hide");
+	});
 });
 
 function update_price(codprd, codgas, fch, hra, pre) {
@@ -377,7 +389,13 @@ async function payment_create_table() {
   var untilDate = document.getElementById("until1").value;
   var codgas = document.getElementById("station_id1").value;
   var company = document.getElementById("company").value;
-  var proveedor = document.getElementById("proveedor_id").value;
+  // var proveedor = document.getElementById("proveedor_id").value;
+    var proveedor = $('#proveedor_id').selectpicker('val') || $('#proveedor_id').val() || '0';
+
+  console.log("Estación:", codgas);
+  console.log("Proveedor ID:", proveedor);
+  console.log("Company ID:", company);
+
   if (
     !codgas ||
     !company ||
@@ -730,15 +748,7 @@ function filtrarEstacionesPorEmpresa() {
       const stationValue = $(this).attr("value");
       const stationText = $(this).text();
       if (empresaSel === "0" || emp === empresaSel) {
-        $station.append(
-          '<option value="' +
-            stationValue +
-            '" data-emp="' +
-            emp +
-            '">' +
-            stationText +
-            "</option>",
-        );
+        $station.append('<option value="' +stationValue +'" data-emp="' +emp +'">' +stationText +"</option>",);
       }
     });
   } else {
@@ -3677,6 +3687,13 @@ function loadPaymentList() {
     columns: [
       { data: "id" },
       { data: "request_date" },
+      {
+        data: "scheduled_payment_date",
+        render: function (data) {
+          if (!data) return '<span class="text-muted">-</span>';
+          return '<span class="text-primary fw-semibold">' + data + "</span>";
+        },
+      },
       { data: "emp_name" },
       { data: "provider_name" },
       { data: "usuario" },
@@ -4510,11 +4527,7 @@ async function addInvoiceToPayment(nro, factura, codgas) {
   }
 }
 
-$(document).ready(function () {
-  $("#payment_create_table").on("draw.dt", function () {
-    updateSelectedCount();
-  });
-});
+
 function ReturnListPayment() {
   window.location.href = "/supply/payment_list";
 }
@@ -6947,12 +6960,6 @@ function abrirModalRegistroPago() {
 
   const bancoSeleccionado = Array.from(bancos)[0];
 
-  // ✅ VALIDACIÓN 3: Verificar que sea Santander (por ahora)
-  if (bancoSeleccionado !== "Santander") {
-    alertify.warning("Por ahora solo se pueden registrar pagos de Santander");
-    return;
-  }
-
   // ✅ Abrir modal con resumen
   mostrarModalRegistroPago(seleccionadas, bancoSeleccionado);
 }
@@ -6981,50 +6988,75 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
   const empresasTexto =
     empresas.length === 1 ? empresas[0] : `${empresas.length} empresas`;
 
+  // Color del banco
+  const bancoColor = banco === "Santander" ? "#ec1c24" : banco === "Banorte" ? "#c9302c" : "#6c757d";
+  const bancoIcon = banco === "Santander" ? "fas fa-university" : banco === "Banorte" ? "fas fa-piggy-bank" : "fas fa-university";
+
   // ✅ MODAL CON FORMULARIO
   const modalHTML = `
-        <div class="text-start">
-            <!-- Resumen -->
-            <div class="alert alert-info mb-3">
-                <div class="row">
-                    <div class="col-6">
-                        <strong><i class="fas fa-building"></i> Empresa:</strong> ${empresasTexto}<br>
-                        <strong><i class="fas fa-university"></i> Banco:</strong> ${banco}
+        <div class="text-start" style="font-family: inherit;">
+
+            <!-- Header banco + resumen -->
+            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <div style="background: ${bancoColor}; border-radius: 6px; width: 36px; height: 36px; display:flex; align-items:center; justify-content:center;">
+                        <i class="${bancoIcon} text-white"></i>
                     </div>
-                    <div class="col-6">
-                        <strong><i class="fas fa-layer-group"></i> Grupos:</strong> ${totalGrupos}<br>
-                        <strong><i class="fas fa-file-invoice"></i> Facturas:</strong> ${totalFacturas}
+                    <div>
+                        <div style="color: #fff; font-weight: 600; font-size: 0.95rem;">${banco}</div>
+                        <div style="color: #adb5bd; font-size: 0.75rem;">Pago a realizar</div>
                     </div>
                 </div>
-                <hr class="my-2">
-                <div class="text-center">
-                    <strong><i class="fas fa-dollar-sign"></i> Total:</strong> 
-                    <span class="fs-5 text-success">$${totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                <div class="row g-2 text-center">
+                    <div class="col-4">
+                        <div style="background: rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 4px;">
+                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Empresa</div>
+                            <div style="color: #fff; font-size: 0.82rem; font-weight: 600; margin-top: 2px;">${empresasTexto}</div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div style="background: rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 4px;">
+                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Facturas</div>
+                            <div style="color: #fff; font-size: 0.82rem; font-weight: 600; margin-top: 2px;">${totalFacturas} <span style="font-size:0.7rem; color:#adb5bd;">(${totalGrupos} grupos)</span></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div style="background: rgba(40,167,69,0.2); border: 1px solid rgba(40,167,69,0.4); border-radius: 6px; padding: 8px 4px;">
+                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Total</div>
+                            <div style="color: #5cb85c; font-size: 0.88rem; font-weight: 700; margin-top: 2px;">$${totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            
+
             <!-- Formulario -->
             <form id="formRegistroPago">
                 <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-calendar"></i> Fecha de Pago *</label>
-                    <input type="date" class="form-control" id="fecha_pago" required 
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fas fa-calendar-check me-1 text-primary"></i> Fecha de Pago <span class="text-danger">*</span>
+                    </label>
+                    <input type="date" class="form-control form-control-sm" id="fecha_pago" required
                            value="${new Date().toISOString().split("T")[0]}" max="${new Date().toISOString().split("T")[0]}">
-                    <small class="text-muted">Fecha en que se ejecutó el pago en el banco</small>
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-hashtag"></i> Número de Referencia Bancaria *</label>
-                    <input type="text" class="form-control" id="referencia_bancaria" 
-                           placeholder="Ej: 123456789" required maxlength="50">
-                    <small class="text-muted">Folio o referencia del banco</small>
+                    <small class="text-muted" style="font-size:0.72rem;">Fecha en que se ejecutó el pago en el banco</small>
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-comment"></i> Observaciones</label>
-                    <textarea class="form-control" id="observaciones_pago" rows="2" 
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fas fa-hashtag me-1 text-primary"></i> Referencia Bancaria <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" class="form-control form-control-sm" id="referencia_bancaria"
+                           placeholder="Ej: 123456789" required maxlength="50">
+                    <small class="text-muted" style="font-size:0.72rem;">Folio o referencia del banco</small>
+                </div>
+
+                <div class="mb-2">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fas fa-comment-dots me-1 text-primary"></i> Observaciones
+                    </label>
+                    <textarea class="form-control form-control-sm" id="observaciones_pago" rows="2"
                               placeholder="Notas adicionales (opcional)"></textarea>
                 </div>
-                
+
                 <input type="hidden" id="invoice_ids_pago" value='${JSON.stringify(todosLosIds)}'>
             </form>
         </div>
@@ -7032,10 +7064,9 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
 
   alertify
     .confirm(
-      '<i class="fas fa-check-circle text-success"></i> Registrar Pago Ejecutado',
+      '<i class="fas fa-check-circle text-success me-1"></i> Registrar Pago Ejecutado',
       modalHTML,
       function () {
-        // ✅ Al confirmar, ejecutar registro
         ejecutarRegistroPago();
       },
       function () {
@@ -7043,11 +7074,11 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
       },
     )
     .set({
-      labels: { ok: "Registrar Pago", cancel: "Cancelar" },
+      labels: { ok: '<i class="fas fa-check me-1"></i> Registrar Pago', cancel: '<i class="fas fa-times me-1"></i> Cancelar' },
       maximizable: false,
       closable: true,
     })
-    .resizeTo("50%", "80%");
+    .resizeTo("480px", "auto");
 }
 
 /**
