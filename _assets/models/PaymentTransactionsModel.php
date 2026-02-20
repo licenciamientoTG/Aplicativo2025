@@ -332,6 +332,68 @@ class PaymentTransactionsModel extends Model
     }
 
     /**
+     * Obtiene todas las transacciones con filtros para la vista "Todos los Pagos"
+     */
+    public function get_all_with_filters($from = null, $until = null, $provider = null, $company = null, $status = null) : array
+    {
+        $where  = "WHERE 1=1";
+        $params = [];
+
+        if ($from) {
+            $where .= " AND CAST(pt.payment_date AS DATE) >= ?";
+            $params[] = $from;
+        }
+        if ($until) {
+            $where .= " AND CAST(pt.payment_date AS DATE) <= ?";
+            $params[] = $until;
+        }
+        if ($provider && $provider !== '0') {
+            $where .= " AND pr.provider_cod = ?";
+            $params[] = intval($provider);
+        }
+        if ($company && $company !== '0') {
+            $where .= " AND pr.emp_cod = ?";
+            $params[] = intval($company);
+        }
+        if ($status !== null && $status !== '') {
+            $where .= " AND pt.status = ?";
+            $params[] = intval($status);
+        }
+
+        $query = "
+            SELECT
+                pt.id,
+                pt.payment_request_id,
+                pri.folio,
+                pri.invoice_number,
+                prov.den        AS proveedor,
+                emp.den         AS empresa,
+                est.nombre      AS estacion,
+                pt.payment_amount,
+                pt.payment_date,
+                pt.payment_method,
+                pt.payment_reference,
+                pt.beneficiary_name,
+                pt.beneficiary_account,
+                pt.status,
+                pt.notes,
+                pt.created_at,
+                usr.Nombre      AS creado_por
+            FROM  [TG].[dbo].[payment_transactions]          pt
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri  ON pt.invoice_id          = pri.id
+            INNER JOIN [TG].[dbo].[payment_requests]         pr   ON pt.payment_request_id  = pr.id
+            LEFT  JOIN [SG12].[dbo].[Proveedores]            prov ON pr.provider_cod        = prov.cod
+            LEFT  JOIN [SG12].[dbo].[Empresas]               emp  ON pr.emp_cod             = emp.codemp
+            LEFT  JOIN [SG12].[dbo].[Estaciones]             est  ON pri.codgas             = est.codgas
+            LEFT  JOIN [TG].[dbo].[Usuario]                  usr  ON pt.created_by          = usr.Id
+            $where
+            ORDER BY pt.payment_date DESC, pt.created_at DESC
+        ";
+
+        return $this->sql->select($query, $params ?: null) ?: [];
+    }
+
+    /**
      * Elimina una transacción (soft delete cambiando a REJECTED)
      */
     public function delete_transaction($id) : bool {

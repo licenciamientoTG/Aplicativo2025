@@ -7,7 +7,8 @@
       "Bash(cat:*)",
       "Bash(python3:*)",
       "Bash(python:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

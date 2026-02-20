@@ -3821,6 +3821,73 @@ class Supply
         echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores'));
     }
 
+    /** TEMPORAL PRUEBAS - quitar cuando terminen las pruebas */
+    public function reset_test_data()
+    {
+        header('Content-Type: application/json');
+        echo json_encode($this->PaymentRequestsModel->reset_all_test_data());
+    }
+
+    /**
+     * Vista: Todos los pagos registrados
+     */
+    public function all_payments()
+    {
+        $proveedores = $this->proveedores->get_actives();
+        $companys = $this->gasolinerasModel->get_company();
+        echo $this->twig->render($this->route . 'all_payments.html', compact('proveedores', 'companys'));
+    }
+
+    /**
+     * API JSON: tabla de todos los pagos (transacciones) con filtros
+     */
+    public function all_payments_table()
+    {
+        header('Content-Type: application/json');
+        try {
+            $rows = $this->paymentTransactionsModel->get_all_with_filters(
+                $_POST['from']     ?? null,
+                $_POST['until']    ?? null,
+                $_POST['provider'] ?? null,
+                $_POST['company']  ?? null,
+                $_POST['status']   ?? null
+            );
+
+            $statusLabels = [
+                0 => '<span class="badge bg-warning text-dark">Pendiente</span>',
+                1 => '<span class="badge bg-info">Procesado</span>',
+                2 => '<span class="badge bg-success">Confirmado</span>',
+                3 => '<span class="badge bg-danger">Rechazado</span>',
+            ];
+
+            $data = [];
+            foreach ($rows as $r) {
+                $data[] = [
+                    'id'                 => $r['id'],
+                    'payment_request_id' => '<a href="/supply/payment_detail/' . $r['payment_request_id'] . '" class="text-decoration-none">#' . $r['payment_request_id'] . '</a>',
+                    'folio'              => $r['folio'],
+                    'invoice_number'     => $r['invoice_number'],
+                    'proveedor'          => $r['proveedor']         ?? '-',
+                    'empresa'            => $r['empresa']           ?? '-',
+                    'estacion'           => $r['estacion']          ?? '-',
+                    'payment_amount'     => '$' . number_format(floatval($r['payment_amount']), 2, '.', ','),
+                    'payment_date'       => $r['payment_date']      ? date('d/m/Y', strtotime($r['payment_date'])) : '-',
+                    'payment_method'     => $r['payment_method']    ?? '-',
+                    'payment_reference'  => $r['payment_reference'] ?? '-',
+                    'beneficiary_name'   => $r['beneficiary_name']  ?? '-',
+                    'status'             => $statusLabels[$r['status']] ?? '<span class="badge bg-secondary">-</span>',
+                    'notes'              => $r['notes']             ?? '-',
+                    'created_at'         => $r['created_at']        ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
+                    'creado_por'         => $r['creado_por']        ?? '-',
+                ];
+            }
+
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * API JSON: notas disponibles (con saldo > 0) de un proveedor
      */

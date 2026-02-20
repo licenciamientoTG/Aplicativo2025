@@ -1403,4 +1403,25 @@ class PaymentRequestsModel extends Model
             ];
         }
     }
+
+    /** TEMPORAL PRUEBAS - quitar cuando terminen las pruebas */
+    public function reset_all_test_data(): array
+    {
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->delete("DELETE FROM [TG].[dbo].[credit_note_applications]",            []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_bulk_authorizations]", []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes_doc]",      []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes]",          []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_transactions]",                []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_authorizations]",      []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_invoices]",            []);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_requests]",                    []);
+            $this->sql->commit();
+            return ['success' => true];
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
 }

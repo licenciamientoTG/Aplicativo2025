@@ -1,0 +1,152 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Todos los Pagos{% endblock %}
+{% block menutitle %}Todos los Pagos{% endblock %}
+{% block content %}
+
+<div class="container-fluid">
+
+    {# ── Filtros ── #}
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Desde</label>
+                    <input type="date" id="ap_from" class="form-control form-control-sm"
+                        value="{{ "now"|date("Y-01-01") }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Hasta</label>
+                    <input type="date" id="ap_until" class="form-control form-control-sm"
+                        value="{{ "now"|date("Y-m-d") }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Empresa</label>
+                    <select id="ap_company" class="form-control form-control-sm">
+                        <option value="0">Todas</option>
+                        {% for c in companys %}
+                            <option value="{{ c.codemp }}">{{ c.den }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">Proveedor</label>
+                    <select id="ap_provider" class="form-control form-control-sm selectpicker"
+                        data-live-search="true" data-live-search-placeholder="Buscar..." title="Todos">
+                        {% for p in proveedores %}
+                            <option value="{{ p.cod }}">{{ p.den }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Estatus</label>
+                    <select id="ap_status" class="form-control form-control-sm">
+                        <option value="">Todos</option>
+                        <option value="0">Pendiente</option>
+                        <option value="1">Procesado</option>
+                        <option value="2">Confirmado</option>
+                        <option value="3">Rechazado</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-primary btn-sm w-100" onclick="loadAllPayments()">
+                        <i class="fas fa-search"></i> Buscar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Tabla ── #}
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-money-check-alt"></i> Registro de Pagos
+        </div>
+        <div class="card-body table-responsive p-0">
+            <table id="all_payments_table"
+                class="table table-sm table-hover table-striped w-100 dataTable">
+                <thead>
+                    <tr>
+                        <th>#ID</th>
+                        <th>Orden Pago</th>
+                        <th>Folio</th>
+                        <th>Factura</th>
+                        <th>Proveedor</th>
+                        <th>Empresa</th>
+                        <th>Estación</th>
+                        <th class="text-end">Monto</th>
+                        <th>Fecha Pago</th>
+                        <th>Método</th>
+                        <th>Referencia</th>
+                        <th>Beneficiario</th>
+                        <th class="text-center">Estatus</th>
+                        <th>Notas</th>
+                        <th>Registrado</th>
+                        <th>Creado por</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script>
+var allPaymentsTable = null;
+
+function loadAllPayments() {
+    if ($.fn.DataTable.isDataTable('#all_payments_table')) {
+        $('#all_payments_table').DataTable().destroy();
+    }
+
+    allPaymentsTable = $('#all_payments_table').DataTable({
+        responsive: false,
+        processing: true,
+        ajax: {
+            url: '/supply/all_payments_table',
+            type: 'POST',
+            data: {
+                from:     $('#ap_from').val(),
+                until:    $('#ap_until').val(),
+                company:  $('#ap_company').val(),
+                provider: $('#ap_provider').val() || '0',
+                status:   $('#ap_status').val()
+            },
+            error: function (xhr, err, thrown) {
+                alertify.error('Error al cargar pagos: ' + thrown);
+            }
+        },
+        columns: [
+            { data: 'id',                 className: 'text-center' },
+            { data: 'payment_request_id', className: 'text-center' },
+            { data: 'folio' },
+            { data: 'invoice_number' },
+            { data: 'proveedor' },
+            { data: 'empresa' },
+            { data: 'estacion' },
+            { data: 'payment_amount',    className: 'text-end fw-bold' },
+            { data: 'payment_date',      className: 'text-center' },
+            { data: 'payment_method',    className: 'text-center' },
+            { data: 'payment_reference' },
+            { data: 'beneficiary_name' },
+            { data: 'status',            className: 'text-center', orderable: false },
+            { data: 'notes' },
+            { data: 'created_at',        className: 'text-center' },
+            { data: 'creado_por' }
+        ],
+        order: [[0, 'desc']],
+        language: {
+            url: 'https://cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
+        },
+        pageLength: 25
+    });
+}
+
+// Cargar al entrar a la vista
+$(document).ready(function () {
+    $('.selectpicker').selectpicker();
+    loadAllPayments();
+});
+</script>
+
+{% endblock %}
