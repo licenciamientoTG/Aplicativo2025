@@ -224,6 +224,7 @@
                             <tr>
                                 <th>Fecha</th>
                                 <th>Hora</th>
+                                <th>N. Despacho</th>
                                 <th class="text-center">Etiquetas</th> 
                                 <th class="text-center">Turno</th>
                                 <th class="text-center">Isla</th> 
@@ -309,7 +310,7 @@
                     <div class="p-2 border-bottom bg-light"><small class="fw-bold text-muted text-uppercase ps-2">Tickets involucrados (Días Críticos)</small></div>
                     <table class="table table-sm table-hover mb-0 w-100" id="excess-tickets-table">
                         <thead class="table-white">
-                            <tr><th>Fecha</th><th>Hora</th><th>Turno</th><th>Estación</th><th>Producto</th><th class="text-end">Cant</th><th class="text-end">Monto</th><th>Factura</th><th>UUID</th></tr>
+                            <tr><th>Fecha</th><th>Hora</th><th>N. Despacho</th><th>Turno</th><th>Estación</th><th>Producto</th><th class="text-end">Cant</th><th class="text-end">Monto</th><th>Factura</th><th>UUID</th></tr>
                         </thead>
                         <tbody></tbody>
                     </table>
@@ -702,6 +703,7 @@ function openSuspiciousModal(codopr, cliente, idx) {
                 columns: [
                     { data: 'fecha', className: 'text-nowrap' },
                     { data: 'hratrn', render: (d)=> formatHratrnTo12(d) },
+                    { data: 'nrotrn', className: 'fw-bold' },
                     { data: 'display_tags', className: 'text-center' }, // Etiquetas
                     { data: 'nrotur', className: 'text-center', render: d => d ? Math.floor(d/10) : '' },
                     { data: 'isla', className: 'text-center' }, // Isla
@@ -823,6 +825,7 @@ function showExcessCalc(codopr, dateStr, isWeekly) {
                     data: filtered,
                     columns: [
                         { data: 'fecha' }, { data: 'hratrn', render: d=>formatHratrnTo12(d) },
+                        { data: 'nrotrn' },
                         { data: 'nrotur', className: 'text-center', render: d => d ? Math.floor(d/10) : '' },
                         { data: 'estacion' }, { data: 'nomPrd' },
                         { data: 'can', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) },
