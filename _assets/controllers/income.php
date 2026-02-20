@@ -2113,6 +2113,130 @@ public function anomalies_client_tickets()
         echo $this->twig->render($this->route . 'upload_reports.html');
     }
 
+     public function ejecutar_robot_manual() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $banco = $_POST['banco'] ?? '';
+        $fecha = $_POST['fecha'] ?? '';
+        $estacion = $_POST['estacion'] ?? ''; // Razón Social o BANORTE_GENERAL
+
+        if (empty($banco) || empty($fecha)) {
+            echo json_encode(["status" => "error", "message" => "Faltan parámetros."]);
+            exit;
+        }
+
+        // Usamos la ruta local ya que el EXE estará alojado localmente en producción (totalgasonline.net / 192.168.0.3)
+        $exe_path = 'C:\Software\TareasProgramadas\conc\dist\bancos_manual.exe'; 
+        
+        $cmd = escapeshellcmd("\"$exe_path\" --banco \"$banco\" --fecha \"$fecha\" " . ($estacion ? "--estacion \"$estacion\"" : ""));
+        
+        set_time_limit(300);
+        $output = shell_exec($cmd);
+
+        if ($output === null || trim($output) === '') {
+            echo json_encode(["status" => "error", "message" => "El robot falló, no se pudo contactar el archivo, o superó el tiempo."]);
+            exit;
+        }
+
+        $start_pos = strpos($output, '{');
+        if ($start_pos !== false) {
+            $json_str = substr($output, $start_pos);
+            echo $json_str;
+        } else {
+            echo json_encode(["status" => "error", "message" => "Respuesta inesperada del robot: " . $output]);
+        }
+        exit;
+    }
+
+    public function insertar_correccion_manual() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input || empty($input['data']) || empty($input['banco'])) {
+            echo json_encode(["status" => "error", "message" => "Datos incompletos."]);
+            exit;
+        }
+
+        $banco = $input['banco'];
+        $datos = $input['data'];
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $tabla = ($banco == 'BANORTE') ? 'banco_banorte' : 'banco_getnet';
+            
+            // Obtener huellas existentes
+            $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM $tabla");
+            $huellas = [];
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $afil_db   = ltrim(trim((string)$row['Afiliacion']), '0');
+                $id_ext_db = trim((string)$row['ID_Externo']);
+                $fch_db    = $row['Fecha_Transaccion'] ? substr((string)$row['Fecha_Transaccion'], 0, 10) : '';
+                $monto_db  = number_format((float)$row['Monto'], 2, '.', '');
+                $hora_db   = trim((string)$row['Hora']);
+                $auth_db   = trim((string)$row['Codigo_Autorizacion']);
+                $ref_db    = trim((string)$row['Referencia']);
+                $term_db   = trim((string)$row['Terminal']);
+                
+                $key = "$afil_db|$id_ext_db|$fch_db|$monto_db|$hora_db|$auth_db|$ref_db|$term_db";
+                $huellas[$key] = true;
+            }
+
+            $conn->beginTransaction();
+
+            $sqlDet = "INSERT INTO $tabla 
+                        (ID_Externo, Afiliacion, Fecha_Transaccion, Hora, Monto, Codigo_Autorizacion, Terminal, Referencia, Fecha_Deposito, Nombre_Archivo) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmtDet = $conn->prepare($sqlDet);
+
+            $insertados = 0;
+            foreach ($datos as $row) {
+                $afil = ltrim(trim((string)$row['Afiliacion']), '0');
+                $id_ext = trim((string)$row['ID_Externo']);
+                $fch = $row['Fecha_Transaccion'];
+                $monto = number_format((float)$row['Monto'], 2, '.', '');
+                $hora = trim((string)$row['Hora']);
+                $auth = trim((string)$row['Codigo_Autorizacion']);
+                $ref = trim((string)$row['Referencia']);
+                $term = trim((string)$row['Terminal']);
+
+                $key = "$afil|$id_ext|$fch|$monto|$hora|$auth|$ref|$term";
+                
+                if (isset($huellas[$key])) {
+                    continue; // Skip duplicate
+                }
+
+                $stmtDet->execute([
+                    $id_ext,
+                    $row['Afiliacion'],
+                    $row['Fecha_Transaccion'],
+                    $row['Hora'],
+                    $row['Monto'],
+                    $row['Codigo_Autorizacion'],
+                    $row['Terminal'],
+                    $row['Referencia'],
+                    $row['Fecha_Deposito'],
+                    $row['Nombre_Archivo']
+                ]);
+                $huellas[$key] = true;
+                $insertados++;
+            }
+
+            $conn->commit();
+            echo json_encode(["status" => "success", "message" => "Se insertaron $insertados registros correctamente."]);
+
+        } catch (Exception $e) {
+            if ($conn) $conn->rollBack();
+            echo json_encode(["status" => "error", "message" => "Error al insertar: " . $e->getMessage()]);
+        }
+        exit;
+    }
+
   private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
         $orig = trim((string)$nombre);
