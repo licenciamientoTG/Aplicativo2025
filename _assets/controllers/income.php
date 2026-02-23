@@ -2742,6 +2742,9 @@ public function anomalies_client_tickets()
     // =========================================================================
     public function conc_test() {
         $this->setup_conciliacion_v2(true); // Auto-migration V2 (Silencioso)
+        
+echo "El usuario actual es: " . exec('whoami');
+
         echo $this->twig->render($this->route . 'test.html');
     }
 
