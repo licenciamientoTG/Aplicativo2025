@@ -2126,12 +2126,7 @@ public function anomalies_client_tickets()
             exit;
         }
 
-        $is_localhost = ($_SERVER["SERVER_NAME"] === "localhost" || $_SERVER["HTTP_HOST"] === "localhost:8000");
-        if ($is_localhost) {
-            $exe_path = "\\\\192.168.0.3\\c$\\Software\\TareasProgramadas\\conc\\dist\\bancos_manual.exe";
-        } else {
-            $exe_path = "C:\\Software\\TareasProgramadas\\conc\\dist\\bancos_manual.exe";
-        }
+        $exe_path = "C:\\Software\\TareasProgramadas\\conc\\dist\\bancos_manual.exe";
 
         $cmd = "\"$exe_path\" --banco \"$banco\" --fecha \"$fecha\"" . ($estacion ? " --estacion \"$estacion\"" : "") . " 2>&1";
         
