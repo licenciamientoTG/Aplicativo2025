@@ -1318,7 +1318,8 @@ class Accounting{
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $from = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
             $until = $_GET['until'] ?? date('Y-m-d', strtotime('-1 day'));
-            $suppliers = $this->Documentos->get_suppliers();
+            // $suppliers = $this->Documentos->get_suppliers();
+            $suppliers = $this->proveedores->get_rows();
             $codgas = $_GET['station'] ?? 0 ;
             $supplier = $_GET['supplier'] ?? 0 ;
             $stations = $this->estacionesModel->get_select_stations();

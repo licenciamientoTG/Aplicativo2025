@@ -5,90 +5,93 @@
 {% block content %}
 
 <style>
-
-/* Estilos para el modal de PDF */
-#modalVisorPDF .modal-body {
-    overflow: hidden;
-}
-
-#iframe_pdf {
-    background-color: #525659;
-}
-
-.pdf-toolbar {
-    background: #f8f9fa;
-    padding: 10px;
-    border-bottom: 1px solid #dee2e6;
-}
-
-/* Animación para el spinner */
-#pdf-loading .spinner-border {
-    animation: spinner-border .75s linear infinite;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
+    /* Estilos para el modal de PDF */
     #modalVisorPDF .modal-body {
-        height: 70vh;
+        overflow: hidden;
     }
-    
-    #modalVisorPDF .modal-footer {
-        flex-wrap: wrap;
+
+    #iframe_pdf {
+        background-color: #525659;
     }
-    
-    #modalVisorPDF .modal-footer .btn-group {
-        width: 100%;
-        margin-bottom: 10px;
+
+    .pdf-toolbar {
+        background: #f8f9fa;
+        padding: 10px;
+        border-bottom: 1px solid #dee2e6;
     }
-    
-    #modalVisorPDF .modal-footer .btn-group .btn {
-        font-size: 0.85rem;
-        padding: 0.5rem;
+
+    /* Animación para el spinner */
+    #pdf-loading .spinner-border {
+        animation: spinner-border .75s linear infinite;
     }
-}
 
-table.dataTable thead th, table.dataTable thead td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #000000 !important;
-    color: #ffffff !important;
+    /* Responsive */
+    @media (max-width: 768px) {
+        #modalVisorPDF .modal-body {
+            height: 70vh;
+        }
 
-}
-/* Estilos para el sistema de asignación de facturas */
-.table-warning {
-    background-color: #fff3cd !important;
-}
+        #modalVisorPDF .modal-footer {
+            flex-wrap: wrap;
+        }
 
-.modal-xl {
-    max-width: 1200px;
-}
+        #modalVisorPDF .modal-footer .btn-group {
+            width: 100%;
+            margin-bottom: 10px;
+        }
 
-#tabla_facturas_disponibles thead {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
+        #modalVisorPDF .modal-footer .btn-group .btn {
+            font-size: 0.85rem;
+            padding: 0.5rem;
+        }
+    }
 
-.badge {
-    font-size: 0.75rem;
-}
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 10px 18px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #000000 !important;
+        color: #ffffff !important;
 
-.btn-group-sm > .btn {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-}
+    }
+
+    /* Estilos para el sistema de asignación de facturas */
+    .table-warning {
+        background-color: #fff3cd !important;
+    }
+
+    .modal-xl {
+        max-width: 1200px;
+    }
+
+    #tabla_facturas_disponibles thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .badge {
+        font-size: 0.75rem;
+    }
+
+    .btn-group-sm>.btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
 </style>
 
 <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control" type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
+        <button class="nav-link active" id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control"
+            type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment" type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
+        <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment"
+            type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
     </li>
 </ul>
 
-<div class="tab-content" >
+<div class="tab-content">
 
     <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
@@ -96,16 +99,19 @@ table.dataTable thead th, table.dataTable thead td {
                 <div class="row" style="align-items: flex-end;">
                     <div class="col-2">
                         <label class="col-form-label-sm" for="from_compras">Desde:</label>
-                        <input type="date" class="form-control form-control-sm" name="from_compras" id="from_compras" value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                        <input type="date" class="form-control form-control-sm" name="from_compras" id="from_compras"
+                            value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                     </div>
                     <div class="col-2">
                         <label class="col-form-label-sm" for="until_compras">Hasta:</label>
-                        <input type="date" class="form-control form-control-sm" name="until_compras" id="until_compras" value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                        <input type="date" class="form-control form-control-sm" name="until_compras" id="until_compras"
+                            value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
                     <!-- FILTRO DE ESTACIÓN -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Estación:</label>
-                        <select class="selectpicker w-100" data-live-search="true" name="codgas_compras" id="codgas_compras">
+                        <select class="selectpicker w-100" data-live-search="true" name="codgas_compras"
+                            id="codgas_compras">
                             <option value="0" selected>Todas las estaciones</option>
                             {% for station in stations %}
                             <option value="{{ station.cod }}" data-content="<span class='text-muted'>{{ station.codgas }}</span> {{ station.abr }}">{{ station.nomre }}</option>
@@ -115,8 +121,7 @@ table.dataTable thead th, table.dataTable thead td {
                     <!-- FILTRO DE PROVEEDOR -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Proveedor:</label>
-                        <select class="selectpicker w-100" data-live-search="true" 
-                                name="proveedor_compras" id="proveedor_compras">
+                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_compras" id="proveedor_compras">
                             <option value="0" selected>Todos los proveedores</option>
                             <option value="TESORO">TESORO</option>
                             <option value="MGC">MGC</option>
@@ -128,7 +133,7 @@ table.dataTable thead th, table.dataTable thead td {
                             <option value="AEMSA">AEMSA</option>
                         </select>
                     </div>
-                    
+
                     <!-- FILTRO DE EMPRESA -->
                     <div class="col-2">
                         <label class="col-form-label-sm">Empresa:</label>
@@ -138,12 +143,14 @@ table.dataTable thead th, table.dataTable thead td {
                             <option value="2">Petrotal</option>
                         </select>
                     </div>
-                    
+
                     <div class="col-2">
-                        <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar Reporte</button>
+                        <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary"
+                            style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar
+                            Reporte</button>
                     </div>
                 </div>
-                
+
                 <!-- SEGUNDA FILA CON FILTROS ADICIONALES (OPCIONAL) -->
                 <!-- <div class="row mt-2">
                     <div class="col-12">
@@ -162,7 +169,7 @@ table.dataTable thead th, table.dataTable thead td {
                 </div> -->
             </div>
         </div>
-        
+
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Compras - Base desde Facturas Recibidas</h5>
@@ -208,37 +215,37 @@ table.dataTable thead th, table.dataTable thead td {
             </div>
         </div>
     </div>
-   <div class="tab-pane " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
+    {# <div class="tab-pane " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
         <div class="card">
             <div class="card-body">
                 <div class="row" style="align-items: flex-end;">
                     <div class="col-2">
                         <label class="col-form-label-sm" for="from_resumen">Desde:</label>
-                        <input type="date" class="form-control form-control-sm" name="from_resumen" id="from_resumen" 
+                        <input type="date" class="form-control form-control-sm" name="from_resumen" id="from_resumen"
                             value="{{ 'first day of this month'|date('Y-m-d') }}" required>
                     </div>
                     <div class="col-2">
                         <label class="col-form-label-sm" for="until_resumen">Hasta:</label>
-                        <input type="date" class="form-control form-control-sm" name="until_resumen" id="until_resumen" 
+                        <input type="date" class="form-control form-control-sm" name="until_resumen" id="until_resumen"
                             value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
                     </div>
                     <div class="col-2">
                         <label class="col-form-label-sm" for="station_id_resumen">Estación:</label>
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id_resumen" 
-                                id="station_id_resumen" placeholder="Seleccione una estación">
+                        <select class="selectpicker w-100" data-live-search="true" name="station_id_resumen"
+                            id="station_id_resumen" placeholder="Seleccione una estación">
                             <option value="0" selected>Todas las estaciones</option>
                             {% for station in stations %}
-                                <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-2">
                         <label class="col-form-label-sm" for="proveedor_resumen">Proveedor:</label>
-                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_resumen" 
-                                id="proveedor_resumen">
+                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_resumen"
+                            id="proveedor_resumen">
                             <option value="0" selected>Todos los proveedores</option>
                             {% for proveedor in proveedores %}
-                                <option value="{{ proveedor.cod }}">{{ proveedor.den }}</option>
+                            <option value="{{ proveedor.cod }}">{{ proveedor.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -247,20 +254,20 @@ table.dataTable thead th, table.dataTable thead td {
                         <select class="selectpicker w-100" name="company_resumen" id="company_resumen">
                             <option value="0" selected>Todas las empresas</option>
                             {% for empresa in empresas %}
-                                <option value="{{ empresa.cod }}">{{ empresa.den }}</option>
+                            <option value="{{ empresa.cod }}">{{ empresa.den }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-2">
-                        <button onclick="resumen_payment_table()" class="btn btn-sm btn-primary" 
-                                style="width: 100%; margin-top: 15px;">
+                        <button onclick="resumen_payment_table()" class="btn btn-sm btn-primary"
+                            style="width: 100%; margin-top: 15px;">
                             Generar Reporte
                         </button>
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="card-title mb-0">Resumen de Pagos - Movimientos de Tanques</h5>
@@ -268,57 +275,42 @@ table.dataTable thead th, table.dataTable thead td {
             </div>
             <!-- IMPORTANTE: Agregar clase datatable-wrapper para scroll horizontal -->
             <div class="card-body p-0">
-                <div class="table-responsive datatable-wrapper" >
-                    <table id="resumen_payment_table" class="table table-hover table-sm table-striped w-100" style="min-width: 2000px;">
-                        <thead >
+                <div class="table-responsive datatable-wrapper">
+                    <table id="resumen_payment_table" class="table table-hover table-sm table-striped w-100"  style="min-width: 2000px;">
+                        <thead>
                             <tr>
-                                                                <th width="50">Acción</th>
-
-                                <th >Fecha</th>
-                                <th >Estación</th>
-                                <th >Número Estación</th>
-                                <th >Proveedor Original</th>
-                                <th >Producto</th>
-                                <th >Num Factura Proveedor original</th>
-                                <th >Proveedor Factura Final</th>
-                                <th >Litros en Documento</th>
-                                <th >Monto Factura</th>
-                                <th >Precio Factura</th>
-                                <th >UUID</th>
-                                <th >Proveedor ControlGas</th>
-                                <th >Monto Factura</th>
-                                <th >Cantidad Factura</th>
-                                <th >Grupo Producto</th>
-                                <th >Nro. Transacción</th>
+                                <th width="50">Acción</th>
+                                <th>Fecha</th>
+                                <th>Estación</th>
+                                <th>Número Estación</th>
+                                <th>Proveedor Original</th>
+                                <th>Producto</th>
+                                <th>Num Factura Proveedor original</th>
+                                <th>Proveedor Factura Final</th>
+                                <th>Litros en Documento</th>
+                                <th>Monto Factura</th>
+                                <th>Precio Factura</th>
+                                <th>UUID</th>
+                                <th>Proveedor ControlGas</th>
+                                <th>Monto Factura</th>
+                                <th>Cantidad Factura</th>
+                                <th>Grupo Producto</th>
+                                <th>Nro. Transacción</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
-                        <tfoot >
-                                <!-- <th >Fecha</th>
-                                <th >Nro. Transacción</th>
-                                <th >Estación</th>
-                                <th >Número Estación</th>
-                                <th >Proveedor Original</th>
-                                <th >Productro</th>
-                                <th >Vol. Recaudado</th>
-                                <th >Vol. Factura Rec.</th>
-                                <th >Nro. Factura</th>
-                                <th >UUID</th>
-                                <th >Proveedor ControlGas</th>
-                                <th >Monto Factura</th>
-                                <th >Cantidad Factura</th>
-                                <th >Precio Factura</th>
-                                <th >Grupo Producto</th> -->
+                        <tfoot>
                         </tfoot>
                     </table>
                 </div>
             </div>
         </div>
-    </div>
+    </div> #}
 </div>
+{# 
 
-
-<div class="modal fade" id="modalAsignarFactura" tabindex="-1" aria-labelledby="modalAsignarFacturaLabel" aria-hidden="true">
+<div class="modal fade" id="modalAsignarFactura" tabindex="-1" aria-labelledby="modalAsignarFacturaLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
@@ -349,8 +341,8 @@ table.dataTable thead th, table.dataTable thead td {
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="tipoOperacion" 
-                                           id="tipoDirecto" value="1" checked>
+                                    <input class="form-check-input" type="radio" name="tipoOperacion" id="tipoDirecto"
+                                        value="1" checked>
                                     <label class="form-check-label" for="tipoDirecto">
                                         <strong>Compra Directa</strong><br>
                                         <small class="text-muted">Proveedor → TotalGas (1 factura)</small>
@@ -359,8 +351,8 @@ table.dataTable thead th, table.dataTable thead td {
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="tipoOperacion" 
-                                           id="tipoPetrotal" value="2">
+                                    <input class="form-check-input" type="radio" name="tipoOperacion" id="tipoPetrotal"
+                                        value="2">
                                     <label class="form-check-label" for="tipoPetrotal">
                                         <strong>Con Intermediario (Petrotal)</strong><br>
                                         <small class="text-muted">Proveedor → Petrotal → TotalGas (2 facturas)</small>
@@ -390,7 +382,8 @@ table.dataTable thead th, table.dataTable thead td {
                                     <div id="info_petrotal" class="small text-muted">Sin asignar</div>
                                 </div>
                             </div>
-                            <div class="col-md-1 d-flex align-items-center justify-content-center" id="flecha2" style="display:none;">
+                            <div class="col-md-1 d-flex align-items-center justify-content-center" id="flecha2"
+                                style="display:none;">
                                 <i class="fas fa-arrow-right fa-2x text-primary"></i>
                             </div>
                             <div class="col-md-3" id="paso3_directo">
@@ -406,15 +399,15 @@ table.dataTable thead th, table.dataTable thead td {
                 <!-- TABS PARA ASIGNAR FACTURAS -->
                 <ul class="nav nav-tabs" id="facturasTab" role="tablist">
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="proveedor-tab" data-bs-toggle="tab" 
-                                data-bs-target="#tab-proveedor" type="button">
+                        <button class="nav-link active" id="proveedor-tab" data-bs-toggle="tab"
+                            data-bs-target="#tab-proveedor" type="button">
                             <i class="fas fa-file-invoice"></i> Factura Proveedor Original
                             <span class="badge bg-danger ms-2" id="badge-proveedor">Requerida</span>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation" id="petrotal-tab-item" style="display:none;">
-                        <button class="nav-link" id="petrotal-tab" data-bs-toggle="tab" 
-                                data-bs-target="#tab-petrotal" type="button">
+                        <button class="nav-link" id="petrotal-tab" data-bs-toggle="tab" data-bs-target="#tab-petrotal"
+                            type="button">
                             <i class="fas fa-file-invoice-dollar"></i> Factura Petrotal
                             <span class="badge bg-danger ms-2" id="badge-petrotal">Requerida</span>
                         </button>
@@ -427,9 +420,8 @@ table.dataTable thead th, table.dataTable thead td {
                         <h6 class="mb-3">Buscar Factura del Proveedor Original</h6>
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <input type="text" class="form-control form-control-sm" 
-                                       id="search_factura_proveedor" 
-                                       placeholder="UUID, Folio, Emisor...">
+                                <input type="text" class="form-control form-control-sm" id="search_factura_proveedor"
+                                    placeholder="UUID, Folio, Emisor...">
                             </div>
                             <div class="col-md-3">
                                 <input type="date" class="form-control form-control-sm" id="fecha_inicio_proveedor">
@@ -458,7 +450,10 @@ table.dataTable thead th, table.dataTable thead td {
                                     </tr>
                                 </thead>
                                 <tbody id="tbody_facturas_proveedor">
-                                    <tr><td colspan="8" class="text-center text-muted">Utilice los filtros para buscar</td></tr>
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted">Utilice los filtros para buscar
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -469,9 +464,8 @@ table.dataTable thead th, table.dataTable thead td {
                         <h6 class="mb-3">Buscar Factura de Petrotal → TotalGas</h6>
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <input type="text" class="form-control form-control-sm" 
-                                       id="search_factura_petrotal" 
-                                       placeholder="UUID, Folio...">
+                                <input type="text" class="form-control form-control-sm" id="search_factura_petrotal"
+                                    placeholder="UUID, Folio...">
                             </div>
                             <div class="col-md-3">
                                 <input type="date" class="form-control form-control-sm" id="fecha_inicio_petrotal">
@@ -486,8 +480,8 @@ table.dataTable thead th, table.dataTable thead td {
                             </div>
                         </div>
                         <div class="alert alert-info">
-                            <i class="fas fa-info-circle"></i> 
-                            Busque facturas emitidas por <strong>PETROTAL</strong> 
+                            <i class="fas fa-info-circle"></i>
+                            Busque facturas emitidas por <strong>PETROTAL</strong>
                             a nombre de <strong>TotalGas</strong>
                         </div>
                         <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
@@ -504,7 +498,10 @@ table.dataTable thead th, table.dataTable thead td {
                                     </tr>
                                 </thead>
                                 <tbody id="tbody_facturas_petrotal">
-                                    <tr><td colspan="7" class="text-center text-muted">Utilice los filtros para buscar</td></tr>
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">Utilice los filtros para buscar
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -549,8 +546,8 @@ table.dataTable thead th, table.dataTable thead td {
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <i class="fas fa-times"></i> Cancelar
                 </button>
-                <button type="button" class="btn btn-success" id="btnGuardarAsignacion" 
-                        onclick="guardarAsignacionCompleta()" disabled>
+                <button type="button" class="btn btn-success" id="btnGuardarAsignacion"
+                    onclick="guardarAsignacionCompleta()" disabled>
                     <i class="fas fa-save"></i> Guardar Asignación
                 </button>
             </div>
@@ -570,7 +567,8 @@ table.dataTable thead th, table.dataTable thead td {
                 <div class="ms-auto me-3">
                     <span id="info_factura_pdf" class="badge bg-light text-dark"></span>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
             <div class="modal-body p-0" style="height: 90vh;">
                 <!-- Spinner de carga -->
@@ -580,13 +578,12 @@ table.dataTable thead th, table.dataTable thead td {
                     </div>
                     <p class="mt-3 text-muted">Cargando factura...</p>
                 </div>
-                
+
                 <!-- Iframe para mostrar el PDF -->
-                <iframe id="iframe_pdf" 
-                        style="width: 100%; height: 100%; border: none; display: none;"
-                        title="Visor de PDF">
+                <iframe id="iframe_pdf" style="width: 100%; height: 100%; border: none; display: none;"
+                    title="Visor de PDF">
                 </iframe>
-                
+
                 <!-- Mensaje de error si no se puede cargar -->
                 <div id="pdf-error" class="alert alert-danger m-4" style="display: none;">
                     <i class="fas fa-exclamation-triangle"></i>
@@ -629,7 +626,7 @@ table.dataTable thead th, table.dataTable thead td {
             </div>
         </div>
     </div>
-</div>
+</div> #}
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
