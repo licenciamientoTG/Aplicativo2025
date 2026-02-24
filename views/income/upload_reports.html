@@ -62,6 +62,20 @@
             </div>
         </div>
 
+        <!-- ROBOT -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card shadow-sm h-100 border-warning" onclick="openRobotModal()">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <div style="font-size: 3rem; color: #ffc107; margin-bottom: 10px;">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h5 class="font-weight-bold text-dark">Robot Extractor</h5>
+                    <p class="small text-muted">Abre el portal y escanea transacciones automáticamente (Local/Remoto)</p>
+                    <button class="btn btn-warning btn-sm rounded-pill px-4 font-weight-bold text-dark">Ejecutar Robot</button>
+                </div>
+            </div>
+        </div>
+
         <!-- AMEX (Placeholder) -->
         <div class="col-md-3 mb-4">
             <div class="card bank-card disabled shadow-sm h-100">
@@ -112,6 +126,93 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-success" onclick="executeUpload()">Iniciar Carga</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Robot -->
+<div class="modal fade" id="modalRobot" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-warning text-dark border-0">
+                <h5 class="modal-title font-weight-bold"><i class="fas fa-robot mr-2"></i> Robot de Extracción Bancaria</h5>
+                <button type="button" class="btn-close text-dark bg-transparent border-0" data-bs-dismiss="modal" aria-label="Close" style="font-size: 1.5rem;">&times;</button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <!-- Fase 1: Formulario -->
+                <div id="robotForm">
+                    <p class="text-muted small mb-4">Seleccione la fecha específica de extracción. El bot automatizado ejecutará el inicio de sesión y analizará transacciones omitiendo las que ya existan en la base de datos.</p>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label font-weight-bold text-uppercase small text-secondary">Banco</label>
+                            <select id="rbBanco" class="form-control rounded-pill" onchange="toggleRobotEstacion()">
+                                <option value="BANORTE">BANORTE (General)</option>
+                                <option value="SANTANDER">SANTANDER (GETNET)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label font-weight-bold text-uppercase small text-secondary">Fecha a Extraer</label>
+                            <input type="date" id="rbFecha" class="form-control rounded-pill" value="">
+                        </div>
+                    </div>
+                    <div class="row" id="rowRobotEstacion" style="display:none;">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label font-weight-bold text-uppercase small text-secondary">Estación (Razón Social Santander)</label>
+                            <select id="rbEstacion" class="form-control rounded-pill">
+                                <option value="">Seleccione...</option>
+                                <option value="DIAZ GAS">DIAZ GAS</option>
+                                <option value="GASOMEX">GASOMEX</option>
+                                <option value="JARUDO">JARUDO</option>
+                                <option value="CLARA">CLARA</option>
+                                <option value="ESTACION CUSTODIA">ESTACION CUSTODIA</option>
+                                <option value="SYC DELICIAS">SYC DELICIAS</option>
+                                <option value="VILLA AHUMADA">VILLA AHUMADA</option>
+                                <option value="SMA VENTANAS">SMA VENTANAS</option>
+                                <option value="SMA PICACHOS">SMA PICACHOS</option>
+                                <option value="EL CASTAÑO">EL CASTAÑO</option>
+                                <option value="TSA">TSA</option>
+                                <option value="HECTOR ARMANDINO">HECTOR ARMANDINO</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fase 2: Progreso -->
+                <div id="robotProgress" style="display:none;" class="text-center py-5">
+                    <div class="spinner-grow text-warning mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+                    <h5 class="font-weight-bold mb-1">El robot está navegando...</h5>
+                    <p class="text-muted small">Esto puede tardar hasta 2 o 3 minutos dependiendo del portal del banco. Por favor espere y no cierre esta ventana.</p>
+                </div>
+
+                <!-- Fase 3: Intervención -->
+                <div id="robotIntervencion" style="display:none;">
+                    <div class="alert alert-danger border-0 shadow-sm" role="alert">
+                        <i class="fas fa-exclamation-triangle mr-2"></i> <strong>Intervención requerida.</strong> Existen registros sin fecha de depósito (aplicación). Asigne la fecha manualmente.
+                    </div>
+                    <div class="d-flex justify-content-end mb-2">
+                        <button class="btn btn-sm btn-outline-primary rounded-pill font-weight-bold" onclick="fillAllDates()"><i class="far fa-copy"></i> Copiar primera fecha a todos</button>
+                    </div>
+                    <div class="table-responsive bg-white rounded shadow-sm border" style="max-height: 350px;">
+                        <table class="table table-hover table-sm mb-0" id="tblIntervencion">
+                            <thead class="bg-light sticky-top">
+                                <tr>
+                                    <th class="small text-uppercase">Term / Auth / Referencia</th>
+                                    <th class="small text-uppercase">F. Transacción</th>
+                                    <th class="small text-uppercase text-right">Monto</th>
+                                    <th class="small text-uppercase text-center">F. Depósito</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 bg-white">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" id="btnRobotCancel" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning rounded-pill px-4 font-weight-bold" id="btnRobotExec" onclick="executeRobot()"><i class="fas fa-play mr-2"></i> Iniciar Robot</button>
+                <button type="button" class="btn btn-success rounded-pill px-4 font-weight-bold shadow" id="btnRobotSave" style="display:none;" onclick="saveIntervencion()"><i class="fas fa-save mr-2"></i> Guardar y Subir</button>
             </div>
         </div>
     </div>
@@ -179,6 +280,203 @@
             });
         };
         reader.readAsDataURL(file);
+    }
+
+    // ==========================================
+    // LÓGICA DEL ROBOT
+    // ==========================================
+    let pendingRobotData = [];
+    let pendingRobotBank = '';
+
+    function openRobotModal() {
+        $('#robotForm').show();
+        $('#robotProgress').hide();
+        $('#robotIntervencion').hide();
+        $('#btnRobotExec').show();
+        $('#btnRobotSave').hide();
+        
+        let hoy = new Date();
+        $('#rbFecha').val(hoy.toISOString().split('T')[0]);
+        
+        $('#modalRobot').modal('show');
+        toggleRobotEstacion();
+    }
+
+    function toggleRobotEstacion() {
+        if ($('#rbBanco').val() === 'SANTANDER') {
+            $('#rowRobotEstacion').show();
+            // Default selected could be adjusted
+        } else {
+            $('#rowRobotEstacion').hide();
+        }
+    }
+
+    function executeRobot() {
+        const banco = $('#rbBanco').val();
+        const fecha = $('#rbFecha').val();
+        const estacion = $('#rbEstacion').val();
+
+        if (!fecha) {
+            alert('Por favor seleccione una fecha válida.');
+            return;
+        }
+
+        if (banco === 'SANTANDER' && !estacion) {
+            alert('Por favor seleccione una razón social para el banco Santander.');
+            return;
+        }
+
+        $('#robotForm').hide();
+        $('#robotProgress').show();
+        $('#btnRobotExec').attr('disabled', true);
+        $('#btnRobotCancel').attr('disabled', true);
+
+        $.ajax({
+            url: '/income/ejecutar_robot_manual',
+            type: 'POST',
+            data: { banco: banco, fecha: fecha, estacion: estacion },
+            timeout: 300000, // 5 min
+            success: function(resp) {
+                $('#robotProgress').hide();
+                $('#btnRobotCancel').attr('disabled', false);
+                $('#btnRobotExec').attr('disabled', false);
+                
+                let data = {};
+                try {
+                    data = typeof resp === 'string' ? JSON.parse(resp.trim()) : resp;
+                } catch(e) { 
+                    alert("Respuesta ilegible del servidor web/python."); 
+                    console.error(resp);
+                    $('#robotForm').show();
+                    return;
+                }
+
+                if (data.status === 'success') {
+                    if (data.data && data.data.length > 0) {
+                        pendingRobotBank = banco;
+                        pendingRobotData = data.data;
+                        // Ya traemos datos "perfectos" directamente al guardado
+                        saveIntervencion();
+                    } else {
+                        alert("Extracción existosa: Pero el Excel/Csv obtenido no contiene registros nuevos o estaba vacío.");
+                        $('#modalRobot').modal('hide');
+                    }
+                } else if (data.status === 'requiere_intervencion') {
+                    pendingRobotData = data.data;
+                    pendingRobotBank = banco;
+                    mostrarTablaIntervencion();
+                } else {
+                    alert("Error Robot: " + (data.message || "Incidencia general."));
+                    $('#robotForm').show();
+                }
+            },
+            error: function(xhr) {
+                $('#robotProgress').hide();
+                $('#btnRobotCancel').attr('disabled', false);
+                $('#btnRobotExec').attr('disabled', false);
+                $('#robotForm').show();
+                alert('Ocurrió un error inesperado al llamar al Python script (timeout o permisos).');
+            }
+        });
+    }
+
+    function mostrarTablaIntervencion() {
+        const tbody = $('#tblIntervencion tbody');
+        tbody.empty();
+
+        const formatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+
+        pendingRobotData.forEach((row, index) => {
+            let depValue = row.Fecha_Deposito ? row.Fecha_Deposito : '';
+            const isMissing = !depValue;
+            
+            const tr = `
+                <tr class="${isMissing ? 'bg-warning bg-opacity-10' : ''}">
+                    <td class="small align-middle" style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Ter:${row.Terminal} Aut:${row.Codigo_Autorizacion} Ref:${row.Referencia}">
+                        <div class="font-weight-bold text-dark">${row.Terminal} / ${row.Codigo_Autorizacion}</div>
+                        <div class="text-muted" style="font-size:0.7rem;">${row.Referencia || 'Sin Referencia'}</div>
+                    </td>
+                    <td class="align-middle small">
+                        ${row.Fecha_Transaccion} <br><span class="text-muted"><i class="far fa-clock"></i> ${row.Hora}</span>
+                    </td>
+                    <td class="align-middle text-right font-weight-bold text-success font-numeric">${formatter.format(row.Monto)}</td>
+                    <td class="align-middle text-center p-2">
+                        <input type="date" class="form-control form-control-sm fecha-deposito-input rounded-sm border-${isMissing?'danger':'secondary'}" 
+                               data-index="${index}" value="${depValue}">
+                    </td>
+                </tr>
+            `;
+            tbody.append(tr);
+        });
+
+        $('#robotIntervencion').show();
+        $('#btnRobotExec').hide();
+        $('#btnRobotSave').show();
+    }
+
+    function fillAllDates() {
+        const firstVal = $('.fecha-deposito-input').first().val();
+        if (firstVal) {
+            $('.fecha-deposito-input').each(function() {
+                if(!$(this).val()) {
+                    $(this).val(firstVal);
+                    $(this).removeClass('border-danger').addClass('border-secondary');
+                }
+            });
+        } else {
+            alert('Por favor ingrese primero una fecha válida en el primer registro vacio superior.');
+        }
+    }
+
+    // Removes danger class if user Types
+    $(document).on('change', '.fecha-deposito-input', function() {
+        if($(this).val()) $(this).removeClass('border-danger').addClass('border-secondary');
+    });
+
+    function saveIntervencion() {
+        if ($('#robotIntervencion').is(':visible')) {
+            let allValid = true;
+            $('.fecha-deposito-input').each(function() {
+                const idx = $(this).data('index');
+                const val = $(this).val();
+                if (!val) allValid = false;
+                pendingRobotData[idx].Fecha_Deposito = val;
+            });
+
+            if (!allValid) {
+                alert("Atención: Por favor llene todas las fechas de depósito vacías rojas antes de guardar y subir a la tabla.");
+                return;
+            }
+        }
+
+        $('#btnRobotSave').html('<span class="spinner-border spinner-border-sm"></span> Subiendo...').attr('disabled', true);
+        $('#btnRobotCancel').attr('disabled', true);
+        
+        $.ajax({
+            url: '/income/insertar_correccion_manual',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ banco: pendingRobotBank, data: pendingRobotData }),
+            success: function(resp) {
+                let r = {};
+                try { r = typeof resp === 'string' ? JSON.parse(resp.trim()) : resp; } catch(e){}
+                
+                $('#btnRobotSave').html('<i class="fas fa-save mr-2"></i> Guardar y Subir').attr('disabled', false);
+                $('#btnRobotCancel').attr('disabled', false);
+
+                if (r.status === 'success') {
+                    alert('Operación del Robot Exitosa: \n\n' + r.message);
+                    $('#modalRobot').modal('hide');
+                } else {
+                    alert('Error en base de datos: ' + (r.message || "Excepcion desconocida."));
+                }
+            },
+            error: function() {
+                $('#btnRobotSave').html('<i class="fas fa-save mr-2"></i> Guardar y Subir').attr('disabled', false);
+                $('#btnRobotCancel').attr('disabled', false);
+                alert("Error crítico comunicando correcciones al PHP servidor.");
+            }
+        });
     }
 </script>
 {% endblock %}
