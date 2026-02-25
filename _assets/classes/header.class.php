@@ -77,4 +77,3 @@ require('extractor.php');
 
 $MySqlHandler = MySqlPdoHandler::getInstance();
 $MySqlHandler->connect('TG');
-?>
