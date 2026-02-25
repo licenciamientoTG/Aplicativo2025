@@ -1766,12 +1766,11 @@ public function anomalies_client_tickets()
     }
 
     function all_dispatches_table($from, $codgas, $shift, $dispatch_type) : void {
-
-        if ($dispatch_type == 'dbito') {
+        if ($dispatch_type == 'dbito' || $dispatch_type == 'Débito' || $dispatch_type == 'd%c3%a9bito') {
             $dispatches = $this->despachosModel->get_debit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'crdito') {
+        } elseif ($dispatch_type == 'crdito' || $dispatch_type == 'Crédito' || $dispatch_type == 'c%c3%a9dito') {
             $dispatches = $this->despachosModel->get_credit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'payworks') {
+        } elseif ($dispatch_type == 'payworks' || $dispatch_type == 'Payworks') {
             $dispatches = $this->despachosModel->get_payworks_dispatches_to_release($codgas, dateToInt($from), $shift);
         }
 
@@ -1844,9 +1843,9 @@ public function anomalies_client_tickets()
                     $dispatches[] = $value;
                 }
             }
-        } else if ($dispatch_type == 'crdito') {
+        } else if ($dispatch_type == 'crdito' || $dispatch_type == 'c%c3%a9dito' || $dispatch_type == 'Crédito') {
             $dispatches = $this->despachosModel->get_credit_dispatches_just_to_release($from, $codgas, $shift);
-        } else if ($dispatch_type == 'dbito') {
+        } else if ($dispatch_type == 'dbito' || $dispatch_type == 'd%c3%a9bito' || $dispatch_type == 'Débito') {
             $dispatches = $this->despachosModel->get_debit_dispatches_just_to_release($from, $codgas, $shift);
         }
         $data = [];
@@ -2054,7 +2053,12 @@ public function anomalies_client_tickets()
     }
 
     function generateExcel($fecha) {
-        // Crear el objeto de hoja de cÃ¡lculo
+        // Limpiar cualquier output previo del buffer para no corromper el archivo
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Crear el objeto de hoja de cálculo
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 

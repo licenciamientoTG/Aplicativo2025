@@ -60,10 +60,7 @@
                             <select name="supplier" id="supplier" class="form-select form-select-sm selectpicker" data-live-search="true" title="-- Todos los proveedores --">
                                 <option value="">-- Todos los proveedores --</option>
                                 {% for su in suppliers %}
-                                    <option value="{{ su.codopr }}"
-                                        {% if su.codopr == supplier %}selected{% endif %}>
-                                        {{ su.Entidad }}
-                                    </option>
+                                    <option value="{{ su.id_control_gas }}" {% if su.codopr == supplier %}selected{% endif %}> {{ su.proveedor }} </option>
                                 {% endfor %}
                             </select>
                         </div>

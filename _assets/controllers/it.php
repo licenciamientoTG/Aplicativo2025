@@ -43,14 +43,14 @@ class It{
     /**
      * @return void
      */
-    function users() : void {
+    public function users() : void {
         echo $this->twig->render($this->route . 'users.html');
     }
 
     /**
      * @return void
      */
-    function datatables_users() : void {
+    public function datatables_users() : void {
         $data = [];
 
         foreach ($this->usersModel->get_users() as $user) {
@@ -87,7 +87,7 @@ class It{
      * @param $user_id
      * @return void
      */
-    function permission_users($user_id) : void{
+    public function permission_users($user_id) : void{
         echo $this->twig->render($this->route . 'permission_users.html', compact('user_id'));
     }
 
@@ -95,7 +95,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function datatables_permissions_users() : void {
+    public function datatables_permissions_users() : void {
         $data = [];
         foreach ($this->permissionsUsersModel->get_permissions_users($_GET['user_id']) as $permission) {
             $data[] = array(
@@ -106,7 +106,7 @@ class It{
                 'STATUS'       => $permission['Status'],
                 'FECHA'        => $permission['Fecha'],
                 'ACCIONES'     => '<div class="form-check form-switch fs-5">
-                                        <input class="form-check-input" type="checkbox" role="switch" id="btncheck'. $permission['permission_id'] .'" onChange="assignPermission(this)" data-permission="'. $permission['permission_id'] .'" data-user="'. $_GET['user_id'] .'" '. ($permission['Permitido'] == 0 ? '' : 'checked' ) .'>
+                                        <input class="form-check-input" type="checkbox" role="switch" id="btncheck'. $permission['permission_id'] .'" onChange="assignPermission(this)" data-permission="'. $permission['permission_id'] .'" data-user="'. (int)$_GET['user_id'] .'" '. ($permission['Permitido'] == 0 ? '' : 'checked' ) .'>
                                     </div>'
             );
         }
@@ -118,13 +118,14 @@ class It{
      * @throws Exception
      */
     public function assignPermission() {
-        return json_output($this->permissionsUsersModel->assignPermission($_GET['user_id'], $_GET['permission_id'], $_GET['check']));
+        $check = in_array($_GET['check'] ?? '', ['0', '1']) ? (int)$_GET['check'] : 0;
+        return json_output($this->permissionsUsersModel->assignPermission((int)$_GET['user_id'], (int)$_GET['permission_id'], $check));
     }
 
     /**
      * @return void
      */
-    function permissions() : void {
+    public function permissions() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'permissions.html');
         } else {
@@ -143,7 +144,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function datatables_permissions() : void {
+    public function datatables_permissions() : void {
         $data = [];
         foreach ($this->permissionsModel->get_permissions() as $permission) {
             $actions = "
@@ -173,7 +174,7 @@ class It{
     /**
      * @return void
      */
-    function permissionModal() : void {
+    public function permissionModal() : void {
         $modal = [
             "title"    => "Permisos",
             "size"     => "modal-sm",
@@ -186,7 +187,7 @@ class It{
     /**
      * @return void
      */
-    function stationModal() : void {
+    public function stationModal() : void {
         $modal = [
             "title"    => "Estaciones",
             "size"     => "modal-sm",
@@ -200,7 +201,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function release_dispatches() : void {
+    public function release_dispatches() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $nrotrn = $_GET['nrotrn'] ?? false;
             $codgas = $_GET['codgas'] ?? false;
@@ -208,46 +209,23 @@ class It{
             echo $this->twig->render($this->route . 'release_dispatches.html', compact('stations', 'nrotrn', 'codgas'));
         } else {
             if ($this->despachosModel->release_dispatches(dateToInt($_POST['from']), dateToInt($_POST['until']), $_POST['codgas'])) {
-                $response = [
-                    "status" => "OK",
-                    "message" => "¡Los despachos fueron liberados correctamente!",
-                ];
-                json_output($response);
+                json_output(["status" => "OK", "message" => "¡Los despachos fueron liberados correctamente!"]);
+            } else {
+                json_output(["status" => "ERROR", "message" => "¡Los despachos no pudieron ser liberados!"]);
             }
         }
     }
 
-    function release_dispatch() : void {
-        // Primero verificamos si recibimos las variables nrotrn y codgas por post
-        if (isset($_POST['nrotrn']) AND isset($_POST['codgas'])) {
-            // Si recibimos las variables, entonces liberamos el despacho
-            if ($this->despachosModel->release_dispatch($_POST['nrotrn'], $_POST['codgas'])) {
-                if ($this->despachosModel->release_dispatch($_POST['nrotrn'], $_POST['codgas'], 1)) {
-                    $response = [
-                        "status" => "OK",
-                        "message" => "¡El despacho fue liberado correctamente!",
-                    ];
-                    json_output($response);
-                } else {
-                    $response = [
-                        "status" => "ERROR",
-                        "message" => "¡El despacho no pudo ser liberado!",
-                    ];
-                    json_output($response);
-                }
-            } else {
-                $response = [
-                    "status" => "ERROR",
-                    "message" => "¡El despacho no pudo ser liberado!",
-                ];
-                json_output($response);
-            }
+    public function release_dispatch() : void {
+        if (!isset($_POST['nrotrn'], $_POST['codgas'])) {
+            json_output(["status" => "ERROR", "message" => "¡No se recibieron los datos necesarios!"]);
+            return;
+        }
+
+        if ($this->despachosModel->release_dispatch($_POST['nrotrn'], $_POST['codgas'], 1)) {
+            json_output(["status" => "OK", "message" => "¡El despacho fue liberado correctamente!"]);
         } else {
-            $response = [
-                "status" => "ERROR",
-                "message" => "¡No se recibieron los datos necesarios!",
-            ];
-            json_output($response);
+            json_output(["status" => "ERROR", "message" => "¡El despacho no pudo ser liberado!"]);
         }
     }
 
@@ -255,7 +233,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function datatables_release_dispatches() : void {
+    public function datatables_release_dispatches() : void {
         $data = [];
         if ($despachos = $this->despachosModel->get_to_release($_GET['nrotrn'], $_GET['codgas'])) {
             foreach ($despachos as $despacho) {
@@ -269,7 +247,7 @@ class It{
                     'UUID'      => $despacho['satuid'],
                     'RFC'       => $despacho['satrfc'],
                     'LOGFECHA'  => $despacho['logfch'],
-                    'ACCIONES'  => '<a href="javascript:void(0);" onclick="release_dispatch('. $_GET['nrotrn'] .', '. $_GET['codgas'] .')" data-bs-toggle="tooltip" data-bs-placement="top" title="Liberación de despacho"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-skip-back align-middle me-2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></a>'
+                    'ACCIONES'  => '<a href="javascript:void(0);" onclick="release_dispatch('. (int)$_GET['nrotrn'] .', '. (int)$_GET['codgas'] .')" data-bs-toggle="tooltip" data-bs-placement="top" title="Liberación de despacho"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-skip-back align-middle me-2"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></a>'
                 );
             }
         }
@@ -280,7 +258,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function userModal() : void {
+    public function userModal() : void {
         $profiles = $this->profileModel->all();
         $modal = [
             "title"    => "Agregar usuario",
@@ -296,7 +274,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function editUserModal($id) : void {
+    public function editUserModal($id) : void {
         $user = $this->usersModel->get_user($id);
         $profiles = $this->profileModel->all();
         $stations = $this->estacionesModel->get_stations();
@@ -313,8 +291,9 @@ class It{
      * @return void
      * @throws Exception
      */
-    function changePasswordModal() :void {
-        $user = $this->usersModel->get_user($_REQUEST['id']);
+    public function changePasswordModal() :void {
+        $id = $_GET['id'] ?? $_POST['id'] ?? null;
+        $user = $this->usersModel->get_user($id);
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $modal = [
                 "title"    => "Cambiar contraseña",
@@ -336,7 +315,7 @@ class It{
      * @return json|int
      * @throws Exception
      */
-    function userForm() {
+    public function userForm() {
         if (preg_match('/POST/i',$_SERVER['REQUEST_METHOD'])){
             return json_output($this->usersModel->add(trim($_POST['name']), trim($_POST['username']), trim($_POST['password']), $_POST['profile_id'], trim(strtolower($_POST['email']))));
         }
@@ -348,7 +327,7 @@ class It{
      * @return null
      * @throws Exception
      */
-    function editUserForm(): null {
+    public function editUserForm() {
         $rs = $this->usersModel->editUser(trim($_POST['name']), $_POST['profile_id'], trim(strtolower($_POST['email'])), $_POST['IdEstacion'], $_POST['status'], $_POST['id']);
         return json_output(($rs ? 1 : 0));
     }
@@ -357,7 +336,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function stations() : void {
+    public function stations() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             echo $this->twig->render($this->route . 'stations.html');
         } else {
@@ -374,7 +353,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function datatables_stations() : void {
+    public function datatables_stations() : void {
         $data = [];
         if ($stations = $this->estacionesModel->get_stations('0,4,20')) {
             $data = array_map(function ($station) {
@@ -390,245 +369,18 @@ class It{
                     'ZONA'         => $station['Zona'],
                     'RFC'          => $station['RFC'],
                     'STATUS'       => ( $station['activa'] == 1 ? '<span class="badge bg-success">Activa</span>' : '<span class="badge bg-primary">Inactiva</span>' ),
-                    'CONEXION'     => ((@fsockopen($station['Servidor'], 1433, $errno, $errstr, 2)) ? "✅" : "❌")
+                    'CONEXION'     => (function() use ($station) { $s = @fsockopen($station['Servidor'], 1433, $errno, $errstr, 2); if ($s !== false) { fclose($s); return "✅"; } return "❌"; })()
                 ];
             }, $stations);
         }
         json_output(array("data" => $data));
     }
 
-//    /**
-//     * @return void
-//     * @throws Exception
-//     */
-//    function send_consumes() {
-//        // Revisamos si hay despachos pendientes
-//        if ($pending_dispatches = $this->despachosModel->get_pendings_loyalty_dispatches()) {
-//            // Si hay despachoas pendientes los insertamos en la tabla de [TG].[dbo].[DespachosLealtad]
-//            foreach ($pending_dispatches as $pending_dispatch) {
-//                // Verificamos si existe el despacho en la tabla y si no esta, entonces insertamos
-//                if (!$this->despachosLealtadModel->get_row($pending_dispatch['IdDespacho'], $pending_dispatch['Estacion'])) {
-//                    $this->despachosLealtadModel->insert($pending_dispatch['Fecha'], $pending_dispatch['IdDespacho'], $pending_dispatch['Turno'], $pending_dispatch['Monto'], $pending_dispatch['Litros'], $pending_dispatch['Producto'], $pending_dispatch['ProductoDesc'], $pending_dispatch['Estacion'], $pending_dispatch['EstacionDesc'], $pending_dispatch['CodCliente'], $pending_dispatch['Cliente'], $pending_dispatch['Puntos'], $pending_dispatch['RazonSocial']);
-//                }
-//            }
-//        }
-//
-//        // Obtenemos los despachos
-//        if ($dispatches = $this->despachosModel->get_today_loyalty_dispatches()) {
-//            // Listaremos todos los programas de TotalGas que consumiremos del API de Bederr
-//            $programs = $this->get_programs();
-//
-//            // Obtenemos el UID del programa
-//            $program_uid = $programs[0]->uid;
-//            $company_uid = $programs[0]->company->uid;
-//
-//            var_dump($company_uid);
-//            die();
-//
-//            // Obtenemos información sobre el programa
-//            $program_info = $this->get_program_info($program_uid);
-//
-//            // Obtenemos las locaciones
-//            $locations = $this->get_locations($company_uid);
-//
-//            foreach ($dispatches as $dispatch) {
-//                $this->send_consume($dispatch, $program_uid);
-//            }
-//        } else {
-//            echo '<pre>';
-//            var_dump("No hay despachos");
-//            die();
-//        }
-//    }
-//
-//    /**
-//     * @param $client_id
-//     * @param $client_secret
-//     * @return false|mixed
-//     */
-//    private function getToken($client_id, $client_secret) {
-//        $token_url = "{$this->baseApiUrl}oauth2/token/";
-//
-//        $data = [
-//            'grant_type' => 'client_credentials',
-//            'client_id' => $client_id,
-//            'client_secret' => $client_secret,
-//        ];
-//
-//        $ch = curl_init($token_url);
-//
-//        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch, CURLOPT_POST, true);
-//        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        $response = curl_exec($ch);
-//
-//        if (curl_errno($ch)) {
-//            echo 'Error al obtener el token: ' . curl_error($ch);
-//            return false;
-//        }
-//
-//        curl_close($ch);
-//
-//        $token_data = json_decode($response, true);
-//
-//        if (isset($token_data['access_token'])) {
-//            return $token_data;
-//        } else {
-//            echo 'No se pudo obtener el token. Respuesta del servidor: ' . $response;
-//            return false;
-//        }
-//    }
-//
-//    /**
-//     * @return string|array
-//     */
-//    private function get_programs() : string | array {
-//
-//        $programs_url = "{$this->baseApiUrl}admin/programs/";
-//        $headers = array(
-//            "Content-Type: application/json",
-//            "Authorization: " . $this->token['token_type'] . " " . $this->token['access_token']
-//        );
-//
-//        $ch = curl_init($programs_url);
-//        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-//        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        $response = curl_exec($ch);
-//        curl_close($ch);
-//
-//        $array = json_decode($response);
-//
-//        return $array;
-//    }
-//
-//    /**
-//     * @param $program_uid
-//     * @return mixed
-//     */
-//    private function get_program_info($program_uid) {
-//        $url = "{$this->baseApiUrl}admin/programs/{$program_uid}/";
-//        $headers = array(
-//            "Content-Type: application/json",
-//            "Authorization: " . $this->token['token_type'] . " " . $this->token['access_token']
-//        );
-//
-//        $ch = curl_init($url);
-//        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-//        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        $response = curl_exec($ch);
-//        curl_close($ch);
-//
-//
-//        $array = json_decode($response);
-//
-//        return $array;
-//    }
-//
-//    /**
-//     * @param $company_uid
-//     * @return array
-//     */
-//    private function get_locations($company_uid) {
-//        $url1 = "{$this->baseApiUrl}admin/companies/{$company_uid}/places/";
-//        $url2 = "{$this->baseApiUrl}admin/companies/{$company_uid}/places/?page=2";
-//
-//        $headers = array(
-//            "Content-Type: application/json",
-//            "Authorization: " . $this->token['token_type'] . " " . $this->token['access_token']
-//        );
-//
-//        // Inicializa cURL para la primera URL
-//        $ch1 = curl_init($url1);
-//        curl_setopt($ch1, CURLOPT_CUSTOMREQUEST, "GET");
-//        curl_setopt($ch1, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch1, CURLOPT_HTTPHEADER, $headers);
-//        curl_setopt($ch1, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch1, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        // Realiza la solicitud a la primera URL
-//        $response1 = curl_exec($ch1);
-//        curl_close($ch1);
-//
-//        // Inicializa cURL para la segunda URL
-//        $ch2 = curl_init($url2);
-//        curl_setopt($ch2, CURLOPT_CUSTOMREQUEST, "GET");
-//        curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch2, CURLOPT_HTTPHEADER, $headers);
-//        curl_setopt($ch2, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch2, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        // Realiza la solicitud a la segunda URL
-//        $response2 = curl_exec($ch2);
-//        curl_close($ch2);
-//
-//        // Decodifica ambas respuestas JSON en arreglos
-//        $array1 = json_decode($response1, true);
-//        $array2 = json_decode($response2, true);
-//
-//        // Combina los dos arreglos en uno solo
-//        $combinedArray = array_merge($array1['results'], $array2['results']);
-//
-//        return $combinedArray;
-//    }
-//
-//    /**
-//     * @param $dispatch
-//     * @param $program_uid
-//     * @return void
-//     */
-//    private function send_consume($dispatch, $program_uid) : void {
-//        $url = "{$this->baseApiUrl}admin/programs/{$program_uid}/points/";
-//
-//        $data = array(
-//            "amount"          => $dispatch['amount'],
-//            "document_number" => strtoupper($dispatch['document_number']),
-//            "document_type"   => strtoupper($dispatch['document_type']),
-//            "place_uid"       => $dispatch['place_uid'],
-//            "awarded_at"      => date('Y-m-d H:i:s'),
-//            "description"     => trim($dispatch['description']),
-//            "extra"           => array(
-//                                    'DespachoID'   => $dispatch['DespachoID']
-//                                 ),
-//            'unit_measure'    => $dispatch['unit_measure'],
-//            'quantity'        => $dispatch['quantity']
-//        );
-//
-//
-//        $data_string = json_encode($data);
-//
-//        $headers = array(
-//            "Content-Type: application/json",
-//            "Authorization: " . $this->token['token_type'] . " " . $this->token['access_token']
-//        );
-//
-//        $ch = curl_init($url);
-//        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-//        curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
-//        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-//        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-//        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-//
-//        $response = curl_exec($ch);
-//        curl_close($ch);
-//    }
-
     /**
      * @return void
      * @throws Exception
      */
-    function profile() : void {
+    public function profile() : void {
         $permissions = $this->permissionsUsersModel->get_permissions_users($_SESSION['tg_user']['Id']);
         echo $this->twig->render($this->route . 'profile.html', compact('permissions'));
     }
@@ -637,26 +389,25 @@ class It{
      * @return void
      * @throws Exception
      */
-    function change_password() : void {
+    public function change_password() : void {
         if ($this->usersModel->changePassword($_SESSION['tg_user']['Id'], $_POST['password1'])) {
             json_output(1);
         } else {
             json_output(0);
         }
-        die();
     }
 
     /**
      * @return void
      */
-    function binnacle() : void {
+    public function binnacle() : void {
         echo $this->twig->render($this->route . 'binnacle.html');
     }
 
     /**
      * @return void
      */
-    function modalActivities() : void {
+    public function modalActivities() : void {
         $date_modal = $_POST['date'];
         $modal = [
             "title"    => "Agregar actividad en bitácora",
@@ -671,7 +422,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function add_activity() : void {
+    public function add_activity() : void {
         $activity_date = $_POST['activity_date'];
         $start_hour    = $_POST['start_hour'];
         $end_hour      = $_POST['end_hour'];
@@ -710,7 +461,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function edit_activity() : void {
+    public function edit_activity() : void {
         $activity_date = $_POST['activity_date'];
         $start_hour    = $_POST['start_hour'];
         $end_hour      = $_POST['end_hour'];
@@ -750,7 +501,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function get_activities() : void {
+    public function get_activities() : void {
         if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
             $data = [];
             $activities = $this->binnacleActivitiesModel->getActivities();
@@ -761,7 +512,7 @@ class It{
                     'start' => date("Y-m-d", strtotime($activity['activity_date'])) . ' ' . $activity['start_hour'],
                     'end' => date("Y-m-d", strtotime($activity['activity_date'])) . ' ' . $activity['end_hour'],
                     'description' => $activity['description'],
-                    'backgroundColor' => '#'.substr(md5(rand()), 0, 6), // Aqui vamos a poner un color aleatorio solido oscurito
+                    'backgroundColor' => '#'.substr(md5((string)$activity['id']), 0, 6),
                     'textColor' => '#fff',
                     'activity_date' => $activity['activity_date'],
                     'user_id' => $activity['user_id'],
@@ -777,7 +528,7 @@ class It{
      * @return void
      * @throws Exception
      */
-    function activityModal() : void {
+    public function activityModal() : void {
         $activity = $this->binnacleActivitiesModel->getActivity($_POST['activity_id']);
         $modal = [
             "title"    => "Detalles de la actividad",
@@ -788,7 +539,7 @@ class It{
         json_output($modal);
     }
 
-    function modalEditActivities() : void {
+    public function modalEditActivities() : void {
         if ($activity = $this->binnacleActivitiesModel->getActivity($_POST['activity_id'])) {
             $modal = [
                 "title"    => "Editar actividad",
@@ -798,9 +549,7 @@ class It{
             ];
             json_output($modal);
         } else {
-            echo '<pre>';
-            var_dump($activity = $this->binnacleActivitiesModel->getActivity($_POST['activity_id']));
-            die();
+            json_output(["status" => "ERROR", "message" => "No se encontró la actividad"]);
         }
     }
 
@@ -808,17 +557,17 @@ class It{
      * @return void
      * @throws Exception
      */
-    function activities_list() : void {
+    public function activities_list() : void {
         $activities = $this->binnacleActivitiesModel->getActivities();
         echo $this->twig->render($this->route . 'activities_list.html', compact('activities'));
     }
 
-    function CFDISender_monitor() {
+    public function CFDISender_monitor() {
         $active_stations = $this->gasolinerasModel->get_active_station_TG();
         echo $this->twig->render($this->route . 'CFDISender_monitor.html', compact( 'active_stations'));
     }
 
-    function CFDISender_monitor_data($from, $codgas) {
+    public function CFDISender_monitor_data($from, $codgas) {
         $data = [];
         if ($dispatches = $this->despachosModel->getCFDIs(dateToInt($from), $codgas)) {
             foreach ($dispatches as $dispatch) {
@@ -839,7 +588,7 @@ class It{
     }
 
 
-    function cfdi_comparison_table()
+    public function cfdi_comparison_table()
     {
         ini_set('memory_limit', '512M');
         set_time_limit(300);
@@ -848,9 +597,9 @@ class It{
         $from = dateToInt($_POST['from']);
         $until = dateToInt($_POST['until']);
         $codgas = isset($_POST['codgas']) ? $_POST['codgas'] : null;
-        $estation= $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas );
-        $bd = $estation['base_datos']; // Asumimos que todas las estaciones usan la misma base de datos
-        $ip = $estation['servidor'];
+        $estacion = $this->gasolinerasModel->get_estations_servidor_cod_gas($codgas);
+        $bd = $estacion['base_datos'];
+        $ip = $estacion['servidor'];
         if ($registros = $this->despachosModel->cfdi_comparison_advance($from, $until, $codgas, $bd, $ip)) {
             
             foreach ($registros as $registro) {

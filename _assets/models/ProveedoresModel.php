@@ -106,6 +106,7 @@ class ProveedoresModel extends Model{
                         WHERE 
                             t1.tip = 1 
                             AND t1.subope = 2 
+                            and t4.cod in (55,72,71,76,56,83,96,64)
                             --AND t1.fch BETWEEN 45838 AND 45893
                             and t1.satuid is not null 
                     ),
@@ -124,7 +125,7 @@ class ProveedoresModel extends Model{
                         tp.proveedor,
                         p2.den
                     FROM [TG].[dbo].[Proveedores] p
-                    LEFT JOIN totales_proveedores tp ON p.id_control_gas = tp.cod_provider
+                    inner JOIN totales_proveedores tp ON p.id_control_gas = tp.cod_provider
                     LEFT JOIN SG12.dbo.Proveedores p2 on p.id_control_gas = p2.cod';
         $params = [];
         return ($this->sql->select($query,$params)) ?: false ;
