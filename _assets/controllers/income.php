@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -2243,54 +2243,50 @@ public function anomalies_client_tickets()
 
   private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
-        $orig = trim((string)$nombre);
 
-        // 1. Quitar BOM y normalizar espacios (incluyendo espacios no divisibles \xA0)
-        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', $orig);
+        // 1. Limpieza inicial y normalizaciÃ³n de espacios y BOM
+        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', (string)$nombre);
         $orig = trim(preg_replace('/\s+/', ' ', $orig));
 
-        // 2. REPARACIÃ“N DE CODIFICACIÃ“N
+        // 2. Intento de reparaciÃ³n de codificaciÃ³n (Caracteres dobles)
         if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
-            $intento = @utf8_decode($orig);
-            if ($intento && mb_check_encoding($intento, 'UTF-8')) {
-                $orig = $intento;
+            $repaired = @utf8_decode($orig);
+            if ($repaired && mb_check_encoding($repaired, 'UTF-8')) {
+                $orig = $repaired;
             }
         }
 
-        // 3. Revisar en el Mapa (Chequeo exacto)
+        // 3. BÃºsqueda en el mapa de columnas estÃ¡ndar (la vÃ­a mÃ¡s rÃ¡pida)
         if (isset($coreMap[$bankType][$orig])) {
             return $coreMap[$bankType][$orig];
         }
 
-                // 3.1. FUZZY MATCH ROBUSTO (Regex) - normalizar acentos
+        // 4. FUZZY MATCH: Normalizar a ASCII mayÃºsculas para comparaciones flexibles
         $norm = mb_strtoupper($orig, 'UTF-8');
+        // Reemplazo de vocales con acentos y caracteres especiales
         $norm = str_replace(
-            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë',
-             'Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö',
-             'Ù','Ú','Û','Ü'],
-            ['A','A','A','A','A','E','E','E','E','I','I','I','I','O','O','O','O','O','U','U','U','U'],
+            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë','Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö','Ù','Ú','Û','Ü','Ã“','Ã‰','Ã“'],
+            ['A','A','A','A','A','E','E','E','E','I','I','I','I','O','O','O','O','O','U','U','U','U','O','E','O'],
             $norm
         );
-        
-        if (preg_match('/FECHA/i', $norm)) {
-            if (preg_match('/DEPOSITO|APLICACION/i', $norm)) {
-                return 'Fecha_Deposito';
-            }
-            if (preg_match('/TRANSACCION/i', $norm)) {
-                return 'Fecha_Transaccion';
-            }
-        }
+        // Quitar caracteres no alfanumÃ©ricos para simplificar la comparaciÃ³n
+        $norm = preg_replace('/[^A-Z0-9\s]/', '', $norm);
 
-        // 4. Limpieza estÃ¡ndar (Fallback)
-        // iconv elimina acentos: 'AplicaciÃ³n' -> 'Aplicacion'
-        $s = @iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
-        if ($s === false) {
-            $s = $orig;
+        // Reglas de Fuzzy Matching especÃ­ficas
+        if (strpos($norm, 'FECHA') !== false) {
+            if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false) return 'Fecha_Deposito';
+            if (strpos($norm, 'TRANSACCION') !== false) return 'Fecha_Transaccion';
         }
-        $s = preg_replace('/[^a-zA-Z0-9_]/', '_', $s);
-        $s = preg_replace('/_+/', '_', $s);
-        
-        return trim($s, '_');
+        if (strpos($norm, 'ID MOVIMIENTO') !== false) return 'ID_Externo';
+        if (strpos($norm, 'HORA') !== false) return 'Hora';
+        if (strpos($norm, 'AFILIACION') !== false) return 'Afiliacion';
+        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE') return 'Monto';
+        if (strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) return 'Codigo_Autorizacion';
+        if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
+
+        // 5. Fallback: si todo falla, limpiar el nombre original para usarlo como Ãºltimo recurso
+        $fallback = preg_replace('/[^a-zA-Z0-9_]/', '_', $orig);
+        return trim(preg_replace('/_+/', '_', $fallback), '_');
     }
     private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
         // FUNCIÃ“N DESACTIVADA PARA MANTENER ESTÃNDAR DE TABLAS
@@ -2526,18 +2522,16 @@ public function anomalies_client_tickets()
                 'Hora TransacciÃ³n' => 'Hora',
                 'Hora' => 'Hora',
                 'Referencia Interbancaria' => 'Referencia',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Fecha de Transacción' => 'Fecha_Transaccion',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Fecha de Transacción' => 'Fecha_Transaccion',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha de Deposito' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
+                'Fecha Transaccion' => 'Fecha_Transaccion',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
@@ -2551,51 +2545,33 @@ public function anomalies_client_tickets()
                 'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
             ],
             'SANTANDER' => [
-                'ID movimiento' => 'ID_Externo',              
+                'ID movimiento' => 'ID_Externo',
+                'ID Movimiento' => 'ID_Externo',
                 'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
+                'Fecha Transaccion' => 'Fecha_Transaccion',
                 'Hora de TransacciÃ³n' => 'Hora',
+                'Hora de Transaccion' => 'Hora',
                 'Hora TransacciÃ³n' => 'Hora',
+                'Hora Transaccion' => 'Hora',
                 'AfiliaciÃ³n' => 'Afiliacion',
-                'Nombre del comercio' => 'Comercio',
-                'Tipo de TransacciÃ³n' => 'Tipo_Transaccion',
-                'Tipo TransacciÃ³n' => 'Tipo_Transaccion',
-                'Tarjeta' => 'Tarjeta',
-                'Cod. Terminal' => 'Terminal',                
+                'Afiliacion' => 'Afiliacion',
+                'Cod. Terminal' => 'Terminal',
                 'Terminal ID' => 'Terminal',
-                'OperaciÃ³n' => 'Operacion',
-                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
-                'Tipo Tarjeta' => 'Tipo_Tarjeta',
-                'NÃºmero de Tarjeta' => 'Tarjeta_Numero',
-                'Tarjeta NÃºmero' => 'Tarjeta_Numero',
                 'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
+                'Codigo Autorizacion' => 'Codigo_Autorizacion',
                 'Cod. Aut' => 'Codigo_Autorizacion',
-                'Total' => 'Monto',                           
+                'Total' => 'Monto',
                 'Monto de TransacciÃ³n Signo' => 'Monto',
-                'ComisiÃ³n' => 'Comision',
+                'Monto de Transaccion Signo' => 'Monto',
                 'Referencia' => 'Referencia',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Fecha de Transacción' => 'Fecha_Transaccion',
-                'Fecha Depósito' => 'Fecha_Deposito',
-                'Fecha de Depósito' => 'Fecha_Deposito',
-                'Fecha Aplicación' => 'Fecha_Deposito',
-                'Fecha de Aplicación' => 'Fecha_Deposito',
-                'Fecha Transacción' => 'Fecha_Transaccion',
-                'Fecha de Transacción' => 'Fecha_Transaccion',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
-                'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
                 'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
                 'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha Aplicacion' => 'Fecha_Deposito',
-                'Fecha AplicaciÃƒÂ³n' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
-                'Fecha de Aplicacion' => 'Fecha_Deposito',
-                'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito'
             ]
         ];
 
@@ -2734,7 +2710,14 @@ public function anomalies_client_tickets()
                                     $delim = (strpos($firstLine, ";") !== false && strpos($firstLine, ",") === false) ? ";" : ",";
                                     rewind($handle);
                                     $rawHeader = fgetcsv($handle, 0, $delim);
+                                    // Santander sometimes has a displaced header (empty first col)
+                                    $shifted = false;
+                                    if (empty(trim((string)($rawHeader[0] ?? '')))) {
+                                        array_shift($rawHeader);
+                                        $shifted = true;
+                                    }
                                     while (($row = fgetcsv($handle, 0, $delim)) !== FALSE) {
+                                        if ($shifted) array_shift($row);
                                         $allRows[] = $row;
                                     }
                                     fclose($handle);
@@ -2768,21 +2751,27 @@ public function anomalies_client_tickets()
                                     }
                                 }
                 
-                                // 2. Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
-                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_getnet");
+                                // 2. Huellas para duplicados (8 CAMPOS CLAVE - ALINEADO CON PYTHON)
+                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_getnet");
                                 $huellas = [];
                                 while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
-                                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
-                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                    
+                                    // Normalizar HORA de la DB para que coincida con la del CSV
+                                    $hora_db = trim($r['Hora'] ?? '');
+                                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_db)) {
+                                        $parts = explode(':', $hora_db);
+                                        $hora_db = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                                    }
+
+                                    $key = ltrim(trim($r['Afiliacion'] ?? ''), '0') . '|' . 
                                            trim($r['ID_Externo'] ?? '') . '|' . 
                                            $fch . '|' . 
                                            number_format((float)$r['Monto'], 2, '.', '') . '|' .
-                                           trim($r['Hora'] ?? '') . '|' .
+                                           $hora_db . '|' .
                                            trim($r['Codigo_Autorizacion'] ?? '') . '|' .
                                            trim($r['Referencia'] ?? '') . '|' .
-                                           trim($r['Terminal'] ?? '') . '|' .
-                                           $fch_dep;
+                                           trim($r['Terminal'] ?? '');
                                     $huellas[$key] = true;
                                 }
                 
@@ -2859,15 +2848,32 @@ public function anomalies_client_tickets()
                                         }
                                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                                     }
+
+                                    // EVITAR REGISTROS FANTASMA (SIN ID O MONTO) - ALINEADO CON PYTHON
+                                    $id_ext = trim($dataRow['ID_Externo'] ?? '');
+                                    if (empty($id_ext) || $id_ext === '-' || ($dataRow['Monto'] ?? 0) <= 0) {
+                                        $skipped++;
+                                        continue;
+                                    }
                 
-                                    // Huella para saltar duplicados (+ FECHA DEPOSITO)
-                                    $huella = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'') . '|' . ($dataRow['Fecha_Deposito']??'');
+                                    // Huella para saltar duplicados (8 campos) - GENERADA CON DATOS FINALES
+                                    $huella = trim($dataRow['Afiliacion'] ?? '') . '|' . 
+                                              trim($dataRow['ID_Externo'] ?? '') . '|' . 
+                                              trim($dataRow['Fecha_Transaccion'] ?? '') . '|' . 
+                                              number_format((float)($dataRow['Monto'] ?? 0), 2, '.', '') . '|' . 
+                                              trim($dataRow['Hora'] ?? '') . '|' . 
+                                              trim($dataRow['Codigo_Autorizacion'] ?? '') . '|' . 
+                                              trim($dataRow['Referencia'] ?? '') . '|' . 
+                                              trim($dataRow['Terminal'] ?? '');
                                     
-                                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
-                                    if (isset($huellas[$huella])) { $skipped++; continue; }
+                                    if (isset($huellas[$huella])) { 
+                                        $skipped++; 
+                                        continue; 
+                                    }
                 
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
+                                    $huellas[$huella] = true; // Prevenir duplicados en el mismo archivo
                                 }
                             }
 
