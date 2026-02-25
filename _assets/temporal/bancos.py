@@ -33,7 +33,7 @@ SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465  # SMTPS
 SMTP_USER = "no-reply@totalgas.com"
 SMTP_PASS = "sysdhepknmlkigbs"
-ALERT_RECIPIENT = "daniel.ramirez@totalgas.com"
+ALERT_RECIPIENT = "daniel.ramirez@totalgas.com, sergio.guerra@totalgas.com"
 
 # --- RESULTADOS GLOBALES ---
 global_results = {
@@ -193,6 +193,95 @@ def limpiar_fecha(valor, formato_origen=None):
             return datetime.strptime(s, fmt).strftime('%Y-%m-%d')
         except: continue
     return None
+
+AFILIACION_TZ_POLICY = {}
+
+def cargar_politica_horaria_afiliaciones(tipo_banco: str):
+    """
+    Construye (con cache en memoria) un mapa afiliacion -> zona horaria lógica:
+    - 'CDMX': conservar hora tal como viene del banco.
+    - 'JUAREZ': aplicar ajuste CDMX -> Juárez (invierno -1h).
+
+    Regla de negocio:
+      * Foráneas y Parral => 'CDMX'
+      * Demás estaciones  => 'JUAREZ'
+    """
+    global AFILIACION_TZ_POLICY
+    key = (tipo_banco or '').upper()
+    if key in AFILIACION_TZ_POLICY:
+        return AFILIACION_TZ_POLICY[key]
+
+    entidad_id = None
+    if key == 'BANORTE':
+        entidad_id = 4
+    elif key == 'SANTANDER':
+        entidad_id = 1
+
+    policy = {}
+    if entidad_id is None:
+        AFILIACION_TZ_POLICY[key] = policy
+        return policy
+
+    try:
+        conn = obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                A.afiliacion,
+                ISNULL(S.Nombre, V.Nombre) as Estacion,
+                ISNULL(A.rfc, 'FORANEAS') as RFC
+            FROM Tesoreria_afil A
+            LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+            LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+            WHERE A.entidad_id = ?
+              AND LEN(ISNULL(A.afiliacion,'')) > 0
+              AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)
+        """, entidad_id)
+
+        for afil, estacion, rfc in cursor.fetchall():
+            if not afil:
+                continue
+            af = str(afil).strip().lstrip('0')
+            if not af:
+                continue
+
+            est_nombre = (estacion or '').strip().upper()
+            rfc_norm   = (rfc or '').strip().upper()
+
+            es_foranea = (rfc_norm == '' or rfc_norm == 'FORANEAS')
+            es_parral  = ('PARRAL' in est_nombre)
+
+            policy[af] = 'CDMX' if (es_foranea or es_parral) else 'JUAREZ'
+
+        conn.close()
+    except Exception as e:
+        print(f"      ! Error cargando política horaria afiliaciones: {e}")
+        policy = {}
+
+    AFILIACION_TZ_POLICY[key] = policy
+    return policy
+
+def debe_ajustar_juarez_para_afiliacion(afiliacion: str, tipo_banco: str) -> bool:
+    """
+    Devuelve True si, para la afiliación dada y el banco, se debe aplicar el
+    ajuste de horario Juárez (CDMX -> Juárez). Si no hay información en catálogo,
+    mantiene el comportamiento anterior (ajustar).
+    """
+    if not afiliacion:
+        return True
+
+    policy = cargar_politica_horaria_afiliaciones(tipo_banco)
+    if not policy:
+        return True
+
+    af = str(afiliacion).strip()
+    af_limpia = af.lstrip('0')
+
+    zona = policy.get(af) or policy.get(af_limpia)
+    if zona is None:
+        return True
+
+    return zona == 'JUAREZ'
 
 def ajustar_tz_juarez(fecha_str, hora_str):
     """ 
@@ -411,9 +500,11 @@ def subir_a_db(file_path, tipo_banco, razon_social=None):
             f_trans = limpiar_fecha(row.get(mapped_indices.get('Fecha_Transaccion')))
             f_depo = limpiar_fecha(row.get(mapped_indices.get('Fecha_Deposito')))
 
-            # CAMBIO: Ajustar horario CDMX -> JUAREZ (-1 hora)
-            # Esto tambien mueve la fecha si la transaccion fue cerca de medianoche
-            f_trans, hora = ajustar_tz_juarez(f_trans, hora)
+            # CAMBIO: Ajustar horario CDMX -> JUAREZ (-1 hora) solo para estaciones
+            # que no sean foráneas ni Parral (regla de negocio).
+            if debe_ajustar_juarez_para_afiliacion(afil, tipo_banco):
+                # Esto también puede mover la fecha si la transacción fue cerca de medianoche
+                f_trans, hora = ajustar_tz_juarez(f_trans, hora)
 
             # EVITAR REGISTROS FANTASMA O NEGATIVOS
             if not id_ext or monto <= 0:

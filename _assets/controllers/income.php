@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -2258,9 +2258,15 @@ public function anomalies_client_tickets()
             return $coreMap[$bankType][$orig];
         }
 
-        // 3.1. FUZZY MATCH ROBUSTO (Regex)
+                // 3.1. FUZZY MATCH ROBUSTO (Regex) - normalizar acentos
         $norm = mb_strtoupper($orig, 'UTF-8');
-        $norm = str_replace(['Ã', 'Ã‰', 'Ã', 'Ã“', 'Ãš', 'Ãœ'], ['A', 'E', 'I', 'O', 'U', 'U'], $norm);
+        $norm = str_replace(
+            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë',
+             'Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö',
+             'Ù','Ú','Û','Ü'],
+            ['A','A','A','A','A','E','E','E','E','I','I','I','I','O','O','O','O','O','U','U','U','U'],
+            $norm
+        );
         
         if (preg_match('/FECHA/i', $norm)) {
             if (preg_match('/DEPOSITO|APLICACION/i', $norm)) {
@@ -2312,6 +2318,113 @@ public function anomalies_client_tickets()
         } else {
             return -1;
         }
+    }
+
+    /**
+     * Determina, segÃºn la afiliaciÃ³n bancaria, si se debe aplicar el ajuste
+     * de horario JuÃ¡rez (CDMX -> JuÃ¡rez) o si se debe conservar la hora tal
+     * como viene del banco (CDMX).
+     *
+     * Regla solicitada por negocio:
+     *  - ForÃ¡neas y Parral: conservar hora original del banco (CDMX).
+     *  - DemÃ¡s estaciones: aplicar ajuste JuÃ¡rez (invierno -1 hora).
+     *
+     * La detecciÃ³n se hace a partir de Tesoreria_afil + Estaciones /
+     * Tesoreria_Estaciones_Virtuales, y se cachea por peticiÃ³n.
+     */
+    private function debe_ajustar_juarez_por_afiliacion(?string $afiliacion, string $bankType): bool {
+        static $cachePoliticas = [];
+
+        if (!$afiliacion) {
+            // Sin afiliaciÃ³n clara, se mantiene el comportamiento anterior
+            return true;
+        }
+
+        $bankKey = strtoupper($bankType);
+        if (!isset($cachePoliticas[$bankKey])) {
+            $cachePoliticas[$bankKey] = [];
+
+            $entidadId = null;
+            if ($bankKey === 'BANORTE') {
+                $entidadId = 4;
+            } elseif ($bankKey === 'SANTANDER') {
+                $entidadId = 1;
+            }
+
+            if ($entidadId === null) {
+                // Otros bancos no usan este mapeo por ahora
+                $cachePoliticas[$bankKey] = [];
+            } else {
+                $server = "192.168.0.6";
+                $db     = "TG";
+                $user   = "cguser";
+                $pass   = "sahei1712";
+
+                try {
+                    $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+                    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+                    $sqlAfil = "SELECT 
+                                    A.afiliacion,
+                                    ISNULL(S.Nombre, V.Nombre) as Estacion,
+                                    ISNULL(A.rfc, 'FORANEAS') as RFC
+                                FROM Tesoreria_afil A
+                                LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                                LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                                WHERE A.entidad_id = :entidad
+                                  AND LEN(ISNULL(A.afiliacion,'')) > 0
+                                  AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
+
+                    $stmtAfil = $conn->prepare($sqlAfil);
+                    $stmtAfil->execute([':entidad' => $entidadId]);
+
+                    $map = [];
+                    while ($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)) {
+                        $af        = ltrim(trim((string)($r['afiliacion'] ?? '')), '0');
+                        if ($af === '') continue;
+
+                        $estacion  = strtoupper(trim((string)($r['Estacion'] ?? '')));
+                        $rfc       = strtoupper(trim((string)($r['RFC'] ?? '')));
+
+                        $esForanea = ($rfc === '' || $rfc === 'FORANEAS');
+                        $esParral  = (strpos($estacion, 'PARRAL') !== false);
+
+                        // CDMX = conservar hora; JUAREZ = aplicar ajuste horario
+                        $map[$af] = ($esForanea || $esParral) ? 'CDMX' : 'JUAREZ';
+                    }
+
+                    $cachePoliticas[$bankKey] = $map;
+                } catch (\Throwable $e) {
+                    // En caso de error de conexiÃ³n/consulta, se deja vacÃ­o para no romper la carga
+                    $cachePoliticas[$bankKey] = [];
+                }
+            }
+        }
+
+        $map = $cachePoliticas[$bankKey] ?? [];
+        if (empty($map)) {
+            // Sin configuraciÃ³n especÃ­fica, mantener comportamiento actual
+            return true;
+        }
+
+        $afTrim   = trim($afiliacion);
+        $afLimpia = ltrim($afTrim, '0');
+
+        // Buscar primero por valor tal cual, luego sin ceros a la izquierda
+        $zona = null;
+        if (isset($map[$afTrim])) {
+            $zona = $map[$afTrim];
+        } elseif (isset($map[$afLimpia])) {
+            $zona = $map[$afLimpia];
+        }
+
+        if ($zona === null) {
+            // AfiliaciÃ³n no mapeada explÃ­citamente => ajustar (comportamiento anterior)
+            return true;
+        }
+
+        // SÃ³lo ajustamos para estaciones clasificadas como "JUAREZ"
+        return ($zona === 'JUAREZ');
     }
 
     public function process_bank_upload() {
@@ -2409,6 +2522,18 @@ public function anomalies_client_tickets()
                 'Hora TransacciÃ³n' => 'Hora',
                 'Hora' => 'Hora',
                 'Referencia Interbancaria' => 'Referencia',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha de Transacción' => 'Fecha_Transaccion',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha de Transacción' => 'Fecha_Transaccion',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
@@ -2444,6 +2569,18 @@ public function anomalies_client_tickets()
                 'Monto de TransacciÃ³n Signo' => 'Monto',
                 'ComisiÃ³n' => 'Comision',
                 'Referencia' => 'Referencia',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha de Transacción' => 'Fecha_Transaccion',
+                'Fecha Depósito' => 'Fecha_Deposito',
+                'Fecha de Depósito' => 'Fecha_Deposito',
+                'Fecha Aplicación' => 'Fecha_Deposito',
+                'Fecha de Aplicación' => 'Fecha_Deposito',
+                'Fecha Transacción' => 'Fecha_Transaccion',
+                'Fecha de Transacción' => 'Fecha_Transaccion',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
@@ -2482,8 +2619,11 @@ public function anomalies_client_tickets()
                     $rawHeader = array_shift($rows);
                 } else {
                     $handle = fopen($filePath, "r");
-                    $rawHeader = fgetcsv($handle, 0, ",");
-                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                    $firstLine = fgets($handle);
+                    $delim = (strpos($firstLine, ";") !== false && strpos($firstLine, ",") === false) ? ";" : ",";
+                    rewind($handle);
+                    $rawHeader = fgetcsv($handle, 0, $delim);
+                    while (($row = fgetcsv($handle, 0, $delim)) !== FALSE) {
                         $rows[] = $row;
                     }
                     fclose($handle);
@@ -2549,14 +2689,18 @@ public function anomalies_client_tickets()
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
                         if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
-                            $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
-                            if ($ajuste !== 0) {
-                                try {
-                                    $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
-                                    $dt_full->modify("$ajuste hours");
-                                    $val = $dt_full->format('H:i:s');
-                                    $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
-                                } catch(\Throwable $e) {}
+                            // SÃ³lo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
+                            $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
+                            if ($debeAjustar) {
+                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                if ($ajuste !== 0) {
+                                    try {
+                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                        $dt_full->modify("$ajuste hours");
+                                        $val = $dt_full->format('H:i:s');
+                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                    } catch(\Throwable $e) {}
+                                }
                             }
                         }
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
@@ -2582,8 +2726,11 @@ public function anomalies_client_tickets()
                                     $rawHeader = array_shift($allRows);
                                 } else {
                                     $handle = fopen($filePath, "r");
-                                    $rawHeader = fgetcsv($handle, 0, ",");
-                                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                    $firstLine = fgets($handle);
+                                    $delim = (strpos($firstLine, ";") !== false && strpos($firstLine, ",") === false) ? ";" : ",";
+                                    rewind($handle);
+                                    $rawHeader = fgetcsv($handle, 0, $delim);
+                                    while (($row = fgetcsv($handle, 0, $delim)) !== FALSE) {
                                         $allRows[] = $row;
                                     }
                                     fclose($handle);
@@ -2690,16 +2837,19 @@ public function anomalies_client_tickets()
                                                 $val = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
                                             }
                                             
-                                            // AJUSTE HORARIO JUAREZ
+                                            // AJUSTE HORARIO JUAREZ (solo estaciones tipo JUAREZ)
                                             if (isset($dataRow['Fecha_Transaccion'])) {
-                                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
-                                                if ($ajuste !== 0) {
-                                                    try {
-                                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
-                                                        $dt_full->modify("$ajuste hours");
-                                                        $val = $dt_full->format('H:i:s');
-                                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
-                                                    } catch(\Throwable $e) {}
+                                                $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
+                                                if ($debeAjustar) {
+                                                    $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                                    if ($ajuste !== 0) {
+                                                        try {
+                                                            $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                                            $dt_full->modify("$ajuste hours");
+                                                            $val = $dt_full->format('H:i:s');
+                                                            $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                                        } catch(\Throwable $e) {}
+                                                    }
                                                 }
                                             }
                                         }
@@ -2742,8 +2892,6 @@ public function anomalies_client_tickets()
     // =========================================================================
     public function conc_test() {
         $this->setup_conciliacion_v2(true); // Auto-migration V2 (Silencioso)
-        
-echo "El usuario actual es: " . exec('whoami');
 
         echo $this->twig->render($this->route . 'test.html');
     }
@@ -3295,7 +3443,10 @@ echo "El usuario actual es: " . exec('whoami');
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
+            $tabla = "";
+            if ($eid == 1) $tabla = "banco_getnet";
+            elseif ($eid == 3) $tabla = "banco_amex";
+            elseif ($eid == 4) $tabla = "banco_banorte";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3321,7 +3472,7 @@ echo "El usuario actual es: " . exec('whoami');
                     FROM $tabla
                     WHERE YEAR(Fecha_Transaccion) = ? 
                       AND MONTH(Fecha_Transaccion) = ? 
-                      AND Afiliacion IN ($placeholders)
+                      AND LTRIM(RTRIM(Afiliacion)) IN ($placeholders)
                     ORDER BY Fecha_Transaccion ASC";
 
             $stmt = $conn->prepare($sql);
@@ -3395,7 +3546,10 @@ echo "El usuario actual es: " . exec('whoami');
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
+            $tabla = "";
+            if ($eid == 1) $tabla = "banco_getnet";
+            elseif ($eid == 3) $tabla = "banco_amex";
+            elseif ($eid == 4) $tabla = "banco_banorte";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3421,7 +3575,7 @@ echo "El usuario actual es: " . exec('whoami');
                     FROM $tabla
                     WHERE YEAR(Fecha_Deposito) = ? 
                       AND MONTH(Fecha_Deposito) = ? 
-                      AND Afiliacion IN ($placeholders)
+                      AND LTRIM(RTRIM(Afiliacion)) IN ($placeholders)
                     ORDER BY Fecha_Deposito ASC";
 
             $stmt = $conn->prepare($sql);
@@ -4244,6 +4398,45 @@ public function forzar_recalculo() {
                 'data' => array_merge(['grupo_id' => $grupo_id], $nuevos_totales)
             ]);
 
+        } catch (Exception $e) {
+            if(isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+      public function actualizar_batch_detalles() {
+        ob_clean();
+        header('Content-Type: application/json');
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        if (!isset($data['actualizaciones']) || !is_array($data['actualizaciones'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan datos']);
+            exit;
+        }
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn->beginTransaction();
+            $grupos_afectados = [];
+            foreach ($data['actualizaciones'] as $item) {
+                $id_detalle = $item['id_detalle'];
+                $nuevo_monto = $item['nuevo_monto'];
+                $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliacion_V2_Detalles WHERE id = ?");
+                $stmtGet->execute([$id_detalle]);
+                $grupo_id = $stmtGet->fetchColumn();
+                if ($grupo_id) {
+                    $stmtUpdateDetalle = $conn->prepare("UPDATE Conciliacion_V2_Detalles SET monto = ? WHERE id = ?");
+                    $stmtUpdateDetalle->execute([$nuevo_monto, $id_detalle]);
+                    $grupos_afectados[$grupo_id] = true;
+                }
+            }
+            foreach (array_keys($grupos_afectados) as $gid) {
+                $this->recalcular_grupo_interno($conn, $gid);
+            }
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'message' => count($data['actualizaciones']) . ' registros actualizados']);
         } catch (Exception $e) {
             if(isset($conn)) $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);

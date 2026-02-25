@@ -681,6 +681,7 @@
         get_transitos: '/income/get_transitos_pendientes',
         resumen_transito: '/income/get_resumen_transito',
         actualizar_detalle: '/income/actualizar_monto_detalle',
+        batch_actualizar: '/income/actualizar_batch_detalles',
         desligar_detalle: '/income/desligar_movimiento',
         borrar_transito: '/income/borrar_transito',
         update_date: '/income/update_transaction_date',
@@ -869,6 +870,34 @@
                 else alert("Error al actualizar: " + resp.message);
             },
             error: function(err) { alert("Error de red"); console.error(err); }
+        });
+    }
+
+    function sincronizarMontoLote(actualizaciones) {
+        if(!actualizaciones || actualizaciones.length === 0) return;
+        
+        const msg = `Se detectaron ${actualizaciones.length} movimientos con montos diferentes en ControlGas.\n\n¿Deseas actualizar todos los registros de este día a sus montos actuales y recalcular las diferencias?`;
+        if(!confirm(msg)) return;
+
+        $('body').addClass('is-loading');
+        $.ajax({
+            url: URLS.batch_actualizar,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ actualizaciones: actualizaciones }),
+            success: function(resp) {
+                $('body').removeClass('is-loading');
+                if(resp.status === 'success') {
+                    actualizarTodo();
+                } else {
+                    alert("Error: " + resp.message);
+                }
+            },
+            error: function(err) { 
+                $('body').removeClass('is-loading');
+                alert("Error de red al sincronizar lote");
+                console.error(err); 
+            }
         });
     }
 
@@ -1506,6 +1535,7 @@
         let gruposProcesadosDia = new Set();
         let itemsHtml = '';
         let itemsConciliadosCount = 0;
+        let itemsDesync = []; // Lista para sincronización masiva
 
         group.items.forEach(item => {
             const itemCleanId = (side === 'left') ? String(item.ui_id).replace('cg_', '') : String(item.IdTransaccion || item.ui_id);
@@ -1516,6 +1546,15 @@
                 if (!gruposProcesadosDia.has(matching.grupo_id)) {
                     diffDia += parseFloat(matching.diferencia) || 0;
                     gruposProcesadosDia.add(matching.grupo_id);
+                }
+
+                // Detectar desincronización para el lote
+                if (side === 'left') {
+                    const montoBd = parseFloat(matching.monto);
+                    const montoActual = parseFloat(item.Total);
+                    if(Math.abs(montoActual - montoBd) > 0.1) {
+                        itemsDesync.push({ id_detalle: matching.id, nuevo_monto: montoActual });
+                    }
                 }
             }
             itemsHtml += renderRowItemHTML(side, item, coincidenciasUsadas, label);
@@ -1559,6 +1598,19 @@
             }
         }
 
+        // --- BOTÓN SYNC MASIVO (Sólo Left y si hay Desync) ---
+        let btnSyncLote = "";
+        if (side === 'left' && itemsDesync.length > 0) {
+            const dataBatch = JSON.stringify(itemsDesync).replace(/"/g, "&quot;");
+            btnSyncLote = `
+                <button class="btn btn-warning btn-sm rounded-pill ml-2 px-3 shadow-sm font-weight-bold" 
+                        onclick="event.stopPropagation(); sincronizarMontoLote(${dataBatch})" 
+                        title="Sincronizar ${itemsDesync.length} movimientos de este día">
+                    <i class="fas fa-sync-alt mr-1"></i> Sincronizar Día
+                </button>
+            `;
+        }
+
         const itemsProgressLabel = `${itemsConciliadosCount}/${group.items.length} items`;
         const iconClass = isGroupOpen ? 'fa-chevron-down' : 'fa-chevron-right';
         const bodyClass = isGroupOpen ? 'open' : '';
@@ -1572,6 +1624,7 @@
                     <span class="mr-2"><i class="far fa-calendar-alt"></i> ${dateFmt}</span>
                     <span class="badge badge-pill badge-light border text-muted">${itemsProgressLabel}</span>
                     ${diffTagDia}
+                    ${btnSyncLote}
                 </div>
                 <div class="font-numeric">${formatter.format(group.total)}</div>
             </div>
