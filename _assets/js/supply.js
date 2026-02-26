@@ -2160,9 +2160,9 @@ function eliminarAsignacion(movimiento) {
 }
 
 async function compras_facturas_table() {
-  if ($.fn.DataTable.isDataTable("#payment_control_table")) {
-    $("#payment_control_table").DataTable().destroy();
-    $("#payment_control_table thead .filter").remove();
+  if ($.fn.DataTable.isDataTable("#compras_combustible_table")) {
+    $("#compras_combustible_table").DataTable().destroy();
+    $("#compras_combustible_table thead .filter").remove();
   }
   // OBTENER TODOS LOS FILTROS
   var fromDate = document.getElementById("from_compras").value;
@@ -2184,11 +2184,11 @@ async function compras_facturas_table() {
   }
 
   // Agregar fila de filtros en el thead
-  $("#payment_control_table thead").prepend(
-    $("#payment_control_table thead tr").clone().addClass("filter"),
+  $("#compras_combustible_table thead").prepend(
+    $("#compras_combustible_table thead tr").clone().addClass("filter"),
   );
-  $("#payment_control_table thead tr.filter th").each(function (index) {
-    var col = $("#payment_control_table thead th").length / 2;
+  $("#compras_combustible_table thead tr.filter th").each(function (index) {
+    var col = $("#compras_combustible_table thead th").length / 2;
     if (index < col) {
       var title = $(this).text();
       $(this).html(
@@ -2199,16 +2199,16 @@ async function compras_facturas_table() {
     }
   });
 
-  $("#payment_control_table thead tr.filter th input").on(
+  $("#compras_combustible_table thead tr.filter th input").on(
     "keyup change",
     function () {
       var index = $(this).parent().index();
-      var table = $("#payment_control_table").DataTable();
+      var table = $("#compras_combustible_table").DataTable();
       table.column(index).search(this.value).draw();
     },
   );
 
-  let payment_control_table = $("#payment_control_table").DataTable({
+  let compras_combustible_table = $("#compras_combustible_table").DataTable({
     order: [[0, "desc"]],
     colReorder: false,
     dom: '<"top"Bf>rt<"bottom"lip>',
@@ -2412,19 +2412,6 @@ async function compras_facturas_table() {
       {
         data: "UUID",
         className: "text-start",
-        render: function (data) {
-          if (!data) return '<span class="text-muted">N/A</span>';
-          return (
-            '<small class="font-monospace" style="cursor:pointer;" title="' +
-            data +
-            '" onclick="copiarUUID(\'' +
-            data +
-            "')\">" +
-            data.substring(0, 8) +
-            "..." +
-            "</small>"
-          );
-        },
       },
       {
         data: null,
@@ -2495,169 +2482,13 @@ async function compras_facturas_table() {
     },
   });
 }
+
+
 function abrirRelacionarFactura(facturaId) {
   window.open("/supply/relacionar_factura/" + facturaId, "_blank");
 }
-// FUNCIONES AUXILIARES
 
-function limpiarFiltrosCompras() {
-  document.getElementById("from_compras").value = new Date()
-    .toISOString()
-    .split("T")[0];
-  document.getElementById("until_compras").value = new Date()
-    .toISOString()
-    .split("T")[0];
-  $("#codgas_compras").selectpicker("val", "0");
-  $("#proveedor_compras").selectpicker("val", "0");
-  $("#company_compras").selectpicker("val", "0");
 
-  if ($.fn.DataTable.isDataTable("#payment_control_table")) {
-    $("#payment_control_table").DataTable().clear().draw();
-  }
-
-  alertify.message("Filtros limpiados");
-}
-
-function exportarComprasExcel() {
-  if ($.fn.DataTable.isDataTable("#payment_control_table")) {
-    $("#payment_control_table").DataTable().button(".buttons-excel").trigger();
-  }
-}
-
-function verResumenCompras() {
-  if (!$.fn.DataTable.isDataTable("#payment_control_table")) {
-    alertify.warning("Debe generar el reporte primero");
-    return;
-  }
-
-  var api = $("#payment_control_table").DataTable();
-  var data = api.rows().data();
-
-  var totalFacturas = data.length;
-  var totalLitros = 0;
-  var totalMonto = 0;
-  var porProveedor = {};
-  var porProducto = {};
-
-  data.each(function (row) {
-    totalLitros += parseFloat(row.LitrosDocumentoSoporte || 0);
-    totalMonto += parseFloat(row.MontoFactura || 0);
-
-    // Por proveedor
-    var prov = row.ProveedorNormalizado;
-    if (!porProveedor[prov]) {
-      porProveedor[prov] = { cantidad: 0, litros: 0, monto: 0 };
-    }
-    porProveedor[prov].cantidad++;
-    porProveedor[prov].litros += parseFloat(row.LitrosDocumentoSoporte || 0);
-    porProveedor[prov].monto += parseFloat(row.MontoFactura || 0);
-
-    // Por producto
-    var prod = row.ProductoNormalizado;
-    if (!porProducto[prod]) {
-      porProducto[prod] = { cantidad: 0, litros: 0, monto: 0 };
-    }
-    porProducto[prod].cantidad++;
-    porProducto[prod].litros += parseFloat(row.LitrosDocumentoSoporte || 0);
-    porProducto[prod].monto += parseFloat(row.MontoFactura || 0);
-  });
-
-  var htmlProveedor =
-    '<table class="table table-sm table-bordered"><thead><tr><th>Proveedor</th><th>Facturas</th><th>Litros</th><th>Monto</th></tr></thead><tbody>';
-  for (var prov in porProveedor) {
-    htmlProveedor +=
-      "<tr>" +
-      "<td>" +
-      prov +
-      "</td>" +
-      '<td class="text-center">' +
-      porProveedor[prov].cantidad +
-      "</td>" +
-      '<td class="text-end">' +
-      porProveedor[prov].litros.toLocaleString("es-MX", {
-        minimumFractionDigits: 2,
-      }) +
-      "</td>" +
-      '<td class="text-end">$' +
-      porProveedor[prov].monto.toLocaleString("es-MX", {
-        minimumFractionDigits: 2,
-      }) +
-      "</td>" +
-      "</tr>";
-  }
-  htmlProveedor += "</tbody></table>";
-
-  var htmlProducto =
-    '<table class="table table-sm table-bordered"><thead><tr><th>Producto</th><th>Facturas</th><th>Litros</th><th>Monto</th></tr></thead><tbody>';
-  for (var prod in porProducto) {
-    htmlProducto +=
-      "<tr>" +
-      "<td>" +
-      prod +
-      "</td>" +
-      '<td class="text-center">' +
-      porProducto[prod].cantidad +
-      "</td>" +
-      '<td class="text-end">' +
-      porProducto[prod].litros.toLocaleString("es-MX", {
-        minimumFractionDigits: 2,
-      }) +
-      "</td>" +
-      '<td class="text-end">$' +
-      porProducto[prod].monto.toLocaleString("es-MX", {
-        minimumFractionDigits: 2,
-      }) +
-      "</td>" +
-      "</tr>";
-  }
-  htmlProducto += "</tbody></table>";
-
-  alertify
-    .alert(
-      "Resumen de Compras",
-      `<div class="container-fluid">
-            <div class="row">
-                <div class="col-12 mb-3">
-                    <h5>Totales Generales</h5>
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex justify-content-between">
-                            <strong>Total Facturas:</strong>
-                            <span class="badge bg-primary">${totalFacturas}</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <strong>Total Litros:</strong>
-                            <span>${totalLitros.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between">
-                            <strong>Monto Total:</strong>
-                            <span class="text-success fw-bold">$${totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
-                        </li>
-                    </ul>
-                </div>
-                <div class="col-12 mb-3">
-                    <h5>Por Proveedor</h5>
-                    ${htmlProveedor}
-                </div>
-                <div class="col-12">
-                    <h5>Por Producto</h5>
-                    ${htmlProducto}
-                </div>
-            </div>
-        </div>`,
-    )
-    .set("maximizable", true);
-}
-
-function copiarUUID(uuid) {
-  navigator.clipboard.writeText(uuid).then(
-    function () {
-      alertify.success("UUID copiado al portapapeles");
-    },
-    function () {
-      alertify.error("No se pudo copiar el UUID");
-    },
-  );
-}
 
 // Funciones auxiliares
 function verDetalleFactura(factura) {
