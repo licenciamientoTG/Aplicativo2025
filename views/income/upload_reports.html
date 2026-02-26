@@ -76,13 +76,14 @@
             </div>
         </div>
 
-        <!-- AMEX (Placeholder) -->
+        <!-- AMEX -->
         <div class="col-md-3 mb-4">
-            <div class="card bank-card disabled shadow-sm h-100">
+            <div class="card bank-card shadow-sm h-100" onclick="openUploadModal('AMEX', 'banco_amex')">
                 <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/American_Express_logo_%282018%29.svg/1200px-American_Express_logo_%282018%29.svg.png" alt="AMEX" class="bank-logo">
                     <h5 class="font-weight-bold">AMERICAN EXPRESS</h5>
-                    <p class="small text-muted">Próximamente...</p>
+                    <p class="small text-muted">Carga manual de reportes .CSV</p>
+                    <button class="btn btn-info btn-sm rounded-pill px-4">Subir Reporte</button>
                 </div>
             </div>
         </div>
@@ -223,7 +224,7 @@
 {% block myjs %}
 <script>
     function openUploadModal(bank, table) {
-        if(bank === 'AMEX' || bank === 'AFIRME') return;
+        if(bank === 'AFIRME') return;
         $('#modalBankName').text(bank);
         $('#inputBankType').val(bank);
         $('#reportFile').val('');

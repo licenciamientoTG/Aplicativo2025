@@ -909,28 +909,12 @@ let all_dispatches_table = $('#all_dispatches_table').DataTable({
             className: 'd-none',
             // Agregamos el título al documento de Excel
             title: 'Tickets de despacho',
+            messageTop: function () {
+                return 'Total: ' + $('#totalRecords').text() + '   Marcados: ' + $('#totalCheckedRecords').text() + '   Pendientes: ' + $('#totalPendingRecords').text() + '\n' +
+                       'Monto total: ' + $('#formattedTotal').text() + '   Marcado: ' + $('#formattedCheckedTotal').text() + '   Pendiente: ' + $('#pendignAmount').text();
+            },
             exportOptions: {
                 columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-            },
-            customize: function (xlsx) {
-                var sheet = xlsx.xl.worksheets['sheet1.xml'];
-
-                // Agregar nuevas columnas
-                $('row', sheet).each(function (i, row) {
-                    if (i === 1) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Total registros: '+ $('#totalRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcados: '+ $('#totalCheckedRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendientes: '+ $('#totalPendingRecords').text() +'</t></is></c>');
-                    }
-
-                    if (i === 2) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Monto total: '+ $('#formattedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcado: '+ $('#formattedCheckedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendiente: '+ $('#pendignAmount').text() +'</t></is></c>');
-                    }
-                });
             }
         }
     ],
@@ -1017,28 +1001,12 @@ let checked_dispatches_table = $('#checked_dispatches_table').DataTable({
             className: 'd-none',
             // Agregamos el título al documento de Excel
             title: 'Tickets de despacho verificados',
+            messageTop: function () {
+                return 'Total: ' + $('#totalRecords').text() + '   Marcados: ' + $('#totalCheckedRecords').text() + '   Pendientes: ' + $('#totalPendingRecords').text() + '\n' +
+                       'Monto total: ' + $('#formattedTotal').text() + '   Marcado: ' + $('#formattedCheckedTotal').text() + '   Pendiente: ' + $('#pendignAmount').text();
+            },
             exportOptions: {
                 columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-            },
-            customize: function (xlsx) {
-                var sheet = xlsx.xl.worksheets['sheet1.xml'];
-
-                // Agregar nuevas columnas
-                $('row', sheet).each(function (i, row) {
-                    if (i === 1) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Total registros: '+ $('#totalRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcados: '+ $('#totalCheckedRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendientes: '+ $('#totalPendingRecords').text() +'</t></is></c>');
-                    }
-
-                    if (i === 2) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Monto total: '+ $('#formattedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcado: '+ $('#formattedCheckedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendiente: '+ $('#pendignAmount').text() +'</t></is></c>');
-                    }
-                });
             }
         }
     ],
@@ -1122,28 +1090,12 @@ let pending_dispatches_table = $('#pending_dispatches_table').DataTable({
             className: 'd-none',
             // Agregamos el título al documento de Excel
             title: 'Tickets de despacho pendientes',
+            messageTop: function () {
+                return 'Total: ' + $('#totalRecords').text() + '   Marcados: ' + $('#totalCheckedRecords').text() + '   Pendientes: ' + $('#totalPendingRecords').text() + '\n' +
+                       'Monto total: ' + $('#formattedTotal').text() + '   Marcado: ' + $('#formattedCheckedTotal').text() + '   Pendiente: ' + $('#pendignAmount').text();
+            },
             exportOptions: {
                 columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-            },
-            customize: function (xlsx) {
-                var sheet = xlsx.xl.worksheets['sheet1.xml'];
-
-                // Agregar nuevas columnas
-                $('row', sheet).each(function (i, row) {
-                    if (i === 1) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Total registros: '+ $('#totalRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcados: '+ $('#totalCheckedRecords').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendientes: '+ $('#totalPendingRecords').text() +'</t></is></c>');
-                    }
-
-                    if (i === 2) {
-                        $(row).append('<c t="inlineStr"><is><t></t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Monto total: '+ $('#formattedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Marcado: '+ $('#formattedCheckedTotal').text() +'</t></is></c>');
-                        $(row).append('<c t="inlineStr"><is><t>Pendiente: '+ $('#pendignAmount').text() +'</t></is></c>');
-                    }
-                });
             }
         }
     ],

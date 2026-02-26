@@ -33,12 +33,12 @@
       {% if authorized(62) %}
       <li class="sidebar-header">Reportes</li>
       <li class="sidebar-item">
-        <a data-bs-target="#commercial_reports" data-bs-toggle="collapse" class="sidebar-link collapsed"
+        <a data-bs-target="#tg3_reports" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
           <i data-feather="clipboard"></i>
           <span class="align-middle">TG3-Operaciones</span>
         </a>
-        <ul id="commercial_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="tg3_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
             <a class="sidebar-link" href="/commercial/sales_indicators">1. Indicadores de Venta</a>
           </li>
@@ -78,16 +78,11 @@
         </a>
         <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo,
-              Estaciones</a>
+            <a class="sidebar-link" href="/administration/relation_corpo_estaciones">Relacion Corporativo, Estaciones</a>
           </li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/dashboard_debit_credit">Dashboard Débito y Crédito</a>
           </li>
-        </ul>
-        <ul id="admin_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/in_process">Anticipos débito</a>
           </li>
@@ -98,35 +93,29 @@
           <i data-feather="tool"></i>
           <span class="align-middle">Herramientas</span>
         </a>
-        {% if authorized(41) %}
         <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(41) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/exchange_rate">Tipo de cambio</a>
           </li>
-        </ul>
-        {% endif %} {% if authorized(39) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% endif %}
+          {% if authorized(39) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/list_tickets">Lista de tickets</a>
           </li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/stats_tickets">Estadístico de tickets</a>
           </li>
-        </ul>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/ecv_calc">Cálculo mensual ECV</a>
           </li>
-        </ul>
-        {% endif %} {% if authorized(65) %}
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% endif %}
+          {% if authorized(65) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/administration/binnacle_adjustments">Bitácora de ajustes</a>
           </li>
+          {% endif %}
         </ul>
-        {% endif %}
       </li>
       {% endif %} {% endif %} {% if authorized(43) %} {# Ver módulo de Direccion
       #}
@@ -142,13 +131,13 @@
         </a>
         <ul id="tg6" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/tg6 ">Reporte</a>
+            <a class="sidebar-link" href="/direction/tg6">Reporte</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/consult_consumption ">Consulta consumo</a>
+            <a class="sidebar-link" href="/direction/consult_consumption">Consulta consumo</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/tg6_product ">Venta Mensual Producto</a>
+            <a class="sidebar-link" href="/direction/tg6_product">Venta Mensual Producto</a>
           </li>
         </ul>
         <!-- <a class="sidebar-link" href="/direction/tg6"><i data-feather="dollar-sign"></i><span class="align-middle">TG6</span></a> -->
@@ -161,7 +150,7 @@
         </a>
         <ul id="direction_historic_prices" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/historic_prices ">Historico</a>
+            <a class="sidebar-link" href="/direction/historic_prices">Historico</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/direction/graph_prices">Graficos</a>
@@ -176,19 +165,19 @@
         </a>
         <ul id="direction_shortage_hours" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/historic_shortage ">Historico</a>
+            <a class="sidebar-link" href="/direction/historic_shortage">Historico</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/monthly_summary_shortge ">Resumen Mensual</a>
+            <a class="sidebar-link" href="/direction/monthly_summary_shortge">Resumen Mensual</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/daily_summary_shortge/1 ">T-Máxima</a>
+            <a class="sidebar-link" href="/direction/daily_summary_shortge/1">T-Máxima</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/daily_summary_shortge/2 ">T-Super</a>
+            <a class="sidebar-link" href="/direction/daily_summary_shortge/2">T-Super</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/direction/daily_summary_shortge/3 ">Diesel</a>
+            <a class="sidebar-link" href="/direction/daily_summary_shortge/3">Diesel</a>
           </li>
         </ul>
       </li>
@@ -249,12 +238,12 @@
       </li>
       {% endif %}
       <li class="sidebar-item">
-        <a data-bs-target="#supply_tools" data-bs-toggle="collapse" class="sidebar-link collapsed"
+        <a data-bs-target="#supply_payments" data-bs-toggle="collapse" class="sidebar-link collapsed"
           aria-expanded="false">
           <i data-feather="clipboard"></i>
           <span class="align-middle">Pagos de Combustible</span>
         </a>
-        <ul id="supply_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="supply_payments" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <!-- <li class="sidebar-item"><a class="sidebar-link" href="/supply/shops_fuel">Compras</a></li> -->
           <li class="sidebar-item"><a class="sidebar-link" href="/supply/fuel_payments">Facturas de Combustible</a></li>
           <li class="sidebar-item">
@@ -487,11 +476,11 @@
       </li>
       {% endif %} {% if authorized(53) %}
       <li class="sidebar-item">
-        <a data-bs-target="#admin_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
+        <a data-bs-target="#income_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
           <i data-feather="tool"></i>
           <span class="align-middle">Herramientas</span>
         </a>
-        <ul id="admin_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+        <ul id="income_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           {% if authorized(52) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/checking_tickets">Comprobación tickets</a>
@@ -662,7 +651,7 @@
       <li class="sidebar-item">
         <a class="sidebar-link" href="/it/permissions">
           <i data-feather="shield"></i>
-          <span class="align-middle">Permisods</span>
+          <span class="align-middle">Permisos</span>
         </a>
       </li>
       {% endif %} {% endif %}

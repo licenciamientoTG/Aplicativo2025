@@ -1766,12 +1766,11 @@ public function anomalies_client_tickets()
     }
 
     function all_dispatches_table($from, $codgas, $shift, $dispatch_type) : void {
-
-        if ($dispatch_type == 'dbito') {
+        if ($dispatch_type == 'dbito' || $dispatch_type == 'Débito' || $dispatch_type == 'd%c3%a9bito') {
             $dispatches = $this->despachosModel->get_debit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'crdito') {
+        } elseif ($dispatch_type == 'crdito' || $dispatch_type == 'Crédito' || $dispatch_type == 'c%c3%a9dito') {
             $dispatches = $this->despachosModel->get_credit_dispatches_to_release($from, $codgas, $shift);
-        } elseif ($dispatch_type == 'payworks') {
+        } elseif ($dispatch_type == 'payworks' || $dispatch_type == 'Payworks') {
             $dispatches = $this->despachosModel->get_payworks_dispatches_to_release($codgas, dateToInt($from), $shift);
         }
 
@@ -1844,9 +1843,9 @@ public function anomalies_client_tickets()
                     $dispatches[] = $value;
                 }
             }
-        } else if ($dispatch_type == 'crdito') {
+        } else if ($dispatch_type == 'crdito' || $dispatch_type == 'c%c3%a9dito' || $dispatch_type == 'Crédito') {
             $dispatches = $this->despachosModel->get_credit_dispatches_just_to_release($from, $codgas, $shift);
-        } else if ($dispatch_type == 'dbito') {
+        } else if ($dispatch_type == 'dbito' || $dispatch_type == 'd%c3%a9bito' || $dispatch_type == 'Débito') {
             $dispatches = $this->despachosModel->get_debit_dispatches_just_to_release($from, $codgas, $shift);
         }
         $data = [];
@@ -2054,7 +2053,12 @@ public function anomalies_client_tickets()
     }
 
     function generateExcel($fecha) {
-        // Crear el objeto de hoja de cÃ¡lculo
+        // Limpiar cualquier output previo del buffer para no corromper el archivo
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+
+        // Crear el objeto de hoja de cálculo
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
 
@@ -2239,48 +2243,53 @@ public function anomalies_client_tickets()
 
   private function sanitizar_nombre_columna_php($nombre, $bankType, $coreMap) {
         if (!$nombre) return "SinNombre";
-        $orig = trim((string)$nombre);
 
-        // 1. Quitar BOM y normalizar espacios (incluyendo espacios no divisibles \xA0)
-        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', $orig);
+        // 1. Limpieza inicial y normalizaciÃ³n de espacios y BOM
+        $orig = str_replace(["\xEF\xBB\xBF", "\xFE\xFF", "\xFF\xFE", "\xC2\xA0"], ' ', (string)$nombre);
         $orig = trim(preg_replace('/\s+/', ' ', $orig));
 
-        // 2. REPARACIÃ“N DE CODIFICACIÃ“N
+        // 2. Intento de reparaciÃ³n de codificaciÃ³n (Caracteres dobles)
         if (preg_match('/[\xC2\xC3][\x80-\xBF]/', $orig)) {
-            $intento = @utf8_decode($orig);
-            if ($intento && mb_check_encoding($intento, 'UTF-8')) {
-                $orig = $intento;
+            $repaired = @utf8_decode($orig);
+            if ($repaired && mb_check_encoding($repaired, 'UTF-8')) {
+                $orig = $repaired;
             }
         }
 
-        // 3. Revisar en el Mapa (Chequeo exacto)
+        // 3. BÃºsqueda en el mapa de columnas estÃ¡ndar (la vÃ­a mÃ¡s rÃ¡pida)
         if (isset($coreMap[$bankType][$orig])) {
             return $coreMap[$bankType][$orig];
         }
 
-        // 3.1. FUZZY MATCH ROBUSTO (Regex)
+        // 4. FUZZY MATCH: Normalizar a ASCII mayÃºsculas para comparaciones flexibles
         $norm = mb_strtoupper($orig, 'UTF-8');
-        $norm = str_replace(['Ã', 'Ã‰', 'Ã', 'Ã“', 'Ãš', 'Ãœ'], ['A', 'E', 'I', 'O', 'U', 'U'], $norm);
-        
-        if (preg_match('/FECHA/i', $norm)) {
-            if (preg_match('/DEPOSITO|APLICACION/i', $norm)) {
-                return 'Fecha_Deposito';
-            }
-            if (preg_match('/TRANSACCION/i', $norm)) {
-                return 'Fecha_Transaccion';
-            }
-        }
+        // Reemplazo de vocales con acentos y caracteres especiales
+        $norm = str_replace(
+            ['À','Á','Â','Ã','Ä','È','É','Ê','Ë','Ì','Í','Î','Ï','Ò','Ó','Ô','Õ','Ö','Ù','Ú','Û','Ü','Ã“','Ã‰','Ã“'],
+            ['A','A','A','A','A','E','E','E','E','I','I','I','I','O','O','O','O','O','U','U','U','U','O','E','O'],
+            $norm
+        );
+        // Quitar caracteres no alfanumÃ©ricos para simplificar la comparaciÃ³n
+        $norm = preg_replace('/[^A-Z0-9\s]/', '', $norm);
 
-        // 4. Limpieza estÃ¡ndar (Fallback)
-        // iconv elimina acentos: 'AplicaciÃ³n' -> 'Aplicacion'
-        $s = @iconv('UTF-8', 'ASCII//TRANSLIT', $orig);
-        if ($s === false) {
-            $s = $orig;
+        // Reglas de Fuzzy Matching especÃ­ficas
+        if (strpos($norm, 'FECHA') !== false) {
+            if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false || strpos($norm, 'PAGO') !== false) return 'Fecha_Deposito';
+            if (strpos($norm, 'TRANSACCION') !== false) return 'Fecha_Transaccion';
         }
-        $s = preg_replace('/[^a-zA-Z0-9_]/', '_', $s);
-        $s = preg_replace('/_+/', '_', $s);
-        
-        return trim($s, '_');
+        if (strpos($norm, 'ID MOVIMIENTO') !== false || (strpos($norm, 'REFERENCIA') !== false && strpos($norm, 'CARGO') !== false)) return 'ID_Externo';
+        if (strpos($norm, 'HORA') !== false) return 'Hora';
+        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false) return 'Afiliacion';
+        if (strpos($norm, 'TARJETA') !== false) return 'Tarjeta';
+        if (strpos($norm, 'TERMINAL') !== false) return 'Terminal';
+        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE' || (strpos($norm, 'MONTO') !== false && strpos($norm, 'CARGO') !== false)) return 'Monto';
+        if (strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) return 'Codigo_Autorizacion';
+        if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
+        if (strpos($norm, 'REFERENCIA') !== false) return 'Referencia';
+
+        // 5. Fallback: si todo falla, limpiar el nombre original para usarlo como Ãºltimo recurso
+        $fallback = preg_replace('/[^a-zA-Z0-9_]/', '_', $orig);
+        return trim(preg_replace('/_+/', '_', $fallback), '_');
     }
     private function asegurar_columnas_php($conn, $tabla, $cleanCols) {
         // FUNCIÃ“N DESACTIVADA PARA MANTENER ESTÃNDAR DE TABLAS
@@ -2312,6 +2321,113 @@ public function anomalies_client_tickets()
         } else {
             return -1;
         }
+    }
+
+    /**
+     * Determina, segÃºn la afiliaciÃ³n bancaria, si se debe aplicar el ajuste
+     * de horario JuÃ¡rez (CDMX -> JuÃ¡rez) o si se debe conservar la hora tal
+     * como viene del banco (CDMX).
+     *
+     * Regla solicitada por negocio:
+     *  - ForÃ¡neas y Parral: conservar hora original del banco (CDMX).
+     *  - DemÃ¡s estaciones: aplicar ajuste JuÃ¡rez (invierno -1 hora).
+     *
+     * La detecciÃ³n se hace a partir de Tesoreria_afil + Estaciones /
+     * Tesoreria_Estaciones_Virtuales, y se cachea por peticiÃ³n.
+     */
+    private function debe_ajustar_juarez_por_afiliacion(?string $afiliacion, string $bankType): bool {
+        static $cachePoliticas = [];
+
+        if (!$afiliacion) {
+            // Sin afiliaciÃ³n clara, se mantiene el comportamiento anterior
+            return true;
+        }
+
+        $bankKey = strtoupper($bankType);
+        if (!isset($cachePoliticas[$bankKey])) {
+            $cachePoliticas[$bankKey] = [];
+
+            $entidadId = null;
+            if ($bankKey === 'BANORTE') {
+                $entidadId = 4;
+            } elseif ($bankKey === 'SANTANDER') {
+                $entidadId = 1;
+            }
+
+            if ($entidadId === null) {
+                // Otros bancos no usan este mapeo por ahora
+                $cachePoliticas[$bankKey] = [];
+            } else {
+                $server = "192.168.0.6";
+                $db     = "TG";
+                $user   = "cguser";
+                $pass   = "sahei1712";
+
+                try {
+                    $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+                    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+                    $sqlAfil = "SELECT 
+                                    A.afiliacion,
+                                    ISNULL(S.Nombre, V.Nombre) as Estacion,
+                                    ISNULL(A.rfc, 'FORANEAS') as RFC
+                                FROM Tesoreria_afil A
+                                LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                                LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                                WHERE A.entidad_id = :entidad
+                                  AND LEN(ISNULL(A.afiliacion,'')) > 0
+                                  AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
+
+                    $stmtAfil = $conn->prepare($sqlAfil);
+                    $stmtAfil->execute([':entidad' => $entidadId]);
+
+                    $map = [];
+                    while ($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)) {
+                        $af        = ltrim(trim((string)($r['afiliacion'] ?? '')), '0');
+                        if ($af === '') continue;
+
+                        $estacion  = strtoupper(trim((string)($r['Estacion'] ?? '')));
+                        $rfc       = strtoupper(trim((string)($r['RFC'] ?? '')));
+
+                        $esForanea = ($rfc === '' || $rfc === 'FORANEAS');
+                        $esParral  = (strpos($estacion, 'PARRAL') !== false);
+
+                        // CDMX = conservar hora; JUAREZ = aplicar ajuste horario
+                        $map[$af] = ($esForanea || $esParral) ? 'CDMX' : 'JUAREZ';
+                    }
+
+                    $cachePoliticas[$bankKey] = $map;
+                } catch (\Throwable $e) {
+                    // En caso de error de conexiÃ³n/consulta, se deja vacÃ­o para no romper la carga
+                    $cachePoliticas[$bankKey] = [];
+                }
+            }
+        }
+
+        $map = $cachePoliticas[$bankKey] ?? [];
+        if (empty($map)) {
+            // Sin configuraciÃ³n especÃ­fica, mantener comportamiento actual
+            return true;
+        }
+
+        $afTrim   = trim($afiliacion);
+        $afLimpia = ltrim($afTrim, '0');
+
+        // Buscar primero por valor tal cual, luego sin ceros a la izquierda
+        $zona = null;
+        if (isset($map[$afTrim])) {
+            $zona = $map[$afTrim];
+        } elseif (isset($map[$afLimpia])) {
+            $zona = $map[$afLimpia];
+        }
+
+        if ($zona === null) {
+            // AfiliaciÃ³n no mapeada explÃ­citamente => ajustar (comportamiento anterior)
+            return true;
+        }
+
+        // SÃ³lo ajustamos para estaciones clasificadas como "JUAREZ"
+        return ($zona === 'JUAREZ');
     }
 
     public function process_bank_upload() {
@@ -2411,39 +2527,14 @@ public function anomalies_client_tickets()
                 'Referencia Interbancaria' => 'Referencia',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
-                'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
                 'Fecha de DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha de Deposito' => 'Fecha_Deposito',
                 'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha Aplicacion' => 'Fecha_Deposito',
-                'Fecha AplicaciÃƒÂ³n' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito',
-                'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
-            ],
-            'SANTANDER' => [
-                'ID movimiento' => 'ID_Externo',              
                 'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
-                'Hora de TransacciÃ³n' => 'Hora',
-                'Hora TransacciÃ³n' => 'Hora',
-                'AfiliaciÃ³n' => 'Afiliacion',
-                'Nombre del comercio' => 'Comercio',
-                'Tipo de TransacciÃ³n' => 'Tipo_Transaccion',
-                'Tipo TransacciÃ³n' => 'Tipo_Transaccion',
-                'Tarjeta' => 'Tarjeta',
-                'Cod. Terminal' => 'Terminal',                
-                'Terminal ID' => 'Terminal',
-                'OperaciÃ³n' => 'Operacion',
-                'Tipo de Tarjeta' => 'Tipo_Tarjeta',
-                'Tipo Tarjeta' => 'Tipo_Tarjeta',
-                'NÃºmero de Tarjeta' => 'Tarjeta_Numero',
-                'Tarjeta NÃºmero' => 'Tarjeta_Numero',
-                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
-                'Cod. Aut' => 'Codigo_Autorizacion',
-                'Total' => 'Monto',                           
-                'Monto de TransacciÃ³n Signo' => 'Monto',
-                'ComisiÃ³n' => 'Comision',
-                'Referencia' => 'Referencia',
+                'Fecha Transaccion' => 'Fecha_Transaccion',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha DepÃƒÂ³sito' => 'Fecha_Deposito',
@@ -2455,6 +2546,52 @@ public function anomalies_client_tickets()
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃƒÂ³n' => 'Fecha_Deposito',
+            ],
+            'SANTANDER' => [
+                'ID movimiento' => 'ID_Externo',
+                'ID Movimiento' => 'ID_Externo',
+                'Fecha TransacciÃ³n' => 'Fecha_Transaccion',
+                'Fecha Transaccion' => 'Fecha_Transaccion',
+                'Hora de TransacciÃ³n' => 'Hora',
+                'Hora de Transaccion' => 'Hora',
+                'Hora TransacciÃ³n' => 'Hora',
+                'Hora Transaccion' => 'Hora',
+                'AfiliaciÃ³n' => 'Afiliacion',
+                'Afiliacion' => 'Afiliacion',
+                'Cod. Terminal' => 'Terminal',
+                'Terminal ID' => 'Terminal',
+                'CÃ³digo AutorizaciÃ³n' => 'Codigo_Autorizacion',
+                'Codigo Autorizacion' => 'Codigo_Autorizacion',
+                'Cod. Aut' => 'Codigo_Autorizacion',
+                'Total' => 'Monto',
+                'Monto de TransacciÃ³n Signo' => 'Monto',
+                'Monto de Transaccion Signo' => 'Monto',
+                'Referencia' => 'Referencia',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito',
+                'Fecha de DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha de Deposito' => 'Fecha_Deposito',
+                'Fecha AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha Aplicacion' => 'Fecha_Deposito',
+                'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
+                'Fecha de Aplicacion' => 'Fecha_Deposito'
+            ],
+            'AMEX' => [
+                'Fecha de la transacciÃ³n' => 'Fecha_Transaccion',
+                'Fecha de la transaccion' => 'Fecha_Transaccion',
+                'Fecha de pago' => 'Fecha_Deposito',
+                'Monto del cargo' => 'Monto',
+                'Monto del pago' => 'Monto_Pago',
+                'NÃºmero de establecimiento que envÃ­a' => 'Afiliacion',
+                'Numero de establecimiento que envia' => 'Afiliacion',
+                'NÃºmero de tarjeta' => 'Tarjeta',
+                'Numero de tarjeta' => 'Tarjeta',
+                'NÃºmero de referencia del cargo' => 'ID_Externo',
+                'Numero de referencia del cargo' => 'ID_Externo',
+                'NÃºmero de terminal' => 'Terminal',
+                'Numero de terminal' => 'Terminal',
+                'Tipo de autorizaciÃ³n' => 'Codigo_Autorizacion',
+                'Tipo de autorizacion' => 'Codigo_Autorizacion'
             ]
         ];
 
@@ -2482,8 +2619,11 @@ public function anomalies_client_tickets()
                     $rawHeader = array_shift($rows);
                 } else {
                     $handle = fopen($filePath, "r");
-                    $rawHeader = fgetcsv($handle, 0, ",");
-                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                    $firstLine = fgets($handle);
+                    $delim = (strpos($firstLine, ";") !== false && strpos($firstLine, ",") === false) ? ";" : ",";
+                    rewind($handle);
+                    $rawHeader = fgetcsv($handle, 0, $delim);
+                    while (($row = fgetcsv($handle, 0, $delim)) !== FALSE) {
                         $rows[] = $row;
                     }
                     fclose($handle);
@@ -2549,14 +2689,18 @@ public function anomalies_client_tickets()
                         }
                         if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
                         if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
-                            $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
-                            if ($ajuste !== 0) {
-                                try {
-                                    $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
-                                    $dt_full->modify("$ajuste hours");
-                                    $val = $dt_full->format('H:i:s');
-                                    $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
-                                } catch(\Throwable $e) {}
+                            // SÃ³lo aplicar ajuste horario para estaciones configuradas como "JUAREZ"
+                            $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
+                            if ($debeAjustar) {
+                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                if ($ajuste !== 0) {
+                                    try {
+                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                        $dt_full->modify("$ajuste hours");
+                                        $val = $dt_full->format('H:i:s');
+                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                    } catch(\Throwable $e) {}
+                                }
                             }
                         }
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
@@ -2582,8 +2726,18 @@ public function anomalies_client_tickets()
                                     $rawHeader = array_shift($allRows);
                                 } else {
                                     $handle = fopen($filePath, "r");
-                                    $rawHeader = fgetcsv($handle, 0, ",");
-                                    while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                    $firstLine = fgets($handle);
+                                    $delim = (strpos($firstLine, ";") !== false && strpos($firstLine, ",") === false) ? ";" : ",";
+                                    rewind($handle);
+                                    $rawHeader = fgetcsv($handle, 0, $delim);
+                                    // Santander sometimes has a displaced header (empty first col)
+                                    $shifted = false;
+                                    if (empty(trim((string)($rawHeader[0] ?? '')))) {
+                                        array_shift($rawHeader);
+                                        $shifted = true;
+                                    }
+                                    while (($row = fgetcsv($handle, 0, $delim)) !== FALSE) {
+                                        if ($shifted) array_shift($row);
                                         $allRows[] = $row;
                                     }
                                     fclose($handle);
@@ -2617,21 +2771,27 @@ public function anomalies_client_tickets()
                                     }
                                 }
                 
-                                // 2. Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
-                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_getnet");
+                                // 2. Huellas para duplicados (8 CAMPOS CLAVE - ALINEADO CON PYTHON)
+                                $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_getnet");
                                 $huellas = [];
                                 while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
-                                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
-                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                    
+                                    // Normalizar HORA de la DB para que coincida con la del CSV
+                                    $hora_db = trim($r['Hora'] ?? '');
+                                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_db)) {
+                                        $parts = explode(':', $hora_db);
+                                        $hora_db = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                                    }
+
+                                    $key = ltrim(trim($r['Afiliacion'] ?? ''), '0') . '|' . 
                                            trim($r['ID_Externo'] ?? '') . '|' . 
                                            $fch . '|' . 
                                            number_format((float)$r['Monto'], 2, '.', '') . '|' .
-                                           trim($r['Hora'] ?? '') . '|' .
+                                           $hora_db . '|' .
                                            trim($r['Codigo_Autorizacion'] ?? '') . '|' .
                                            trim($r['Referencia'] ?? '') . '|' .
-                                           trim($r['Terminal'] ?? '') . '|' .
-                                           $fch_dep;
+                                           trim($r['Terminal'] ?? '');
                                     $huellas[$key] = true;
                                 }
                 
@@ -2690,30 +2850,158 @@ public function anomalies_client_tickets()
                                                 $val = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
                                             }
                                             
-                                            // AJUSTE HORARIO JUAREZ
+                                            // AJUSTE HORARIO JUAREZ (solo estaciones tipo JUAREZ)
                                             if (isset($dataRow['Fecha_Transaccion'])) {
-                                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
-                                                if ($ajuste !== 0) {
-                                                    try {
-                                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
-                                                        $dt_full->modify("$ajuste hours");
-                                                        $val = $dt_full->format('H:i:s');
-                                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
-                                                    } catch(\Throwable $e) {}
+                                                $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
+                                                if ($debeAjustar) {
+                                                    $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                                    if ($ajuste !== 0) {
+                                                        try {
+                                                            $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                                            $dt_full->modify("$ajuste hours");
+                                                            $val = $dt_full->format('H:i:s');
+                                                            $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                                        } catch(\Throwable $e) {}
+                                                    }
                                                 }
                                             }
                                         }
                                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                                     }
+
+                                    // EVITAR REGISTROS FANTASMA (SIN ID O MONTO) - ALINEADO CON PYTHON
+                                    $id_ext = trim($dataRow['ID_Externo'] ?? '');
+                                    if (empty($id_ext) || $id_ext === '-' || ($dataRow['Monto'] ?? 0) <= 0) {
+                                        $skipped++;
+                                        continue;
+                                    }
                 
-                                    // Huella para saltar duplicados (+ FECHA DEPOSITO)
-                                    $huella = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'') . '|' . ($dataRow['Fecha_Deposito']??'');
+                                    // Huella para saltar duplicados (8 campos) - GENERADA CON DATOS FINALES
+                                    $huella = trim($dataRow['Afiliacion'] ?? '') . '|' . 
+                                              trim($dataRow['ID_Externo'] ?? '') . '|' . 
+                                              trim($dataRow['Fecha_Transaccion'] ?? '') . '|' . 
+                                              number_format((float)($dataRow['Monto'] ?? 0), 2, '.', '') . '|' . 
+                                              trim($dataRow['Hora'] ?? '') . '|' . 
+                                              trim($dataRow['Codigo_Autorizacion'] ?? '') . '|' . 
+                                              trim($dataRow['Referencia'] ?? '') . '|' . 
+                                              trim($dataRow['Terminal'] ?? '');
                                     
-                                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
-                                    if (isset($huellas[$huella])) { $skipped++; continue; }
+                                    if (isset($huellas[$huella])) { 
+                                        $skipped++; 
+                                        continue; 
+                                    }
                 
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
+                                    $huellas[$huella] = true; // Prevenir duplicados en el mismo archivo
+                                }
+                            } elseif ($bankType === 'AMEX') {
+                                $allRows = [];
+                                $rawHeader = [];
+
+                                                                                                  $handle = fopen($filePath, "r");
+                                                                                                  // AMEX CSV usually has 9 lines of header before the actual "Transactions" header
+                                                                                                  for($i=0; $i<9; $i++) fgets($handle); 
+                                                                                                  
+                                                                                                  // Buscamos la primera lÃ­nea que no estÃ© vacÃ­a para el header
+                                                                                                  while (($headerLine = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                                                                                      if (empty(array_filter($headerLine))) continue;
+                                                                                                      $rawHeader = $headerLine;
+                                                                                                      break;
+                                                                                                  }
+                                                                 
+                                                                                                  while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {                                    if (empty(array_filter($row))) continue;
+                                    $allRows[] = $row;
+                                }
+                                fclose($handle);
+
+                                // 1. Mapear Ãndices
+                                $mappedIndices = [];
+                                foreach ($rawHeader as $i => $h) {
+                                    $stdName = $this->sanitizar_nombre_columna_php($h, 'AMEX', $coreMap);
+                                    if (in_array($stdName, $columnas_oficiales) || $stdName === 'Monto_Pago' || $stdName === 'Tarjeta') {
+                                        $mappedIndices[$stdName] = $i;
+                                    }
+                                }
+
+                                // VALIDACION FECHA PAGO (AMEX)
+                                if (!isset($mappedIndices['Fecha_Deposito'])) {
+                                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Pago en el archivo AMEX.']);
+                                    exit;
+                                }
+
+                                // 2. Huellas AMEX (LLAVE COMPUESTA: Afiliacion, F.Trans, F.Pago, Monto, Monto_Pago, Tarjeta, Terminal, ID_Externo)
+                                $stmt = $conn->query("SELECT Afiliacion, Fecha_Transaccion, Monto, Terminal, Fecha_Deposito, Monto_Pago, Tarjeta, ID_Externo FROM banco_amex");
+                                $huellas = [];
+                                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
+                                    
+                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                           $fch . '|' . 
+                                           $fch_dep . '|' . 
+                                           number_format((float)$r['Monto'], 2, '.', '') . '|' . 
+                                           number_format((float)($r['Monto_Pago'] ?? 0), 2, '.', '') . '|' . 
+                                           trim($r['Tarjeta'] ?? '') . '|' . 
+                                           trim($r['Terminal'] ?? '') . '|' . 
+                                           trim($r['ID_Externo'] ?? '');
+                                    $huellas[$key] = true;
+                                }
+
+                                $columnas_amex = array_merge($columnas_oficiales, ['Monto_Pago', 'Tarjeta']);
+                                $sqlIns = "INSERT INTO banco_amex (".implode(",", $columnas_amex).") VALUES (".implode(",", array_fill(0, count($columnas_amex), "?")).")";
+                                $ins = $conn->prepare($sqlIns);
+
+                                foreach ($allRows as $row) {
+                                    $dataRow = [];
+                                    foreach($columnas_amex as $col) {
+                                        if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
+                                        $val = isset($mappedIndices[$col]) ? ($row[$mappedIndices[$col]] ?? null) : null;
+                                        
+                                        if ($col === 'Monto' || $col === 'Monto_Pago') {
+                                            $val = (float)str_replace(['MXN', '$', ',', ' '], '', $val ?? 0);
+                                        }
+
+                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
+                                            if ($val && trim((string)$val) !== '-') {
+                                                try {
+                                                    $d = \DateTime::createFromFormat('j/n/Y', $val); // Soporta 1/2/2026
+                                                    if (!$d) $d = \DateTime::createFromFormat('d/m/Y', $val);
+                                                    if (!$d) $d = new \DateTime($val);
+                                                    $val = $d ? $d->format('Y-m-d') : null;
+                                                } catch (\Throwable $e) { $val = null; }
+                                            } else { $val = null; }
+                                        }
+                                        if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                                        
+                                        $dataRow[$col] = ($val === null || $val === '') ? null : $val;
+                                    }
+
+                                    // Para AMEX, si no tenemos Referencia pero sÃ­ ID_Externo, lo usamos como Referencia
+                                    if (empty($dataRow['Referencia']) && !empty($dataRow['ID_Externo'])) {
+                                        $dataRow['Referencia'] = $dataRow['ID_Externo'];
+                                    }
+
+                                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
+
+                                    // LLAVE COMPUESTA AMEX (8 campos)
+                                    $huellaAMEX = trim($dataRow['Afiliacion'] ?? '') . '|' . 
+                                                  ($dataRow['Fecha_Transaccion'] ?? '') . '|' . 
+                                                  ($dataRow['Fecha_Deposito'] ?? '') . '|' . 
+                                                  number_format((float)($dataRow['Monto'] ?? 0), 2, '.', '') . '|' . 
+                                                  number_format((float)($dataRow['Monto_Pago'] ?? 0), 2, '.', '') . '|' . 
+                                                  trim($dataRow['Tarjeta'] ?? '') . '|' . 
+                                                  trim($dataRow['Terminal'] ?? '') . '|' . 
+                                                  trim($dataRow['ID_Externo'] ?? '');
+
+                                    if (isset($huellas[$huellaAMEX])) {
+                                        $skipped++;
+                                        continue;
+                                    }
+
+                                    $ins->execute(array_values($dataRow));
+                                    $inserted++;
+                                    $huellas[$huellaAMEX] = true;
                                 }
                             }
 
@@ -2742,8 +3030,6 @@ public function anomalies_client_tickets()
     // =========================================================================
     public function conc_test() {
         $this->setup_conciliacion_v2(true); // Auto-migration V2 (Silencioso)
-        
-echo "El usuario actual es: " . exec('whoami');
 
         echo $this->twig->render($this->route . 'test.html');
     }
@@ -3295,7 +3581,10 @@ echo "El usuario actual es: " . exec('whoami');
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
+            $tabla = "";
+            if ($eid == 1) $tabla = "banco_getnet";
+            elseif ($eid == 3) $tabla = "banco_amex";
+            elseif ($eid == 4) $tabla = "banco_banorte";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3321,7 +3610,7 @@ echo "El usuario actual es: " . exec('whoami');
                     FROM $tabla
                     WHERE YEAR(Fecha_Transaccion) = ? 
                       AND MONTH(Fecha_Transaccion) = ? 
-                      AND Afiliacion IN ($placeholders)
+                      AND LTRIM(RTRIM(Afiliacion)) IN ($placeholders)
                     ORDER BY Fecha_Transaccion ASC";
 
             $stmt = $conn->prepare($sql);
@@ -3395,7 +3684,10 @@ echo "El usuario actual es: " . exec('whoami');
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $tabla = ($eid == 1) ? "banco_getnet" : (($eid == 4) ? "banco_banorte" : "");
+            $tabla = "";
+            if ($eid == 1) $tabla = "banco_getnet";
+            elseif ($eid == 3) $tabla = "banco_amex";
+            elseif ($eid == 4) $tabla = "banco_banorte";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3421,7 +3713,7 @@ echo "El usuario actual es: " . exec('whoami');
                     FROM $tabla
                     WHERE YEAR(Fecha_Deposito) = ? 
                       AND MONTH(Fecha_Deposito) = ? 
-                      AND Afiliacion IN ($placeholders)
+                      AND LTRIM(RTRIM(Afiliacion)) IN ($placeholders)
                     ORDER BY Fecha_Deposito ASC";
 
             $stmt = $conn->prepare($sql);
@@ -4244,6 +4536,45 @@ public function forzar_recalculo() {
                 'data' => array_merge(['grupo_id' => $grupo_id], $nuevos_totales)
             ]);
 
+        } catch (Exception $e) {
+            if(isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+      public function actualizar_batch_detalles() {
+        ob_clean();
+        header('Content-Type: application/json');
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        if (!isset($data['actualizaciones']) || !is_array($data['actualizaciones'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan datos']);
+            exit;
+        }
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn->beginTransaction();
+            $grupos_afectados = [];
+            foreach ($data['actualizaciones'] as $item) {
+                $id_detalle = $item['id_detalle'];
+                $nuevo_monto = $item['nuevo_monto'];
+                $stmtGet = $conn->prepare("SELECT grupo_id FROM Conciliacion_V2_Detalles WHERE id = ?");
+                $stmtGet->execute([$id_detalle]);
+                $grupo_id = $stmtGet->fetchColumn();
+                if ($grupo_id) {
+                    $stmtUpdateDetalle = $conn->prepare("UPDATE Conciliacion_V2_Detalles SET monto = ? WHERE id = ?");
+                    $stmtUpdateDetalle->execute([$nuevo_monto, $id_detalle]);
+                    $grupos_afectados[$grupo_id] = true;
+                }
+            }
+            foreach (array_keys($grupos_afectados) as $gid) {
+                $this->recalcular_grupo_interno($conn, $gid);
+            }
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'message' => count($data['actualizaciones']) . ' registros actualizados']);
         } catch (Exception $e) {
             if(isset($conn)) $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
