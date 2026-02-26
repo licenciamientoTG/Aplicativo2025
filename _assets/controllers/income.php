@@ -2274,15 +2274,18 @@ public function anomalies_client_tickets()
 
         // Reglas de Fuzzy Matching especÃ­ficas
         if (strpos($norm, 'FECHA') !== false) {
-            if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false) return 'Fecha_Deposito';
+            if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false || strpos($norm, 'PAGO') !== false) return 'Fecha_Deposito';
             if (strpos($norm, 'TRANSACCION') !== false) return 'Fecha_Transaccion';
         }
-        if (strpos($norm, 'ID MOVIMIENTO') !== false) return 'ID_Externo';
+        if (strpos($norm, 'ID MOVIMIENTO') !== false || (strpos($norm, 'REFERENCIA') !== false && strpos($norm, 'CARGO') !== false)) return 'ID_Externo';
         if (strpos($norm, 'HORA') !== false) return 'Hora';
-        if (strpos($norm, 'AFILIACION') !== false) return 'Afiliacion';
-        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE') return 'Monto';
+        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false) return 'Afiliacion';
+        if (strpos($norm, 'TARJETA') !== false) return 'Tarjeta';
+        if (strpos($norm, 'TERMINAL') !== false) return 'Terminal';
+        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE' || (strpos($norm, 'MONTO') !== false && strpos($norm, 'CARGO') !== false)) return 'Monto';
         if (strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) return 'Codigo_Autorizacion';
         if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
+        if (strpos($norm, 'REFERENCIA') !== false) return 'Referencia';
 
         // 5. Fallback: si todo falla, limpiar el nombre original para usarlo como Ãºltimo recurso
         $fallback = preg_replace('/[^a-zA-Z0-9_]/', '_', $orig);
@@ -2572,6 +2575,23 @@ public function anomalies_client_tickets()
                 'Fecha Aplicacion' => 'Fecha_Deposito',
                 'Fecha de AplicaciÃ³n' => 'Fecha_Deposito',
                 'Fecha de Aplicacion' => 'Fecha_Deposito'
+            ],
+            'AMEX' => [
+                'Fecha de la transacciÃ³n' => 'Fecha_Transaccion',
+                'Fecha de la transaccion' => 'Fecha_Transaccion',
+                'Fecha de pago' => 'Fecha_Deposito',
+                'Monto del cargo' => 'Monto',
+                'Monto del pago' => 'Monto_Pago',
+                'NÃºmero de establecimiento que envÃ­a' => 'Afiliacion',
+                'Numero de establecimiento que envia' => 'Afiliacion',
+                'NÃºmero de tarjeta' => 'Tarjeta',
+                'Numero de tarjeta' => 'Tarjeta',
+                'NÃºmero de referencia del cargo' => 'ID_Externo',
+                'Numero de referencia del cargo' => 'ID_Externo',
+                'NÃºmero de terminal' => 'Terminal',
+                'Numero de terminal' => 'Terminal',
+                'Tipo de autorizaciÃ³n' => 'Codigo_Autorizacion',
+                'Tipo de autorizacion' => 'Codigo_Autorizacion'
             ]
         ];
 
@@ -2874,6 +2894,114 @@ public function anomalies_client_tickets()
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
                                     $huellas[$huella] = true; // Prevenir duplicados en el mismo archivo
+                                }
+                            } elseif ($bankType === 'AMEX') {
+                                $allRows = [];
+                                $rawHeader = [];
+
+                                                                                                  $handle = fopen($filePath, "r");
+                                                                                                  // AMEX CSV usually has 9 lines of header before the actual "Transactions" header
+                                                                                                  for($i=0; $i<9; $i++) fgets($handle); 
+                                                                                                  
+                                                                                                  // Buscamos la primera lÃ­nea que no estÃ© vacÃ­a para el header
+                                                                                                  while (($headerLine = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                                                                                      if (empty(array_filter($headerLine))) continue;
+                                                                                                      $rawHeader = $headerLine;
+                                                                                                      break;
+                                                                                                  }
+                                                                 
+                                                                                                  while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {                                    if (empty(array_filter($row))) continue;
+                                    $allRows[] = $row;
+                                }
+                                fclose($handle);
+
+                                // 1. Mapear Ãndices
+                                $mappedIndices = [];
+                                foreach ($rawHeader as $i => $h) {
+                                    $stdName = $this->sanitizar_nombre_columna_php($h, 'AMEX', $coreMap);
+                                    if (in_array($stdName, $columnas_oficiales) || $stdName === 'Monto_Pago' || $stdName === 'Tarjeta') {
+                                        $mappedIndices[$stdName] = $i;
+                                    }
+                                }
+
+                                // VALIDACION FECHA PAGO (AMEX)
+                                if (!isset($mappedIndices['Fecha_Deposito'])) {
+                                    echo json_encode(['status' => 'error', 'message' => 'No se encontro la columna de Fecha de Pago en el archivo AMEX.']);
+                                    exit;
+                                }
+
+                                // 2. Huellas AMEX (LLAVE COMPUESTA: Afiliacion, F.Trans, F.Pago, Monto, Monto_Pago, Tarjeta, Terminal, ID_Externo)
+                                $stmt = $conn->query("SELECT Afiliacion, Fecha_Transaccion, Monto, Terminal, Fecha_Deposito, Monto_Pago, Tarjeta, ID_Externo FROM banco_amex");
+                                $huellas = [];
+                                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
+                                    
+                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                           $fch . '|' . 
+                                           $fch_dep . '|' . 
+                                           number_format((float)$r['Monto'], 2, '.', '') . '|' . 
+                                           number_format((float)($r['Monto_Pago'] ?? 0), 2, '.', '') . '|' . 
+                                           trim($r['Tarjeta'] ?? '') . '|' . 
+                                           trim($r['Terminal'] ?? '') . '|' . 
+                                           trim($r['ID_Externo'] ?? '');
+                                    $huellas[$key] = true;
+                                }
+
+                                $columnas_amex = array_merge($columnas_oficiales, ['Monto_Pago', 'Tarjeta']);
+                                $sqlIns = "INSERT INTO banco_amex (".implode(",", $columnas_amex).") VALUES (".implode(",", array_fill(0, count($columnas_amex), "?")).")";
+                                $ins = $conn->prepare($sqlIns);
+
+                                foreach ($allRows as $row) {
+                                    $dataRow = [];
+                                    foreach($columnas_amex as $col) {
+                                        if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
+                                        $val = isset($mappedIndices[$col]) ? ($row[$mappedIndices[$col]] ?? null) : null;
+                                        
+                                        if ($col === 'Monto' || $col === 'Monto_Pago') {
+                                            $val = (float)str_replace(['MXN', '$', ',', ' '], '', $val ?? 0);
+                                        }
+
+                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
+                                            if ($val && trim((string)$val) !== '-') {
+                                                try {
+                                                    $d = \DateTime::createFromFormat('j/n/Y', $val); // Soporta 1/2/2026
+                                                    if (!$d) $d = \DateTime::createFromFormat('d/m/Y', $val);
+                                                    if (!$d) $d = new \DateTime($val);
+                                                    $val = $d ? $d->format('Y-m-d') : null;
+                                                } catch (\Throwable $e) { $val = null; }
+                                            } else { $val = null; }
+                                        }
+                                        if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                                        
+                                        $dataRow[$col] = ($val === null || $val === '') ? null : $val;
+                                    }
+
+                                    // Para AMEX, si no tenemos Referencia pero sÃ­ ID_Externo, lo usamos como Referencia
+                                    if (empty($dataRow['Referencia']) && !empty($dataRow['ID_Externo'])) {
+                                        $dataRow['Referencia'] = $dataRow['ID_Externo'];
+                                    }
+
+                                    if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
+
+                                    // LLAVE COMPUESTA AMEX (8 campos)
+                                    $huellaAMEX = trim($dataRow['Afiliacion'] ?? '') . '|' . 
+                                                  ($dataRow['Fecha_Transaccion'] ?? '') . '|' . 
+                                                  ($dataRow['Fecha_Deposito'] ?? '') . '|' . 
+                                                  number_format((float)($dataRow['Monto'] ?? 0), 2, '.', '') . '|' . 
+                                                  number_format((float)($dataRow['Monto_Pago'] ?? 0), 2, '.', '') . '|' . 
+                                                  trim($dataRow['Tarjeta'] ?? '') . '|' . 
+                                                  trim($dataRow['Terminal'] ?? '') . '|' . 
+                                                  trim($dataRow['ID_Externo'] ?? '');
+
+                                    if (isset($huellas[$huellaAMEX])) {
+                                        $skipped++;
+                                        continue;
+                                    }
+
+                                    $ins->execute(array_values($dataRow));
+                                    $inserted++;
+                                    $huellas[$huellaAMEX] = true;
                                 }
                             }
 
