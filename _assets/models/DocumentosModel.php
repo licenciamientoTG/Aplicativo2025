@@ -1210,6 +1210,7 @@ class DocumentosModel extends Model{
             t1.nro ASC;
         ";                  
         $params = [];
+
         return $this->sql->select($query, $params);
     }
 
@@ -1345,7 +1346,7 @@ class DocumentosModel extends Model{
     }
 
     function get_suppliers() {
-        // $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
+         $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
     }
 
