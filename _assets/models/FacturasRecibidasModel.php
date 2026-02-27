@@ -92,49 +92,49 @@ public function buscarPorUUIDs($uuids) {
     }
 
     public function buscar_facturas_disponibles($searchTerm = '', $fechaInicio = '', $fechaFin = '') {
-            $whereClauses = [];
-            $params = [];
-            
-            // 1. SEGURIDAD: Usar parámetros (?) en lugar de meter variables directas
-            if (!empty($searchTerm)) {
-                // SQL Server usa '+' para concatenar strings en LIKE, o pasamos los % en el parámetro
-                $whereClauses[] = "(fr.UUID LIKE ? OR fr.Folio LIKE ? OR fr.EmisorNombre LIKE ?)";
-                $likeTerm = "%" . $searchTerm . "%";
-                $params[] = $likeTerm;
-                $params[] = $likeTerm;
-                $params[] = $likeTerm;
-            }
-            
-            if (!empty($fechaInicio) && !empty($fechaFin)) {
-                $whereClauses[] = "fr.Fecha BETWEEN ? AND ?";
-                $params[] = $fechaInicio;
-                $params[] = $fechaFin;
-            }
-            
-            $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
+        $whereClauses = [];
+        $params = [];
+        
+        // 1. SEGURIDAD: Usar parámetros (?) en lugar de meter variables directas
+        if (!empty($searchTerm)) {
+            // SQL Server usa '+' para concatenar strings en LIKE, o pasamos los % en el parámetro
+            $whereClauses[] = "(fr.UUID LIKE ? OR fr.Folio LIKE ? OR fr.EmisorNombre LIKE ?)";
+            $likeTerm = "%" . $searchTerm . "%";
+            $params[] = $likeTerm;
+            $params[] = $likeTerm;
+            $params[] = $likeTerm;
+        }
+        
+        if (!empty($fechaInicio) && !empty($fechaFin)) {
+            $whereClauses[] = "fr.Fecha BETWEEN ? AND ?";
+            $params[] = $fechaInicio;
+            $params[] = $fechaFin;
+        }
+        
+        $whereSQL = !empty($whereClauses) ? "WHERE " . implode(" AND ", $whereClauses) : "";
 
-            $query = "
-                SELECT TOP 50
-                    fr.Id,
-                    fr.UUID,
-                    fr.Folio,
-                    fr.Fecha,
-                    fr.Total,
-                    fr.EmisorNombre,
-                    fr.EmisorRfc,
-                    fr.Destino,
-                    fr.Remision,
-                    CASE 
-                        WHEN fmt.Id IS NOT NULL THEN 1 
-                        ELSE 0 
-                    END AS YaAsignada
-                FROM tg.dbo.FacturasRecibidas fr
-                LEFT JOIN tg.dbo.FacturasMovimientosTanques fmt ON fr.Id = fmt.FacturaId AND fmt.Activo = 1
-                $whereSQL
-                ORDER BY fr.Fecha DESC
-            ";
-            
-            return ($this->sql->select($query, $params)) ?: [];
+        $query = "
+            SELECT TOP 50
+                fr.Id,
+                fr.UUID,
+                fr.Folio,
+                fr.Fecha,
+                fr.Total,
+                fr.EmisorNombre,
+                fr.EmisorRfc,
+                fr.Destino,
+                fr.Remision,
+                CASE 
+                    WHEN fmt.Id IS NOT NULL THEN 1 
+                    ELSE 0 
+                END AS YaAsignada
+            FROM tg.dbo.FacturasRecibidas fr
+            LEFT JOIN tg.dbo.FacturasMovimientosTanques fmt ON fr.Id = fmt.FacturaId AND fmt.Activo = 1
+            $whereSQL
+            ORDER BY fr.Fecha DESC
+        ";
+        
+        return ($this->sql->select($query, $params)) ?: [];
     }
 
     public function compras_facturas_table($from,$until,$codgas,$proveedor,$company) {
@@ -224,7 +224,8 @@ public function buscarPorUUIDs($uuids) {
                     FROM TG.dbo.FacturasRecibidas t1 WITH (NOLOCK)
                     LEFT JOIN TG.dbo.FacturasMovimientosTanques t2 ON t1.Id = t2.FacturaProveedorId AND t2.Activo = 1
                     LEFT JOIN TG.dbo.FacturasRecibidas t3 ON t2.FacturaPetrotalId = t3.Id
-                    LEFT JOIN SG12.dbo.DocumentosC t4 on t1.UUID = t4.satuid
+                    LEFT JOIN SG12.dbo.DocumentosC t4 WITH(NOLOCK) 
+                    ON t1.UUID COLLATE DATABASE_DEFAULT = t4.satuid COLLATE DATABASE_DEFAULT
                     LEFT JOIN sg12.dbo.MovimientosTan t6 on t6.codgas = t4.codgas and t4.nro = t6.nrodoc and t6.tiptrn = 4 
                     LEFT JOIN SG12.dbo.Tanques t7 on t6.codtan = t7.cod 
                     left join SG12.dbo.Gasolineras t5 on t4.codgas = t5.cod
@@ -233,6 +234,7 @@ public function buscarPorUUIDs($uuids) {
                     $whereClause
                     ORDER BY t1.Fecha DESC, t1.Folio";
         $params = [$from, $until];
+
 
         return ($this->sql->select($query, $params)) ?: [];
     }

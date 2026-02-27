@@ -88,13 +88,14 @@
             </div>
         </div>
 
-        <!-- AFIRME (Placeholder) -->
+        <!-- AFIRME -->
         <div class="col-md-3 mb-4">
-            <div class="card bank-card disabled shadow-sm h-100">
+            <div class="card bank-card shadow-sm h-100" onclick="openUploadModal('AFIRME', 'banco_afirme')">
                 <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
-                    <img src="https://www.afirme.com/o/afirme-theme/images/logo-afirme.svg" alt="Afirme" class="bank-logo">
+                    <img src="https://www.afirme.com/dam/jcr:dc287568-4317-4b32-9fc7-eae3370efe86/logoAfirme.png" alt="Afirme" class="bank-logo">
                     <h5 class="font-weight-bold">AFIRME</h5>
-                    <p class="small text-muted">Próximamente...</p>
+                    <p class="small text-muted">Carga manual de reportes .CSV</p>
+                    <button class="btn btn-success btn-sm rounded-pill px-4">Subir Reporte</button>
                 </div>
             </div>
         </div>
@@ -224,7 +225,6 @@
 {% block myjs %}
 <script>
     function openUploadModal(bank, table) {
-        if(bank === 'AFIRME') return;
         $('#modalBankName').text(bank);
         $('#inputBankType').val(bank);
         $('#reportFile').val('');

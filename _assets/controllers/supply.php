@@ -2946,65 +2946,8 @@ class Supply
         }
     }
 
-    // public function compras_facturas_table() {
-    //     ini_set('max_execution_time', 5000);
-    //     ini_set('memory_limit', '1024M');
-    //     set_time_limit(0);
-    //     header('Content-Type: application/json');
 
-    //     $postData = [
-    //         'from' => isset($_POST['fromDate']) ? $_POST['fromDate'] : null,
-    //         'until' => isset($_POST['untilDate']) ? $_POST['untilDate'] : null,
-    //         'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
-    //         'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
-    //         'company' => isset($_POST['company']) ? $_POST['company'] : '0'
-    //     ];
-
-    //     if (!$postData['from'] || !$postData['until']) {
-    //         json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
-    //         return;
-    //     }
-    //     try {
-    //         $ch = curl_init('http://192.168.0.109:82/api/compras_facturas_base/');
-    //         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    //         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-    //         curl_setopt($ch, CURLOPT_POST, true);
-    //         curl_setopt($ch, CURLOPT_TIMEOUT, 600);
-    //         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
-
-    //         $response = curl_exec($ch);
-    //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-    //         if (curl_errno($ch)) {
-    //             throw new Exception('Error de cURL: ' . curl_error($ch));
-    //         }
-
-    //         curl_close($ch);
-
-    //         if ($httpCode !== 200) {
-    //             throw new Exception("Error HTTP: $httpCode");
-    //         }
-
-    //         $apiData = json_decode($response, true);
-    //         // echo '<pre>';
-    //         // var_dump($apiData);
-    //         // var_dump($response);
-
-    //         if (json_last_error() !== JSON_ERROR_NONE) {
-    //             throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
-    //         }
-
-    //         // Los datos ya vienen procesados desde la API
-    //         json_output(['data' => $apiData]);
-
-    //     } catch (Exception $e) {
-    //         error_log("Error en compras_facturas_table: " . $e->getMessage());
-    //         json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
-    //     }
-    // }
-
-    public function compras_facturas_table()
-    {
+    public function compras_facturas_table(){
         if ($rows = $this->facturasRecibidasModel->compras_facturas_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas'], $_POST['proveedor'], $_POST['company'])) {
             $data = [];
             foreach ($rows as $row) {
@@ -3057,6 +3000,8 @@ class Supply
             echo json_encode(['data' => []]);
         }
     }
+
+
     private function normalizarProducto($producto)
     {
         if (empty($producto)) return 'N/A';

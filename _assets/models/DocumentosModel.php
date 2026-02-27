@@ -1210,6 +1210,7 @@ class DocumentosModel extends Model{
             t1.nro ASC;
         ";                  
         $params = [];
+
         return $this->sql->select($query, $params);
     }
 

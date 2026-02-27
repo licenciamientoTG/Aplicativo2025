@@ -80,18 +80,6 @@
     }
 </style>
 
-<ul class="nav nav-tabs" id="myTab" role="tablist">
-    <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="payment_control-tab" data-bs-toggle="tab" data-bs-target="#payment_control"
-            type="button" role="tab" aria-controls="payment_control" aria-selected="true">Compras</button>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link " id="resumen_payment-tab" data-bs-toggle="tab" data-bs-target="#resumen_payment"
-            type="button" role="tab" aria-controls="resumen_payment" aria-selected="true">Resumen</button>
-    </li>
-</ul>
-
-<div class="tab-content">
 
     <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
@@ -145,9 +133,7 @@
                     </div>
 
                     <div class="col-2">
-                        <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary"
-                            style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar
-                            Reporte</button>
+                        <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar Reporte</button>
                     </div>
                 </div>
 
@@ -179,7 +165,7 @@
                 </div>
             </div>
             <div class="card-body table-responsive">
-                <table id="payment_control_table" class="table table-hover table-sm w-100" style="font-size: 11px;">
+                <table id="compras_combustible_table" class="table table-hover table-sm w-100" style="font-size: 11px;">
                     <thead>
                         <tr>
                             <th>Fecha Recepción</th>
@@ -215,99 +201,7 @@
             </div>
         </div>
     </div>
-    {# <div class="tab-pane " id="resumen_payment" role="tabpanel" aria-labelledby="resumen_payment-tab">
-        <div class="card">
-            <div class="card-body">
-                <div class="row" style="align-items: flex-end;">
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="from_resumen">Desde:</label>
-                        <input type="date" class="form-control form-control-sm" name="from_resumen" id="from_resumen"
-                            value="{{ 'first day of this month'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="until_resumen">Hasta:</label>
-                        <input type="date" class="form-control form-control-sm" name="until_resumen" id="until_resumen"
-                            value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
-                    </div>
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="station_id_resumen">Estación:</label>
-                        <select class="selectpicker w-100" data-live-search="true" name="station_id_resumen"
-                            id="station_id_resumen" placeholder="Seleccione una estación">
-                            <option value="0" selected>Todas las estaciones</option>
-                            {% for station in stations %}
-                            <option value="{{ station.cod }}">{{ station.abr }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="proveedor_resumen">Proveedor:</label>
-                        <select class="selectpicker w-100" data-live-search="true" name="proveedor_resumen"
-                            id="proveedor_resumen">
-                            <option value="0" selected>Todos los proveedores</option>
-                            {% for proveedor in proveedores %}
-                            <option value="{{ proveedor.cod }}">{{ proveedor.den }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <label class="col-form-label-sm" for="company_resumen">Empresa:</label>
-                        <select class="selectpicker w-100" name="company_resumen" id="company_resumen">
-                            <option value="0" selected>Todas las empresas</option>
-                            {% for empresa in empresas %}
-                            <option value="{{ empresa.cod }}">{{ empresa.den }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <button onclick="resumen_payment_table()" class="btn btn-sm btn-primary"
-                            style="width: 100%; margin-top: 15px;">
-                            Generar Reporte
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Resumen de Pagos - Movimientos de Tanques</h5>
-                <div id="table-info" class="text-muted small"></div>
-            </div>
-            <!-- IMPORTANTE: Agregar clase datatable-wrapper para scroll horizontal -->
-            <div class="card-body p-0">
-                <div class="table-responsive datatable-wrapper">
-                    <table id="resumen_payment_table" class="table table-hover table-sm table-striped w-100"  style="min-width: 2000px;">
-                        <thead>
-                            <tr>
-                                <th width="50">Acción</th>
-                                <th>Fecha</th>
-                                <th>Estación</th>
-                                <th>Número Estación</th>
-                                <th>Proveedor Original</th>
-                                <th>Producto</th>
-                                <th>Num Factura Proveedor original</th>
-                                <th>Proveedor Factura Final</th>
-                                <th>Litros en Documento</th>
-                                <th>Monto Factura</th>
-                                <th>Precio Factura</th>
-                                <th>UUID</th>
-                                <th>Proveedor ControlGas</th>
-                                <th>Monto Factura</th>
-                                <th>Cantidad Factura</th>
-                                <th>Grupo Producto</th>
-                                <th>Nro. Transacción</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                        <tfoot>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div> #}
-</div>
-{# 
 
 <div class="modal fade" id="modalAsignarFactura" tabindex="-1" aria-labelledby="modalAsignarFacturaLabel"
     aria-hidden="true">
@@ -626,7 +520,7 @@
             </div>
         </div>
     </div>
-</div> #}
+</div> 
 {% endblock %}
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
