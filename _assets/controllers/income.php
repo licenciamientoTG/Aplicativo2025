@@ -2273,17 +2273,20 @@ public function anomalies_client_tickets()
         $norm = preg_replace('/[^A-Z0-9\s]/', '', $norm);
 
         // Reglas de Fuzzy Matching especÃ­ficas
+        if (strpos($norm, 'TRANSACCION') !== false || (strpos($norm, 'TRANS') !== false && $bankType === 'AFIRME')) {
+            if (strpos($norm, 'FECHA') !== false) return 'Fecha_Transaccion';
+            return ($bankType === 'AFIRME') ? 'Referencia' : 'ID_Externo';
+        }
         if (strpos($norm, 'FECHA') !== false) {
             if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false || strpos($norm, 'PAGO') !== false) return 'Fecha_Deposito';
-            if (strpos($norm, 'TRANSACCION') !== false) return 'Fecha_Transaccion';
         }
         if (strpos($norm, 'ID MOVIMIENTO') !== false || (strpos($norm, 'REFERENCIA') !== false && strpos($norm, 'CARGO') !== false)) return 'ID_Externo';
         if (strpos($norm, 'HORA') !== false) return 'Hora';
-        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false) return 'Afiliacion';
+        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false || strpos($norm, 'COMERCIO') !== false) return 'Afiliacion';
         if (strpos($norm, 'TARJETA') !== false) return 'Tarjeta';
         if (strpos($norm, 'TERMINAL') !== false) return 'Terminal';
         if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE' || (strpos($norm, 'MONTO') !== false && strpos($norm, 'CARGO') !== false)) return 'Monto';
-        if (strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) return 'Codigo_Autorizacion';
+        if ((strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) || strpos($norm, 'AUTORIZACION') !== false) return 'Codigo_Autorizacion';
         if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
         if (strpos($norm, 'REFERENCIA') !== false) return 'Referencia';
 
@@ -2592,6 +2595,21 @@ public function anomalies_client_tickets()
                 'Numero de terminal' => 'Terminal',
                 'Tipo de autorizaciÃ³n' => 'Codigo_Autorizacion',
                 'Tipo de autorizacion' => 'Codigo_Autorizacion'
+            ],
+            'AFIRME' => [
+                'Comercio' => 'Afiliacion',
+                'NÃºmero de Tarjeta' => 'Tarjeta',
+                'Numero de Tarjeta' => 'Tarjeta',
+                'Fecha Venta' => 'Fecha_Transaccion',
+                'Hora' => 'Hora',
+                'Terminal' => 'Terminal',
+                'TransacciÃ³n' => 'Referencia',
+                'Transaccion' => 'Referencia',
+                'AutorizaciÃ³n' => 'Codigo_Autorizacion',
+                'Autorizacion' => 'Codigo_Autorizacion',
+                'Importe' => 'Monto',
+                'Fecha DepÃ³sito' => 'Fecha_Deposito',
+                'Fecha Deposito' => 'Fecha_Deposito'
             ]
         ];
 
@@ -3002,6 +3020,136 @@ public function anomalies_client_tickets()
                                     $ins->execute(array_values($dataRow));
                                     $inserted++;
                                     $huellas[$huellaAMEX] = true;
+                                }
+                            } elseif ($bankType === 'AFIRME') {
+                                $allRows = [];
+                                $rawHeader = [];
+
+                                $handle = fopen($filePath, "r");
+                                // Afirme CSV starts directly with headers
+                                $headerLine = fgetcsv($handle, 0, ",");
+                                if ($headerLine && count($headerLine) > 1) {
+                                    $rawHeader = $headerLine;
+                                }
+
+                                while (($row = fgetcsv($handle, 0, ",")) !== FALSE) {
+                                    if (empty(array_filter($row))) continue;
+                                    $allRows[] = $row;
+                                }
+                                fclose($handle);
+
+                                // 1. Mapear Ãndices
+                                $mappedIndices = [];
+                                foreach ($rawHeader as $i => $h) {
+                                    $stdName = $this->sanitizar_nombre_columna_php($h, 'AFIRME', $coreMap);
+                                    if (in_array($stdName, $columnas_oficiales) || $stdName === 'Tarjeta') {
+                                        $mappedIndices[$stdName] = $i;
+                                    }
+                                }
+
+                                // 2. Huellas AFIRME (LLAVE COMPUESTA: Afiliacion, Tarjeta, F.Trans, Hora, Monto, Auth, Terminal, ID_Externo)
+                                $stmt = $conn->query("SELECT Afiliacion, Tarjeta, Fecha_Transaccion, Hora, Monto, Codigo_Autorizacion, Terminal, ID_Externo FROM banco_afirme");
+                                $huellas = [];
+                                while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
+                                    
+                                    // Normalizar HORA
+                                    $hora_db = trim($r['Hora'] ?? '');
+                                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_db)) {
+                                        $parts = explode(':', $hora_db);
+                                        $hora_db = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                                    }
+
+                                    $key = trim($r['Afiliacion'] ?? '') . '|' . 
+                                           trim($r['Tarjeta'] ?? '') . '|' . 
+                                           $fch . '|' . 
+                                           $hora_db . '|' . 
+                                           number_format((float)$r['Monto'], 2, '.', '') . '|' . 
+                                           trim($r['Codigo_Autorizacion'] ?? '') . '|' . 
+                                           trim($r['Terminal'] ?? '') . '|' . 
+                                           trim($r['ID_Externo'] ?? '');
+                                    $huellas[$key] = true;
+                                }
+
+                                $sqlIns = "INSERT INTO banco_afirme (".implode(",", $columnas_oficiales).", Tarjeta) VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).", ?)";
+                                $ins = $conn->prepare($sqlIns);
+
+                                foreach ($allRows as $row) {
+                                    $dataRow = [];
+                                    $rawTarjeta = '';
+
+                                    foreach($columnas_oficiales as $col) {
+                                        if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
+                                        $val = isset($mappedIndices[$col]) ? ($row[$mappedIndices[$col]] ?? null) : null;
+                                        
+                                        if ($col === 'Monto') $val = (float)str_replace(['$', ',', ' '], '', $val ?? 0);
+                                        if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
+                                            if ($val && trim((string)$val) !== '-') {
+                                                try {
+                                                    $d = \DateTime::createFromFormat('d/m/Y', $val);
+                                                    if (!$d) $d = new \DateTime($val);
+                                                    $val = $d ? $d->format('Y-m-d') : null;
+                                                } catch (\Throwable $e) { $val = null; }
+                                            } else { $val = null; }
+                                        }
+                                        if ($col === 'Afiliacion') $val = ltrim(trim($val ?? ''), '0');
+                                        
+                                        if ($col === 'Hora' && $val && trim((string)$val) !== '-' && isset($dataRow['Fecha_Transaccion'])) {
+                                            // AJUSTE HORARIO JUAREZ
+                                            $debeAjustar = $this->debe_ajustar_juarez_por_afiliacion($dataRow['Afiliacion'] ?? null, $bankType);
+                                            if ($debeAjustar) {
+                                                $ajuste = $this->obtener_ajuste_juarez_php($dataRow['Fecha_Transaccion']);
+                                                if ($ajuste !== 0) {
+                                                    try {
+                                                        $dt_full = new \DateTime($dataRow['Fecha_Transaccion'] . " " . $val);
+                                                        $dt_full->modify("$ajuste hours");
+                                                        $val = $dt_full->format('H:i:s');
+                                                        $dataRow['Fecha_Transaccion'] = $dt_full->format('Y-m-d');
+                                                    } catch(\Throwable $e) {}
+                                                }
+                                            }
+                                        }
+
+                                        $dataRow[$col] = ($val === null || $val === '') ? null : $val;
+                                    }
+
+                                    $rawTarjeta = isset($mappedIndices['Tarjeta']) ? trim($row[$mappedIndices['Tarjeta']] ?? '') : '';
+                                    
+                                    // Asegurar Referencia (Transaccion) explÃ­citamente para Afirme
+                                    if (empty($dataRow['Referencia']) && isset($mappedIndices['Referencia'])) {
+                                        $dataRow['Referencia'] = trim($row[$mappedIndices['Referencia']] ?? '');
+                                    }
+
+                                    // Para Afirme, si el monto es negativo, lo ponemos en 0 (ajuste solicitado)
+                                    if (($dataRow['Monto'] ?? 0) < 0) {
+                                        $dataRow['Monto'] = 0;
+                                    }
+
+                                    // LLAVE COMPUESTA AFIRME (8 campos) para unicidad
+                                    $huellaAFIRME = trim($dataRow['Afiliacion'] ?? '') . '|' . 
+                                                    trim($rawTarjeta) . '|' . 
+                                                    ($dataRow['Fecha_Transaccion'] ?? '') . '|' . 
+                                                    ($dataRow['Hora'] ?? '') . '|' . 
+                                                    number_format((float)($dataRow['Monto'] ?? 0), 2, '.', '') . '|' . 
+                                                    trim($dataRow['Codigo_Autorizacion'] ?? '') . '|' . 
+                                                    trim($dataRow['Terminal'] ?? '') . '|' . 
+                                                    trim($dataRow['Referencia'] ?? ''); 
+
+                                    // Asignamos la llave compuesta al ID_Externo como se solicitÃ³
+                                    $dataRow['ID_Externo'] = $huellaAFIRME;
+
+                                    if (isset($huellas[$huellaAFIRME])) {
+                                        $skipped++;
+                                        continue;
+                                    }
+
+                                    // Parametros para SQL: columnas oficiales + Tarjeta
+                                    $params = array_values($dataRow);
+                                    $params[] = $rawTarjeta;
+
+                                    $ins->execute($params);
+                                    $inserted++;
+                                    $huellas[$huellaAFIRME] = true;
                                 }
                             }
 
@@ -3585,6 +3733,7 @@ public function anomalies_client_tickets()
             if ($eid == 1) $tabla = "banco_getnet";
             elseif ($eid == 3) $tabla = "banco_amex";
             elseif ($eid == 4) $tabla = "banco_banorte";
+            elseif ($eid == 5) $tabla = "banco_afirme";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3688,6 +3837,7 @@ public function anomalies_client_tickets()
             if ($eid == 1) $tabla = "banco_getnet";
             elseif ($eid == 3) $tabla = "banco_amex";
             elseif ($eid == 4) $tabla = "banco_banorte";
+            elseif ($eid == 5) $tabla = "banco_afirme";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -4627,6 +4777,94 @@ public function forzar_recalculo() {
 
             $conn->commit();
             echo json_encode(['status' => 'success', 'message' => 'Grupo eliminado y movimientos liberados.']);
+
+        } catch (Exception $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function eliminar_grupos_mes() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+
+        if (!isset($data['estacion_id'], $data['afiliacion'], $data['year'], $data['month'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        $sid   = (int)$data['estacion_id'];
+        $afil  = trim($data['afiliacion']);
+        $year  = (int)$data['year'];
+        $month = (int)$data['month'];
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712";
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn->beginTransaction();
+
+            // 1. Encontrar todos los IDs de grupo para ese mes, estación y afiliación
+            // Nota: El mes/año se filtra por la fecha_operativa en Conciliacion_V2_Grupos
+            $sqlFind = "SELECT id FROM Conciliacion_V2_Grupos 
+                        WHERE estacion_id = ? AND afiliacion = ? 
+                        AND YEAR(fecha_operativa) = ? AND MONTH(fecha_operativa) = ?";
+            $stmtFind = $conn->prepare($sqlFind);
+            $stmtFind->execute([$sid, $afil, $year, $month]);
+            $groupIds = $stmtFind->fetchAll(PDO::FETCH_COLUMN);
+
+            if (empty($groupIds)) {
+                $conn->rollBack();
+                echo json_encode(['status' => 'success', 'message' => 'No se encontraron grupos para eliminar.', 'grupos_eliminados' => 0]);
+                exit;
+            }
+
+            // BATCHING para evitar el límite de 2100 parámetros de SQL Server
+            $batchSize = 1000;
+            $groupIdChunks = array_chunk($groupIds, $batchSize);
+
+            foreach ($groupIdChunks as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+
+                // 2. Revertir Tránsitos asociados a los detalles de estos grupos
+                $sqlRefs = "SELECT referencia_externa FROM Conciliacion_V2_Detalles WHERE grupo_id IN ($placeholders)";
+                $stmtRefs = $conn->prepare($sqlRefs);
+                $stmtRefs->execute($chunk);
+                $refs = $stmtRefs->fetchAll(PDO::FETCH_COLUMN);
+
+                if (!empty($refs)) {
+                    $refChunks = array_chunk($refs, $batchSize);
+                    foreach ($refChunks as $refChunk) {
+                        $refPlaceholders = implode(',', array_fill(0, count($refChunk), '?'));
+                        $sqlRevert = "UPDATE Conciliacion_Transito SET estado = 'PENDIENTE', fecha_marcado = NULL 
+                                      WHERE referencia_externa IN ($refPlaceholders) AND estado = 'CONCILIADO'";
+                        $stmtRevert = $conn->prepare($sqlRevert);
+                        $stmtRevert->execute($refChunk);
+                    }
+                }
+
+                // 3. Eliminar detalles de los grupos del chunk
+                $sqlDelDet = "DELETE FROM Conciliacion_V2_Detalles WHERE grupo_id IN ($placeholders)";
+                $stmtDelDet = $conn->prepare($sqlDelDet);
+                $stmtDelDet->execute($chunk);
+
+                // 4. Eliminar los grupos del chunk
+                $sqlDelGrp = "DELETE FROM Conciliacion_V2_Grupos WHERE id IN ($placeholders)";
+                $stmtDelGrp = $conn->prepare($sqlDelGrp);
+                $stmtDelGrp->execute($chunk);
+            }
+
+            $conn->commit();
+            echo json_encode([
+                'status' => 'success', 
+                'message' => 'Conciliaciones del mes eliminadas.', 
+                'grupos_eliminados' => count($groupIds)
+            ]);
 
         } catch (Exception $e) {
             if (isset($conn)) $conn->rollBack();

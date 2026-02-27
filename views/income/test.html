@@ -334,6 +334,10 @@
             <i class="fas fa-columns mr-1"></i> Modo Depósitos
         </button>
 
+        <button class="btn btn-danger rounded-pill shadow-sm mr-2 font-weight-bold" onclick="eliminarGruposMes()" title="Deshacer TODAS las conciliaciones de este mes">
+            <i class="fas fa-trash-alt mr-1"></i> Deshacer Mes
+        </button>
+
         <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()">
             <i class="fas fa-sync-alt"></i>
         </button>
@@ -685,7 +689,8 @@
         desligar_detalle: '/income/desligar_movimiento',
         borrar_transito: '/income/borrar_transito',
         update_date: '/income/update_transaction_date',
-        eliminar_grupo: '/income/eliminar_grupo_conciliacion'
+        eliminar_grupo: '/income/eliminar_grupo_conciliacion',
+        eliminar_grupos_mes: '/income/eliminar_grupos_mes'
     };
 
     const ENTITY_CONFIG = {
@@ -934,6 +939,40 @@
                 if(resp.status === 'success') {
                     actualizarTodo();
                 } else alert("Error al eliminar grupo: " + resp.message);
+            },
+            error: function(err) { $('body').removeClass('is-loading'); alert("Error de red"); console.error(err); }
+        });
+    }
+
+    function eliminarGruposMes() {
+        const sid = $('#estacionSelect').val();
+        const afil = currentActiveRule ? currentActiveRule.afiliacion : '';
+        const mesStr = `${widgetState.year}-${widgetState.month}`;
+
+        if(!sid || !afil) {
+            alert("Seleccione una estación y afiliación válida.");
+            return;
+        }
+
+        if(!confirm(`¿Estás seguro de ELIMINAR TODAS las conciliaciones del mes ${mesStr} para esta afiliación?\n\nEsta acción NO se puede deshacer.`)) return;
+
+        $('body').addClass('is-loading');
+        $.ajax({
+            url: URLS.eliminar_grupos_mes,
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ 
+                estacion_id: sid, 
+                afiliacion: afil,
+                year: widgetState.year,
+                month: widgetState.month
+            }),
+            success: function(resp) {
+                $('body').removeClass('is-loading');
+                if(resp.status === 'success') {
+                    alert("Se han eliminado " + resp.grupos_eliminados + " grupos de conciliación.");
+                    actualizarTodo();
+                } else alert("Error al eliminar grupos del mes: " + resp.message);
             },
             error: function(err) { $('body').removeClass('is-loading'); alert("Error de red"); console.error(err); }
         });
