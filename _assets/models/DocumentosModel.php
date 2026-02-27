@@ -1346,7 +1346,7 @@ class DocumentosModel extends Model{
     }
 
     function get_suppliers() {
-         $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
+        $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
     }
 
@@ -1553,9 +1553,9 @@ class DocumentosModel extends Model{
                     t1.satuid,
                     t1.txtref,
                     TRY_CONVERT(int,
-                            CASE WHEN d.start_digits IS NOT NULL AND f.len_digits IS NOT NULL
-                                THEN SUBSTRING(r.ref, d.start_digits, f.len_digits) END
-                        ) AS mov_n
+    CASE WHEN d.start_digits IS NOT NULL AND f.len_digits IS NOT NULL
+         THEN SUBSTRING(r.ref, d.start_digits, f.len_digits) END
+  ) AS mov_n
                    from DocumentosC t1 
                     LEFT JOIN DocumentosA t2 on t1.codgas = t2.codgas  and t1.nro = t2.nro and t2.tip = 4
                     LEFT JOIN Gasolineras t3 on t1.codgas = t3.cod
