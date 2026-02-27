@@ -124,8 +124,9 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
 
             es_foranea = (rfc_norm == '' or rfc_norm == 'FORANEAS')
             es_parral  = ('PARRAL' in est_nombre)
+            es_clara   = ('CLARA' in est_nombre)
 
-            policy[af] = 'CDMX' if (es_foranea or es_parral) else 'JUAREZ'
+            policy[af] = 'CDMX' if (es_foranea or es_parral or es_clara) else 'JUAREZ'
 
         conn.close()
     except Exception as e:

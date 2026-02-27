@@ -2394,9 +2394,10 @@ public function anomalies_client_tickets()
 
                         $esForanea = ($rfc === '' || $rfc === 'FORANEAS');
                         $esParral  = (strpos($estacion, 'PARRAL') !== false);
+                        $esClara   = (strpos($estacion, 'CLARA') !== false);
 
                         // CDMX = conservar hora; JUAREZ = aplicar ajuste horario
-                        $map[$af] = ($esForanea || $esParral) ? 'CDMX' : 'JUAREZ';
+                        $map[$af] = ($esForanea || $esParral || $esClara) ? 'CDMX' : 'JUAREZ';
                     }
 
                     $cachePoliticas[$bankKey] = $map;
