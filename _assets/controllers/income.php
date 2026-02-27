@@ -3740,8 +3740,8 @@ public function anomalies_client_tickets()
                 exit;
             }
 
-            // SOPORTE MULTI-AFILIACIÃ“N: Split por '/' y limpieza
-            $afil_parts = array_map('trim', explode('/', $afiliacion));
+            // SOPORTE MULTI-AFILIACIÓN: Soporta Coma (,) y Diagonal (/)
+            $afil_parts = array_map('trim', preg_split('/[,\/]/', $afiliacion));
             $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
 
             // QUERY ESTANDARIZADA
@@ -3844,8 +3844,8 @@ public function anomalies_client_tickets()
                 exit;
             }
 
-            // SOPORTE MULTI-AFILIACIÃ“N
-            $afil_parts = array_map('trim', explode('/', $afiliacion));
+            // SOPORTE MULTI-AFILIACIÓN: Soporta Coma (,) y Diagonal (/)
+            $afil_parts = array_map('trim', preg_split('/[,\/]/', $afiliacion));
             $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
 
             // BUSQUEDA POR FECHA DE DEPOSITO
