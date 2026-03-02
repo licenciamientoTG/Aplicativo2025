@@ -5427,7 +5427,7 @@ public function stamped_invoices_detail(): void
             $sheet = $spreadsheet->getActiveSheet();
             $sheet->setTitle("Conciliacion $year-$month");
 
-            $headers = ['Grupo ID', 'EstaciÃ³n', 'Banco', 'AfiliaciÃ³n', 'Fecha Operativa', 'ControlGas', 'Bancos (TX)', 'Diferencia'];
+            $headers = ['Grupo ID', 'Estación', 'Banco', 'Afiliación', 'Fecha Operativa', 'ControlGas', 'Bancos (TX)', 'Diferencia'];
             $sheet->fromArray($headers, NULL, 'A1');
             $sheet->getStyle('A1:H1')->getFont()->setBold(true);
 
@@ -5546,7 +5546,7 @@ public function stamped_invoices_detail(): void
             $sheet->setTitle("Resumen General $rs_label");
 
             // TÃ­tulo superior
-            $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÃ“N - $rs_label");
+            $sheet->setCellValue('A1', "RESUMEN GENERAL DE CONCILIACIÓN - $rs_label");
             $sheet->mergeCells('A1:E1');
             $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(16);
             $sheet->getStyle('A1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
@@ -5572,13 +5572,13 @@ public function stamped_invoices_detail(): void
 
             foreach ($dataByBank as $bankName => $bankRows) {
                 // Header del Banco
-                $sheet->setCellValue('A' . $rowIdx, "INSTITUCIÃ“N: " . $bankName);
+                $sheet->setCellValue('A' . $rowIdx, "INSTITUCIÓN: " . $bankName);
                 $sheet->mergeCells('A'.$rowIdx.':E'.$rowIdx);
                 $sheet->getStyle('A'.$rowIdx)->getFont()->setBold(true)->setSize(12);
                 $rowIdx++;
 
                 // Headers de tabla
-                $headers = ['AFILIACIÃ“N', 'ESTACIÃ“N', 'SISTEMA (CG)', 'BANCOS (TX)', 'DIFERENCIA'];
+                $headers = ['AFILIACIÓN', 'ESTACIÓN', 'SISTEMA (CG)', 'BANCOS (TX)', 'DIFERENCIA'];
                 $sheet->fromArray($headers, NULL, 'A' . $rowIdx);
                 $sheet->getStyle('A'.$rowIdx.':E'.$rowIdx)->applyFromArray($headerStyle);
                 $rowIdx++;
