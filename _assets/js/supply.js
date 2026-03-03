@@ -2370,7 +2370,7 @@ async function compras_facturas_table() {
             if (!data) return '<span class="text-muted">-</span>';
             if (row.RutaArchivo) {
               return `<a href="javascript:void(0);"
-                          onclick='abrirFacturaPDF(${row.factura_recibida_id}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                          onclick='ModalinvoicePdf(${row.factura_recibida_id}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
                           class="text-primary fw-bold"
                           title="Ver factura PDF">
                           <i class="fas fa-file-pdf text-danger"></i> ${data}
