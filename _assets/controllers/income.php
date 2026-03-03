@@ -3734,7 +3734,8 @@ public function anomalies_client_tickets()
             if ($eid == 1) $tabla = "banco_getnet";
             elseif ($eid == 3) $tabla = "banco_amex";
             elseif ($eid == 4) $tabla = "banco_banorte";
-            elseif ($eid == 5) $tabla = "banco_afirme";
+            elseif ($eid == 5) $tabla = "banco_bbva";
+            elseif ($eid == 13) $tabla = "banco_afirme";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
@@ -3838,7 +3839,8 @@ public function anomalies_client_tickets()
             if ($eid == 1) $tabla = "banco_getnet";
             elseif ($eid == 3) $tabla = "banco_amex";
             elseif ($eid == 4) $tabla = "banco_banorte";
-            elseif ($eid == 5) $tabla = "banco_afirme";
+            elseif ($eid == 5) $tabla = "banco_bbva";
+            elseif ($eid == 13) $tabla = "banco_afirme";
             
             if (empty($tabla)) {
                 echo json_encode(["status" => "success", "data" => []]);
