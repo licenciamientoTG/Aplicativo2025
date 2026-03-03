@@ -9,7 +9,11 @@
       "Bash(python:*)",
       "Bash(del:*)",
       "Bash(grep:*)",
-      "Bash(echo === $controller ===:*)"
+      "Bash(echo === $controller ===:*)",
+      "Bash(py:*)",
+      "Bash(Read-Host:*)",
+      "Bash(git:*)",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

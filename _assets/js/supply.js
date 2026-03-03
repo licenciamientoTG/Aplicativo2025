@@ -2159,328 +2159,427 @@ function eliminarAsignacion(movimiento) {
   );
 }
 
+// Filtro rápido activo (columna Estado col 22)
+var _filtroRapidoActivo = 'todas';
+
+function aplicarFiltroRapido(filtro) {
+  _filtroRapidoActivo = filtro;
+  // Marcar botón activo
+  document.querySelectorAll('#filtros_rapidos .btn').forEach(function(b){ b.classList.remove('activo'); });
+  document.getElementById('filtro_' + (filtro === 'sin_fac' ? 'sin_fac' : filtro)).classList.add('activo');
+
+  var table = $("#compras_combustible_table").DataTable();
+  if (filtro === 'todas') {
+    table.column(22).search('').draw();
+  } else if (filtro === 'sin_fac') {
+    table.column(22).search('Sin Factura SAT').draw();
+  } else if (filtro === 'asignadas') {
+    table.column(22).search('Asignada').draw();
+  } else if (filtro === 'petrotal') {
+    table.column(22).search('Con Petrotal').draw();
+  }
+}
+
 async function compras_facturas_table() {
-  if ($.fn.DataTable.isDataTable("#compras_combustible_table")) {
-    $("#compras_combustible_table").DataTable().destroy();
-    $("#compras_combustible_table thead .filter").remove();
-  }
-  // OBTENER TODOS LOS FILTROS
-  var fromDate = document.getElementById("from_compras").value;
-  var untilDate = document.getElementById("until_compras").value;
-  var codgas = document.getElementById("codgas_compras").value;
-  var proveedor = document.getElementById("proveedor_compras").value;
-  var company = document.getElementById("company_compras").value;
-
-  if (!fromDate || !untilDate) {
-    alertify.myAlert(
-      `<div class="container text-center text-danger">
-                <h4 class="mt-2 text-danger">¡Error!</h4>
-            </div>
-            <div class="text-dark">
-                <p class="text-center">Debe seleccionar las fechas para continuar.</p>
-            </div>`,
-    );
-    return;
-  }
-
-  // Agregar fila de filtros en el thead
-  $("#compras_combustible_table thead").prepend(
-    $("#compras_combustible_table thead tr").clone().addClass("filter"),
-  );
-  $("#compras_combustible_table thead tr.filter th").each(function (index) {
-    var col = $("#compras_combustible_table thead th").length / 2;
-    if (index < col) {
-      var title = $(this).text();
-      $(this).html(
-        '<input type="text" class="form-control form-control-sm" placeholder="' +
-          title +
-          '" />',
-      );
+    if ($.fn.DataTable.isDataTable("#compras_combustible_table")) {
+      $("#compras_combustible_table").DataTable().destroy();
+      $("#compras_combustible_table thead .filter").remove();
     }
-  });
+    // OBTENER TODOS LOS FILTROS
+    var fromDate = document.getElementById("from_compras").value;
+    var untilDate = document.getElementById("until_compras").value;
+    var codgas = document.getElementById("codgas_compras").value;
+    var proveedor = document.getElementById("proveedor_compras").value;
+    var company = 0;
 
-  $("#compras_combustible_table thead tr.filter th input").on(
-    "keyup change",
-    function () {
-      var index = $(this).parent().index();
-      var table = $("#compras_combustible_table").DataTable();
-      table.column(index).search(this.value).draw();
-    },
-  );
+    if (!fromDate || !untilDate) {
+      alertify.myAlert(
+        `<div class="container text-center text-danger">
+                  <h4 class="mt-2 text-danger">¡Error!</h4>
+              </div>
+              <div class="text-dark">
+                  <p class="text-center">Debe seleccionar las fechas para continuar.</p>
+              </div>`,
+      );
+      return;
+    }
 
-  let compras_combustible_table = $("#compras_combustible_table").DataTable({
-    order: [[0, "desc"]],
-    colReorder: false,
-    dom: '<"top"Bf>rt<"bottom"lip>',
-    scrollX: true,
-    scrollY: "calc(100vh - 350px)",
-    scrollCollapse: true,
-    paging: false,
-    buttons: [
-      {
-        className: "btn btn-warning",
-        text: '<i class="fas fa-exchange-alt"></i> Reconciliar',
-        action: function () {
-          abrirVistaReconciliacion();
-        },
-      },
-      {
-        extend: "excel",
-        className: "btn btn-success",
-        text: '<i class="fas fa-file-excel"></i> Excel',
-        title: "Compras_Facturas_" + fromDate + "_" + untilDate,
-        exportOptions: {
-          columns: ":visible:not(:last-child)",
-        },
-      },
-      {
-        extend: "print",
-        className: "btn btn-secondary",
-        text: '<i class="fas fa-print"></i> Imprimir',
-        exportOptions: {
-          columns: ":visible:not(:last-child)",
-        },
-      },
-      {
-        extend: "colvis",
-        className: "btn btn-info",
-        text: '<i class="fas fa-columns"></i> Columnas',
-      },
-      {
-        className: "btn btn-secondary",
-        text: '<i class="fas fa-list-ol"></i> Registros',
-        action: function () {
-          verResumenCompras();
-        },
-      },
-    ],
-    ajax: {
-      method: "POST",
-      data: {
-        fromDate: fromDate,
-        untilDate: untilDate,
-        codgas: codgas,
-        proveedor: proveedor,
-        company: company,
-      },
-      url: "/supply/compras_facturas_table",
-      timeout: 600000,
-      error: function (xhr, error, thrown) {
-        $(".table-responsive").removeClass("loading");
-        alertify.myAlert(
-          `<div class="container text-center text-danger">
-                        <h4 class="mt-2 text-danger">¡Error!</h4>
-                    </div>
-                    <div class="text-dark">
-                        <p class="text-center">No se pudieron cargar las facturas.</p>
-                        <small>${thrown}</small>
-                    </div>`,
+    // Guardar filtros en localStorage
+    localStorage.setItem('compras_filtros', JSON.stringify({
+      from: fromDate, until: untilDate, codgas: codgas, proveedor: proveedor
+    }));
+
+    // Resetear filtro rápido
+    _filtroRapidoActivo = 'todas';
+
+    // Agregar fila de filtros en el thead
+    $("#compras_combustible_table thead").prepend(
+      $("#compras_combustible_table thead tr").clone().addClass("filter"),
+    );
+    $("#compras_combustible_table thead tr.filter th").each(function (index) {
+      var col = $("#compras_combustible_table thead th").length / 2;
+      if (index < col) {
+        var title = $(this).text();
+        $(this).html(
+          '<input type="text" class="form-control form-control-sm" placeholder="' +
+            title +
+            '" />',
         );
+      }
+    });
+
+    $("#compras_combustible_table thead tr.filter th input").on(
+      "keyup change",
+      function () {
+        var index = $(this).parent().index();
+        var table = $("#compras_combustible_table").DataTable();
+        table.column(index).search(this.value).draw();
       },
-      beforeSend: function () {
-        $(".table-responsive").addClass("loading");
-      },
-      dataSrc: function (json) {
-        if (json.error) {
-          alertify.error(json.message);
-          return [];
+    );
+
+    let compras_combustible_table = $("#compras_combustible_table").DataTable({
+      order: [[0, "desc"]],
+      colReorder: false,
+      dom: '<"top"Bf>rt<"bottom"lip>',
+      scrollX: true,
+      scrollY: "calc(100vh - 350px)",
+      scrollCollapse: true,
+      paging: false,
+      fixedColumns: { left: 4 },
+      columnDefs: [
+        // Ocultar por defecto: Hora(1), Nro.Trn(2), Num.Est(4), Litros Fact CG(8),
+        // Nro Doc CG(9), Remisión(11), Precio Cotizado(14), Diferencia(15),
+        // %IVA(16), IEPS(17), Num.Fac Petrotal(19), Monto Petrotal(20), UUID(21)
+        // { targets: [
+        //     1,//hora
+        //      2,//numero de transaccion 
+        //     //  4, 
+        //     //  8, 9, 11, 14, 15, 16, 17, 19, 20, 21
+        //  ], visible: false }
+      ],
+      buttons: [
+        {
+          className: "btn btn-warning",
+          text: '<i class="fas fa-exchange-alt"></i> Reconciliar',
+          action: function () {
+            abrirVistaReconciliacion();
+          },
+        },
+        {
+          extend: "excel",
+          className: "btn btn-success",
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          title: "Compras_Facturas_" + fromDate + "_" + untilDate,
+          exportOptions: {
+            columns: ":visible:not(:last-child)",
+          },
+        },
+        {
+          extend: "print",
+          className: "btn btn-secondary",
+          text: '<i class="fas fa-print"></i> Imprimir',
+          exportOptions: {
+            columns: ":visible:not(:last-child)",
+          },
+        },
+        {
+          extend: "colvis",
+          className: "btn btn-info",
+          text: '<i class="fas fa-columns"></i> Columnas',
         }
-        // Actualizar contadores
-        $("#contador_facturas").text(json.data.length + " facturas");
-        // Calcular total
-        var totalMonto = json.data.reduce(
-          (sum, item) => sum + parseFloat(item.MontoFactura || 0),
-          0,
-        );
-        $("#total_monto_facturas").text(
-          "$" +
-            totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-        );
-        return json.data;
-      },
-    },
-    columns: [
-      { data: "FechaRecepcion", className: "text-left text-nowrap" },
-      { data: "NumeroEstacion", className: "text-left text-nowrap" },
-      {
-        data: "NombreEstacion",
-        className: "text-start text-nowrap",
-        render: function (data) {
-          return data
-            ? '<span class="bg-controlgas">' + data + "</span>"
-            : '<span class="text-muted">N/A</span>';
+      ],
+      ajax: {
+        method: "POST",
+        data: {
+          fromDate: fromDate,
+          untilDate: untilDate,
+          codgas: codgas,
+          proveedor: proveedor,
+          company: company,
         },
-      },
-      { data: "ProveedorNormalizado", className: "text-start text-nowrap" },
-      { data: "ProductoNormalizado", className: "text-start" },
-      {
-        data: "NumeroFacturaProveedorOriginal",
-        className: "text-start text-nowrap",
-        // render: function(data, type, row) {
-        //     // Hacer el folio clickeable para abrir el PDF en modal
-        //     if (row.RutaArchivo) {
-        //         return `<a href="javascript:void(0);"
-        //                 onclick='abrirFacturaPDF(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
-        //                 class="text-primary fw-bold"
-        //                 title="Click para ver la factura PDF">
-        //                     <i class="fas fa-file-pdf text-danger"></i> ${data}
-        //                 </a>`;
-        //     }
-        //     return data;
-        // }
-        render: function (data, type, row) {
-          // Hacer el folio clickeable para abrir el PDF en modal
-          if (row.RutaArchivo) {
-            return `<a href="javascript:void(0);" 
-                                onclick='ModalinvoicePdf(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
-                                class="text-primary fw-bold" 
-                                title="Click para ver la factura PDF">
-                                    <i class="fas fa-file-pdf text-danger"></i> ${data}
-                                </a>`;
+        url: "/supply/compras_combustible_table",
+        timeout: 600000,
+        error: function (xhr, error, thrown) {
+          $(".table-responsive").removeClass("loading");
+          alertify.myAlert(
+            `<div class="container text-center text-danger">
+                          <h4 class="mt-2 text-danger">¡Error!</h4>
+                      </div>
+                      <div class="text-dark">
+                          <p class="text-center">No se pudieron cargar las facturas.</p>
+                          <small>${thrown}</small>
+                      </div>`,
+          );
+        },
+        beforeSend: function () {
+          $(".table-responsive").addClass("loading");
+        },
+        dataSrc: function (json) {
+          if (json.error) {
+            alertify.error(json.message);
+            return [];
           }
-          return data;
+          var total = json.data.length;
+          var asignadas = json.data.filter(function(r){ return r.tiene_factura; }).length;
+          var pendientes = total - asignadas;
+          var pct = total > 0 ? Math.round(asignadas / total * 100) : 0;
+
+          // Calcular total monto controlgas
+          var totalMonto = json.data.reduce(
+            (sum, item) => sum + parseFloat(item.monto_factura_controlgas || 0), 0
+          );
+
+          // Actualizar badge header
+          $("#contador_facturas").text(total + " recepciones");
+          $("#total_monto_facturas").text(
+            "$" + totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })
+          );
+
+          // Actualizar KPI strip
+          $("#kpi_total").text(total);
+          $("#kpi_asignadas").text(asignadas);
+          $("#kpi_pendientes").text(pendientes);
+          $("#kpi_monto").text("$" + (totalMonto / 1000000).toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "M");
+          $("#kpi_strip").show();
+
+          // Actualizar barra de progreso
+          $("#barra_asignacion").css("width", pct + "%").attr("aria-valuenow", pct).text(pct + "%");
+          $("#barra_pct_text").text(pct + "% asignadas");
+          $("#barra_asignacion_wrap").show();
+
+          // Mostrar filtros rápidos y resetear botón activo
+          $("#filtros_rapidos").css('display', 'flex');
+          document.querySelectorAll('#filtros_rapidos .btn').forEach(function(b){ b.classList.remove('activo'); });
+          document.getElementById('filtro_todas').classList.add('activo');
+
+          return json.data;
         },
       },
-      {
-        data: "LitrosDocumentoSoporte",
-        className: "text-end",
-        render: $.fn.dataTable.render.number(",", ".", 2),
-      },
-      {
-        data: "MontoFactura",
-        className: "text-end",
-        render: $.fn.dataTable.render.number(",", ".", 2, "$"),
-      },
-      {
-        data: "SaldoFactura",
-        className: "text-end",
-        render: $.fn.dataTable.render.number(",", ".", 2, "$"),
-      },
-      {
-        data: "PrecioPorLitro",
-        className: "text-end",
-        render: function (data) {
-          return "$" + parseFloat(data).toFixed(4);
-        },
-      },
-      {
-        data: "PrecioCotizado",
-        className: "text-center",
-        render: function (data) {
-          return data === "PENDIENTE"
-            ? '<span class="badge bg-secondary">PENDIENTE</span>'
-            : "$" + parseFloat(data).toFixed(4);
-        },
-      },
-      {
-        data: "Diferencia",
-        className: "text-end",
-        render: function (data) {
-          var val = parseFloat(data);
-          var color = val > 0 ? "text-success" : val < 0 ? "text-danger" : "";
-          return '<span class="' + color + '">' + val.toFixed(4) + "</span>";
-        },
-      },
-      {
-        data: "PrecioFacturaCotizadoPetrotal",
-        className: "text-end",
-        render: function (data) {
-          return data > 0 ? "$" + parseFloat(data).toFixed(4) : "-";
-        },
-      },
-      {
-        data: "NumeroFacturaPetrotal",
-        className: "text-start",
-        render: function (data) {
-          return data || '<span class="text-muted">N/A</span>';
-        },
-      },
-      {
-        data: "EstadoAsignacion",
-        className: "text-center",
-        render: function (data, type, row) {
-          if (data === "ASIGNADA") {
-            if (row.TipoOperacion === 2) {
-              return '<span class="badge bg-info"><i class="fas fa-layer-group"></i> PETROTAL</span>';
+      columns: [
+        { data: "fecha", className: "text-start text-nowrap" },// col 0 — FECHA DESCARGA
+        { data: "hora", className: "text-start text-nowrap" }, // col 1 — HORA
+        { data: "nrotrn", className: "text-start text-nowrap" },// col 2 — NRO TRANSACCIÓN
+        { data: "estacion", className: "text-start text-nowrap" },// col 3 — ESTACIÓN (nombre)
+        { data: "numero_estacion", className: "text-center" },// col 4 — NUMERO DE ESTACION
+        { data: "proveedor_original", className: "text-start text-nowrap" },// col 6 — PROVEEDOR (vacío si es PETROTAL)
+        { data: "combustible", className: "text-start" }, // col 5 — PRODUCTO (combustible normalizado)
+        {
+          data: "factura_proveedor",
+          className: "text-start text-nowrap",
+          render: function (data, type, row) {
+            if (!data) return '<span class="text-muted">-</span>';
+            if (row.RutaArchivo) {
+              return `<a href="javascript:void(0);"
+                          onclick='ModalinvoicePdf(${row.factura_recibida_id}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                          class="text-primary fw-bold"
+                          title="Ver factura PDF">
+                          <i class="fas fa-file-pdf text-danger"></i> ${data}
+                      </a>`;
             }
-            return '<span class="badge bg-success"><i class="fas fa-check-circle"></i> ASIGNADA</span>';
-          } else {
-            return '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle"></i> PENDIENTE</span>';
-          }
+            return data;
+          },
         },
-      },
-      {
-        data: "UUID",
-        className: "text-start",
-      },
-      {
-        data: null,
-        orderable: false,
-        className: "text-center",
-        render: function (data, type, row) {
-          const btnRelacionar =
-            row.EstadoAsignacion === "PENDIENTE"
-              ? `<button class="btn btn-sm btn-primary" 
-                                onclick='abrirRelacionarFactura(${row.FacturaId})' 
-                                title="Relacionar con recepción">
-                            <i class="fas fa-link"></i>
-                        </button>`
-              : `<button class="btn btn-sm btn-secondary" 
-                                onclick='verRelacionFactura(${row.FacturaId})' 
-                                title="Ver relación">
-                            <i class="fas fa-eye"></i>
-                        </button>`;
+        { data: "proveedor_controlgas", className: "text-start text-nowrap" },// col 6 — PROVEEDOR (vacío si es PETROTAL)
 
-          return `<div class="btn-group btn-group-sm">${btnRelacionar}</div>`;
+
+        // col 7 — LITROS EN DOCUMENTOS SOPORTE (recaudado = lo que entró al tanque)
+        {
+          data: "recaudado",
+          className: "text-end",
+          render: $.fn.dataTable.render.number(",", ".", 2),
         },
+        // col 8 — LITROS FACTURADOS EN CONTROL GAS (fac_rec = litros del documento de compra)
+        {
+          data: "fac_rec",
+          className: "text-end",
+          render: $.fn.dataTable.render.number(",", ".", 2),
+        },
+        // col 9 — NRO DOC CONTROL GAS
+        {
+          data: "nro_fac",
+          className: "text-start text-nowrap",
+          render: function (data) {
+            return data || '<span class="text-muted">-</span>';
+          },
+        },
+       
+        // col 11 — REMISIÓN
+        {
+          data: "remision_factura",
+          className: "text-start text-nowrap",
+          render: function (data) {
+            return data || '<span class="text-muted">-</span>';
+          },
+        },
+        // col 12 — MONTO FACTURA (de ControlGas)
+        {
+          data: "monto_factura_controlgas",
+          className: "text-end",
+          render: $.fn.dataTable.render.number(",", ".", 2, "$"),
+        },
+        // col 13 — PRECIO X LITRO FACTURA (calculado: monto / fac_rec)
+        {
+          data: null,
+          className: "text-end",
+          render: function (data, type, row) {
+            var litros = parseFloat(row.fac_rec || 0);
+            var monto = parseFloat(row.monto_factura_controlgas || 0);
+            if (litros <= 0 || monto <= 0) return '<span class="text-muted">-</span>';
+            return "$" + (monto / litros).toFixed(4);
+          },
+        },
+        // col 14 — PRECIO COTIZADO (viene del SAT si hay factura asignada)
+        {
+          data: null,
+          className: "text-end",
+          render: function (data, type, row) {
+            if (!row.tiene_factura || !row.total_factura_asignada) return '<span class="badge bg-secondary">Pendiente</span>';
+            var litros = parseFloat(row.fac_rec || 0);
+            var total = parseFloat(row.total_factura_asignada || 0);
+            if (litros <= 0) return '<span class="text-muted">-</span>';
+            return "$" + (total / litros).toFixed(4);
+          },
+        },
+        // col 15 — DIFERENCIA (Precio Cotizado SAT - Precio x Litro CG)
+        {
+          data: null,
+          className: "text-end",
+          render: function (data, type, row) {
+            var litros = parseFloat(row.fac_rec || 0);
+            var montoCG = parseFloat(row.monto_factura_controlgas || 0);
+            var totalSAT = parseFloat(row.total_factura_asignada || 0);
+            if (!row.tiene_factura || litros <= 0 || montoCG <= 0 || totalSAT <= 0) return '<span class="text-muted">-</span>';
+            var precioCG = montoCG / litros;
+            var precioSAT = totalSAT / litros;
+            var diff = precioSAT - precioCG;
+            var color = diff > 0 ? "text-danger" : diff < 0 ? "text-success" : "";
+            return '<span class="' + color + '">' + (diff >= 0 ? "+" : "") + diff.toFixed(4) + "</span>";
+          },
+        },
+        // col 16 — % IVA FACTURADO (de conceptos SAT)
+        {
+          data: null,
+          className: "text-center",
+          render: function (data, type, row) {
+            if (!row.tiene_factura) return '<span class="text-muted">-</span>';
+            // La tasa viene en ValorUnitario de conceptos o se puede inferir del total
+            // Por ahora mostramos indicador de si tiene factura
+            return '<span class="text-muted">-</span>';
+          },
+        },
+        // col 17 — IEPS x LITRO (de conceptos SAT: ImporteImpuesto / Cantidad)
+        {
+          data: null,
+          className: "text-end",
+          render: function (data, type, row) {
+            if (!row.tiene_factura) return '<span class="text-muted">-</span>';
+            return '<span class="text-muted">-</span>';
+          },
+        },
+        // col 18 — PROVEEDOR QUE REALIZA LA FACTURA FINAL
+        {
+          data: "emisor_factura_asignada",
+          className: "text-start text-nowrap",
+          render: function (data, type, row) {
+            if (!data) return '<span class="text-muted">-</span>';
+            // Resaltar si es Petrotal
+            if (data.toUpperCase().includes("PETROTAL")) {
+              return '<span class="badge bg-warning text-dark"><i class="fas fa-building"></i> ' + data + '</span>';
+            }
+            return data;
+          },
+        },
+        // col 19 — NUMERO DE FACTURA PETROTAL
+        {
+          data: "folio_petrotal",
+          className: "text-start text-nowrap",
+          render: function (data) {
+            return data || '<span class="text-muted">-</span>';
+          },
+        },
+        // col 20 — MONTO FACTURA PETROTAL
+        {
+          data: "monto_petrotal",
+          className: "text-end",
+          render: function (data) {
+            if (!data || parseFloat(data) === 0) return '<span class="text-muted">-</span>';
+            return "$" + parseFloat(data).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+          },
+        },
+        // col 21 — UUID (truncado, click para copiar)
+        {
+          data: "uuid",
+          className: "text-start",
+          render: function (data) {
+            if (!data) return '<span class="text-muted">-</span>';
+            return '<span title="' + data + '" style="cursor:pointer;font-family:monospace" ' +
+              'onclick="navigator.clipboard.writeText(\'' + data + '\');alertify.success(\'UUID copiado\')">' +
+              data.substring(0, 8) + '…</span>';
+          },
+        },
+        // col 22 — ESTADO
+        {
+          data: "tiene_factura",
+          className: "text-center",
+          render: function (data, type, row) {
+            if (data) {
+              if (row.folio_petrotal) {
+                return '<span class="badge bg-info"><i class="fas fa-layer-group"></i> Con Petrotal</span>';
+              }
+              return '<span class="badge bg-success"><i class="fas fa-check-circle"></i> Asignada</span>';
+            }
+            if (row.nro_fac) {
+              return '<span class="badge bg-warning text-dark"><i class="fas fa-exclamation-circle"></i> Sin Factura SAT</span>';
+            }
+            return '<span class="badge bg-secondary"><i class="fas fa-minus-circle"></i> Sin Documento</span>';
+          },
+        },
+        // col 23 — ACCIONES
+        {
+          data: null,
+          orderable: false,
+          className: "text-center",
+          render: function (data, type, row) {
+            if (!row.tiene_factura) {
+              return `<button class="btn btn-sm btn-primary"
+                          onclick='abrirModalAsignarFactura(${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                          title="Asignar factura a recepción">
+                          <i class="fas fa-link"></i>
+                      </button>`;
+            }
+            return `<button class="btn btn-sm btn-outline-secondary"
+                        onclick='abrirModalAsignarFactura(${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                        title="Ver / editar asignación">
+                        <i class="fas fa-eye"></i>
+                    </button>`;
+          },
+        },
+      ],
+      createdRow: function (row, data, dataIndex) {
+        // // Highlight de filas según estado
+        // if (data.tiene_factura && data.folio_petrotal) {
+        //   $(row).addClass("fila-con-petrotal");
+        // } else if (!data.tiene_factura && data.nro_fac) {
+        //   $(row).addClass("fila-sin-factura");
+        // }
+        // // Tooltip al hacer hover — muestra info SAT resumida
+        // var tooltip = [];
+        // if (data.emisor_factura_asignada) tooltip.push('Emisor SAT: ' + data.emisor_factura_asignada);
+        // if (data.total_factura_asignada)  tooltip.push('Total SAT: $' + parseFloat(data.total_factura_asignada).toLocaleString('es-MX', {minimumFractionDigits:2}));
+        // if (data.destino_factura)         tooltip.push('Destino: ' + data.destino_factura);
+        // if (data.uuid)                    tooltip.push('UUID: ' + data.uuid.substring(0,8) + '…');
+        // if (tooltip.length) {
+        //   $(row).attr('title', tooltip.join(' | ')).attr('data-bs-toggle', 'tooltip');
+        //   new bootstrap.Tooltip(row, { placement: 'top', trigger: 'hover', html: false });
+        // }
       },
-    ],
-    createdRow: function (row, data, dataIndex) {
-      // // Resaltar filas según estado
-      // if (data.NombreEstacion != '' && data.EstadoAsignacion === 'PENDIENTE') {
-      //     $(row).addClass('table-warning');
-      // } else if (data.TipoOperacion === 2) {
-      //     $(row).addClass('table-info');
-      // }
-      // if (data.EstadoAsignacion === 'PENDIENTE' && data.NumeroEstacion !== '00') {
-      //     $(row).addClass('table-warning');
-      // }
-    },
-    initComplete: function () {
-      $(".table-responsive").removeClass("loading");
-      alertify.success("Tabla cargada exitosamente");
-    },
-    footerCallback: function (row, data, start, end, display) {
-      var api = this.api();
-
-      // Calcular totales
-      var totalLitros = api
-        .column(6, { page: "current" })
-        .data()
-        .reduce(function (a, b) {
-          return parseFloat(a) + parseFloat(b || 0);
-        }, 0);
-
-      var totalFacturas = api
-        .column(7, { page: "current" })
-        .data()
-        .reduce(function (a, b) {
-          return parseFloat(a) + parseFloat(b || 0);
-        }, 0);
-
-      // Actualizar footer
-      $("#footer_litros").html(
-        "<strong>" +
-          totalLitros.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
-          "</strong>",
-      );
-      $("#footer_monto").html(
-        "<strong>$" +
-          totalFacturas.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
-          "</strong>",
-      );
-    },
-  });
+      initComplete: function () {
+        $(".table-responsive").removeClass("loading");
+        alertify.success("Tabla cargada exitosamente");
+      },
+      footerCallback: function (row, data, start, end, display) {
+      },
+    });
 }
 
 
@@ -3045,9 +3144,9 @@ async function loadFacturasReconciliationTable(
         className: "text-start text-nowrap",
         render: function (data, type, row) {
           // Hacer el folio clickeable para abrir el PDF en modal
-          if (row.RutaArchivo) {
+            if (row.RutaArchivo) {
             return `<a href="javascript:void(0);" 
-                                onclick='ModalinvoicePdf(${row.FacturaId}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
+                                onclick='ModalinvoicePdf(${row.factura_recibida_id}, ${JSON.stringify(row).replace(/'/g, "&apos;")})' 
                                 class="text-primary fw-bold" 
                                 title="Click para ver la factura PDF">
                                     <i class="fas fa-file-pdf text-danger"></i> ${data}
@@ -3349,6 +3448,7 @@ function confirmarRelacion() {
 
 async function ModalinvoicePdf(id, data) {
   try {
+    console.log("Abriendo modal PDF para factura ID:", id, data);
     $("#ModalinvoicePdf").modal("show"); // Abre el modal
     const response = await fetch("/supply/ModalinvoicePdf", {
       method: "POST",
