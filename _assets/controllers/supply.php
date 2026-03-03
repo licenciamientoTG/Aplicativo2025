@@ -3037,9 +3037,6 @@ class Supply
     public function ModalinvoicePdf()
     {
         $facturaId = $_POST['FacturaId'] ?? null;
-        echo '<pre>';
-        var_dump( $facturaId);
-        die();
         if (!$facturaId) {
             echo '<div class="modal-body">Factura no especificada.</div>';
             return;
