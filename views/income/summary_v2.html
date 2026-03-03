@@ -405,7 +405,24 @@
         const eid = $('#bancoSelect').val();
         const $asel = $('#afiliacionSelect').empty().append('<option value="">Todas</option>');
         if(eid == "0") return;
-        stationConfig.filter(r => r.entidad_id == eid).forEach(c => $asel.append(`<option value="${c.afiliacion}">${c.afiliacion}</option>`));
+        
+        const unicos = new Set();
+        stationConfig.filter(r => r.entidad_id == eid).forEach(c => {
+            // Soporte para afiliaciones separadas por , / -
+            const parts = String(c.afiliacion).split(/[,\/\-]/).map(p => p.trim());
+            parts.forEach(p => {
+                if(p && !unicos.has(p)) {
+                    unicos.add(p);
+                    $asel.append(`<option value="${p}">${p}</option>`);
+                }
+            });
+            
+            // También agregar la cadena completa si es compuesta
+            if (parts.length > 1 && !unicos.has(c.afiliacion)) {
+                unicos.add(c.afiliacion);
+                $asel.append(`<option value="${c.afiliacion}">${c.afiliacion}</option>`);
+            }
+        });
     }
 
     // --- CARGA DE DATOS ---

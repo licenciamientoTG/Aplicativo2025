@@ -5156,11 +5156,11 @@ public function stamped_invoices_detail(): void
             }
 
             if (!empty($afiliacion)) {
-                // SOPORTE MULTI-AFILIACIÃ“N
-                $afil_parts = array_map('trim', explode('/', $afiliacion));
+                // SOPORTE MULTI-AFILIACION (Coma, Guion, Diagonal)
+                $afil_parts = array_map('trim', preg_split('/[,\/\-]/', $afiliacion));
                 $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
                 
-                // Construir condiciones LIKE dinÃ¡micas para el fallback
+                // Construir condiciones LIKE dinamicas para el fallback
                 $likeConditions = [];
                 $likeParams = [];
                 foreach ($afil_parts as $part) {
@@ -5172,6 +5172,7 @@ public function stamped_invoices_detail(): void
 
                 $filterSql .= " AND (
                                     G.afiliacion IN ($placeholders) 
+                                    OR G.afiliacion = ?
                                     OR (G.afiliacion IS NULL AND EXISTS (
                                         SELECT 1 FROM Conciliacion_V2_Detalles D_Check 
                                         WHERE D_Check.grupo_id = G.id 
@@ -5179,7 +5180,7 @@ public function stamped_invoices_detail(): void
                                           AND ($fallbackSql)
                                     ))
                                 ) ";
-                $params = array_merge($params, $afil_parts, $likeParams);
+                $params = array_merge($params, $afil_parts, [$afiliacion], $likeParams);
             }
 
             // 2. QUERY PRINCIPAL
@@ -5417,8 +5418,12 @@ public function stamped_invoices_detail(): void
                 $params[] = $entidad_id;
             }
             if (!empty($afiliacion)) {
-                $sql .= " AND G.afiliacion = ? ";
-                $params[] = $afiliacion;
+                // SOPORTE MULTI-AFILIACION (Coma, Guion, Diagonal)
+                $afil_parts = array_map('trim', preg_split('/[,\/\-]/', $afiliacion));
+                $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+                
+                $sql .= " AND (G.afiliacion IN ($placeholders) OR G.afiliacion = ?) ";
+                $params = array_merge($params, $afil_parts, [$afiliacion]);
             }
 
             $sql .= " ORDER BY G.fecha_operativa DESC, G.id DESC";
