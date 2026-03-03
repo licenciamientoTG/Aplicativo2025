@@ -20,15 +20,15 @@
     <div class="card-body">
         <div class="row mb-3 g-2">
             <div class="col-auto">
-                <label class="form-label mb-1 small fw-semibold">Estación</label>
-                <select id="filtro_estacion" class="form-select form-select-sm">
-                    <option value="">Todas</option>
-                </select>
-            </div>
-            <div class="col-auto">
                 <label class="form-label mb-1 small fw-semibold">Grupo</label>
                 <select id="filtro_grupo" class="form-select form-select-sm">
                     <option value="">Todos</option>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="form-label mb-1 small fw-semibold">Estación</label>
+                <select id="filtro_estacion" class="form-select form-select-sm">
+                    <option value="">Todas</option>
                 </select>
             </div>
             <div class="col-auto">
@@ -157,7 +157,7 @@
                 let numVal = val => parseFloat(val) || 0;
 
                 [4, 5, 6].forEach(function (colIdx) {
-                    let total = api.column(colIdx, { page: 'all' }).data()
+                    let total = api.column(colIdx, { search: 'applied' }).data()
                         .reduce((a, b) => numVal(a) + numVal(b), 0);
                     let cls = colIdx === 6 ? (total < 0 ? 'text-danger' : (total > 0 ? 'text-success' : '')) : '';
                     $(api.column(colIdx).footer()).html(
@@ -169,23 +169,58 @@
             initComplete: function () {
                 let api = this.api();
 
-                // Poblar selects con valores únicos de cada columna
-                let colMap = { '#filtro_estacion': 0, '#filtro_grupo': 1, '#filtro_combustible': 3 };
-
-                Object.entries(colMap).forEach(([selector, colIdx]) => {
-                    let values = api.column(colIdx).data().unique().sort().toArray();
-                    values.forEach(function (val) {
-                        if (val) $(selector).append(`<option value="${val}">${val}</option>`);
-                    });
+                // Construir mapa grupo → [estaciones] con todos los datos
+                let grupoEstacionMap = {};
+                api.column(1).data().each(function (grupo, i) {
+                    let estacion = api.column(0).data()[i];
+                    if (!grupoEstacionMap[grupo]) grupoEstacionMap[grupo] = new Set();
+                    grupoEstacionMap[grupo].add(estacion);
                 });
 
-                // Conectar cambios de filtro
+                // Poblar Grupo y Combustible (valores únicos fijos)
+                api.column(1).data().unique().sort().toArray().forEach(function (val) {
+                    if (val) $('#filtro_grupo').append(`<option value="${val}">${val}</option>`);
+                });
+                api.column(3).data().unique().sort().toArray().forEach(function (val) {
+                    if (val) $('#filtro_combustible').append(`<option value="${val}">${val}</option>`);
+                });
+
+                // Función para repoblar Estación según el grupo seleccionado
+                function poblarEstaciones(grupo) {
+                    let estacionActual = $('#filtro_estacion').val();
+                    $('#filtro_estacion').find('option:not(:first)').remove();
+                    let estaciones;
+                    if (grupo && grupoEstacionMap[grupo]) {
+                        estaciones = Array.from(grupoEstacionMap[grupo]).sort();
+                    } else {
+                        estaciones = api.column(0).data().unique().sort().toArray();
+                    }
+                    estaciones.forEach(function (val) {
+                        if (val) $('#filtro_estacion').append(`<option value="${val}">${val}</option>`);
+                    });
+                    // Mantener selección si sigue siendo válida
+                    if (estaciones.includes(estacionActual)) {
+                        $('#filtro_estacion').val(estacionActual);
+                    } else {
+                        $('#filtro_estacion').val('');
+                    }
+                }
+
+                poblarEstaciones('');
+
+                // Cambio de Grupo: repoblar estaciones y aplicar filtros
+                $('#filtro_grupo').on('change', function () {
+                    let grupo = this.value;
+                    poblarEstaciones(grupo);
+                    api.column(1).search(grupo ? '^' + $.fn.dataTable.util.escapeRegex(grupo) + '$' : '', true, false);
+                    api.column(0).search('', true, false).draw();
+                    $('#filtro_estacion').trigger('change');
+                });
+
                 $('#filtro_estacion').on('change', function () {
                     api.column(0).search(this.value ? '^' + $.fn.dataTable.util.escapeRegex(this.value) + '$' : '', true, false).draw();
                 });
-                $('#filtro_grupo').on('change', function () {
-                    api.column(1).search(this.value ? '^' + $.fn.dataTable.util.escapeRegex(this.value) + '$' : '', true, false).draw();
-                });
+
                 $('#filtro_combustible').on('change', function () {
                     api.column(3).search(this.value ? '^' + $.fn.dataTable.util.escapeRegex(this.value) + '$' : '', true, false).draw();
                 });
