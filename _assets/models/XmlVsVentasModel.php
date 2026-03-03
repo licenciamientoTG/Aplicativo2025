@@ -7,25 +7,32 @@ class XmlVsVentasModel extends Model {
             DECLARE @UltimoDiaMesAnterior DATE = DATEADD(DAY, -1, DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()), 0))
 
             SELECT
-                [nombre_estacion],
-                CONVERT(VARCHAR(10), [fecha], 23) AS [fecha],
+                v.[nombre_estacion],
+                CASE 
+                    WHEN e.[grupo] = 'TG' THEN 'DIAZ GAS'
+                    ELSE UPPER(e.[grupo])
+                END AS [grupo],
+                CONVERT(VARCHAR(10), v.[fecha], 23) AS [fecha],
                 CASE
-                    WHEN [octanaje] = 87 THEN 'T-Maxima'
-                    WHEN [octanaje] = 91 THEN 'T-Super'
+                    WHEN v.[octanaje] = 87 THEN 'T-Maxima'
+                    WHEN v.[octanaje] = 91 THEN 'T-Super'
                     ELSE 'Diesel'
                 END AS [tipo_combustible],
-                [volumen_total_xml]                                                          AS [volumen_xml],
-                [venta_estacion]                                                             AS [volumen_ventas],
-                [venta_estacion] - [volumen_total_xml]                                       AS [dif_volumen],
+                v.[volumen_total_xml] AS [volumen_xml],
+                v.[venta_estacion] AS [volumen_ventas],
+                v.[venta_estacion] - v.[volumen_total_xml] AS [dif_volumen],
                 CASE
-                    WHEN [volumen_total_xml] = 0 THEN NULL
-                    ELSE ROUND(([venta_estacion] - [volumen_total_xml]) / [volumen_total_xml] * 100, 2)
-                END                                                                          AS [dif_porcentaje],
-                [archivo_origen]                                                             AS [archivo]
-            FROM [TG].[dbo].[cv_ventas_diarias]
-            WHERE [fecha] BETWEEN @PrimerDiaMesAnterior AND @UltimoDiaMesAnterior
-            ORDER BY [nombre_estacion], [fecha]
+                    WHEN v.[volumen_total_xml] = 0 THEN NULL
+                    ELSE ROUND((v.[venta_estacion] - v.[volumen_total_xml]) / v.[volumen_total_xml] * 100, 2)
+                END AS [dif_porcentaje],
+                v.[archivo_origen] AS [archivo]
+            FROM [TG].[dbo].[cv_ventas_diarias] v
+            INNER JOIN [TG].[dbo].[Estaciones] e
+                ON v.[codgas] = e.[Codigo]
+            WHERE v.[fecha] BETWEEN @PrimerDiaMesAnterior AND @UltimoDiaMesAnterior
+            ORDER BY v.[nombre_estacion], v.[fecha]
         ";
+
         return $this->sql->select($query) ?: [];
     }
 }
