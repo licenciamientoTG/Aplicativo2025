@@ -20,7 +20,8 @@ class XmlVsVentasModel extends Model {
                 CASE
                     WHEN [volumen_total_xml] = 0 THEN NULL
                     ELSE ROUND(([venta_estacion] - [volumen_total_xml]) / [volumen_total_xml] * 100, 2)
-                END                                                                          AS [dif_porcentaje]
+                END                                                                          AS [dif_porcentaje],
+                [archivo_origen]                                                             AS [archivo]
             FROM [TG].[dbo].[cv_ventas_diarias]
             WHERE [fecha] BETWEEN @PrimerDiaMesAnterior AND @UltimoDiaMesAnterior
             ORDER BY [nombre_estacion], [fecha]
