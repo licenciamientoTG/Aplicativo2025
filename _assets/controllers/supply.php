@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Incluir la clase generadora (ajusta la ruta según tu estructura)
 require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/GeneradorXMLPrecios.php';
 
@@ -2003,145 +2003,6 @@ class Supply
 
 
 
-
-    // public function resumen_payment_table() {
-    //     ini_set('max_execution_time', 5000);
-    //     ini_set('memory_limit', '1024M');
-    //     set_time_limit(0);
-    //     header('Content-Type: application/json');
-
-    //     $postData = [
-    //         'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
-    //         'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
-    //         'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
-    //         'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
-    //         'company' => isset($_POST['company']) ? $_POST['company'] : '0'
-    //     ];
-
-    //     if (!$postData['from'] || !$postData['until']) {
-    //         json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
-    //         return;
-    //     }
-
-    //     try {
-    //         $ch = curl_init('http://192.168.0.109:82/api/resumen_movimientos_tanques/');
-    //         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    //         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
-    //         curl_setopt($ch, CURLOPT_POST, true);
-    //         curl_setopt($ch, CURLOPT_TIMEOUT, 600);
-    //         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
-
-    //         $response = curl_exec($ch);
-    //         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-
-    //         if (curl_errno($ch)) {
-    //             throw new Exception('Error de cURL: ' . curl_error($ch));
-    //         }
-
-    //         curl_close($ch);
-
-    //         if ($httpCode !== 200) {
-    //             throw new Exception("Error HTTP: $httpCode");
-    //         }
-
-    //         $apiData = json_decode($response, true);
-
-    //         if (json_last_error() !== JSON_ERROR_NONE) {
-    //             throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
-    //         }
-
-    //        // ========== NUEVA LÓGICA: Obtener facturas asignadas ==========
-    //         $facturasAsignadas = $this->facturasRecibidasModel->obtener_facturas_asignadas();
-    //         $data = [];
-
-    //         if (isset($apiData) && is_array($apiData)) {
-    //             foreach ($apiData as $row) {
-    //                 if (empty($row['nrotrn'])) {
-    //                     continue;
-    //                 }
-
-    //                 // Normalizar combustible
-    //                 $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
-    //                 $norm = mb_strtolower($raw, 'UTF-8');
-    //                 $norm = str_replace(['.', '-', '_'], ' ', $norm);
-    //                 $norm = preg_replace('/\s+/', ' ', $norm);
-    //                 $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
-
-    //                 $combustible = $raw;
-    //                 if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
-    //                     $combustible = 'Regular';
-    //                 } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
-    //                     $combustible = 'Diesel';
-    //                 } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
-    //                     $combustible = 'Premium';
-    //                 } else {
-    //                     $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8"); 
-    //                 }
-
-    //                 // Normalizar proveedor
-    //                 $proveedor_controlgas = $row['proveedor_controlgas'];
-    //                 if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
-    //                     $proveedor_controlgas = 'TESORO';
-    //                 }
-    //                 if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
-    //                     $proveedor_controlgas = 'PREMIERGAS';
-    //                 }
-    //                 if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
-    //                     $proveedor_controlgas = 'MGC';
-    //                 }
-
-    //                 // ========== BUSCAR FACTURA ASIGNADA ==========
-    //                 $nrotrn = $row['nrotrn'];
-    //                 $codgas = $row['numero_estacion']; // Usar numero_estacion como codgas
-
-    //                 $facturaAsignada = null;
-    //                 $uuidAsignado = '';
-    //                 $folioAsignado = '';
-    //                 $tieneFactura = false;
-
-    //                 // Buscar en el array de facturas asignadas
-    //                 $key = $nrotrn . '_' . $codgas;
-    //                 if (isset($facturasAsignadas[$key])) {
-    //                     $facturaAsignada = $facturasAsignadas[$key];
-    //                     $uuidAsignado = $facturaAsignada['UUID'];
-    //                     $folioAsignado = $facturaAsignada['Folio'];
-    //                     $tieneFactura = true;
-    //                 }
-
-    //                 $data[] = [
-    //                     'fecha'                       => $row['fecha'] ?? '',
-    //                     'hora'                        => $row['hora_formateada'] ?? '',
-    //                     'nrotrn'                      => $nrotrn,
-    //                     'estacion'                    => $row['estacion'] ?? '',
-    //                     'numero_estacion'             => $codgas,
-    //                     'proveedor_original'          => $proveedor_controlgas,
-    //                     'num_fac_proveedor'           => $folioAsignado, // Folio de la factura asignada
-    //                     'proveedor_final'             => $proveedor_controlgas,
-    //                     'combustible'                 => $combustible,
-    //                     'capmax'                      => $row['capmax'] ?? 0,
-    //                     'recaudado'                   => $row['recaudado'] ?? 0,
-    //                     'fac_rec'                     => $row['fac_rec'] ?? 0,
-    //                     'nro_fac'                     => $row['nro_fac'] ?? '',
-    //                     'uuid'                        => $uuidAsignado, // UUID de la factura asignada
-    //                     'proveedor_controlgas'        => $proveedor_controlgas,
-    //                     'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
-    //                     'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
-    //                     'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
-    //                     'graprd'                      => $row['graprd'] ?? '',
-    //                     'tiene_factura'               => $tieneFactura, // Flag para la UI
-    //                     'factura_id'                  => $tieneFactura ? $facturaAsignada['Id'] : null
-    //                 ];
-    //             }
-    //         }
-
-    //         json_output(['data' => $data]);
-
-    //     } catch (Exception $e) {
-    //         error_log("Error en resumen_payment_table: " . $e->getMessage());
-    //         json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
-    //     }
-    // }
-
     public function resumen_payment_table()
     {
         ini_set('max_execution_time', 5000);
@@ -2230,8 +2091,6 @@ class Supply
                     // ========== DATOS YA VIENEN CON LA FACTURA ASIGNADA ==========
                     $tieneFactura = (bool)($row['tiene_factura_asignada'] ?? 0);
                     $uuidMostrar = $tieneFactura ? ($row['uuid_asignado'] ?? '') : ($row['uuid_original'] ?? '');
-                    $folioMostrar = $tieneFactura ? ($row['folio_asignado'] ?? '') : ($row['nro_fac'] ?? '');
-
                     $data[] = [
                         'fecha'                       => $row['fecha'] ?? '',
                         'hora'                        => $row['hora_formateada'] ?? '',
@@ -2240,8 +2099,8 @@ class Supply
                         'estacion'                    => $row['estacion'] ?? '',
                         'numero_estacion'             => $row['numero_estacion'] ?? '',
                         'proveedor_original'          => $proveedor_controlgas,
-                        'num_fac_proveedor'           => $folioMostrar,
-                        'proveedor_final'             => $proveedor_controlgas,
+                        'factura_proveedor'           => $row['factura_proveedor'],
+                        'proveedor_final'             => (strtoupper($proveedor_controlgas) === 'PETROTAL S.A. DE C.V.') ? '' : $proveedor_controlgas,
                         'combustible'                 => $combustible,
                         'capmax'                      => $row['capmax'] ?? 0,
                         'recaudado'                   => $row['recaudado'] ?? 0,
@@ -2947,57 +2806,193 @@ class Supply
     }
 
 
-    public function compras_facturas_table(){
-        if ($rows = $this->facturasRecibidasModel->compras_facturas_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas'], $_POST['proveedor'], $_POST['company'])) {
-            $data = [];
-            foreach ($rows as $row) {
+    // public function compras_facturas_table(){
+    //     if ($rows = $this->facturasRecibidasModel->compras_facturas_table($_POST['fromDate'], $_POST['untilDate'], $_POST['codgas'], $_POST['proveedor'], $_POST['company'])) {
+    //         $data = [];
+    //         foreach ($rows as $row) {
 
-                $litros = is_numeric($row['LitrosDocumentoSoporte'] ?? null) ? floatval($row['LitrosDocumentoSoporte']) : 0.0;
-                $monto = is_numeric($row['MontoFactura'] ?? null) ? floatval($row['MontoFactura']) : 0.0;
-                $precioPorLitro = ($litros > 0) ? $monto / $litros : 0.0;
-                $proveedor = $this->normalizarProveedor((string) ($row['ProveedorOriginal'] ?? ''));
-                $saldoFactura = is_numeric($row['SaldoFactura'] ?? null) ? floatval($row['SaldoFactura']) : 0.0;
+    //             $litros = is_numeric($row['LitrosDocumentoSoporte'] ?? null) ? floatval($row['LitrosDocumentoSoporte']) : 0.0;
+    //             $monto = is_numeric($row['MontoFactura'] ?? null) ? floatval($row['MontoFactura']) : 0.0;
+    //             $precioPorLitro = ($litros > 0) ? $monto / $litros : 0.0;
+    //             $proveedor = $this->normalizarProveedor((string) ($row['ProveedorOriginal'] ?? ''));
+    //             $saldoFactura = is_numeric($row['SaldoFactura'] ?? null) ? floatval($row['SaldoFactura']) : 0.0;
 
-                $numeroEstacion = ($row['numero_estacion'] != "" ? $row['numero_estacion'] : '<span class="badge bg-warning text-dark">' . $row['Destino'] . '</span>');
-                $producto = ($row['producto_tanque_nombre'] != "" ? $row['producto_tanque_nombre'] : '<span class="badge bg-warning text-dark">' . $row['producto_tanque'] . '</span>');
+    //             $numeroEstacion = ($row['numero_estacion'] != "" ? $row['numero_estacion'] : '<span class="badge bg-warning text-dark">' . $row['Destino'] . '</span>');
+    //             $producto = ($row['producto_tanque_nombre'] != "" ? $row['producto_tanque_nombre'] : '<span class="badge bg-warning text-dark">' . $row['producto_tanque'] . '</span>');
 
-                // Número de estación
-                // $numeroEstacion = $row['numero_estacion'] ?? '00';
-                // if ($numeroEstacion == '00' && !empty($row['CodigoEstacion'])) {
-                //     $numeroEstacion = str_pad($row['CodigoEstacion'], 2, '0', STR_PAD_LEFT);
-                // }
-                // Nombre de estación
-                $nombreEstacion = $row['estacion_control_gas'] ?? '';
-                $data[] = array(
-                    'FacturaId'                      => $row['FacturaId'],
-                    'FechaRecepcion'                 => $row['FechaRecepcion'],
-                    'NumeroEstacion'                 => $numeroEstacion,
-                    'NombreEstacion'                 => $nombreEstacion,
-                    'Empresa'                        => $row['Empresa'],
-                    'ProveedorOriginal'              => $row['ProveedorOriginal'],
-                    'ProveedorNormalizado'           => $proveedor,
-                    'ProductoNormalizado'            => $producto,
-                    'NumeroFacturaProveedorOriginal' => $row['NumeroFacturaProveedorOriginal'],
-                    'LitrosDocumentoSoporte'         => round($litros, 4),
-                    'MontoFactura'                   => round($monto, 2),
-                    'SaldoFactura'                   => round($saldoFactura, 2),
-                    'PrecioPorLitro'                 => round($precioPorLitro, 6),
-                    'PrecioCotizado'                 => 'PENDIENTE',
-                    'Diferencia'                     => 0,
-                    'PrecioFacturaCotizadoPetrotal'  => 0,
-                    'NumeroFacturaPetrotal'          => $row['NumeroFacturaPetrotal'] ?? '',
-                    'EstadoAsignacion'               => $row['EstadoAsignacion'],
-                    'UUID'                           => $row['UUID'],
-                    'RutaArchivo'                    => $row['RutaArchivo'],
-                    'NombreArchivo'                  => $row['NombreArchivo'],
-                    'TipoOperacion'                  => $row['TipoOperacion'],
-                    'NumeroTransaccion'              => $row['NumeroTransaccion'],
-                    'CodigoEstacion'                 => $row['CodigoEstacion'],
-                );
+    //             // Número de estación
+    //             // $numeroEstacion = $row['numero_estacion'] ?? '00';
+    //             // if ($numeroEstacion == '00' && !empty($row['CodigoEstacion'])) {
+    //             //     $numeroEstacion = str_pad($row['CodigoEstacion'], 2, '0', STR_PAD_LEFT);
+    //             // }
+    //             // Nombre de estación
+    //             $nombreEstacion = $row['estacion_control_gas'] ?? '';
+    //             $data[] = array(
+    //                 'FacturaId'                      => $row['FacturaId'],
+    //                 'FechaRecepcion'                 => $row['FechaRecepcion'],
+    //                 'NumeroEstacion'                 => $numeroEstacion,
+    //                 'NombreEstacion'                 => $nombreEstacion,
+    //                 'Empresa'                        => $row['Empresa'],
+    //                 'ProveedorOriginal'              => $row['ProveedorOriginal'],
+    //                 'ProveedorNormalizado'           => $proveedor,
+    //                 'ProductoNormalizado'            => $producto,
+    //                 'NumeroFacturaProveedorOriginal' => $row['NumeroFacturaProveedorOriginal'],
+    //                 'LitrosDocumentoSoporte'         => round($litros, 4),
+    //                 'MontoFactura'                   => round($monto, 2),
+    //                 'SaldoFactura'                   => round($saldoFactura, 2),
+    //                 'PrecioPorLitro'                 => round($precioPorLitro, 6),
+    //                 'PrecioCotizado'                 => 'PENDIENTE',
+    //                 'Diferencia'                     => 0,
+    //                 'PrecioFacturaCotizadoPetrotal'  => 0,
+    //                 'NumeroFacturaPetrotal'          => $row['NumeroFacturaPetrotal'] ?? '',
+    //                 'EstadoAsignacion'               => $row['EstadoAsignacion'],
+    //                 'UUID'                           => $row['UUID'],
+    //                 'RutaArchivo'                    => $row['RutaArchivo'],
+    //                 'NombreArchivo'                  => $row['NombreArchivo'],
+    //                 'TipoOperacion'                  => $row['TipoOperacion'],
+    //                 'NumeroTransaccion'              => $row['NumeroTransaccion'],
+    //                 'CodigoEstacion'                 => $row['CodigoEstacion'],
+    //             );
+    //         }
+    //         echo json_encode(['data' => $data]);
+    //     } else {
+    //         echo json_encode(['data' => []]);
+    //     }
+    // }
+    public function compras_combustible_table(){
+
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $postData = [
+            'from' => isset($_POST['fromDate']) ? dateToInt($_POST['fromDate']) : null,
+            'until' => isset($_POST['untilDate']) ? dateToInt($_POST['untilDate']) : null,
+            'codgas' => isset($_POST['codgas']) ? $_POST['codgas'] : '0',
+            'proveedor' => isset($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'company' => isset($_POST['company']) ? $_POST['company'] : '0'
+        ];
+
+        if (!$postData['from'] || !$postData['until']) {
+            json_output(['error' => true, 'message' => 'Fechas requeridas', 'data' => []]);
+            return;
+        }
+
+        try {
+            $ch = curl_init('http://192.168.0.109:82/api/get_resumen_recepciones_combustible/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 600);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+            if (curl_errno($ch)) {
+                throw new Exception('Error de cURL: ' . curl_error($ch));
             }
-            echo json_encode(['data' => $data]);
-        } else {
-            echo json_encode(['data' => []]);
+
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception("Error HTTP: $httpCode");
+            }
+
+            $apiData = json_decode($response, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception('Error al decodificar JSON: ' . json_last_error_msg());
+            }
+
+            $data = [];
+
+            if (isset($apiData) && is_array($apiData)) {
+                foreach ($apiData as $row) {
+                    // if (empty($row['nrotrn'])) {
+                    //     continue;
+                    // }
+
+                    // Normalizar combustible
+                    $raw = isset($row['combustible']) ? trim($row['combustible']) : '';
+                    $norm = mb_strtolower($raw, 'UTF-8');
+                    $norm = str_replace(['.', '-', '_'], ' ', $norm);
+                    $norm = preg_replace('/\s+/', ' ', $norm);
+                    $norm = strtr($norm, "áéíóúÁÉÍÓÚñÑ", "aeiouAEIOUnN");
+
+                    $combustible = $raw;
+                    if (preg_match('/\b(regular|menor a 91|91 octanos|t ?maxima|maxima regular|t ?maxima regular)\b/i', $norm)) {
+                        $combustible = 'Regular';
+                    } elseif (preg_match('/\b(diesel|diesel automotriz)\b/i', $norm)) {
+                        $combustible = 'Diesel';
+                    } elseif (preg_match('/\b(premium|super premium|mayor o igual a 91|91 octanos)\b/i', $norm)) {
+                        $combustible = 'Premium';
+                    } else {
+                        $combustible = mb_convert_case($norm, MB_CASE_TITLE, "UTF-8");
+                    }
+
+                    // Normalizar proveedor
+                    $proveedor_controlgas = $row['proveedor_controlgas'];
+                    if ($row['proveedor_controlgas'] == 'TESORO MEXICO SUPPLY & MARKETING S. DE R.L. DE C.V.') {
+                        $proveedor_controlgas = 'TESORO';
+                    }
+                    if ($row['proveedor_controlgas'] == 'PREMIERGAS S.A. P. I. DE C.V.') {
+                        $proveedor_controlgas = 'PREMIERGAS';
+                    }
+                    if ($row['proveedor_controlgas'] == 'MGC MEXICO S.A. DE C.V.') {
+                        $proveedor_controlgas = 'MGC';
+                    }
+
+                    // ========== DATOS YA VIENEN CON LA FACTURA ASIGNADA ==========
+                    $tieneFactura = (bool)($row['tiene_factura_asignada'] ?? 0);
+                    $uuidMostrar = $tieneFactura ? ($row['uuid_asignado'] ?? '') : ($row['uuid_original'] ?? '');
+                    $folioMostrar = $tieneFactura ? ($row['folio_asignado'] ?? '') : ($row['nro_fac'] ?? '');
+
+                    $data[] = [
+                        'fecha'                       => $row['fecha'] ?? '',
+                        'hora'                        => $row['hora_formateada'] ?? '',
+                        'nrotrn'                      => $row['nrotrn'],
+                        'codgas'                      => $row['codgas'] ?? '',
+                        'estacion'                    => $row['estacion'] ?? '',
+                        'numero_estacion'             => $row['numero_estacion'] ?? '',
+                        'factura_recibida_id'         => $row['factura_recibida_id'] ?? '',
+                        'RutaArchivo'                 => $row['RutaArchivo'] ?? '',
+                        'proveedor_controlgas'        => $proveedor_controlgas,
+                        'factura_proveedor'           => (strtoupper($proveedor_controlgas) === 'PETROTAL S.A. DE C.V.') ? '' : $row['factura_proveedor'],
+                        'proveedor_original'          => (strtoupper($proveedor_controlgas) === 'PETROTAL S.A. DE C.V.') ? '' : $proveedor_controlgas,
+                        'combustible'                 => $combustible,
+                        'capmax'                      => $row['capmax'] ?? 0,
+                        'recaudado'                   => $row['recaudado'] ?? 0,
+                        'fac_rec'                     => $row['fac_rec'] ?? 0,
+                        'nro_fac'                     => $row['nro_fac'] ?? '',
+                        'uuid'                        => $uuidMostrar,
+                        'proveedor_controlgas'        => $proveedor_controlgas,
+                        'monto_factura_controlgas'    => $row['monto_factura_controlgas'] ?? 0,
+                        'cantidad_factura_controlgas' => $row['cantidad_factura_controlgas'] ?? 0,
+                        'precio_factura_controlgas'   => $row['precio_factura_controlgas'] ?? 0,
+                        'graprd'                      => $row['graprd'] ?? '',
+
+                        // ========== INFORMACIÓN DE LA FACTURA ASIGNADA ==========
+                        'tiene_factura'               => $tieneFactura,
+                        'factura_id'                  => $tieneFactura ? ($row['factura_asignacion_id'] ?? null) : null,
+                        'fecha_asignacion'            => $tieneFactura ? ($row['fecha_asignacion'] ?? null) : null,
+                        'usuario_asignacion'          => $tieneFactura ? ($row['usuario_asignacion'] ?? null) : null,
+                        'observaciones_asignacion'    => $tieneFactura ? ($row['observaciones_asignacion'] ?? null) : null,
+                        'total_factura_asignada'      => $tieneFactura ? ($row['total_factura_asignada'] ?? 0) : 0,
+                        'emisor_factura_asignada'     => $tieneFactura ? ($row['emisor_factura_asignada'] ?? '') : '',
+                        'destino_factura'             => $tieneFactura ? ($row['destino_factura_asignada'] ?? '') : '',
+                        'remision_factura'            => $tieneFactura ? ($row['remision_factura_asignada'] ?? '') : '',
+                        'folio_petrotal'              => $row['folio_petrotal'] ?? null,
+                        'monto_petrotal'              => $row['monto_petrotal'] ?? null,
+                    ];
+                }
+            }
+
+            json_output(['data' => $data]);
+        } catch (Exception $e) {
+            error_log("Error en resumen_payment_table: " . $e->getMessage());
+            json_output(['error' => true, 'message' => $e->getMessage(), 'data' => []]);
         }
     }
 
@@ -3042,6 +3037,9 @@ class Supply
     public function ModalinvoicePdf()
     {
         $facturaId = $_POST['FacturaId'] ?? null;
+        echo '<pre>';
+        var_dump( $facturaId);
+        die();
         if (!$facturaId) {
             echo '<div class="modal-body">Factura no especificada.</div>';
             return;
