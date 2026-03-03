@@ -36,6 +36,7 @@ class Accounting{
     public MovimientosTanModel $movimientosTanModel;
     public GasolinerasModel $gasolinerasModel;
     public ProveedoresModel $proveedores;
+    public XmlVsVentasModel $xmlVsVentasModel;
     /**
      * @param $twig
      */
@@ -50,9 +51,9 @@ class Accounting{
         $this->petrotalConceptosModel = new PetrotalConceptosModel();
         $this->eraJustesModel         = new ERAjustesModel();
         $this->movimientosTanModel    = new MovimientosTanModel();
-        $this->gasolinerasModel      = new GasolinerasModel;
-        $this->proveedores           = new ProveedoresModel();
-
+        $this->gasolinerasModel       = new GasolinerasModel;
+        $this->proveedores            = new ProveedoresModel();
+        $this->xmlVsVentasModel       = new XmlVsVentasModel();
     }
 
     /**
@@ -2155,5 +2156,15 @@ class Accounting{
         }
         
         return 'Correcto';
+    }
+
+    function xml_vs_ventas() {
+        echo $this->twig->render($this->route . 'xml_vs_ventas.html');
+    }
+
+    function xml_vs_ventas_table() {
+        $data = $this->xmlVsVentasModel->get_xml_vs_ventas();
+        header('Content-Type: application/json');
+        echo json_encode(['data' => $data]);
     }
 }

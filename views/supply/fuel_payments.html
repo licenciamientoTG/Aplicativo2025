@@ -1,85 +1,85 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Facturas Proveedores{% endblock %}
-{% block mycss %}{% endblock %}
-{% block menutitle %}Facturas Proveedores{% endblock %}
-{% block content %}
-
+{% block mycss %}
 <style>
-    /* Estilos para el modal de PDF */
-    #modalVisorPDF .modal-body {
-        overflow: hidden;
+    /* ── Sidebar colapsado automáticamente ── */
+    /* Se aplica via JS al cargar, aquí solo transición suave */
+
+    /* ── Tabla compras ── */
+    #compras_combustible_table tbody tr { cursor: default; }
+
+    /* Highlight de filas */
+    tr.fila-sin-factura  { background-color: #fff8e1 !important; }
+    tr.fila-con-petrotal { background-color: #e3f2fd !important; }
+    tr.fila-diff-alta    { background-color: #fce4ec !important; }
+    tr.fila-hoy          { background-color: #e8f5e9 !important; }
+
+    /* KPI strip */
+    .kpi-strip { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .kpi-card {
+        flex: 1; min-width: 140px;
+        background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+        padding: 10px 14px; text-align: center;
     }
+    .kpi-card .kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
+    .kpi-card .kpi-label { font-size: 0.72rem; color: #6c757d; }
 
-    #iframe_pdf {
-        background-color: #525659;
-    }
+    /* Barra de progreso de asignación */
+    #barra_asignacion_wrap { margin-bottom: 8px; }
+    #barra_asignacion_wrap .progress { height: 18px; border-radius: 6px; }
+    #barra_asignacion_wrap .progress-bar { font-size: 0.75rem; font-weight: 600; }
 
-    .pdf-toolbar {
-        background: #f8f9fa;
-        padding: 10px;
-        border-bottom: 1px solid #dee2e6;
-    }
+    /* Filtros rápidos */
+    .filtros-rapidos { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .filtros-rapidos .btn { font-size: 0.78rem; padding: 3px 10px; }
+    .filtros-rapidos .btn.activo { box-shadow: inset 0 0 0 2px #000; }
 
-    /* Animación para el spinner */
-    #pdf-loading .spinner-border {
-        animation: spinner-border .75s linear infinite;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-        #modalVisorPDF .modal-body {
-            height: 70vh;
-        }
-
-        #modalVisorPDF .modal-footer {
-            flex-wrap: wrap;
-        }
-
-        #modalVisorPDF .modal-footer .btn-group {
-            width: 100%;
-            margin-bottom: 10px;
-        }
-
-        #modalVisorPDF .modal-footer .btn-group .btn {
-            font-size: 0.85rem;
-            padding: 0.5rem;
-        }
-    }
-
+    /* Header negro de DataTable */
     table.dataTable thead th,
     table.dataTable thead td {
-        padding: 10px 18px;
+        padding: 8px 12px;
         border-bottom: 1px solid #dee2e6;
-        background-color: #000000 !important;
+        background-color: #212529 !important;
         color: #ffffff !important;
-
+        white-space: nowrap;
+    }
+    /* Fila de filtros de texto */
+    table.dataTable thead tr.filter th {
+        background-color: #343a40 !important;
+        padding: 4px 6px !important;
+    }
+    table.dataTable thead tr.filter th input {
+        font-size: 0.72rem;
+        padding: 2px 5px;
+        height: 24px;
     }
 
-    /* Estilos para el sistema de asignación de facturas */
-    .table-warning {
-        background-color: #fff3cd !important;
-    }
-
-    .modal-xl {
-        max-width: 1200px;
-    }
-
-    #tabla_facturas_disponibles thead {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
-
-    .badge {
-        font-size: 0.75rem;
-    }
-
-    .btn-group-sm>.btn {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
-    }
+    .badge { font-size: 0.73rem; }
+    .btn-group-sm>.btn { padding: 0.25rem 0.5rem; font-size: 0.875rem; }
+    .modal-xl { max-width: 1200px; }
+    #tabla_facturas_disponibles thead { position: sticky; top: 0; z-index: 10; }
 </style>
-
+{% endblock %}
+{% block menutitle %}Facturas Proveedores{% endblock %}
+{% block content %}
+<script>
+    // Auto-colapsar sidebar al entrar a esta vista (maximizar espacio de tabla)
+    document.addEventListener('DOMContentLoaded', function () {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+        }
+        // Restaurar filtros desde localStorage
+        var ls = localStorage.getItem('compras_filtros');
+        if (ls) {
+            try {
+                var f = JSON.parse(ls);
+                if (f.codgas)    { $('#codgas_compras').selectpicker('val', f.codgas); }
+                if (f.proveedor) { $('#proveedor_compras').selectpicker('val', f.proveedor); }
+            } catch(e) {}
+        }
+    });
+</script>
 
     <div class="tab-pane active" id="payment_control" role="tabpanel" aria-labelledby="payment_control-tab">
         <div class="card">
@@ -111,92 +111,109 @@
                         <label class="col-form-label-sm">Proveedor:</label>
                         <select class="selectpicker w-100" data-live-search="true" name="proveedor_compras" id="proveedor_compras">
                             <option value="0" selected>Todos los proveedores</option>
-                            <option value="TESORO">TESORO</option>
-                            <option value="MGC">MGC</option>
-                            <option value="LOBO">LOBO</option>
-                            <option value="PETROTAL">PETROTAL</option>
-                            <option value="ESSAFUEL">ESSAFUEL</option>
-                            <option value="PREMIERGAS">PREMIERGAS</option>
-                            <option value="ENEREY">ENEREY</option>
-                            <option value="AEMSA">AEMSA</option>
+                            <option value="56">TESORO</option>
+                            <option value="72">MGC</option>
+                            <option value="76">LOBO</option>
+                            <option value="55">PETROTAL</option>
+                            <option value="71">PREMIERGAS</option>
+                            <option value="83">ENEREY</option>
+                            <option value="96">AEMSA</option>
                         </select>
                     </div>
 
-                    <!-- FILTRO DE EMPRESA -->
-                    <div class="col-2">
-                        <label class="col-form-label-sm">Empresa:</label>
-                        <select class="selectpicker w-100" name="company_compras" id="company_compras">
-                            <option value="0" selected>Ambas empresas</option>
-                            <option value="1">TotalGas</option>
-                            <option value="2">Petrotal</option>
-                        </select>
-                    </div>
 
                     <div class="col-2">
                         <button onclick="compras_facturas_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;"> <i class="fas fa-search"></i> Generar Reporte</button>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- SEGUNDA FILA CON FILTROS ADICIONALES (OPCIONAL) -->
-                <!-- <div class="row mt-2">
-                    <div class="col-12">
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-secondary" onclick="limpiarFiltrosCompras()">
-                                <i class="fas fa-eraser"></i> Limpiar Filtros
-                            </button>
-                            <button type="button" class="btn btn-outline-info" onclick="exportarComprasExcel()">
-                                <i class="fas fa-file-excel"></i> Exportar a Excel
-                            </button>
-                            <button type="button" class="btn btn-outline-success" onclick="verResumenCompras()">
-                                <i class="fas fa-chart-bar"></i> Ver Resumen
-                            </button>
-                        </div>
-                    </div>
-                </div> -->
+        <!-- KPI STRIP -->
+        <div class="kpi-strip" id="kpi_strip" style="display:none;">
+            <div class="kpi-card">
+                <div class="kpi-value text-primary" id="kpi_total">0</div>
+                <div class="kpi-label">Total Recepciones</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value text-success" id="kpi_asignadas">0</div>
+                <div class="kpi-label">Con Factura SAT</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value text-warning" id="kpi_pendientes">0</div>
+                <div class="kpi-label">Sin Factura SAT</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-value text-info" id="kpi_monto">$0</div>
+                <div class="kpi-label">Monto Total CG</div>
+            </div>
+        </div>
+
+        <!-- BARRA DE PROGRESO DE ASIGNACIÓN -->
+        <div id="barra_asignacion_wrap" style="display:none;">
+            <div class="d-flex justify-content-between mb-1" style="font-size:0.78rem;">
+                <span>Progreso de Asignación</span>
+                <span id="barra_pct_text">0%</span>
+            </div>
+            <div class="progress">
+                <div class="progress-bar bg-success" id="barra_asignacion" role="progressbar"
+                    style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                </div>
             </div>
         </div>
 
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0">Compras - Base desde Facturas Recibidas</h5>
-                <div>
-                    <span class="badge bg-info me-2" id="contador_facturas">0 facturas</span>
+            <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <h5 class="card-title mb-0">Compras - Recepciones de Combustible</h5>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <!-- Filtros rápidos -->
+                    <div class="filtros-rapidos" id="filtros_rapidos" style="display:none;">
+                        <button class="btn btn-sm btn-outline-secondary activo" id="filtro_todas"
+                            onclick="aplicarFiltroRapido('todas')">Todas</button>
+                        <button class="btn btn-sm btn-outline-warning" id="filtro_sin_fac"
+                            onclick="aplicarFiltroRapido('sin_fac')"><i class="fas fa-exclamation-circle"></i> Sin Factura</button>
+                        <button class="btn btn-sm btn-outline-success" id="filtro_asignadas"
+                            onclick="aplicarFiltroRapido('asignadas')"><i class="fas fa-check-circle"></i> Asignadas</button>
+                        <button class="btn btn-sm btn-outline-info" id="filtro_petrotal"
+                            onclick="aplicarFiltroRapido('petrotal')"><i class="fas fa-layer-group"></i> Petrotal</button>
+                    </div>
+                    <span class="badge bg-info me-2" id="contador_facturas">0 recepciones</span>
                     <span class="badge bg-success" id="total_monto_facturas">$0.00</span>
                 </div>
             </div>
             <div class="card-body table-responsive">
-                <table id="compras_combustible_table" class="table table-hover table-sm w-100" style="font-size: 11px;">
+                <table id="compras_combustible_table" class="table table-border table-hover  table-sm w-100" style="font-size: 11px;">
                     <thead>
                         <tr>
-                            <th>Fecha Recepción</th>
+                            <th>Fecha Descarga</th>
+                            <th>Hora</th>
+                            <th>Nro. Transacción</th>
+                            <th>Estación</th>
                             <th>Num. Estación</th>
-                            <th>Nombre Estación</th>
-                            <!-- <th>Empresa</th> -->
                             <th>Proveedor Original</th>
-                            <th>Producto</th>
-                            <th>Num. Factura Prov.</th>
-                            <th>Litros Documento</th>
+                            <th>Producto</th> 
+                            <th>Num. Factura Proveedor Original</th>{# aqui #}
+                            <th>Proveedor Final</th>
+                            <th>Litros Descargados</th>
+                            <th>Litros Facturados CG</th>
+                            <th>Nro. Doc. CG</th>
+                            <th>Remisión</th>
                             <th>Monto Factura</th>
-                            <th>Saldo Factura</th>
                             <th>Precio x Litro</th>
                             <th>Precio Cotizado</th>
                             <th>Diferencia</th>
-                            <th>Precio Petrotal</th>
-                            <th>Num. Fac. Petrotal</th>
-                            <th>Estado</th>
+                            <th>% IVA</th>
+                            <th>IEPS x Litro</th>
+                            <th>Emisor SAT</th>
+                            <th>Num. Factura Petrotal</th>
+                            <th>Monto Factura Petrotal</th>
                             <th>UUID</th>
+                            <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
-                    <tfoot>
-                        <tr class="table-secondary fw-bold">
-                            <td colspan="6" class="text-end">TOTALES:</td>
-                            <td class="text-end" id="footer_litros">0.00</td>
-                            <td class="text-end" id="footer_monto">$0.00</td>
-                            <td colspan="9"></td>
-                        </tr>
-                    </tfoot>
+                    <tfoot></tfoot>
                 </table>
             </div>
         </div>
