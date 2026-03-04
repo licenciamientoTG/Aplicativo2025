@@ -2167,4 +2167,10 @@ class Accounting{
         header('Content-Type: application/json');
         echo json_encode(['data' => $data]);
     }
+
+    function xml_vs_ventas_mensuales_table() {
+        $data = $this->xmlVsVentasModel->get_xml_vs_ventas_mensuales();
+        header('Content-Type: application/json');
+        echo json_encode(['data' => $data]);
+    }
 }
