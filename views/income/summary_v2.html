@@ -98,9 +98,14 @@
                     <button class="btn btn-primary rounded-pill px-3 shadow-sm w-100" onclick="loadDashboard()">
                         <i class="fas fa-sync-alt mr-1"></i> Actualizar
                     </button>
-                    <button class="btn btn-success rounded-pill px-3 shadow-sm w-100" onclick="downloadGeneralSummary()" title="Bajar Resumen General de esta Razón Social">
-                        <i class="fas fa-file-excel mr-1"></i> Resumen
-                    </button>
+                    <div class="d-flex flex-column gap-1 w-100">
+                        <button class="btn btn-success rounded-pill px-2 shadow-sm w-100 mb-1" style="font-size: 0.8rem;" onclick="downloadGeneralSummary()" title="Bajar Resumen General de esta Razón Social">
+                            <i class="fas fa-file-excel mr-1"></i> Resumen
+                        </button>
+                        <button class="btn btn-danger rounded-pill px-2 shadow-sm w-100" style="font-size: 0.8rem;" onclick="downloadDetailDifferences()" title="Bajar Detalle de TODAS las Diferencias del Mes">
+                            <i class="fas fa-exclamation-circle mr-1"></i> Detalle Dif.
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -703,6 +708,13 @@
         const m = $('#monthFilter').val();
         const rs = currentRS;
         window.location.href = `/income/export_resumen_general?year=${y}&month=${m}&rs=${rs}`;
+    }
+
+    function downloadDetailDifferences() {
+        const y = $('#yearFilter').val();
+        const m = $('#monthFilter').val();
+        const rs = currentRS;
+        window.location.href = `/income/export_detalle_diferencias?year=${y}&month=${m}&rs=${rs}`;
     }
 </script>
 {% endblock %}

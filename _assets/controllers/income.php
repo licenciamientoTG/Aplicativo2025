@@ -5471,6 +5471,111 @@ public function stamped_invoices_detail(): void
         exit;
     }
 
+    public function export_detalle_diferencias() {
+        ob_clean();
+        
+        $year = $_GET['year'] ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+        $rs_label = $_GET['rs'] ?? 'DIAZ GAS'; 
+
+        $server = "192.168.0.6"; $db = "TG"; $user = "cguser"; $pass = "sahei1712"; 
+
+        try {
+            $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            $rfc_filter = "";
+            if ($rs_label === 'DIAZ GAS') {
+                $rfc_filter = "AND E.RFC = 'DGA930823KD3'";
+            } else if ($rs_label === 'GASOMEX') {
+                $rfc_filter = "AND E.RFC = 'DGM880621FU5'";
+            } else {
+                $rfc_filter = "AND (E.RFC NOT IN ('DGA930823KD3', 'DGM880621FU5') OR E.RFC IS NULL)";
+            }
+
+            // QUERY DETALLADA: Solo grupos con diferencia > 0.01
+            $sql = "
+                SELECT 
+                    E.Nombre as Estacion,
+                    FORMAT(G.fecha_operativa, 'yyyy-MM-dd') as Fecha,
+                    TE.Nombre as Banco,
+                    ISNULL(G.afiliacion, 'N/A') as Afiliacion,
+                    G.total_sistema as ControlGas,
+                    G.total_banco as BancoTX,
+                    G.diferencia as Diferencia
+                FROM Conciliacion_V2_Grupos G
+                INNER JOIN Estaciones E ON G.estacion_id = E.Codigo
+                LEFT JOIN Tesoreria_Entidad TE ON G.entidad_id = TE.id
+                WHERE YEAR(G.fecha_operativa) = ? 
+                  AND MONTH(G.fecha_operativa) = ?
+                  AND ABS(G.diferencia) > 0.009
+                  $rfc_filter
+                ORDER BY E.Nombre ASC, G.fecha_operativa ASC";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$year, $month]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setTitle("Detalle Diferencias $month-$year");
+
+            // Estilos
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['argb' => 'FFFFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['argb' => 'FFC0392B']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+            ];
+
+            $headers = ['ESTACIÓN', 'FECHA OPERATIVA', 'BANCO', 'AFILIACIÓN', 'CONTROLGAS ($)', 'BANCOS TX ($)', 'DIFERENCIA ($)'];
+            $sheet->fromArray($headers, NULL, 'A1');
+            $sheet->getStyle('A1:G1')->applyFromArray($headerStyle);
+
+            $rowIdx = 2;
+            $totalDif = 0;
+            foreach ($rows as $r) {
+                $sheet->setCellValue('A'.$rowIdx, $r['Estacion']);
+                $sheet->setCellValue('B'.$rowIdx, $r['Fecha']);
+                $sheet->setCellValue('C'.$rowIdx, $r['Banco']);
+                $sheet->setCellValue('D'.$rowIdx, $r['Afiliacion']);
+                $sheet->setCellValue('E'.$rowIdx, $r['ControlGas']);
+                $sheet->setCellValue('F'.$rowIdx, $r['BancoTX']);
+                $sheet->setCellValue('G'.$rowIdx, $r['Diferencia']);
+                
+                // Formato numérico
+                $sheet->getStyle('E'.$rowIdx.':G'.$rowIdx)->getNumberFormat()->setFormatCode('#,##0.00');
+                
+                // Color rojo si es diferencia negativa, negrita siempre
+                $sheet->getStyle('G'.$rowIdx)->getFont()->setBold(true);
+                if ($r['Diferencia'] < -0.01) {
+                    $sheet->getStyle('G'.$rowIdx)->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                }
+
+                $totalDif += $r['Diferencia'];
+                $rowIdx++;
+            }
+
+            // Pie de página con total
+            $sheet->setCellValue('F'.$rowIdx, 'TOTAL DIFERENCIAS:');
+            $sheet->setCellValue('G'.$rowIdx, $totalDif);
+            $sheet->getStyle('F'.$rowIdx.':G'.$rowIdx)->getFont()->setBold(true);
+            $sheet->getStyle('G'.$rowIdx)->getNumberFormat()->setFormatCode('#,##0.00');
+
+            foreach (range('A', 'G') as $col) { $sheet->getColumnDimension($col)->setAutoSize(true); }
+
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="Detalle_Diferencias_'.$rs_label.'_'.$year.'_'.$month.'.xlsx"');
+            header('Cache-Control: max-age=0');
+
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $writer->save('php://output');
+
+        } catch (Exception $e) {
+            echo "Error: " . $e->getMessage();
+        }
+        exit;
+    }
+
     public function export_resumen_general() {
         ob_clean();
         
