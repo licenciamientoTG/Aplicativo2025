@@ -25228,6 +25228,14 @@ body[data-theme=colored] .simplebar-scrollbar:before {
     width: 264px
 }
 
+/* ── DataTables fixedColumns: fondo sólido para evitar transparencia al hacer scroll ── */
+table.dataTable tbody td.dtfc-fixed-left,
+table.dataTable tbody td.dtfc-fixed-right,
+table.dataTable thead th.dtfc-fixed-left,
+table.dataTable thead th.dtfc-fixed-right {
+    background-color: #fff;
+}
+
 .truncated {
     overflow: hidden;
     text-overflow: ellipsis;

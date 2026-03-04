@@ -3,6 +3,7 @@
 {% block mycss %}{% endblock %}
 {% block menutitle %}Notas de Crédito y Cargo{% endblock %}
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="container-fluid">
 
@@ -296,11 +297,17 @@ function renderNotesTable(notes) {
 // ── Abrir modal nueva nota ───────────────────────────────────────────────────
 function openNewNoteModal() {
     const sel = document.getElementById('filterProvider');
-    if (sel.value) {
-        document.getElementById('newNoteProvider').value = sel.value;
-    }
+    const preselectedValue = sel.value;
+
     document.getElementById('newNoteForm').reset();
     document.querySelector('#newNoteModal .custom-file-label').textContent = 'Seleccionar archivo PDF...';
+
+    if (preselectedValue) {
+        $('#newNoteProvider').selectpicker('val', preselectedValue);
+    } else {
+        $('#newNoteProvider').selectpicker('val', '');
+    }
+
     $('#newNoteModal').modal('show');
 }
 
