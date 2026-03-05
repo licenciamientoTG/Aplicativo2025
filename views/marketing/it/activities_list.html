@@ -1,0 +1,62 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}
+<!-- FullCalendar CSS -->
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js'></script>
+{% endblock %}
+{% block menutitle %}Lista de actividades{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card table-responsive p-3">
+            <table class="table table-sm table-hover table-striped" id="binnacle_table">
+                <thead>
+                    <tr>
+                        <th>Id</th>
+                        <th>Fecha</th>
+                        <th class="d-none d-md-table-cell">Título</th>
+                        <th class="d-none d-md-table-cell">Descripción</th>
+                        <th class="d-none d-md-table-cell">Hora inicio</th>
+                        <th class="d-none d-md-table-cell">Hora fin</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for activity in activities %}
+                <tr>
+                    <td style="width:10%;">{{ activity.id }}</td>
+                    <td class="text-nowrap">{{ activity.activity_date }}</td>
+                    <td class="d-none d-md-table-cell">{{ activity.title }}</td>
+                    <td class="d-none d-md-table-cell">{{ activity.description }}</td>
+                    <td class="d-none d-md-table-cell">{{ activity.start_hour }}</td>
+                    <td class="d-none d-md-table-cell">{{ activity.end_hour }}</td>
+                    <td class="table-action">
+                        <a href="javascript:void(0);" data-bs-toggle="modal" data-id="{{ activity.id }}" data-bs-target="#modalEditActivities"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-edit-2 align-middle"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg></a>
+                        <a href="javascript:void(0);" onclick="delete_activity('{{ activity.id }}');"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-trash align-middle"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de actividades -->
+<div class="modal fade" id="modalEditActivities" tabindex="-1" aria-labelledby="modalEditActivitiesLabel" aria-hidden="true" data-date="">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="modalEditActivitiesLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content p-3">
+                <input type="hidden" name="activity_id" id="activity_id" value="">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+{% endblock %}

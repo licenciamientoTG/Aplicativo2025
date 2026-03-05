@@ -1,0 +1,51 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Operaciones{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Ventas Volumétricas{% endblock %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row mt-3">
+                    <div class="col-12" id="tableContainer">
+                        <table class="table table-striped table-sm table-hover" style="font-size: x-small;"
+                            id="volumetric_sales_table">
+                            <thead>
+                                <tr>
+                                    <th>FECHA INICIO</th>
+                                    <th>FECHA FIN</th>
+                                    <th>ESTACIÓN</th>
+                                    <th>GRUPO</th>
+                                    <th>COMBUSTIBLE</th>
+                                    <th>CANT. DESPACHOS</th>
+                                    <th>LITROS VENDIDOS</th>
+                                    <th>MONTO $</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                                <tr>
+                                    <th>FECHA INICIO</th>
+                                    <th>FECHA FIN</th>
+                                    <th>ESTACIÓN</th>
+                                    <th>GRUPO</th>
+                                    <th>COMBUSTIBLE</th>
+                                    <th>CANT. DESPACHOS</th>
+                                    <th>LITROS VENDIDOS</th>
+                                    <th>MONTO $</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+// Aqui vamos a poner el JS
+
+
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}{% endblock %}
+{% block menutitle %}Permisos{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item refresh_datatables_permissions" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Permisos</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <div id="filtro-datatables_permissions" class="mb-1">
+            <div class="row">
+                <!-- Agrega tus elementos de filtrado aquí -->
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ID" placeholder="Id"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CLASE" placeholder="Clase"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DEPARTAMENTO" placeholder="Departamento"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="DESCRIPCION" placeholder="Descripción"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
+                <div class="col p-1 text-center">
+                    <button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#permissionModal"><i data-feather="plus"></i></button>
+                </div>
+            </div>
+        <!-- Puedes agregar más filtros según tus necesidades -->
+        </div>
+        <table id="datatables_permissions" class="table table-sm w-100" style="font-size:small;" data-user="{{ user_id }}">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>CLASE</th>
+                    <th>DEPARTAMENTO</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>STATUS</th>
+                    <th>FECHA</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>ID</th>
+                    <th>CLASE</th>
+                    <th>DEPARTAMENTO</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>STATUS</th>
+                    <th>FECHA</th>
+                    <th class="w-10">ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+
+<!-- Modal -->
+<div class="modal fade" id="permissionModal" tabindex="-1" aria-labelledby="permissionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="permissionModalLabel">Modal title</h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="content">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+{% endblock %}

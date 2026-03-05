@@ -2607,4 +2607,8 @@ class Operations{
         }
     }
 
+    function volumetric_sales() {
+        echo $this->twig->render($this->route . 'volumetric_sales.html');
+    }
+
 }
