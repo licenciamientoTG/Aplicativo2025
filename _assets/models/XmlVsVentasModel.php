@@ -44,18 +44,17 @@ class XmlVsVentasModel extends Model {
             DECLARE @MesAnterior        TINYINT  = MONTH(DATEADD(MONTH, -1, GETDATE()));
 
             SELECT
+                m.nombre_estacion,
                 CASE
                     WHEN e.[grupo] = 'TG' THEN 'DIAZ GAS'
                     ELSE UPPER(e.[grupo])
                 END AS [grupo],
-                m.codgas,
                 m.station,
-                m.nombre_estacion,
-                m.anio,
-                m.mes,
-                m.clave_producto,
-                m.clave_sub_producto,
-                m.octanaje,
+                CASE
+                    WHEN m.[octanaje] = 87 THEN 'T-Maxima'
+                    WHEN m.[octanaje] = 91 THEN 'T-Super'
+                    ELSE 'Diesel'
+                END AS [tipo_combustible],
                 m.volumen_total,
                 m.venta_total,
                 m.volumen_timbrado_corporativo,
@@ -64,7 +63,10 @@ class XmlVsVentasModel extends Model {
                 ISNULL(SUM(d.monto_valido),0)            AS monto_valido_mes,
                 ISNULL(SUM(d.monto_no_valido),0)         AS monto_no_valido_mes,
                 ISNULL(SUM(d.transacciones_validas),0)   AS transacciones_validas_mes,
-                ISNULL(SUM(d.transacciones_invalidas),0) AS transacciones_invalidas_mes
+                ISNULL(SUM(d.transacciones_invalidas),0) AS transacciones_invalidas_mes,
+                ISNULL(SUM(d.transacciones_validas),0) + ISNULL(SUM(d.transacciones_invalidas),0) AS total_transacciones,
+                m.anio,
+                m.mes
             FROM [TG].[dbo].[cv_ventas_mensuales] m
             LEFT JOIN [TG].[dbo].[cv_ventas_diarias] d
                 ON  d.codgas = m.codgas

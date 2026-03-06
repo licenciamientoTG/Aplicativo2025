@@ -2618,24 +2618,16 @@ class Operations{
         try {
             $rows = $this->xmlVsVentasModel->get_ventas_volumetricas();
             $data = [];
+            $mesPasado = new DateTime('first day of last month');
+            $desde     = $mesPasado->format('Y-m-01');
+            $hasta     = $mesPasado->format('Y-m-t');
             foreach ($rows as $row) {
-                $anio    = (int) $row['anio'];
-                $mes     = (int) $row['mes'];
-                $diasMes = cal_days_in_month(CAL_GREGORIAN, $mes, $anio);
-                $mesStr  = str_pad($mes, 2, '0', STR_PAD_LEFT);
-
-                $combustible = match ((int) $row['octanaje']) {
-                    87      => 'T-Maxima',
-                    91      => 'T-Super',
-                    default => 'Diesel',
-                };
-
                 $data[] = [
                     'grupo'                        => $row['grupo'],
-                    'desde'                        => "{$anio}-{$mesStr}-01",
-                    'hasta'                        => "{$anio}-{$mesStr}-{$diasMes}",
+                    'desde'                        => $desde,
+                    'hasta'                        => $hasta,
                     'nombre_estacion'              => $row['nombre_estacion'],
-                    'combustible'                  => $combustible,
+                    'combustible'                  => $row['tipo_combustible'],
                     'volumen_total'                => $row['volumen_total'],
                     'venta_total'                  => $row['venta_total'],
                     'volumen_timbrado_corporativo' => $row['volumen_timbrado_corporativo'],
@@ -2645,6 +2637,7 @@ class Operations{
                     'monto_no_valido_mes'          => $row['monto_no_valido_mes'],
                     'transacciones_validas_mes'    => $row['transacciones_validas_mes'],
                     'transacciones_invalidas_mes'  => $row['transacciones_invalidas_mes'],
+                    'total_transacciones'          => $row['total_transacciones'],
                 ];
             }
             echo json_encode(['data' => $data]);

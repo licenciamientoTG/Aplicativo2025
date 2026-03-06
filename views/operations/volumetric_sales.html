@@ -47,8 +47,8 @@
                                     <th>ESTACIÓN</th>
                                     <th>COMBUSTIBLE</th>
                                     <th>CANT. TRANSACCIONES</th>
-                                    <th>VOL. TIMBRADO</th>
-                                    <th>MONTO VÁLIDO</th>
+                                    <th>VOL. XML</th>
+                                    <th>MONTO XML</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -60,8 +60,8 @@
                                     <th>ESTACIÓN</th>
                                     <th>COMBUSTIBLE</th>
                                     <th>CANT. TRANSACCIONES</th>
-                                    <th>VOL. TIMBRADO</th>
-                                    <th>MONTO VÁLIDO</th>
+                                    <th>VOL. XML</th>
+                                    <th>MONTO XML</th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -126,8 +126,8 @@
                         return '<span style="' + estilo + '">' + data + '</span>';
                     }
                 },
-                { data: 'transacciones_validas_mes', render: $.fn.dataTable.render.number(',', '.', 0) },
-                { data: 'volumen_timbrado_estacion', render: $.fn.dataTable.render.number(',', '.', 3) },
+                { data: 'total_transacciones', render: $.fn.dataTable.render.number(',', '.', 0) },
+                { data: 'volumen_total', render: $.fn.dataTable.render.number(',', '.', 3) },
                 { data: 'monto_valido_mes', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
             ],
             initComplete: function () {
