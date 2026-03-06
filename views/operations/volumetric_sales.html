@@ -115,18 +115,20 @@
                 { data: 'desde' },
                 { data: 'hasta' },
                 { data: 'nombre_estacion' },
-                { data: 'combustible', render: function (data) {
-                    var colores = {
-                        'T-Maxima': 'color:#1565C0;font-weight:bold;',
-                        'T-Super':  'color:#2E7D32;font-weight:bold;',
-                        'Diesel':   'color:#212121;font-weight:bold;'
-                    };
-                    var estilo = colores[data] || '';
-                    return '<span style="' + estilo + '">' + data + '</span>';
-                }},
-                { data: 'transacciones_validas_mes',  render: $.fn.dataTable.render.number(',', '.', 0) },
+                {
+                    data: 'combustible', render: function (data) {
+                        var colores = {
+                            'T-Maxima': 'color:#1565C0;font-weight:bold;',
+                            'T-Super': 'color:#2E7D32;font-weight:bold;',
+                            'Diesel': 'color:#212121;font-weight:bold;'
+                        };
+                        var estilo = colores[data] || '';
+                        return '<span style="' + estilo + '">' + data + '</span>';
+                    }
+                },
+                { data: 'transacciones_validas_mes', render: $.fn.dataTable.render.number(',', '.', 0) },
                 { data: 'volumen_timbrado_estacion', render: $.fn.dataTable.render.number(',', '.', 3) },
-                { data: 'monto_valido_mes',          render: $.fn.dataTable.render.number(',', '.', 2, '$') },
+                { data: 'monto_valido_mes', render: $.fn.dataTable.render.number(',', '.', 2, '$') },
             ],
             initComplete: function () {
                 $('#tableContainer').waitMe('hide');
