@@ -3366,6 +3366,7 @@ class Supply
             $provider_name = $data['provider_name'] ?? null; // ✅ OPCIONAL
             $empresa_cod = $data['empresa_cod'] ?? null; // ✅ OPCIONAL
             $scheduled_payment_date = $data['fecha_pago'] ?? null;
+            $pending_notes = $data['pending_notes'] ?? [];
 
 
             if (!$user) {
@@ -3387,7 +3388,7 @@ class Supply
             }
 
             // Llamar al modelo para crear el pago con transacción
-            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques, $scheduled_payment_date);
+            $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques, $scheduled_payment_date, $pending_notes);
 
             if ($result['success']) {
                 $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
@@ -6566,19 +6567,45 @@ class Supply
         $url_lista = "http://totalgasonline.net:400/supply/payment_list";
 
         $filas_pagos = '';
+        $monto_total_neto = 0;
         foreach ($pagos as $pago) {
-            $monto_pago = number_format($pago['monto_total'], 2, '.', ',');
-            $proveedor = htmlspecialchars($pago['proveedor_nombre'] ?? 'N/A');
-            $empresa = htmlspecialchars($pago['empresa_nombre'] ?? 'N/A');
+            $monto_bruto   = floatval($pago['monto_total'] ?? 0);
+            $notas_credito = floatval($pago['total_notas_credito'] ?? 0);
+            $notas_cargo   = floatval($pago['total_notas_cargo'] ?? 0);
+            $monto_neto    = $monto_bruto - $notas_credito + $notas_cargo;
+            $monto_total_neto += $monto_neto;
+
+            $monto_pago = number_format($monto_neto, 2, '.', ',');
+            $proveedor  = htmlspecialchars($pago['proveedor_nombre'] ?? 'N/A');
+            $empresa    = htmlspecialchars($pago['empresa_nombre'] ?? 'N/A');
+
+            // Detalle de notas si aplica
+            $notas_html = '';
+            if ($notas_credito > 0 || $notas_cargo > 0) {
+                $bruto_fmt = number_format($monto_bruto, 2, '.', ',');
+                $notas_html .= "<br><small style='color:#999;'>Bruto: \${$bruto_fmt}";
+                if ($notas_credito > 0) {
+                    $nc_fmt = number_format($notas_credito, 2, '.', ',');
+                    $notas_html .= " &minus; NC: \${$nc_fmt}";
+                }
+                if ($notas_cargo > 0) {
+                    $nd_fmt = number_format($notas_cargo, 2, '.', ',');
+                    $notas_html .= " + ND: \${$nd_fmt}";
+                }
+                $notas_html .= "</small>";
+            }
+
             $filas_pagos .= "
                 <tr>
                     <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>#{$pago['id']}</td>
                     <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>{$proveedor}</td>
                     <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333;'>{$empresa}</td>
                     <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#333; text-align:center;'>{$pago['num_facturas']}</td>
-                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#28a745; font-weight:600; text-align:right;'>\${$monto_pago}</td>
+                    <td style='padding:8px 10px; border-bottom:1px solid #eee; color:#28a745; font-weight:600; text-align:right;'>\${$monto_pago}{$notas_html}</td>
                 </tr>";
         }
+        // Reemplazar el monto_total recibido por el neto calculado desde los pagos
+        $monto_total = $monto_total_neto;
 
         return "
         <!DOCTYPE html>

@@ -1151,7 +1151,7 @@ function resetTestData() {
 
     function actualizarResumenMasivo(datos) {
         const total = datos.length;
-        const montoTotal = datos.reduce((sum, p) => sum + parseFloat(p.monto_total || 0), 0);
+        const montoTotal = datos.reduce((sum, p) => sum + parseFloat(p.monto_neto ?? p.monto_total ?? 0), 0);
         const facturas = datos.filter(p => p.es_anticipo != 1).length;
         const anticipos = datos.filter(p => p.es_anticipo == 1).length;
 
@@ -1198,7 +1198,8 @@ function resetTestData() {
 
         datosOrdenados.forEach(pago => {
             const esAnticipo = pago.es_anticipo == 1;
-            const montoPago = parseFloat(pago.monto_total || 0);
+            const montoPago = parseFloat(pago.monto_neto ?? pago.monto_total ?? 0);
+            const tieneNotas = parseFloat(pago.total_notas_credito || 0) > 0 || parseFloat(pago.total_notas_cargo || 0) > 0;
 
             // Insertar separador visual entre facturas y anticipos
             if (esAnticipo && !separadorInsertado && hayFacturas) {
@@ -1237,6 +1238,7 @@ function resetTestData() {
                            value="${pago.id}"
                            data-monto="${montoPago}"
                            data-es-anticipo="${pago.es_anticipo || 0}"
+                           data-monto-bruto="${parseFloat(pago.monto_total || 0)}"
                            onchange="actualizarSeleccionMasivo()">
                 </td>
                 <td>${pago.id}</td>
@@ -1248,7 +1250,10 @@ function resetTestData() {
                 <td><small>${pago.empresa_nombre || pago.company_name || 'N/A'}</small></td>
                 <td><small>${pago.proveedor_nombre || 'N/A'}</small></td>
                 <td class="text-center">${pago.num_facturas || 0}</td>
-                <td class="text-end"><strong>$${montoPago.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong></td>
+                <td class="text-end">
+                    <strong>$${montoPago.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</strong>
+                    ${tieneNotas ? `<br><small class="text-muted" style="font-size:0.72rem;" title="Bruto: $${parseFloat(pago.monto_total||0).toLocaleString('es-MX',{minimumFractionDigits:2})}${parseFloat(pago.total_notas_credito||0)>0?' − NC: $'+parseFloat(pago.total_notas_credito).toLocaleString('es-MX',{minimumFractionDigits:2}):''}${parseFloat(pago.total_notas_cargo||0)>0?' + ND: $'+parseFloat(pago.total_notas_cargo).toLocaleString('es-MX',{minimumFractionDigits:2}):''}"><i class="fas fa-tag"></i> c/notas</small>` : ''}
+                </td>
                 <td>${vencimientoCell}</td>
                 <td>
                     ${getBadgeAutorizacionPendiente(pago)}

@@ -22,7 +22,7 @@ class PaymentRequestsModel extends Model
     const STATUS_CANCELLED = 3;
 
 
-    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null, $monto_total = 0, $scheduled_payment_date = null): array
+    public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null, $monto_total = 0, $scheduled_payment_date = null, $pending_notes = []): array
     {
         if (empty($documents) || !is_array($documents)) {
             return [
@@ -80,7 +80,59 @@ class PaymentRequestsModel extends Model
                 }
             }
 
-            // 3. Commit
+            // 3. Aplicar notas de crédito/cargo si se enviaron
+            if (!empty($pending_notes)) {
+                // Construir mapa folio__codgas → invoice_id de las facturas recién insertadas
+                $ids_query = "
+                    SELECT id, folio, codgas
+                    FROM [TG].[dbo].[payment_request_invoices]
+                    WHERE payment_request_id = ?";
+                $inserted_invoices = $this->sql->select($ids_query, [$payment_id]);
+                $invoice_map = [];
+                foreach ($inserted_invoices as $row) {
+                    $invoice_map[$row['folio'] . '__' . $row['codgas']] = $row['id'];
+                }
+
+                $note_query = "
+                    INSERT INTO [tg].[dbo].[credit_note_applications]
+                        (credit_note_id, payment_request_id, invoice_id, applied_amount, created_by, status)
+                    VALUES (?, ?, ?, ?, ?, 1)";
+
+                foreach ($pending_notes as $note) {
+                    $temp_key = $note['invoice_temp_key'] ?? null;
+                    if (!$temp_key) continue;
+                    $invoice_id = $invoice_map[$temp_key] ?? null;
+                    if (!$invoice_id) continue;
+
+                    $this->sql->insert($note_query, [
+                        $note['credit_note_id'],
+                        $payment_id,
+                        $invoice_id,
+                        $note['applied_amount'],
+                        $user_id
+                    ]);
+                }
+
+                // Actualizar totales de notas en el pago
+                $totals_query = "
+                    UPDATE [TG].[dbo].[payment_requests]
+                    SET total_notas_credito = (
+                        SELECT ISNULL(SUM(a.applied_amount), 0)
+                        FROM [tg].[dbo].[credit_note_applications] a
+                        INNER JOIN [tg].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
+                        WHERE a.payment_request_id = ? AND a.status = 1 AND n.note_type = 'CREDIT'
+                    ),
+                    total_notas_cargo = (
+                        SELECT ISNULL(SUM(a.applied_amount), 0)
+                        FROM [tg].[dbo].[credit_note_applications] a
+                        INNER JOIN [tg].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
+                        WHERE a.payment_request_id = ? AND a.status = 1 AND n.note_type = 'DEBIT'
+                    )
+                    WHERE id = ?";
+                $this->sql->update($totals_query, [$payment_id, $payment_id, $payment_id]);
+            }
+
+            // 4. Commit
             $this->sql->commit();
 
             return [
@@ -872,7 +924,10 @@ class PaymentRequestsModel extends Model
                 pr.emp_cod,
                 pr.tipo,
                 pr.monto_total,
-                
+                ISNULL(pr.total_notas_credito, 0) as total_notas_credito,
+                ISNULL(pr.total_notas_cargo, 0)   as total_notas_cargo,
+                (pr.monto_total - ISNULL(pr.total_notas_credito, 0) + ISNULL(pr.total_notas_cargo, 0)) as monto_neto,
+
                 -- Usuario que solicitó
                 u.Nombre as usuario_nombre,
                 
@@ -997,7 +1052,9 @@ class PaymentRequestsModel extends Model
                         continue;
                     }
 
-                    $monto = floatval($payment['monto_total'] ?? 0);
+                    $monto = floatval($payment['monto_total'] ?? 0)
+                           - floatval($payment['total_notas_credito'] ?? 0)
+                           + floatval($payment['total_notas_cargo'] ?? 0);
 
                     // Contar anticipos aprobados
                     if (isset($payment['tipo']) && intval($payment['tipo']) === 1) {
@@ -1283,6 +1340,9 @@ class PaymentRequestsModel extends Model
             SELECT
                 pr.id,
                 pr.monto_total,
+                ISNULL(pr.total_notas_credito, 0) as total_notas_credito,
+                ISNULL(pr.total_notas_cargo, 0)   as total_notas_cargo,
+                (pr.monto_total - ISNULL(pr.total_notas_credito, 0) + ISNULL(pr.total_notas_cargo, 0)) as monto_neto,
                 pr.comment,
                 prov.den as proveedor_nombre,
                 emp.den as empresa_nombre,

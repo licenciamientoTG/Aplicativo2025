@@ -4106,8 +4106,24 @@ function renderPaymentItems() {
   let html = "";
   paymentItems.forEach((item, index) => {
     const totalFac = parseFloat(item.total_fac) || 0;
+    const tempKey = typeof getInvoiceTempKey === "function" ? getInvoiceTempKey(item) : `${item.nro}__${item.codgas}`;
+    const notesForItem = typeof pendingNotes !== "undefined"
+      ? pendingNotes.filter(n => n.invoice_temp_key === tempKey)
+      : [];
+    const notesHtml = notesForItem.map((n, ni) => {
+      const colorClass = n.note_type === "CREDIT" ? "text-success" : "text-warning";
+      const sign = n.note_type === "CREDIT" ? "−" : "+";
+      const globalIndex = typeof pendingNotes !== "undefined" ? pendingNotes.indexOf(n) : -1;
+      return `<small class="d-block ${colorClass}">
+        <i class="fas fa-tag"></i> ${n.note_label}: ${sign}$${parseFloat(n.applied_amount).toLocaleString("es-MX",{minimumFractionDigits:2})}
+        ${globalIndex >= 0 ? `<button class="btn btn-xs btn-link text-danger p-0 ms-1" style="font-size:0.8rem;line-height:1;" onclick="removeNoteAssignment(${globalIndex})">×</button>` : ""}
+      </small>`;
+    }).join("");
+    const noteBtn = typeof openAssignNoteModal === "function"
+      ? `<button type="button" class="btn btn-xs btn-outline-light ms-1" style="font-size:0.7rem;padding:1px 5px;" onclick="openAssignNoteModal('${tempKey}')" title="Asignar nota"><i class="fas fa-tag"></i></button>`
+      : "";
     html += `
-            <li class="list-group-item payment-item d-flex justify-content-between align-items-center">
+            <li class="list-group-item payment-item d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start mb-1">
                         <strong>Folio: ${item.nro}</strong>
@@ -4116,10 +4132,14 @@ function renderPaymentItems() {
                     <small class="d-block">Factura: ${item.Factura || "N/A"} | Remisión: ${item.Remision || "N/A"}</small>
                     <small class="d-block">Proveedor: ${item.proveedor}</small>
                     <small class="d-block text-light">Fecha: ${item.fecha}</small>
+                    ${notesHtml}
                 </div>
-                <button type="button" class="btn btn-sm ms-2" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; border-radius: 50%; width: 30px; height: 30px;" onclick="removeFromPayment(${index})">
-                    <i class="fas fa-times"></i>
-                </button>
+                <div class="d-flex flex-column align-items-center ms-2 gap-1">
+                    ${noteBtn}
+                    <button type="button" class="btn btn-sm" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; border-radius: 50%; width: 30px; height: 30px;" onclick="removeFromPayment(${index})">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </li>
         `;
   });
