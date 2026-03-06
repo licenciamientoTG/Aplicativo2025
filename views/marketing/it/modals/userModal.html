@@ -1,0 +1,43 @@
+<form action="/it/users" method="post" id="userForm">
+    <div class="modal-body">
+        <div class="mb-3">
+            <label for="profile_id" class="form-label">Perfil: <b class="text-danger">*</b></label>
+            <select class="selectpicker w-100" data-live-search="true" name="profile_id" id="profile_id" placeholder="Perfil" required>
+                {% for profile in profiles %}
+                <option value="{{ profile.Id }}">{{ profile.Nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="name" class="form-label">Nombre: <b class="text-danger">*</b></label>
+            <input type="text" class="form-control" id="name" name="name" required>
+        </div>
+        <div class="mb-3">
+            <label for="username" class="form-label">Usuario: <b class="text-danger">*</b></label>
+            <input type="text" class="form-control" id="username" name="username" required>
+        </div>
+        <div class="mb-3">
+            <label for="email" class="form-label">Correo electrónico: </label>
+            <input type="email" class="form-control" id="email" name="email">
+        </div>
+        <div class="mb-3">
+            <label for="password" class="form-label">Contraseña: <b class="text-danger">*</b></label>
+            <input type="password" class="form-control" id="password" name="password" required>
+        </div>
+        <div class="mb-3">
+            <label for="password2" class="form-label">Confirmar contraseña: <b class="text-danger">*</b></label>
+            <input type="password" class="form-control" id="password2" name="password2" required>
+        </div>
+        <div class="mb-3">
+            <label for="status" class="form-label">Status: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="status" id="status" placeholder="Status">
+                <option value="1" selected>Activo</option>
+                <option value="0">Inactivo</option>
+            </select>
+        </div>
+    </div>
+    <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar usuario</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+    </div>
+</form>

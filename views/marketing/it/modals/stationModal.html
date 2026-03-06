@@ -1,0 +1,42 @@
+<form action="/it/stations" method="post">
+    <div class="modal-body">
+
+
+        <div class="mb-1">
+            <label for="Nombre" class="form-label col-form-label-sm mb-0">Nombre: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue el nombre de la estación" id="Nombre" name="Nombre">
+        </div>
+        <div class="mb-1">
+            <label for="Domicilio" class="form-label col-form-label-sm mb-0">Domicilio: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue el domicilio de la estación" id="Domicilio" name="Domicilio">
+        </div>
+        <div class="mb-1">
+            <label for="Estacion" class="form-label col-form-label-sm mb-0">Estación: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue la estación" id="Estacion" name="Estacion">
+        </div>
+        <div class="mb-1">
+            <label for="Servidor" class="form-label col-form-label-sm mb-0">Servidor: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue el servidor" id="Servidor" name="Servidor">
+        </div>
+        <div class="mb-1">
+            <label for="BaseDatos" class="form-label col-form-label-sm mb-0">Base de datos: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue la Base de datos" id="BaseDatos" name="BaseDatos">
+        </div>
+        <div class="mb-1">
+            <label for="PermisoCRE" class="form-label col-form-label-sm mb-0">Permiso CRE: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue el permiso de la CRE" id="PermisoCRE" name="PermisoCRE">
+        </div>
+        <div class="mb-1">
+            <label for="Denominacion" class="form-label col-form-label-sm mb-0">Denominación: </label>
+            <input type="text" class="form-control form-control-sm" placeholder="Agregue la denominación" id="Denominacion" name="Denominacion">
+        </div>
+        <div class="mb-1">
+            <label for="Zona" class="form-label col-form-label-sm mb-0">Zona: </label>
+            <input type="number" step="1" min="1" max="3" class="form-control form-control-sm" placeholder="Agregue la zona de la estación" id="Zona" name="Zona">
+        </div>
+    </div>
+    <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar estación</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+    </div>
+</form>

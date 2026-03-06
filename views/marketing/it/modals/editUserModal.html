@@ -1,0 +1,44 @@
+<form action="/it/users" method="post" id="editUserForm">
+    <div class="modal-body">
+        <div class="mb-3">
+            <label for="profile_id" class="form-label">Perfil: <b class="text-danger">*</b></label>
+            <select class="selectpicker w-100" data-live-search="true" name="profile_id" id="profile_id" placeholder="Perfil" required>
+                {% for profile in profiles %}
+                <option value="{{ profile.Id }}" {{ (profile.Id == user.IdPerfil) ? 'selected' : '' }}>{{ profile.Nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="name" class="form-label">Nombre: <b class="text-danger">*</b></label>
+            <input type="text" class="form-control" id="name" name="name" value="{{ user.Nombre }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="username" class="form-label">Usuario: </label>
+            <input type="text" class="form-control" id="username" value="{{ user.Usuario }}" readonly disabled>
+        </div>
+        <div class="mb-3">
+            <label for="email" class="form-label">Correo electrónico: </label>
+            <input type="email" class="form-control" id="email" name="email" value="{{ user.Correo }}">
+        </div>
+        <div class="mb-3">
+            <label for="IdEstacion" class="form-label">Estación: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="IdEstacion" id="IdEstacion" placeholder="Estación">
+                {% for station in stations %}
+                <option value="{{ station.Codigo }}" {{ user.Estacion == station.Nombre ? 'selected' : '' }}>{{ station.Nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="status" class="form-label">Status: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="status" id="status" placeholder="Status">
+                <option value="1" selected>Activo</option>
+                <option value="0">Inactivo</option>
+            </select>
+        </div>
+    </div>
+    <div class="modal-footer">
+        <input type="hidden" name="id" value="{{ user.Id }}">
+        <button type="submit" class="btn btn-primary">Guardar usuario</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+    </div>
+</form>

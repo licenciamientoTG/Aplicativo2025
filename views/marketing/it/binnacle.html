@@ -1,0 +1,97 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Sistemas{% endblock %}
+{% block mycss %}
+<!-- FullCalendar CSS -->
+<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js'></script>
+{% endblock %}
+{% block menutitle %}Bitácora de actividades{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <!-- Lo vamos a mover a la derecha de la pantalla -->
+        <div class="d-flex justify-content-end">
+        <a href="/it/activities_list" class="btn btn-primary">Reporte de actividades</a>
+    </div>
+</div>
+
+
+<div class="card">
+    <div class="card-header pb-0">
+        <div id='calendar'></div>
+    </div>
+</div>
+
+
+<!-- Modal de actividades -->
+<div class="modal fade" id="modalActivities" tabindex="-1" aria-labelledby="modalActivitiesLabel" aria-hidden="true" data-date="">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="modalActivitiesLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content p-3">
+                <input type="hidden" name="date_modal" id="date_modal" value="">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="activityModal" tabindex="-1" aria-labelledby="activityModalLabel" aria-hidden="true" data-date="">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="activityModalLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="content p-3">
+                <input type="hidden" name="activity_id" id="activity_id" value="">
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+           // Cambiar el idioma a español
+            locale: 'es',
+            // Agregaremos nuestros eventos de una URL
+            events: "/it/get_activities",
+            // Agregamos el boton para cambiar de vista
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay',
+            },
+        });
+        calendar.render();
+        // Agregamos la funcion para cuando se haga click en un dia
+        calendar.on('dateClick', function(info) {
+            // Desplegamos el modal de actividades
+            let date = info.dateStr;
+            // Agregamos la variable date al modal
+            $('#date_modal').val(date);
+            $('#modalActivities').modal('show');
+        });
+
+        // Agregamos la funcion para cuando se haga click en un evento
+        calendar.on('eventClick', function(info) {
+            // Obtenemos el Id de la actividad
+            let activity_id = info.event.id;
+            $('input#activity_id').val(activity_id);
+            // Desplegamos el modal de actividades
+            let date = info.event.startStr;
+            $('#activityModal').modal('show');
+        });
+    });
+
+
+</script>
+
+{% endblock %}
