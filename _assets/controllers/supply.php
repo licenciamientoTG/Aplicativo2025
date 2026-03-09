@@ -3209,11 +3209,14 @@ class Supply
                     $row['auth_tesoreria_date']
                 );
 
+                $canDelete = in_array(69, explode(',', $_SESSION['tg_user']['permissions']));
+                $deleteBtn = $canDelete
+                    ? '<button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash"></i></button>'
+                    : '';
                 $actions = '
                     <div class="btn-group btn-group-sm">
                         <a href="/supply/payment_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle"><i class="fas fa-eye"></i></a>
-                        <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash"></i>
-                        </button>
+                        ' . $deleteBtn . '
                     </div>
                 ';
 
@@ -3828,6 +3831,21 @@ class Supply
         echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores'));
     }
 
+    public function delete_payment()
+    {
+        header('Content-Type: application/json');
+        if (!in_array(69, explode(',', $_SESSION['tg_user']['permissions']))) {
+            echo json_encode(['success' => false, 'message' => 'Sin permiso para eliminar pagos.']);
+            return;
+        }
+        $payment_id = intval($_POST['payment_id'] ?? 0);
+        if ($payment_id <= 0) {
+            echo json_encode(['success' => false, 'message' => 'ID de pago inválido.']);
+            return;
+        }
+        echo json_encode($this->PaymentRequestsModel->delete_payment_by_id($payment_id));
+    }
+
     /** TEMPORAL PRUEBAS - quitar cuando terminen las pruebas */
     public function reset_test_data()
     {
@@ -4062,23 +4080,23 @@ class Supply
         }
     }
 
-    function delete_payment()
-    {
-        header('Content-Type: application/json');
+    // function delete_payment()
+    // {
+    //     header('Content-Type: application/json');
 
-        try {
-            $payment_id = $_POST['payment_id'] ?? null;
-            if (!$payment_id) {
-                json_output(['success' => false, 'message' => 'ID de pago requerido']);
-                return;
-            }
-            // Llamar al modelo para eliminar con transacción
-            $result = $this->PaymentRequestsModel->delete_payment_complete($payment_id);
-            json_output($result);
-        } catch (Exception $e) {
-            json_output(['success' => false, 'message' => $e->getMessage()]);
-        }
-    }
+    //     try {
+    //         $payment_id = $_POST['payment_id'] ?? null;
+    //         if (!$payment_id) {
+    //             json_output(['success' => false, 'message' => 'ID de pago requerido']);
+    //             return;
+    //         }
+    //         // Llamar al modelo para eliminar con transacción
+    //         $result = $this->PaymentRequestsModel->delete_payment_complete($payment_id);
+    //         json_output($result);
+    //     } catch (Exception $e) {
+    //         json_output(['success' => false, 'message' => $e->getMessage()]);
+    //     }
+    // }
 
     private function getStatusBadge($status)
     {
