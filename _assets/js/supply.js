@@ -7697,4 +7697,246 @@ function addInvoiceToPayment(document) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════
+//  ANÁLISIS DE COMPRAS
+// ═══════════════════════════════════════════════════════════
+async function analisis_compras_table() {
+  if ($.fn.DataTable.isDataTable("#analisis_compras_table")) {
+    $("#analisis_compras_table").DataTable().destroy();
+    $("#analisis_compras_table thead .filter").remove();
+  }
+
+  var fromDate  = document.getElementById("from_analisis").value;
+  var untilDate = document.getElementById("until_analisis").value;
+  var codgas    = document.getElementById("codgas_analisis").value;
+  var proveedor = document.getElementById("proveedor_analisis").value;
+  var company   = document.getElementById("company_analisis").value;
+
+  if (!fromDate || !untilDate) {
+    alertify.myAlert(
+      `<div class="container text-center text-danger">
+          <h4 class="mt-2 text-danger">¡Error!</h4>
+       </div>
+       <div class="text-dark">
+          <p class="text-center">Debe seleccionar las fechas para continuar.</p>
+       </div>`
+    );
+    return;
+  }
+
+  // Fila de filtros por columna
+  $("#analisis_compras_table thead").prepend(
+    $("#analisis_compras_table thead tr").clone().addClass("filter")
+  );
+  $("#analisis_compras_table thead tr.filter th").each(function (index) {
+    var col = $("#analisis_compras_table thead th").length / 2;
+    if (index < col) {
+      var title = $(this).text();
+      $(this).html(
+        '<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />'
+      );
+    }
+  });
+  $("#analisis_compras_table thead tr.filter th input").on("keyup change", function () {
+    var index = $(this).parent().index();
+    $("#analisis_compras_table").DataTable().column(index).search(this.value).draw();
+  });
+
+  $("#analisis_compras_table").DataTable({
+    order: [[2, "asc"]],
+    dom: '<"top"Bf>rt<"bottom"lip>',
+    scrollX: true,
+    scrollY: "calc(100vh - 380px)",
+    scrollCollapse: true,
+    paging: false,
+    buttons: [
+      {
+        extend: "excel",
+        className: "btn btn-success",
+        text: '<i class="fas fa-file-excel"></i> Excel',
+        title: "Analisis_Compras_" + fromDate + "_" + untilDate,
+        exportOptions: { columns: ":visible" }
+      },
+      {
+        extend: "print",
+        className: "btn btn-secondary",
+        text: '<i class="fas fa-print"></i> Imprimir',
+        exportOptions: { columns: ":visible" }
+      },
+      {
+        extend: "colvis",
+        className: "btn btn-info",
+        text: '<i class="fas fa-columns"></i> Columnas'
+      }
+    ],
+    ajax: {
+      method: "POST",
+      url: "/supply/purchase_analysis_table",
+      timeout: 600000,
+      data: {
+        fromDate: fromDate,
+        untilDate: untilDate,
+        codgas: codgas,
+        proveedor: proveedor,
+        company: company
+      },
+      beforeSend: function () {
+        $(".table-responsive").addClass("loading");
+      },
+      error: function (xhr, error, thrown) {
+        $(".table-responsive").removeClass("loading");
+        alertify.myAlert(
+          `<div class="container text-center text-danger">
+              <h4 class="mt-2 text-danger">¡Error!</h4>
+           </div>
+           <div class="text-dark">
+              <p class="text-center">No se pudo cargar el análisis de compras.</p>
+              <small>${thrown}</small>
+           </div>`
+        );
+      },
+      dataSrc: function (json) {
+        if (json.error) {
+          alertify.error(json.message);
+          return [];
+        }
+        var rows     = json.data;
+        var total    = rows.length;
+        var cantidad = rows.reduce((s, r) => s + parseFloat(r.can       || 0), 0);
+        var monto    = rows.reduce((s, r) => s + parseFloat(r.mto       || 0), 0);
+        var iva      = rows.reduce((s, r) => s + parseFloat(r.iva_total || 0), 0);
+        var totalFac = rows.reduce((s, r) => s + parseFloat(r.total_fac || 0), 0);
+
+        var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
+
+        // KPI strip
+        $("#kpi_analisis_total").text(total);
+        $("#kpi_analisis_cantidad").text(fmt(cantidad));
+        $("#kpi_analisis_monto").text("$" + fmt(monto));
+        $("#kpi_analisis_iva").text("$" + fmt(iva));
+        $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
+        $("#kpi_analisis_strip").show();
+
+        // Badge header
+        $("#contador_analisis").text(total + " facturas");
+        $("#total_monto_analisis").text("$" + fmt(totalFac));
+
+        // Totales en tfoot
+        $("#tfoot_cantidad").text(fmt(cantidad));
+        $("#tfoot_monto").text("$" + fmt(monto));
+        $("#tfoot_iva").text("$" + fmt(iva));
+        $("#tfoot_total").text("$" + fmt(totalFac));
+
+        return rows;
+      }
+    },
+    columns: [
+      // 0 — Estación
+      { data: "gasolinera", className: "text-start text-nowrap" },
+      // 1 — Número
+      { data: "nro", className: "text-start text-nowrap" },
+      // 2 — Fecha
+      { data: "fecha", className: "text-start text-nowrap" },
+      // 3 — Vto.
+      {
+        data: "fechaVto",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          if (!data) return '<span class="text-muted">-</span>';
+          var hoy = new Date().toISOString().slice(0,10);
+          if (data < hoy) return '<span class="text-danger fw-bold">' + data + '</span>';
+          return data;
+        }
+      },
+      // 4 — Proveedor
+      { data: "proveedor", className: "text-start text-nowrap" },
+      // 5 — Factura
+      {
+        data: "Factura",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          return data || '<span class="text-muted">-</span>';
+        }
+      },
+      // 6 — Remisión
+      {
+        data: "Remision",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          return data || '<span class="text-muted">-</span>';
+        }
+      },
+      // 7 — Producto
+      { data: "producto", className: "text-start" },
+      // 8 — Cantidad
+      {
+        data: "can",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2)
+      },
+      // 9 — Monto
+      {
+        data: "mto",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 10 — I.V.A.
+      {
+        data: "iva_total",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 11 — Total
+      {
+        data: "total_fac",
+        className: "text-end fw-bold",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 12 — V (vencida)
+      {
+        data: "v_flag",
+        className: "text-center",
+        render: function (data) {
+          return data ? '<span class="badge bg-danger">V</span>' : '';
+        }
+      },
+      // 13 — C (en orden de pago)
+      {
+        data: "c_flag",
+        className: "text-center",
+        render: function (data) {
+          return data ? '<span class="badge bg-success">C</span>' : '';
+        }
+      },
+      // 14 — UUID
+      {
+        data: "satuid",
+        className: "text-start",
+        render: function (data) {
+          if (!data) return '<span class="text-muted">-</span>';
+          return '<span title="' + data + '" style="cursor:pointer;font-family:monospace" ' +
+            'onclick="navigator.clipboard.writeText(\'' + data + '\');alertify.success(\'UUID copiado\')">' +
+            data.substring(0, 8) + '…</span>';
+        }
+      },
+      // 15 — R.F.C.
+      {
+        data: "rfc",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          return data || '<span class="text-muted badge bg-secondary">debug</span>';
+        }
+      }
+    ],
+    createdRow: function (row, data) {
+      if (data.v_flag) $(row).addClass("fila-vencida");
+      else if (data.c_flag) $(row).addClass("fila-en-orden");
+    },
+    initComplete: function () {
+      $(".table-responsive").removeClass("loading");
+      alertify.success("Análisis de compras cargado");
+    }
+  });
+}
+
 

@@ -1551,6 +1551,77 @@ class Supply
     }
 
 
+    public function purchase_analysis()
+    {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        echo $this->twig->render($this->route . 'purchase_analysis.html', compact('stations'));
+    }
+
+    public function purchase_analysis_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $postData = [
+            'from'     => dateToInt($_POST['fromDate']),
+            'until'    => dateToInt($_POST['untilDate']),
+            'codgas'   => $_POST['codgas']   ? $_POST['codgas']   : '0',
+            'proveedor'=> $_POST['proveedor']? $_POST['proveedor']: '0',
+            'company'  => $_POST['company']  ? $_POST['company']  : '0'
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/analisis_de_compras/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+        $apiData = json_decode($response, true);
+        $data = [];
+        $hoy = date('Y-m-d');
+
+        if (isset($apiData) && is_array($apiData)) {
+            foreach ($apiData as $row) {
+                $fechaVencimiento = !empty($row['fecha_vencimiento_credito'])
+                    ? $row['fecha_vencimiento_credito']
+                    : ($row['fechaVto'] ?? null);
+                $estaVencida = !empty($fechaVencimiento) && $fechaVencimiento < $hoy;
+
+                $vFlag = $estaVencida ? 'V' : '';
+                $cFlag = !empty($row['en_orden_pago']) && $row['en_orden_pago'] == 1 ? 'C' : '';
+
+                $data[] = [
+                    'nro'              => $row['nro'],
+                    'fecha'            => $row['fecha'],
+                    'fechaVto'         => $fechaVencimiento,
+                    'proveedor'        => $row['proveedor'],
+                    'proveedor_codigo' => $row['proveedor_codigo'],
+                    'Factura'          => $row['Factura'],
+                    'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
+                    'producto'         => $row['producto'],
+                    'can'              => $row['can'],
+                    'mto'              => $row['mto'],
+                    'mtoiie'           => $row['mtoiie'],
+                    'iva_total'        => $row['iva_total'],
+                    'total_fac'        => $row['total_fac'],
+                    'v_flag'           => $vFlag,
+                    'c_flag'           => $cFlag,
+                    'satuid'           => $row['satuid'],
+                    'rfc'              => $row['rfc'] ?? '',
+                    'gasolinera'       => $row['gasolinera'],
+                    'codgas'           => $row['codgas'],
+                    'en_orden_pago'    => $row['en_orden_pago'],
+                    'payment_status'   => $row['payment_status'],
+                    'codigo_empresa'   => $row['codigo_empresa'],
+                ];
+            }
+        }
+        json_output(array("data" => $data));
+    }
+
+
     function uploadPdf()
     {
         $uploadDir = __DIR__ . '/../../_assets/uploads/creAcuses/';
