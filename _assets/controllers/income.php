@@ -529,14 +529,14 @@ function invoice_client_desp(){
                     'Monto despacho' => $despacho['mto'],
                     'Forma pago'     => $despacho['Tipo'],
                     'Producto'       => $despacho['Producto'],
-                    'EstaciÃ³n'       => $despacho['Estacion'],
+                    'Estación'       => $despacho['Estación'],
                     'Bomba'          => $despacho['Bomba'],
                     'Factura'        => $despacho['Factura'],
                     'UUID'           => $despacho['UUID'],
                     'RFC'            => $despacho['RFC']
                 );
             }
-        }
+        }        
         json_output(array("data" => $data));
     }
 

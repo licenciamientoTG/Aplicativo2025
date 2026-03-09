@@ -138,7 +138,7 @@ class DespachosModel extends Model{
             t1.hratrn,
             ROW_NUMBER() OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS rn,
             LAG(t1.hratrn, 1, NULL) OVER (PARTITION BY t1.codcli ORDER BY t1.hratrn) AS hora_anterior,
-            t4.abr Estacion,
+            t4.abr Estación,
             t5.tar Tarjeta,
             t5.grp Grupo,
             t5.den Descripcion,
