@@ -7805,10 +7805,11 @@ async function analisis_compras_table() {
   $("#analisis_compras_table").DataTable({
     order: [[2, "asc"]],
     dom: '<"top"Bf>rt<"bottom"lip>',
-    scrollX: true,
-    scrollY: "calc(100vh - 380px)",
-    scrollCollapse: true,
-    paging: false,
+     pageLength: 100,
+    // scrollY: "calc(100vh - 380px)",
+    // scrollCollapse: true,
+    paging: true,
+
     buttons: [
       {
         extend: "excel",
