@@ -203,7 +203,7 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
     - 'JUAREZ': aplicar ajuste CDMX -> Juárez (invierno -1h).
 
     Regla de negocio:
-      * Foráneas y Parral => 'CDMX'
+      * Foráneas, Parral y Estación 26 (Clara) => 'CDMX'
       * Demás estaciones  => 'JUAREZ'
     """
     global AFILIACION_TZ_POLICY
@@ -229,7 +229,8 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
             SELECT 
                 A.afiliacion,
                 ISNULL(S.Nombre, V.Nombre) as Estacion,
-                ISNULL(A.rfc, 'FORANEAS') as RFC
+                ISNULL(A.rfc, 'FORANEAS') as RFC,
+                A.estacion_id
             FROM Tesoreria_afil A
             LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
             LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
@@ -238,7 +239,7 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
               AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)
         """, entidad_id)
 
-        for afil, estacion, rfc in cursor.fetchall():
+        for afil, estacion, rfc, est_id in cursor.fetchall():
             if not afil:
                 continue
             af = str(afil).strip().lstrip('0')
@@ -247,10 +248,12 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
 
             est_nombre = (estacion or '').strip().upper()
             rfc_norm   = (rfc or '').strip().upper()
+            est_id_val = int(est_id) if est_id is not None else 0
 
             es_foranea = (rfc_norm == '' or rfc_norm == 'FORANEAS')
             es_parral  = ('PARRAL' in est_nombre)
-            es_clara   = ('CLARA' in est_nombre)
+            # Estación 26 (Clara en Santander) no debe retrasar la hora
+            es_clara   = (est_id_val == 26 or 'CLARA' in est_nombre)
 
             policy[af] = 'CDMX' if (es_foranea or es_parral or es_clara) else 'JUAREZ'
 
@@ -348,10 +351,17 @@ def sanitizar_nombre_columna(nombre, bank_type=None):
     norm = ''.join(c for c in unicodedata.normalize('NFD', orig.upper()) if unicodedata.category(c) != 'Mn')
     
     if 'FECHA' in norm:
-        if re.search(r'DEPOSITO|APLICACION', norm):
-            return 'Fecha_Deposito'
-        if 'TRANSACCION' in norm:
-            return 'Fecha_Transaccion'
+        if re.search(r'DEPOSITO|APLICACION|PAGO', norm): return 'Fecha_Deposito'
+        if 'TRANSACCION' in norm: return 'Fecha_Transaccion'
+    
+    if 'ID MOVIMIENTO' in norm or ('REFERENCIA' in norm and 'CARGO' in norm): return 'ID_Externo'
+    if 'HORA' in norm: return 'Hora'
+    if 'AFILIACION' in norm or 'ESTABLECIMIENTO' in norm or 'COMERCIO' in norm: return 'Afiliacion'
+    if 'TARJETA' in norm: return 'Tarjeta'
+    if 'TERMINAL' in norm: return 'Terminal'
+    if norm in ['TOTAL', 'MONTO', 'IMPORTE'] or ('MONTO' in norm and 'CARGO' in norm): return 'Monto'
+    if ('COD' in norm and 'AUT' in norm) or 'AUTORIZACION' in norm: return 'Codigo_Autorizacion'
+    if 'REFERENCIA' in norm: return 'Referencia'
 
     s = ''.join(c for c in unicodedata.normalize('NFD', orig) if unicodedata.category(c) != 'Mn')
     s = re.sub(r'[^a-zA-Z0-9_]', '_', s)
@@ -684,7 +694,7 @@ def ejecutar_banorte(browser):
         time.sleep(5) 
 
         # NUEVO: Detección de Sesión Abierta
-        if page.is_visible("text=abierta") or page.is_visible("text=Abierta") or page.is_visible("text=ABIERTA"):
+        if page.is_visible("text=abierta") or page.is_visible("text=Abierta") or page.is_visible("text=ABIERTA") or page.is_visible("text=Ya tiene una sesión activa") or page.is_visible("text=Acceso denegado"):
             print("   ALERTA: Se detectó una sesión ya abierta en otro dispositivo. Abortando proceso Banorte.")
             return
 
@@ -995,11 +1005,26 @@ def ejecutar_getnet(browser):
                         print(f"      Reintentando día: {fecha_str} (Intento {p_intentos + 1})")
                         dias_procesados_estacion.add(p_fecha_reporte.strftime("%Y-%m-%d"))
 
+                        MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                        target_mes_nombre = MESES[p_fecha_reporte.month - 1]
+                        
                         try:
-                            selector_dia = f"text='{p_fecha_reporte.day}'"
-                            page.locator(selector_dia).first.click()
-                            time.sleep(0.5)
-                            page.locator(selector_dia).first.click()
+                            # Navegación de mes si es necesario
+                            page.wait_for_selector(".react-calendar__navigation__label", timeout=10000)
+                            label_actual = page.locator(".react-calendar__navigation__label").inner_text().lower()
+                            
+                            if target_mes_nombre not in label_actual:
+                                if p_fecha_reporte < datetime.now():
+                                    page.click(".react-calendar__navigation__prev-button", timeout=5000)
+                                    time.sleep(2)
+
+                            # Selección del día usando aria-label
+                            day_label = f"{p_fecha_reporte.day} de {target_mes_nombre} de {p_fecha_reporte.year}"
+                            selector_dia = page.get_by_label(day_label, exact=False).first
+                            
+                            selector_dia.click()
+                            time.sleep(1.2)
+                            selector_dia.click()
                             time.sleep(2)
 
                             try: page.click("button:has-text('Descargar')", timeout=5000)
@@ -1050,14 +1075,26 @@ def ejecutar_getnet(browser):
                     current_date += timedelta(days=1)
                     continue
 
-                dia_objetivo = str(current_date.day)
-                print(f"      Procesando día: {fecha_consulta_str} (Día {dia_objetivo})...")
+                MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                target_mes_nombre = MESES[current_date.month - 1]
 
                 try:
-                    selector_dia = f"text='{dia_objetivo}'"
-                    page.locator(selector_dia).first.click()
-                    time.sleep(0.5)
-                    page.locator(selector_dia).first.click()
+                    # Navegación de mes si es necesario
+                    page.wait_for_selector(".react-calendar__navigation__label", timeout=10000)
+                    label_actual = page.locator(".react-calendar__navigation__label").inner_text().lower()
+                    
+                    if target_mes_nombre not in label_actual:
+                        if current_date < datetime.now():
+                            page.click(".react-calendar__navigation__prev-button", timeout=5000)
+                            time.sleep(2)
+
+                    # Selección del día usando aria-label
+                    day_label = f"{current_date.day} de {target_mes_nombre} de {current_date.year}"
+                    selector_dia = page.get_by_label(day_label, exact=False).first
+                    
+                    selector_dia.click()
+                    time.sleep(1.2)
+                    selector_dia.click()
                     time.sleep(2)
                     
                     try: page.click("button:has-text('Descargar')", timeout=5000)

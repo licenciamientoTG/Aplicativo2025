@@ -31,9 +31,6 @@ CORE_MAP = {
         'ID movimiento': 'ID_Externo', 'ID Movimiento': 'ID_Externo', 'Fecha Transacción': 'Fecha_Transaccion', 'Fecha Transaccion': 'Fecha_Transaccion', 'Hora de Transacción': 'Hora', 'Hora de Transaccion': 'Hora', 'Hora Transacción': 'Hora', 'Hora Transaccion': 'Hora', 'Afiliación': 'Afiliacion', 'Afiliacion': 'Afiliacion', 'Cod. Terminal': 'Terminal', 'Terminal ID': 'Terminal', 'Código Autorización': 'Codigo_Autorizacion', 'Cod. Aut': 'Codigo_Autorizacion', 'Total': 'Monto', 'Monto de Transacción Signo': 'Monto', 'Monto de Transaccion Signo': 'Monto', 'Referencia': 'Referencia', 'Fecha Depósito': 'Fecha_Deposito', 'Fecha Deposito': 'Fecha_Deposito', 'Fecha de Depósito': 'Fecha_Deposito', 'Fecha de Deposito': 'Fecha_Deposito', 'Fecha Aplicación': 'Fecha_Deposito', 'Fecha Aplicacion': 'Fecha_Deposito', 'Fecha de Aplicación': 'Fecha_Deposito', 'Fecha de Aplicacion': 'Fecha_Deposito'
     }
 }
-CREDENCIALES_SANTANDER = [
-    {"razon": "DIAZ GAS", "usuario": "Alfredo_escalera", "pass": "DIAZ1147"}, {"razon": "GASOMEX", "usuario": "israel.ibarra", "pass": "TotalG2023"}, {"razon": "JARUDO", "usuario": "israel.ibarrat", "pass": "IsraelTG17"}, {"razon": "CLARA", "usuario": "israel.ibarra1", "pass": "IsraelTG017"}, {"razon": "ESTACION CUSTODIA", "usuario": "tesoreria19", "pass": "Tesoreria19"}, {"razon": "SYC DELICIAS", "usuario": "susana.pantoja2", "pass": "Susana1511"}, {"razon": "VILLA AHUMADA", "usuario": "facturavilla", "pass": "VILLA1242"}, {"razon": "SMA VENTANAS", "usuario": "sve200529db9", "pass": "Hrmm7k01"}, {"razon": "SMA PICACHOS", "usuario": "spi200529sc7", "pass": "Hrmm7k01"}, {"razon": "EL CASTAÑO", "usuario": "martin.puentes", "pass": "Castaño12900"}, {"razon": "TSA", "usuario": "goperadortsadelcent", "pass": "Tsa2024!"}, {"razon": "HECTOR ARMANDINO", "usuario": "fihh7303026k7", "pass": "Praxedis25"},
-]
 
 # --- FUNCIONES HELPERS (de bancos.py) ---
 def obtener_conexion():
@@ -71,63 +68,41 @@ def limpiar_fecha(valor, formato_origen=None):
 AFILIACION_TZ_POLICY = {}
 
 def cargar_politica_horaria_afiliaciones(tipo_banco: str):
-    """
-    Construye (con cache en memoria) un mapa afiliacion -> zona horaria lógica:
-    - 'CDMX': conservar hora tal como viene del banco.
-    - 'JUAREZ': aplicar ajuste CDMX -> Juárez (invierno -1h).
-
-    Regla de negocio:
-      * Foráneas y Parral => 'CDMX'
-      * Demás estaciones  => 'JUAREZ'
-    """
     global AFILIACION_TZ_POLICY
     key = (tipo_banco or '').upper()
     if key in AFILIACION_TZ_POLICY:
         return AFILIACION_TZ_POLICY[key]
 
-    entidad_id = None
-    if key == 'BANORTE':
-        entidad_id = 4
-    elif key == 'SANTANDER':
-        entidad_id = 1
-
+    entidad_id = 4 if key == 'BANORTE' else (1 if key == 'SANTANDER' else None)
     policy = {}
     if entidad_id is None:
         AFILIACION_TZ_POLICY[key] = policy
         return policy
 
     try:
-        conn = obtener_conexion()
-        cursor = conn.cursor()
+        conn = obtener_conexion(); cursor = conn.cursor()
         cursor.execute("""
-            SELECT 
-                A.afiliacion,
-                ISNULL(S.Nombre, V.Nombre) as Estacion,
-                ISNULL(A.rfc, 'FORANEAS') as RFC
+            SELECT A.afiliacion, ISNULL(S.Nombre, V.Nombre) as Estacion, ISNULL(A.rfc, 'FORANEAS') as RFC, A.estacion_id
             FROM Tesoreria_afil A
             LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
             LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
-            WHERE A.entidad_id = ?
-              AND LEN(ISNULL(A.afiliacion,'')) > 0
-              AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)
+            WHERE A.entidad_id = ? AND LEN(ISNULL(A.afiliacion,'')) > 0 AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)
         """, entidad_id)
 
-        for afil, estacion, rfc in cursor.fetchall():
-            if not afil:
-                continue
+        for afil, estacion, rfc, est_id in cursor.fetchall():
+            if not afil: continue
             af = str(afil).strip().lstrip('0')
-            if not af:
-                continue
-
+            if not af: continue
             est_nombre = (estacion or '').strip().upper()
             rfc_norm   = (rfc or '').strip().upper()
+            est_id_val = int(est_id) if est_id is not None else 0
 
             es_foranea = (rfc_norm == '' or rfc_norm == 'FORANEAS')
             es_parral  = ('PARRAL' in est_nombre)
-            es_clara   = ('CLARA' in est_nombre)
+            # Estación 26 (Clara) no debe retrasar la hora
+            es_clara   = (est_id_val == 26 or 'CLARA' in est_nombre)
 
             policy[af] = 'CDMX' if (es_foranea or es_parral or es_clara) else 'JUAREZ'
-
         conn.close()
     except Exception as e:
         print(f"      ! Error cargando política horaria afiliaciones: {e}", file=sys.stderr)
@@ -137,30 +112,15 @@ def cargar_politica_horaria_afiliaciones(tipo_banco: str):
     return policy
 
 def debe_ajustar_juarez_para_afiliacion(afiliacion: str, tipo_banco: str) -> bool:
-    """
-    Devuelve True si, para la afiliación dada y el banco, se debe aplicar el
-    ajuste de horario Juárez (CDMX -> Juárez). Si no hay información en catálogo,
-    mantiene el comportamiento anterior (ajustar).
-    """
-    if not afiliacion:
-        return True
-
+    if not afiliacion: return True
     policy = cargar_politica_horaria_afiliaciones(tipo_banco)
-    if not policy:
-        return True
-
-    af = str(afiliacion).strip()
-    af_limpia = af.lstrip('0')
-
+    if not policy: return True
+    af = str(afiliacion).strip(); af_limpia = af.lstrip('0')
     zona = policy.get(af) or policy.get(af_limpia)
-    if zona is None:
-        return True
-
-    return zona == 'JUAREZ'
+    return zona == 'JUAREZ' if zona is not None else True
 
 def ajustar_tz_juarez(fecha_str, hora_str):
-    if not fecha_str or not hora_str or hora_str == "00:00:00":
-        return fecha_str, hora_str
+    if not fecha_str or not hora_str or hora_str == "00:00:00": return fecha_str, hora_str
     try:
         dt = datetime.strptime(f"{fecha_str} {hora_str}", "%Y-%m-%d %H:%M:%S")
         mar1 = datetime(dt.year, 3, 1)
@@ -169,50 +129,57 @@ def ajustar_tz_juarez(fecha_str, hora_str):
         fin_verano = (nov1 + timedelta(days=(6 - nov1.weekday()) % 7)).replace(hour=2)
         offset = 0 if inicio_verano <= dt < fin_verano else -1
         if offset != 0:
-            dt_adj = dt + timedelta(hours=offset)
-            return dt_adj.strftime("%Y-%m-%d"), dt_adj.strftime("%H:%M:%S")
-    except Exception as e:
-        print(f"      ! Error ajustando TZ: {e}", file=sys.stderr)
+            dt_adj = dt + timedelta(hours=offset); return dt_adj.strftime("%Y-%m-%d"), dt_adj.strftime("%H:%M:%S")
+    except: pass
     return fecha_str, hora_str
 
 def sanitizar_nombre_columna(nombre, bank_type=None):
     if not nombre: return "SinNombre"
-    orig = str(nombre).replace('\ufeff', '').replace('\xa0', ' ').strip()
+    orig = str(nombre).replace('\ufeff', '').replace('\xef\xbb\xbf', '').replace('\xa0', ' ').strip()
     orig = re.sub(r'\s+', ' ', orig)
     if bank_type and orig in CORE_MAP.get(bank_type, {}): return CORE_MAP[bank_type][orig]
     norm = ''.join(c for c in unicodedata.normalize('NFD', orig.upper()) if unicodedata.category(c) != 'Mn')
     if 'FECHA' in norm:
-        if re.search(r'DEPOSITO|APLICACION', norm): return 'Fecha_Deposito'
+        if re.search(r'DEPOSITO|APLICACION|PAGO', norm): return 'Fecha_Deposito'
         if 'TRANSACCION' in norm: return 'Fecha_Transaccion'
+    if 'ID MOVIMIENTO' in norm or ('REFERENCIA' in norm and 'CARGO' in norm): return 'ID_Externo'
+    if 'HORA' in norm: return 'Hora'
+    if 'AFILIACION' in norm or 'ESTABLECIMIENTO' in norm or 'COMERCIO' in norm: return 'Afiliacion'
+    if 'TARJETA' in norm: return 'Tarjeta'
+    if 'TERMINAL' in norm: return 'Terminal'
+    if norm in ['TOTAL', 'MONTO', 'IMPORTE'] or ('MONTO' in norm and 'CARGO' in norm): return 'Monto'
+    if ('COD' in norm and 'AUT' in norm) or 'AUTORIZACION' in norm: return 'Codigo_Autorizacion'
+    if 'REFERENCIA' in norm: return 'Referencia'
     s = re.sub(r'[^a-zA-Z0-9_]', '_', ''.join(c for c in unicodedata.normalize('NFD', orig) if unicodedata.category(c) != 'Mn'))
     return re.sub(r'_+', '_', s).strip('_')
 
 # --- FUNCIÓN DE PROCESAMIENTO MODIFICADA ---
-# Ya no escribe en DB ni en archivos, solo procesa y devuelve los datos para el JSON final.
 def procesar_y_obtener_nuevos_registros(file_path, tipo_banco, razon_social=None, target_date=None):
     if not os.path.exists(file_path): return "error", [], "Archivo no encontrado"
     try:
         conn = obtener_conexion(); cursor = conn.cursor()
         df = pd.read_excel(file_path) if tipo_banco == 'BANORTE' else pd.read_csv(file_path, encoding='utf-8-sig')
         if df.empty: conn.close(); return "success", [], "Archivo vacio"
-        
         df.columns = [sanitizar_nombre_columna(c, tipo_banco) for c in df.columns]
-
         if 'Fecha_Deposito' not in df.columns or df['Fecha_Deposito'].isnull().all():
              return "error", [], "Archivo sin fechas de deposito. Reintentar mas tarde."
 
+        # Identidad consistente con bancos.py
         tabla = 'banco_banorte' if tipo_banco == 'BANORTE' else 'banco_getnet'
         cursor.execute(f"SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM {tabla} WHERE Fecha_Transaccion > GETDATE()-90")
         huellas = {f"{str(r[0] or '').strip().lstrip('0')}|{str(r[1] or '').strip()}|{str(r[2])[:10]}|{float(r[3] or 0):.2f}|{limpiar_hora(r[4])}|{str(r[5] or '').strip()}|{str(r[6] or '').strip()}|{str(r[7] or '').strip()}" for r in cursor.fetchall()}
         
+        # Generar ruta de archivo consistente con bancos.py (trazabilidad)
+        sub_ruta = f"{tipo_banco}/{datetime.now().strftime('%Y/%m')}"
+        nombre_solo = f"f{datetime.now().strftime('%H%M%S')}_{os.path.basename(file_path)}"
+        db_file_path = f"{sub_ruta}/{nombre_solo}"
+
         nuevos_rows = []
         for _, row in df.iterrows():
             afil = str(row.get('Afiliacion', '')).strip().lstrip('0')
             id_ext = str(row.get('ID_Externo', '')).strip()
             monto = limpiar_moneda(row.get('Monto'))
-            if not id_ext or monto <= 0:
-                continue
-
+            if not id_ext or monto <= 0: continue
             auth = str(row.get('Codigo_Autorizacion', '')).strip()
             hora = limpiar_hora(row.get('Hora'))
             ref = str(row.get('Referencia', '')).strip()
@@ -220,53 +187,32 @@ def procesar_y_obtener_nuevos_registros(file_path, tipo_banco, razon_social=None
             f_t = limpiar_fecha(row.get('Fecha_Transaccion'))
             f_d = limpiar_fecha(row.get('Fecha_Deposito'))
 
-            # Ajuste horario: solo para estaciones no foráneas ni Parral
             if debe_ajustar_juarez_para_afiliacion(afil, tipo_banco):
                 f_t, hora = ajustar_tz_juarez(f_t, hora)
             
             huella_row = f"{afil}|{id_ext}|{f_t or ''}|{monto:.2f}|{hora}|{auth}|{ref}|{term}"
-            if huella_row in huellas:
-                continue
+            if huella_row in huellas: continue
 
             nuevos_rows.append({
-                "ID_Externo": id_ext,
-                "Afiliacion": afil,
-                "Fecha_Transaccion": f_t,
-                "Hora": hora,
-                "Monto": monto,
-                "Codigo_Autorizacion": auth,
-                "Terminal": term,
-                "Referencia": ref,
-                "Fecha_Deposito": f_d,
-                "Nombre_Archivo": os.path.basename(file_path),
-                "Banco": tipo_banco,
-                "Razon_Social": razon_social
+                "ID_Externo": id_ext, "Afiliacion": afil, "Fecha_Transaccion": f_t,
+                "Hora": hora, "Monto": monto, "Codigo_Autorizacion": auth, "Terminal": term,
+                "Referencia": ref, "Fecha_Deposito": f_d, "Nombre_Archivo": db_file_path,
+                "Banco": tipo_banco, "Razon_Social": razon_social
             })
         
-        # Si se procesó correctamente, actualizar la tabla de pendientes
         updated_pending_count = 0
         if target_date:
             try:
                 update_cursor = conn.cursor()
-                update_cursor.execute(
-                    "UPDATE bancos_reportes_pendientes SET estado = 'COMPLETADO' WHERE banco = ? AND razon_social = ? AND CONVERT(date, fecha_reporte) = ? AND estado = 'PENDIENTE'",
-                    (tipo_banco, razon_social, target_date.strftime('%Y-%m-%d'))
-                )
+                update_cursor.execute("UPDATE bancos_reportes_pendientes SET estado = 'COMPLETADO' WHERE banco = ? AND razon_social = ? AND CONVERT(date, fecha_reporte) = ? AND estado = 'PENDIENTE'", (tipo_banco, razon_social, target_date.strftime('%Y-%m-%d')))
                 updated_pending_count = update_cursor.rowcount
                 conn.commit()
-            except Exception as e_update:
-                print(f"DEBUG: No se pudo actualizar el estado de reportes pendientes: {e_update}", file=sys.stderr)
-
-        message = f"{len(nuevos_rows)} registros nuevos encontrados."
-        if updated_pending_count > 0:
-            message += f" Se marcó {updated_pending_count} reporte pendiente como COMPLETADO."
-
-        conn.close()
-        os.remove(file_path)
-        return "success", nuevos_rows, message
+            except: pass
+        
+        conn.close(); os.remove(file_path)
+        return "success", nuevos_rows, f"{len(nuevos_rows)} registros encontrados."
     except Exception as e:
-        traceback.print_exc(file=sys.stderr)
-        return "error", [], str(e)
+        traceback.print_exc(file=sys.stderr); return "error", [], str(e)
 
 # --- FUNCIONES DE NAVEGACIÓN (de bancos.py, adaptadas) ---
 def get_banorte_manual(browser, target_date):
