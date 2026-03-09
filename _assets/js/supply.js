@@ -4106,8 +4106,24 @@ function renderPaymentItems() {
   let html = "";
   paymentItems.forEach((item, index) => {
     const totalFac = parseFloat(item.total_fac) || 0;
+    const tempKey = typeof getInvoiceTempKey === "function" ? getInvoiceTempKey(item) : `${item.nro}__${item.codgas}`;
+    const notesForItem = typeof pendingNotes !== "undefined"
+      ? pendingNotes.filter(n => n.invoice_temp_key === tempKey)
+      : [];
+    const notesHtml = notesForItem.map((n, ni) => {
+      const colorClass = n.note_type === "CREDIT" ? "text-success" : "text-warning";
+      const sign = n.note_type === "CREDIT" ? "−" : "+";
+      const globalIndex = typeof pendingNotes !== "undefined" ? pendingNotes.indexOf(n) : -1;
+      return `<small class="d-block ${colorClass}">
+        <i class="fas fa-tag"></i> ${n.note_label}: ${sign}$${parseFloat(n.applied_amount).toLocaleString("es-MX",{minimumFractionDigits:2})}
+        ${globalIndex >= 0 ? `<button class="btn btn-xs btn-link text-danger p-0 ms-1" style="font-size:0.8rem;line-height:1;" onclick="removeNoteAssignment(${globalIndex})">×</button>` : ""}
+      </small>`;
+    }).join("");
+    const noteBtn = typeof openAssignNoteModal === "function"
+      ? `<button type="button" class="btn btn-xs btn-outline-light ms-1" style="font-size:0.7rem;padding:1px 5px;" onclick="openAssignNoteModal('${tempKey}')" title="Asignar nota"><i class="fas fa-tag"></i></button>`
+      : "";
     html += `
-            <li class="list-group-item payment-item d-flex justify-content-between align-items-center">
+            <li class="list-group-item payment-item d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start mb-1">
                         <strong>Folio: ${item.nro}</strong>
@@ -4116,10 +4132,14 @@ function renderPaymentItems() {
                     <small class="d-block">Factura: ${item.Factura || "N/A"} | Remisión: ${item.Remision || "N/A"}</small>
                     <small class="d-block">Proveedor: ${item.proveedor}</small>
                     <small class="d-block text-light">Fecha: ${item.fecha}</small>
+                    ${notesHtml}
                 </div>
-                <button type="button" class="btn btn-sm ms-2" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; border-radius: 50%; width: 30px; height: 30px;" onclick="removeFromPayment(${index})">
-                    <i class="fas fa-times"></i>
-                </button>
+                <div class="d-flex flex-column align-items-center ms-2 gap-1">
+                    ${noteBtn}
+                    <button type="button" class="btn btn-sm" style="background: rgba(255, 255, 255, 0.2); border: none; color: white; border-radius: 50%; width: 30px; height: 30px;" onclick="removeFromPayment(${index})">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </li>
         `;
   });
@@ -7673,6 +7693,322 @@ function addInvoiceToPayment(document) {
           });
         },
       });
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  ANÁLISIS DE COMPRAS
+// ═══════════════════════════════════════════════════════════
+
+// Patrones esperados por proveedor_codigo
+// Derivados del análisis de 4,113 facturas históricas
+var _patronesProveedor = {
+  96: { nombre: 'AEMSA',      regex: /^F-\d+/i },
+  83: { nombre: 'ENEREY',     regex: /^E-\d+/i },
+  41: { nombre: 'GAZPRO',     regex: /^FE-\d+/i },
+  72: { nombre: 'MGC',        regex: /^(CO-\d+|\d+-CO-\d+)/i },
+  76: { nombre: 'LOBO',       regex: /^-\d+/ },
+  55: { nombre: 'PETROTAL',   regex: /^(PET-|IPET-)/i },
+  71: { nombre: 'PREMIERGAS', regex: /^(FE-|FF-)\d+/i },
+  56: { nombre: 'TESORO',     regex: /^02-88002\d+/i },
+};
+
+function _validarFacturaProveedor(factura, proveedorCodigo) {
+  if (!factura || !proveedorCodigo) return true; // sin datos, no alertar
+  var patron = _patronesProveedor[parseInt(proveedorCodigo)];
+  if (!patron) return true; // proveedor desconocido, no alertar
+  return patron.regex.test(factura.trim());
+}
+
+var _analisisFiltrandoSinUuid = false;
+var _analisisFiltrandoMismatch = false;
+
+// Filtro personalizado por datos crudos (no por HTML renderizado)
+$.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
+  if (settings.nTable.id !== 'analisis_compras_table') return true;
+  if (_analisisFiltrandoSinUuid && !rowData.satuid) return false;
+  if (_analisisFiltrandoMismatch && _validarFacturaProveedor(rowData.Factura, rowData.proveedor_codigo)) return false;
+  return true;
+});
+
+function toggleFiltroSinUuid() {
+  _analisisFiltrandoSinUuid = !_analisisFiltrandoSinUuid;
+  if (_analisisFiltrandoSinUuid) {
+    $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Mostrar sin UUID').removeClass("btn-outline-warning").addClass("btn-warning");
+  } else {
+    $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
+function toggleFiltroMismatch() {
+  _analisisFiltrandoMismatch = !_analisisFiltrandoMismatch;
+  var kpiCard = $("#kpi_analisis_mismatch").closest(".kpi-card");
+  if (_analisisFiltrandoMismatch) {
+    kpiCard.css("background-color", "#f8d7da");
+    $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Mostrar todos').removeClass("btn-outline-danger").addClass("btn-danger");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
+async function analisis_compras_table() {
+  if ($.fn.DataTable.isDataTable("#analisis_compras_table")) {
+    $("#analisis_compras_table").DataTable().destroy();
+    $("#analisis_compras_table thead .filter").remove();
+  }
+  _analisisFiltrandoSinUuid = false;
+  _analisisFiltrandoMismatch = false;
+  $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning").hide();
+  $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger").hide();
+  $("#kpi_analisis_mismatch").closest(".kpi-card").css("background-color", "");
+
+  var fromDate  = document.getElementById("from_analisis").value;
+  var untilDate = document.getElementById("until_analisis").value;
+  var codgas    = document.getElementById("codgas_analisis").value;
+  var proveedor = document.getElementById("proveedor_analisis").value;
+  var company   = 0;
+
+  if (!fromDate || !untilDate) {
+    alertify.myAlert(
+      `<div class="container text-center text-danger">
+          <h4 class="mt-2 text-danger">¡Error!</h4>
+       </div>
+       <div class="text-dark">
+          <p class="text-center">Debe seleccionar las fechas para continuar.</p>
+       </div>`
+    );
+    return;
+  }
+
+  // Fila de filtros por columna
+  $("#analisis_compras_table thead").prepend(
+    $("#analisis_compras_table thead tr").clone().addClass("filter")
+  );
+  $("#analisis_compras_table thead tr.filter th").each(function (index) {
+    var col = $("#analisis_compras_table thead th").length / 2;
+    if (index < col) {
+      var title = $(this).text();
+      $(this).html(
+        '<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />'
+      );
+    }
+  });
+  $("#analisis_compras_table thead tr.filter th input").on("keyup change", function () {
+    var index = $(this).parent().index();
+    $("#analisis_compras_table").DataTable().column(index).search(this.value).draw();
+  });
+
+  $("#analisis_compras_table").DataTable({
+    order: [[2, "asc"]],
+    dom: '<"top"Bf>rt<"bottom"lip>',
+     pageLength: 100,
+    // scrollY: "calc(100vh - 380px)",
+    // scrollCollapse: true,
+    paging: true,
+
+    buttons: [
+      {
+        extend: "excel",
+        className: "btn btn-success",
+        text: '<i class="fas fa-file-excel"></i> Excel',
+        title: "Analisis_Compras_" + fromDate + "_" + untilDate,
+        exportOptions: { columns: ":visible" }
+      },
+      {
+        extend: "print",
+        className: "btn btn-secondary",
+        text: '<i class="fas fa-print"></i> Imprimir',
+        exportOptions: { columns: ":visible" }
+      },
+      {
+        extend: "colvis",
+        className: "btn btn-info",
+        text: '<i class="fas fa-columns"></i> Columnas'
+      }
+    ],
+    ajax: {
+      method: "POST",
+      url: "/supply/purchase_analysis_table",
+      timeout: 600000,
+      data: {
+        fromDate: fromDate,
+        untilDate: untilDate,
+        codgas: codgas,
+        proveedor: proveedor,
+        company: 0
+      },
+      beforeSend: function () {
+        $(".table-responsive").addClass("loading");
+      },
+      error: function (xhr, error, thrown) {
+        $(".table-responsive").removeClass("loading");
+        alertify.myAlert(
+          `<div class="container text-center text-danger">
+              <h4 class="mt-2 text-danger">¡Error!</h4>
+           </div>
+           <div class="text-dark">
+              <p class="text-center">No se pudo cargar el análisis de compras.</p>
+              <small>${thrown}</small>
+           </div>`
+        );
+      },
+      dataSrc: function (json) {
+        if (json.error) {
+          alertify.error(json.message);
+          return [];
+        }
+        $("#kpi_analisis_strip").show();
+        $("#btn_filtro_uuid").show();
+        $("#btn_filtro_mismatch").show();
+        return json.data;
+      }
+    },
+    columns: [
+      // 0 — Estación
+      { data: "gasolinera", className: "text-start text-nowrap" },
+      // 1 — Número
+      { data: "nro", className: "text-start text-nowrap" },
+      // 2 — Fecha
+      { data: "fecha", className: "text-start text-nowrap" },
+      // 3 — Vto.
+      {
+        data: "fechaVto",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          if (!data) return '<span class="text-muted">-</span>';
+          var hoy = new Date().toISOString().slice(0,10);
+          if (data < hoy) return '<span class="text-danger fw-bold">' + data + '</span>';
+          return data;
+        }
+      },
+      // 4 — Proveedor
+      { data: "proveedor", className: "text-start text-nowrap" },
+      // 5 — Factura
+      {
+        data: "Factura",
+        className: "text-start text-nowrap",
+        render: function (data, type, row) {
+          if (!data) return '<span class="text-muted">-</span>';
+          if (!_validarFacturaProveedor(data, row.proveedor_codigo)) {
+            var esperado = _patronesProveedor[parseInt(row.proveedor_codigo)];
+            var hint = esperado ? 'Patrón esperado para ' + esperado.nombre + ': ' + esperado.regex.toString() : '';
+            return '<span class="text-danger fw-bold" title="⚠ Factura no coincide con el patrón del proveedor. ' + hint + '">' +
+                   '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return data;
+        }
+      },
+      // 6 — Remisión
+      {
+        data: "Remision",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          return data || '<span class="text-muted">-</span>';
+        }
+      },
+      // 7 — Producto
+      { data: "producto", className: "text-start" },
+      // 8 — Cantidad
+      {
+        data: "can",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2)
+      },
+      // 9 — Monto
+      {
+        data: "mto",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 10 — I.V.A.
+      {
+        data: "iva_total",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 11 — Total
+      {
+        data: "total_fac",
+        className: "text-end fw-bold",
+        render: $.fn.dataTable.render.number(",", ".", 2, "$")
+      },
+      // 12 — UUID
+      {
+        data: "satuid",
+        className: "text-start",
+        render: function (data) {
+          if (!data) return '<span class="text-muted">-</span>';
+          return '<span title="' + data + '" style="cursor:pointer;font-family:monospace" ' +
+            'onclick="navigator.clipboard.writeText(\'' + data + '\');alertify.success(\'UUID copiado\')">' +
+            data.substring(0, 8) + '…</span>';
+        }
+      },
+      // 13 — R.F.C.
+      {
+        data: "rfc",
+        className: "text-start text-nowrap",
+        render: function (data) {
+          return data || '<span class="text-muted badge bg-secondary">debug</span>';
+        }
+      },
+      // 14 — Factura SAT (PDF)
+      {
+        data: "factura_recibida_id",
+        className: "text-center",
+        orderable: false,
+        render: function (data, type, row) {
+          if (!data) return '<span class="text-muted">-</span>';
+          if (row.RutaArchivo) {
+            return `<a href="javascript:void(0);"
+                        onclick='ModalinvoicePdf(${data}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                        class="text-primary fw-bold"
+                        title="${row.EmisorNombre || ''}">
+                        <i class="fas fa-file-pdf text-danger"></i> Ver
+                    </a>`;
+          }
+          return '<span class="badge bg-secondary" title="Sin archivo PDF">Sin PDF</span>';
+        }
+      }
+    ],
+    createdRow: function (row, data) {
+      if (data.Factura && !_validarFacturaProveedor(data.Factura, data.proveedor_codigo)) {
+        $(row).addClass("table-danger");
+      }
+    },
+    initComplete: function () {
+      $(".table-responsive").removeClass("loading");
+      alertify.success("Análisis de compras cargado");
+    },
+    drawCallback: function () {
+      var dt = $("#analisis_compras_table").DataTable();
+      var filas = dt.rows({ search: 'applied' }).data();
+      var total    = filas.length;
+      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0;
+      for (var i = 0; i < total; i++) {
+        var r = filas[i];
+        cantidad += parseFloat(r.can       || 0);
+        monto    += parseFloat(r.mto       || 0);
+        iva      += parseFloat(r.iva_total || 0);
+        totalFac += parseFloat(r.total_fac || 0);
+        if (r.Factura && !_validarFacturaProveedor(r.Factura, r.proveedor_codigo)) mismatch++;
+      }
+      var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
+      $("#kpi_analisis_total").text(total);
+      $("#kpi_analisis_cantidad").text(fmt(cantidad));
+      $("#kpi_analisis_monto").text("$" + fmt(monto));
+      $("#kpi_analisis_iva").text("$" + fmt(iva));
+      $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
+      $("#kpi_analisis_mismatch").text(mismatch);
+      $("#contador_analisis").text(total + " facturas");
+      $("#total_monto_analisis").text("$" + fmt(totalFac));
+      $("#tfoot_cantidad").text(fmt(cantidad));
+      $("#tfoot_monto").text("$" + fmt(monto));
+      $("#tfoot_iva").text("$" + fmt(iva));
+      $("#tfoot_total").text("$" + fmt(totalFac));
     }
   });
 }

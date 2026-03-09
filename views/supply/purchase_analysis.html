@@ -1,0 +1,194 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Análisis de Compras{% endblock %}
+{% block mycss %}
+<style>
+    /* ── Sidebar colapsado automáticamente ── */
+    /* ── Tabla ── */
+    #analisis_compras_table tbody tr { cursor: default; }
+
+    /* KPI strip */
+    .kpi-strip { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .kpi-card {
+        flex: 1; min-width: 140px;
+        background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+        padding: 10px 14px; text-align: center;
+    }
+    .kpi-card .kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
+    .kpi-card .kpi-label { font-size: 0.72rem; color: #6c757d; }
+
+    /* Header negro de DataTable */
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #212529 !important;
+        color: #ffffff !important;
+        white-space: nowrap;
+    }
+    /* Fila de filtros de texto */
+    table.dataTable thead tr.filter th {
+        background-color: #343a40 !important;
+        padding: 4px 6px !important;
+    }
+    table.dataTable thead tr.filter th input {
+        font-size: 0.72rem;
+        padding: 2px 5px;
+        height: 24px;
+    }
+
+    .badge { font-size: 0.73rem; }
+</style>
+{% endblock %}
+{% block menutitle %}Análisis de Compras{% endblock %}
+{% block content %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+        }
+    });
+</script>
+
+<div class="card">
+    <div class="card-body">
+        <div class="row" style="align-items: flex-end;">
+            <div class="col-2">
+                <label class="col-form-label-sm" for="from_analisis">Desde:</label>
+                <input type="date" class="form-control form-control-sm" name="from_analisis" id="from_analisis"
+                    value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+            </div>
+            <div class="col-2">
+                <label class="col-form-label-sm" for="until_analisis">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" name="until_analisis" id="until_analisis"
+                    value="{{ 'now'|date('Y-m-d') }}" required>
+            </div>
+            <!-- FILTRO DE ESTACIÓN -->
+            <div class="col-2">
+                <label class="col-form-label-sm">Estación:</label>
+                <select class="selectpicker w-100" data-live-search="true" name="codgas_analisis" id="codgas_analisis">
+                    <option value="0" selected>Todas las estaciones</option>
+                    {% for station in stations %}
+                    <option value="{{ station.cod }}" data-content="<span class='text-muted'>{{ station.codgas }}</span> {{ station.abr }}">{{ station.nomre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <!-- FILTRO DE PROVEEDOR -->
+            <div class="col-2">
+                <label class="col-form-label-sm">Proveedor:</label>
+                <select class="selectpicker w-100" data-live-search="true" name="proveedor_analisis" id="proveedor_analisis">
+                    <option value="0" selected>Todos los proveedores</option>
+                    <option value="56">TESORO</option>
+                    <option value="72">MGC</option>
+                    <option value="76">LOBO</option>
+                    <option value="55">PETROTAL</option>
+                    <option value="71">PREMIERGAS</option>
+                    <option value="83">ENEREY</option>
+                    <option value="96">AEMSA</option>
+                </select>
+            </div>
+            <div class="col-2">
+                <button onclick="analisis_compras_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">
+                    <i class="fas fa-search"></i> Generar Reporte
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="kpi-strip" id="kpi_analisis_strip" style="display:none;">
+    <div class="kpi-card">
+        <div class="kpi-value text-primary" id="kpi_analisis_total">0</div>
+        <div class="kpi-label">Total Facturas</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-success" id="kpi_analisis_cantidad">0</div>
+        <div class="kpi-label">Total Litros</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-info" id="kpi_analisis_monto">$0</div>
+        <div class="kpi-label">Monto Total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-warning" id="kpi_analisis_iva">$0</div>
+        <div class="kpi-label">IVA Total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-danger" id="kpi_analisis_total_fac">$0</div>
+        <div class="kpi-label">Total General</div>
+    </div>
+    <div class="kpi-card" style="border-color:#dc3545; cursor:pointer;" onclick="toggleFiltroMismatch()" title="Click para filtrar">
+        <div class="kpi-value text-danger" id="kpi_analisis_mismatch">0</div>
+        <div class="kpi-label">Factura/Prov. no cuadran</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h5 class="card-title mb-0">Análisis de Compras - Documentos por Estación</h5>
+        <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-warning" id="btn_filtro_uuid" onclick="toggleFiltroSinUuid()" style="display:none;">
+                <i class="fas fa-filter"></i> Ocultar sin UUID
+            </button>
+            <button class="btn btn-sm btn-outline-danger" id="btn_filtro_mismatch" onclick="toggleFiltroMismatch()" style="display:none;">
+                <i class="fas fa-exclamation-triangle"></i> Solo errores factura
+            </button>
+            <span class="badge bg-info me-2" id="contador_analisis">0 facturas</span>
+            <span class="badge bg-success" id="total_monto_analisis">$0.00</span>
+        </div>
+    </div>
+    <div class="card-body table-responsive">
+        <table id="analisis_compras_table" class="table table-border table-hover table-sm w-100" style="font-size: 11px;">
+            <thead>
+                <tr>
+                    <th>Estación</th>
+                    <th>Número</th>
+                    <th>Fecha</th>
+                    <th>Vto.</th>
+                    <th>Proveedor</th>
+                    <th>Factura</th>
+                    <th>Remisión</th>
+                    <th>Producto</th>
+                    <th>Cantidad</th>
+                    <th>Monto</th>
+                    <th>I.V.A.</th>
+                    <th>Total</th>
+                    <th>UUID</th>
+                    <th>R.F.C.</th>
+                    <th>Factura SAT</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="8" class="text-end">Totales:</th>
+                    <th id="tfoot_cantidad"></th>
+                    <th id="tfoot_monto"></th>
+                    <th id="tfoot_iva"></th>
+                    <th id="tfoot_total"></th>
+                    <th colspan="3"></th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+
+<div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h1 class="modal-title fs-5" id="ModalinvoicePdfLabel"></h1>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div id="ModalinvoicePdfContent">
+            </div>
+        </div>
+    </div>
+</div> 
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+{% endblock %}

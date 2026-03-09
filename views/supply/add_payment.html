@@ -432,6 +432,14 @@
                                 <h5 id="total-amount" class="mb-0 text-white">$0.00</h5>
                             </div>
                         </div>
+                        <div id="notes-summary" class="mt-2 small text-white-50 text-end"></div>
+                    </div>
+                    <!-- Notas pendientes aplicadas -->
+                    <div id="pending-notes-section" style="display:none;" class="mt-2 mb-2 px-1">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <small class="fw-bold text-dark"><i class="fas fa-tags"></i> Notas aplicadas:</small>
+                        </div>
+                        <ul id="pending-notes-list" class="list-group list-group-flush" style="font-size:0.82rem;"></ul>
                     </div>
                     <ul id="payment-basket" class="list-group">
                         <li class="empty-basket-message">
@@ -446,6 +454,39 @@
     </div>
     <!-- Todo tu código actual de drag & drop -->
 </div>
+<!-- Modal: asignar nota de crédito/cargo a factura de la canasta -->
+<div class="modal fade" id="assignNoteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-tag"></i> Asignar Nota de Crédito/Cargo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 mb-3" id="assignNoteInvoiceInfo">—</div>
+        <div class="form-group mb-3">
+          <label>Nota disponible *</label>
+          <select id="assignNoteSelect" class="form-control" onchange="onAssignNoteSelectChange()">
+            <option value="">-- Seleccione una nota --</option>
+          </select>
+          <small class="text-muted" id="assignNoteBalance"></small>
+        </div>
+        <div class="form-group">
+          <label>Monto a aplicar *</label>
+          <input type="number" id="assignNoteAmount" class="form-control" step="0.01" min="0.01" placeholder="0.00">
+          <small class="text-muted">Máximo: saldo disponible y total de la factura</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="confirmNoteAssignment()">
+          <i class="fas fa-check"></i> Asignar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="paymentLoader" class="payment-loader-overlay">
     <div class="payment-loader-content">
         <div class="payment-loader-spinner"></div>
@@ -460,6 +501,11 @@
 <script>
     let currentProvider = null;
     let paymentItems = [];
+
+    // ── Notas pendientes ──────────────────────────────────────────────────────
+    let pendingNotes = [];       // [{credit_note_id, note_number, note_type, applied_amount, invoice_temp_key, note_label, available_balance}]
+    let availableNotes = [];     // notas cargadas del proveedor
+    let assignNoteInvoiceTempKey = null;
 
     // Variables para modo edición
     const EDIT_MODE = {{ edit_mode ?'true': 'false' }};
@@ -522,20 +568,316 @@
         updateSelectedCount();
     }
 
-    // Guardar la función original generatePayment
+    // ── Helper: clave temporal de factura ────────────────────────────────────
+    function getInvoiceTempKey(item) {
+        return `${item.nro}__${item.codgas}`;
+    }
+
+    // ── Cargar notas disponibles del proveedor ────────────────────────────────
+    function loadAvailableNotes(provider_cod) {
+        if (!provider_cod) return;
+        fetch('/supply/getProviderNotes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `provider_id=${encodeURIComponent(provider_cod)}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            availableNotes = (data.success && data.notes) ? data.notes : [];
+        })
+        .catch(() => { availableNotes = []; });
+    }
+
+    // ── Abrir modal de asignación ─────────────────────────────────────────────
+    function openAssignNoteModal(tempKey) {
+        const item = paymentItems.find(i => getInvoiceTempKey(i) === tempKey);
+        if (!item) return;
+
+        assignNoteInvoiceTempKey = tempKey;
+
+        // Info de la factura
+        const totalFac = parseFloat(item.total_fac) || 0;
+        document.getElementById('assignNoteInvoiceInfo').innerHTML =
+            `<strong>Folio:</strong> ${item.nro} | <strong>Factura:</strong> ${item.Factura || 'N/A'} | <strong>Total:</strong> $${totalFac.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
+
+        // Llenar select de notas (descontar lo ya usado en pendingNotes)
+        const sel = document.getElementById('assignNoteSelect');
+        sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
+
+        const notesWithBalance = availableNotes.map(n => {
+            const usedForThisNote = pendingNotes
+                .filter(pn => pn.credit_note_id == n.id)
+                .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
+            const remaining = parseFloat(n.available_balance) - usedForThisNote;
+            return { ...n, remaining };
+        }).filter(n => n.remaining > 0.001);
+
+        if (notesWithBalance.length === 0) {
+            sel.innerHTML += '<option disabled>Sin notas disponibles para este proveedor</option>';
+        } else {
+            notesWithBalance.forEach(n => {
+                const type = n.note_type === 'CREDIT' ? 'Crédito' : 'Cargo';
+                const date = n.note_date ? n.note_date.substring(0, 10) : '';
+                sel.innerHTML += `<option value="${n.id}"
+                    data-balance="${n.remaining}"
+                    data-type="${n.note_type}"
+                    data-label="[${type}] ${n.note_number || 'S/N'} — ${date}">
+                    [${type}] ${n.note_number || 'S/N'} — ${date} — Saldo: $${n.remaining.toFixed(2)}
+                </option>`;
+            });
+        }
+
+        document.getElementById('assignNoteAmount').value = '';
+        document.getElementById('assignNoteBalance').textContent = '';
+        $('#assignNoteModal').modal('show');
+    }
+
+    // ── Actualizar saldo visible al cambiar nota ──────────────────────────────
+    function onAssignNoteSelectChange() {
+        const sel = document.getElementById('assignNoteSelect');
+        const opt = sel.options[sel.selectedIndex];
+        const balance = opt ? parseFloat(opt.dataset.balance) : 0;
+        const balanceEl = document.getElementById('assignNoteBalance');
+
+        if (balance > 0) {
+            balanceEl.textContent = `Saldo disponible: $${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
+            // Sugerir monto máximo respecto a la factura
+            const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
+            const totalFac = item ? parseFloat(item.total_fac) || 0 : 0;
+            const alreadyApplied = pendingNotes
+                .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
+                .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
+            const maxForInvoice = totalFac - alreadyApplied;
+            const maxAmount = Math.min(balance, maxForInvoice);
+            document.getElementById('assignNoteAmount').max = maxAmount;
+        } else {
+            balanceEl.textContent = '';
+        }
+    }
+
+    // ── Confirmar asignación de nota ──────────────────────────────────────────
+    function confirmNoteAssignment() {
+        const sel = document.getElementById('assignNoteSelect');
+        const noteId = sel.value;
+        if (!noteId) { alertify.error('Seleccione una nota'); return; }
+
+        const opt = sel.options[sel.selectedIndex];
+        const balance = parseFloat(opt.dataset.balance) || 0;
+        const noteType = opt.dataset.type;
+        const noteLabel = opt.dataset.label;
+        const noteNumber = opt.text;
+
+        const amount = parseFloat(document.getElementById('assignNoteAmount').value) || 0;
+        if (amount <= 0) { alertify.error('Ingrese un monto válido'); return; }
+        if (amount > balance + 0.001) { alertify.error(`El monto excede el saldo disponible ($${balance.toFixed(2)})`); return; }
+
+        const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
+        if (!item) return;
+        const totalFac = parseFloat(item.total_fac) || 0;
+        const alreadyApplied = pendingNotes
+            .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
+            .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
+        const maxForInvoice = totalFac - alreadyApplied;
+        if (amount > maxForInvoice + 0.001) {
+            alertify.error(`El monto excede el total de la factura (máx: $${maxForInvoice.toFixed(2)})`);
+            return;
+        }
+
+        pendingNotes.push({
+            credit_note_id: parseInt(noteId),
+            note_number: noteLabel,
+            note_type: noteType,
+            applied_amount: amount,
+            invoice_temp_key: assignNoteInvoiceTempKey,
+            note_label: noteLabel
+        });
+
+        $('#assignNoteModal').modal('hide');
+        renderPaymentItems();
+        renderPendingNotes();
+        updateNotesSummary();
+        alertify.success('Nota asignada correctamente');
+    }
+
+    // ── Quitar nota asignada ──────────────────────────────────────────────────
+    function removeNoteAssignment(index) {
+        pendingNotes.splice(index, 1);
+        renderPaymentItems();
+        renderPendingNotes();
+        updateNotesSummary();
+    }
+
+    // ── Renderizar lista de notas en el panel ─────────────────────────────────
+    function renderPendingNotes() {
+        const section = document.getElementById('pending-notes-section');
+        const list = document.getElementById('pending-notes-list');
+        if (pendingNotes.length === 0) {
+            section.style.display = 'none';
+            list.innerHTML = '';
+            return;
+        }
+        section.style.display = 'block';
+        list.innerHTML = pendingNotes.map((n, i) => {
+            const colorClass = n.note_type === 'CREDIT' ? 'text-success' : 'text-warning';
+            const sign = n.note_type === 'CREDIT' ? '−' : '+';
+            return `<li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
+                <span class="${colorClass}"><i class="fas fa-tag me-1"></i>${n.note_label}: ${sign}$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                <button class="btn btn-xs btn-link text-danger p-0 ms-1" onclick="removeNoteAssignment(${i})" title="Quitar">×</button>
+            </li>`;
+        }).join('');
+    }
+
+    // ── Calcular y mostrar totales de notas ───────────────────────────────────
+    function updateNotesSummary() {
+        const summaryEl = document.getElementById('notes-summary');
+        if (!summaryEl) return;
+        if (pendingNotes.length === 0) {
+            summaryEl.textContent = '';
+            return;
+        }
+        const totalCredits = pendingNotes.filter(n => n.note_type === 'CREDIT').reduce((s, n) => s + parseFloat(n.applied_amount), 0);
+        const totalDebits  = pendingNotes.filter(n => n.note_type === 'DEBIT').reduce((s, n) => s + parseFloat(n.applied_amount), 0);
+        const invoicesTotal = paymentItems.reduce((s, i) => s + (parseFloat(i.total_fac) || 0), 0);
+        const estimated = invoicesTotal - totalCredits + totalDebits;
+        let txt = '';
+        if (totalCredits > 0) txt += ` −$${totalCredits.toLocaleString('es-MX',{minimumFractionDigits:2})} (créditos)`;
+        if (totalDebits  > 0) txt += ` +$${totalDebits.toLocaleString('es-MX',{minimumFractionDigits:2})} (cargos)`;
+        if (txt) txt += ` → Est. $${estimated.toLocaleString('es-MX',{minimumFractionDigits:2})}`;
+        summaryEl.textContent = txt;
+    }
+
+    // ── Guardar la función original generatePayment ───────────────────────────
     const originalGeneratePayment = window.generatePayment;
 
-    // Override para manejar modo edición
+    // Override para manejar modo edición Y notas pendientes
     window.generatePayment = async function () {
         if (EDIT_MODE) {
-            // Modo edición: agregar facturas a pago existente
             await addInvoicesToExistingPayment();
         } else {
-            // Modo normal: crear nuevo pago
-            await originalGeneratePayment();
+            // Inyectar pending_notes en el payload via override de fetch
+            await originalGeneratePaymentWithNotes();
         }
     };
 
+    async function originalGeneratePaymentWithNotes() {
+        if (paymentItems.length === 0) {
+            alertify.myAlert(`<div class="container text-center text-warning"><h4 class="mt-2 text-warning">¡Advertencia!</h4></div><div class="text-dark"><p class="text-center">No hay documentos en el pago.</p></div>`);
+            return;
+        }
+
+        const primerItem = paymentItems[0];
+        const proveedorCodigo = primerItem.proveedor_codigo || primerItem.id_control_gas || null;
+        const codigo_empresa = primerItem.codigo_empresa || null;
+
+        if (!proveedorCodigo) {
+            alertify.error('Error: No se pudo obtener el código del proveedor');
+            return;
+        }
+
+        alertify.prompt(
+            'Comentario del Pago',
+            'Ingrese un comentario o descripción para este pago:',
+            '',
+            async function (evt, comment) {
+                showPaymentLoader('Creando pago...', 'Procesando documentos');
+
+                const scheduledDate = $('#scheduled_payment_date').val() || new Date().toISOString().split('T')[0];
+                const paymentData = {
+                    documentos: paymentItems,
+                    total_documentos: paymentItems.length,
+                    total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
+                    fecha_pago: scheduledDate,
+                    comment: comment || 'Pago programado',
+                    provider_cod: proveedorCodigo,
+                    provider_name: currentProvider,
+                    empresa_cod: codigo_empresa,
+                    pending_notes: pendingNotes
+                };
+
+                try {
+                    const response = await fetch('/supply/generate_payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(paymentData)
+                    });
+
+                    const data = await response.json();
+                    hidePaymentLoader();
+
+                    if (data.success) {
+                        alertify.success('Pago creado exitosamente: ID #' + data.payment_id);
+
+                        paymentItems = [];
+                        pendingNotes = [];
+                        availableNotes = [];
+                        currentProvider = null;
+                        renderPaymentItems();
+                        updatePaymentSummary();
+                        renderPendingNotes();
+                        updateNotesSummary();
+
+                        alertify.confirm(
+                            '¿Ver detalle del pago?',
+                            '¿Desea ver el detalle del pago creado?',
+                            function () { window.location.href = '/supply/payment_detail/' + data.payment_id; },
+                            function () {
+                                if ($.fn.DataTable.isDataTable('#payment_create_table')) {
+                                    $('#payment_create_table').DataTable().ajax.reload();
+                                }
+                            }
+                        );
+                    } else {
+                        alertify.error('Error: ' + data.detail);
+                    }
+                } catch (error) {
+                    hidePaymentLoader();
+                    alertify.error('Error de conexión');
+                    console.error(error);
+                }
+            },
+            function () { alertify.message('Operación cancelada'); }
+        );
+    }
+
+
+    // ── Hookear addToPayment para cargar notas al primer ítem ────────────────
+    const _origAddToPayment = window.addToPayment;
+    window.addToPayment = function(rowData) {
+        const wasEmpty = paymentItems.length === 0;
+        _origAddToPayment(rowData);
+        if (wasEmpty && paymentItems.length > 0) {
+            const cod = paymentItems[0].proveedor_codigo || paymentItems[0].id_control_gas || null;
+            if (cod) loadAvailableNotes(cod);
+        }
+    };
+
+    // ── Hookear updatePaymentSummary para incluir notas ──────────────────────
+    const _origUpdatePaymentSummary = window.updatePaymentSummary;
+    window.updatePaymentSummary = function() {
+        _origUpdatePaymentSummary();
+        renderPendingNotes();
+        updateNotesSummary();
+    };
+
+    // ── Hookear clearAllPayments para limpiar notas ───────────────────────────
+    const _origClearAllPayments = window.clearAllPayments;
+    window.clearAllPayments = function() {
+        // We intercept after the confirm inside the original, so we patch renderPaymentItems
+        const _origRender = window.renderPaymentItems;
+        window.renderPaymentItems = function() {
+            if (paymentItems.length === 0) {
+                pendingNotes = [];
+                availableNotes = [];
+                renderPendingNotes();
+                updateNotesSummary();
+            }
+            _origRender();
+            // Restore
+            window.renderPaymentItems = _origRender;
+        };
+        _origClearAllPayments();
+    };
 
      async function addInvoicesToExistingPayment() {
         if (paymentItems.length === 0) {

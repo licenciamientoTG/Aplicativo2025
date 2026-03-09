@@ -28,6 +28,7 @@ class Operations{
     public TabulatorHistoryModel $tabulatorHistoryModel;
     public BallotModel $ballotModel;
     public VentasModel $ventas;
+    public XmlVsVentasModel $xmlVsVentasModel;
 
 
     /**
@@ -57,6 +58,7 @@ class Operations{
         $this->tabulatorHistoryModel        = new TabulatorHistoryModel();
         $this->ballotModel                  = new BallotModel();
         $this->ventas                       = new VentasModel;
+        $this->xmlVsVentasModel             = new XmlVsVentasModel();
 
     }
 
@@ -2604,6 +2606,43 @@ class Operations{
                 "data" => [],
                 "error" => $e->getMessage()
             ]);
+        }
+    }
+
+    function volumetric_sales() {
+        echo $this->twig->render($this->route . 'volumetric_sales.html');
+    }
+
+    function volumetric_sales_json(): void {
+        header('Content-Type: application/json');
+        try {
+            $rows = $this->xmlVsVentasModel->get_ventas_volumetricas();
+            $data = [];
+            $mesPasado = new DateTime('first day of last month');
+            $desde     = $mesPasado->format('Y-m-01');
+            $hasta     = $mesPasado->format('Y-m-t');
+            foreach ($rows as $row) {
+                $data[] = [
+                    'grupo'                        => $row['grupo'],
+                    'desde'                        => $desde,
+                    'hasta'                        => $hasta,
+                    'nombre_estacion'              => $row['nombre_estacion'],
+                    'combustible'                  => $row['tipo_combustible'],
+                    'volumen_total'                => $row['volumen_total'],
+                    'venta_total'                  => $row['venta_total'],
+                    'volumen_timbrado_corporativo' => $row['volumen_timbrado_corporativo'],
+                    'volumen_timbrado_estacion'    => $row['volumen_timbrado_estacion'],
+                    'dias_con_venta'               => $row['dias_con_venta'],
+                    'monto_valido_mes'             => $row['monto_valido_mes'],
+                    'monto_no_valido_mes'          => $row['monto_no_valido_mes'],
+                    'transacciones_validas_mes'    => $row['transacciones_validas_mes'],
+                    'transacciones_invalidas_mes'  => $row['transacciones_invalidas_mes'],
+                    'total_transacciones'          => $row['total_transacciones'],
+                ];
+            }
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            echo json_encode(['data' => [], 'error' => $e->getMessage()]);
         }
     }
 

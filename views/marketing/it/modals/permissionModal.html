@@ -1,0 +1,47 @@
+<form action="/it/permissions" method="post">
+    <div class="modal-body">
+        <div class="mb-3">
+            <label for="action" class="form-label">Acción: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="action" id="action" placeholder="Acción">
+                <option value="read">Lectura</option>
+                <option value="update">Actualización</option>
+                <option value="delete">Eliminación</option>
+                <option value="create">Creación</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="department" class="form-label">Departamento: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="department" id="department" placeholder="Departamento">
+                <option value="Administración">Administración</option>
+                <option value="Operaciones">Operaciones</option>
+                <option value="Servicio al cliente">Servicio al cliente</option>
+                <option value="Mantenimiento">Mantenimiento</option>
+                <option value="Logística">Logística</option>
+                <option value="Abastos">Abastos</option>
+                <option value="Capital Humano">Capital Hum</option>
+                <option value="Finanzas">Finanzas</option>
+                <option value="Contabilidad">Contabilidad</option>
+                <option value="Ingresos">Ingresos</option>
+                <option value="Mercadotecnia">Mercadotecnia</option>
+                <option value="Sistemas">Sistemas</option>
+                <option value="Proyectos">Proyectos</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="status" class="form-label">Status: </label>
+            <select class="selectpicker w-100" data-live-search="true" name="status" id="status" placeholder="Status">
+                <option value="1">Activo</option>
+                <option value="0">Inactivo</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label for="description" class="form-label">Descripción: </label>
+            <textarea class="form-control" placeholder="Agregue la descripción del permiso" id="description" name="description"></textarea>
+        </div>
+    </div>
+    <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Guardar permiso</button>
+        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cerrar</button>
+    </div>
+</form>

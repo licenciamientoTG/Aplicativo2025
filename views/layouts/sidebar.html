@@ -261,6 +261,13 @@
         </ul>
       </li>
 
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/supply/purchase_analysis">
+          <i data-feather="bar-chart-2"></i>
+          <span class="align-middle">Análisis de Compras</span>
+        </a>
+      </li>
+
       {% endif %} {% if authorized(62) %}
       <li class="sidebar-header">COMERCIAL</li>
       <li class="sidebar-item">
@@ -312,6 +319,9 @@
           <span class="align-middle">Reportes</span>
         </a>
         <ul id="operations_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/operations/volumetric_sales">Ventas Volumétricas</a>
+          </li>
           {% if authorized(38) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/operations/sales">Ventas </a>
