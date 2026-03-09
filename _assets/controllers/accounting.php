@@ -20,7 +20,6 @@ use PhpOffice\PhpSpreadsheet\Reader\IReader;
 use PhpOffice\PhpSpreadsheet\Style\NumberFormat\Wizard\Duration;
 use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 
-
 require_once('./_assets/classes/code128.php');
 
 class Accounting{
