@@ -1580,17 +1580,12 @@ class Supply
         curl_close($ch);
         $apiData = json_decode($response, true);
         $data = [];
-        $hoy = date('Y-m-d');
 
         if (isset($apiData) && is_array($apiData)) {
             foreach ($apiData as $row) {
                 $fechaVencimiento = !empty($row['fecha_vencimiento_credito'])
                     ? $row['fecha_vencimiento_credito']
                     : ($row['fechaVto'] ?? null);
-                $estaVencida = !empty($fechaVencimiento) && $fechaVencimiento < $hoy;
-
-                $vFlag = $estaVencida ? 'V' : '';
-                $cFlag = !empty($row['en_orden_pago']) && $row['en_orden_pago'] == 1 ? 'C' : '';
 
                 $data[] = [
                     'nro'              => $row['nro'],
@@ -1602,19 +1597,19 @@ class Supply
                     'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
                     'producto'         => $row['producto'],
                     'can'              => $row['can'],
-                    'mto'              => $row['mto'],
+                    'mto'              => $row['mto']+$row['servicio'],
                     'mtoiie'           => $row['mtoiie'],
-                    'iva_total'        => $row['iva_total'],
+                    'iva_total'        => $row['iva_total']+$row['iva_servicio'],
                     'total_fac'        => $row['total_fac'],
-                    'v_flag'           => $vFlag,
-                    'c_flag'           => $cFlag,
-                    'satuid'           => $row['satuid'],
-                    'rfc'              => $row['rfc'] ?? '',
-                    'gasolinera'       => $row['gasolinera'],
-                    'codgas'           => $row['codgas'],
-                    'en_orden_pago'    => $row['en_orden_pago'],
-                    'payment_status'   => $row['payment_status'],
-                    'codigo_empresa'   => $row['codigo_empresa'],
+                    'satuid'              => $row['satuid'],
+                    'rfc'                 => $row['rfc'] ?? '',
+                    'gasolinera'          => $row['gasolinera'],
+                    'codgas'              => $row['codgas'],
+                    'codigo_empresa'      => $row['codigo_empresa'],
+                    'factura_recibida_id' => $row['factura_recibida_id'] ?? null,
+                    'EmisorNombre'        => $row['EmisorNombre'] ?? '',
+                    'RutaArchivo'         => $row['RutaArchivo'] ?? '',
+                    'NombreArchivo'       => $row['NombreArchivo'] ?? '',
                 ];
             }
         }

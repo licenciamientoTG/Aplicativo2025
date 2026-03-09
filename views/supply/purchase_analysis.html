@@ -6,10 +6,6 @@
     /* ── Tabla ── */
     #analisis_compras_table tbody tr { cursor: default; }
 
-    /* Highlight de filas */
-    tr.fila-vencida    { background-color: #fce4ec !important; }
-    tr.fila-en-orden   { background-color: #e8f5e9 !important; }
-
     /* KPI strip */
     .kpi-strip { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
     .kpi-card {
@@ -92,14 +88,6 @@
                 </select>
             </div>
             <div class="col-2">
-                <label class="col-form-label-sm">Empresa:</label>
-                <select class="selectpicker w-100" name="company_analisis" id="company_analisis">
-                    <option value="0" selected>Todas</option>
-                    <option value="1">TotalGas</option>
-                    <option value="2">Petrotal</option>
-                </select>
-            </div>
-            <div class="col-2">
                 <button onclick="analisis_compras_table()" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">
                     <i class="fas fa-search"></i> Generar Reporte
                 </button>
@@ -130,12 +118,22 @@
         <div class="kpi-value text-danger" id="kpi_analisis_total_fac">$0</div>
         <div class="kpi-label">Total General</div>
     </div>
+    <div class="kpi-card" style="border-color:#dc3545; cursor:pointer;" onclick="toggleFiltroMismatch()" title="Click para filtrar">
+        <div class="kpi-value text-danger" id="kpi_analisis_mismatch">0</div>
+        <div class="kpi-label">Factura/Prov. no cuadran</div>
+    </div>
 </div>
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <h5 class="card-title mb-0">Análisis de Compras - Documentos por Estación</h5>
         <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-warning" id="btn_filtro_uuid" onclick="toggleFiltroSinUuid()" style="display:none;">
+                <i class="fas fa-filter"></i> Ocultar sin UUID
+            </button>
+            <button class="btn btn-sm btn-outline-danger" id="btn_filtro_mismatch" onclick="toggleFiltroMismatch()" style="display:none;">
+                <i class="fas fa-exclamation-triangle"></i> Solo errores factura
+            </button>
             <span class="badge bg-info me-2" id="contador_analisis">0 facturas</span>
             <span class="badge bg-success" id="total_monto_analisis">$0.00</span>
         </div>
@@ -156,10 +154,9 @@
                     <th>Monto</th>
                     <th>I.V.A.</th>
                     <th>Total</th>
-                    <th>V</th>
-                    <th>C</th>
                     <th>UUID</th>
                     <th>R.F.C.</th>
+                    <th>Factura SAT</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -170,7 +167,7 @@
                     <th id="tfoot_monto"></th>
                     <th id="tfoot_iva"></th>
                     <th id="tfoot_total"></th>
-                    <th colspan="4"></th>
+                    <th colspan="3"></th>
                 </tr>
             </tfoot>
         </table>

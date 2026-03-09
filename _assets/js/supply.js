@@ -7700,17 +7700,77 @@ function addInvoiceToPayment(document) {
 // ═══════════════════════════════════════════════════════════
 //  ANÁLISIS DE COMPRAS
 // ═══════════════════════════════════════════════════════════
+
+// Patrones esperados por proveedor_codigo
+// Derivados del análisis de 4,113 facturas históricas
+var _patronesProveedor = {
+  96: { nombre: 'AEMSA',      regex: /^F-\d+/i },
+  83: { nombre: 'ENEREY',     regex: /^E-\d+/i },
+  41: { nombre: 'GAZPRO',     regex: /^FE-\d+/i },
+  72: { nombre: 'MGC',        regex: /^(CO-\d+|\d+-CO-\d+)/i },
+  76: { nombre: 'LOBO',       regex: /^-\d+/ },
+  55: { nombre: 'PETROTAL',   regex: /^(PET-|IPET-)/i },
+  71: { nombre: 'PREMIERGAS', regex: /^(FE-|FF-)\d+/i },
+  56: { nombre: 'TESORO',     regex: /^02-88002\d+/i },
+};
+
+function _validarFacturaProveedor(factura, proveedorCodigo) {
+  if (!factura || !proveedorCodigo) return true; // sin datos, no alertar
+  var patron = _patronesProveedor[parseInt(proveedorCodigo)];
+  if (!patron) return true; // proveedor desconocido, no alertar
+  return patron.regex.test(factura.trim());
+}
+
+var _analisisFiltrandoSinUuid = false;
+var _analisisFiltrandoMismatch = false;
+
+// Filtro personalizado por datos crudos (no por HTML renderizado)
+$.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
+  if (settings.nTable.id !== 'analisis_compras_table') return true;
+  if (_analisisFiltrandoSinUuid && !rowData.satuid) return false;
+  if (_analisisFiltrandoMismatch && _validarFacturaProveedor(rowData.Factura, rowData.proveedor_codigo)) return false;
+  return true;
+});
+
+function toggleFiltroSinUuid() {
+  _analisisFiltrandoSinUuid = !_analisisFiltrandoSinUuid;
+  if (_analisisFiltrandoSinUuid) {
+    $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Mostrar sin UUID').removeClass("btn-outline-warning").addClass("btn-warning");
+  } else {
+    $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
+function toggleFiltroMismatch() {
+  _analisisFiltrandoMismatch = !_analisisFiltrandoMismatch;
+  var kpiCard = $("#kpi_analisis_mismatch").closest(".kpi-card");
+  if (_analisisFiltrandoMismatch) {
+    kpiCard.css("background-color", "#f8d7da");
+    $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Mostrar todos').removeClass("btn-outline-danger").addClass("btn-danger");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
 async function analisis_compras_table() {
   if ($.fn.DataTable.isDataTable("#analisis_compras_table")) {
     $("#analisis_compras_table").DataTable().destroy();
     $("#analisis_compras_table thead .filter").remove();
   }
+  _analisisFiltrandoSinUuid = false;
+  _analisisFiltrandoMismatch = false;
+  $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning").hide();
+  $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger").hide();
+  $("#kpi_analisis_mismatch").closest(".kpi-card").css("background-color", "");
 
   var fromDate  = document.getElementById("from_analisis").value;
   var untilDate = document.getElementById("until_analisis").value;
   var codgas    = document.getElementById("codgas_analisis").value;
   var proveedor = document.getElementById("proveedor_analisis").value;
-  var company   = document.getElementById("company_analisis").value;
+  var company   = 0;
 
   if (!fromDate || !untilDate) {
     alertify.myAlert(
@@ -7778,7 +7838,7 @@ async function analisis_compras_table() {
         untilDate: untilDate,
         codgas: codgas,
         proveedor: proveedor,
-        company: company
+        company: 0
       },
       beforeSend: function () {
         $(".table-responsive").addClass("loading");
@@ -7800,34 +7860,10 @@ async function analisis_compras_table() {
           alertify.error(json.message);
           return [];
         }
-        var rows     = json.data;
-        var total    = rows.length;
-        var cantidad = rows.reduce((s, r) => s + parseFloat(r.can       || 0), 0);
-        var monto    = rows.reduce((s, r) => s + parseFloat(r.mto       || 0), 0);
-        var iva      = rows.reduce((s, r) => s + parseFloat(r.iva_total || 0), 0);
-        var totalFac = rows.reduce((s, r) => s + parseFloat(r.total_fac || 0), 0);
-
-        var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
-
-        // KPI strip
-        $("#kpi_analisis_total").text(total);
-        $("#kpi_analisis_cantidad").text(fmt(cantidad));
-        $("#kpi_analisis_monto").text("$" + fmt(monto));
-        $("#kpi_analisis_iva").text("$" + fmt(iva));
-        $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
         $("#kpi_analisis_strip").show();
-
-        // Badge header
-        $("#contador_analisis").text(total + " facturas");
-        $("#total_monto_analisis").text("$" + fmt(totalFac));
-
-        // Totales en tfoot
-        $("#tfoot_cantidad").text(fmt(cantidad));
-        $("#tfoot_monto").text("$" + fmt(monto));
-        $("#tfoot_iva").text("$" + fmt(iva));
-        $("#tfoot_total").text("$" + fmt(totalFac));
-
-        return rows;
+        $("#btn_filtro_uuid").show();
+        $("#btn_filtro_mismatch").show();
+        return json.data;
       }
     },
     columns: [
@@ -7854,8 +7890,15 @@ async function analisis_compras_table() {
       {
         data: "Factura",
         className: "text-start text-nowrap",
-        render: function (data) {
-          return data || '<span class="text-muted">-</span>';
+        render: function (data, type, row) {
+          if (!data) return '<span class="text-muted">-</span>';
+          if (!_validarFacturaProveedor(data, row.proveedor_codigo)) {
+            var esperado = _patronesProveedor[parseInt(row.proveedor_codigo)];
+            var hint = esperado ? 'Patrón esperado para ' + esperado.nombre + ': ' + esperado.regex.toString() : '';
+            return '<span class="text-danger fw-bold" title="⚠ Factura no coincide con el patrón del proveedor. ' + hint + '">' +
+                   '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return data;
         }
       },
       // 6 — Remisión
@@ -7892,23 +7935,7 @@ async function analisis_compras_table() {
         className: "text-end fw-bold",
         render: $.fn.dataTable.render.number(",", ".", 2, "$")
       },
-      // 12 — V (vencida)
-      {
-        data: "v_flag",
-        className: "text-center",
-        render: function (data) {
-          return data ? '<span class="badge bg-danger">V</span>' : '';
-        }
-      },
-      // 13 — C (en orden de pago)
-      {
-        data: "c_flag",
-        className: "text-center",
-        render: function (data) {
-          return data ? '<span class="badge bg-success">C</span>' : '';
-        }
-      },
-      // 14 — UUID
+      // 12 — UUID
       {
         data: "satuid",
         className: "text-start",
@@ -7919,22 +7946,68 @@ async function analisis_compras_table() {
             data.substring(0, 8) + '…</span>';
         }
       },
-      // 15 — R.F.C.
+      // 13 — R.F.C.
       {
         data: "rfc",
         className: "text-start text-nowrap",
         render: function (data) {
           return data || '<span class="text-muted badge bg-secondary">debug</span>';
         }
+      },
+      // 14 — Factura SAT (PDF)
+      {
+        data: "factura_recibida_id",
+        className: "text-center",
+        orderable: false,
+        render: function (data, type, row) {
+          if (!data) return '<span class="text-muted">-</span>';
+          if (row.RutaArchivo) {
+            return `<a href="javascript:void(0);"
+                        onclick='ModalinvoicePdf(${data}, ${JSON.stringify(row).replace(/'/g, "&apos;")})'
+                        class="text-primary fw-bold"
+                        title="${row.EmisorNombre || ''}">
+                        <i class="fas fa-file-pdf text-danger"></i> Ver
+                    </a>`;
+          }
+          return '<span class="badge bg-secondary" title="Sin archivo PDF">Sin PDF</span>';
+        }
       }
     ],
     createdRow: function (row, data) {
-      if (data.v_flag) $(row).addClass("fila-vencida");
-      else if (data.c_flag) $(row).addClass("fila-en-orden");
+      if (data.Factura && !_validarFacturaProveedor(data.Factura, data.proveedor_codigo)) {
+        $(row).addClass("table-danger");
+      }
     },
     initComplete: function () {
       $(".table-responsive").removeClass("loading");
       alertify.success("Análisis de compras cargado");
+    },
+    drawCallback: function () {
+      var dt = $("#analisis_compras_table").DataTable();
+      var filas = dt.rows({ search: 'applied' }).data();
+      var total    = filas.length;
+      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0;
+      for (var i = 0; i < total; i++) {
+        var r = filas[i];
+        cantidad += parseFloat(r.can       || 0);
+        monto    += parseFloat(r.mto       || 0);
+        iva      += parseFloat(r.iva_total || 0);
+        totalFac += parseFloat(r.total_fac || 0);
+        if (r.Factura && !_validarFacturaProveedor(r.Factura, r.proveedor_codigo)) mismatch++;
+      }
+      var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
+      $("#kpi_analisis_total").text(total);
+      $("#kpi_analisis_cantidad").text(fmt(cantidad));
+      $("#kpi_analisis_monto").text("$" + fmt(monto));
+      $("#kpi_analisis_iva").text("$" + fmt(iva));
+      $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
+      $("#kpi_analisis_mismatch").text(mismatch);
+      $("#contador_analisis").text(total + " facturas");
+      $("#total_monto_analisis").text("$" + fmt(totalFac));
+      $("#tfoot_cantidad").text(fmt(cantidad));
+      $("#tfoot_monto").text("$" + fmt(monto));
+      $("#tfoot_iva").text("$" + fmt(iva));
+      $("#tfoot_total").text("$" + fmt(totalFac));
     }
   });
 }
