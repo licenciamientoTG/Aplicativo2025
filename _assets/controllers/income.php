@@ -5968,14 +5968,36 @@ public function stamped_invoices_detail(): void
                  VALUES (?,?,?,?,?,?)"
             );
 
+            // IDs de CV3_Transito que se reconcilian en este grupo
+            $transitoDestIds = [];   // fake transit items (monto_transito)
+            $transitoOrigRefs = [];  // CG items con transit activo (monto_efectivo)
+
             foreach ($data['left_rows'] as $row) {
-                $stmtDet->execute([
-                    $grupo_id, 'CG',
-                    $row['ref']     ?? '',
-                    $row['fecha']   ?? date('Y-m-d'),
-                    (float)$row['monto'],
-                    $row['concepto'] ?? '',
-                ]);
+                $tipo = $row['tipo'] ?? 'CG';
+                if ($tipo === 'TRANSITO') {
+                    // Item fake de tránsito — origen = TRANSITO
+                    $stmtDet->execute([
+                        $grupo_id, 'TRANSITO',
+                        $row['ref']      ?? '',
+                        $row['fecha']    ?? date('Y-m-d'),
+                        (float)$row['monto'],
+                        $row['concepto'] ?? '',
+                    ]);
+                    if (!empty($row['transito_id'])) {
+                        $transitoDestIds[] = (int)$row['transito_id'];
+                    }
+                } else {
+                    $stmtDet->execute([
+                        $grupo_id, 'CG',
+                        $row['ref']     ?? '',
+                        $row['fecha']   ?? date('Y-m-d'),
+                        (float)$row['monto'],
+                        $row['concepto'] ?? '',
+                    ]);
+                    if (!empty($row['transito_orig_id'])) {
+                        $transitoOrigRefs[] = (int)$row['transito_orig_id'];
+                    }
+                }
             }
 
             foreach ($data['tes_rows'] as $row) {
@@ -5988,7 +6010,25 @@ public function stamped_invoices_detail(): void
                 ]);
             }
 
-            // 3. Si viene de un tránsito previo, cerrarlo
+            // 3a. Marcar fakes de tránsito como CONCILIADO (mes destino)
+            if (!empty($transitoDestIds)) {
+                $ph  = implode(',', array_fill(0, count($transitoDestIds), '?'));
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET estado = 'CONCILIADO', conciliacion_id_dest = ?
+                     WHERE id IN ($ph)"
+                )->execute(array_merge([$grupo_id], $transitoDestIds));
+            }
+
+            // 3b. Marcar monto_efectivo de cortes en tránsito como conciliado (mes origen)
+            if (!empty($transitoOrigRefs)) {
+                $ph  = implode(',', array_fill(0, count($transitoOrigRefs), '?'));
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET conciliacion_id_orig = ?
+                     WHERE id IN ($ph)"
+                )->execute(array_merge([$grupo_id], $transitoOrigRefs));
+            }
+
+            // 3c. Si viene de un tránsito previo (sistema antiguo), cerrarlo
             if (!empty($data['transit_ids_to_close']) && is_array($data['transit_ids_to_close'])) {
                 $ids  = array_map('intval', $data['transit_ids_to_close']);
                 $ph   = implode(',', array_fill(0, count($ids), '?'));
@@ -6046,11 +6086,23 @@ public function stamped_invoices_detail(): void
                 exit;
             }
 
-            // Reabrir tránsitos que este grupo haya cerrado
+            // Reabrir tránsitos que este grupo haya cerrado (sistema antiguo)
             $conn->prepare(
                 "UPDATE Conciliacion_V3_Transito
                  SET estado = 'PENDIENTE', grupo_id_cierre = NULL, fecha_cierre = NULL
                  WHERE grupo_id_cierre = ?"
+            )->execute([$grupo_id]);
+
+            // Revertir CV3_Transito: fakes reconciliados en este grupo (mes destino)
+            $conn->prepare(
+                "UPDATE CV3_Transito SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                 WHERE conciliacion_id_dest = ?"
+            )->execute([$grupo_id]);
+
+            // Revertir CV3_Transito: monto_efectivo reconciliado en este grupo (mes origen)
+            $conn->prepare(
+                "UPDATE CV3_Transito SET conciliacion_id_orig = NULL
+                 WHERE conciliacion_id_orig = ?"
             )->execute([$grupo_id]);
 
             // Borrar detalles y grupo (FK CASCADE borra detalles)
@@ -6637,6 +6689,449 @@ public function stamped_invoices_detail(): void
             }
 
             echo json_encode(['status' => 'success', 'data' => $data]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 14. CREAR TRÁNSITO PARA DÍA COMPLETO (batch)
+    //     POST /income/crear_transito_dia_v3
+    //     Body: { estacion_id, entidad_id, afiliacion, mes_origen, mes_destino,
+    //             monto_transito_total, descripcion,
+    //             cortes: [{ref, monto_corte, concepto, cg_fecha}, ...] }
+    //     Distribuye monto_transito_total proporcionalmente entre los cortes.
+    // -------------------------------------------------------------------------
+    public function crear_transito_dia_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $estacion_id        = (int)($data['estacion_id']         ?? 0);
+        $entidad_id         = (int)($data['entidad_id']          ?? 0);
+        $afiliacion         = trim($data['afiliacion']           ?? '');
+        $mes_origen         = trim($data['mes_origen']           ?? '');
+        $mes_destino        = trim($data['mes_destino']          ?? '');
+        $monto_trans_total  = (float)($data['monto_transito_total'] ?? 0);
+        $descripcion        = trim($data['descripcion']          ?? '');
+        $cortes             = $data['cortes']                    ?? [];
+
+        if (!$estacion_id || !$entidad_id || !$mes_origen || !$mes_destino || empty($cortes) || $monto_trans_total <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            exit;
+        }
+
+        $total_cortes = array_sum(array_map(fn($c) => (float)($c['monto_corte'] ?? 0), $cortes));
+        if ($total_cortes <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Total de cortes inválido']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_transito_table($conn);
+
+            // Verificar mes origen no cerrado
+            $cm = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $mes_origen]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes origen ya está cerrado']);
+                exit;
+            }
+
+            $conn->beginTransaction();
+
+            $stmt = $conn->prepare("
+                INSERT INTO CV3_Transito
+                    (estacion_id, entidad_id, afiliacion, corte_ref_id, cg_fecha,
+                     mes_origen, mes_destino, monto_corte, monto_transito, monto_efectivo,
+                     concepto, descripcion, estado)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
+            ");
+
+            $ids_creados = [];
+            foreach ($cortes as $corte) {
+                $ref          = trim($corte['ref']       ?? '');
+                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
+                $concepto     = trim($corte['concepto']  ?? '');
+                $cg_fecha     = trim($corte['cg_fecha']  ?? '');
+
+                if (!$ref || $monto_corte <= 0) continue;
+
+                // Verificar que no tenga ya un tránsito activo
+                $ck = $conn->prepare("
+                    SELECT id FROM CV3_Transito
+                    WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
+                      AND corte_ref_id = ? AND estado != 'CANCELADO'
+                ");
+                $ck->execute([$estacion_id, $entidad_id, $afiliacion, $ref]);
+                if ($ck->fetch()) continue;  // ya tiene tránsito, saltar
+
+                // Distribuir proporcionalmente
+                $proporcion      = $monto_corte / $total_cortes;
+                $monto_transito  = round($monto_trans_total * $proporcion, 2);
+                $monto_efectivo  = round($monto_corte - $monto_transito, 2);
+
+                // Asegurar que monto_transito no supere el corte
+                if ($monto_transito > $monto_corte) { $monto_transito = $monto_corte; $monto_efectivo = 0; }
+
+                $stmt->execute([
+                    $estacion_id, $entidad_id, $afiliacion, $ref, $cg_fecha,
+                    $mes_origen, $mes_destino, $monto_corte, $monto_transito, $monto_efectivo,
+                    $concepto, $descripcion
+                ]);
+
+                $ids_creados[] = (int)$conn->query("SELECT @@IDENTITY")->fetchColumn();
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'creados' => count($ids_creados), 'ids' => $ids_creados]);
+
+        } catch (PDOException $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // HELPER PRIVADO: Crea tabla CV3_Transito si no existe
+    // -------------------------------------------------------------------------
+    private function v3_ensure_transito_table(PDO $conn): void {
+        $conn->exec("
+            IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'CV3_Transito' AND type = 'U')
+            CREATE TABLE CV3_Transito (
+                id                   INT IDENTITY(1,1) PRIMARY KEY,
+                estacion_id          INT NOT NULL,
+                entidad_id           INT NOT NULL,
+                afiliacion           VARCHAR(50) NOT NULL,
+                corte_ref_id         VARCHAR(200) NOT NULL,
+                cg_fecha             DATE NOT NULL,
+                mes_origen           VARCHAR(7) NOT NULL,
+                mes_destino          VARCHAR(7) NOT NULL,
+                monto_corte          DECIMAL(18,2) NOT NULL,
+                monto_transito       DECIMAL(18,2) NOT NULL,
+                monto_efectivo       DECIMAL(18,2) NOT NULL,
+                concepto             VARCHAR(200),
+                descripcion          VARCHAR(300),
+                estado               VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                conciliacion_id_orig INT NULL,
+                conciliacion_id_dest INT NULL,
+                created_at           DATETIME DEFAULT GETDATE(),
+                created_by           INT NULL
+            )
+        ");
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. TRÁNSITOS CG V3 — OBTENER PARA MES
+    //     GET /income/get_transitos_cg_v3
+    //     Params: estacion_id, entidad_id, afiliacion, year, month
+    //     Returns:
+    //       en_transito: cortes del mes origen que ya tienen tránsito creado
+    //       fakes:       registros fake del mes destino (para mostrar en panel CG)
+    // -------------------------------------------------------------------------
+    public function get_transitos_cg_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+        $year        = (int)($_GET['year']        ?? date('Y'));
+        $month       = (int)($_GET['month']       ?? date('m'));
+
+        if (!$estacion_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta estacion_id']);
+            exit;
+        }
+
+        $mes = sprintf('%04d-%02d', $year, $month);
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_transito_table($conn);
+
+            $af = $afiliacion !== '' ? ' AND afiliacion = ?' : '';
+
+            // Cortes con tránsito en el mes origen actual
+            $p1 = [$estacion_id, $entidad_id];
+            if ($afiliacion !== '') $p1[] = $afiliacion;
+            $p1[] = $mes;
+
+            $s1 = $conn->prepare("
+                SELECT id, corte_ref_id, cg_fecha, mes_origen, mes_destino,
+                       monto_corte, monto_transito, monto_efectivo,
+                       concepto, descripcion, estado,
+                       conciliacion_id_orig, conciliacion_id_dest
+                FROM CV3_Transito
+                WHERE estacion_id = ? AND entidad_id = ? $af
+                  AND mes_origen = ? AND estado != 'CANCELADO'
+                ORDER BY cg_fecha ASC
+            ");
+            $s1->execute($p1);
+            $enTransito = $s1->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fake CG items para el mes destino actual
+            $p2 = [$estacion_id, $entidad_id];
+            if ($afiliacion !== '') $p2[] = $afiliacion;
+            $p2[] = $mes;
+
+            $s2 = $conn->prepare("
+                SELECT id, corte_ref_id, cg_fecha, mes_origen, mes_destino,
+                       monto_corte, monto_transito, monto_efectivo,
+                       concepto, descripcion, estado,
+                       conciliacion_id_orig, conciliacion_id_dest
+                FROM CV3_Transito
+                WHERE estacion_id = ? AND entidad_id = ? $af
+                  AND mes_destino = ? AND estado != 'CANCELADO'
+                ORDER BY cg_fecha ASC
+            ");
+            $s2->execute($p2);
+            $fakes = $s2->fetchAll(PDO::FETCH_ASSOC);
+
+            $fmtRow = function (&$r) {
+                $r['cg_fecha']       = substr((string)$r['cg_fecha'], 0, 10);
+                $r['monto_corte']    = (float)$r['monto_corte'];
+                $r['monto_transito'] = (float)$r['monto_transito'];
+                $r['monto_efectivo'] = (float)$r['monto_efectivo'];
+            };
+            foreach ($enTransito as &$r) $fmtRow($r);
+            foreach ($fakes    as &$r) $fmtRow($r);
+
+            echo json_encode(['status' => 'success', 'en_transito' => $enTransito, 'fakes' => $fakes]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. CALCULAR SUGERENCIA DE MONTO DE TRÁNSITO
+    //     GET /income/calcular_transito_v3
+    //     Params: entidad_id, afiliacion, cg_fecha (YYYY-MM-DD), mes_destino (YYYY-MM)
+    //     Consulta banco_* para transacciones cuyo Fecha_Transaccion = cg_fecha
+    //     y cuyo Fecha_Deposito está en mes_destino.
+    // -------------------------------------------------------------------------
+    public function calcular_transito_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+        $cg_fecha    = trim($_GET['cg_fecha']     ?? '');
+        $mes_destino = trim($_GET['mes_destino']  ?? '');
+
+        if (!$entidad_id || !$afiliacion || !$cg_fecha || !$mes_destino) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $cg_fecha) || !preg_match('/^\d{4}-\d{2}$/', $mes_destino)) {
+            echo json_encode(['status' => 'error', 'message' => 'Formato de fecha/mes inválido']);
+            exit;
+        }
+
+        [$yd, $md] = explode('-', $mes_destino);
+
+        $tablaMap = [1 => 'banco_getnet', 3 => 'banco_amex', 4 => 'banco_banorte', 5 => 'banco_bbva', 13 => 'banco_afirme'];
+        $tabla = $tablaMap[$entidad_id] ?? null;
+
+        if (!$tabla) {
+            echo json_encode(['status' => 'error', 'message' => 'Entidad no soportada']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $afil_parts   = array_map('trim', preg_split('/[,\/]/', $afiliacion));
+            $placeholders = implode(',', array_fill(0, count($afil_parts), '?'));
+            $params       = array_merge([$cg_fecha, (int)$yd, (int)$md], $afil_parts);
+
+            $sql = "SELECT Monto, Fecha_Transaccion, Fecha_Deposito, Afiliacion, Terminal, Hora, Codigo_Autorizacion
+                    FROM $tabla
+                    WHERE CONVERT(DATE, Fecha_Transaccion) = ?
+                      AND YEAR(Fecha_Deposito)             = ?
+                      AND MONTH(Fecha_Deposito)            = ?
+                      AND LTRIM(RTRIM(Afiliacion)) IN ($placeholders)
+                    ORDER BY Fecha_Transaccion ASC";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $total   = 0.0;
+            $detalle = [];
+            foreach ($rows as $r) {
+                $m = (float)$r['Monto'];
+                $total += $m;
+                $detalle[] = [
+                    'monto'     => $m,
+                    'fecha_tx'  => substr((string)$r['Fecha_Transaccion'], 0, 10),
+                    'fecha_dep' => substr((string)$r['Fecha_Deposito'],   0, 10),
+                    'terminal'  => $r['Terminal'],
+                    'hora'      => $r['Hora'],
+                    'auth'      => $r['Codigo_Autorizacion'],
+                ];
+            }
+
+            echo json_encode(['status' => 'success', 'total' => round($total, 2), 'n_tx' => count($rows), 'detalle' => $detalle]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 12. CREAR TRÁNSITO CG V3
+    //     POST /income/crear_transito_v3
+    //     Body: { estacion_id, entidad_id, afiliacion, corte_ref_id, cg_fecha,
+    //             mes_origen, mes_destino, monto_corte, monto_transito, concepto, descripcion }
+    // -------------------------------------------------------------------------
+    public function crear_transito_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $required = ['estacion_id','entidad_id','afiliacion','corte_ref_id','cg_fecha',
+                     'mes_origen','mes_destino','monto_corte','monto_transito'];
+        foreach ($required as $k) {
+            if (!isset($data[$k]) || $data[$k] === '') {
+                echo json_encode(['status' => 'error', 'message' => "Falta campo: $k"]);
+                exit;
+            }
+        }
+
+        $estacion_id    = (int)$data['estacion_id'];
+        $entidad_id     = (int)$data['entidad_id'];
+        $afiliacion     = trim($data['afiliacion']);
+        $corte_ref_id   = trim($data['corte_ref_id']);
+        $cg_fecha       = trim($data['cg_fecha']);
+        $mes_origen     = trim($data['mes_origen']);
+        $mes_destino    = trim($data['mes_destino']);
+        $monto_corte    = (float)$data['monto_corte'];
+        $monto_transito = (float)$data['monto_transito'];
+        $concepto       = trim($data['concepto']    ?? '');
+        $descripcion    = trim($data['descripcion'] ?? '');
+
+        if ($monto_transito <= 0 || $monto_transito > $monto_corte + 0.01) {
+            echo json_encode(['status' => 'error', 'message' => 'Monto de tránsito inválido']);
+            exit;
+        }
+
+        $monto_efectivo = round($monto_corte - $monto_transito, 2);
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_transito_table($conn);
+
+            // Verificar que no existe ya un tránsito activo para este corte
+            $ck = $conn->prepare("
+                SELECT id FROM CV3_Transito
+                WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
+                  AND corte_ref_id = ? AND estado != 'CANCELADO'
+            ");
+            $ck->execute([$estacion_id, $entidad_id, $afiliacion, $corte_ref_id]);
+            if ($ck->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'Este corte ya tiene un tránsito activo']);
+                exit;
+            }
+
+            // Verificar que el mes origen no está cerrado
+            $cm = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $mes_origen]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes origen ya está cerrado']);
+                exit;
+            }
+
+            $conn->prepare("
+                INSERT INTO CV3_Transito
+                    (estacion_id, entidad_id, afiliacion, corte_ref_id, cg_fecha,
+                     mes_origen, mes_destino, monto_corte, monto_transito, monto_efectivo,
+                     concepto, descripcion, estado)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
+            ")->execute([
+                $estacion_id, $entidad_id, $afiliacion, $corte_ref_id, $cg_fecha,
+                $mes_origen, $mes_destino, $monto_corte, $monto_transito, $monto_efectivo,
+                $concepto, $descripcion
+            ]);
+
+            $id = (int)$conn->query("SELECT @@IDENTITY")->fetchColumn();
+
+            echo json_encode(['status' => 'success', 'id' => $id, 'monto_efectivo' => $monto_efectivo]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 13. CANCELAR TRÁNSITO CG V3
+    //     POST /income/cancelar_transito_v3   Body: { id }
+    // -------------------------------------------------------------------------
+    public function cancelar_transito_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $id   = (int)($data['id'] ?? 0);
+
+        if (!$id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta id']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $s = $conn->prepare("SELECT * FROM CV3_Transito WHERE id = ?");
+            $s->execute([$id]);
+            $t = $s->fetch(PDO::FETCH_ASSOC);
+
+            if (!$t) {
+                echo json_encode(['status' => 'error', 'message' => 'Tránsito no encontrado']);
+                exit;
+            }
+            if ($t['estado'] !== 'PENDIENTE') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se puede cancelar un tránsito PENDIENTE']);
+                exit;
+            }
+
+            // Verificar que ningún mes involucrado está cerrado
+            $ck = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes IN (?,?)
+            ");
+            $ck->execute([(int)$t['estacion_id'], (int)$t['entidad_id'], $t['afiliacion'], $t['afiliacion'], $t['mes_origen'], $t['mes_destino']]);
+            if ($ck->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'No se puede cancelar: uno de los meses ya está cerrado']);
+                exit;
+            }
+
+            $conn->prepare("UPDATE CV3_Transito SET estado = 'CANCELADO' WHERE id = ?")->execute([$id]);
+
+            echo json_encode(['status' => 'success']);
 
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
