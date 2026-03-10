@@ -7723,12 +7723,16 @@ function _validarFacturaProveedor(factura, proveedorCodigo) {
 
 var _analisisFiltrandoSinUuid = false;
 var _analisisFiltrandoMismatch = false;
+var _analisisFiltrandoSinCorpo = false;
+var _analisisFiltrandoProvCorpo = false;
 
 // Filtro personalizado por datos crudos (no por HTML renderizado)
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
   if (settings.nTable.id !== 'analisis_compras_table') return true;
   if (_analisisFiltrandoSinUuid && !rowData.satuid) return false;
   if (_analisisFiltrandoMismatch && _validarFacturaProveedor(rowData.Factura, rowData.proveedor_codigo)) return false;
+  if (_analisisFiltrandoSinCorpo && rowData.nro_corp) return false;
+  if (_analisisFiltrandoProvCorpo && !_proveedorDifiereCorpo(rowData)) return false;
   return true;
 });
 
@@ -7755,6 +7759,40 @@ function toggleFiltroMismatch() {
   $("#analisis_compras_table").DataTable().draw();
 }
 
+function _proveedorDifiereCorpo(row) {
+  // Solo aplica cuando el doc existe en corpo y el proveedor difiere
+  if (!row.nro_corp) return false;
+  var pEst   = (row.proveedor      || '').trim().toLowerCase();
+  var pCorpo = (row.proveedor_corpo || '').trim().toLowerCase();
+  return pCorpo !== '' && pEst !== pCorpo;
+}
+
+function toggleFiltroSinCorpo() {
+  _analisisFiltrandoSinCorpo = !_analisisFiltrandoSinCorpo;
+  var kpiCard = $("#kpi_analisis_sin_corpo").closest(".kpi-card");
+  if (_analisisFiltrandoSinCorpo) {
+    kpiCard.css("background-color", "#fff3cd");
+    $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Mostrar todos').removeClass("btn-outline-warning").addClass("btn-warning");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Solo sin corpo').removeClass("btn-warning").addClass("btn-outline-warning");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
+function toggleFiltroProvCorpo() {
+  _analisisFiltrandoProvCorpo = !_analisisFiltrandoProvCorpo;
+  var kpiCard = $("#kpi_analisis_prov_corpo").closest(".kpi-card");
+  if (_analisisFiltrandoProvCorpo) {
+    kpiCard.css("background-color", "#e9d8fd");
+    $("#btn_filtro_prov_corpo").html('<i class="fas fa-user-tag"></i> Mostrar todos').removeClass("btn-outline-secondary").addClass("btn-secondary");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_prov_corpo").html('<i class="fas fa-user-tag"></i> Solo prov. difiere').removeClass("btn-secondary").addClass("btn-outline-secondary");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
 async function analisis_compras_table() {
   if ($.fn.DataTable.isDataTable("#analisis_compras_table")) {
     $("#analisis_compras_table").DataTable().destroy();
@@ -7762,9 +7800,15 @@ async function analisis_compras_table() {
   }
   _analisisFiltrandoSinUuid = false;
   _analisisFiltrandoMismatch = false;
+  _analisisFiltrandoSinCorpo = false;
+  _analisisFiltrandoProvCorpo = false;
   $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning").hide();
   $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger").hide();
+  $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Solo sin corpo').removeClass("btn-warning").addClass("btn-outline-warning").hide();
+  $("#btn_filtro_prov_corpo").html('<i class="fas fa-user-tag"></i> Solo prov. difiere').removeClass("btn-secondary").addClass("btn-outline-secondary").hide();
   $("#kpi_analisis_mismatch").closest(".kpi-card").css("background-color", "");
+  $("#kpi_analisis_sin_corpo").closest(".kpi-card").css("background-color", "");
+  $("#kpi_analisis_prov_corpo").closest(".kpi-card").css("background-color", "");
 
   var fromDate  = document.getElementById("from_analisis").value;
   var untilDate = document.getElementById("until_analisis").value;
@@ -7864,6 +7908,8 @@ async function analisis_compras_table() {
         $("#kpi_analisis_strip").show();
         $("#btn_filtro_uuid").show();
         $("#btn_filtro_mismatch").show();
+        $("#btn_filtro_sin_corpo").show();
+        $("#btn_filtro_prov_corpo").show();
         return json.data;
       }
     },
@@ -7972,11 +8018,54 @@ async function analisis_compras_table() {
           }
           return '<span class="badge bg-secondary" title="Sin archivo PDF">Sin PDF</span>';
         }
+      },
+      // 15 — Nro. Corpo
+      {
+        data: "nro_corp",
+        className: "text-center text-nowrap",
+        render: function (data) {
+          if (!data) return '<span class="badge bg-danger" title="No encontrado en SG12 corpo">Sin corpo</span>';
+          return '<span class="badge bg-success">' + data + '</span>';
+        }
+      },
+      // 16 — Factura Corpo
+      {
+        data: "Factura_corpo",
+        className: "text-start text-nowrap",
+        render: function (data, type, row) {
+          if (!row.nro_corp) return '<span class="text-muted">-</span>';
+          if (!data) return '<span class="text-muted">-</span>';
+          var coincide = (data || '').trim().toLowerCase() === (row.Factura || '').trim().toLowerCase();
+          if (!coincide) {
+            return '<span class="text-danger fw-bold" title="Difiere de estación: ' + (row.Factura || '') + '">'
+                   + '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
+        }
+      },
+      // 17 — Proveedor Corpo
+      {
+        data: "proveedor_corpo",
+        className: "text-start text-nowrap",
+        render: function (data, type, row) {
+          if (!row.nro_corp) return '<span class="text-muted">-</span>';
+          if (!data) return '<span class="text-muted badge bg-secondary">Sin prov.</span>';
+          var coincide = (data || '').trim().toLowerCase() === (row.proveedor || '').trim().toLowerCase();
+          if (!coincide) {
+            return '<span class="text-danger fw-bold" title="Estación: ' + (row.proveedor || '') + '">'
+                   + '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
+        }
       }
     ],
     createdRow: function (row, data) {
       if (data.Factura && !_validarFacturaProveedor(data.Factura, data.proveedor_codigo)) {
         $(row).addClass("table-danger");
+      } else if (!data.nro_corp) {
+        $(row).addClass("table-warning");
+      } else if (_proveedorDifiereCorpo(data)) {
+        $(row).css("background-color", "#ede9fe");
       }
     },
     initComplete: function () {
@@ -7987,7 +8076,7 @@ async function analisis_compras_table() {
       var dt = $("#analisis_compras_table").DataTable();
       var filas = dt.rows({ search: 'applied' }).data();
       var total    = filas.length;
-      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0;
+      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0, sinCorpo = 0, provCorpo = 0;
       for (var i = 0; i < total; i++) {
         var r = filas[i];
         cantidad += parseFloat(r.can       || 0);
@@ -7995,6 +8084,8 @@ async function analisis_compras_table() {
         iva      += parseFloat(r.iva_total || 0);
         totalFac += parseFloat(r.total_fac || 0);
         if (r.Factura && !_validarFacturaProveedor(r.Factura, r.proveedor_codigo)) mismatch++;
+        if (!r.nro_corp) sinCorpo++;
+        if (_proveedorDifiereCorpo(r)) provCorpo++;
       }
       var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
       $("#kpi_analisis_total").text(total);
@@ -8003,6 +8094,8 @@ async function analisis_compras_table() {
       $("#kpi_analisis_iva").text("$" + fmt(iva));
       $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
       $("#kpi_analisis_mismatch").text(mismatch);
+      $("#kpi_analisis_sin_corpo").text(sinCorpo);
+      $("#kpi_analisis_prov_corpo").text(provCorpo);
       $("#contador_analisis").text(total + " facturas");
       $("#total_monto_analisis").text("$" + fmt(totalFac));
       $("#tfoot_cantidad").text(fmt(cantidad));

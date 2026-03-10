@@ -122,6 +122,14 @@
         <div class="kpi-value text-danger" id="kpi_analisis_mismatch">0</div>
         <div class="kpi-label">Factura/Prov. no cuadran</div>
     </div>
+    <div class="kpi-card" style="border-color:#fd7e14; cursor:pointer;" onclick="toggleFiltroSinCorpo()" title="Click para filtrar">
+        <div class="kpi-value text-warning" id="kpi_analisis_sin_corpo">0</div>
+        <div class="kpi-label">Sin registro en corpo</div>
+    </div>
+    <div class="kpi-card" style="border-color:#6f42c1; cursor:pointer;" onclick="toggleFiltroProvCorpo()" title="Click para filtrar">
+        <div class="kpi-value text-purple" id="kpi_analisis_prov_corpo" style="color:#6f42c1;">0</div>
+        <div class="kpi-label">Proveedor difiere corpo</div>
+    </div>
 </div>
 
 <div class="card">
@@ -133,6 +141,12 @@
             </button>
             <button class="btn btn-sm btn-outline-danger" id="btn_filtro_mismatch" onclick="toggleFiltroMismatch()" style="display:none;">
                 <i class="fas fa-exclamation-triangle"></i> Solo errores factura
+            </button>
+            <button class="btn btn-sm btn-outline-warning" id="btn_filtro_sin_corpo" onclick="toggleFiltroSinCorpo()" style="display:none;">
+                <i class="fas fa-building"></i> Solo sin corpo
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" id="btn_filtro_prov_corpo" onclick="toggleFiltroProvCorpo()" style="display:none;">
+                <i class="fas fa-user-tag"></i> Solo prov. difiere
             </button>
             <span class="badge bg-info me-2" id="contador_analisis">0 facturas</span>
             <span class="badge bg-success" id="total_monto_analisis">$0.00</span>
@@ -157,6 +171,9 @@
                     <th>UUID</th>
                     <th>R.F.C.</th>
                     <th>Factura SAT</th>
+                    <th>Nro. Corpo</th>
+                    <th>Factura Corpo</th>
+                    <th>Proveedor Corpo</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -167,7 +184,7 @@
                     <th id="tfoot_monto"></th>
                     <th id="tfoot_iva"></th>
                     <th id="tfoot_total"></th>
-                    <th colspan="3"></th>
+                    <th colspan="6"></th>
                 </tr>
             </tfoot>
         </table>
