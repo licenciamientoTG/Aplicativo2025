@@ -529,14 +529,14 @@ function invoice_client_desp(){
                     'Monto despacho' => $despacho['mto'],
                     'Forma pago'     => $despacho['Tipo'],
                     'Producto'       => $despacho['Producto'],
-                    'EstaciÃ³n'       => $despacho['Estacion'],
+                    'Estación'       => $despacho['Estación'],
                     'Bomba'          => $despacho['Bomba'],
                     'Factura'        => $despacho['Factura'],
                     'UUID'           => $despacho['UUID'],
                     'RFC'            => $despacho['RFC']
                 );
             }
-        }
+        }        
         json_output(array("data" => $data));
     }
 
@@ -1882,12 +1882,12 @@ public function anomalies_client_tickets()
         // Verificamos que el despacho exista
         if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
 
-            if (($payment_type == "DÃ©bito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "CrÃ©dito" AND $dispatch[0]['tipval'] == 4)) {
-                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por este medio."));
+            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
+                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
             }
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
             if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
-                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificaciÃ³n. Favor de verificar."));
+                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificación. Favor de verificar."));
             } else {
                 // Ahora vamos a verificar que el registro no exista en la tabla de [TG].[dbo].[despachos_liberados]
                 if ($this->despachosModel->check_dispatch_released(intval($nrotrn), $codgas)) {

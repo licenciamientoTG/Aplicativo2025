@@ -11,6 +11,14 @@
 </div>
 {% endblock %}
 {% block content %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+        }
+    });
+</script>
 
 <style>
     .payment-loader-overlay {

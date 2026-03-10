@@ -1464,6 +1464,23 @@ class PaymentRequestsModel extends Model
         }
     }
 
+    public function delete_payment_by_id(int $payment_id): array
+    {
+        $this->sql->beginTransaction();
+        try {
+            $this->sql->delete("DELETE FROM [TG].[dbo].[credit_note_applications]       WHERE payment_request_id = :id", [':id' => $payment_id]);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_transactions]           WHERE payment_request_id = :id", [':id' => $payment_id]);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_authorizations] WHERE payment_request_id = :id", [':id' => $payment_id]);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_invoices]       WHERE payment_request_id = :id", [':id' => $payment_id]);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_requests]               WHERE id = :id",                 [':id' => $payment_id]);
+            $this->sql->commit();
+            return ['success' => true];
+        } catch (Exception $e) {
+            $this->sql->rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
     /** TEMPORAL PRUEBAS - quitar cuando terminen las pruebas */
     public function reset_all_test_data(): array
     {

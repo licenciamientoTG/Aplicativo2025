@@ -4,6 +4,14 @@
 {% block menutitle %}Pagos Programados{% endblock %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+        }
+    });
+</script>
 
 <style>
     /* Estilos para los cards de aprobación masiva */
@@ -340,6 +348,7 @@ function resetTestData() {
                             <th>Autorizaciones</th>
                             <th>Comentario</th>
                             <th>Acciones</th>
+                            {% if authorized(999) %}<th></th>{% endif %}
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -1259,6 +1268,14 @@ function resetTestData() {
                     ${getBadgeAutorizacionPendiente(pago)}
                 </td>
                 <td>${alertas.join(' ')}</td>
+                {% if authorized(999) %}
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" title="Eliminar pago"
+                        onclick="eliminarPago(${pago.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+                {% endif %}
             </tr>
         `;
 
@@ -1427,8 +1444,32 @@ function resetTestData() {
         return total;
     }
 
-
-
+{% if authorized(69) %}
+function deletePayment(paymentId) {
+    Swal.fire({
+        title: '¿Eliminar pago #' + paymentId + '?',
+        html: 'Se eliminarán <strong>todos los registros</strong> relacionados a este pago.<br><small class="text-muted">Esta acción no se puede deshacer.</small>',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then(function(result) {
+        if (!result.isConfirmed) return;
+        $.post('/supply/delete_payment', { payment_id: paymentId }, function(res) {
+            if (res.success) {
+                Swal.fire({ icon: 'success', title: 'Eliminado', text: 'Pago #' + paymentId + ' eliminado correctamente.', timer: 2000, showConfirmButton: false });
+                loadPaymentList();
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'No se pudo eliminar el pago.' });
+            }
+        }, 'json').fail(function() {
+            Swal.fire({ icon: 'error', title: 'Error', text: 'Error de comunicación con el servidor.' });
+        });
+    });
+}
+{% endif %}
 
 </script>
 {% endblock %}
