@@ -7723,12 +7723,16 @@ function _validarFacturaProveedor(factura, proveedorCodigo) {
 
 var _analisisFiltrandoSinUuid = false;
 var _analisisFiltrandoMismatch = false;
+var _analisisFiltrandoSinCorpo = false;
+var _analisisFiltrandoDifiereCorpo = false;
 
 // Filtro personalizado por datos crudos (no por HTML renderizado)
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData) {
   if (settings.nTable.id !== 'analisis_compras_table') return true;
   if (_analisisFiltrandoSinUuid && !rowData.satuid) return false;
   if (_analisisFiltrandoMismatch && _validarFacturaProveedor(rowData.Factura, rowData.proveedor_codigo)) return false;
+  if (_analisisFiltrandoSinCorpo && rowData.nro_corp) return false;
+  if (_analisisFiltrandoDifiereCorpo && !_difiereCorpo(rowData)) return false;
   return true;
 });
 
@@ -7755,6 +7759,41 @@ function toggleFiltroMismatch() {
   $("#analisis_compras_table").DataTable().draw();
 }
 
+// Devuelve true si el documento existe en corpo pero difiere en proveedor, factura o UUID
+function _difiereCorpo(row) {
+  if (!row.nro_corp) return false;
+  var provDif  = (row.proveedor_corpo || '').trim().toLowerCase() !== (row.proveedor    || '').trim().toLowerCase();
+  var facDif   = (row.Factura_corpo   || '').trim().toLowerCase() !== (row.Factura      || '').trim().toLowerCase();
+  var uuidDif  = (row.uuid_corp       || '').trim().toLowerCase() !== (row.satuid       || '').trim().toLowerCase();
+  return provDif || facDif || uuidDif;
+}
+
+function toggleFiltroSinCorpo() {
+  _analisisFiltrandoSinCorpo = !_analisisFiltrandoSinCorpo;
+  var kpiCard = $("#kpi_analisis_sin_corpo").closest(".kpi-card");
+  if (_analisisFiltrandoSinCorpo) {
+    kpiCard.css("background-color", "#fff3cd");
+    $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Mostrar todos').removeClass("btn-outline-warning").addClass("btn-warning");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Solo sin corpo').removeClass("btn-warning").addClass("btn-outline-warning");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
+function toggleFiltroDifiereCorpo() {
+  _analisisFiltrandoDifiereCorpo = !_analisisFiltrandoDifiereCorpo;
+  var kpiCard = $("#kpi_analisis_difiere_corpo").closest(".kpi-card");
+  if (_analisisFiltrandoDifiereCorpo) {
+    kpiCard.css("background-color", "#e9d8fd");
+    $("#btn_filtro_difiere_corpo").html('<i class="fas fa-not-equal"></i> Mostrar todos').removeClass("btn-outline-secondary").addClass("btn-secondary");
+  } else {
+    kpiCard.css("background-color", "");
+    $("#btn_filtro_difiere_corpo").html('<i class="fas fa-not-equal"></i> Solo difiere corpo').removeClass("btn-secondary").addClass("btn-outline-secondary");
+  }
+  $("#analisis_compras_table").DataTable().draw();
+}
+
 async function analisis_compras_table() {
   if ($.fn.DataTable.isDataTable("#analisis_compras_table")) {
     $("#analisis_compras_table").DataTable().destroy();
@@ -7762,9 +7801,15 @@ async function analisis_compras_table() {
   }
   _analisisFiltrandoSinUuid = false;
   _analisisFiltrandoMismatch = false;
+  _analisisFiltrandoSinCorpo = false;
+  _analisisFiltrandoDifiereCorpo = false;
   $("#btn_filtro_uuid").html('<i class="fas fa-filter"></i> Ocultar sin UUID').removeClass("btn-warning").addClass("btn-outline-warning").hide();
   $("#btn_filtro_mismatch").html('<i class="fas fa-exclamation-triangle"></i> Solo errores factura').removeClass("btn-danger").addClass("btn-outline-danger").hide();
+  $("#btn_filtro_sin_corpo").html('<i class="fas fa-building"></i> Solo sin corpo').removeClass("btn-warning").addClass("btn-outline-warning").hide();
+  $("#btn_filtro_difiere_corpo").html('<i class="fas fa-not-equal"></i> Solo difiere corpo').removeClass("btn-secondary").addClass("btn-outline-secondary").hide();
   $("#kpi_analisis_mismatch").closest(".kpi-card").css("background-color", "");
+  $("#kpi_analisis_sin_corpo").closest(".kpi-card").css("background-color", "");
+  $("#kpi_analisis_difiere_corpo").closest(".kpi-card").css("background-color", "");
 
   var fromDate  = document.getElementById("from_analisis").value;
   var untilDate = document.getElementById("until_analisis").value;
@@ -7864,6 +7909,8 @@ async function analisis_compras_table() {
         $("#kpi_analisis_strip").show();
         $("#btn_filtro_uuid").show();
         $("#btn_filtro_mismatch").show();
+        $("#btn_filtro_sin_corpo").show();
+        $("#btn_filtro_difiere_corpo").show();
         return json.data;
       }
     },
@@ -7972,11 +8019,71 @@ async function analisis_compras_table() {
           }
           return '<span class="badge bg-secondary" title="Sin archivo PDF">Sin PDF</span>';
         }
+      },
+      // 15 — Nro. Corpo
+      {
+        data: "nro_corp",
+        className: "text-center text-nowrap",
+        render: function (data) {
+          if (!data) return '<span class="badge bg-danger" title="No encontrado en SG12 corpo">Sin corpo</span>';
+          return '<span class="badge bg-success">' + data + '</span>';
+        }
+      },
+      // 16 — Factura Corpo
+      {
+        data: "Factura_corpo",
+        className: "text-start text-nowrap",
+        render: function (data, type, row) {
+          if (!row.nro_corp) return '<span class="text-muted">-</span>';
+          if (!data) return '<span class="text-muted">-</span>';
+          var coincide = (data || '').trim().toLowerCase() === (row.Factura || '').trim().toLowerCase();
+          if (!coincide) {
+            return '<span class="text-danger fw-bold" title="Difiere de estación: ' + (row.Factura || '') + '">'
+                   + '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
+        }
+      },
+      // 17 — Proveedor Corpo
+      {
+        data: "proveedor_corpo",
+        className: "text-start text-nowrap",
+        render: function (data, type, row) {
+          if (!row.nro_corp) return '<span class="text-muted">-</span>';
+          if (!data) return '<span class="text-muted badge bg-secondary">Sin prov.</span>';
+          var coincide = (data || '').trim().toLowerCase() === (row.proveedor || '').trim().toLowerCase();
+          if (!coincide) {
+            return '<span class="text-danger fw-bold" title="Estación: ' + (row.proveedor || '') + '">'
+                   + '<i class="fas fa-exclamation-triangle"></i> ' + data + '</span>';
+          }
+          return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
+        }
+      },
+      // 18 — UUID Corpo
+      {
+        data: "uuid_corp",
+        className: "text-start",
+        render: function (data, type, row) {
+          if (!row.nro_corp) return '<span class="text-muted">-</span>';
+          if (!data) return '<span class="badge bg-secondary">Sin UUID</span>';
+          var uEst   = (row.satuid || '').trim().toLowerCase();
+          var uCorpo = data.trim().toLowerCase();
+          if (uEst && uCorpo !== uEst) {
+            return '<span class="text-danger fw-bold" title="UUID estación: ' + (row.satuid || '') + ' | UUID corpo: ' + data + '">'
+                   + '<i class="fas fa-exclamation-triangle"></i> Difiere</span>';
+          }
+          return '<span class="text-success" title="' + data + '"><i class="fas fa-check"></i> '
+                 + data.substring(0, 8) + '…</span>';
+        }
       }
     ],
     createdRow: function (row, data) {
       if (data.Factura && !_validarFacturaProveedor(data.Factura, data.proveedor_codigo)) {
         $(row).addClass("table-danger");
+      } else if (!data.nro_corp) {
+        $(row).addClass("table-warning");
+      } else if (_difiereCorpo(data)) {
+        $(row).css("background-color", "#ede9fe");
       }
     },
     initComplete: function () {
@@ -7987,7 +8094,7 @@ async function analisis_compras_table() {
       var dt = $("#analisis_compras_table").DataTable();
       var filas = dt.rows({ search: 'applied' }).data();
       var total    = filas.length;
-      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0;
+      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0, sinCorpo = 0, difiereCorpo = 0;
       for (var i = 0; i < total; i++) {
         var r = filas[i];
         cantidad += parseFloat(r.can       || 0);
@@ -7995,6 +8102,8 @@ async function analisis_compras_table() {
         iva      += parseFloat(r.iva_total || 0);
         totalFac += parseFloat(r.total_fac || 0);
         if (r.Factura && !_validarFacturaProveedor(r.Factura, r.proveedor_codigo)) mismatch++;
+        if (!r.nro_corp) sinCorpo++;
+        if (_difiereCorpo(r)) difiereCorpo++;
       }
       var fmt = function(n) { return n.toLocaleString("es-MX", { minimumFractionDigits: 2 }); };
       $("#kpi_analisis_total").text(total);
@@ -8003,6 +8112,8 @@ async function analisis_compras_table() {
       $("#kpi_analisis_iva").text("$" + fmt(iva));
       $("#kpi_analisis_total_fac").text("$" + fmt(totalFac));
       $("#kpi_analisis_mismatch").text(mismatch);
+      $("#kpi_analisis_sin_corpo").text(sinCorpo);
+      $("#kpi_analisis_difiere_corpo").text(difiereCorpo);
       $("#contador_analisis").text(total + " facturas");
       $("#total_monto_analisis").text("$" + fmt(totalFac));
       $("#tfoot_cantidad").text(fmt(cantidad));
