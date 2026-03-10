@@ -11,12 +11,14 @@ class PaymentRequestAuthorizationsModel extends Model
     const PERM_ABASTOS = 66;
     const PERM_ADMIN_FINANZAS = 67;
     const PERM_TESORERIA = 68;
+    const PERM_CONTABILIDAD = 70;
 
     // Orden secuencial de autorizaciones
     const AUTHORIZATION_SEQUENCE = [
         1 => self::PERM_ABASTOS,
-        2 => self::PERM_ADMIN_FINANZAS,
-        3 => self::PERM_TESORERIA
+        2 => self::PERM_CONTABILIDAD,
+        3 => self::PERM_ADMIN_FINANZAS,
+        4 => self::PERM_TESORERIA
     ];
 
     /**
@@ -24,11 +26,12 @@ class PaymentRequestAuthorizationsModel extends Model
      */
     public function get_by_payment_request($payment_request_id) : array|false {
         $query = '
-            SELECT 
+            SELECT
                 pra.*,
                 u.Nombre as autorizador_nombre,
-                CASE 
+                CASE
                     WHEN pra.permission_number = ? THEN \'Abastos\'
+                    WHEN pra.permission_number = ? THEN \'Contabilidad\'
                     WHEN pra.permission_number = ? THEN \'Administración y Finanzas\'
                     WHEN pra.permission_number = ? THEN \'Tesorería\'
                     ELSE \'Desconocido\'
@@ -39,8 +42,9 @@ class PaymentRequestAuthorizationsModel extends Model
             ORDER BY pra.authorization_date ASC
         ';
         return ($this->sql->select($query, [
-            self::PERM_ABASTOS, 
-            self::PERM_ADMIN_FINANZAS, 
+            self::PERM_ABASTOS,
+            self::PERM_CONTABILIDAD,
+            self::PERM_ADMIN_FINANZAS,
             self::PERM_TESORERIA,
             $payment_request_id
         ])) ?: false;
@@ -138,6 +142,8 @@ class PaymentRequestAuthorizationsModel extends Model
         switch ($permission_number) {
             case self::PERM_ABASTOS:
                 return 'Abastos';
+            case self::PERM_CONTABILIDAD:
+                return 'Contabilidad';
             case self::PERM_ADMIN_FINANZAS:
                 return 'Administración y Finanzas';
             case self::PERM_TESORERIA:
@@ -148,12 +154,14 @@ class PaymentRequestAuthorizationsModel extends Model
     }
 
     public function get_authorization_status($payment_request_id) : array {
+        $next = $this->get_next_authorization_level($payment_request_id);
         $status = [
-            'abastos' => $this->is_authorized_by_permission($payment_request_id, self::PERM_ABASTOS),
-            'admin_finanzas' => $this->is_authorized_by_permission($payment_request_id, self::PERM_ADMIN_FINANZAS),
-            'tesoreria' => $this->is_authorized_by_permission($payment_request_id, self::PERM_TESORERIA),
-            'next_level' => $this->get_next_authorization_level($payment_request_id),
-            'completed' => $this->get_next_authorization_level($payment_request_id) === null
+            'abastos'       => $this->is_authorized_by_permission($payment_request_id, self::PERM_ABASTOS),
+            'contabilidad'  => $this->is_authorized_by_permission($payment_request_id, self::PERM_CONTABILIDAD),
+            'admin_finanzas'=> $this->is_authorized_by_permission($payment_request_id, self::PERM_ADMIN_FINANZAS),
+            'tesoreria'     => $this->is_authorized_by_permission($payment_request_id, self::PERM_TESORERIA),
+            'next_level'    => $next,
+            'completed'     => $next === null
         ];
 
         return $status;
