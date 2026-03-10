@@ -1613,6 +1613,7 @@ class Supply
                     // Campos corpo (SG12)
                     'nro_corp'          => $row['nro_corp'] ?? null,
                     'satuid_corp'       => $row['satuid_corp'] ?? null,
+                    'uuid_corp'         => $row['uuid_corp'] ?? null,
                     'Factura_corpo'     => $row['Factura_corpo'] ?? null,
                     'proveedor_corpo'   => $row['proveedor_corpo'] ?? null,
                 ];

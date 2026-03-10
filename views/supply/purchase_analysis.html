@@ -126,9 +126,9 @@
         <div class="kpi-value text-warning" id="kpi_analisis_sin_corpo">0</div>
         <div class="kpi-label">Sin registro en corpo</div>
     </div>
-    <div class="kpi-card" style="border-color:#6f42c1; cursor:pointer;" onclick="toggleFiltroProvCorpo()" title="Click para filtrar">
-        <div class="kpi-value text-purple" id="kpi_analisis_prov_corpo" style="color:#6f42c1;">0</div>
-        <div class="kpi-label">Proveedor difiere corpo</div>
+    <div class="kpi-card" style="border-color:#6f42c1; cursor:pointer;" onclick="toggleFiltroDifiereCorpo()" title="Click para filtrar — difiere en proveedor, factura o UUID">
+        <div class="kpi-value" id="kpi_analisis_difiere_corpo" style="color:#6f42c1;">0</div>
+        <div class="kpi-label">Difiere en corpo</div>
     </div>
 </div>
 
@@ -145,8 +145,8 @@
             <button class="btn btn-sm btn-outline-warning" id="btn_filtro_sin_corpo" onclick="toggleFiltroSinCorpo()" style="display:none;">
                 <i class="fas fa-building"></i> Solo sin corpo
             </button>
-            <button class="btn btn-sm btn-outline-secondary" id="btn_filtro_prov_corpo" onclick="toggleFiltroProvCorpo()" style="display:none;">
-                <i class="fas fa-user-tag"></i> Solo prov. difiere
+            <button class="btn btn-sm btn-outline-secondary" id="btn_filtro_difiere_corpo" onclick="toggleFiltroDifiereCorpo()" style="display:none;">
+                <i class="fas fa-not-equal"></i> Solo difiere corpo
             </button>
             <span class="badge bg-info me-2" id="contador_analisis">0 facturas</span>
             <span class="badge bg-success" id="total_monto_analisis">$0.00</span>
@@ -174,6 +174,7 @@
                     <th>Nro. Corpo</th>
                     <th>Factura Corpo</th>
                     <th>Proveedor Corpo</th>
+                    <th>UUID Corpo</th>
                 </tr>
             </thead>
             <tbody></tbody>
@@ -184,7 +185,7 @@
                     <th id="tfoot_monto"></th>
                     <th id="tfoot_iva"></th>
                     <th id="tfoot_total"></th>
-                    <th colspan="6"></th>
+                    <th colspan="7"></th>
                 </tr>
             </tfoot>
         </table>
