@@ -529,14 +529,14 @@ function invoice_client_desp(){
                     'Monto despacho' => $despacho['mto'],
                     'Forma pago'     => $despacho['Tipo'],
                     'Producto'       => $despacho['Producto'],
-                    'EstaciÃ³n'       => $despacho['Estacion'],
+                    'Estación'       => $despacho['Estación'],
                     'Bomba'          => $despacho['Bomba'],
                     'Factura'        => $despacho['Factura'],
                     'UUID'           => $despacho['UUID'],
                     'RFC'            => $despacho['RFC']
                 );
             }
-        }
+        }        
         json_output(array("data" => $data));
     }
 
@@ -1882,12 +1882,12 @@ public function anomalies_client_tickets()
         // Verificamos que el despacho exista
         if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
 
-            if (($payment_type == "DÃ©bito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "CrÃ©dito" AND $dispatch[0]['tipval'] == 4)) {
-                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por este medio."));
+            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
+                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
             }
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
             if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
-                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificaciÃ³n. Favor de verificar."));
+                json_output(array("status" => "warning", "message" => "Este despacho puede tratarse de un error de clasificación. Favor de verificar."));
             } else {
                 // Ahora vamos a verificar que el registro no exista en la tabla de [TG].[dbo].[despachos_liberados]
                 if ($this->despachosModel->check_dispatch_released(intval($nrotrn), $codgas)) {
@@ -5748,4 +5748,776 @@ public function stamped_invoices_detail(): void
         }
         exit;
     }
+
+    // =========================================================================
+    // ▓▓▓  C O N C I L I A C I Ó N   V 3  —  CG  vs  T E S O R E R Í A  ▓▓▓
+    // =========================================================================
+    // Paradigma nuevo: CG (ControlGas) se concilia contra depósitos reales
+    // en Tesorería (estados de cuenta bancarios). Las transacciones de terminal
+    // (banco_getnet / banco_banorte) son informativas, no el target.
+    //
+    // Tablas: Conciliacion_V3_Grupos, Conciliacion_V3_Detalles,
+    //         Conciliacion_V3_Transito, Conciliacion_V3_CierreMes
+    // Vista:  Tesoreria_V3_Unificada  (une 0956 + 5117 + 8973 + Afirme)
+    // =========================================================================
+
+    // ── VISTAS ────────────────────────────────────────────────────────────────
+
+    public function test_v3(): void {
+        echo $this->twig->render($this->route . 'test_v3.html');
+    }
+
+    public function summary_v3(): void {
+        echo $this->twig->render($this->route . 'summary_v3.html');
+    }
+
+    // ── HELPERS ───────────────────────────────────────────────────────────────
+
+    private function v3_conn(): PDO {
+        $conn = new PDO('sqlsrv:Server=192.168.0.6;Database=TG', 'cguser', 'sahei1712');
+        $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        return $conn;
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. DEPÓSITOS DE TESORERÍA para el panel central
+    //    GET /income/get_tesoreria_v3?entidad_id=&year=&month=&estacion_id=&afiliacion=
+    // -------------------------------------------------------------------------
+    public function get_tesoreria_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $entidad_id  = (int)($_GET['entidad_id'] ?? 0);
+        $year        = (int)($_GET['year']        ?? date('Y'));
+        $month       = (int)($_GET['month']       ?? date('m'));
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+
+        if (!$entidad_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta entidad_id']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $sql = "SELECT id_origen, tabla_origen, entidad_id,
+                           Fecha, Referencia, Descripcion, Sucursal,
+                           Depositos, Retiros, Saldo, MovimientoID
+                    FROM Tesoreria_V3_Unificada
+                    WHERE entidad_id = ?
+                      AND YEAR(Fecha)  = ?
+                      AND MONTH(Fecha) = ?
+                      AND Depositos    > 0
+                    ORDER BY Fecha ASC";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$entidad_id, $year, $month]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $result = [];
+            foreach ($rows as $r) {
+                $fecha = ($r['Fecha'] instanceof DateTime)
+                    ? $r['Fecha']->format('Y-m-d')
+                    : substr((string)$r['Fecha'], 0, 10);
+
+                $result[] = [
+                    'id_origen'    => $r['id_origen'],
+                    'tabla_origen' => $r['tabla_origen'],
+                    'fecha'        => $fecha,
+                    'referencia'   => $r['Referencia'],
+                    'descripcion'  => $r['Descripcion'],
+                    'sucursal'     => $r['Sucursal'],
+                    'monto'        => (float)$r['Depositos'],
+                    'retiros'      => (float)$r['Retiros'],
+                    'movimiento_id'=> $r['MovimientoID'],
+                ];
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $result]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. CONCILIACIONES V3 YA HECHAS (para pintar items conciliados en pantalla)
+    //    GET /income/get_conciliaciones_v3_hechas
+    // -------------------------------------------------------------------------
+    public function get_conciliaciones_v3_hechas(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)(  $_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)(  $_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim(   $_GET['afiliacion']  ?? '');
+        $year        = (int)(  $_GET['year']         ?? date('Y'));
+        $month       = (int)(  $_GET['month']        ?? date('m'));
+
+        if (!$estacion_id || !$entidad_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        try {
+            $conn   = $this->v3_conn();
+            $params = [$estacion_id, $entidad_id, $year, $month];
+
+            $afil_filter = '';
+            if ($afiliacion !== '') {
+                $afil_filter = ' AND G.afiliacion = ?';
+                $params[]    = $afiliacion;
+            }
+
+            $sql = "SELECT D.id, D.grupo_id, D.origen,
+                           D.referencia_externa, D.fecha_operacion,
+                           D.monto, D.concepto,
+                           G.diferencia, G.estado, G.mes_cierre
+                    FROM Conciliacion_V3_Detalles D
+                    INNER JOIN Conciliacion_V3_Grupos G ON G.id = D.grupo_id
+                    WHERE G.estacion_id  = ?
+                      AND G.entidad_id   = ?
+                      AND YEAR(G.fecha_operativa)  = ?
+                      AND MONTH(G.fecha_operativa) = ?
+                      $afil_filter
+                    ORDER BY G.id, D.origen";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $data = [];
+            foreach ($rows as $r) {
+                $data[] = [
+                    'id'         => (int)$r['id'],
+                    'grupo_id'   => (int)$r['grupo_id'],
+                    'origen'     => $r['origen'],          // 'CG' o 'TES'
+                    'ref'        => $r['referencia_externa'],
+                    'fecha'      => substr((string)$r['fecha_operacion'], 0, 10),
+                    'monto'      => (float)$r['monto'],
+                    'concepto'   => $r['concepto'],
+                    'diferencia' => (float)$r['diferencia'],
+                    'estado'     => $r['estado'],
+                    'mes_cierre' => $r['mes_cierre'],
+                ];
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $data]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. GUARDAR CONCILIACIÓN V3  (acción UNIR: CG + depósito Tesorería)
+    //    POST /income/guardar_conciliacion_v3
+    //    Body JSON: { estacion_id, entidad_id, afiliacion, fecha_operativa,
+    //                 fecha_deposito, total_cg, total_tes,
+    //                 left_rows:[{ref,fecha,monto,concepto}],
+    //                 tes_rows: [{ref,fecha,monto,concepto}] }
+    // -------------------------------------------------------------------------
+    public function guardar_conciliacion_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        if (!$data
+            || !isset($data['left_rows'], $data['tes_rows'])
+            || empty($data['left_rows'])
+            || empty($data['tes_rows'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+
+            $total_cg  = (float)$data['total_cg'];
+            $total_tes = (float)$data['total_tes'];
+            $diferencia = round($total_tes - $total_cg, 2);
+
+            // 1. Crear grupo
+            $conn->prepare(
+                "INSERT INTO Conciliacion_V3_Grupos
+                    (estacion_id, entidad_id, afiliacion,
+                     fecha_operativa, fecha_deposito,
+                     total_sistema, total_tesoreria, diferencia)
+                 VALUES (?,?,?,?,?,?,?,?)"
+            )->execute([
+                (int)$data['estacion_id'],
+                (int)$data['entidad_id'],
+                trim($data['afiliacion']    ?? ''),
+                $data['fecha_operativa']    ?? date('Y-m-d'),
+                $data['fecha_deposito']     ?? date('Y-m-d'),
+                $total_cg,
+                $total_tes,
+                $diferencia,
+            ]);
+
+            $grupo_id = (int)$conn->query("SELECT @@IDENTITY")->fetchColumn();
+
+            // 2. Insertar detalles
+            $stmtDet = $conn->prepare(
+                "INSERT INTO Conciliacion_V3_Detalles
+                    (grupo_id, origen, referencia_externa, fecha_operacion, monto, concepto)
+                 VALUES (?,?,?,?,?,?)"
+            );
+
+            foreach ($data['left_rows'] as $row) {
+                $stmtDet->execute([
+                    $grupo_id, 'CG',
+                    $row['ref']     ?? '',
+                    $row['fecha']   ?? date('Y-m-d'),
+                    (float)$row['monto'],
+                    $row['concepto'] ?? '',
+                ]);
+            }
+
+            foreach ($data['tes_rows'] as $row) {
+                $stmtDet->execute([
+                    $grupo_id, 'TES',
+                    $row['ref']     ?? '',
+                    $row['fecha']   ?? date('Y-m-d'),
+                    (float)$row['monto'],
+                    $row['concepto'] ?? '',
+                ]);
+            }
+
+            // 3. Si viene de un tránsito previo, cerrarlo
+            if (!empty($data['transit_ids_to_close']) && is_array($data['transit_ids_to_close'])) {
+                $ids  = array_map('intval', $data['transit_ids_to_close']);
+                $ph   = implode(',', array_fill(0, count($ids), '?'));
+                $upd  = $conn->prepare(
+                    "UPDATE Conciliacion_V3_Transito
+                     SET estado = 'COBRADO', grupo_id_cierre = ?, fecha_cierre = GETDATE()
+                     WHERE id IN ($ph)"
+                );
+                $upd->execute(array_merge([$grupo_id], $ids));
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'grupo_id' => $grupo_id, 'diferencia' => $diferencia]);
+
+        } catch (Exception $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. DESHACER CONCILIACIÓN V3
+    //    POST /income/deshacer_conciliacion_v3   Body: { grupo_id }
+    // -------------------------------------------------------------------------
+    public function deshacer_conciliacion_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data     = json_decode(file_get_contents('php://input'), true);
+        $grupo_id = (int)($data['grupo_id'] ?? 0);
+
+        if (!$grupo_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta grupo_id']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            // Verificar que el mes no esté cerrado
+            $stmt = $conn->prepare(
+                "SELECT estado, mes_cierre FROM Conciliacion_V3_Grupos WHERE id = ?"
+            );
+            $stmt->execute([$grupo_id]);
+            $grupo = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$grupo) {
+                echo json_encode(['status' => 'error', 'message' => 'Grupo no encontrado']);
+                exit;
+            }
+            if ($grupo['estado'] === 'CERRADO') {
+                echo json_encode(['status' => 'error',
+                    'message' => "El mes {$grupo['mes_cierre']} ya está cerrado. No se puede deshacer."]);
+                exit;
+            }
+
+            // Reabrir tránsitos que este grupo haya cerrado
+            $conn->prepare(
+                "UPDATE Conciliacion_V3_Transito
+                 SET estado = 'PENDIENTE', grupo_id_cierre = NULL, fecha_cierre = NULL
+                 WHERE grupo_id_cierre = ?"
+            )->execute([$grupo_id]);
+
+            // Borrar detalles y grupo (FK CASCADE borra detalles)
+            $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id = ?")->execute([$grupo_id]);
+
+            echo json_encode(['status' => 'success']);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. CERRAR MES V3
+    //    POST /income/cerrar_mes_v3
+    //    Body: { estacion_id, entidad_id, afiliacion, mes (YYYY-MM) }
+    //
+    //    Lógica:
+    //      a) Verifica que no exista cierre previo
+    //      b) Calcula CG total del mes (suma de detalles CG de los grupos del mes)
+    //      c) Calcula TES total depositado (suma de detalles TES de los grupos del mes)
+    //      d) Items CG sin grupo => quedan fuera; los grupos con diferencia > 0
+    //         generan registros de tránsito por la diferencia
+    //      e) Inserta en V3_CierreMes
+    //      f) Marca grupos del mes como estado = 'CERRADO'
+    // -------------------------------------------------------------------------
+    public function cerrar_mes_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data        = json_decode(file_get_contents('php://input'), true);
+        $estacion_id = (int)($data['estacion_id'] ?? 0);
+        $entidad_id  = (int)($data['entidad_id']  ?? 0);
+        $afiliacion  = trim($data['afiliacion']   ?? '');
+        $mes         = trim($data['mes']           ?? '');   // 'YYYY-MM'
+
+        if (!$estacion_id || !$entidad_id || !$mes || !preg_match('/^\d{4}-\d{2}$/', $mes)) {
+            echo json_encode(['status' => 'error', 'message' => 'Parámetros inválidos']);
+            exit;
+        }
+
+        [$year, $month] = explode('-', $mes);
+
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+
+            // a) Verificar cierre previo
+            $stmtCheck = $conn->prepare(
+                "SELECT id FROM Conciliacion_V3_CierreMes
+                 WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ? AND mes = ?"
+            );
+            $stmtCheck->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+            if ($stmtCheck->fetch()) {
+                $conn->rollBack();
+                echo json_encode(['status' => 'error', 'message' => "El mes $mes ya fue cerrado."]);
+                exit;
+            }
+
+            // b+c) Totales del mes desde los grupos ya conciliados
+            $stmtTot = $conn->prepare(
+                "SELECT ISNULL(SUM(total_sistema),0)   AS total_cg,
+                        ISNULL(SUM(total_tesoreria),0) AS total_tes,
+                        ISNULL(SUM(diferencia),0)      AS total_diff
+                 FROM Conciliacion_V3_Grupos
+                 WHERE estacion_id = ? AND entidad_id = ?
+                   AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                   AND YEAR(fecha_operativa)  = ?
+                   AND MONTH(fecha_operativa) = ?
+                   AND estado = 'ACTIVO'"
+            );
+            $stmtTot->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $totales = $stmtTot->fetch(PDO::FETCH_ASSOC);
+
+            $total_cg  = (float)$totales['total_cg'];
+            $total_tes = (float)$totales['total_tes'];
+            $total_diff = (float)$totales['total_diff'];  // CG sin depositar = diferencia negativa (tes < cg)
+
+            // d) Grupos con diferencia: cada uno genera un tránsito por su diferencia pendiente
+            //    Solo cuando total_sistema > total_tesoreria (faltó depositar)
+            $stmtGrupos = $conn->prepare(
+                "SELECT G.id AS grupo_id,
+                        G.fecha_operativa,
+                        G.diferencia,
+                        D.referencia_externa,
+                        D.concepto
+                 FROM Conciliacion_V3_Grupos G
+                 LEFT JOIN Conciliacion_V3_Detalles D
+                        ON D.grupo_id = G.id AND D.origen = 'CG'
+                 WHERE G.estacion_id = ? AND G.entidad_id = ?
+                   AND (G.afiliacion = ? OR (G.afiliacion IS NULL AND ? = ''))
+                   AND YEAR(G.fecha_operativa)  = ?
+                   AND MONTH(G.fecha_operativa) = ?
+                   AND G.estado = 'ACTIVO'
+                   AND G.diferencia < -0.01"   // TES < CG → faltó depositar
+            );
+            $stmtGrupos->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $gruposConDiff = $stmtGrupos->fetchAll(PDO::FETCH_ASSOC);
+
+            $total_transito = 0.0;
+            $stmtTransito = $conn->prepare(
+                "INSERT INTO Conciliacion_V3_Transito
+                    (estacion_id, entidad_id, afiliacion, mes_origen,
+                     fecha_cg, referencia_cg, concepto, monto_pendiente, grupo_id_origen)
+                 VALUES (?,?,?,?,?,?,?,?,?)"
+            );
+
+            foreach ($gruposConDiff as $g) {
+                $monto_pend = abs((float)$g['diferencia']);
+                $fecha_cg   = substr((string)$g['fecha_operativa'], 0, 10);
+                $stmtTransito->execute([
+                    $estacion_id, $entidad_id, $afiliacion, $mes,
+                    $fecha_cg,
+                    $g['referencia_externa'] ?? '',
+                    $g['concepto']           ?? '',
+                    $monto_pend,
+                    (int)$g['grupo_id'],
+                ]);
+                $total_transito += $monto_pend;
+            }
+
+            // e) Registrar cierre de mes
+            $conn->prepare(
+                "INSERT INTO Conciliacion_V3_CierreMes
+                    (estacion_id, entidad_id, afiliacion, mes,
+                     total_cg, total_depositado, total_transito)
+                 VALUES (?,?,?,?,?,?,?)"
+            )->execute([
+                $estacion_id, $entidad_id, $afiliacion, $mes,
+                $total_cg, $total_tes, $total_transito,
+            ]);
+
+            // f) Marcar grupos del mes como CERRADO
+            $conn->prepare(
+                "UPDATE Conciliacion_V3_Grupos
+                 SET estado = 'CERRADO', mes_cierre = ?
+                 WHERE estacion_id = ? AND entidad_id = ?
+                   AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                   AND YEAR(fecha_operativa)  = ?
+                   AND MONTH(fecha_operativa) = ?
+                   AND estado = 'ACTIVO'"
+            )->execute([$mes, $estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+
+            $conn->commit();
+
+            echo json_encode([
+                'status'         => 'success',
+                'mes'            => $mes,
+                'total_cg'       => $total_cg,
+                'total_tes'      => $total_tes,
+                'total_transito' => $total_transito,
+                'grupos_transito'=> count($gruposConDiff),
+            ]);
+
+        } catch (Exception $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. TRÁNSITOS V3 PENDIENTES (aging para el mes actual)
+    //    GET /income/get_transitos_v3_pendientes?estacion_id=&entidad_id=&afiliacion=
+    // -------------------------------------------------------------------------
+    public function get_transitos_v3_pendientes(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+
+        if (!$estacion_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta estacion_id']);
+            exit;
+        }
+
+        try {
+            $conn   = $this->v3_conn();
+            $params = [$estacion_id];
+
+            $sql = "SELECT id, mes_origen, fecha_cg, referencia_cg,
+                           concepto, monto_pendiente, estado,
+                           DATEDIFF(day, fecha_cg, GETDATE()) AS dias_antiguedad
+                    FROM Conciliacion_V3_Transito
+                    WHERE estacion_id = ? AND estado = 'PENDIENTE'";
+
+            if ($entidad_id > 0) {
+                $sql     .= ' AND entidad_id = ?';
+                $params[] = $entidad_id;
+            }
+            if ($afiliacion !== '') {
+                $sql     .= ' AND afiliacion = ?';
+                $params[] = $afiliacion;
+            }
+
+            $sql .= ' ORDER BY fecha_cg ASC';
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rows as &$r) {
+                $r['fecha_cg']        = substr((string)$r['fecha_cg'], 0, 10);
+                $r['monto_pendiente'] = (float)$r['monto_pendiente'];
+                $r['dias_antiguedad'] = (int)$r['dias_antiguedad'];
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $rows]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. SUMMARY V3 para el dashboard
+    //    GET /income/get_summary_v3?year=&month=&estacion_id=&banco_id=&afiliacion=
+    // -------------------------------------------------------------------------
+    public function get_summary_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year        = (int)($_GET['year']        ?? date('Y'));
+        $month       = (int)($_GET['month']       ?? date('m'));
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['banco_id']    ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+
+        try {
+            $conn = $this->v3_conn();
+
+            // ── filtro base ──────────────────────────────────────────────────
+            $where  = " WHERE YEAR(G.fecha_operativa) = ? AND MONTH(G.fecha_operativa) = ? ";
+            $params = [$year, $month];
+
+            if ($estacion_id > 0) { $where .= ' AND G.estacion_id = ? '; $params[] = $estacion_id; }
+            if ($entidad_id  > 0) { $where .= ' AND G.entidad_id  = ? '; $params[] = $entidad_id;  }
+            if ($afiliacion !== '') { $where .= ' AND G.afiliacion = ? '; $params[] = $afiliacion;  }
+
+            $from = " FROM Conciliacion_V3_Grupos G $where";
+
+            // ── KPIs ─────────────────────────────────────────────────────────
+            $totales = $conn->prepare(
+                "SELECT ISNULL(SUM(total_sistema),0)   AS total_sistema,
+                        ISNULL(SUM(total_tesoreria),0) AS total_tesoreria,
+                        ISNULL(SUM(diferencia),0)      AS total_diferencia,
+                        COUNT(G.id)                    AS total_grupos
+                 $from"
+            );
+            $totales->execute($params);
+            $kpis = $totales->fetch(PDO::FETCH_ASSOC);
+
+            // ── Por día (solo días con diferencia) ───────────────────────────
+            $stmtDias = $conn->prepare(
+                "SELECT FORMAT(G.fecha_operativa,'yyyy-MM-dd') AS fecha,
+                        COUNT(G.id)                AS count,
+                        SUM(G.total_sistema)       AS sistema,
+                        SUM(G.total_tesoreria)     AS tesoreria,
+                        SUM(G.diferencia)          AS diferencia
+                 $from
+                 GROUP BY FORMAT(G.fecha_operativa,'yyyy-MM-dd')
+                 HAVING SUM(G.diferencia) <> 0
+                 ORDER BY fecha DESC"
+            );
+            $stmtDias->execute($params);
+            $dias = $stmtDias->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── Por estación ─────────────────────────────────────────────────
+            $stmtEst = $conn->prepare(
+                "SELECT E.Nombre AS estacion,
+                        SUM(G.total_sistema)   AS sistema,
+                        SUM(G.total_tesoreria) AS tesoreria,
+                        SUM(G.diferencia)      AS diferencia
+                 FROM Conciliacion_V3_Grupos G
+                 LEFT JOIN Estaciones E ON E.Codigo = G.estacion_id
+                 $where
+                 GROUP BY E.Nombre
+                 HAVING SUM(G.diferencia) <> 0
+                 ORDER BY E.Nombre"
+            );
+            $stmtEst->execute($params);
+            $estaciones = $stmtEst->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── Por banco ────────────────────────────────────────────────────
+            $stmtBanco = $conn->prepare(
+                "SELECT TE.Nombre AS banco,
+                        ISNULL(G.afiliacion,'Sin Afil.') AS afiliacion,
+                        SUM(G.total_sistema)   AS sistema,
+                        SUM(G.total_tesoreria) AS tesoreria,
+                        SUM(G.diferencia)      AS diferencia
+                 FROM Conciliacion_V3_Grupos G
+                 LEFT JOIN Tesoreria_Entidad TE ON TE.id = G.entidad_id
+                 $where
+                 GROUP BY TE.Nombre, G.afiliacion
+                 HAVING SUM(G.diferencia) <> 0
+                 ORDER BY TE.Nombre"
+            );
+            $stmtBanco->execute($params);
+            $bancos = $stmtBanco->fetchAll(PDO::FETCH_ASSOC);
+
+            // ── Estado de cierre del mes ─────────────────────────────────────
+            $stmtCierre = $conn->prepare(
+                "SELECT mes, total_cg, total_depositado, total_transito, estado, fecha_cierre
+                 FROM Conciliacion_V3_CierreMes
+                 WHERE estacion_id = ? AND YEAR(fecha_cierre) = ? AND MONTH(fecha_cierre) = ?
+                   AND entidad_id = ?"
+            );
+            $stmtCierre->execute([$estacion_id, $year, $month, $entidad_id]);
+            $cierre = $stmtCierre->fetch(PDO::FETCH_ASSOC) ?: null;
+
+            echo json_encode([
+                'status'     => 'success',
+                'totales'    => $kpis,
+                'dias'       => $dias,
+                'estaciones' => $estaciones,
+                'bancos'     => $bancos,
+                'cierre_mes' => $cierre,
+            ]);
+
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. PREVIEW ANTES DE CERRAR MES (cuánto iría a tránsito)
+    //    GET /income/preview_cierre_v3?estacion_id=&entidad_id=&afiliacion=&mes=YYYY-MM
+    // -------------------------------------------------------------------------
+    public function preview_cierre_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+        $mes         = trim($_GET['mes']           ?? '');
+
+        if (!$estacion_id || !$entidad_id || !$mes) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        [$year, $month] = explode('-', $mes);
+
+        try {
+            $conn = $this->v3_conn();
+
+            // ¿Ya cerrado?
+            $stmtC = $conn->prepare(
+                "SELECT id FROM Conciliacion_V3_CierreMes
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?"
+            );
+            $stmtC->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+            $ya_cerrado = (bool)$stmtC->fetch();
+
+            // Totales del mes
+            $stmtT = $conn->prepare(
+                "SELECT ISNULL(SUM(total_sistema),0)   AS total_cg,
+                        ISNULL(SUM(total_tesoreria),0) AS total_tes,
+                        COUNT(id)                      AS total_grupos,
+                        COUNT(CASE WHEN diferencia < -0.01 THEN 1 END) AS grupos_con_diff
+                 FROM Conciliacion_V3_Grupos
+                 WHERE estacion_id=? AND entidad_id=?
+                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
+                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
+                   AND estado='ACTIVO'"
+            );
+            $stmtT->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $t = $stmtT->fetch(PDO::FETCH_ASSOC);
+
+            // Detalle de grupos que irían a tránsito
+            $stmtD = $conn->prepare(
+                "SELECT G.id, FORMAT(G.fecha_operativa,'yyyy-MM-dd') AS fecha,
+                        G.total_sistema, G.total_tesoreria,
+                        ABS(G.diferencia) AS monto_transito
+                 FROM Conciliacion_V3_Grupos G
+                 WHERE estacion_id=? AND entidad_id=?
+                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
+                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
+                   AND estado='ACTIVO' AND diferencia < -0.01
+                 ORDER BY fecha_operativa"
+            );
+            $stmtD->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $detalle = $stmtD->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'status'           => 'success',
+                'ya_cerrado'       => $ya_cerrado,
+                'total_cg'         => (float)$t['total_cg'],
+                'total_tes'        => (float)$t['total_tes'],
+                'total_grupos'     => (int)$t['total_grupos'],
+                'grupos_con_diff'  => (int)$t['grupos_con_diff'],
+                'detalle_transito' => $detalle,
+            ]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 9. LISTADO DE CIERRES DE MES V3
+    //    GET /income/get_cierres_v3?estacion_id=&entidad_id=&afiliacion=
+    // -------------------------------------------------------------------------
+    public function get_cierres_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+
+        if (!$estacion_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta estacion_id']);
+            exit;
+        }
+
+        try {
+            $conn   = $this->v3_conn();
+            $where  = 'WHERE C.estacion_id = ?';
+            $params = [$estacion_id];
+
+            if ($entidad_id > 0) { $where .= ' AND C.entidad_id = ?'; $params[] = $entidad_id; }
+            if ($afiliacion !== '') { $where .= ' AND C.afiliacion = ?'; $params[] = $afiliacion; }
+
+            $sql = "SELECT C.mes, C.afiliacion,
+                           ISNULL(TE.Nombre, 'Banco ' + CAST(C.entidad_id AS VARCHAR)) AS banco,
+                           C.total_cg, C.total_depositado, C.total_transito,
+                           C.estado, C.fecha_cierre
+                    FROM Conciliacion_V3_CierreMes C
+                    LEFT JOIN Tesoreria_Entidad TE ON TE.id = C.entidad_id
+                    $where
+                    ORDER BY C.mes DESC, TE.Nombre, C.afiliacion";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $data = [];
+            foreach ($rows as $r) {
+                $data[] = [
+                    'mes'             => $r['mes'],
+                    'banco'           => $r['banco'],
+                    'afiliacion'      => $r['afiliacion'],
+                    'total_cg'        => (float)$r['total_cg'],
+                    'total_depositado'=> (float)$r['total_depositado'],
+                    'total_transito'  => (float)$r['total_transito'],
+                    'estado'          => $r['estado'],
+                    'fecha_cierre'    => substr((string)$r['fecha_cierre'], 0, 10),
+                ];
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $data]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+    // FIN  C O N C I L I A C I Ó N   V 3
+    // =========================================================================
 }

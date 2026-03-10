@@ -1,0 +1,1358 @@
+{% extends "views/layouts/base.html" %}
+
+{% block title %}Conciliación V3 — CG vs Tesorería{% endblock %}
+{% block menutitle %}Conciliación Global V3{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --primary-color: #2c3e50;
+        --accent-color:  #3498db;
+        --tes-color:     #27ae60;   /* verde Tesorería */
+        --bg-light:      #f8f9fa;
+        --border-color:  #e9ecef;
+        --selected-bg:      #d1e7dd;
+        --selected-border:  #198754;
+        --matched-text:     #6c757d;
+        --transit-bg:       #fff3cd;
+        --transit-border:   #ffc107;
+        --transit-ok-bg:    #d1e7dd;
+        --transit-ok-border:#198754;
+    }
+
+    /* LOADING */
+    .loading-overlay { position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.7);display:none;justify-content:center;align-items:center;z-index:9999;backdrop-filter:blur(2px); }
+    body.is-loading .loading-overlay { display:flex; }
+    .loading-spinner { width:120px;height:120px;background:url('/_assets/images/logos/loading.gif') center/contain no-repeat; }
+    .loading-column { display:flex;justify-content:center;align-items:center;min-height:200px;width:100%; }
+    .loading-column::after { content:"";width:60px;height:60px;background:url('/_assets/images/logos/loading.gif') center/contain no-repeat; }
+
+    body { background:#f4f6f9;overflow-x:hidden; }
+
+    /* HEADER */
+    .controls-header { background:#fff;padding:12px 20px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,.05);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between; }
+    .custom-select-pill { border-radius:50px;border:1px solid #ced4da;padding-left:15px;background:#f8f9fa;font-weight:600;color:var(--primary-color);height:38px; }
+
+    /* SPLIT */
+    .split-container { display:flex;gap:16px;padding:0 10px 20px;height:calc(100vh - 230px); }
+    .panel-split { flex:1;background:#fff;border-radius:12px;border:1px solid var(--border-color);display:flex;flex-direction:column;overflow:hidden;position:relative; }
+    .panel-header { color:white;padding:10px 15px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid rgba(0,0,0,.1); }
+    .panel-content { flex:1;overflow-y:auto;padding:0; }
+
+    /* FILAS */
+    .row-item { padding:9px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:.88rem;transition:all .1s;user-select:none;flex-wrap:wrap; }
+    .row-item:hover { background:#f8f9fa; }
+    .row-item.active { background:var(--selected-bg)!important;border-left:5px solid var(--selected-border);padding-left:9px; }
+    .row-item.conciliated { color:var(--matched-text);opacity:.9;border-left:5px solid rgba(0,0,0,.1); }
+    .row-item.transit-incoming { background:var(--transit-bg);border-left:5px solid var(--transit-border); }
+    .row-item.transit-completed { background:var(--transit-ok-bg);border-left:5px solid var(--transit-ok-border);pointer-events:none;font-weight:500; }
+
+    /* GHOST PANEL (TX - informativo) */
+    .ghost-panel { opacity:.75;background:#f8f9fa; }
+    .ghost-panel .panel-header { background:#6c757d!important; }
+    .ghost-panel .panel-content { pointer-events:auto;overflow-y:auto!important; }
+    .ghost-panel .row-item { cursor:default;pointer-events:none; }
+
+    .font-numeric { font-family:'Consolas',monospace;font-weight:700; }
+    .diff-tag { font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:12px;margin-right:8px;font-family:'Consolas',monospace;border:1px solid transparent; }
+    .diff-tag.ok   { background:#d1e7dd;color:#0f5132;border-color:#badbcc; }
+    .diff-tag.warn { background:#f8d7da;color:#842029;border-color:#f5c2c7; }
+
+    /* AGRUPACIÓN POR DÍA — igual que V2 */
+    .tx-group-header {
+        background-color:#e9ecef; padding:8px 15px; border-bottom:1px solid #dee2e6;
+        font-weight:bold; cursor:pointer; display:flex; justify-content:space-between;
+        align-items:center; color:var(--primary-color);
+    }
+    .tx-group-header:hover { background-color:#dde2e6; }
+    .tx-group-body { display:none; border-bottom:2px solid #dee2e6; }
+    .tx-group-body.open { display:block; }
+    .tx-group-toggle-btn {
+        background:none; border:none; color:var(--accent-color);
+        font-size:1.1rem; margin-right:10px; width:20px; text-align:center;
+    }
+
+    .nexus-badge { font-size:.68rem;font-weight:bold;color:#fff;background:#6c757d;padding:2px 6px;border-radius:4px;margin-right:6px;box-shadow:1px 1px 2px rgba(0,0,0,.2); }
+
+    /* BOTONES ACCIÓN */
+    .btn-action-mini { border:none;border-radius:6px;padding:4px 10px;font-size:.78rem;cursor:pointer;margin-left:5px;box-shadow:0 2px 5px rgba(0,0,0,.15);transition:all .2s;display:inline-flex;align-items:center;justify-content:center; }
+    .btn-action-mini:hover { transform:translateY(-2px);box-shadow:0 4px 8px rgba(0,0,0,.2); }
+    .btn-action-unlink { background:#e74c3c;color:white; }
+    .btn-action-unlink:hover { background:#c0392b; }
+
+    /* BARRA FLOTANTE */
+    .action-bar { position:fixed;bottom:28px;left:50%;transform:translate(-50%,150%);background:#2c3e50;color:white;padding:12px 28px;border-radius:50px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;align-items:center;gap:18px;z-index:1000;transition:transform .3s cubic-bezier(.175,.885,.32,1.275); }
+    .action-bar.visible { transform:translate(-50%,0); }
+
+    /* DATE WIDGET */
+    .date-widget-trigger { cursor:pointer;display:flex;align-items:center;gap:8px;font-weight:bold; }
+    .date-widget-dropdown { position:absolute;top:100%;left:0;background:white;z-index:2000;border:1px solid #ddd;padding:15px;border-radius:10px;display:none;width:280px; }
+    .date-widget-dropdown.active { display:block; }
+    .month-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px; }
+    .month-btn { padding:5px;text-align:center;cursor:pointer;border-radius:5px;font-size:.8rem; }
+    .month-btn:hover { background:#eee; }
+    .month-btn.selected { background:var(--tes-color);color:white; }
+
+    /* TRÁNSITOS BADGE */
+    .transit-alert-badge { background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:6px 12px;font-size:.82rem;font-weight:600;color:#856404;cursor:pointer; }
+    .transit-alert-badge:hover { background:#ffe69c; }
+
+    /* CIERRE MES */
+    .mes-cerrado-banner { background:#d1e7dd;border-left:4px solid #198754;padding:8px 14px;font-size:.85rem;font-weight:600;color:#0f5132; }
+</style>
+
+<div class="loading-overlay"><div class="loading-spinner"></div></div>
+
+<div class="container-fluid pt-3">
+
+    <!-- CONTROLES -->
+    <div class="controls-header">
+
+        <!-- Razón Social -->
+        <div class="btn-group btn-group-toggle shadow-sm rounded-pill overflow-hidden" data-toggle="buttons">
+            <label class="btn btn-outline-dark btn-sm active" onclick="setRS('DIAZ GAS')">
+                <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
+            </label>
+            <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
+                <input type="radio" name="rs_type" autocomplete="off"> GASO
+            </label>
+            <label class="btn btn-outline-dark btn-sm" onclick="setRS('FORANEAS')">
+                <input type="radio" name="rs_type" autocomplete="off"> FORA
+            </label>
+        </div>
+
+        <!-- Date picker widget -->
+        <div class="position-relative">
+            <div class="date-widget-trigger border px-3 py-2 rounded-pill bg-white" onclick="toggleDatePicker()">
+                <i class="far fa-calendar-alt text-success"></i>
+                <span id="displayFullDate">Cargando...</span>
+            </div>
+            <input type="hidden" id="hiddenYear">
+            <input type="hidden" id="hiddenMonth">
+            <div class="date-widget-dropdown" id="dateDropdown">
+                <div class="d-flex justify-content-between mb-2">
+                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)">&lt;</button>
+                    <strong id="widgetYearDisplay">2025</strong>
+                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">&gt;</button>
+                </div>
+                <div class="month-grid" id="monthGrid"></div>
+            </div>
+        </div>
+
+        <!-- Estación -->
+        <div class="control-group flex-grow-1">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">ESTACIÓN:</label>
+            <select id="estacionSelect" class="form-control custom-select-pill w-100" onchange="alCambiarEstacion()">
+                <option value="">Cargando...</option>
+            </select>
+        </div>
+
+        <!-- Banco -->
+        <div class="control-group">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">BANCO:</label>
+            <select id="bancoSelect" class="form-control custom-select-pill" style="min-width:140px;" onchange="alCambiarBanco()">
+                <option value="">--</option>
+            </select>
+        </div>
+
+        <!-- Afiliación -->
+        <div class="control-group" id="group-afiliacion" style="display:none;">
+            <label class="mb-0 small font-weight-bold text-muted mr-2">AFILIACIÓN:</label>
+            <select id="afiliacionSelect" class="form-control custom-select-pill border-success" style="min-width:200px;" onchange="actualizarTodo()">
+                <option value="">-- Seleccione --</option>
+            </select>
+        </div>
+
+        <!-- Acciones -->
+        <button class="btn btn-warning rounded-pill shadow-sm font-weight-bold" onclick="abrirModalCierre()" title="Cerrar el mes y enviar diferencias a tránsito">
+            <i class="fas fa-calendar-check mr-1"></i> Cerrar Mes
+        </button>
+        <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()" title="Actualizar">
+            <i class="fas fa-sync-alt"></i>
+        </button>
+    </div>
+
+    <!-- RESUMEN SUPERIOR -->
+    <div class="row mb-3 px-2">
+        <div class="col-md-12">
+            <div class="card shadow-sm border-0 rounded-lg overflow-hidden">
+                <div class="card-body p-0">
+                    <div class="d-flex align-items-center justify-content-around bg-light py-2" id="resumen-superior">
+                        <div class="text-center px-4 border-right flex-fill">
+                            <div class="text-muted small text-uppercase font-weight-bold">CG Total</div>
+                            <div class="h5 font-numeric mb-0 text-dark" id="cg-resumen-total">$0.00</div>
+                        </div>
+                        <div class="text-center px-4 border-right flex-fill">
+                            <div class="text-muted small text-uppercase font-weight-bold">Tesorería</div>
+                            <div class="h5 font-numeric mb-0 text-success" id="tes-resumen-total">$0.00</div>
+                        </div>
+                        <div class="text-center px-4 border-right flex-fill">
+                            <div class="text-muted small text-uppercase font-weight-bold">Transacciones</div>
+                            <div class="h5 font-numeric mb-0 text-secondary" id="tx-resumen-total">$0.00</div>
+                        </div>
+                        <div class="text-center px-4 flex-fill" id="diff-panel-top">
+                            <div class="text-muted small text-uppercase font-weight-bold">Diferencias (<span id="diff-counter">0</span>)</div>
+                            <div class="h5 font-numeric mb-0" id="diff-total-top">$0.00</div>
+                        </div>
+                    </div>
+                    <!-- Banner mes cerrado -->
+                    <div id="mes-cerrado-banner" class="mes-cerrado-banner d-none">
+                        <i class="fas fa-lock mr-2"></i>
+                        <span id="mes-cerrado-texto">Este mes está cerrado.</span>
+                    </div>
+                    <!-- Tránsitos del mes anterior -->
+                    <div id="transitos-banner" class="d-none d-flex align-items-center px-3 py-1 bg-warning bg-opacity-10 border-top">
+                        <span class="transit-alert-badge mr-2" onclick="toggleTransitosPanel()">
+                            <i class="fas fa-clock mr-1"></i>
+                            <span id="transitos-count">0</span> tránsito(s) pendiente(s) del mes anterior
+                        </span>
+                        <small class="text-muted">Haz clic para ver</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL DE TRÁNSITOS (colapsable) -->
+    <div id="transitos-panel" class="row px-2 mb-3 d-none">
+        <div class="col-12">
+            <div class="card border-warning shadow-sm">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between py-2">
+                    <strong><i class="fas fa-shipping-fast mr-2"></i>Tránsitos Pendientes de Cobro</strong>
+                    <button class="btn btn-sm btn-outline-dark rounded-pill" onclick="toggleTransitosPanel()">Cerrar</button>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0" id="tabla-transitos-v3">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>Mes Origen</th>
+                                <th>Fecha CG</th>
+                                <th>Concepto</th>
+                                <th class="text-right">Monto</th>
+                                <th class="text-center">Antigüedad</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TRES PANELES -->
+    <div class="split-container">
+
+        <!-- PANEL 1: CG -->
+        <div class="panel-split">
+            <div class="panel-header bg-dark">
+                <span><i class="fas fa-gas-pump mr-2"></i>ControlGas</span>
+                <span class="badge badge-light text-dark font-numeric" id="cg-counter">$0.00</span>
+            </div>
+            <div class="panel-content" id="cg-content">
+                <div class="text-center text-muted py-5 mt-5">Seleccione Cuenta</div>
+            </div>
+        </div>
+
+        <!-- PANEL 2: TESORERÍA (target de conciliación) -->
+        <div class="panel-split">
+            <div class="panel-header" style="background:var(--tes-color);">
+                <span><i class="fas fa-university mr-2"></i>Tesorería — Depósitos</span>
+                <span class="badge badge-light text-dark font-numeric" id="tes-counter">$0.00</span>
+            </div>
+            <div class="panel-content" id="tes-content">
+                <div class="text-center text-muted py-5 mt-5">...</div>
+            </div>
+        </div>
+
+        <!-- PANEL 3: TX (informativo / ghost) -->
+        <div class="panel-split ghost-panel">
+            <div class="panel-header" id="header-tx">
+                <span><i class="fas fa-exchange-alt mr-2"></i>Transacciones <small class="text-white-50 ml-1">(Informativo)</small></span>
+                <span class="badge badge-light text-dark font-numeric" id="tx-counter">$0.00</span>
+            </div>
+            <div class="panel-content" id="tx-content">
+                <div class="text-center text-muted py-5 mt-5">...</div>
+            </div>
+        </div>
+
+    </div><!-- /split-container -->
+</div>
+
+<!-- BARRA FLOTANTE DE ACCIÓN -->
+<div class="action-bar" id="conciliacionBar">
+    <div class="text-white-50 border-right pr-3 mr-3 text-right">
+        <div class="small">CG (<span id="count-cg">0</span>): <span id="sum-cg" class="text-white font-weight-bold">$0.00</span></div>
+        <div class="small">TES (<span id="count-tes">0</span>): <span id="sum-tes" class="text-white font-weight-bold">$0.00</span></div>
+    </div>
+    <div class="text-center">
+        <div class="small text-uppercase text-white-50">Diferencia</div>
+        <div class="h4 font-numeric mb-0" id="diffValue">$0.00</div>
+    </div>
+    <button class="btn btn-success rounded-pill font-weight-bold ml-3 shadow" onclick="confirmarConciliacion()">
+        <i class="fas fa-link mr-2"></i> UNIR
+    </button>
+    <button class="btn btn-sm btn-outline-light rounded-circle border-0 ml-2" onclick="limpiarSeleccion()">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<div id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
+
+<!-- MODAL: CONFIRMACIÓN DE DIFERENCIAS AL UNIR -->
+<div class="modal fade" id="modalDiferencias" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden;">
+            <div class="modal-header bg-success text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold"><i class="fas fa-balance-scale mr-2"></i>Ajuste de Diferencias</h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDiferencias').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body bg-light p-4">
+                <div class="alert alert-warning border-0 shadow-sm rounded-lg mb-4">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <strong>Los montos no coinciden exactamente.</strong> Seleccione el criterio real:
+                </div>
+                <div class="list-group shadow-sm rounded-lg overflow-hidden" id="listaDiferencias"></div>
+            </div>
+            <div class="modal-footer bg-white border-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" onclick="$('#modalDiferencias').modal('hide')">Cancelar</button>
+                <button type="button" class="btn btn-success rounded-pill px-4 font-weight-bold shadow" onclick="ejecutarGuardado()">Confirmar y Unir <i class="fas fa-check ml-2"></i></button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: CIERRE DE MES -->
+<div class="modal fade" id="modalCierreMes" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden;">
+            <div class="modal-header bg-warning text-dark border-0 py-3">
+                <h5 class="modal-title font-weight-bold"><i class="fas fa-calendar-check mr-2"></i>Cerrar Mes — <span id="cierre-mes-label"></span></h5>
+                <button type="button" class="btn btn-link text-dark p-0" onclick="$('#modalCierreMes').modal('hide')" style="font-size:1.5rem;opacity:.7;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body p-4 bg-light" id="cierre-modal-body">
+                <div class="text-center py-4"><div class="spinner-border text-warning"></div></div>
+            </div>
+            <div class="modal-footer bg-white border-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning rounded-pill px-4 font-weight-bold" id="btn-confirmar-cierre" onclick="confirmarCierre()" style="display:none;">
+                    <i class="fas fa-lock mr-2"></i>Confirmar Cierre
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script>
+// ============================================================
+// V3 — CG vs TESORERÍA
+// ============================================================
+const fmt = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN' });
+
+const URLS_V3 = {
+    estaciones:      '/income/get_estaciones_catalogo',
+    config:          '/income/get_conciliacion_config',
+    ventas:          '/income/get_ventas_local',
+    transacciones:   '/income/get_transacciones_banco',
+    conciliadas:     '/income/get_conciliaciones_v3_hechas',
+    guardar:         '/income/guardar_conciliacion_v3',
+    deshacer:        '/income/deshacer_conciliacion_v3',
+    transitos:       '/income/get_transitos_v3_pendientes',
+    preview_cierre:  '/income/preview_cierre_v3',
+    cerrar_mes:      '/income/cerrar_mes_v3',
+};
+
+// Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
+const ENTITY_CONFIG = {
+    1:  '/income/get_tesoreria_santander',
+    3:  '/income/get_tesoreria_amex',
+    4:  '/income/get_tesoreria_banorte',
+    5:  '/income/get_tesoreria_bbva',
+    13: '/income/get_tesoreria_afirme'
+};
+
+let widgetState   = { year: new Date().getFullYear(), month: (new Date().getMonth()+1).toString().padStart(2,'0') };
+let currentRS     = 'DIAZ GAS';
+let todasLasEstaciones = [];
+let stationConfig = [];
+let currentRule   = null;           // { entidad_id, afiliacion, nombre_banco }
+let mesCerrado    = false;
+
+const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS','DGM880621FU5':'GASOMEX' };
+
+// Selección activa
+let sel = { left:[], tes:[] };      // left=CG, tes=Tesorería
+
+// Datos cargados
+let cgData  = [];
+let tesData = [];
+let txData  = [];
+let conciliadasSet = new Set();     // grupo_id ya conciliados
+let historial = [];                 // detalles conciliados actuales
+
+// Persistencia de grupos abiertos/cerrados (sobrevive a actualizarTodo)
+let openGroupsCG  = new Set();
+let openGroupsTES = new Set();
+let openGroupsTX  = new Set();
+
+// ── INIT ────────────────────────────────────────────────────
+$(document).ready(function() {
+    initWidget();
+    cargarEstaciones();
+});
+
+// ── DATE WIDGET ──────────────────────────────────────────────
+function initWidget() {
+    renderWidgetYear();
+    updateDisplayDate();
+    $('#hiddenYear').val(widgetState.year);
+    $('#hiddenMonth').val(widgetState.month);
+}
+function renderWidgetYear() {
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    $('#widgetYearDisplay').text(widgetState.year);
+    const $grid = $('#monthGrid').empty();
+    meses.forEach((m,i) => {
+        const num = (i+1).toString().padStart(2,'0');
+        const sel = num === widgetState.month ? 'selected' : '';
+        $grid.append(`<div class="month-btn ${sel}" onclick="selectWidgetMonth('${num}')">${m}</div>`);
+    });
+}
+function changeWidgetYear(d) { widgetState.year += d; renderWidgetYear(); }
+function selectWidgetMonth(m) {
+    widgetState.month = m;
+    $('#hiddenYear').val(widgetState.year);
+    $('#hiddenMonth').val(widgetState.month);
+    updateDisplayDate();
+    renderWidgetYear();
+    closeDatePicker();
+    actualizarTodo();
+}
+function updateDisplayDate() {
+    const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    $('#displayFullDate').text(`${meses[parseInt(widgetState.month)-1]} ${widgetState.year}`);
+}
+function toggleDatePicker() {
+    $('#dateDropdown').toggleClass('active');
+    $('#pickerOverlay').toggle($('#dateDropdown').hasClass('active'));
+}
+function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#pickerOverlay').hide(); }
+
+// ── RS ────────────────────────────────────────────────────────
+function setRS(rs) { currentRS = rs; filtrarEstaciones(); }
+
+// ── ESTACIONES ────────────────────────────────────────────────
+function cargarEstaciones() {
+    $.get(URLS_V3.estaciones, function(r) {
+        if (r.status === 'success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); }
+    });
+}
+function filtrarEstaciones() {
+    const $s = $('#estacionSelect').empty().append('<option value="">-- Estación --</option>');
+    todasLasEstaciones.forEach(e => {
+        const rfc = e.RFC || 'FORANEAS';
+        const rs  = RS_MAPPING[rfc] || 'FORANEAS';
+        if (rs === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
+    });
+    limpiarPaneles();
+}
+async function alCambiarEstacion() {
+    $('#bancoSelect').empty().append('<option value="">--</option>');
+    $('#afiliacionSelect').empty().append('<option value="">-- Seleccione --</option>');
+    $('#group-afiliacion').hide();
+    currentRule = null;
+    limpiarPaneles();
+
+    const id = $('#estacionSelect').val();
+    if (!id) return;
+
+    try {
+        const res  = await fetch(`${URLS_V3.config}?estacion_id=${id}`);
+        const json = await res.json();
+        if (json.status === 'success') {
+            stationConfig = json.data || [];
+            llenarBancos();
+        }
+    } catch(e) { console.error(e); }
+}
+function llenarBancos() {
+    const $sel = $('#bancoSelect').empty().append('<option value="">-- Banco --</option>');
+    const vistos = new Map();
+    stationConfig.forEach(r => {
+        if (!vistos.has(r.entidad_id)) vistos.set(r.entidad_id, r.nombre_banco || `Banco ${r.entidad_id}`);
+    });
+    vistos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
+}
+function alCambiarBanco() {
+    const eid = parseInt($('#bancoSelect').val());
+    const $asel = $('#afiliacionSelect').empty().append('<option value="">-- Afiliación --</option>');
+    if (!eid) { $('#group-afiliacion').hide(); currentRule = null; return; }
+
+    const afils = stationConfig.filter(r => r.entidad_id == eid);
+    if (afils.length === 0) { $('#group-afiliacion').hide(); return; }
+
+    if (afils.length === 1) {
+        // Única afiliación: seleccionar automáticamente
+        const a = afils[0];
+        currentRule = { entidad_id: eid, afiliacion: a.afiliacion, nombre_banco: a.nombre_banco, conceptos_cg: a.conceptos_cg || '' };
+        $('#group-afiliacion').hide();
+        actualizarTodo();
+        return;
+    }
+
+    // Múltiple: mostrar select
+    $('#group-afiliacion').show();
+    const vistos = new Set();
+    afils.forEach(c => {
+        String(c.afiliacion).split(/[,\/\-]/).map(p => p.trim()).forEach(p => {
+            if (p && !vistos.has(p)) { vistos.add(p); $asel.append(`<option value="${p}">${p}</option>`); }
+        });
+    });
+    currentRule = null;
+}
+// Cuando cambia afiliación manualmente
+$('#afiliacionSelect').on('change', function() {
+    const eid  = parseInt($('#bancoSelect').val());
+    const afil = $(this).val();
+    if (eid && afil) {
+        const cfg = stationConfig.find(r => r.entidad_id == eid && String(r.afiliacion).includes(afil));
+        currentRule = { entidad_id: eid, afiliacion: afil, nombre_banco: cfg?.nombre_banco || '', conceptos_cg: cfg?.conceptos_cg || '' };
+        actualizarTodo();
+    }
+});
+
+// ── ACTUALIZAR TODO ───────────────────────────────────────────
+function actualizarTodo() {
+    if (!currentRule) return;
+
+    // Preservar posiciones de scroll
+    const scrollCG  = $('#cg-content').scrollTop();
+    const scrollTES = $('#tes-content').scrollTop();
+    const scrollTX  = $('#tx-content').scrollTop();
+
+    limpiarSeleccion();
+    body_loading(true);
+
+    const year  = widgetState.year;
+    const month = widgetState.month;
+    const eid   = currentRule.entidad_id;
+    const afil  = currentRule.afiliacion;
+    const estid = $('#estacionSelect').val();
+    const mes   = `${year}-${month}`;
+
+    // Llamadas en paralelo
+    Promise.all([
+        fetchCG(estid, year, month),
+        fetchTesoreria(eid, year, month),
+        fetchTx(eid, afil, year, month),
+        fetchConciliadas(estid, eid, afil, year, month),
+        fetchTransitos(estid, eid, afil),
+        checkMesCerrado(estid, eid, afil, mes),
+    ]).finally(() => {
+        body_loading(false);
+        // Restaurar scroll tras renderizado
+        setTimeout(() => {
+            $('#cg-content').scrollTop(scrollCG);
+            $('#tes-content').scrollTop(scrollTES);
+            $('#tx-content').scrollTop(scrollTX);
+        }, 50);
+    });
+}
+
+function body_loading(on) {
+    $('body').toggleClass('is-loading', on);
+}
+
+// ── FETCH CG ──────────────────────────────────────────────────
+async function fetchCG(estid, year, month) {
+    const fIni = `${year}${month}01`;
+    const ultimo = new Date(year, parseInt(month), 0).getDate();
+    const fFin   = `${year}${month}${String(ultimo).padStart(2,'0')}`;
+
+    const payload = { Datos: { FechaInicial: fIni, FechaFinal: fFin, Gasolinera: parseInt(estid) } };
+    try {
+        const r = await fetch(URLS_V3.ventas, {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+        const json = await r.json();
+        cgData = (json.status === 'success') ? (json.respuesta || []) : [];
+    } catch(e) { cgData = []; }
+    renderCG();
+}
+
+// ── FETCH TESORERÍA (mismos endpoints que V2, mismo filtro por afiliación) ──
+async function fetchTesoreria(eid, year, month) {
+    const url = ENTITY_CONFIG[eid];
+    if (!url) { tesData = []; renderTes(); return; }
+
+    try {
+        const r    = await fetch(`${url}?year=${year}&month=${month}`);
+        const json = await r.json();
+        const raw  = (json.status === 'success') ? (json.data || []) : [];
+
+        // Filtrar por afiliación exacta — igual que V2
+        const afil = currentRule ? String(currentRule.afiliacion).trim() : '';
+        tesData = raw.filter(m => {
+            const mAfil = String(m.Afiliacion || '').trim();
+            const val   = parseFloat(m.Total || m.Depositos || 0);
+            return mAfil === afil && val > 0;
+        }).map(m => ({
+            // Normalizar a formato interno V3
+            fecha:       m.Fecha,
+            monto:       parseFloat(m.Total || m.Depositos || 0),
+            descripcion: m.Estacion || m.Afiliacion || '',
+            // Ref determinista: fecha_afiliacion (único por día en datos ya agregados)
+            id_origen:   `${m.Fecha}_${String(m.Afiliacion || '').trim()}`,
+            sucursal:    ''
+        }));
+    } catch(e) { tesData = []; }
+    renderTes();
+}
+
+// ── FETCH TX (informativo) ────────────────────────────────────
+async function fetchTx(eid, afil, year, month) {
+    try {
+        const r    = await fetch(`${URLS_V3.transacciones}?entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
+        const json = await r.json();
+        txData = (json.status === 'success') ? (json.data || []) : [];
+    } catch(e) { txData = []; }
+    renderTx();
+}
+
+// ── FETCH CONCILIADAS V3 ──────────────────────────────────────
+async function fetchConciliadas(estid, eid, afil, year, month) {
+    try {
+        const r    = await fetch(`${URLS_V3.conciliadas}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
+        const json = await r.json();
+        historial = (json.status === 'success') ? (json.data || []) : [];
+    } catch(e) { historial = []; }
+
+    // Construir set de refs conciliadas por origen
+    conciliadasSet = { CG: new Set(), TES: new Set() };
+    const gruposConDiff = {};
+    historial.forEach(d => {
+        if (d.origen === 'CG')  conciliadasSet.CG.add(d.ref);
+        if (d.origen === 'TES') conciliadasSet.TES.add(d.ref);
+        gruposConDiff[d.grupo_id] = d.diferencia;
+    });
+    // Redibujar para marcar conciliados
+    renderCG();
+    renderTes();
+    actualizarResumenSuperior();
+}
+
+// ── FETCH TRÁNSITOS V3 ────────────────────────────────────────
+async function fetchTransitos(estid, eid, afil) {
+    try {
+        const r    = await fetch(`${URLS_V3.transitos}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}`);
+        const json = await r.json();
+        const data = (json.status === 'success') ? (json.data || []) : [];
+        renderTransitos(data);
+    } catch(e) {}
+}
+
+// ── CHECK MES CERRADO ─────────────────────────────────────────
+async function checkMesCerrado(estid, eid, afil, mes) {
+    try {
+        const r    = await fetch(`${URLS_V3.preview_cierre}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&mes=${mes}`);
+        const json = await r.json();
+        mesCerrado = json.ya_cerrado || false;
+        if (mesCerrado) {
+            $('#mes-cerrado-banner').removeClass('d-none');
+            $('#mes-cerrado-texto').text(`El mes ${mes} está cerrado. Solo lectura.`);
+        } else {
+            $('#mes-cerrado-banner').addClass('d-none');
+        }
+    } catch(e) {}
+}
+
+// ── RENDER CG ─────────────────────────────────────────────────
+function renderCG() {
+    const $c = $('#cg-content').empty();
+
+    // Filtrar por conceptos_cg de la regla activa
+    const keywords = currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+        : [];
+
+    const filtered = cgData.filter(item => {
+        const monto = parseFloat(item.Total || 0);
+        if (monto <= 0) return false;
+        if (!keywords.length) return true;
+        const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+        return keywords.some(k => c.includes(k));
+    });
+
+    if (!filtered.length) {
+        $c.html('<div class="text-center text-muted py-5 mt-5">Sin movimientos CG</div>');
+        $('#cg-counter').text('$0.00');
+        return;
+    }
+
+    // Agrupar por fecha
+    const byDate = {};
+    filtered.forEach(item => {
+        let f = '';
+        if (item.FechaVisual) {
+            const p = item.FechaVisual.split('/');
+            f = p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual;
+        } else {
+            f = normalizarFecha(item.Fecha || item.fch || '');
+        }
+        if (!f) return;
+        if (!byDate[f]) byDate[f] = [];
+        byDate[f].push(item);
+    });
+
+    let grandTotal = 0;
+
+    Object.keys(byDate).sort().forEach(fecha => {
+        const items  = byDate[fecha];
+        const dayTot = items.reduce((a, b) => a + parseFloat(b.Total || 0), 0);
+        grandTotal += dayTot;
+
+        const isOpen = openGroupsCG.has(fecha);
+
+        // Progreso de conciliación del día
+        let nConcil = 0;
+        const gruposVistosDay = new Set();
+        let diffDia = 0;
+        items.forEach(item => {
+            const ref = item.ID_Unico || '';
+            if (conciliadasSet.CG && conciliadasSet.CG.has(ref)) {
+                nConcil++;
+                const h = historial.find(x => x.origen === 'CG' && String(x.ref) === String(ref));
+                if (h && !gruposVistosDay.has(h.grupo_id)) {
+                    diffDia += parseFloat(h.diferencia) || 0;
+                    gruposVistosDay.add(h.grupo_id);
+                }
+            }
+        });
+        const nTotal = items.length;
+        const allOk  = nConcil === nTotal && nTotal > 0;
+
+        // Color del header
+        let headerStyle = '';
+        if (allOk) {
+            headerStyle = Math.abs(diffDia) < 0.01
+                ? 'border-left:5px solid #28a745;background:#f0fff4;'
+                : 'border-left:5px solid #ffc107;background:#fffbeb;';
+        } else if (nConcil > 0) {
+            headerStyle = 'border-left:5px solid #007bff;background:#f0f7ff;';
+        }
+
+        // Badge progreso
+        const pendiente  = nConcil < nTotal;
+        const badgeStyle = pendiente
+            ? 'color:#dc3545;border:2px solid #dc3545;font-weight:800;background:white;'
+            : 'color:#6c757d;border:1px solid #dee2e6;background:white;';
+        const iconExcl  = pendiente ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : '';
+        const iconClass = isOpen ? 'fa-chevron-down' : 'fa-chevron-right';
+        const bodyClass = isOpen ? 'open' : '';
+        const dateFmt   = fecha.split('-').reverse().join('/');
+
+        // Filas del grupo
+        let itemsHtml = '';
+        items.forEach(item => {
+            const ref      = item.ID_Unico || '';
+            const monto    = parseFloat(item.Total || 0);
+            const concepto = item.Concepto || item.concepto || '';
+            const esConcil = conciliadasSet.CG && conciliadasSet.CG.has(ref);
+            const esSel    = sel.left.some(s => s.ref === ref);
+            const clase    = esConcil ? 'conciliated' : (esSel ? 'active' : '');
+
+            const hRec = historial.find(h => h.ref === String(ref) && h.origen === 'CG');
+            let difTag = '', unlinkBtn = '';
+            if (esConcil && hRec) {
+                const difVal = parseFloat(hRec.diferencia);
+                const ok = Math.abs(difVal) < 0.01;
+                difTag    = `<span class="diff-tag ${ok?'ok':'warn'}">${fmt.format(difVal)}</span>`;
+                unlinkBtn = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
+            }
+
+            if (esConcil) {
+                itemsHtml += `<div class="row-item conciliated ${clase}">
+                    <div><small class="text-muted">${escHtml(concepto)}</small></div>
+                    <div class="d-flex align-items-center">${difTag}${unlinkBtn}<span class="font-numeric text-muted">${fmt.format(monto)}</span></div>
+                </div>`;
+            } else {
+                itemsHtml += `<div class="row-item ${clase}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${monto},'${escHtml(concepto)}',this)">
+                    <div><small class="text-muted">${escHtml(concepto)}</small></div>
+                    <span class="font-numeric">${fmt.format(monto)}</span>
+                </div>`;
+            }
+        });
+
+        const groupId = `cg-${fecha.replace(/-/g,'')}`;
+        $c.append(`
+            <div class="tx-group-header" style="${headerStyle}" onclick="toggleGrupoCG('${groupId}','${fecha}',this.querySelector('.tx-group-toggle-btn'))">
+                <div>
+                    <button class="tx-group-toggle-btn" onclick="event.stopPropagation();toggleGrupoCG('${groupId}','${fecha}',this)">
+                        <i class="fas ${iconClass}"></i>
+                    </button>
+                    <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
+                    <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
+                </div>
+                <span class="font-numeric">${fmt.format(dayTot)}</span>
+            </div>
+            <div class="tx-group-body ${bodyClass}" id="${groupId}">${itemsHtml}</div>
+        `);
+    });
+
+    $('#cg-counter').text(fmt.format(grandTotal));
+}
+
+// ── RENDER TESORERÍA ──────────────────────────────────────────
+function renderTes() {
+    const $c = $('#tes-content').empty();
+
+    if (!tesData.length) {
+        $c.html('<div class="text-center text-muted py-5 mt-5">Sin depósitos en Tesorería</div>');
+        $('#tes-counter').text('$0.00');
+        return;
+    }
+
+    // Agrupar por fecha
+    const byDate = {};
+    tesData.forEach(item => {
+        const f = item.fecha || '';
+        if (!f) return;
+        if (!byDate[f]) byDate[f] = [];
+        byDate[f].push(item);
+    });
+
+    let grandTotal = 0;
+
+    Object.keys(byDate).sort().forEach(fecha => {
+        const items  = byDate[fecha];
+        const dayTot = items.reduce((a, b) => a + parseFloat(b.monto || 0), 0);
+        grandTotal += dayTot;
+
+        const isOpen = openGroupsTES.has(fecha);
+
+        // Progreso de conciliación del día
+        let nConcil = 0;
+        const gruposVistosDay = new Set();
+        let diffDia = 0;
+        items.forEach(item => {
+            const ref = item.id_origen || '';
+            if (conciliadasSet.TES && conciliadasSet.TES.has(ref)) {
+                nConcil++;
+                const h = historial.find(x => x.origen === 'TES' && String(x.ref) === String(ref));
+                if (h && !gruposVistosDay.has(h.grupo_id)) {
+                    diffDia += parseFloat(h.diferencia) || 0;
+                    gruposVistosDay.add(h.grupo_id);
+                }
+            }
+        });
+        const nTotal = items.length;
+        const allOk  = nConcil === nTotal && nTotal > 0;
+
+        // Color del header (verde Tesorería)
+        let headerStyle = '';
+        if (allOk) {
+            headerStyle = Math.abs(diffDia) < 0.01
+                ? 'border-left:5px solid #1a7a4a;background:#e8f8f0;'
+                : 'border-left:5px solid #ffc107;background:#fffbeb;';
+        } else if (nConcil > 0) {
+            headerStyle = 'border-left:5px solid #1a7a4a;background:#f0fff8;';
+        }
+
+        const pendiente  = nConcil < nTotal;
+        const badgeStyle = pendiente
+            ? 'color:#dc3545;border:2px solid #dc3545;font-weight:800;background:white;'
+            : 'color:#6c757d;border:1px solid #dee2e6;background:white;';
+        const iconExcl  = pendiente ? '<i class="fas fa-exclamation-triangle mr-1"></i>' : '';
+        const iconClass = isOpen ? 'fa-chevron-down' : 'fa-chevron-right';
+        const bodyClass = isOpen ? 'open' : '';
+        const dateFmt   = fecha.split('-').reverse().join('/');
+
+        // Filas del grupo
+        let itemsHtml = '';
+        items.forEach(item => {
+            const ref      = item.id_origen || '';
+            const monto    = parseFloat(item.monto || 0);
+            const desc     = item.descripcion || '';
+            const suc      = item.sucursal ? ` · ${escHtml(item.sucursal)}` : '';
+            const esConcil = conciliadasSet.TES && conciliadasSet.TES.has(ref);
+            const esSel    = sel.tes.some(s => s.ref === ref);
+            const clase    = esConcil ? 'conciliated' : (esSel ? 'active' : '');
+
+            const hRec = historial.find(h => h.ref === String(ref) && h.origen === 'TES');
+            let difTag = '', unlinkBtn = '';
+            if (esConcil && hRec) {
+                const difVal = parseFloat(hRec.diferencia);
+                const ok = Math.abs(difVal) < 0.01;
+                difTag    = `<span class="diff-tag ${ok?'ok':'warn'}">${fmt.format(difVal)}</span>`;
+                unlinkBtn = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
+            }
+
+            if (esConcil) {
+                itemsHtml += `<div class="row-item conciliated ${clase}">
+                    <div><small class="text-muted">${escHtml(desc)}${suc}</small></div>
+                    <div class="d-flex align-items-center">${difTag}${unlinkBtn}<span class="font-numeric text-muted">${fmt.format(monto)}</span></div>
+                </div>`;
+            } else {
+                itemsHtml += `<div class="row-item ${clase}" onclick="toggleTES('${escHtml(ref)}','${escHtml(fecha)}',${monto},'${escHtml(desc)}',this)">
+                    <div><small class="text-muted">${escHtml(desc)}${suc}</small></div>
+                    <span class="font-numeric text-success">${fmt.format(monto)}</span>
+                </div>`;
+            }
+        });
+
+        const groupId = `tes-${fecha.replace(/-/g,'')}`;
+        $c.append(`
+            <div class="tx-group-header" style="${headerStyle}" onclick="toggleGrupoTES('${groupId}','${fecha}',this.querySelector('.tx-group-toggle-btn'))">
+                <div>
+                    <button class="tx-group-toggle-btn" onclick="event.stopPropagation();toggleGrupoTES('${groupId}','${fecha}',this)">
+                        <i class="fas ${iconClass}"></i>
+                    </button>
+                    <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
+                    <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
+                </div>
+                <span class="font-numeric text-success">${fmt.format(dayTot)}</span>
+            </div>
+            <div class="tx-group-body ${bodyClass}" id="${groupId}">${itemsHtml}</div>
+        `);
+    });
+
+    $('#tes-counter').text(fmt.format(grandTotal));
+}
+
+// ── RENDER TX (informativo, agrupado por día) ─────────────────
+function toggleGrupoTX(groupId, fecha, btn) {
+    const $body  = $(`#${groupId}`);
+    const $icon  = $(btn).find('i');
+    const wasOpen = $body.hasClass('open');
+    if (wasOpen) {
+        $body.removeClass('open');
+        $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        openGroupsTX.delete(fecha);
+    } else {
+        $body.addClass('open');
+        $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+        openGroupsTX.add(fecha);
+    }
+}
+
+function renderTx() {
+    const $c = $('#tx-content').empty();
+    if (!txData.length) { $c.html('<div class="text-center text-muted py-5">Sin transacciones</div>'); updateTxCounter(); return; }
+
+    // Agrupar por FechaConciliacion
+    const groups = {};
+    txData.forEach(item => {
+        const fecha = (item.FechaConciliacion || item.FechaTransaccion || '').substring(0, 10);
+        if (!fecha) return;
+        if (!groups[fecha]) groups[fecha] = [];
+        groups[fecha].push(item);
+    });
+
+    const sortedFechas = Object.keys(groups).sort();
+    let grandTotal = 0;
+
+    sortedFechas.forEach(fecha => {
+        const items    = groups[fecha];
+        const dayTot   = items.reduce((a, b) => a + parseFloat(b.Total || 0), 0);
+        grandTotal    += dayTot;
+        const nTotal   = items.length;
+
+        const isOpen   = openGroupsTX.has(fecha);
+        const bodyClass = isOpen ? 'open' : '';
+        const iconClass = isOpen ? 'fa-chevron-down' : 'fa-chevron-right';
+
+        const partes   = fecha.split('-');
+        const dateFmt  = `${partes[2]}/${partes[1]}/${partes[0]}`;
+        const badgeStyle = 'background:#cfe2ff;color:#0a58ca;';
+        const groupId  = `tx-${fecha.replace(/-/g, '')}`;
+
+        let itemsHtml = '';
+        items.forEach(item => {
+            const monto = parseFloat(item.Total || 0);
+            const auth  = item.Codigo_Autorizacion || '';
+            const term  = item.Terminal_ID || '';
+            const hora  = item.Hora || '';
+            const horaTag = hora
+                ? `<span class="badge badge-light border text-muted ml-1" style="font-size:0.7rem;font-weight:normal;"><i class="far fa-clock mr-1"></i>${escHtml(hora)}</span>`
+                : '';
+
+            itemsHtml += `<div class="row-item" style="pointer-events:none;">
+                <div>
+                    <span class="small text-muted">${dateFmt}${horaTag}</span><br>
+                    <small class="text-secondary">${escHtml(auth)}${term ? ' · ' + escHtml(term) : ''}</small>
+                </div>
+                <span class="font-numeric text-secondary">${fmt.format(monto)}</span>
+            </div>`;
+        });
+
+        $c.append(`
+            <div class="tx-group-header" onclick="toggleGrupoTX('${groupId}','${fecha}',this.querySelector('.tx-group-toggle-btn'))">
+                <div>
+                    <button class="tx-group-toggle-btn" onclick="event.stopPropagation();toggleGrupoTX('${groupId}','${fecha}',this)">
+                        <i class="fas ${iconClass}"></i>
+                    </button>
+                    <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
+                    <span class="badge" style="${badgeStyle}">${nTotal}</span>
+                </div>
+                <span class="font-numeric text-secondary">${fmt.format(dayTot)}</span>
+            </div>
+            <div class="tx-group-body ${bodyClass}" id="${groupId}">${itemsHtml}</div>
+        `);
+    });
+
+    updateTxCounter();
+}
+
+// ── RENDER TRÁNSITOS ──────────────────────────────────────────
+function renderTransitos(data) {
+    const $tbody = $('#tabla-transitos-v3 tbody').empty();
+    if (!data.length) {
+        $('#transitos-banner').addClass('d-none');
+        $('#transitos-panel').addClass('d-none');
+        return;
+    }
+    $('#transitos-count').text(data.length);
+    $('#transitos-banner').removeClass('d-none');
+
+    data.forEach(t => {
+        const dias = parseInt(t.dias_antiguedad || 0);
+        const color = dias > 60 ? 'danger' : (dias > 30 ? 'warning' : 'success');
+        $tbody.append(`<tr>
+            <td><span class="badge badge-secondary">${t.mes_origen}</span></td>
+            <td>${t.fecha_cg}</td>
+            <td>${escHtml(t.concepto||'')}</td>
+            <td class="text-right font-numeric">${fmt.format(t.monto_pendiente)}</td>
+            <td class="text-center"><span class="badge badge-${color}">${dias} días</span></td>
+            <td><button class="btn btn-xs btn-outline-success rounded-pill" onclick="seleccionarTransitoEnCG(${t.id})" title="Usar en conciliación">↓ Usar</button></td>
+        </tr>`);
+    });
+}
+function toggleTransitosPanel() {
+    $('#transitos-panel').toggleClass('d-none');
+}
+
+// ── SELECCIÓN ─────────────────────────────────────────────────
+function toggleCG(ref, fecha, monto, concepto, el) {
+    if (mesCerrado) return;
+    const idx = sel.left.findIndex(s => s.ref === ref);
+    if (idx >= 0) { sel.left.splice(idx, 1); $(el).removeClass('active'); }
+    else          { sel.left.push({ ref, fecha, monto, concepto }); $(el).addClass('active'); }
+    recalcTotals();
+}
+function toggleTES(ref, fecha, monto, concepto, el) {
+    if (mesCerrado) return;
+    const idx = sel.tes.findIndex(s => s.ref === ref);
+    if (idx >= 0) { sel.tes.splice(idx, 1); $(el).removeClass('active'); }
+    else          { sel.tes.push({ ref, fecha, monto, concepto }); $(el).addClass('active'); }
+    recalcTotals();
+}
+function limpiarSeleccion() {
+    sel = { left:[], tes:[] };
+    $('.row-item.active').removeClass('active');
+    recalcTotals();
+}
+
+// ── RECALC BARRA ──────────────────────────────────────────────
+function recalcTotals() {
+    const sumCG  = sel.left.reduce((a,b) => a+b.monto, 0);
+    const sumTES = sel.tes.reduce((a,b)  => a+b.monto, 0);
+    const hasL   = sel.left.length > 0;
+    const hasT   = sel.tes.length  > 0;
+
+    $('#count-cg').text(sel.left.length);
+    $('#sum-cg').text(fmt.format(sumCG));
+    $('#count-tes').text(sel.tes.length);
+    $('#sum-tes').text(fmt.format(sumTES));
+
+    if (hasL || hasT) {
+        const diff = sumTES - sumCG;
+        $('#diffValue').text(fmt.format(diff));
+        $('#diffValue').css('color', Math.abs(diff) < 0.01 ? '#2ecc71' : '#e74c3c');
+        $('#conciliacionBar').addClass('visible');
+    } else {
+        $('#conciliacionBar').removeClass('visible');
+    }
+}
+
+// ── CONFIRMAR CONCILIACIÓN ────────────────────────────────────
+function confirmarConciliacion() {
+    if (!sel.left.length || !sel.tes.length) {
+        alert('Selecciona al menos un item de CG y uno de Tesorería.');
+        return;
+    }
+    const sumCG  = sel.left.reduce((a,b) => a+b.monto, 0);
+    const sumTES = sel.tes.reduce((a,b)  => a+b.monto, 0);
+    const diff   = sumTES - sumCG;
+
+    if (Math.abs(diff) < 0.01) {
+        // Coincidencia exacta: guardar directo
+        ejecutarGuardado();
+    } else {
+        // Diferencia: mostrar modal
+        const $lista = $('#listaDiferencias').empty();
+        const opciones = [
+            { label:'Sin diferencia real (redondeo)', valor: 0 },
+            { label:`CG vs TES: ${fmt.format(diff)}`,  valor: diff },
+        ];
+        opciones.forEach((op, i) => {
+            $lista.append(`
+                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center opcion-dif" data-valor="${op.valor}" onclick="selectDifOpcion(this)">
+                    <span>${op.label}</span>
+                    <span class="badge badge-${Math.abs(op.valor)<0.01?'success':'warning'} badge-pill">${fmt.format(op.valor)}</span>
+                </button>`);
+        });
+        $('#modalDiferencias').modal('show');
+    }
+}
+function selectDifOpcion(el) {
+    $('.opcion-dif').removeClass('active');
+    $(el).addClass('active');
+}
+function ejecutarGuardado() {
+    const sumCG  = sel.left.reduce((a,b) => a+b.monto, 0);
+    const sumTES = sel.tes.reduce((a,b)  => a+b.monto, 0);
+    const fechaOp  = sel.left.length  ? sel.left[0].fecha  : sel.tes[0].fecha;
+    const fechaDep = sel.tes.length   ? sel.tes[0].fecha   : sel.left[0].fecha;
+
+    const payload = {
+        estacion_id:     parseInt($('#estacionSelect').val()),
+        entidad_id:      currentRule.entidad_id,
+        afiliacion:      currentRule.afiliacion,
+        fecha_operativa: fechaOp,
+        fecha_deposito:  fechaDep,
+        total_cg:        sumCG,
+        total_tes:       sumTES,
+        left_rows:       sel.left.map(s => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto })),
+        tes_rows:        sel.tes.map(s  => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto })),
+    };
+
+    body_loading(true);
+    $('#modalDiferencias').modal('hide');
+
+    fetch(URLS_V3.guardar, {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(json => {
+        if (json.status === 'success') {
+            limpiarSeleccion();
+            actualizarTodo();
+        } else {
+            alert('Error al guardar: ' + json.message);
+        }
+    })
+    .catch(() => alert('Error de conexión'))
+    .finally(() => body_loading(false));
+}
+
+// ── DESHACER GRUPO ────────────────────────────────────────────
+function deshacerGrupo(grupo_id) {
+    if (!confirm(`¿Deshacer conciliación del grupo ${grupo_id}?`)) return;
+    body_loading(true);
+    fetch(URLS_V3.deshacer, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ grupo_id })
+    })
+    .then(r => r.json())
+    .then(json => {
+        if (json.status === 'success') actualizarTodo();
+        else alert('Error: ' + json.message);
+    })
+    .finally(() => body_loading(false));
+}
+
+// ── CIERRE DE MES ─────────────────────────────────────────────
+function abrirModalCierre() {
+    if (!currentRule) { alert('Selecciona estación y banco primero.'); return; }
+    const mes = `${widgetState.year}-${widgetState.month}`;
+    $('#cierre-mes-label').text(mes);
+    $('#cierre-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-warning"></div></div>');
+    $('#btn-confirmar-cierre').hide();
+    $('#modalCierreMes').modal('show');
+
+    const estid = $('#estacionSelect').val();
+    const eid   = currentRule.entidad_id;
+    const afil  = currentRule.afiliacion;
+
+    fetch(`${URLS_V3.preview_cierre}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&mes=${mes}`)
+    .then(r => r.json())
+    .then(json => {
+        if (json.ya_cerrado) {
+            $('#cierre-modal-body').html(`
+                <div class="alert alert-info"><i class="fas fa-info-circle mr-2"></i>El mes <strong>${mes}</strong> ya fue cerrado anteriormente.</div>`);
+            return;
+        }
+        const rows = (json.detalle_transito || []).map(g =>
+            `<tr><td>${g.fecha}</td><td class="text-right font-numeric">${fmt.format(g.total_sistema)}</td><td class="text-right font-numeric text-success">${fmt.format(g.total_tesoreria)}</td><td class="text-right font-numeric text-danger">${fmt.format(g.monto_transito)}</td></tr>`
+        ).join('') || '<tr><td colspan="4" class="text-center text-muted">Ninguno</td></tr>';
+
+        $('#cierre-modal-body').html(`
+            <div class="row mb-3 text-center">
+                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">CG Total</div><div class="h5 font-numeric">${fmt.format(json.total_cg)}</div></div>
+                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">Depositado</div><div class="h5 font-numeric text-success">${fmt.format(json.total_tes)}</div></div>
+                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">A Tránsito</div><div class="h5 font-numeric text-warning">${fmt.format(json.total_cg - json.total_tes)}</div></div>
+            </div>
+            ${json.grupos_con_diff > 0 ? `
+            <p class="small text-muted font-weight-bold text-uppercase mb-1">Grupos que irán a tránsito:</p>
+            <div class="table-responsive" style="max-height:200px;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="bg-light"><tr><th>Fecha</th><th class="text-right">CG</th><th class="text-right">Depositado</th><th class="text-right">Pendiente</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>` : '<div class="alert alert-success"><i class="fas fa-check mr-2"></i>Todo conciliado. No hay diferencias para enviar a tránsito.</div>'}
+        `);
+        $('#btn-confirmar-cierre').show();
+    })
+    .catch(() => $('#cierre-modal-body').html('<div class="alert alert-danger">Error al cargar preview.</div>'));
+}
+
+function confirmarCierre() {
+    const mes   = `${widgetState.year}-${widgetState.month}`;
+    const estid = parseInt($('#estacionSelect').val());
+    const eid   = currentRule.entidad_id;
+    const afil  = currentRule.afiliacion;
+
+    $('#btn-confirmar-cierre').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Cerrando...');
+
+    fetch(URLS_V3.cerrar_mes, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ estacion_id: estid, entidad_id: eid, afiliacion: afil, mes })
+    })
+    .then(r => r.json())
+    .then(json => {
+        if (json.status === 'success') {
+            $('#modalCierreMes').modal('hide');
+            actualizarTodo();
+            alert(`Mes ${mes} cerrado.\n\nCG: ${fmt.format(json.total_cg)}\nDepositado: ${fmt.format(json.total_tes)}\nEnviado a tránsito: ${fmt.format(json.total_transito)}`);
+        } else {
+            alert('Error: ' + json.message);
+            $('#btn-confirmar-cierre').prop('disabled', false).html('<i class="fas fa-lock mr-2"></i>Confirmar Cierre');
+        }
+    })
+    .catch(() => alert('Error de conexión'));
+}
+
+// ── RESUMEN SUPERIOR ──────────────────────────────────────────
+function actualizarResumenSuperior() {
+    // CG: aplicar el mismo filtro de conceptos_cg que el panel
+    const keywords = currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
+        : [];
+    const totalCG  = cgData.filter(item => {
+        if (!keywords.length) return parseFloat(item.Total || 0) > 0;
+        const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        return keywords.some(k => c.includes(k)) && parseFloat(item.Total || 0) > 0;
+    }).reduce((a,b) => a + parseFloat(b.Total||0), 0);
+
+    const totalTES = tesData.reduce((a,b) => a + parseFloat(b.monto||0), 0);
+    const totalTX  = txData.reduce((a,b)  => a + parseFloat(b.Total||0), 0);
+
+    $('#cg-resumen-total').text(fmt.format(totalCG));
+    $('#tes-resumen-total').text(fmt.format(totalTES));
+    $('#tx-resumen-total').text(fmt.format(totalTX));
+
+    // Calcular diferencias de grupos conciliados
+    const difMap = {};
+    historial.forEach(h => { difMap[h.grupo_id] = h.diferencia; });
+    const diffs = Object.values(difMap).filter(d => Math.abs(d) > 0.01);
+    const totalDiff = diffs.reduce((a,b) => a+b, 0);
+    $('#diff-counter').text(diffs.length);
+    $('#diff-total-top').text(fmt.format(totalDiff)).css('color', diffs.length ? '#e74c3c' : '#2ecc71');
+}
+
+// ── CONTADORES ────────────────────────────────────────────────
+function updateCGCounter()  {
+    const keywords = currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
+        : [];
+    const tot = cgData.filter(item => {
+        if (!keywords.length) return parseFloat(item.Total || 0) > 0;
+        const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        return keywords.some(k => c.includes(k)) && parseFloat(item.Total || 0) > 0;
+    }).reduce((a,b) => a+parseFloat(b.Total||0), 0);
+    $('#cg-counter').text(fmt.format(tot));
+}
+function updateTesCounter() {
+    const tot = tesData.reduce((a,b) => a+parseFloat(b.monto||0), 0);
+    $('#tes-counter').text(fmt.format(tot));
+}
+function updateTxCounter()  {
+    const tot = txData.reduce((a,b) => a+parseFloat(b.Total||0), 0);
+    $('#tx-counter').text(fmt.format(tot));
+}
+
+// ── LIMPIAR PANELES ───────────────────────────────────────────
+function limpiarPaneles() {
+    cgData = []; tesData = []; txData = []; historial = [];
+    conciliadasSet = { CG: new Set(), TES: new Set() };
+    sel = { left:[], tes:[] };
+    openGroupsCG.clear();   // al cambiar de estación/banco, resetear grupos abiertos
+    openGroupsTES.clear();
+    openGroupsTX.clear();
+    $('#cg-content, #tes-content, #tx-content').html('<div class="text-center text-muted py-5 mt-5">Seleccione cuenta</div>');
+    $('#conciliacionBar').removeClass('visible');
+    $('#transitos-banner, #transitos-panel').addClass('d-none');
+    $('#mes-cerrado-banner').addClass('d-none');
+    updateCGCounter(); updateTesCounter(); updateTxCounter();
+}
+
+// ── TOGGLE DE GRUPOS (patrón V2: ID-based) ────────────────────
+function toggleGrupoCG(groupId, fecha, btn) {
+    const $body  = $(`#${groupId}`);
+    const $icon  = $(btn).find('i');
+    const wasOpen = $body.hasClass('open');
+
+    if (wasOpen) {
+        $body.removeClass('open');
+        $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        openGroupsCG.delete(fecha);
+    } else {
+        $body.addClass('open');
+        $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+        openGroupsCG.add(fecha);
+
+        // Auto-mirror: abrir mismo día en panel Tesorería
+        const tesId = `tes-${fecha.replace(/-/g,'')}`;
+        const $tesBody = $(`#${tesId}`);
+        if ($tesBody.length && !$tesBody.hasClass('open')) {
+            const $tesBtn = $tesBody.prev('.tx-group-header').find('.tx-group-toggle-btn');
+            if ($tesBtn.length) toggleGrupoTES(tesId, fecha, $tesBtn[0]);
+        }
+    }
+}
+
+function toggleGrupoTES(groupId, fecha, btn) {
+    const $body  = $(`#${groupId}`);
+    const $icon  = $(btn).find('i');
+    const wasOpen = $body.hasClass('open');
+
+    if (wasOpen) {
+        $body.removeClass('open');
+        $icon.removeClass('fa-chevron-down').addClass('fa-chevron-right');
+        openGroupsTES.delete(fecha);
+    } else {
+        $body.addClass('open');
+        $icon.removeClass('fa-chevron-right').addClass('fa-chevron-down');
+        openGroupsTES.add(fecha);
+    }
+}
+
+// ── UTILIDADES ────────────────────────────────────────────────
+function normalizarFecha(v) {
+    if (!v) return '';
+    let s = String(v).trim().split('T')[0];
+    if (s.indexOf('/') > -1) { const p = s.split('/'); if(p.length===3) return `${p[2]}-${p[1]}-${p[0]}`; }
+    return s.substring(0,10);
+}
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function seleccionarTransitoEnCG(id) {
+    // TODO: marcar el tránsito como origen para incluirlo en la conciliación
+    alert(`Tránsito ${id}: usa la selección normal de CG para incluir el monto en la conciliación.`);
+}
+</script>
+{% endblock %}
