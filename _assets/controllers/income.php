@@ -6065,6 +6065,133 @@ public function stamped_invoices_detail(): void
     }
 
     // -------------------------------------------------------------------------
+    // 4a. ACTUALIZAR MONTO DE UN DETALLE V3 Y RECALCULAR GRUPO
+    //     POST /income/actualizar_detalle_v3
+    //     Body: { id_detalle, nuevo_monto }
+    // -------------------------------------------------------------------------
+    public function actualizar_detalle_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (!isset($data['id_detalle'], $data['nuevo_monto'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan datos']); exit;
+        }
+
+        $id_detalle  = (int)$data['id_detalle'];
+        $nuevo_monto = (float)$data['nuevo_monto'];
+
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+
+            // 1. Obtener grupo_id
+            $stmt = $conn->prepare("SELECT grupo_id FROM Conciliacion_V3_Detalles WHERE id = ?");
+            $stmt->execute([$id_detalle]);
+            $grupo_id = $stmt->fetchColumn();
+            if (!$grupo_id) throw new Exception('Detalle no encontrado.');
+
+            // 2. Verificar que el mes no esté cerrado
+            $stmt = $conn->prepare("SELECT estado FROM Conciliacion_V3_Grupos WHERE id = ?");
+            $stmt->execute([$grupo_id]);
+            $estado = $stmt->fetchColumn();
+            if ($estado === 'CERRADO') throw new Exception('El mes ya está cerrado.');
+
+            // 3. Actualizar monto
+            $conn->prepare("UPDATE Conciliacion_V3_Detalles SET monto = ? WHERE id = ?")
+                 ->execute([$nuevo_monto, $id_detalle]);
+
+            // 4. Recalcular totales del grupo
+            $stmt = $conn->prepare(
+                "SELECT SUM(CASE WHEN origen='CG'  THEN monto ELSE 0 END) as total_cg,
+                        SUM(CASE WHEN origen='TES' THEN monto ELSE 0 END) as total_tes
+                 FROM Conciliacion_V3_Detalles WHERE grupo_id = ?"
+            );
+            $stmt->execute([$grupo_id]);
+            $totales = $stmt->fetch(PDO::FETCH_ASSOC);
+            $total_cg  = (float)$totales['total_cg'];
+            $total_tes = (float)$totales['total_tes'];
+            $diferencia = $total_tes - $total_cg;
+
+            $conn->prepare(
+                "UPDATE Conciliacion_V3_Grupos
+                 SET total_sistema = ?, total_tesoreria = ?, diferencia = ?
+                 WHERE id = ?"
+            )->execute([$total_cg, $total_tes, $diferencia, $grupo_id]);
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'diferencia' => $diferencia]);
+        } catch (Exception $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    // 4b. DESHACER TODAS LAS CONCILIACIONES DEL MES V3
+    //     POST /income/deshacer_mes_v3
+    //     Body: { estacion_id, entidad_id, afiliacion, year, month }
+    // -------------------------------------------------------------------------
+    public function deshacer_mes_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        if (!isset($data['estacion_id'], $data['entidad_id'], $data['afiliacion'], $data['year'], $data['month'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']); exit;
+        }
+
+        $sid   = (int)$data['estacion_id'];
+        $eid   = (int)$data['entidad_id'];
+        $afil  = trim($data['afiliacion']);
+        $year  = (int)$data['year'];
+        $month = (int)$data['month'];
+
+        try {
+            $conn = new PDO("sqlsrv:Server=192.168.0.6;Database=TG", "cguser", "sahei1712");
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn->beginTransaction();
+
+            // Obtener todos los grupos del mes (excluye CERRADOS)
+            $stmt = $conn->prepare(
+                "SELECT id FROM Conciliacion_V3_Grupos
+                 WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
+                   AND YEAR(fecha_operativa) = ? AND MONTH(fecha_operativa) = ?
+                   AND estado <> 'CERRADO'"
+            );
+            $stmt->execute([$sid, $eid, $afil, $year, $month]);
+            $groupIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (empty($groupIds)) {
+                $conn->rollBack();
+                echo json_encode(['status' => 'success', 'message' => 'No hay grupos para deshacer.', 'grupos_eliminados' => 0]);
+                exit;
+            }
+
+            $chunks = array_chunk($groupIds, 500);
+            foreach ($chunks as $chunk) {
+                $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                // Reabrir tránsitos cerrados por estos grupos
+                $conn->prepare(
+                    "UPDATE Conciliacion_V3_Transito
+                     SET estado = 'PENDIENTE', grupo_id_cierre = NULL, fecha_cierre = NULL
+                     WHERE grupo_id_cierre IN ($placeholders)"
+                )->execute($chunk);
+                // Borrar grupos (FK CASCADE elimina detalles)
+                $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id IN ($placeholders)")->execute($chunk);
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'grupos_eliminados' => count($groupIds)]);
+        } catch (PDOException $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
     // 5. CERRAR MES V3
     //    POST /income/cerrar_mes_v3
     //    Body: { estacion_id, entidad_id, afiliacion, mes (YYYY-MM) }
