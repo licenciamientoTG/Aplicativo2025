@@ -229,10 +229,9 @@
 				<div
 					class="card-body">
 					<!-- Diagrama de flujo visual con botones -->
-					<div
-						class="row text-center">
+					<div class="row text-center">
 						<!-- NIVEL 1: ABASTOS -->
-						<div class="col-md-4 mb-3">
+						<div class="col-md-3 mb-3">
 							<div class="card h-100 {% if authorization_status.abastos %}border-success{% elseif authorization_status.next_level == 66 %}border-primary border-3{% else %}border-secondary{% endif %}">
 								<div class="card-body">
 									<div class="mb-3">
@@ -249,46 +248,82 @@
 									</h5>
 									<h6>Abastos</h6>
 									{% if authorization_status.abastos %}
-										<!-- Ya autorizado -->
-										<div class="alert alert-success mb-0 mt-3" style="
-																								                    display: flex;
-																								                    flex-direction: column;
-																								                    padding: 0.8rem 0;
-																								                  ">
-											<i class="fas fa-check"></i>
-											Autorizado
+										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
+											<i class="fas fa-check"></i> Autorizado
 											{% if auth_info.abastos %}
 												<br/><small>{{ auth_info.abastos.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.abastos.authorization_date|date('d/m/Y H:i')
-                    }}</small>
+												<br/><small>{{ auth_info.abastos.authorization_date|date('d/m/Y H:i') }}</small>
 											{% endif %}
 										</div>
 									{% elseif authorization_status.next_level == 66 %}
-										<!-- Es el nivel actual -->
 										{% if authorized(66) %}
 											<button class="btn btn-success btn-lg mt-3 w-100" onclick="openAuthModal(66, 'Abastos')">
-												<i class="fas fa-check"></i>
-												Autorizar como Abastos
+												<i class="fas fa-check"></i> Autorizar como Abastos
 											</button>
 										{% else %}
 											<div class="alert alert-warning mb-0 mt-3">
-												<i class="fas fa-clock"></i>
-												Esperando autorización de Abastos
+												<i class="fas fa-clock"></i> Esperando autorización de Abastos
 											</div>
 										{% endif %}
 									{% else %}
-										<!-- Nivel futuro -->
 										<div class="alert alert-secondary mb-0 mt-3">
-											<i class="fas fa-lock"></i>
-											En espera
+											<i class="fas fa-lock"></i> En espera
 										</div>
 									{% endif %}
 								</div>
 							</div>
 						</div>
 
-						<!-- NIVEL 2: ADMINISTRACIÓN Y FINANZAS -->
-						<div class="col-md-4 mb-3">
+						<!-- NIVEL 2: CONTABILIDAD -->
+						<div class="col-md-3 mb-3">
+							<div class="card h-100 {% if authorization_status.contabilidad %}border-success{% elseif authorization_status.next_level == 70 %}border-primary border-3{% else %}border-secondary{% endif %}">
+								<div class="card-body">
+									<div class="mb-3">
+										{% if authorization_status.contabilidad %}
+											<i class="fas fa-check-circle fa-4x text-success"></i>
+										{% elseif authorization_status.next_level == 70 %}
+											<i class="fas fa-calculator fa-4x text-primary"></i>
+										{% else %}
+											<i class="fas fa-calculator fa-4x text-muted"></i>
+										{% endif %}
+									</div>
+									<h5 class="card-title">
+										<span class="badge bg-primary">Nivel 2</span>
+									</h5>
+									<h6>Contabilidad</h6>
+									{% if authorization_status.contabilidad %}
+										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
+											<i class="fas fa-check"></i> Autorizado
+											{% if auth_info.contabilidad %}
+												<br/><small>{{ auth_info.contabilidad.autorizador_nombre }}</small>
+												<br/><small>{{ auth_info.contabilidad.authorization_date|date('d/m/Y H:i') }}</small>
+											{% endif %}
+										</div>
+									{% elseif authorization_status.next_level == 70 %}
+										{% if authorized(70) %}
+											<button class="btn btn-success btn-lg mt-3 w-100" onclick="openAuthModal(70, 'Contabilidad')">
+												<i class="fas fa-check"></i> Autorizar como Contabilidad
+											</button>
+										{% else %}
+											<div class="alert alert-warning mb-0 mt-3">
+												<i class="fas fa-clock"></i> Esperando autorización de Contabilidad
+											</div>
+										{% endif %}
+									{% else %}
+										<div class="alert alert-secondary mb-0 mt-3">
+											{% if not authorization_status.abastos %}
+												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Abastos
+											{% else %}
+												<i class="fas fa-lock"></i> En espera
+											{% endif %}
+										</div>
+									{% endif %}
+								</div>
+							</div>
+						</div>
+
+						<!-- NIVEL 3: ADMINISTRACIÓN Y FINANZAS -->
+						<div class="col-md-3 mb-3">
 							<div class="card h-100 {% if authorization_status.admin_finanzas %}border-success{% elseif authorization_status.next_level == 67 %}border-warning border-3{% else %}border-secondary{% endif %}">
 								<div class="card-body">
 									<div class="mb-3">
@@ -300,49 +335,34 @@
 											<i class="fas fa-building fa-4x text-muted"></i>
 										{% endif %}
 									</div>
-
 									<h5 class="card-title">
-										<span class="badge bg-warning text-dark">Nivel 2</span>
+										<span class="badge bg-warning text-dark">Nivel 3</span>
 									</h5>
 									<h6>Administración y Finanzas</h6>
-
 									{% if authorization_status.admin_finanzas %}
-										<!-- Ya autorizado -->
-										<div class="alert alert-success mb-0 mt-3" style="
-																								                    display: flex;
-																								                    flex-direction: column;
-																								                    padding: 0.8rem 0;
-																								                  ">
-											<i class="fas fa-check"></i>
-											Autorizado
+										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
+											<i class="fas fa-check"></i> Autorizado
 											{% if auth_info.admin_finanzas %}
 												<br/><small>{{ auth_info.admin_finanzas.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.admin_finanzas.authorization_date|date('d/m/Y
-                    H:i') }}</small>
+												<br/><small>{{ auth_info.admin_finanzas.authorization_date|date('d/m/Y H:i') }}</small>
 											{% endif %}
 										</div>
 									{% elseif authorization_status.next_level == 67 %}
-										<!-- Es el nivel actual -->
 										{% if authorized(67) %}
 											<button class="btn btn-warning btn-lg mt-3 w-100" onclick="openAuthModal(67, 'Administración y Finanzas')">
-												<i class="fas fa-check"></i>
-												Autorizar como Admin y Finanzas
+												<i class="fas fa-check"></i> Autorizar como Admin y Finanzas
 											</button>
 										{% else %}
 											<div class="alert alert-warning mb-0 mt-3">
-												<i class="fas fa-clock"></i>
-												Esperando autorización de Admin y Finanzas
+												<i class="fas fa-clock"></i> Esperando autorización de Admin y Finanzas
 											</div>
 										{% endif %}
 									{% else %}
-										<!-- Nivel futuro o bloqueado -->
 										<div class="alert alert-secondary mb-0 mt-3">
-											{% if not authorization_status.abastos %}
-												<i class="fas fa-lock"></i>
-												Bloqueado hasta autorización de Abastos
+											{% if not authorization_status.contabilidad %}
+												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Contabilidad
 											{% else %}
-												<i class="fas fa-lock"></i>
-												En espera
+												<i class="fas fa-lock"></i> En espera
 											{% endif %}
 										</div>
 									{% endif %}
@@ -350,8 +370,8 @@
 							</div>
 						</div>
 
-						<!-- NIVEL 3: TESORERÍA -->
-						<div class="col-md-4 mb-3">
+						<!-- NIVEL 4: TESORERÍA -->
+						<div class="col-md-3 mb-3">
 							<div class="card h-100 {% if authorization_status.tesoreria %}border-success{% elseif authorization_status.next_level == 68 %}border-info border-3{% else %}border-secondary{% endif %}">
 								<div class="card-body">
 									<div class="mb-3">
@@ -363,87 +383,39 @@
 											<i class="fas fa-money-check-alt fa-4x text-muted"></i>
 										{% endif %}
 									</div>
-
 									<h5 class="card-title">
-										<span class="badge bg-info">Nivel 3</span>
+										<span class="badge bg-info">Nivel 4</span>
 									</h5>
 									<h6>Tesorería</h6>
-
 									{% if authorization_status.tesoreria %}
-										<!-- Ya autorizado -->
-										<div class="alert alert-success mb-0 mt-3" style="
-																								                    display: flex;
-																								                    flex-direction: column;
-																								                    padding: 0.8rem 0;
-																								                  ">
-											<i class="fas fa-check"></i>
-											Autorizado - Listo para Pagar
+										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
+											<i class="fas fa-check"></i> Autorizado - Listo para Pagar
 											{% if auth_info.tesoreria %}
 												<br/><small>{{ auth_info.tesoreria.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i')
-                    }}</small>
+												<br/><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
 											{% endif %}
 										</div>
-										{#
-																				                <div
-																				                  class="btn-group w-100"
-																				                  role="group"
-																				                  style="margin-top: 1rem"
-																				                >
-																				                  <button
-																				                    type="button"
-																				                    id="btnGenerarTransferencias"
-																				                    class="btn btn-outline-danger"
-																				                    onclick="generarTransferenciasBancarias({{ payment.id }})"
-																				                    {%
-																				                    if
-																				                    payment_status=""
-																				                    ="CANCELLED"
-																				                    %}disabled{%
-																				                    endif
-																				                    %}
-																				                    title="Generar archivo de transferencias bancarias Santander"
-																				                  >
-																				                    <i class="fas fa-university"></i> Transferencias Santander
-																				                  </button>
-																				                </div>
-																				                #}
-										{# {% if payment.status == 1 and authorized(68) %}
-																				                <button
-																				                  class="btn btn-primary mt-3 w-100"
-																				                  onclick="procesarPago()"
-																				                >
-																				                  <i class="fas fa-dollar-sign"></i> Procesar Pago
-																				                </button>
-																				                {% endif %} #}
 										{% if payment.status == 1 and authorized(68) %}
 											<button class="btn btn-info mt-3 w-100" onclick="autorizarPago()">
-												<i class="fas fa-check-circle"></i>
-												Autorizar Pago
+												<i class="fas fa-check-circle"></i> Autorizar Pago
 											</button>
 										{% endif %}
 									{% elseif authorization_status.next_level == 68 %}
-										<!-- Es el nivel actual -->
 										{% if authorized(68) %}
 											<button class="btn btn-info btn-lg mt-3 w-100" onclick="openAuthModal(68, 'Tesorería')">
-												<i class="fas fa-check"></i>
-												Autorizar como Tesorería
+												<i class="fas fa-check"></i> Autorizar como Tesorería
 											</button>
 										{% else %}
 											<div class="alert alert-info mb-0 mt-3">
-												<i class="fas fa-clock"></i>
-												Esperando autorización de Tesorería
+												<i class="fas fa-clock"></i> Esperando autorización de Tesorería
 											</div>
 										{% endif %}
 									{% else %}
-										<!-- Nivel futuro o bloqueado -->
 										<div class="alert alert-secondary mb-0 mt-3">
 											{% if not authorization_status.admin_finanzas %}
-												<i class="fas fa-lock"></i>
-												Bloqueado hasta autorización de Admin y Finanzas
+												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Admin y Finanzas
 											{% else %}
-												<i class="fas fa-lock"></i>
-												En espera
+												<i class="fas fa-lock"></i> En espera
 											{% endif %}
 										</div>
 									{% endif %}
@@ -458,20 +430,10 @@
 							<h6>Progreso de Autorización</h6>
 							<div class="progress" style="height: 30px">
 								{% set progress = 0 %}
-								{% if authorization_status.abastos %}
-									{%
-              set progress = progress + 33 %}
-								{% endif %}
-								{% if
-              authorization_status.admin_finanzas %}
-									{% set progress = progress
-              + 33 %}
-								{% endif %}
-								{% if authorization_status.tesoreria %}
-									{% set
-              progress = progress + 34 %}
-								{% endif %}
-
+								{% if authorization_status.abastos %}{% set progress = progress + 25 %}{% endif %}
+								{% if authorization_status.contabilidad %}{% set progress = progress + 25 %}{% endif %}
+								{% if authorization_status.admin_finanzas %}{% set progress = progress + 25 %}{% endif %}
+								{% if authorization_status.tesoreria %}{% set progress = progress + 25 %}{% endif %}
 								<div class="progress-bar bg-success progress-bar-striped {% if not authorization_status.completed %}progress-bar-animated{% endif %}" role="progressbar" style="width: {{ progress }}%" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100">
 									{{ progress }}% Completado
 								</div>
@@ -501,13 +463,11 @@
 											{% for auth in authorizations %}
 												<tr>
 													<td class="text-center">
-														<span class="badge {% if auth.permission_number == 66 %}bg-primary {% elseif auth.permission_number == 67 %}bg-warning text-dark {% elseif auth.permission_number == 68 %}bg-info {% endif %}">
-															Nivel
-															{% if auth.permission_number == 66 %}1
-																{% elseif
-                        auth.permission_number == 67 %}2
-																{% elseif
-                        auth.permission_number == 68 %}3
+														<span class="badge {% if auth.permission_number == 66 %}bg-primary{% elseif auth.permission_number == 70 %}bg-primary{% elseif auth.permission_number == 67 %}bg-warning text-dark{% elseif auth.permission_number == 68 %}bg-info{% endif %}">
+															{% if auth.permission_number == 66 %}Nivel 1
+															{% elseif auth.permission_number == 70 %}Nivel 2
+															{% elseif auth.permission_number == 67 %}Nivel 3
+															{% elseif auth.permission_number == 68 %}Nivel 4
 															{% endif %}
 														</span>
 													</td>

@@ -258,15 +258,18 @@ class PaymentRequestsModel extends Model
                 ISNULL(t1.total_notas_credito, 0) AS total_notas_credito,
                 ISNULL(t1.total_notas_cargo, 0)   AS total_notas_cargo,
                 -- Autorizaciones por nivel
-                ISNULL(t4.auth_abastos, 0)    AS auth_abastos,
-                ISNULL(t4.auth_admin, 0)      AS auth_admin,
-                ISNULL(t4.auth_tesoreria, 0)  AS auth_tesoreria,
+                ISNULL(t4.auth_abastos, 0)       AS auth_abastos,
+                ISNULL(t4.auth_contabilidad, 0)  AS auth_contabilidad,
+                ISNULL(t4.auth_admin, 0)         AS auth_admin,
+                ISNULL(t4.auth_tesoreria, 0)     AS auth_tesoreria,
                 -- Información de autorizadores
                 t4.auth_abastos_user,
+                t4.auth_contabilidad_user,
                 t4.auth_admin_user,
                 t4.auth_tesoreria_user,
                 -- Fechas de autorización
                 t4.auth_abastos_date,
+                t4.auth_contabilidad_date,
                 t4.auth_admin_date,
                 t4.auth_tesoreria_date,
                 ISNULL(t4.total_authorizations, 0) AS total_authorizations,
@@ -274,7 +277,7 @@ class PaymentRequestsModel extends Model
                 t6.den AS emp_name
             FROM [TG].[dbo].[payment_requests] t1
             LEFT JOIN (
-                SELECT 
+                SELECT
                     payment_request_id,
                     COUNT(*) AS total_invoices,
                     SUM(amount) AS total_amount,
@@ -290,12 +293,15 @@ class PaymentRequestsModel extends Model
                 SELECT
                     pra.payment_request_id,
                     MAX(CASE WHEN pra.permission_number = 66 THEN 1 ELSE 0 END) AS auth_abastos,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN 1 ELSE 0 END) AS auth_contabilidad,
                     MAX(CASE WHEN pra.permission_number = 67 THEN 1 ELSE 0 END) AS auth_admin,
                     MAX(CASE WHEN pra.permission_number = 68 THEN 1 ELSE 0 END) AS auth_tesoreria,
                     MAX(CASE WHEN pra.permission_number = 66 THEN u.Nombre END) AS auth_abastos_user,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN u.Nombre END) AS auth_contabilidad_user,
                     MAX(CASE WHEN pra.permission_number = 67 THEN u.Nombre END) AS auth_admin_user,
                     MAX(CASE WHEN pra.permission_number = 68 THEN u.Nombre END) AS auth_tesoreria_user,
                     MAX(CASE WHEN pra.permission_number = 66 THEN pra.authorization_date END) AS auth_abastos_date,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN pra.authorization_date END) AS auth_contabilidad_date,
                     MAX(CASE WHEN pra.permission_number = 67 THEN pra.authorization_date END) AS auth_admin_date,
                     MAX(CASE WHEN pra.permission_number = 68 THEN pra.authorization_date END) AS auth_tesoreria_date,
                     COUNT(*) AS total_authorizations
@@ -465,15 +471,18 @@ class PaymentRequestsModel extends Model
                 ISNULL(t2.authorized_invoices_count, 0) AS authorized_invoices_count,
                 ISNULL(t2.authorized_amount_total, 0)   AS authorized_amount_total,
                 -- Autorizaciones por nivel
-                ISNULL(t4.auth_abastos, 0)    AS auth_abastos,
-                ISNULL(t4.auth_admin, 0)      AS auth_admin,
-                ISNULL(t4.auth_tesoreria, 0)  AS auth_tesoreria,
+                ISNULL(t4.auth_abastos, 0)       AS auth_abastos,
+                ISNULL(t4.auth_contabilidad, 0)  AS auth_contabilidad,
+                ISNULL(t4.auth_admin, 0)         AS auth_admin,
+                ISNULL(t4.auth_tesoreria, 0)     AS auth_tesoreria,
                 -- Información de autorizadores
                 t4.auth_abastos_user,
+                t4.auth_contabilidad_user,
                 t4.auth_admin_user,
                 t4.auth_tesoreria_user,
                 -- Fechas de autorización
                 t4.auth_abastos_date,
+                t4.auth_contabilidad_date,
                 t4.auth_admin_date,
                 t4.auth_tesoreria_date,
                 ISNULL(t4.total_authorizations, 0) AS total_authorizations,
@@ -481,7 +490,7 @@ class PaymentRequestsModel extends Model
                 t6.den AS emp_name
             FROM [TG].[dbo].[payment_requests] t1
             LEFT JOIN (
-                SELECT 
+                SELECT
                     payment_request_id,
                     COUNT(*) AS total_invoices,
                     SUM(amount) AS total_amount,
@@ -497,12 +506,15 @@ class PaymentRequestsModel extends Model
                 SELECT
                     pra.payment_request_id,
                     MAX(CASE WHEN pra.permission_number = 66 THEN 1 ELSE 0 END) AS auth_abastos,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN 1 ELSE 0 END) AS auth_contabilidad,
                     MAX(CASE WHEN pra.permission_number = 67 THEN 1 ELSE 0 END) AS auth_admin,
                     MAX(CASE WHEN pra.permission_number = 68 THEN 1 ELSE 0 END) AS auth_tesoreria,
                     MAX(CASE WHEN pra.permission_number = 66 THEN u.Nombre END) AS auth_abastos_user,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN u.Nombre END) AS auth_contabilidad_user,
                     MAX(CASE WHEN pra.permission_number = 67 THEN u.Nombre END) AS auth_admin_user,
                     MAX(CASE WHEN pra.permission_number = 68 THEN u.Nombre END) AS auth_tesoreria_user,
                     MAX(CASE WHEN pra.permission_number = 66 THEN pra.authorization_date END) AS auth_abastos_date,
+                    MAX(CASE WHEN pra.permission_number = 70 THEN pra.authorization_date END) AS auth_contabilidad_date,
                     MAX(CASE WHEN pra.permission_number = 67 THEN pra.authorization_date END) AS auth_admin_date,
                     MAX(CASE WHEN pra.permission_number = 68 THEN pra.authorization_date END) AS auth_tesoreria_date,
                     COUNT(*) AS total_authorizations
@@ -638,8 +650,9 @@ class PaymentRequestsModel extends Model
                 pra.permission_number,
                 pra.authorization_date,
                 u.Nombre as autorizador_nombre,
-                CASE 
+                CASE
                     WHEN pra.permission_number = 66 THEN 'Abastos'
+                    WHEN pra.permission_number = 70 THEN 'Contabilidad'
                     WHEN pra.permission_number = 67 THEN 'Administración y Finanzas'
                     WHEN pra.permission_number = 68 THEN 'Tesorería'
                     ELSE 'Desconocido'
@@ -659,12 +672,13 @@ class PaymentRequestsModel extends Model
     public function getAuthorizationStatus($payment_id)
     {
         $query = "
-            SELECT 
+            SELECT
                 MAX(CASE WHEN permission_number = 66 THEN 1 ELSE 0 END) as abastos,
+                MAX(CASE WHEN permission_number = 70 THEN 1 ELSE 0 END) as contabilidad,
                 MAX(CASE WHEN permission_number = 67 THEN 1 ELSE 0 END) as admin_finanzas,
                 MAX(CASE WHEN permission_number = 68 THEN 1 ELSE 0 END) as tesoreria,
-                CASE 
-                    WHEN COUNT(*) >= 3 THEN 1
+                CASE
+                    WHEN COUNT(*) >= 4 THEN 1
                     ELSE 0
                 END as completed
             FROM [TG].[dbo].[payment_request_authorizations]
@@ -679,6 +693,8 @@ class PaymentRequestsModel extends Model
             // Determinar el siguiente nivel requerido
             if (!$status['abastos']) {
                 $status['next_level'] = 66;
+            } elseif (!$status['contabilidad']) {
+                $status['next_level'] = 70;
             } elseif (!$status['admin_finanzas']) {
                 $status['next_level'] = 67;
             } elseif (!$status['tesoreria']) {
@@ -691,11 +707,12 @@ class PaymentRequestsModel extends Model
         }
 
         return [
-            'abastos' => 0,
-            'admin_finanzas' => 0,
-            'tesoreria' => 0,
-            'completed' => 0,
-            'next_level' => 66
+            'abastos'       => 0,
+            'contabilidad'  => 0,
+            'admin_finanzas'=> 0,
+            'tesoreria'     => 0,
+            'completed'     => 0,
+            'next_level'    => 66
         ];
     }
 
@@ -943,9 +960,10 @@ class PaymentRequestsModel extends Model
                 ISNULL(inv_summary.total_amount, 0) as total_amount,
                 
                 -- Autorizaciones ya realizadas
-                ISNULL(auth_summary.auth_abastos, 0) as auth_abastos,
-                ISNULL(auth_summary.auth_admin, 0) as auth_admin,
-                ISNULL(auth_summary.auth_tesoreria, 0) as auth_tesoreria,
+                ISNULL(auth_summary.auth_abastos, 0)      as auth_abastos,
+                ISNULL(auth_summary.auth_contabilidad, 0) as auth_contabilidad,
+                ISNULL(auth_summary.auth_admin, 0)        as auth_admin,
+                ISNULL(auth_summary.auth_tesoreria, 0)    as auth_tesoreria,
                 
                 -- Fecha de vencimiento más cercana
                 inv_summary.fecha_vencimiento_min as fecha_vencimiento,
@@ -984,26 +1002,30 @@ class PaymentRequestsModel extends Model
                 SELECT
                     payment_request_id,
                     MAX(CASE WHEN permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
+                    MAX(CASE WHEN permission_number = 70 THEN 1 ELSE 0 END) as auth_contabilidad,
                     MAX(CASE WHEN permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
                     MAX(CASE WHEN permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria
                 FROM [TG].[dbo].[payment_request_authorizations]
                 GROUP BY payment_request_id
             ) auth_summary ON pr.id = auth_summary.payment_request_id
-            
-            WHERE 
+
+            WHERE
                 pr.status = ?  -- Solo pendientes (STATUS_PENDING = 0)
                 AND (
                     -- Nivel 66 (Abastos): sin ninguna autorización
                     (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
                     OR
-                    -- Nivel 67 (Admin): con autorización de abastos pero sin admin
-                    (? = 67 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    -- Nivel 70 (Contabilidad): con abastos pero sin contabilidad
+                    (? = 70 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_contabilidad, 0) = 0)
                     OR
-                    -- Nivel 68 (Tesorería): con autorizaciones de abastos y admin pero sin tesorería
-                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
+                    -- Nivel 67 (Admin): con abastos y contabilidad pero sin admin
+                    (? = 67 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    OR
+                    -- Nivel 68 (Tesorería): con abastos, contabilidad y admin pero sin tesorería
+                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
                 )
-            
-            ORDER BY 
+
+            ORDER BY
                 CASE WHEN pr.monto_total > 100000 THEN 0 ELSE 1 END,
                 inv_summary.fecha_vencimiento_min ASC,
                 pr.request_date ASC
@@ -1011,6 +1033,7 @@ class PaymentRequestsModel extends Model
 
             $params = [
                 self::STATUS_PENDING,
+                $permission_number,
                 $permission_number,
                 $permission_number,
                 $permission_number
@@ -1166,30 +1189,34 @@ class PaymentRequestsModel extends Model
             $query = "
             SELECT COUNT(*) as total
             FROM [TG].[dbo].[payment_requests] pr
-            
+
             LEFT JOIN (
                 SELECT
                     payment_request_id,
                     MAX(CASE WHEN permission_number = 66 THEN 1 ELSE 0 END) as auth_abastos,
+                    MAX(CASE WHEN permission_number = 70 THEN 1 ELSE 0 END) as auth_contabilidad,
                     MAX(CASE WHEN permission_number = 67 THEN 1 ELSE 0 END) as auth_admin,
                     MAX(CASE WHEN permission_number = 68 THEN 1 ELSE 0 END) as auth_tesoreria
                 FROM [TG].[dbo].[payment_request_authorizations]
                 GROUP BY payment_request_id
             ) auth_summary ON pr.id = auth_summary.payment_request_id
-            
-            WHERE 
+
+            WHERE
                 pr.status = ?
                 AND (
                     (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
                     OR
-                    (? = 67 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    (? = 70 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_contabilidad, 0) = 0)
                     OR
-                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
+                    (? = 67 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
+                    OR
+                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
                 )
         ";
 
             $params = [
                 self::STATUS_PENDING,
+                $permissionNumber,
                 $permissionNumber,
                 $permissionNumber,
                 $permissionNumber
