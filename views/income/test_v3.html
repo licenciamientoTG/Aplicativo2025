@@ -70,6 +70,8 @@
     .diff-tag { font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:12px;margin-right:8px;font-family:'Consolas',monospace;border:1px solid transparent; }
     .diff-tag.ok   { background:#d1e7dd;color:#0f5132;border-color:#badbcc; }
     .diff-tag.warn { background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe; }
+    .diff-tag.pos  { background:#cfe2ff;color:#084298;border-color:#b6d4fe; } /* Azul para positivo */
+    .diff-tag.neg  { background:#f8d7da;color:#842029;border-color:#f5c2c7; } /* Rojo para negativo */
 
     /* AGRUPACIÓN POR DÍA — igual que V2 */
     .tx-group-header {
@@ -928,7 +930,9 @@ function renderCG() {
                         const difVal = parseFloat(hRec.diferencia);
                         const ok = Math.abs(difVal) < 0.01;
                         statusClass += ' ' + (ok ? 'row-concil-ok' : 'row-concil-diff');
-                        difTag    = `<span class="diff-tag ${ok?'ok':'warn'}">${fmt.format(difVal)}</span>`;
+                        
+                        let colorClass = ok ? 'ok' : (difVal > 0 ? 'pos' : 'neg');
+                        difTag    = `<span class="diff-tag ${colorClass}">${fmt.format(difVal)}</span>`;
                         unlinkBtn = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
                     } else {
                         statusClass += ' row-concil-ok';
