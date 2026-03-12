@@ -170,6 +170,8 @@
     }
     .diff-tag.ok { background-color: #d1e7dd; color: #0f5132; border-color: #badbcc; }
     .diff-tag.warn { background-color: #f8d7da; color: #842029; border-color: #f5c2c7; }
+    .diff-tag.pos { background-color: #cfe2ff; color: #084298; border-color: #b6d4fe; } /* Azul para positivo */
+    .diff-tag.neg { background-color: #f8d7da; color: #842029; border-color: #f5c2c7; } /* Rojo para negativo */
 
     .font-numeric { font-family: 'Consolas', monospace; font-weight: 700; }
 
@@ -1801,13 +1803,18 @@
             buttonsHtml += `<button class="btn-action-mini btn-action-unlink" onclick="desconciliarItem(${coincidencia.id})" title="Desligar / Deshacer este item"><i class="fas fa-unlink"></i></button>`;
             buttonsHtml += `<button class="btn-action-mini btn-action-delete-group ml-1" onclick="eliminarGrupo(${coincidencia.grupo_id})" title="Deshacer TODO el Grupo"><i class="fas fa-trash-alt"></i></button>`;
 
-            // MOSTRAR DIFERENCIA DE GRUPO (SÓLO SI ES LA COLUMNA DE TRANSACCIONES)
-            if(side === 'center') {
+            // MOSTRAR DIFERENCIA DE GRUPO (PARA TRANSACCIONES Y TESORERÍA)
+            if(side === 'center' || side === 'right') {
                 const stats = mapaDiferencias[coincidencia.grupo_id];
                 if(stats) {
                     let diff = stats.real_diff; 
                     const isOk = Math.abs(diff) < 0.01; 
-                    const claseTag = isOk ? 'ok' : 'warn';
+                    
+                    let claseTag = 'ok';
+                    if (!isOk) {
+                        claseTag = diff > 0 ? 'pos' : 'neg';
+                    }
+
                     let textoTag = isOk ? 'OK' : 'Dif: ' + formatter.format(diff);
                     let iconDiff = isOk ? '<i class="fas fa-check-circle mr-1"></i>' : '<i class="fas fa-exclamation-triangle mr-1"></i>';
                     diffTagHtml = `<span class="diff-tag ${claseTag}" title="Diferencia de Grupo">${iconDiff}${textoTag}</span>`;

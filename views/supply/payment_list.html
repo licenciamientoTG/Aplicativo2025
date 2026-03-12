@@ -212,7 +212,7 @@ function resetTestData() {
         <div class="card-body">
             <div class="row g-3">
                 <!-- Botón Abastos -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-primary h-100" id="card-abastos">
                         <div class="card-body text-center">
                             <i class="fas fa-truck fa-2x text-primary mb-2"></i>
@@ -230,13 +230,32 @@ function resetTestData() {
                     </div>
                 </div>
 
+                <!-- Botón Contabilidad -->
+                <div class="col-md-3">
+                    <div class="card border-primary h-100" id="card-contabilidad">
+                        <div class="card-body text-center">
+                            <i class="fas fa-calculator fa-2x text-primary mb-2"></i>
+                            <h6>Contabilidad</h6>
+                            <p class="text-muted small mb-2">Nivel 2</p>
+                            <div class="mb-3">
+                                <span class="badge bg-warning text-dark fs-6" id="count-contabilidad">0</span>
+                                <small class="d-block text-muted">pendientes</small>
+                            </div>
+                            <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(70, 'Contabilidad')"
+                                id="btn-aprobar-contabilidad" disabled>
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 2
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Botón Administración y Finanzas -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-success h-100" id="card-admin">
                         <div class="card-body text-center">
-                            <i class="fas fa-calculator fa-2x text-success mb-2"></i>
+                            <i class="fas fa-building fa-2x text-success mb-2"></i>
                             <h6>Administración y Finanzas</h6>
-                            <p class="text-muted small mb-2">Nivel 2</p>
+                            <p class="text-muted small mb-2">Nivel 3</p>
                             <div class="mb-3">
                                 <span class="badge bg-warning text-dark fs-6" id="count-admin">0</span>
                                 <small class="d-block text-muted">pendientes</small>
@@ -244,26 +263,26 @@ function resetTestData() {
                             <button class="btn btn-success btn-sm w-100"
                                 onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin"
                                 disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 2
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 3
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Botón Tesorería -->
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card border-info h-100" id="card-tesoreria">
                         <div class="card-body text-center">
                             <i class="fas fa-money-check-alt fa-2x text-info mb-2"></i>
                             <h6>Tesorería</h6>
-                            <p class="text-muted small mb-2">Nivel 3</p>
+                            <p class="text-muted small mb-2">Nivel 4</p>
                             <div class="mb-3">
                                 <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
                                 <small class="d-block text-muted">pendientes</small>
                             </div>
                             <button class="btn btn-info btn-sm w-100 mb-2" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
                                 id="btn-aprobar-tesoreria" disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 3
+                                <i class="fas fa-check-double"></i> Aprobar Nivel 4
                             </button>
                             <button class="btn btn-outline-info btn-sm w-100" onclick="abrirModalAutorizarPagoMasivo()">
                                 <i class="fas fa-money-check-alt"></i> Autorizar Pago Facturas
@@ -1063,6 +1082,7 @@ function resetTestData() {
                 if (response.success) {
                     // Actualizar contadores
                     $('#count-abastos').text(response.abastos || 0);
+                    $('#count-contabilidad').text(response.contabilidad || 0);
                     $('#count-admin').text(response.admin || 0);
                     $('#count-tesoreria').text(response.tesoreria || 0);
 
@@ -1075,6 +1095,14 @@ function resetTestData() {
                         $('#card-abastos').removeClass('opacity-50');
                     } else {
                         $('#card-abastos').addClass('opacity-50');
+                    }
+
+                    // Contabilidad (70)
+                    if (userPermissions.includes(70)) {
+                        $('#btn-aprobar-contabilidad').prop('disabled', response.contabilidad === 0);
+                        $('#card-contabilidad').removeClass('opacity-50');
+                    } else {
+                        $('#card-contabilidad').addClass('opacity-50');
                     }
 
                     // Admin (67)
@@ -1290,19 +1318,25 @@ function resetTestData() {
         const badges = [];
 
         if (pago.auth_abastos == 1) {
-            badges.push('<i class="fas fa-check text-success" title="Abastos"></i>');
+            badges.push('<i class="fas fa-check text-success" title="Abastos ✓"></i>');
         } else {
             badges.push('<i class="fas fa-circle text-muted" title="Abastos pendiente"></i>');
         }
 
+        if (pago.auth_contabilidad == 1) {
+            badges.push('<i class="fas fa-check text-success" title="Contabilidad ✓"></i>');
+        } else {
+            badges.push('<i class="fas fa-circle text-muted" title="Contabilidad pendiente"></i>');
+        }
+
         if (pago.auth_admin == 1) {
-            badges.push('<i class="fas fa-check text-success" title="Admin"></i>');
+            badges.push('<i class="fas fa-check text-success" title="Admin ✓"></i>');
         } else {
             badges.push('<i class="fas fa-circle text-muted" title="Admin pendiente"></i>');
         }
 
         if (pago.auth_tesoreria == 1) {
-            badges.push('<i class="fas fa-check text-success" title="Tesorería"></i>');
+            badges.push('<i class="fas fa-check text-success" title="Tesorería ✓"></i>');
         } else {
             badges.push('<i class="fas fa-circle text-muted" title="Tesorería pendiente"></i>');
         }

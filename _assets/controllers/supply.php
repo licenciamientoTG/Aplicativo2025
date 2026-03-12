@@ -1610,6 +1610,12 @@ class Supply
                     'EmisorNombre'        => $row['EmisorNombre'] ?? '',
                     'RutaArchivo'         => $row['RutaArchivo'] ?? '',
                     'NombreArchivo'       => $row['NombreArchivo'] ?? '',
+                    // Campos corpo (SG12)
+                    'nro_corp'          => $row['nro_corp'] ?? null,
+                    'satuid_corp'       => $row['satuid_corp'] ?? null,
+                    'uuid_corp'         => $row['uuid_corp'] ?? null,
+                    'Factura_corpo'     => $row['Factura_corpo'] ?? null,
+                    'proveedor_corpo'   => $row['proveedor_corpo'] ?? null,
                 ];
             }
         }
@@ -3199,12 +3205,15 @@ class Supply
                 $statusBadge = $this->getStatusBadge($row['status']);
                 $authIndicator = $this->buildAuthorizationIndicator(
                     $row['auth_abastos'],
+                    $row['auth_contabilidad'],
                     $row['auth_admin'],
                     $row['auth_tesoreria'],
                     $row['auth_abastos_user'],
+                    $row['auth_contabilidad_user'],
                     $row['auth_admin_user'],
                     $row['auth_tesoreria_user'],
                     $row['auth_abastos_date'],
+                    $row['auth_contabilidad_date'],
                     $row['auth_admin_date'],
                     $row['auth_tesoreria_date']
                 );
@@ -3274,12 +3283,15 @@ class Supply
                 $statusBadge = $this->getStatusBadge($row['status']);
                 $authIndicator = $this->buildAuthorizationIndicator(
                     $row['auth_abastos'],
+                    $row['auth_contabilidad'],
                     $row['auth_admin'],
                     $row['auth_tesoreria'],
                     $row['auth_abastos_user'],
+                    $row['auth_contabilidad_user'],
                     $row['auth_admin_user'],
                     $row['auth_tesoreria_user'],
                     $row['auth_abastos_date'],
+                    $row['auth_contabilidad_date'],
                     $row['auth_admin_date'],
                     $row['auth_tesoreria_date']
                 );
@@ -3328,12 +3340,15 @@ class Supply
     }
     private function buildAuthorizationIndicator(
         $abastos,
+        $contabilidad,
         $admin,
         $tesoreria,
         $abastos_user,
+        $contabilidad_user,
         $admin_user,
         $tesoreria_user,
         $abastos_date,
+        $contabilidad_date,
         $admin_date,
         $tesoreria_date
     ) {
@@ -3344,64 +3359,73 @@ class Supply
         $nextLevel = null;
         if (!$abastos) {
             $nextLevel = 1;
-        } elseif (!$admin) {
+        } elseif (!$contabilidad) {
             $nextLevel = 2;
-        } elseif (!$tesoreria) {
+        } elseif (!$admin) {
             $nextLevel = 3;
+        } elseif (!$tesoreria) {
+            $nextLevel = 4;
         }
 
         // NIVEL 1 - ABASTOS
         if ($abastos) {
-            // Autorizado
             $tooltip = "Abastos ✓\n" . ($abastos_user ?: 'N/A') . "\n" . ($abastos_date ? date('d/m/Y H:i', strtotime($abastos_date)) : '');
             $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
                         <i class="fas fa-check text-white"></i>
                     </div>';
         } elseif ($nextLevel === 1) {
-            // Esperando autorización
             $html .= '<div class="auth-box bg-warning" title="Esperando: Abastos" data-bs-toggle="tooltip">
                         <i class="fas fa-clock text-white"></i>
                     </div>';
         } else {
-            // Bloqueado
             $html .= '<div class="auth-box bg-secondary" title="Pendiente: Abastos" data-bs-toggle="tooltip">
                         <i class="fas fa-lock text-white"></i>
                     </div>';
         }
 
-        // NIVEL 2 - ADMIN Y FINANZAS
-        if ($admin) {
-            // Autorizado
-            $tooltip = "Admin y Finanzas ✓\n" . ($admin_user ?: 'N/A') . "\n" . ($admin_date ? date('d/m/Y H:i', strtotime($admin_date)) : '');
+        // NIVEL 2 - CONTABILIDAD
+        if ($contabilidad) {
+            $tooltip = "Contabilidad ✓\n" . ($contabilidad_user ?: 'N/A') . "\n" . ($contabilidad_date ? date('d/m/Y H:i', strtotime($contabilidad_date)) : '');
             $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
                         <i class="fas fa-check text-white"></i>
                     </div>';
         } elseif ($nextLevel === 2) {
-            // Esperando autorización
+            $html .= '<div class="auth-box bg-warning" title="Esperando: Contabilidad" data-bs-toggle="tooltip">
+                        <i class="fas fa-clock text-white"></i>
+                    </div>';
+        } else {
+            $html .= '<div class="auth-box bg-secondary" title="Pendiente: Contabilidad" data-bs-toggle="tooltip">
+                        <i class="fas fa-lock text-white"></i>
+                    </div>';
+        }
+
+        // NIVEL 3 - ADMIN Y FINANZAS
+        if ($admin) {
+            $tooltip = "Admin y Finanzas ✓\n" . ($admin_user ?: 'N/A') . "\n" . ($admin_date ? date('d/m/Y H:i', strtotime($admin_date)) : '');
+            $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
+                        <i class="fas fa-check text-white"></i>
+                    </div>';
+        } elseif ($nextLevel === 3) {
             $html .= '<div class="auth-box bg-warning" title="Esperando: Admin y Finanzas" data-bs-toggle="tooltip">
                         <i class="fas fa-clock text-white"></i>
                     </div>';
         } else {
-            // Bloqueado
             $html .= '<div class="auth-box bg-secondary" title="Pendiente: Admin y Finanzas" data-bs-toggle="tooltip">
                         <i class="fas fa-lock text-white"></i>
                     </div>';
         }
 
-        // NIVEL 3 - TESORERÍA
+        // NIVEL 4 - TESORERÍA
         if ($tesoreria) {
-            // Autorizado
             $tooltip = "Tesorería ✓\n" . ($tesoreria_user ?: 'N/A') . "\n" . ($tesoreria_date ? date('d/m/Y H:i', strtotime($tesoreria_date)) : '');
             $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
                         <i class="fas fa-check text-white"></i>
                     </div>';
-        } elseif ($nextLevel === 3) {
-            // Esperando autorización
+        } elseif ($nextLevel === 4) {
             $html .= '<div class="auth-box bg-info" title="Esperando: Tesorería" data-bs-toggle="tooltip">
                         <i class="fas fa-clock text-white"></i>
                     </div>';
         } else {
-            // Bloqueado
             $html .= '<div class="auth-box bg-secondary" title="Pendiente: Tesorería" data-bs-toggle="tooltip">
                         <i class="fas fa-lock text-white"></i>
                     </div>';
@@ -3507,14 +3531,17 @@ class Supply
         $notes_totals      = $this->CreditNoteApplicationsModel->getTotalsByPayment($payment_id);
         // Crear array con información de cada autorización
         $auth_info = [
-            'abastos' => null,
-            'admin_finanzas' => null,
-            'tesoreria' => null
+            'abastos'       => null,
+            'contabilidad'  => null,
+            'admin_finanzas'=> null,
+            'tesoreria'     => null
         ];
         if ($authorizations) {
             foreach ($authorizations as $auth) {
                 if ($auth['permission_number'] == 66) {
                     $auth_info['abastos'] = $auth;
+                } elseif ($auth['permission_number'] == 70) {
+                    $auth_info['contabilidad'] = $auth;
                 } elseif ($auth['permission_number'] == 67) {
                     $auth_info['admin_finanzas'] = $auth;
                 } elseif ($auth['permission_number'] == 68) {
@@ -4167,6 +4194,7 @@ class Supply
                 // Aún faltan autorizaciones
                 $department_name = match ($next_level) {
                     66 => 'Abastos',
+                    70 => 'Contabilidad',
                     67 => 'Administración y Finanzas',
                     68 => 'Tesorería',
                     default => 'Desconocido'
@@ -4192,6 +4220,7 @@ class Supply
     {
         return match ($permission_number) {
             66 => 'Abastos',
+            70 => 'Contabilidad',
             67 => 'Administración y Finanzas',
             68 => 'Tesorería',
             default => 'Desconocido'
@@ -4948,9 +4977,10 @@ class Supply
             'authorizations' => $authorizations,
             'authorization_status' => $auth_status,
             'auth_info' => [
-                'abastos' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 66),
-                'admin_finanzas' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 67),
-                'tesoreria' => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 68)
+                'abastos'       => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 66),
+                'contabilidad'  => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 70),
+                'admin_finanzas'=> $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 67),
+                'tesoreria'     => $this->PaymentRequestsModel->getAuthorizationInfo($anticipo_id, 68)
             ]
         ]);
         // } catch (Exception $e) {
@@ -5008,16 +5038,10 @@ class Supply
     private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         try {
-            // Obtener correos de usuarios con permiso de Abastos (66)
-            $emails = $this->UsuariosModel->get_emails_by_permission(66);
-
-            if (empty($emails)) {
-                error_log("No hay usuarios con permiso de Abastos para notificar");
-                return;
-            }
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
+            // ============================================================
+            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
+            // ============================================================
+            $emails = ['alejandro.martinez@totalgas.com'];
 
             // Crear el cuerpo del correo
             $subject = "Nuevo Pago Creado - ID #{$payment_id}";
@@ -5490,26 +5514,10 @@ class Supply
     private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission, $user_id)
     {
         try {
-            // Obtener correos del siguiente nivel
-            $emails = $this->UsuariosModel->get_emails_by_permission($next_level_permission);
-            if (empty($emails)) {
-                error_log("No hay usuarios con permiso {$next_level_permission} para notificar");
-                return;
-            }
-
             // ============================================================
-            // 🚧 BLOQUE TEMPORAL PARA PRUEBAS - REMOVER AL TERMINAR 🚧
+            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
             // ============================================================
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
-
-            $emails = array_values($emails);
-            if (empty($emails)) {
-                error_log("⚠️ No hay correos disponibles después del filtro de pruebas");
-                return;
-            }
-            // ============================================================
+            $emails = ['alejandro.martinez@totalgas.com'];
             // Obtener información del pago
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
@@ -5524,6 +5532,7 @@ class Supply
             // Obtener nombre del siguiente nivel
             $next_department = match ($next_level_permission) {
                 66 => 'Abastos',
+                70 => 'Contabilidad',
                 67 => 'Administración y Finanzas',
                 68 => 'Tesorería',
                 default => 'Desconocido'
@@ -6374,14 +6383,16 @@ class Supply
             }
 
             // Obtener contadores para cada nivel
-            $countAbastos = $this->PaymentRequestsModel->getPendingAuthorizationCount(66);
-            $countAdmin = $this->PaymentRequestsModel->getPendingAuthorizationCount(67);
-            $countTesoreria = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
+            $countAbastos     = $this->PaymentRequestsModel->getPendingAuthorizationCount(66);
+            $countContabilidad = $this->PaymentRequestsModel->getPendingAuthorizationCount(70);
+            $countAdmin       = $this->PaymentRequestsModel->getPendingAuthorizationCount(67);
+            $countTesoreria   = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
             echo json_encode([
-                'success' => true,
-                'abastos' => $countAbastos,
-                'admin' => $countAdmin,
-                'tesoreria' => $countTesoreria,
+                'success'          => true,
+                'abastos'          => $countAbastos,
+                'contabilidad'     => $countContabilidad,
+                'admin'            => $countAdmin,
+                'tesoreria'        => $countTesoreria,
                 'user_permissions' => $userPermissions
             ]);
         } catch (Exception $e) {
@@ -6402,7 +6413,7 @@ class Supply
             // Obtener el nivel solicitado desde la petición
             $permissionNumber = isset($_GET['permission']) ? intval($_GET['permission']) : null;
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 67, 68])) {
+            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
@@ -6458,7 +6469,7 @@ class Supply
                 return;
             }
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 67, 68])) {
+            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
@@ -6551,6 +6562,7 @@ class Supply
     {
         $permisos = [
             66 => 'Abastos',
+            70 => 'Contabilidad',
             67 => 'Administración y Finanzas',
             68 => 'Tesorería'
         ];
@@ -6806,7 +6818,7 @@ class Supply
             $params = [$userId];
 
             // Filtrar por nivel si se especifica
-            if ($permissionNumber && in_array($permissionNumber, [66, 67, 68])) {
+            if ($permissionNumber && in_array($permissionNumber, [66, 70, 67, 68])) {
                 $whereClause .= " AND ba.authorization_level = ?";
                 $params[] = $permissionNumber;
             }
@@ -6815,8 +6827,9 @@ class Supply
             SELECT 
                 ba.*,
                 u.Nombre as user_name,
-                CASE 
+                CASE
                     WHEN ba.authorization_level = 66 THEN 'Abastos'
+                    WHEN ba.authorization_level = 70 THEN 'Contabilidad'
                     WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
                     WHEN ba.authorization_level = 68 THEN 'Tesorería'
                     ELSE 'Desconocido'

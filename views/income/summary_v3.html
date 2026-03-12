@@ -1,0 +1,742 @@
+{% extends "views/layouts/base.html" %}
+
+{% block title %}Dashboard V3 — CG vs Tesorería{% endblock %}
+{% block menutitle %}Dashboard Conciliación V3{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --dash-bg: #f4f7f6;
+        --card-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        --primary-gradient: linear-gradient(135deg, #3485a8 0%, #2c3e50 100%);
+        --tes-color: #1a7a4a;
+        --tes-soft: #e8f8f0;
+    }
+
+    .dashboard-container { background-color: var(--dash-bg); min-height: 100vh; padding-bottom: 50px; }
+
+    /* HEADER V3 BADGE */
+    .v3-badge {
+        background: linear-gradient(135deg, #1a7a4a 0%, #2ecc71 100%);
+        color: white; font-size: 0.65rem; font-weight: 800;
+        padding: 2px 8px; border-radius: 20px; letter-spacing: 1px;
+        vertical-align: middle; margin-left: 6px;
+    }
+
+    /* FILTROS */
+    .sticky-filter {
+        position: sticky; top: 0; z-index: 1000; background: rgba(255,255,255,0.95);
+        backdrop-filter: blur(10px); padding: 15px 0; border-bottom: 1px solid #e9ecef;
+        margin-bottom: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .filter-pill { border-radius: 50px; border: 1px solid #dee2e6; padding: 0.4rem 1rem; font-weight: 600; }
+
+    /* CARDS */
+    .metric-card {
+        border: none; border-radius: 15px; box-shadow: var(--card-shadow);
+        transition: transform 0.2s; background: white; height: 100%;
+    }
+    .metric-card:hover { transform: translateY(-5px); }
+    .metric-value { font-family: 'Consolas', monospace; font-size: 1.8rem; font-weight: 800; }
+    .metric-label { font-size: 0.75rem; font-weight: 700; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; }
+    .icon-box { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
+
+    /* CHARTS */
+    .chart-container { position: relative; height: 300px; width: 100%; }
+    .chart-card { border-radius: 15px; border: none; box-shadow: var(--card-shadow); margin-bottom: 20px; }
+
+    /* TABLES */
+    .table-card { border-radius: 15px; border: none; box-shadow: var(--card-shadow); overflow: hidden; }
+    .table thead th { background-color: #f8f9fa; border-top: none; font-weight: 700; color: #495057; }
+    .val-numeric { font-family: 'Consolas', monospace; font-weight: 600; }
+
+    /* TABS */
+    .nav-pills-custom .nav-link {
+        border-radius: 10px; color: #6c757d; font-weight: 600; padding: 10px 20px;
+        transition: all 0.3s; margin-right: 10px; border: 1px solid transparent;
+    }
+    .nav-pills-custom .nav-link.active {
+        background-color: white; color: #1a7a4a; border-color: #1a7a4a;
+        box-shadow: 0 2px 5px rgba(26, 122, 74, 0.2);
+    }
+
+    /* UTILS */
+    .bg-soft-primary { background-color: #eef2f7; color: #3485a8; }
+    .bg-soft-success { background-color: var(--tes-soft); color: var(--tes-color); }
+    .bg-soft-danger  { background-color: #fdf2f2; color: #e74c3c; }
+    .bg-soft-warning { background-color: #fff9e6; color: #f39c12; }
+    .bg-soft-info    { background-color: #e8f4fd; color: #2980b9; }
+
+    /* CIERRE BADGE */
+    .mes-badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; }
+    .mes-badge.cerrado { background: #d4edda; color: #155724; }
+
+    /* TRANSITO ROW AGING */
+    .aging-0  { border-left: 4px solid #2ecc71; }
+    .aging-30 { border-left: 4px solid #f39c12; }
+    .aging-60 { border-left: 4px solid #e74c3c; }
+</style>
+
+<div class="dashboard-container">
+
+    <!-- HEADER & FILTROS STICKY -->
+    <div class="sticky-filter">
+        <div class="container-fluid px-4">
+            <div class="row align-items-center">
+                <div class="col-lg-4 d-flex align-items-center gap-3">
+                    <div class="d-flex align-items-center">
+                        <span class="font-weight-bold text-dark">Conciliación</span>
+                        <span class="v3-badge">V3</span>
+                    </div>
+                    <div class="btn-group btn-group-toggle shadow-sm rounded-pill overflow-hidden" data-toggle="buttons">
+                        <button class="btn btn-light btn-sm px-3 active btn-rs" onclick="setRS('DIAZ GAS', this)">DIAZ</button>
+                        <button class="btn btn-light btn-sm px-3 btn-rs" onclick="setRS('GASOMEX', this)">GASO</button>
+                        <button class="btn btn-light btn-sm px-3 btn-rs" onclick="setRS('FORANEAS', this)">FORA</button>
+                    </div>
+                    <div class="d-flex gap-1">
+                        <select id="yearFilter" class="form-select form-select-sm filter-pill" style="width: 90px;"></select>
+                        <select id="monthFilter" class="form-select form-select-sm filter-pill" style="width: 110px;"></select>
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <select id="estacionSelect" class="form-select form-select-sm filter-pill" onchange="alCambiarEstacion()">
+                                <option value="0">Todas las Estaciones</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select id="bancoSelect" class="form-select form-select-sm filter-pill" onchange="alCambiarBanco()">
+                                <option value="0">Todos los Bancos</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <select id="afiliacionSelect" class="form-select form-select-sm filter-pill">
+                                <option value="">Afiliación</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-3 text-end">
+                    <button class="btn btn-primary rounded-pill px-4 shadow-sm" onclick="loadDashboard()">
+                        <i class="fas fa-sync-alt mr-1"></i> Actualizar
+                    </button>
+                    <a href="/income/test_v3" class="btn btn-outline-success rounded-pill px-3 ml-2 shadow-sm">
+                        <i class="fas fa-balance-scale mr-1"></i> Conciliar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid px-4">
+
+        <!-- ROW 1: KPI CARDS -->
+        <div class="row mb-4">
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card metric-card">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="icon-box bg-soft-primary mr-3"><i class="fas fa-desktop"></i></div>
+                        <div>
+                            <div class="metric-label">Sistema (CG)</div>
+                            <div class="metric-value" id="val-sistema">$0.00</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card metric-card">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="icon-box bg-soft-success mr-3"><i class="fas fa-university"></i></div>
+                        <div>
+                            <div class="metric-label">Tesorería (Depósitos)</div>
+                            <div class="metric-value" id="val-tesoreria" style="color:var(--tes-color);">$0.00</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card metric-card">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="icon-box bg-soft-danger mr-3" id="icon-diff"><i class="fas fa-balance-scale-right"></i></div>
+                        <div>
+                            <div class="metric-label">Diferencia Neta</div>
+                            <div class="metric-value" id="val-diferencia">$0.00</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card metric-card">
+                    <div class="card-body d-flex align-items-center">
+                        <div class="icon-box bg-soft-warning mr-3"><i class="fas fa-check-double"></i></div>
+                        <div>
+                            <div class="metric-label">Grupos Conciliados</div>
+                            <div class="metric-value" id="val-count">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 2: CHARTS -->
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="card chart-card">
+                    <div class="card-header bg-white border-0 py-3 d-flex justify-content-between">
+                        <h6 class="mb-0 font-weight-bold">Tendencia Diaria: Sistema vs Tesorería</h6>
+                        <small class="text-muted">Montos por fecha operativa</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container"><canvas id="trendChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3">
+                <div class="card chart-card">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h6 class="mb-0 font-weight-bold">Diferencias por Estación</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container"><canvas id="stationChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3">
+                <div class="card chart-card">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h6 class="mb-0 font-weight-bold">Diferencias por Banco</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container"><canvas id="bankChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ROW 3: TABS -->
+        <div class="card table-card">
+            <div class="card-header bg-white border-0 p-3">
+                <ul class="nav nav-pills nav-pills-custom" id="pills-tab" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" data-toggle="pill" href="#pills-days" role="tab">
+                            <i class="fas fa-calendar-day mr-2"></i> Por Día
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="pill" href="#pills-stations" role="tab">
+                            <i class="fas fa-gas-pump mr-2"></i> Por Estación
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="pill" href="#pills-banks" role="tab">
+                            <i class="fas fa-university mr-2"></i> Por Banco
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" data-toggle="pill" href="#pills-transit" role="tab">
+                            <i class="fas fa-shipping-fast mr-2"></i> Tránsitos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="tab-cierres" data-toggle="pill" href="#pills-cierres" role="tab" onclick="loadCierresMes()">
+                            <i class="fas fa-lock mr-2"></i> Cierres de Mes
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body p-0">
+                <div class="tab-content" id="pills-tabContent">
+
+                    <!-- TAB: DÍAS -->
+                    <div class="tab-pane fade show active" id="pills-days" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="table-days">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-4">Fecha Operativa</th>
+                                        <th class="text-center">Grupos</th>
+                                        <th class="text-right">Sistema (CG)</th>
+                                        <th class="text-right">Tesorería</th>
+                                        <th class="text-right pe-4">Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TAB: ESTACIONES -->
+                    <div class="tab-pane fade" id="pills-stations" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="table-stations">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-4">Estación</th>
+                                        <th class="text-right">Sistema (CG)</th>
+                                        <th class="text-right">Tesorería</th>
+                                        <th class="text-right pe-4">Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TAB: BANCOS -->
+                    <div class="tab-pane fade" id="pills-banks" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0" id="table-banks">
+                                <thead>
+                                    <tr>
+                                        <th class="ps-4">Banco</th>
+                                        <th>Afiliación</th>
+                                        <th class="text-right">Sistema (CG)</th>
+                                        <th class="text-right">Tesorería</th>
+                                        <th class="text-right pe-4">Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TAB: TRÁNSITOS -->
+                    <div class="tab-pane fade" id="pills-transit" role="tabpanel">
+                        <div class="p-4">
+                            <div class="row mb-4">
+                                <div class="col-md-5">
+                                    <div class="p-3 border rounded-lg bg-light">
+                                        <h6 class="font-weight-bold mb-2"><i class="fas fa-info-circle mr-2 text-primary"></i>Aging de Tránsitos V3</h6>
+                                        <p class="small text-muted mb-0">Partidas enviadas a tránsito en cierres de mes anteriores. Montos de CG aún no depositados en Tesorería.</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <table class="table table-bordered table-sm" id="table-aging">
+                                        <thead class="bg-light">
+                                            <tr><th>Antigüedad</th><th class="text-center">Casos</th><th class="text-right">Monto</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="aging-0"  id="aging-1"><td><span class="badge badge-success px-3">0-30 días</span></td><td class="text-center c">0</td><td class="text-right m">$0.00</td></tr>
+                                            <tr class="aging-30" id="aging-2"><td><span class="badge badge-warning px-3 text-dark">31-60 días</span></td><td class="text-center c">0</td><td class="text-right m">$0.00</td></tr>
+                                            <tr class="aging-60" id="aging-3"><td><span class="badge badge-danger px-3">Crítico (&gt;60 d)</span></td><td class="text-center c">0</td><td class="text-right m">$0.00</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-3 text-right">
+                                    <div class="p-3 border rounded-lg text-center">
+                                        <div class="small text-muted mb-1">Total en Tránsito</div>
+                                        <div class="font-weight-bold text-danger" id="transit-total" style="font-size:1.3rem; font-family:Consolas;">$0.00</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover table-sm" id="table-transitos">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th>Mes Origen</th>
+                                            <th>Fecha CG</th>
+                                            <th>Banco</th>
+                                            <th>Concepto</th>
+                                            <th class="text-right">Monto Pendiente</th>
+                                            <th class="text-center">Días</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-transitos">
+                                        <tr><td colspan="6" class="text-center py-4 text-muted">Selecciona una estación para ver tránsitos</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: CIERRES DE MES -->
+                    <div class="tab-pane fade" id="pills-cierres" role="tabpanel">
+                        <div class="p-4">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="font-weight-bold mb-0">
+                                    <i class="fas fa-calendar-check mr-2 text-success"></i>Historial de Cierres de Mes
+                                </h6>
+                                <small class="text-muted">Requiere seleccionar una estación</small>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle" id="table-cierres">
+                                    <thead>
+                                        <tr>
+                                            <th>Mes</th>
+                                            <th>Banco</th>
+                                            <th>Afiliación</th>
+                                            <th class="text-right">Total CG</th>
+                                            <th class="text-right">Total Depositado</th>
+                                            <th class="text-right">Total Tránsito</th>
+                                            <th class="text-right">Diferencia</th>
+                                            <th class="text-center">Estado</th>
+                                            <th>Fecha Cierre</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-cierres">
+                                        <tr><td colspan="9" class="text-center py-5 text-muted">Selecciona una estación</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block myjs %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+    const fmt = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+    let todasLasEstaciones = [];
+    let stationConfig = [];
+    let trendChart = null, stationChart = null, bankChart = null;
+    let cierresLoaded = false;
+
+    const RS_MAPPING = { 'DGA930823KD3': 'DIAZ GAS', 'DGM880621FU5': 'GASOMEX', 'FORANEAS': 'FORANEAS' };
+    const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+    $(document).ready(function() {
+        initDateFilters();
+        cargarEstaciones();
+        setTimeout(loadDashboard, 500);
+
+        // Reload cierres if tab opened after a filter change
+        $('a[href="#pills-cierres"]').on('shown.bs.tab', function() {
+            loadCierresMes();
+        });
+    });
+
+    function initDateFilters() {
+        const now = new Date();
+        const curYear = now.getFullYear();
+        const curMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+
+        for(let i = curYear; i >= 2024; i--) $('#yearFilter').append(`<option value="${i}">${i}</option>`);
+        MESES.forEach((n, i) => $('#monthFilter').append(`<option value="${(i+1).toString().padStart(2,'0')}">${n}</option>`));
+
+        $('#yearFilter').val(curYear);
+        $('#monthFilter').val(curMonth);
+    }
+
+    // ── FILTROS ──────────────────────────────────────────────────────────────
+    let currentRS = 'DIAZ GAS';
+    function setRS(rs, btn) {
+        $('.btn-rs').removeClass('active btn-primary').addClass('btn-light');
+        $(btn).addClass('active btn-primary').removeClass('btn-light');
+        currentRS = rs;
+        filtrarEstaciones();
+    }
+
+    function cargarEstaciones() {
+        $.get('/income/get_estaciones_catalogo', function(r) {
+            if(r.status === 'success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); }
+        });
+    }
+
+    function filtrarEstaciones() {
+        const $s = $('#estacionSelect').empty().append('<option value="0">Todas las Estaciones</option>');
+        todasLasEstaciones.forEach(e => {
+            if((RS_MAPPING[e.RFC] || 'FORANEAS') === currentRS)
+                $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
+        });
+        alCambiarEstacion();
+    }
+
+    async function alCambiarEstacion() {
+        $('#bancoSelect').empty().append('<option value="0">Todos los Bancos</option>');
+        $('#afiliacionSelect').empty().append('<option value="">Afiliación</option>');
+        cierresLoaded = false;
+        const id = $('#estacionSelect').val();
+        if(id == "0") return;
+        try {
+            const res  = await fetch(`/income/get_conciliacion_config?estacion_id=${id}`);
+            const json = await res.json();
+            if(json.status === 'success') { stationConfig = json.data || []; llenarBancos(); }
+        } catch(e) { console.error(e); }
+    }
+
+    function llenarBancos() {
+        const $sel = $('#bancoSelect').empty().append('<option value="0">Todos los Bancos</option>');
+        const unicos = new Map();
+        stationConfig.forEach(item => {
+            if(!unicos.has(item.entidad_id)) unicos.set(item.entidad_id, item.nombre_banco || 'Banco ' + item.entidad_id);
+        });
+        unicos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
+    }
+
+    function alCambiarBanco() {
+        const eid = $('#bancoSelect').val();
+        const $asel = $('#afiliacionSelect').empty().append('<option value="">Todas</option>');
+        if(eid == "0") return;
+        const unicos = new Set();
+        stationConfig.filter(r => r.entidad_id == eid).forEach(c => {
+            const parts = String(c.afiliacion).split(/[,\/\-]/).map(p => p.trim());
+            parts.forEach(p => { if(p && !unicos.has(p)) { unicos.add(p); $asel.append(`<option value="${p}">${p}</option>`); } });
+            if(parts.length > 1 && !unicos.has(c.afiliacion)) {
+                unicos.add(c.afiliacion);
+                $asel.append(`<option value="${c.afiliacion}">${c.afiliacion}</option>`);
+            }
+        });
+    }
+
+    // ── CARGA PRINCIPAL ───────────────────────────────────────────────────────
+    function loadDashboard() {
+        const params = {
+            year:        $('#yearFilter').val(),
+            month:       $('#monthFilter').val(),
+            estacion_id: $('#estacionSelect').val(),
+            banco_id:    $('#bancoSelect').val(),
+            afiliacion:  $('#afiliacionSelect').val()
+        };
+
+        $('.metric-value').text('...');
+        cierresLoaded = false;
+
+        $.get('/income/get_summary_v3', params, function(resp) {
+            if(resp.status === 'success') {
+                renderKPIs(resp.totales);
+                renderTrendChart(resp.dias);
+                renderStationChart(resp.estaciones);
+                renderBankChart(resp.bancos);
+                renderTableDias(resp.dias);
+                renderTableStations(resp.estaciones);
+                renderTableBanks(resp.bancos);
+                loadTransitAging();
+            } else {
+                console.error('get_summary_v3 error:', resp.message);
+            }
+        });
+    }
+
+    // ── KPIs ─────────────────────────────────────────────────────────────────
+    function renderKPIs(t) {
+        if(!t) return;
+        $('#val-sistema').text(fmt.format(t.total_sistema));
+        $('#val-tesoreria').text(fmt.format(t.total_tesoreria));
+        $('#val-diferencia').text(fmt.format(t.total_diferencia));
+        $('#val-count').text(t.total_grupos);
+
+        const diff = Math.abs(parseFloat(t.total_diferencia));
+        const isOk = diff < 0.01;
+        $('#val-diferencia').removeClass('text-success text-danger').addClass(isOk ? 'text-success' : 'text-danger');
+        $('#icon-diff')
+            .removeClass('bg-soft-success bg-soft-danger')
+            .addClass(isOk ? 'bg-soft-success' : 'bg-soft-danger');
+        $('#icon-diff i').attr('class', isOk ? 'fas fa-check-circle' : 'fas fa-balance-scale-right');
+    }
+
+    // ── CHARTS ────────────────────────────────────────────────────────────────
+    function renderTrendChart(data) {
+        const canvas = document.getElementById('trendChart');
+        if(!canvas || !data || !data.length) return;
+        if(trendChart) { trendChart.destroy(); trendChart = null; }
+
+        const sorted  = [...data].sort((a,b) => a.fecha.localeCompare(b.fecha));
+        const labels  = sorted.map(d => d.fecha.split('-')[2]);
+        const valsCG  = sorted.map(d => parseFloat(d.sistema));
+        const valsTES = sorted.map(d => parseFloat(d.tesoreria));
+
+        trendChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'CG Sistema',    data: valsCG,  borderColor: '#3485a8', backgroundColor: 'rgba(52,133,168,0.08)', fill: true,  tension: 0.4, borderWidth: 3, pointRadius: 4 },
+                    { label: 'Tesorería Dep', data: valsTES, borderColor: '#1a7a4a', backgroundColor: 'transparent',          borderDash: [5,5], tension: 0.4, borderWidth: 2, pointRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: { legend: { position: 'top', labels: { usePointStyle: true, boxWidth: 6 } } },
+                scales: {
+                    y: { beginAtZero: true, grid: { borderDash: [2,2] }, ticks: { callback: v => fmt.format(v) } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    function renderStationChart(data) {
+        const canvas = document.getElementById('stationChart');
+        if(!canvas) return;
+        if(stationChart) { stationChart.destroy(); stationChart = null; }
+        if(!data || !data.length) return;
+
+        const sorted = [...data].sort((a,b) => Math.abs(b.diferencia) - Math.abs(a.diferencia)).slice(0, 5);
+        stationChart = new Chart(canvas, {
+            type: 'doughnut',
+            data: {
+                labels: sorted.map(s => s.estacion),
+                datasets: [{ data: sorted.map(s => Math.abs(parseFloat(s.diferencia))), backgroundColor: ['#3485a8','#2ecc71','#f39c12','#e74c3c','#9b59b6'], borderWidth: 0, cutout: '75%' }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10 }, usePointStyle: true } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt.format(c.raw)}` } } } }
+        });
+    }
+
+    function renderBankChart(data) {
+        const canvas = document.getElementById('bankChart');
+        if(!canvas) return;
+        if(bankChart) { bankChart.destroy(); bankChart = null; }
+        if(!data || !data.length) return;
+
+        const byBank = {};
+        data.forEach(d => { if(!byBank[d.banco]) byBank[d.banco] = 0; byBank[d.banco] += Math.abs(parseFloat(d.diferencia)); });
+
+        bankChart = new Chart(canvas, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(byBank),
+                datasets: [{ data: Object.values(byBank), backgroundColor: ['#1abc9c','#3498db','#9b59b6','#f1c40f','#e67e22'], borderWidth: 0 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 10 }, usePointStyle: true } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt.format(c.raw)}` } } } }
+        });
+    }
+
+    // ── TABLAS ────────────────────────────────────────────────────────────────
+    function renderTableDias(data) {
+        const $tbody = $('#table-days tbody').empty();
+        if(!data || !data.length) { $tbody.append('<tr><td colspan="5" class="text-center py-4 text-muted">Sin diferencias en el período</td></tr>'); return; }
+        data.forEach(d => {
+            const col = Math.abs(parseFloat(d.diferencia)) < 0.01 ? 'text-success' : 'text-danger fw-bold';
+            $tbody.append(`<tr>
+                <td class="ps-4">${d.fecha}</td>
+                <td class="text-center"><span class="badge bg-light text-dark border">${d.count}</span></td>
+                <td class="text-right val-numeric">${fmt.format(d.sistema)}</td>
+                <td class="text-right val-numeric" style="color:var(--tes-color);">${fmt.format(d.tesoreria)}</td>
+                <td class="text-right pe-4 val-numeric ${col}">${fmt.format(d.diferencia)}</td>
+            </tr>`);
+        });
+    }
+
+    function renderTableStations(data) {
+        const $tbody = $('#table-stations tbody').empty();
+        if(!data || !data.length) { $tbody.append('<tr><td colspan="4" class="text-center py-4 text-muted">Sin diferencias</td></tr>'); return; }
+        data.forEach(e => {
+            const col = Math.abs(parseFloat(e.diferencia)) < 0.01 ? 'text-success' : 'text-danger fw-bold';
+            $tbody.append(`<tr>
+                <td class="ps-4 fw-bold">${e.estacion}</td>
+                <td class="text-right val-numeric">${fmt.format(e.sistema)}</td>
+                <td class="text-right val-numeric" style="color:var(--tes-color);">${fmt.format(e.tesoreria)}</td>
+                <td class="text-right pe-4 val-numeric ${col}">${fmt.format(e.diferencia)}</td>
+            </tr>`);
+        });
+    }
+
+    function renderTableBanks(data) {
+        const $tbody = $('#table-banks tbody').empty();
+        if(!data || !data.length) { $tbody.append('<tr><td colspan="5" class="text-center py-4 text-muted">Sin diferencias</td></tr>'); return; }
+        data.forEach(b => {
+            const col = Math.abs(parseFloat(b.diferencia)) < 0.01 ? 'text-success' : 'text-danger fw-bold';
+            $tbody.append(`<tr>
+                <td class="ps-4 fw-bold">${b.banco}</td>
+                <td><small class="text-muted">${b.afiliacion || '—'}</small></td>
+                <td class="text-right val-numeric">${fmt.format(b.sistema)}</td>
+                <td class="text-right val-numeric" style="color:var(--tes-color);">${fmt.format(b.tesoreria)}</td>
+                <td class="text-right pe-4 val-numeric ${col}">${fmt.format(b.diferencia)}</td>
+            </tr>`);
+        });
+    }
+
+    // ── TRÁNSITOS ─────────────────────────────────────────────────────────────
+    function loadTransitAging() {
+        const eid = $('#estacionSelect').val();
+        if(eid == "0") return;
+
+        const params = {
+            estacion_id: eid,
+            entidad_id:  $('#bancoSelect').val(),
+            afiliacion:  $('#afiliacionSelect').val()
+        };
+
+        $.get('/income/get_transitos_v3_pendientes', params, function(resp) {
+            if(resp.status !== 'success') return;
+            const rows = resp.data || [];
+            let aging = { one:{c:0,s:0}, two:{c:0,s:0}, three:{c:0,s:0} };
+            let totalTransito = 0;
+
+            const $tbody = $('#tbody-transitos').empty();
+            rows.forEach(t => {
+                const d = parseInt(t.dias_antiguedad);
+                const m = parseFloat(t.monto_pendiente);
+                totalTransito += m;
+                if(d <= 30)      { aging.one.c++;   aging.one.s   += m; }
+                else if(d <= 60) { aging.two.c++;   aging.two.s   += m; }
+                else             { aging.three.c++; aging.three.s += m; }
+
+                const agingClass = d <= 30 ? 'table-success' : d <= 60 ? 'table-warning' : 'table-danger';
+                $tbody.append(`<tr class="${agingClass}">
+                    <td><span class="badge badge-secondary">${t.mes_origen}</span></td>
+                    <td>${t.fecha_cg || '—'}</td>
+                    <td>${t.banco || '—'}</td>
+                    <td class="small">${t.concepto || '—'}</td>
+                    <td class="text-right val-numeric">${fmt.format(m)}</td>
+                    <td class="text-center"><span class="badge ${d<=30?'badge-success':d<=60?'badge-warning text-dark':'badge-danger'}">${d}d</span></td>
+                </tr>`);
+            });
+
+            if(!rows.length) $tbody.append('<tr><td colspan="6" class="text-center py-4 text-muted">Sin tránsitos pendientes</td></tr>');
+
+            $('#aging-1 .c').text(aging.one.c);   $('#aging-1 .m').text(fmt.format(aging.one.s));
+            $('#aging-2 .c').text(aging.two.c);   $('#aging-2 .m').text(fmt.format(aging.two.s));
+            $('#aging-3 .c').text(aging.three.c); $('#aging-3 .m').text(fmt.format(aging.three.s));
+            $('#transit-total').text(fmt.format(totalTransito));
+        });
+    }
+
+    // ── CIERRES DE MES ────────────────────────────────────────────────────────
+    function loadCierresMes() {
+        if(cierresLoaded) return;
+        const eid = $('#estacionSelect').val();
+        if(eid == "0") {
+            $('#tbody-cierres').html('<tr><td colspan="9" class="text-center py-5 text-muted">Selecciona una estación para ver el historial de cierres</td></tr>');
+            return;
+        }
+
+        const params = {
+            estacion_id: eid,
+            entidad_id:  $('#bancoSelect').val() != "0" ? $('#bancoSelect').val() : '',
+            afiliacion:  $('#afiliacionSelect').val()
+        };
+
+        $('#tbody-cierres').html('<tr><td colspan="9" class="text-center py-4"><div class="spinner-border spinner-border-sm text-success"></div> Cargando...</td></tr>');
+
+        $.get('/income/get_cierres_v3', params, function(resp) {
+            const $tbody = $('#tbody-cierres').empty();
+            if(resp.status !== 'success' || !resp.data.length) {
+                $tbody.append('<tr><td colspan="9" class="text-center py-5 text-muted">No hay cierres de mes registrados</td></tr>');
+                return;
+            }
+
+            resp.data.forEach(c => {
+                const diffMes = parseFloat(c.total_cg) - parseFloat(c.total_depositado);
+                const diffCol = Math.abs(diffMes) < 0.01 ? 'text-success' : 'text-danger fw-bold';
+                const [year, month] = c.mes.split('-');
+                const mesLabel = `${MESES[parseInt(month)-1]} ${year}`;
+
+                $tbody.append(`<tr>
+                    <td class="fw-bold">${mesLabel}</td>
+                    <td>${c.banco}</td>
+                    <td><small class="text-muted">${c.afiliacion || '—'}</small></td>
+                    <td class="text-right val-numeric">${fmt.format(c.total_cg)}</td>
+                    <td class="text-right val-numeric" style="color:var(--tes-color);">${fmt.format(c.total_depositado)}</td>
+                    <td class="text-right val-numeric text-warning">${fmt.format(c.total_transito)}</td>
+                    <td class="text-right val-numeric ${diffCol}">${fmt.format(diffMes)}</td>
+                    <td class="text-center"><span class="mes-badge cerrado">${c.estado}</span></td>
+                    <td class="small text-muted">${c.fecha_cierre}</td>
+                </tr>`);
+            });
+
+            cierresLoaded = true;
+        });
+    }
+</script>
+{% endblock %}
