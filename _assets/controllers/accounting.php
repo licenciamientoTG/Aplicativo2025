@@ -2158,7 +2158,9 @@ class Accounting{
     }
 
     function xml_vs_ventas() {
-        echo $this->twig->render($this->route . 'xml_vs_ventas.html');
+        if (preg_match('/GET/i',$_SERVER['REQUEST_METHOD'])){
+            echo $this->twig->render($this->route . 'xml_vs_ventas.html');
+        }
     }
 
     function xml_vs_ventas_table() {

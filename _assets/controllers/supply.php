@@ -5038,16 +5038,10 @@ class Supply
     private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         try {
-            // Obtener correos de usuarios con permiso de Abastos (66)
-            $emails = $this->UsuariosModel->get_emails_by_permission(66);
-
-            if (empty($emails)) {
-                error_log("No hay usuarios con permiso de Abastos para notificar");
-                return;
-            }
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
+            // ============================================================
+            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
+            // ============================================================
+            $emails = ['alejandro.martinez@totalgas.com'];
 
             // Crear el cuerpo del correo
             $subject = "Nuevo Pago Creado - ID #{$payment_id}";
@@ -5520,26 +5514,10 @@ class Supply
     private function enviar_notificacion_autorizacion_pendiente($payment_id, $next_level_permission, $authorized_permission, $user_id)
     {
         try {
-            // Obtener correos del siguiente nivel
-            $emails = $this->UsuariosModel->get_emails_by_permission($next_level_permission);
-            if (empty($emails)) {
-                error_log("No hay usuarios con permiso {$next_level_permission} para notificar");
-                return;
-            }
-
             // ============================================================
-            // 🚧 BLOQUE TEMPORAL PARA PRUEBAS - REMOVER AL TERMINAR 🚧
+            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
             // ============================================================
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
-
-            $emails = array_values($emails);
-            if (empty($emails)) {
-                error_log("⚠️ No hay correos disponibles después del filtro de pruebas");
-                return;
-            }
-            // ============================================================
+            $emails = ['alejandro.martinez@totalgas.com'];
             // Obtener información del pago
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
@@ -5554,6 +5532,7 @@ class Supply
             // Obtener nombre del siguiente nivel
             $next_department = match ($next_level_permission) {
                 66 => 'Abastos',
+                70 => 'Contabilidad',
                 67 => 'Administración y Finanzas',
                 68 => 'Tesorería',
                 default => 'Desconocido'
