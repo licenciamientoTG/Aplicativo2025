@@ -2529,6 +2529,25 @@ public function anomalies_client_tickets()
                 'Hora TransacciÃ³n' => 'Hora',
                 'Hora' => 'Hora',
                 'Referencia Interbancaria' => 'Referencia',
+                // Versiones UTF-8 correctas (PhpSpreadsheet retorna UTF-8 real, no mojibake)
+                "Afiliaci\xC3\xB3n"               => 'Afiliacion',
+                "Nombre de Afiliaci\xC3\xB3n"     => 'Nombre_Afiliacion',
+                "Estatus de Transacci\xC3\xB3n"   => 'Estatus',
+                "Tipo de Transacci\xC3\xB3n"      => 'Tipo_Transaccion',
+                "N\xC3\xBAmero de Control"         => 'ID_Externo',
+                "N\xC3\xBAmero de Tarjeta"         => 'Tarjeta',
+                "Monto de Transacci\xC3\xB3n Signo" => 'Monto',
+                "Fecha Transacci\xC3\xB3n"         => 'Fecha_Transaccion',
+                "C\xC3\xB3digo Autorizaci\xC3\xB3n" => 'Codigo_Autorizacion',
+                "Hora de Transacci\xC3\xB3n"       => 'Hora',
+                "Hora Transacci\xC3\xB3n"          => 'Hora',
+                "Lote de Transacci\xC3\xB3n"       => 'Lote',
+                "Fuente de Transacci\xC3\xB3n"     => 'Fuente_Transaccion',
+                'Referencia Cliente 1'             => 'Referencia_Cliente_1',
+                'Referencia Cliente 2'             => 'Referencia_Cliente_2',
+                'Referencia Cliente 3'             => 'Referencia_Cliente_3',
+                "Fecha Aplicaci\xC3\xB3n"          => 'Fecha_Deposito',
+                "Fecha de Aplicaci\xC3\xB3n"       => 'Fecha_Deposito',
                 'Fecha DepÃ³sito' => 'Fecha_Deposito',
                 'Fecha Deposito' => 'Fecha_Deposito',
                 'Fecha de DepÃ³sito' => 'Fecha_Deposito',
@@ -2671,14 +2690,31 @@ public function anomalies_client_tickets()
                     }
                 }
 
-                // Huellas para duplicados (8 CAMPOS CLAVE + FECHA DEPOSITO)
-                $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal, Fecha_Deposito FROM banco_banorte");
+                // Huellas para duplicados (8 CAMPOS CLAVE — sin Fecha_Deposito, igual que Python)
+                $stmtH = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM banco_banorte");
                 $huellas = [];
                 while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
-                    $fch_dep = ($r['Fecha_Deposito'] instanceof DateTime) ? $r['Fecha_Deposito']->format('Y-m-d') : substr((string)$r['Fecha_Deposito'], 0, 10);
-                    $key = trim($r['Afiliacion']??'') . '|' . trim($r['ID_Externo']??'') . '|' . $fch . '|' . number_format((float)$r['Monto'], 2, '.', '') . '|' . trim($r['Hora']??'') . '|' . trim($r['Codigo_Autorizacion']??'') . '|' . trim($r['Referencia']??'') . '|' . trim($r['Terminal']??'') . '|' . $fch_dep;
+                    $hora_db = trim($r['Hora'] ?? '');
+                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_db)) {
+                        $parts = explode(':', $hora_db);
+                        $hora_db = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                    }
+                    $afil_db  = ltrim(trim($r['Afiliacion']??''), '0');
+                    $idext_db = trim($r['ID_Externo']??'');
+                    $monto_db = number_format((float)$r['Monto'], 2, '.', '');
+                    $auth_db  = trim($r['Codigo_Autorizacion']??'');
+                    $term_db  = trim($r['Terminal']??'');
+                    // Normalizar Referencia: quitar sufijo ".0" de valores numéricos guardados desde CSV
+                    $ref_db = trim($r['Referencia']??'');
+                    if (preg_match('/^\d+\.0$/', $ref_db)) $ref_db = (string)((int)((float)$ref_db));
+                    // Clave 8 campos
+                    $key = "$afil_db|$idext_db|$fch|$monto_db|$hora_db|$auth_db|$ref_db|$term_db";
                     $huellas[$key] = true;
+                    // Clave 7 campos (sin Referencia): compatibilidad con registros viejos que tienen
+                    // Referencia_Pago en lugar de Referencia_Interbancaria
+                    $key7 = "7f:$afil_db|$idext_db|$fch|$monto_db|$hora_db|$auth_db|$term_db";
+                    $huellas[$key7] = true;
                 }
 
                 $sqlIns = "INSERT INTO banco_banorte (".implode(",", $columnas_oficiales).") VALUES (".implode(",", array_fill(0, count($columnas_oficiales), "?")).")";
@@ -2725,10 +2761,23 @@ public function anomalies_client_tickets()
                         $dataRow[$col] = ($val === null || $val === '') ? null : $val;
                     }
 
-                    $keyRow = trim($dataRow['Afiliacion']??'') . '|' . trim($dataRow['ID_Externo']??'') . '|' . ($dataRow['Fecha_Transaccion']??'') . '|' . number_format((float)($dataRow['Monto']??0), 2, '.', '') . '|' . trim($dataRow['Hora']??'') . '|' . trim($dataRow['Codigo_Autorizacion']??'') . '|' . trim($dataRow['Referencia']??'') . '|' . trim($dataRow['Terminal']??'') . '|' . ($dataRow['Fecha_Deposito']??'');
-                    
+                    $hora_row = trim($dataRow['Hora'] ?? '');
+                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_row)) {
+                        $parts = explode(':', $hora_row);
+                        $hora_row = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                    }
+                    $afil_row  = trim($dataRow['Afiliacion']??'');
+                    $idext_row = trim($dataRow['ID_Externo']??'');
+                    $fecha_row = $dataRow['Fecha_Transaccion']??'';
+                    $monto_row = number_format((float)($dataRow['Monto']??0), 2, '.', '');
+                    $auth_row  = trim($dataRow['Codigo_Autorizacion']??'');
+                    $ref_row   = trim($dataRow['Referencia']??'');
+                    $term_row  = trim($dataRow['Terminal']??'');
+                    $keyRow  = "$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$ref_row|$term_row";
+                    $keyRow7 = "7f:$afil_row|$idext_row|$fecha_row|$monto_row|$hora_row|$auth_row|$term_row";
+
                     if (($dataRow['Monto'] ?? 0) <= 0) { $skipped++; continue; }
-                    if (isset($huellas[$keyRow])) { $skipped++; continue; }
+                    if (isset($huellas[$keyRow]) || isset($huellas[$keyRow7])) { $skipped++; continue; }
 
                     $ins->execute(array_values($dataRow));
                     $inserted++;
@@ -6246,29 +6295,37 @@ public function stamped_invoices_detail(): void
     // -------------------------------------------------------------------------
     // 5. CERRAR MES V3
     //    POST /income/cerrar_mes_v3
-    //    Body: { estacion_id, entidad_id, afiliacion, mes (YYYY-MM) }
+    //    Body: { estacion_id, entidad_id, afiliacion, mes (YYYY-MM),
+    //            items_pendientes (int), nota_cierre (string) }
     //
     //    Lógica:
     //      a) Verifica que no exista cierre previo
-    //      b) Calcula CG total del mes (suma de detalles CG de los grupos del mes)
-    //      c) Calcula TES total depositado (suma de detalles TES de los grupos del mes)
-    //      d) Items CG sin grupo => quedan fuera; los grupos con diferencia > 0
-    //         generan registros de tránsito por la diferencia
-    //      e) Inserta en V3_CierreMes
-    //      f) Marca grupos del mes como estado = 'CERRADO'
+    //      b) Si items_pendientes > 0 y nota_cierre vacía → error
+    //      c) Totales de grupos conciliados del mes
+    //      d) Total en tránsito desde CV3_Transito (mes_origen = mes, no CANCELADO)
+    //      e) Inserta/actualiza Conciliacion_V3_CierreMes con nuevos campos
+    //      f) Marca grupos del mes como CERRADO
     // -------------------------------------------------------------------------
     public function cerrar_mes_v3(): void {
         ob_clean();
         header('Content-Type: application/json');
 
-        $data        = json_decode(file_get_contents('php://input'), true);
-        $estacion_id = (int)($data['estacion_id'] ?? 0);
-        $entidad_id  = (int)($data['entidad_id']  ?? 0);
-        $afiliacion  = trim($data['afiliacion']   ?? '');
-        $mes         = trim($data['mes']           ?? '');   // 'YYYY-MM'
+        $data             = json_decode(file_get_contents('php://input'), true);
+        $estacion_id      = (int)($data['estacion_id']     ?? 0);
+        $entidad_id       = (int)($data['entidad_id']      ?? 0);
+        $afiliacion       = trim($data['afiliacion']       ?? '');
+        $mes              = trim($data['mes']              ?? '');
+        $items_pendientes = (int)($data['items_pendientes'] ?? 0);
+        $nota_cierre      = trim($data['nota_cierre']      ?? '');
 
         if (!$estacion_id || !$entidad_id || !$mes || !preg_match('/^\d{4}-\d{2}$/', $mes)) {
             echo json_encode(['status' => 'error', 'message' => 'Parámetros inválidos']);
+            exit;
+        }
+
+        // b) Si hay pendientes sin nota → rechazar
+        if ($items_pendientes > 0 && $nota_cierre === '') {
+            echo json_encode(['status' => 'error', 'message' => 'Hay ítems pendientes. Debes agregar una nota explicando el cierre.']);
             exit;
         }
 
@@ -6276,12 +6333,21 @@ public function stamped_invoices_detail(): void
 
         try {
             $conn = $this->v3_conn();
+
+            // Agregar columnas nuevas si no existen (migración segura)
+            $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Conciliacion_V3_CierreMes') AND name='total_diferencias')
+                         ALTER TABLE Conciliacion_V3_CierreMes ADD total_diferencias DECIMAL(18,2) NULL");
+            $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Conciliacion_V3_CierreMes') AND name='items_pendientes')
+                         ALTER TABLE Conciliacion_V3_CierreMes ADD items_pendientes INT NULL DEFAULT 0");
+            $conn->exec("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id=OBJECT_ID('Conciliacion_V3_CierreMes') AND name='nota_cierre')
+                         ALTER TABLE Conciliacion_V3_CierreMes ADD nota_cierre NVARCHAR(500) NULL");
+
             $conn->beginTransaction();
 
             // a) Verificar cierre previo
             $stmtCheck = $conn->prepare(
                 "SELECT id FROM Conciliacion_V3_CierreMes
-                 WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ? AND mes = ?"
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?"
             );
             $stmtCheck->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
             if ($stmtCheck->fetch()) {
@@ -6290,103 +6356,72 @@ public function stamped_invoices_detail(): void
                 exit;
             }
 
-            // b+c) Totales del mes desde los grupos ya conciliados
+            // c) Totales de grupos conciliados del mes
             $stmtTot = $conn->prepare(
-                "SELECT ISNULL(SUM(total_sistema),0)   AS total_cg,
-                        ISNULL(SUM(total_tesoreria),0) AS total_tes,
-                        ISNULL(SUM(diferencia),0)      AS total_diff
+                "SELECT ISNULL(SUM(total_sistema),0)        AS total_cg,
+                        ISNULL(SUM(total_tesoreria),0)      AS total_tes,
+                        ISNULL(SUM(CASE WHEN ABS(diferencia) > 0.01 THEN diferencia ELSE 0 END),0) AS total_diferencias
                  FROM Conciliacion_V3_Grupos
-                 WHERE estacion_id = ? AND entidad_id = ?
-                   AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
-                   AND YEAR(fecha_operativa)  = ?
-                   AND MONTH(fecha_operativa) = ?
-                   AND estado = 'ACTIVO'"
+                 WHERE estacion_id=? AND entidad_id=?
+                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
+                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
+                   AND estado='ACTIVO'"
             );
             $stmtTot->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
             $totales = $stmtTot->fetch(PDO::FETCH_ASSOC);
 
-            $total_cg  = (float)$totales['total_cg'];
-            $total_tes = (float)$totales['total_tes'];
-            $total_diff = (float)$totales['total_diff'];  // CG sin depositar = diferencia negativa (tes < cg)
+            $total_cg         = (float)$totales['total_cg'];
+            $total_tes        = (float)$totales['total_tes'];
+            $total_diferencias = (float)$totales['total_diferencias'];
 
-            // d) Grupos con diferencia: cada uno genera un tránsito por su diferencia pendiente
-            //    Solo cuando total_sistema > total_tesoreria (faltó depositar)
-            $stmtGrupos = $conn->prepare(
-                "SELECT G.id AS grupo_id,
-                        G.fecha_operativa,
-                        G.diferencia,
-                        D.referencia_externa,
-                        D.concepto
-                 FROM Conciliacion_V3_Grupos G
-                 LEFT JOIN Conciliacion_V3_Detalles D
-                        ON D.grupo_id = G.id AND D.origen = 'CG'
-                 WHERE G.estacion_id = ? AND G.entidad_id = ?
-                   AND (G.afiliacion = ? OR (G.afiliacion IS NULL AND ? = ''))
-                   AND YEAR(G.fecha_operativa)  = ?
-                   AND MONTH(G.fecha_operativa) = ?
-                   AND G.estado = 'ACTIVO'
-                   AND G.diferencia < -0.01"   // TES < CG → faltó depositar
+            // d) Total en tránsito desde CV3_Transito (tránsitos manuales de este mes)
+            $stmtTr = $conn->prepare(
+                "SELECT ISNULL(SUM(monto_transito),0) AS total_transito
+                 FROM CV3_Transito
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=?
+                   AND mes_origen=? AND estado != 'CANCELADO'"
             );
-            $stmtGrupos->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
-            $gruposConDiff = $stmtGrupos->fetchAll(PDO::FETCH_ASSOC);
+            $stmtTr->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+            $total_transito = (float)$stmtTr->fetchColumn();
 
-            $total_transito = 0.0;
-            $stmtTransito = $conn->prepare(
-                "INSERT INTO Conciliacion_V3_Transito
-                    (estacion_id, entidad_id, afiliacion, mes_origen,
-                     fecha_cg, referencia_cg, concepto, monto_pendiente, grupo_id_origen)
-                 VALUES (?,?,?,?,?,?,?,?,?)"
-            );
-
-            foreach ($gruposConDiff as $g) {
-                $monto_pend = abs((float)$g['diferencia']);
-                $fecha_cg   = substr((string)$g['fecha_operativa'], 0, 10);
-                $stmtTransito->execute([
-                    $estacion_id, $entidad_id, $afiliacion, $mes,
-                    $fecha_cg,
-                    $g['referencia_externa'] ?? '',
-                    $g['concepto']           ?? '',
-                    $monto_pend,
-                    (int)$g['grupo_id'],
-                ]);
-                $total_transito += $monto_pend;
-            }
-
-            // e) Registrar cierre de mes
+            // e) Insertar registro de cierre
             $conn->prepare(
                 "INSERT INTO Conciliacion_V3_CierreMes
                     (estacion_id, entidad_id, afiliacion, mes,
-                     total_cg, total_depositado, total_transito)
-                 VALUES (?,?,?,?,?,?,?)"
+                     total_cg, total_depositado, total_transito,
+                     total_diferencias, items_pendientes, nota_cierre)
+                 VALUES (?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $estacion_id, $entidad_id, $afiliacion, $mes,
                 $total_cg, $total_tes, $total_transito,
+                $total_diferencias, $items_pendientes,
+                $nota_cierre ?: null,
             ]);
 
             // f) Marcar grupos del mes como CERRADO
             $conn->prepare(
                 "UPDATE Conciliacion_V3_Grupos
-                 SET estado = 'CERRADO', mes_cierre = ?
-                 WHERE estacion_id = ? AND entidad_id = ?
-                   AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
-                   AND YEAR(fecha_operativa)  = ?
-                   AND MONTH(fecha_operativa) = ?
-                   AND estado = 'ACTIVO'"
+                 SET estado='CERRADO', mes_cierre=?
+                 WHERE estacion_id=? AND entidad_id=?
+                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
+                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
+                   AND estado='ACTIVO'"
             )->execute([$mes, $estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
 
             $conn->commit();
 
             echo json_encode([
-                'status'         => 'success',
-                'mes'            => $mes,
-                'total_cg'       => $total_cg,
-                'total_tes'      => $total_tes,
-                'total_transito' => $total_transito,
-                'grupos_transito'=> count($gruposConDiff),
+                'status'           => 'success',
+                'mes'              => $mes,
+                'total_cg'         => $total_cg,
+                'total_tes'        => $total_tes,
+                'total_transito'   => $total_transito,
+                'total_diferencias'=> $total_diferencias,
+                'items_pendientes' => $items_pendientes,
             ]);
 
         } catch (Exception $e) {
-            if (isset($conn)) $conn->rollBack();
+            if (isset($conn) && $conn->inTransaction()) $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         exit;
@@ -6590,12 +6625,12 @@ public function stamped_invoices_detail(): void
             $stmtC->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
             $ya_cerrado = (bool)$stmtC->fetch();
 
-            // Totales del mes
+            // Totales de grupos conciliados del mes
             $stmtT = $conn->prepare(
-                "SELECT ISNULL(SUM(total_sistema),0)   AS total_cg,
-                        ISNULL(SUM(total_tesoreria),0) AS total_tes,
-                        COUNT(id)                      AS total_grupos,
-                        COUNT(CASE WHEN diferencia < -0.01 THEN 1 END) AS grupos_con_diff
+                "SELECT ISNULL(SUM(total_sistema),0)        AS total_cg,
+                        ISNULL(SUM(total_tesoreria),0)      AS total_tes,
+                        ISNULL(SUM(CASE WHEN ABS(diferencia) > 0.01 THEN diferencia ELSE 0 END),0) AS total_diferencias,
+                        COUNT(id)                           AS total_grupos
                  FROM Conciliacion_V3_Grupos
                  WHERE estacion_id=? AND entidad_id=?
                    AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
@@ -6605,29 +6640,26 @@ public function stamped_invoices_detail(): void
             $stmtT->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
             $t = $stmtT->fetch(PDO::FETCH_ASSOC);
 
-            // Detalle de grupos que irían a tránsito
-            $stmtD = $conn->prepare(
-                "SELECT G.id, FORMAT(G.fecha_operativa,'yyyy-MM-dd') AS fecha,
-                        G.total_sistema, G.total_tesoreria,
-                        ABS(G.diferencia) AS monto_transito
-                 FROM Conciliacion_V3_Grupos G
-                 WHERE estacion_id=? AND entidad_id=?
-                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
-                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
-                   AND estado='ACTIVO' AND diferencia < -0.01
-                 ORDER BY fecha_operativa"
+            // Total en tránsito desde CV3_Transito
+            $stmtTr = $conn->prepare(
+                "SELECT ISNULL(SUM(monto_transito),0) AS total_transito,
+                        COUNT(id)                     AS n_transitos
+                 FROM CV3_Transito
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=?
+                   AND mes_origen=? AND estado != 'CANCELADO'"
             );
-            $stmtD->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
-            $detalle = $stmtD->fetchAll(PDO::FETCH_ASSOC);
+            $stmtTr->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+            $tr = $stmtTr->fetch(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'status'           => 'success',
                 'ya_cerrado'       => $ya_cerrado,
                 'total_cg'         => (float)$t['total_cg'],
                 'total_tes'        => (float)$t['total_tes'],
+                'total_diferencias'=> (float)$t['total_diferencias'],
                 'total_grupos'     => (int)$t['total_grupos'],
-                'grupos_con_diff'  => (int)$t['grupos_con_diff'],
-                'detalle_transito' => $detalle,
+                'total_transito'   => (float)$tr['total_transito'],
+                'n_transitos'      => (int)$tr['n_transitos'],
             ]);
 
         } catch (PDOException $e) {
@@ -6829,6 +6861,81 @@ public function stamped_invoices_detail(): void
                 created_by           INT NULL
             )
         ");
+    }
+
+    // -------------------------------------------------------------------------
+    // 10b. REABRIR MES V3
+    //      POST /income/reabrir_mes_v3
+    //      Body: { estacion_id, entidad_id, afiliacion, mes (YYYY-MM) }
+    //      Lógica:
+    //        a) Verifica que el mes esté cerrado
+    //        b) Reactiva grupos CERRADO → ACTIVO, borra mes_cierre
+    //        c) Elimina registro de Conciliacion_V3_CierreMes
+    //        No toca CV3_Transito ni conciliaciones individuales
+    // -------------------------------------------------------------------------
+    public function reabrir_mes_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data        = json_decode(file_get_contents('php://input'), true);
+        $estacion_id = (int)($data['estacion_id'] ?? 0);
+        $entidad_id  = (int)($data['entidad_id']  ?? 0);
+        $afiliacion  = trim($data['afiliacion']   ?? '');
+        $mes         = trim($data['mes']           ?? '');
+
+        if (!$estacion_id || !$entidad_id || !$mes || !preg_match('/^\d{4}-\d{2}$/', $mes)) {
+            echo json_encode(['status' => 'error', 'message' => 'Parámetros inválidos']);
+            exit;
+        }
+
+        [$year, $month] = explode('-', $mes);
+
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+
+            // a) Verificar que esté cerrado
+            $stmtC = $conn->prepare(
+                "SELECT id FROM Conciliacion_V3_CierreMes
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?"
+            );
+            $stmtC->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+            if (!$stmtC->fetch()) {
+                $conn->rollBack();
+                echo json_encode(['status' => 'error', 'message' => "El mes $mes no está cerrado."]);
+                exit;
+            }
+
+            // b) Reactivar grupos
+            $stmtUp = $conn->prepare(
+                "UPDATE Conciliacion_V3_Grupos
+                 SET estado='ACTIVO', mes_cierre=NULL
+                 WHERE estacion_id=? AND entidad_id=?
+                   AND (afiliacion=? OR (afiliacion IS NULL AND ?=''))
+                   AND YEAR(fecha_operativa)=? AND MONTH(fecha_operativa)=?
+                   AND estado='CERRADO'"
+            );
+            $stmtUp->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $gruposReactivados = $stmtUp->rowCount();
+
+            // c) Eliminar registro de cierre
+            $conn->prepare(
+                "DELETE FROM Conciliacion_V3_CierreMes
+                 WHERE estacion_id=? AND entidad_id=? AND afiliacion=? AND mes=?"
+            )->execute([$estacion_id, $entidad_id, $afiliacion, $mes]);
+
+            $conn->commit();
+            echo json_encode([
+                'status'              => 'success',
+                'mes'                 => $mes,
+                'grupos_reactivados'  => $gruposReactivados,
+            ]);
+
+        } catch (Exception $e) {
+            if (isset($conn) && $conn->inTransaction()) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
     }
 
     // -------------------------------------------------------------------------
