@@ -5820,6 +5820,397 @@ public function stamped_invoices_detail(): void
         echo $this->twig->render($this->route . 'summary_v3.html');
     }
 
+    // ── DASHBOARD V3 — GET /income/get_dashboard_v3 ───────────────────────────
+    public function get_dashboard_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year        = (int)($_GET['year']         ?? 0);
+        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $rs          = trim($_GET['razon_social']   ?? '');
+        $estacion_id = (int)($_GET['estacion_id']   ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']     ?? '');
+
+        $rsCASE = "CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS'
+                        WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX'
+                        ELSE 'FORANEAS' END";
+
+        try {
+            $conn = $this->v3_conn();
+
+            $where  = "WHERE C.estado = 'CERRADO'";
+            $params = [];
+
+            if ($year > 0)       { $where .= " AND YEAR(C.fecha_cierre) = ?";  $params[] = $year;        }
+            if ($banco_id > 0)   { $where .= " AND C.entidad_id = ?";          $params[] = $banco_id;    }
+            if ($estacion_id > 0){ $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";        $params[] = $afiliacion;  }
+            if ($rs === 'DIAZ GAS')  { $where .= " AND E.RFC = 'DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX')  { $where .= " AND E.RFC = 'DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS') { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+            $from = "FROM Conciliacion_V3_CierreMes C
+                     LEFT JOIN Estaciones E ON E.Codigo = C.estacion_id
+                     LEFT JOIN Tesoreria_Entidad TE ON TE.id = C.entidad_id
+                     $where";
+
+            // KPIs
+            $r = $conn->prepare("SELECT ISNULL(SUM(C.total_cg),0) AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0) AS total_transito,
+                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
+                    COUNT(*) AS n_cierres $from");
+            $r->execute($params); $kpis = $r->fetch(PDO::FETCH_ASSOC);
+
+            // Tabla de cierres (resumen)
+            $r = $conn->prepare("SELECT C.mes,
+                    ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
+                    C.afiliacion,
+                    ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
+                    $rsCASE AS razon_social,
+                    C.total_cg, C.total_depositado, C.total_transito,
+                    ISNULL(C.total_diferencias,0) AS total_diferencias,
+                    ISNULL(C.items_pendientes,0) AS items_pendientes,
+                    ISNULL(C.nota_cierre,'') AS nota_cierre,
+                    CONVERT(VARCHAR(10),C.fecha_cierre,120) AS fecha_cierre
+                $from ORDER BY C.mes DESC, banco, C.afiliacion");
+            $r->execute($params); $meses = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            // Trend (CG vs Depositado vs Diferencias por mes, para gráficas)
+            $r = $conn->prepare("SELECT C.mes,
+                    ISNULL(SUM(C.total_cg),0) AS cg,
+                    ISNULL(SUM(C.total_depositado),0) AS depositado,
+                    ISNULL(SUM(C.total_diferencias),0) AS diferencias
+                $from GROUP BY C.mes ORDER BY C.mes ASC");
+            $r->execute($params); $trend = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            // Por razón social
+            $r = $conn->prepare("SELECT $rsCASE AS razon_social,
+                    ISNULL(SUM(C.total_cg),0) AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0) AS total_transito,
+                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
+                    COUNT(*) AS n_cierres
+                $from GROUP BY $rsCASE ORDER BY razon_social");
+            $r->execute($params); $por_rs = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            // Por banco / afiliación
+            $r = $conn->prepare("SELECT ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
+                    C.afiliacion,
+                    ISNULL(SUM(C.total_cg),0) AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0) AS total_transito,
+                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
+                    COUNT(*) AS n_cierres
+                $from GROUP BY TE.Nombre, C.entidad_id, C.afiliacion
+                ORDER BY banco, C.afiliacion");
+            $r->execute($params); $por_banco = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            // Por estación
+            $r = $conn->prepare("SELECT ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
+                    $rsCASE AS razon_social,
+                    ISNULL(SUM(C.total_cg),0) AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0) AS total_transito,
+                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
+                    COUNT(*) AS n_cierres
+                $from GROUP BY E.Nombre, C.estacion_id, E.RFC
+                ORDER BY estacion");
+            $r->execute($params); $por_estacion = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            // Catálogos para filtros
+            $years_list = $conn->query(
+                "SELECT DISTINCT YEAR(fecha_cierre) AS y FROM Conciliacion_V3_CierreMes WHERE estado='CERRADO' ORDER BY y DESC"
+            )->fetchAll(PDO::FETCH_COLUMN);
+            $bancos_list = $conn->query(
+                "SELECT DISTINCT TE.id, TE.Nombre FROM Conciliacion_V3_CierreMes C
+                 JOIN Tesoreria_Entidad TE ON TE.id=C.entidad_id
+                 WHERE C.estado='CERRADO' ORDER BY TE.Nombre"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            $estaciones_list = $conn->query(
+                "SELECT DISTINCT C.estacion_id, ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS nombre
+                 FROM Conciliacion_V3_CierreMes C
+                 LEFT JOIN Estaciones E ON E.Codigo=C.estacion_id
+                 WHERE C.estado='CERRADO' ORDER BY nombre"
+            )->fetchAll(PDO::FETCH_ASSOC);
+
+            // Floats
+            foreach (['total_cg','total_depositado','total_transito','total_diferencias'] as $f) {
+                $kpis[$f] = (float)$kpis[$f];
+            }
+            foreach ($meses as &$m) {
+                $m['total_cg'] = (float)$m['total_cg'];
+                $m['total_depositado'] = (float)$m['total_depositado'];
+                $m['total_transito'] = (float)$m['total_transito'];
+                $m['total_diferencias'] = (float)$m['total_diferencias'];
+            }
+
+            echo json_encode([
+                'status' => 'success',
+                'kpis' => $kpis, 'meses' => $meses, 'trend' => $trend,
+                'por_rs' => $por_rs, 'por_banco' => $por_banco, 'por_estacion' => $por_estacion,
+                'years_list' => $years_list, 'bancos_list' => $bancos_list, 'estaciones_list' => $estaciones_list,
+            ]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // ── DASHBOARD V3 — TRÁNSITOS  GET /income/get_transitos_dashboard_v3 ──────
+    public function get_transitos_dashboard_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year        = (int)($_GET['year']         ?? 0);
+        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $rs          = trim($_GET['razon_social']   ?? '');
+        $estacion_id = (int)($_GET['estacion_id']   ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']     ?? '');
+
+        try {
+            $conn = $this->v3_conn();
+
+            $where  = "WHERE T.estado != 'CANCELADO' AND (T.monto_efectivo IS NULL OR T.monto_efectivo < 0.01)";
+            $params = [];
+
+            if ($year > 0)        { $where .= " AND YEAR(T.cg_fecha) = ?";  $params[] = $year;        }
+            if ($banco_id > 0)    { $where .= " AND T.entidad_id = ?";      $params[] = $banco_id;    }
+            if ($estacion_id > 0) { $where .= " AND T.estacion_id = ?";     $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND T.afiliacion = ?";     $params[] = $afiliacion;  }
+            if ($rs === 'DIAZ GAS')   { $where .= " AND E.RFC = 'DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX')   { $where .= " AND E.RFC = 'DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS')  { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+            $stmt = $conn->prepare(
+                "SELECT T.id, T.mes_origen, T.mes_destino,
+                        CONVERT(VARCHAR(10),T.cg_fecha,120) AS cg_fecha,
+                        T.concepto, T.descripcion,
+                        ISNULL(T.monto_transito,0) AS monto_transito, T.estado,
+                        DATEDIFF(day, T.cg_fecha, GETDATE()) AS dias_antiguedad,
+                        ISNULL(E.Nombre,'Est.'+CAST(T.estacion_id AS VARCHAR)) AS estacion,
+                        ISNULL(TE.Nombre,'Banco '+CAST(T.entidad_id AS VARCHAR)) AS banco,
+                        T.afiliacion
+                 FROM CV3_Transito T
+                 LEFT JOIN Estaciones E ON E.Codigo = T.estacion_id
+                 LEFT JOIN Tesoreria_Entidad TE ON TE.id = T.entidad_id
+                 $where
+                 ORDER BY T.cg_fecha ASC"
+            );
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $aging = ['lt30' => 0, 'bt30_60' => 0, 'gt60' => 0, 'total' => 0, 'monto' => 0.0];
+            foreach ($rows as &$row) {
+                $row['monto_transito']  = (float)$row['monto_transito'];
+                $row['dias_antiguedad'] = (int)$row['dias_antiguedad'];
+                $aging['total']++;
+                $aging['monto'] += $row['monto_transito'];
+                if ($row['dias_antiguedad'] < 30)      $aging['lt30']++;
+                elseif ($row['dias_antiguedad'] <= 60) $aging['bt30_60']++;
+                else                                    $aging['gt60']++;
+            }
+
+            echo json_encode(['status' => 'success', 'data' => $rows, 'aging' => $aging]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // ── EXPORT V3 — Detalle Diferencias  GET /income/export_diferencias_v3 ────
+    public function export_diferencias_v3(): void {
+        ob_clean();
+        $year        = (int)($_GET['year']         ?? 0);
+        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $rs          = trim($_GET['razon_social']   ?? '');
+        $estacion_id = (int)($_GET['estacion_id']   ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']     ?? '');
+
+        try {
+            $conn = $this->v3_conn();
+
+            $where  = "WHERE C.estado='CERRADO' AND ABS(ISNULL(C.total_diferencias,0)) > 0.01";
+            $params = [];
+            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+            if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
+            if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
+            if ($rs === 'DIAZ GAS')   { $where .= " AND E.RFC='DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX')   { $where .= " AND E.RFC='DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS')  { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+            $stmt = $conn->prepare(
+                "SELECT C.mes,
+                        ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
+                        CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS'
+                             WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                        ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
+                        C.afiliacion, C.total_cg, C.total_depositado, C.total_transito,
+                        C.total_diferencias, ISNULL(C.nota_cierre,'') AS nota_cierre,
+                        CONVERT(VARCHAR(10),C.fecha_cierre,120) AS fecha_cierre
+                 FROM Conciliacion_V3_CierreMes C
+                 LEFT JOIN Estaciones E ON E.Codigo=C.estacion_id
+                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=C.entidad_id
+                 $where ORDER BY C.mes DESC, estacion, banco"
+            );
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $sp  = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sh  = $sp->getActiveSheet(); $sh->setTitle('Diferencias V3');
+
+            $hStyle = ['font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']],
+                       'fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FFC0392B']],
+                       'alignment'=>['horizontal'=>\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]];
+
+            $headers = ['MES','ESTACIÓN','RAZÓN SOCIAL','BANCO','AFILIACIÓN','CG ($)','DEPOSITADO ($)','TRÁNSITO ($)','DIFERENCIA ($)','NOTA','FECHA CIERRE'];
+            $sh->fromArray($headers, null, 'A1');
+            $sh->getStyle('A1:K1')->applyFromArray($hStyle);
+
+            $row = 2; $totalDif = 0;
+            foreach ($rows as $r) {
+                $sh->setCellValue("A$row", $r['mes']);
+                $sh->setCellValue("B$row", $r['estacion']);
+                $sh->setCellValue("C$row", $r['razon_social']);
+                $sh->setCellValue("D$row", $r['banco']);
+                $sh->setCellValue("E$row", $r['afiliacion']);
+                $sh->setCellValue("F$row", (float)$r['total_cg']);
+                $sh->setCellValue("G$row", (float)$r['total_depositado']);
+                $sh->setCellValue("H$row", (float)$r['total_transito']);
+                $sh->setCellValue("I$row", (float)$r['total_diferencias']);
+                $sh->setCellValue("J$row", $r['nota_cierre']);
+                $sh->setCellValue("K$row", $r['fecha_cierre']);
+                $sh->getStyle("F$row:I$row")->getNumberFormat()->setFormatCode('$#,##0.00');
+                $sh->getStyle("I$row")->getFont()->setBold(true);
+                if ((float)$r['total_diferencias'] < -0.01)
+                    $sh->getStyle("I$row")->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                $totalDif += (float)$r['total_diferencias'];
+                $row++;
+            }
+            $sh->setCellValue("H$row", 'TOTAL:');
+            $sh->setCellValue("I$row", $totalDif);
+            $sh->getStyle("H$row:I$row")->getFont()->setBold(true);
+            $sh->getStyle("I$row")->getNumberFormat()->setFormatCode('$#,##0.00');
+            foreach (range('A','K') as $c) $sh->getColumnDimension($c)->setAutoSize(true);
+
+            $label = $rs ?: 'TODOS';
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="Diferencias_V3_'.$label.'.xlsx"');
+            header('Cache-Control: max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($sp))->save('php://output');
+
+        } catch (\Exception $e) { echo "Error: " . $e->getMessage(); }
+        exit;
+    }
+
+    // ── EXPORT V3 — Resumen General  GET /income/export_resumen_v3 ────────────
+    public function export_resumen_v3(): void {
+        ob_clean();
+        $year        = (int)($_GET['year']         ?? 0);
+        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $rs          = trim($_GET['razon_social']   ?? '');
+        $estacion_id = (int)($_GET['estacion_id']   ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']     ?? '');
+
+        try {
+            $conn = $this->v3_conn();
+
+            $where  = "WHERE C.estado='CERRADO'";
+            $params = [];
+            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+            if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
+            if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
+            if ($rs === 'DIAZ GAS')   { $where .= " AND E.RFC='DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX')   { $where .= " AND E.RFC='DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS')  { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+            $stmt = $conn->prepare(
+                "SELECT ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
+                        C.afiliacion,
+                        ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
+                        CASE WHEN E.RFC='DGA930823KD3' THEN 'DIAZ GAS'
+                             WHEN E.RFC='DGM880621FU5' THEN 'GASOMEX' ELSE 'FORANEAS' END AS razon_social,
+                        SUM(C.total_cg) AS total_cg,
+                        SUM(C.total_depositado) AS total_depositado,
+                        ISNULL(SUM(C.total_transito),0) AS total_transito,
+                        ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
+                        COUNT(*) AS meses_cerrados
+                 FROM Conciliacion_V3_CierreMes C
+                 LEFT JOIN Estaciones E ON E.Codigo=C.estacion_id
+                 LEFT JOIN Tesoreria_Entidad TE ON TE.id=C.entidad_id
+                 $where
+                 GROUP BY TE.Nombre, C.entidad_id, C.afiliacion, E.Nombre, C.estacion_id, E.RFC
+                 ORDER BY banco, estacion"
+            );
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $byBank = [];
+            foreach ($rows as $r) $byBank[$r['banco']][] = $r;
+
+            $sp = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sh = $sp->getActiveSheet(); $sh->setTitle('Resumen General V3');
+
+            $titulo = 'RESUMEN GENERAL CONCILIACIÓN V3' . ($rs ? " — $rs" : '') . ($year ? " — $year" : '');
+            $sh->setCellValue('A1', $titulo);
+            $sh->mergeCells('A1:H1');
+            $sh->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+            $sh->getStyle('A1')->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+            $hStyle = ['fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FF3485A8']],
+                       'font'=>['bold'=>true,'color'=>['argb'=>'FFFFFFFF']]];
+            $totStyle = ['fill'=>['fillType'=>\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,'startColor'=>['argb'=>'FFE9ECEF']],
+                         'font'=>['bold'=>true]];
+
+            $rowIdx = 3;
+            foreach ($byBank as $bankName => $bankRows) {
+                $sh->setCellValue("A$rowIdx", "INSTITUCIÓN: $bankName");
+                $sh->mergeCells("A$rowIdx:H$rowIdx");
+                $sh->getStyle("A$rowIdx")->getFont()->setBold(true)->setSize(11);
+                $rowIdx++;
+
+                $sh->fromArray(['AFILIACIÓN','ESTACIÓN','RAZÓN SOCIAL','CG ($)','DEPOSITADO ($)','TRÁNSITO ($)','DIFERENCIA ($)','MESES'], null, "A$rowIdx");
+                $sh->getStyle("A$rowIdx:H$rowIdx")->applyFromArray($hStyle);
+                $rowIdx++;
+
+                $sC=0; $sD=0; $sT=0; $sDif=0;
+                foreach ($bankRows as $r) {
+                    $sh->setCellValue("A$rowIdx", $r['afiliacion']);
+                    $sh->setCellValue("B$rowIdx", $r['estacion']);
+                    $sh->setCellValue("C$rowIdx", $r['razon_social']);
+                    $sh->setCellValue("D$rowIdx", (float)$r['total_cg']);
+                    $sh->setCellValue("E$rowIdx", (float)$r['total_depositado']);
+                    $sh->setCellValue("F$rowIdx", (float)$r['total_transito']);
+                    $sh->setCellValue("G$rowIdx", (float)$r['total_diferencias']);
+                    $sh->setCellValue("H$rowIdx", (int)$r['meses_cerrados']);
+                    $sh->getStyle("D$rowIdx:G$rowIdx")->getNumberFormat()->setFormatCode('$#,##0.00');
+                    if (abs((float)$r['total_diferencias']) > 0.01)
+                        $sh->getStyle("G$rowIdx")->getFont()->getColor()->setARGB(\PhpOffice\PhpSpreadsheet\Style\Color::COLOR_RED);
+                    $sC += (float)$r['total_cg']; $sD += (float)$r['total_depositado'];
+                    $sT += (float)$r['total_transito']; $sDif += (float)$r['total_diferencias'];
+                    $rowIdx++;
+                }
+                $sh->setCellValue("C$rowIdx", "SUBTOTAL $bankName");
+                $sh->setCellValue("D$rowIdx", $sC); $sh->setCellValue("E$rowIdx", $sD);
+                $sh->setCellValue("F$rowIdx", $sT); $sh->setCellValue("G$rowIdx", $sDif);
+                $sh->getStyle("A$rowIdx:H$rowIdx")->applyFromArray($totStyle);
+                $sh->getStyle("D$rowIdx:G$rowIdx")->getNumberFormat()->setFormatCode('$#,##0.00');
+                $rowIdx += 2;
+            }
+            foreach (range('A','H') as $c) $sh->getColumnDimension($c)->setAutoSize(true);
+
+            $label = ($rs ?: 'TODOS') . ($year ? "_$year" : '');
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="Resumen_V3_'.$label.'.xlsx"');
+            header('Cache-Control: max-age=0');
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($sp))->save('php://output');
+
+        } catch (\Exception $e) { echo "Error: " . $e->getMessage(); }
+        exit;
+    }
+
     // ── HELPERS ───────────────────────────────────────────────────────────────
 
     private function v3_conn(): PDO {
