@@ -3967,9 +3967,6 @@ class Supply
         header('Content-Type: application/json');
         try {
             $provider_id = $_POST['provider_id'] ?? null;
-            if (!$provider_id) {
-                throw new Exception('provider_id es requerido');
-            }
             $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
             echo json_encode(['success' => true, 'notes' => $notes ?: []]);
         } catch (Exception $e) {
@@ -3985,7 +3982,7 @@ class Supply
     {
         header('Content-Type: application/json');
         try {
-            $requiredFields = ['credit_note_id', 'payment_request_id', 'invoice_id', 'applied_amount'];
+            $requiredFields = ['credit_note_id', 'payment_request_id', 'applied_amount'];
             foreach ($requiredFields as $field) {
                 if (empty($_POST[$field])) {
                     throw new Exception("El campo {$field} es requerido");
@@ -3994,7 +3991,7 @@ class Supply
 
             $creditNoteId     = (int)$_POST['credit_note_id'];
             $paymentRequestId = (int)$_POST['payment_request_id'];
-            $invoiceId        = (int)$_POST['invoice_id'];
+            $invoiceId        = !empty($_POST['invoice_id']) ? (int)$_POST['invoice_id'] : null;
             $appliedAmount    = (float)$_POST['applied_amount'];
 
             if ($appliedAmount <= 0) {
