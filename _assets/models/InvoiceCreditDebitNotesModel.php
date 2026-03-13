@@ -18,11 +18,12 @@ class InvoiceCreditDebitNotesModel extends Model
      * Obtener todas las notas activas de un proveedor (con saldo disponible calculado)
      */
     public function getNotesByProvider($providerId) : array|false {
-        if($providerId == 1){
+        if (!$providerId || $providerId == 1) {
             $where  = 'WHERE t1.status = 1';
-
-        } else{
+            $params = [];
+        } else {
             $where  = 'WHERE t1.provider_id = ? AND t1.status = 1';
+            $params = [$providerId];
         }
 
         $query = "
@@ -48,7 +49,7 @@ class InvoiceCreditDebitNotesModel extends Model
             LEFT JOIN SG12.dbo.Proveedores t3 on t3.cod = t1.provider_id
                 $where
             ORDER BY t1.created_at DESC";
-        return $this->sql->select($query, [$providerId]);
+        return $this->sql->select($query, $params);
     }
 
     /**

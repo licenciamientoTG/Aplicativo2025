@@ -727,7 +727,7 @@
         }
         section.style.display = 'block';
         list.innerHTML = pendingNotes.map((n, i) => {
-            const colorClass = n.note_type === 'CREDIT' ? 'text-success' : 'text-warning';
+            const colorClass = 'text-dark';
             const sign = n.note_type === 'CREDIT' ? '−' : '+';
             return `<li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
                 <span class="${colorClass}"><i class="fas fa-tag me-1"></i>${n.note_label}: ${sign}$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>

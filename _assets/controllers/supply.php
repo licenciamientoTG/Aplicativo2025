@@ -3967,9 +3967,6 @@ class Supply
         header('Content-Type: application/json');
         try {
             $provider_id = $_POST['provider_id'] ?? null;
-            if (!$provider_id) {
-                throw new Exception('provider_id es requerido');
-            }
             $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
             echo json_encode(['success' => true, 'notes' => $notes ?: []]);
         } catch (Exception $e) {
