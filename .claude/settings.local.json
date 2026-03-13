@@ -14,7 +14,14 @@
       "Bash(Read-Host:*)",
       "Bash(git:*)",
       "Bash(powershell:*)",
-      "Bash(php:*)"
+      "Bash(php:*)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT estacion_id, entidad_id, afiliacion, descripcion FROM Conciliacion_Configuracion WHERE entidad_id = 1 ORDER BY estacion_id\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT estacion_id, entidad_id, afiliacion, rfc FROM Tesoreria_afil WHERE entidad_id = 1 AND estacion_id IN \\(21,22,29\\) ORDER BY estacion_id\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT * FROM Conciliacion_Configuracion WHERE afiliacion LIKE '%8483034500%'\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT * FROM Tesoreria_afil WHERE afiliacion LIKE '%8483034500%' OR afiliacion LIKE '%8265686311%'\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT Codigo, Nombre, RFC FROM Estaciones WHERE Nombre LIKE '%Misiones%'\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT estacion_id, entidad_id, afiliacion, rfc FROM Tesoreria_afil WHERE estacion_id = 10 ORDER BY entidad_id\" -W 2>&1)",
+      "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT TOP 3 Codigo, Nombre, RFC FROM Estaciones WHERE Codigo = 10\" -W 2>&1)"
     ],
     "deny": [],
     "ask": []

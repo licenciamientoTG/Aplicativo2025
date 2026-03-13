@@ -3248,11 +3248,12 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
-            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuraciÃ³n/afiliaciÃ³n
-            $sql = "SELECT DISTINCT 
-                        T1.Codigo, 
-                        T1.Nombre, 
-                        T2.rfc as RFC 
+            // INNER JOIN con Tesoreria_afil para traer SOLO las estaciones que tienen configuración/afiliación
+            // RFC se toma de Estaciones (fuente autoritativa), no de Tesoreria_afil (puede variar por entidad)
+            $sql = "SELECT DISTINCT
+                        T1.Codigo,
+                        T1.Nombre,
+                        ISNULL(T1.RFC, 'FORANEAS') as RFC
                     FROM Estaciones T1
                     INNER JOIN Tesoreria_afil T2 ON T1.Codigo = T2.estacion_id
                     ORDER BY T1.Nombre";
@@ -3468,13 +3469,13 @@ public function anomalies_client_tickets()
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
-            
+
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                $catalogo[] = [
-                    'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion'],
-                    'RFC'        => trim($r['RFC'])
-                ];
+                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
+                    $token = trim($token);
+                    if ($token === '') continue;
+                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
+                }
             }
 
             usort($catalogo, function($a, $b) {
@@ -3536,26 +3537,31 @@ public function anomalies_client_tickets()
             $conn = new PDO("sqlsrv:Server=$server;Database=$db", $user, $pass);
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-            $sqlAfil = "SELECT A.afiliacion, S.Nombre as Estacion, ISNULL(A.rfc, 'FORANEAS') as RFC 
+            $sqlAfil = "SELECT A.afiliacion,
+                               ISNULL(S.Nombre, V.Nombre) as Estacion,
+                               ISNULL(A.rfc, 'FORANEAS') as RFC
                         FROM Tesoreria_afil A
-                        INNER JOIN Estaciones S ON A.estacion_id = S.Codigo
-                        WHERE A.entidad_id = 1 AND LEN(ISNULL(A.afiliacion,'')) > 0";
+                        LEFT JOIN Estaciones S ON A.estacion_id = S.Codigo
+                        LEFT JOIN Tesoreria_Estaciones_Virtuales V ON A.estacion_id = V.Codigo
+                        WHERE A.entidad_id = 1
+                        AND LEN(ISNULL(A.afiliacion,'')) > 0
+                        AND (S.Nombre IS NOT NULL OR V.Nombre IS NOT NULL)";
             
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                $catalogo[] = [
-                    'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion'],
-                    'RFC'        => trim($r['RFC'])
-                ];
+                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
+                    $token = trim($token);
+                    if ($token === '') continue;
+                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
+                }
             }
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            $tablas = ['Tesoreria_5117', 'Tesoreria_8973'];
+            $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
@@ -3627,11 +3633,11 @@ public function anomalies_client_tickets()
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                $catalogo[] = [
-                    'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion'],
-                    'RFC'        => trim($r['RFC'])
-                ];
+                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
+                    $token = trim($token);
+                    if ($token === '') continue;
+                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
+                }
             }
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
@@ -3680,6 +3686,30 @@ public function anomalies_client_tickets()
                 }
             } catch(Exception $e){}
 
+            // Fuentes por Referencia: 8504, 8492, 4638, 4777
+            foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777'] as $tablaRef) {
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $sqlRef = "SELECT Fecha, Concepto, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $stmt = $conn->prepare($sqlRef); $stmt->execute([$year, $month]);
+                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $ref = trim($row['Concepto'] ?? '');
+                        if ($ref === '') continue;
+                        $monto = (float)$row['Depositos'];
+                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
+                        foreach ($catalogo as $afilItem) {
+                            if (stripos($ref, $afilItem['afiliacion']) !== false) {
+                                $key = $fecha . '_' . $afilItem['afiliacion'];
+                                if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
+                                $agrupado[$key]['Total'] += $monto;
+                                break;
+                            }
+                        }
+                    }
+                } catch(Exception $e){}
+            }
+
             $resultado = array_values($agrupado);
             usort($resultado, function($a, $b) { return strcmp($a['Fecha'], $b['Fecha']); });
             echo json_encode(["status" => "success", "data" => $resultado, "catalog" => $catalogo]);
@@ -3716,11 +3746,11 @@ public function anomalies_client_tickets()
             $stmtAfil = $conn->query($sqlAfil);
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
-                $catalogo[] = [
-                    'afiliacion' => trim($r['afiliacion']),
-                    'Estacion'   => $r['Estacion'],
-                    'RFC'        => trim($r['RFC'])
-                ];
+                foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
+                    $token = trim($token);
+                    if ($token === '') continue;
+                    $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
+                }
             }
             usort($catalogo, function($a, $b) {
                 $res = strcmp($a['Estacion'], $b['Estacion']);
