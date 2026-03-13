@@ -96,7 +96,7 @@
 
             <!-- TAB 2: Ventas Mensuales -->
             <div class="tab-pane fade" id="tab-mensuales" role="tabpanel">
-                <div class="row mb-3 g-2">
+                <div class="row mb-3 g-2 align-items-end">
                     <div class="col-auto">
                         <label class="form-label mb-1 small fw-semibold">Grupo</label>
                         <select id="filtro_m_grupo" class="form-select form-select-sm">
@@ -152,12 +152,79 @@
         </div><!-- /tab-content -->
     </div>
 </div>
+
+<!-- Modal: Agregar Estación Adicional -->
+<div class="modal fade" id="modalEstacionAdicional" tabindex="-1" aria-labelledby="modalEstacionAdicionalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalEstacionAdicionalLabel">
+                    <i class="fas fa-plus-circle me-2"></i> Agregar Estación Adicional
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formEstacionAdicional" action="#" method="post">
+                    <div class="mb-3">
+                        <label for="ea_estacion" class="form-label fw-semibold">Estación</label>
+                        <select id="ea_estacion" name="estacion" class="form-select" required>
+                            <option value="" disabled selected>Seleccionar estación...</option>
+                            <option value="Praxedis">Praxedis</option>
+                            <option value="Colossio">Colossio</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ea_mes_anio" class="form-label fw-semibold">Mes y Año</label>
+                        <input type="month" id="ea_mes_anio" name="mes_anio" class="form-control" required>
+                        <div class="form-text">Solo se permiten meses anteriores al actual.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ea_combustible" class="form-label fw-semibold">Combustible</label>
+                        <select id="ea_combustible" name="combustible" class="form-select" required>
+                            <option value="" disabled selected>Seleccionar combustible...</option>
+                            <option value="87">87 Octanos</option>
+                            <option value="91">91 Octanos</option>
+                            <option value="diesel">Diesel Automotriz</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ea_volumen_total" class="form-label fw-semibold">Volumen Total (L)</label>
+                        <input type="number" id="ea_volumen_total" name="volumen_total" class="form-control" min="0"
+                            step="0.001" placeholder="0.000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="ea_venta_total" class="form-label fw-semibold">Venta Total ($)</label>
+                        <input type="number" id="ea_venta_total" name="venta_total" class="form-control" min="0"
+                            step="0.01" placeholder="0.00" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                <button type="submit" form="formEstacionAdicional" class="btn btn-warning btn-sm">
+                    <i class="fas fa-save me-1"></i> Guardar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block myjs %}
 <script src="{{ JS }}accounting.js"></script>
 <script>
     $(document).ready(function () {
+
+        // Restringir el input de mes/año al mes anterior como máximo
+        (function () {
+            let d = new Date();
+            d.setDate(1);
+            d.setMonth(d.getMonth() - 1);
+            let maxVal = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+            document.getElementById('ea_mes_anio').max = maxVal;
+        })();
+
 
         // ─── TAB 1: Ventas Diarias ───────────────────────────────────────────
         let tableDiarias = $('#xml_ventas_table').DataTable({
@@ -354,7 +421,14 @@
                 buttons: [
                     { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' },
                     { extend: 'copyHtml5', text: '<i class="fas fa-copy"></i> Copiar', className: 'btn btn-secondary btn-sm' },
-                    { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' }
+                    { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' },
+                    {
+                        text: '<i class="fas fa-plus-circle me-1"></i> Agregar Estación Adicional',
+                        className: 'btn btn-warning btn-sm',
+                        action: function () {
+                            $('#modalEstacionAdicional').modal('show');
+                        }
+                    }
                 ],
                 footerCallback: function (row, data, start, end, display) {
                     let api = this.api();

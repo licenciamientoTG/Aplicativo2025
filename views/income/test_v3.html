@@ -70,7 +70,7 @@
     .diff-tag { font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:12px;margin-right:8px;font-family:'Consolas',monospace;border:1px solid transparent; }
     .diff-tag.ok   { background:#d1e7dd;color:#0f5132;border-color:#badbcc; }
     .diff-tag.warn { background:#dbeafe;color:#1d4ed8;border-color:#bfdbfe; }
-    .diff-tag.pos  { background:#cfe2ff;color:#084298;border-color:#b6d4fe; } /* Azul para positivo */
+    .diff-tag.pos  { background:#d1e7dd;color:#0f5132;border-color:#badbcc; } /* Verde para positivo */
     .diff-tag.neg  { background:#f8d7da;color:#842029;border-color:#f5c2c7; } /* Rojo para negativo */
 
     /* AGRUPACIÓN POR DÍA — igual que V2 */
@@ -206,17 +206,25 @@
             </select>
         </div>
 
+        <!-- Modo Transacciones -->
+        <button class="btn btn-outline-info rounded-pill shadow-sm font-weight-bold" onclick="abrirModoTransacciones()" title="Comparar CG vs Transacciones por día">
+            <i class="fas fa-exchange-alt mr-1"></i> Modo Transacciones
+        </button>
+
         <!-- Tránsitos activos -->
         <button class="btn btn-outline-warning rounded-pill shadow-sm font-weight-bold d-none" id="btn-gestionar-transitos" onclick="abrirModalGestionTransitos()" title="Ver y cancelar tránsitos activos">
             <i class="fas fa-exchange-alt mr-1"></i> Tránsitos <span id="transitos-cg-count" class="badge badge-warning ml-1">0</span>
         </button>
 
         <!-- Acciones -->
-        <button class="btn btn-outline-danger rounded-pill shadow-sm font-weight-bold" onclick="deshacerMes()" title="Deshacer todas las conciliaciones del mes">
+        <button class="btn btn-outline-danger rounded-pill shadow-sm font-weight-bold" id="btn-deshacer-mes" onclick="deshacerMes()" title="Deshacer todas las conciliaciones del mes">
             <i class="fas fa-trash-alt mr-1"></i> Deshacer Mes
         </button>
-        <button class="btn btn-warning rounded-pill shadow-sm font-weight-bold" onclick="abrirModalCierre()" title="Cerrar el mes y enviar diferencias a tránsito">
+        <button class="btn btn-warning rounded-pill shadow-sm font-weight-bold" id="btn-cerrar-mes" onclick="abrirModalCierre()" title="Cerrar el mes">
             <i class="fas fa-calendar-check mr-1"></i> Cerrar Mes
+        </button>
+        <button class="btn btn-success rounded-pill shadow-sm font-weight-bold d-none" id="btn-reabrir-mes" onclick="abrirModalReabrirMes()" title="Reabrir mes cerrado">
+            <i class="fas fa-lock-open mr-1"></i> Reabrir Mes
         </button>
         <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()" title="Actualizar">
             <i class="fas fa-sync-alt"></i>
@@ -350,6 +358,42 @@
 
 <div id="pickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
 
+
+<!-- MODAL: MODO TRANSACCIONES -->
+<div class="modal fade" id="modalModoTransacciones" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="height:90vh;border-radius:15px;overflow:hidden;">
+            <div class="modal-header bg-dark text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold text-light"><i class="fas fa-columns mr-2"></i> Modo Transacciones — CG vs Banco por día</h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalModoTransacciones').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body bg-light p-3" style="overflow:hidden;">
+                <div class="row h-100">
+                    <!-- Panel Izquierdo: CG -->
+                    <div class="col-6 h-100 d-flex flex-column">
+                        <div class="bg-dark text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
+                            <span><i class="fas fa-gas-pump mr-2"></i> ControlGas</span>
+                            <span id="mtx-cg-total" class="badge badge-light text-dark">$0.00</span>
+                        </div>
+                        <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y:auto;" id="mtx-panel-cg">
+                            <div class="text-center py-5 text-muted">Cargando...</div>
+                        </div>
+                    </div>
+                    <!-- Panel Derecho: Transacciones -->
+                    <div class="col-6 h-100 d-flex flex-column">
+                        <div class="bg-primary text-white p-2 rounded-top font-weight-bold d-flex justify-content-between">
+                            <span><i class="fas fa-exchange-alt mr-2"></i> Transacciones</span>
+                            <span id="mtx-tx-total" class="badge badge-light text-dark">$0.00</span>
+                        </div>
+                        <div class="bg-white border rounded-bottom flex-fill p-0" style="overflow-y:auto;" id="mtx-panel-tx">
+                            <div class="text-center py-5 text-muted">Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- MODAL: DETALLE TRANSACCIÓN BANCO -->
 <div class="modal fade" id="modalDetalleTransaccion" tabindex="-1" role="dialog" aria-hidden="true">
@@ -498,9 +542,30 @@
     </div>
 </div>
 
+<!-- MODAL: REABRIR MES -->
+<div class="modal fade" id="modalReabrirMes" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden;">
+            <div class="modal-header bg-success text-white border-0 py-3">
+                <h5 class="modal-title font-weight-bold"><i class="fas fa-lock-open mr-2"></i>Reabrir Mes — <span id="reabrir-mes-label"></span></h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalReabrirMes').modal('hide')" style="font-size:1.5rem;opacity:.7;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body p-4 bg-light" id="reabrir-modal-body">
+                <div class="text-center py-4"><div class="spinner-border text-success"></div></div>
+            </div>
+            <div class="modal-footer bg-white border-0">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success rounded-pill px-4 font-weight-bold" id="btn-confirmar-reabrir" onclick="confirmarReabrirMes()" style="display:none;">
+                    <i class="fas fa-lock-open mr-2"></i>Confirmar Reapertura
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL: CIERRE DE MES -->
 <div class="modal fade" id="modalCierreMes" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
         <div class="modal-content border-0 shadow-lg" style="border-radius:18px;overflow:hidden;">
             <div class="modal-header bg-warning text-dark border-0 py-3">
                 <h5 class="modal-title font-weight-bold"><i class="fas fa-calendar-check mr-2"></i>Cerrar Mes — <span id="cierre-mes-label"></span></h5>
@@ -509,11 +574,20 @@
             <div class="modal-body p-4 bg-light" id="cierre-modal-body">
                 <div class="text-center py-4"><div class="spinner-border text-warning"></div></div>
             </div>
-            <div class="modal-footer bg-white border-0">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-dismiss="modal">Cancelar</button>
-                <button type="button" class="btn btn-warning rounded-pill px-4 font-weight-bold" id="btn-confirmar-cierre" onclick="confirmarCierre()" style="display:none;">
-                    <i class="fas fa-lock mr-2"></i>Confirmar Cierre
-                </button>
+            <div class="modal-footer bg-white border-0 flex-column align-items-stretch px-4 pb-3" id="cierre-footer" style="display:none!important;">
+                <!-- Nota obligatoria si hay pendientes -->
+                <div id="cierre-nota-wrap" class="mb-3" style="display:none;">
+                    <label class="small font-weight-bold text-uppercase text-danger mb-1">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>Nota obligatoria — explica por qué se cierra con ítems pendientes
+                    </label>
+                    <textarea id="cierre-nota" class="form-control" rows="2" placeholder="Ej: Cortes del día 28 serán conciliados la próxima semana..."></textarea>
+                </div>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-warning rounded-pill px-4 font-weight-bold" id="btn-confirmar-cierre" onclick="confirmarCierre()">
+                        <i class="fas fa-lock mr-2"></i><span id="btn-cierre-label">Confirmar Cierre</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -546,6 +620,7 @@ const URLS_V3 = {
     crear_transito:      '/income/crear_transito_v3',
     crear_transito_dia:  '/income/crear_transito_dia_v3',
     cancelar_transito:   '/income/cancelar_transito_v3',
+    reabrir_mes:         '/income/reabrir_mes_v3',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -878,8 +953,14 @@ async function checkMesCerrado(estid, eid, afil, mes) {
         if (mesCerrado) {
             $('#mes-cerrado-banner').removeClass('d-none');
             $('#mes-cerrado-texto').text(`El mes ${mes} está cerrado. Solo lectura.`);
+            $('#btn-deshacer-mes').addClass('d-none');
+            $('#btn-cerrar-mes').addClass('d-none');
+            $('#btn-reabrir-mes').removeClass('d-none');
         } else {
             $('#mes-cerrado-banner').addClass('d-none');
+            $('#btn-deshacer-mes').removeClass('d-none');
+            $('#btn-cerrar-mes').removeClass('d-none');
+            $('#btn-reabrir-mes').addClass('d-none');
         }
     } catch(e) {}
 }
@@ -1085,7 +1166,7 @@ function renderCG() {
                     const difVal = parseFloat(hRec.diferencia);
                     const ok = Math.abs(difVal) < 0.01;
                     statusClass = ok ? 'row-concil-ok' : 'row-concil-diff';
-                    difTag    = `<span class="diff-tag ${ok?'ok':'warn'}">${fmt.format(difVal)}</span>`;
+                    difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                     unlinkBtn = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
                 } else {
                     statusClass = 'row-concil-ok';
@@ -1220,8 +1301,8 @@ function renderTes() {
                 const difVal = parseFloat(hRec.diferencia);
                 const ok = Math.abs(difVal) < 0.01;
                 statusClass = ok ? 'row-concil-ok' : 'row-concil-diff';
-                difTag    = `<span class="diff-tag ${ok?'ok':'warn'}">${fmt.format(difVal)}</span>`;
-                unlinkBtn = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
+                difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
+                unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
             } else {
                 statusClass = 'row-concil-ok';
             }
@@ -1721,46 +1802,108 @@ function deshacerGrupo(grupo_id) {
 }
 
 // ── CIERRE DE MES ─────────────────────────────────────────────
+let _cierreState = { pendingItems: [] };
+
 function abrirModalCierre() {
     if (!currentRule) { alert('Selecciona estación y banco primero.'); return; }
-    const mes = `${widgetState.year}-${widgetState.month}`;
-    $('#cierre-mes-label').text(mes);
-    $('#cierre-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-warning"></div></div>');
-    $('#btn-confirmar-cierre').hide();
-    $('#modalCierreMes').modal('show');
 
+    const mes   = `${widgetState.year}-${widgetState.month}`;
     const estid = $('#estacionSelect').val();
     const eid   = currentRule.entidad_id;
     const afil  = currentRule.afiliacion;
+
+    $('#cierre-mes-label').text(mes);
+    $('#cierre-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-warning"></div></div>');
+    $('#cierre-footer').hide();
+    $('#cierre-nota').val('');
+    $('#modalCierreMes').modal('show');
+
+    // Calcular ítems pendientes localmente (misma lógica que renderCG)
+    const keywords = currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
+        : [];
+
+    _cierreState.pendingItems = cgData.filter(item => {
+        const monto = parseFloat(item.Total || 0);
+        if (monto <= 0) return false;
+        if (keywords.length) {
+            const c = (item.Concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+            if (!keywords.some(k => c.includes(k))) return false;
+        }
+        const ref = item.ID_Unico || '';
+        // ¿Conciliado?
+        if (conciliadasSet.CG && conciliadasSet.CG.has(ref)) return false;
+        // ¿100% en tránsito?
+        const ti = transitosCG.enTransito[ref];
+        if (ti && ti.monto_efectivo < 0.01) return false;
+        return true;
+    });
 
     fetch(`${URLS_V3.preview_cierre}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&mes=${mes}`)
     .then(r => r.json())
     .then(json => {
         if (json.ya_cerrado) {
-            $('#cierre-modal-body').html(`
-                <div class="alert alert-info"><i class="fas fa-info-circle mr-2"></i>El mes <strong>${mes}</strong> ya fue cerrado anteriormente.</div>`);
+            $('#cierre-modal-body').html(`<div class="alert alert-info mb-0"><i class="fas fa-lock mr-2"></i>El mes <strong>${mes}</strong> ya está cerrado.</div>`);
             return;
         }
-        const rows = (json.detalle_transito || []).map(g =>
-            `<tr><td>${g.fecha}</td><td class="text-right font-numeric">${fmt.format(g.total_sistema)}</td><td class="text-right font-numeric text-success">${fmt.format(g.total_tesoreria)}</td><td class="text-right font-numeric text-danger">${fmt.format(g.monto_transito)}</td></tr>`
-        ).join('') || '<tr><td colspan="4" class="text-center text-muted">Ninguno</td></tr>';
 
-        $('#cierre-modal-body').html(`
-            <div class="row mb-3 text-center">
-                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">CG Total</div><div class="h5 font-numeric">${fmt.format(json.total_cg)}</div></div>
-                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">Depositado</div><div class="h5 font-numeric text-success">${fmt.format(json.total_tes)}</div></div>
-                <div class="col-4"><div class="small text-muted text-uppercase font-weight-bold">A Tránsito</div><div class="h5 font-numeric text-warning">${fmt.format(json.total_cg - json.total_tes)}</div></div>
-            </div>
-            ${json.grupos_con_diff > 0 ? `
-            <p class="small text-muted font-weight-bold text-uppercase mb-1">Grupos que irán a tránsito:</p>
-            <div class="table-responsive" style="max-height:200px;">
-                <table class="table table-sm table-hover mb-0">
-                    <thead class="bg-light"><tr><th>Fecha</th><th class="text-right">CG</th><th class="text-right">Depositado</th><th class="text-right">Pendiente</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>` : '<div class="alert alert-success"><i class="fas fa-check mr-2"></i>Todo conciliado. No hay diferencias para enviar a tránsito.</div>'}
-        `);
-        $('#btn-confirmar-cierre').show();
+        const hasPending = _cierreState.pendingItems.length > 0;
+
+        // Resumen financiero
+        let bodyHtml = `
+            <div class="row text-center mb-4">
+                <div class="col-3">
+                    <div class="small text-muted text-uppercase font-weight-bold">CG Conciliado</div>
+                    <div class="h5 font-numeric mb-0">${fmt.format(json.total_cg)}</div>
+                </div>
+                <div class="col-3">
+                    <div class="small text-muted text-uppercase font-weight-bold">Depositado</div>
+                    <div class="h5 font-numeric text-success mb-0">${fmt.format(json.total_tes)}</div>
+                </div>
+                <div class="col-3">
+                    <div class="small text-muted text-uppercase font-weight-bold">En Tránsito</div>
+                    <div class="h5 font-numeric text-warning mb-0">${fmt.format(json.total_transito)}</div>
+                    <div class="text-muted" style="font-size:.7rem;">${json.n_transitos} registro(s)</div>
+                </div>
+                <div class="col-3">
+                    <div class="small text-muted text-uppercase font-weight-bold">Diferencias</div>
+                    <div class="h5 font-numeric ${Math.abs(json.total_diferencias) > 0.01 ? 'text-danger' : 'text-muted'} mb-0">${fmt.format(json.total_diferencias)}</div>
+                </div>
+            </div>`;
+
+        // Advertencia de pendientes
+        if (hasPending) {
+            const listItems = _cierreState.pendingItems.slice(0, 10).map(item => {
+                const fecha = (() => {
+                    if (item.FechaVisual) return item.FechaVisual;
+                    const f = item.Fecha || item.fch || '';
+                    return f.substring(0,10).split('-').reverse().join('/');
+                })();
+                return `<li class="py-1 border-bottom"><span class="mr-2 text-muted small">${fecha}</span>${escHtml(item.Concepto||'')} <span class="float-right font-numeric font-weight-bold">${fmt.format(parseFloat(item.Total||0))}</span></li>`;
+            }).join('');
+            const more = _cierreState.pendingItems.length > 10
+                ? `<li class="text-muted small py-1">...y ${_cierreState.pendingItems.length - 10} más</li>` : '';
+
+            bodyHtml += `
+                <div class="alert alert-warning border-left-4 mb-3" style="border-left:4px solid #ffc107;">
+                    <strong><i class="fas fa-exclamation-triangle mr-1"></i>${_cierreState.pendingItems.length} ítem(s) sin conciliar ni enviar a tránsito:</strong>
+                    <ul class="mt-2 mb-0 list-unstyled" style="max-height:160px;overflow-y:auto;font-size:.85rem;">
+                        ${listItems}${more}
+                    </ul>
+                </div>`;
+
+            $('#btn-cierre-label').text('Cerrar de todos modos');
+            $('#btn-confirmar-cierre').removeClass('btn-warning').addClass('btn-danger');
+            $('#cierre-nota-wrap').show();
+        } else {
+            bodyHtml += `<div class="alert alert-success mb-0"><i class="fas fa-check-circle mr-2"></i>Todo conciliado o en tránsito. El mes puede cerrarse sin observaciones.</div>`;
+            $('#btn-cierre-label').text('Confirmar Cierre');
+            $('#btn-confirmar-cierre').removeClass('btn-danger').addClass('btn-warning');
+            $('#cierre-nota-wrap').hide();
+        }
+
+        $('#cierre-modal-body').html(bodyHtml);
+        $('#cierre-footer').show();
     })
     .catch(() => $('#cierre-modal-body').html('<div class="alert alert-danger">Error al cargar preview.</div>'));
 }
@@ -1770,22 +1913,103 @@ function confirmarCierre() {
     const estid = parseInt($('#estacionSelect').val());
     const eid   = currentRule.entidad_id;
     const afil  = currentRule.afiliacion;
+    const nota  = $('#cierre-nota').val().trim();
+    const nPend = _cierreState.pendingItems.length;
 
-    $('#btn-confirmar-cierre').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Cerrando...');
+    if (nPend > 0 && nota === '') {
+        $('#cierre-nota').addClass('is-invalid').focus();
+        return;
+    }
+    $('#cierre-nota').removeClass('is-invalid');
+
+    $('#btn-confirmar-cierre').prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Cerrando...');
 
     fetch(URLS_V3.cerrar_mes, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ estacion_id: estid, entidad_id: eid, afiliacion: afil, mes })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estacion_id: estid, entidad_id: eid, afiliacion: afil, mes, items_pendientes: nPend, nota_cierre: nota })
     })
     .then(r => r.json())
     .then(json => {
         if (json.status === 'success') {
             $('#modalCierreMes').modal('hide');
             actualizarTodo();
-            alert(`Mes ${mes} cerrado.\n\nCG: ${fmt.format(json.total_cg)}\nDepositado: ${fmt.format(json.total_tes)}\nEnviado a tránsito: ${fmt.format(json.total_transito)}`);
         } else {
             alert('Error: ' + json.message);
-            $('#btn-confirmar-cierre').prop('disabled', false).html('<i class="fas fa-lock mr-2"></i>Confirmar Cierre');
+            $('#btn-confirmar-cierre').prop('disabled', false).html(`<i class="fas fa-lock mr-2"></i><span id="btn-cierre-label">${nPend > 0 ? 'Cerrar de todos modos' : 'Confirmar Cierre'}</span>`);
+        }
+    })
+    .catch(() => alert('Error de conexión'));
+}
+
+// ── REABRIR MES ───────────────────────────────────────────────
+function abrirModalReabrirMes() {
+    if (!currentRule) return;
+    const mes   = `${widgetState.year}-${widgetState.month}`;
+    const estid = $('#estacionSelect').val();
+    const eid   = currentRule.entidad_id;
+    const afil  = currentRule.afiliacion;
+
+    $('#reabrir-mes-label').text(mes);
+    $('#reabrir-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-success"></div></div>');
+    $('#btn-confirmar-reabrir').hide();
+    $('#modalReabrirMes').modal('show');
+
+    fetch(`${URLS_V3.preview_cierre}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&mes=${mes}`)
+    .then(r => r.json())
+    .then(json => {
+        if (!json.ya_cerrado) {
+            $('#reabrir-modal-body').html('<div class="alert alert-warning mb-0"><i class="fas fa-exclamation-triangle mr-2"></i>Este mes no está cerrado.</div>');
+            return;
+        }
+
+        $('#reabrir-modal-body').html(`
+            <div class="alert alert-warning border-0 mb-3" style="border-left:4px solid #ffc107!important;">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <strong>Atención:</strong> Reabrir el mes permitirá modificar y deshacer conciliaciones.
+                Las conciliaciones existentes <strong>no se borran</strong> — solo se quita el bloqueo.
+            </div>
+            <p class="small text-muted text-uppercase font-weight-bold mb-2">Resumen del cierre guardado:</p>
+            <div class="row text-center mb-0">
+                <div class="col-4">
+                    <div class="small text-muted">CG Conciliado</div>
+                    <div class="font-weight-bold font-numeric">${fmt.format(json.total_cg)}</div>
+                </div>
+                <div class="col-4">
+                    <div class="small text-muted">Depositado</div>
+                    <div class="font-weight-bold font-numeric text-success">${fmt.format(json.total_tes)}</div>
+                </div>
+                <div class="col-4">
+                    <div class="small text-muted">En Tránsito</div>
+                    <div class="font-weight-bold font-numeric text-warning">${fmt.format(json.total_transito)}</div>
+                </div>
+            </div>`);
+        $('#btn-confirmar-reabrir').show();
+    })
+    .catch(() => $('#reabrir-modal-body').html('<div class="alert alert-danger">Error al cargar datos del cierre.</div>'));
+}
+
+function confirmarReabrirMes() {
+    const mes   = `${widgetState.year}-${widgetState.month}`;
+    const estid = parseInt($('#estacionSelect').val());
+    const eid   = currentRule.entidad_id;
+    const afil  = currentRule.afiliacion;
+
+    $('#btn-confirmar-reabrir').prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-1"></span>Reabriendo...');
+
+    fetch(URLS_V3.reabrir_mes, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estacion_id: estid, entidad_id: eid, afiliacion: afil, mes })
+    })
+    .then(r => r.json())
+    .then(json => {
+        if (json.status === 'success') {
+            $('#modalReabrirMes').modal('hide');
+            actualizarTodo();
+        } else {
+            alert('Error: ' + json.message);
+            $('#btn-confirmar-reabrir').prop('disabled', false).html('<i class="fas fa-lock-open mr-2"></i>Confirmar Reapertura');
         }
     })
     .catch(() => alert('Error de conexión'));
@@ -2049,6 +2273,110 @@ async function confirmarCrearTransito() {
     } finally {
         body_loading(false);
     }
+}
+
+function abrirModoTransacciones() {
+    if (!currentRule) { alert('Primero selecciona una estación y banco.'); return; }
+
+    const $contCG = $('#mtx-panel-cg').empty();
+    const $contTX = $('#mtx-panel-tx').empty();
+    $('#modalModoTransacciones').modal('show');
+    $contCG.html('<div class="text-center py-5"><div class="spinner-border text-dark"></div><div class="mt-2 small text-muted">Procesando ControlGas...</div></div>');
+    $contTX.html('<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Procesando Transacciones...</div></div>');
+
+    // Mismo filtro que renderCG: keywords por conceptos_cg
+    const keywords = currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+        : [];
+
+    // Agrupar CG por fecha (igual que renderCG)
+    const cgGroups = {};
+    cgData.forEach(item => {
+        const monto = parseFloat(item.Total || 0);
+        if (monto <= 0) return;
+        if (keywords.length) {
+            const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+            if (!keywords.some(k => c.includes(k))) return;
+        }
+        let f = '';
+        if (item.FechaVisual) {
+            const p = item.FechaVisual.split('/');
+            f = p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual;
+        } else {
+            f = normalizarFecha(item.Fecha || item.fch || '');
+        }
+        if (!f) return;
+        if (!cgGroups[f]) cgGroups[f] = { total: 0, count: 0 };
+        cgGroups[f].total += monto;
+        cgGroups[f].count++;
+    });
+
+    // Agrupar TX por fecha de transacción
+    const txGroups = {};
+    txData.forEach(item => {
+        const monto = parseFloat(item.Total || 0);
+        const f = normalizarFecha((item.FechaTransaccion || '').substring(0, 10));
+        if (!f) return;
+        if (!txGroups[f]) txGroups[f] = { total: 0, count: 0 };
+        txGroups[f].total += monto;
+        txGroups[f].count++;
+    });
+
+    // Unión de todas las fechas
+    const allDates = [...new Set([...Object.keys(cgGroups), ...Object.keys(txGroups)])].sort();
+
+    $contCG.empty();
+    $contTX.empty();
+
+    if (!allDates.length) {
+        $contCG.html('<div class="text-center py-5 text-muted">Sin datos</div>');
+        $contTX.html('<div class="text-center py-5 text-muted">Sin datos</div>');
+        return;
+    }
+
+    let grandTotalCG = 0, grandTotalTX = 0;
+
+    allDates.forEach(fecha => {
+        const cg  = cgGroups[fecha] || { total: 0, count: 0 };
+        const tx  = txGroups[fecha] || { total: 0, count: 0 };
+        const dif = tx.total - cg.total;
+        grandTotalCG += cg.total;
+        grandTotalTX += tx.total;
+
+        const dateFmt = fecha.split('-').reverse().join('/');
+
+        // Badge diferencia
+        let diffHtml = '';
+        if (Math.abs(dif) < 0.01) {
+            diffHtml = '<span class="badge ml-2" style="background:#28a745;color:white;">OK</span>';
+        } else if (dif > 0) {
+            diffHtml = `<span class="badge ml-2" style="background:#0d6efd;color:white;">+${fmt.format(dif)}</span>`;
+        } else {
+            diffHtml = `<span class="badge ml-2" style="background:#dc3545;color:white;">${fmt.format(dif)}</span>`;
+        }
+
+        $contCG.append(`
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${cg.total > 0 ? 'bg-white' : 'bg-light'}" style="height:60px;">
+                <div>
+                    <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
+                    <small class="badge badge-light border text-dark">${cg.count} cortes</small>
+                </div>
+                <div class="font-numeric h6 mb-0 text-dark">${cg.total > 0 ? fmt.format(cg.total) : '<span class="text-muted">—</span>'}</div>
+            </div>`);
+
+        $contTX.append(`
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center ${tx.total > 0 ? 'bg-white' : 'bg-light'}" style="height:60px;">
+                <div>
+                    <span class="font-weight-bold mr-2 text-dark">${dateFmt}</span>
+                    <small class="badge badge-light border text-dark">${tx.count} txs</small>
+                    ${diffHtml}
+                </div>
+                <div class="font-numeric h6 mb-0 text-dark">${tx.total > 0 ? fmt.format(tx.total) : '<span class="text-muted">—</span>'}</div>
+            </div>`);
+    });
+
+    $('#mtx-cg-total').text(fmt.format(grandTotalCG));
+    $('#mtx-tx-total').text(fmt.format(grandTotalTX));
 }
 
 function abrirModalGestionTransitos() {
