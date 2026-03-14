@@ -59,13 +59,8 @@
     }
 
     @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-
-        100% {
-            transform: rotate(360deg);
-        }
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
 
     .payment-loader-text {
@@ -100,26 +95,13 @@
         border-color: #007bff transparent transparent transparent;
     }
 
-    .payment-loader-spinner-modern div:nth-child(1) {
-        animation-delay: -0.45s;
-    }
-
-    .payment-loader-spinner-modern div:nth-child(2) {
-        animation-delay: -0.3s;
-    }
-
-    .payment-loader-spinner-modern div:nth-child(3) {
-        animation-delay: -0.15s;
-    }
+    .payment-loader-spinner-modern div:nth-child(1) { animation-delay: -0.45s; }
+    .payment-loader-spinner-modern div:nth-child(2) { animation-delay: -0.3s; }
+    .payment-loader-spinner-modern div:nth-child(3) { animation-delay: -0.15s; }
 
     @keyframes loader-ring {
-        0% {
-            transform: rotate(0deg);
-        }
-
-        100% {
-            transform: rotate(360deg);
-        }
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
 
     .invoice-checkbox {
@@ -162,7 +144,6 @@
     .total_bg2 {
         background-color: #48A1C7 !important;
         color: white !important;
-
     }
 
     .border_center {
@@ -172,14 +153,12 @@
         border-right: 1px dotted #358f92 !important;
     }
 
-
     table.dataTable thead th,
     table.dataTable thead td {
         padding: 10px 18px;
         border-bottom: 1px solid #dee2e6;
         background-color: #3485a8 !important;
         color: #ffffff !important;
-
     }
 
     table.dataTable tfoot th,
@@ -188,7 +167,6 @@
         border-bottom: 1px solid #dee2e6;
         background-color: #3485a8 !important;
         color: #ffffff !important;
-
     }
 
     .border_OG {
@@ -196,12 +174,187 @@
         background-color: #6d7277e8;
     }
 
-    #payment_search_card {
-        /* color: white !important; */
-        border-left: 5px solid #389235 !important;
+    /* ── CARDS GENERALES ──────────────────────────────────────────── */
+    #payment_search_card,
+    #card-facturas,
+    #card-notas-cargo {
+        border: 1px solid #e0e0e0 !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        border-radius: 10px !important;
     }
 
-    /* Estilos para el drag and drop */
+    /* Cabeceras de cards — más altura, letra más grande y bold */
+    #payment_search_card .card-header,
+    #card-facturas .card-header,
+    #card-notas-cargo .card-header {
+        background-color: #ffffff !important;
+        border-bottom: 1px solid #e0e0e0 !important;
+        border-radius: 10px 10px 0 0 !important;
+        padding: 14px 20px !important;
+        font-size: 1.05rem !important;
+        font-weight: 600 !important;
+        color: #222 !important;
+    }
+    #payment_search_card .card-header i,
+    #card-facturas .card-header i,
+    #card-notas-cargo .card-header i.fas:not(.fa-chevron-up):not(.fa-chevron-down):not(.fa-times) {
+        font-size: 1.1rem;
+        color: #444;
+    }
+    #card-facturas .card-header i.fas.fa-file-invoice { color: #1a73e8; }
+    #card-notas-cargo .card-header i.fas.fa-tag       { color: #e65100; }
+
+    /* ── BOTONES DE FILTROS (Generar Notas, Generar Reporte) ─────── */
+    #payment_search_card .btn-outline-warning {
+        border-color: #bdbdbd !important;
+        color: #333 !important;
+        background: #fff !important;
+        font-size: 0.92rem;
+        padding: 8px 18px !important;
+        font-weight: 500;
+    }
+    #payment_search_card .btn-outline-warning:hover {
+        background: #f5f5f5 !important;
+        border-color: #999 !important;
+    }
+    #payment_search_card .btn-primary {
+        background-color: #1a73e8 !important;
+        border-color: #1a73e8 !important;
+        font-size: 0.92rem;
+        padding: 8px 18px !important;
+        font-weight: 600;
+    }
+
+    /* ── TABLA FACTURAS — cabecera azul oscuro ───────────────────── */
+    #card-facturas table.dataTable thead th,
+    #card-facturas table.dataTable thead td,
+    #payment_create_table thead th {
+        background-color: #2c3e50 !important;
+        color: #fff !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.04em;
+        padding: 10px 12px !important;
+    }
+
+    /* ── BOTONES DE ACCIÓN DE FACTURAS (Agregar Sel., Vencidas, Todas) */
+    #card-facturas .btn-sm,
+    #card-facturas .btn-warning,
+    #card-facturas .btn-success,
+    #card-facturas .btn-primary {
+        padding: 6px 14px !important;
+        font-size: 0.85rem !important;
+        font-weight: 500;
+    }
+
+    /* ── TABLA NOTAS DE CARGO — cabecera gris oscuro ─────────────── */
+    #card-notas-cargo thead th {
+        background-color: #37474f !important;
+        color: #fff !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.04em;
+        padding: 10px 12px !important;
+        border: none !important;
+    }
+    /* Botón Aplicar Seleccionadas — morado */
+    #card-notas-cargo .btn-warning {
+        background-color: #7b2ff7 !important;
+        border-color: #7b2ff7 !important;
+        color: #fff !important;
+        padding: 7px 16px !important;
+        font-size: 0.88rem !important;
+        font-weight: 600;
+    }
+    #card-notas-cargo .btn-warning:hover {
+        background-color: #6320d4 !important;
+        border-color: #6320d4 !important;
+    }
+
+    /* ── CANASTA — panel derecho ──────────────────────────────────── */
+    .payment-basket-card {
+        border: 1px solid #e0e0e0 !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.12) !important;
+        border-radius: 10px !important;
+    }
+    .payment-basket-card .card-header {
+        background-color: #1a73e8 !important;
+        border-radius: 10px 10px 0 0 !important;
+        padding: 14px 16px !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+    }
+    .payment-summary {
+        background: #1565c0 !important;
+        border-radius: 8px;
+        padding: 14px;
+        margin-top: 8px;
+    }
+    /* Items de canasta — verde sólido más oscuro */
+    .payment-item {
+        background: #2e7d32 !important;
+        color: white !important;
+        border: none !important;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        padding: 10px 12px !important;
+        animation: slideIn 0.3s ease;
+    }
+    .payment-item strong { font-size: 0.95rem; }
+    /* Item nota de cargo en canasta — naranja oscuro */
+    .payment-item.nota-item {
+        background: #e65100 !important;
+    }
+    #current-provider-info {
+        background: rgba(0,0,0,0.20);
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 10px;
+    }
+    /* Botón Generar Pago — verde, tamaño completo */
+    #generar-pago {
+        background-color: #2e7d32 !important;
+        border-color: #2e7d32 !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        padding: 10px 16px !important;
+        border-radius: 6px !important;
+    }
+    #generar-pago:hover:not(:disabled) {
+        background-color: #1b5e20 !important;
+        border-color: #1b5e20 !important;
+    }
+    #generar-pago:disabled {
+        background-color: #9e9e9e !important;
+        border-color: #9e9e9e !important;
+    }
+    /* Botón Limpiar Todo — blanco borde rojo */
+    #clear-basket {
+        background-color: #fff !important;
+        border: 2px solid #dc3545 !important;
+        color: #dc3545 !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        padding: 10px 16px !important;
+        border-radius: 6px !important;
+    }
+    #clear-basket:hover {
+        background-color: #dc3545 !important;
+        color: #fff !important;
+    }
+
+    /* Notas arrastrables */
+    .nota-cargo-row.draggable-nota {
+        cursor: grab;
+        transition: background 0.15s;
+    }
+    .nota-cargo-row.draggable-nota:hover {
+        background-color: #fff3e0 !important;
+    }
+    .nota-cargo-row.draggable-nota.dragging {
+        opacity: 0.5;
+        background-color: #ffe0b2 !important;
+    }
+
+    /* Drag and drop */
     .draggable-row {
         cursor: move;
         transition: all 0.2s ease;
@@ -228,10 +381,8 @@
         color: #007bff;
     }
 
-    /* Área de drop */
     #payment-basket {
-        min-height: 400px;
-        height: 100%;
+        min-height: 200px;
         border: 2px dashed #ccc;
         border-radius: 10px;
         transition: all 0.3s ease;
@@ -244,7 +395,6 @@
         box-shadow: 0 0 10px rgba(0, 123, 255, 0.3);
     }
 
-    /* Elementos del pago */
     .payment-item {
         background: linear-gradient(45deg, #28a745, #20c997) !important;
         color: white !important;
@@ -255,18 +405,10 @@
     }
 
     @keyframes slideIn {
-        from {
-            transform: translateX(-100%);
-            opacity: 0;
-        }
-
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
+        from { transform: translateX(-100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
     }
 
-    /* Resumen del pago */
     .payment-summary {
         background: linear-gradient(45deg, #007bff, #0056b3);
         color: white;
@@ -275,18 +417,16 @@
         margin-top: 10px;
     }
 
-    /* Estados de botones */
     #generar-pago:disabled {
         background-color: #6c757d !important;
         border-color: #6c757d !important;
     }
 
-    /* Mensaje vacío */
     .empty-basket-message {
         text-align: center;
         color: #6c757d;
         font-style: italic;
-        padding: 50px 20px;
+        padding: 30px 20px;
         border: none !important;
         background: transparent !important;
     }
@@ -295,161 +435,242 @@
         background-color: #beebc2 !important;
         color: #000000 !important;
     }
+
+    /* Card notas de cargo */
+    #card-notas-cargo {
+        border-left: 5px solid #fd7e14 !important;
+    }
+
+    #card-notas-cargo table.dataTable thead th,
+    #card-notas-cargo table.dataTable thead td {
+        background-color: #6c3a0a !important;
+    }
+
+    .nota-cargo-row td { cursor: pointer; }
 </style>
-
-
 
 <div id="contenedor_pago_normal">
     <div class="row">
 
-        <div class="col-8">
-            <div class="card " id="payment_search_card">
-                <div class="card-body">
-                    <div class="row" style="align-items: flex-end;">
-                        <div class="col-2 ">
-                            <label class="col-form-label-sm" for="from1">Desde: </label>
-                            <input type="date" class="form-control form-control-sm" name="from1" id="from1"
-                                value="{{  'first day of this month'|date('Y-m-d') }}" required>
+        <!-- ═══════════════════════════════════════════════════════ COLUMNA IZQUIERDA (col-9) -->
+        <div class="col-9">
+
+            <!-- CARD 1: FILTROS DE BÚSQUEDA (colapsable) -->
+            <div class="card mb-3" id="payment_search_card">
+                <div class="card-header d-flex justify-content-between align-items-center py-2"
+                     style="cursor:pointer;" onclick="toggleFiltros()">
+                    <span><i class="fas fa-search me-2"></i><strong>Filtros de Búsqueda</strong></span>
+                    <i class="fas fa-chevron-up" id="filtros-chevron"></i>
+                </div>
+                <div id="filtros-collapse">
+                    <div class="card-body pb-2">
+                        <div class="row" style="align-items: flex-end;">
+                            <div class="col">
+                                <label class="col-form-label-sm fw-bold">DESDE:</label>
+                                <input type="date" class="form-control form-control-sm" name="from1" id="from1"
+                                    value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                            </div>
+                            <div class="col">
+                                <label class="col-form-label-sm fw-bold">HASTA:</label>
+                                <input type="date" class="form-control form-control-sm" name="until1" id="until1"
+                                    value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
+                            </div>
+                            <div class="col">
+                                <label class="col-form-label-sm fw-bold">RAZÓN SOCIAL:</label>
+                                <select class="selectpicker w-100" data-live-search="true" name="company" id="company"
+                                    required {{ edit_mode ? 'disabled' : '' }}>
+                                    <option disabled {{ not edit_mode ? 'selected' : '' }}>Seleccione</option>
+                                    <option value="0">Todas</option>
+                                    {% for company in companys %}
+                                    <option value="{{ company.codemp }}" {{ edit_mode and selected_company==company.codemp ? 'selected' : '' }}>{{ company.den }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label class="col-form-label-sm fw-bold">ESTACIÓN:</label>
+                                <select class="selectpicker w-100" data-live-search="true" name="station_id1"
+                                    id="station_id1" disabled>
+                                    <option disabled selected>Seleccione empresa primero</option>
+                                    <option value="0" style="display:none;">Todas las estaciones</option>
+                                    {% for station in stations %}
+                                    <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">{{ station.abr }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col">
+                                <label class="col-form-label-sm fw-bold">PROVEEDOR:</label>
+                                <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" {{ edit_mode ? 'disabled' : '' }}>
+                                    <option value="0" {{ not edit_mode or (edit_mode and selected_provider=='0') ? 'selected' : '' }}>Todos los proveedores</option>
+                                    {% for proveedor in proveedores %}
+                                    <option value="{{ proveedor.id_control_gas }}" {{ edit_mode and selected_provider==proveedor.id_control_gas ? 'selected' : '' }}>{{ proveedor.den }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </div>
-                        <div class="col-2 ">
-                            <label class="col-form-label-sm" for="until1">Hasta: </label>
-                            <input type="date" class="form-control form-control-sm" name="until1" id="until1"
-                                value="{{ (until != false) ? until : 'now'|date('Y-m-d') }}" required>
-                        </div>
-                        <div class="col-2 ">
-                            <label class="col-form-label-sm" for="">Razon social </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="company" id="company"
-                                required {{ edit_mode ? 'disabled' : '' }}>
-                                <option disabled {{ not edit_mode ? 'selected' : '' }}> Seleccione</option>
-                                <option value="0">Todas</option>
-                                {% for company in companys %}
-                                <option value="{{ company.codemp }}" {{ edit_mode and selected_company==company.codemp
-                                    ? 'selected' : '' }}>{{ company.den }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-2 ">
-                            <label class="col-form-label-sm" for="until1">Estacion: </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="station_id1"
-                                id="station_id1" placeholder="Seleccione una estación" disabled>
-                                <option disabled selected>Seleccione empresa primero</option>
-                                <option value="0" style="display:none;">Todas las estaciones</option>
-                                {% for station in stations %}
-                                <option value="{{ station.cod }}" data-emp="{{ station.codemp }}" style="display:none;">
-                                    {{ station.abr }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-2 ">
-                            <label class="col-form-label-sm" for="until1">Proveedor: </label>
-                            <select class="selectpicker w-100" data-live-search="true" name="proveedor_id" id="proveedor_id" placeholder="Proveedor" {{ edit_mode ? 'disabled' : '' }}>
-                                <option value="0" {{ not edit_mode or (edit_mode and selected_provider=='0' ) ? 'selected' : '' }}>Todos los proveedores</option>
-                                {% for proveedor in proveedores %}
-                                <option value="{{ proveedor.id_control_gas }}" {{ edit_mode and selected_provider==proveedor.id_control_gas ? 'selected' : '' }}>{{ proveedor.den }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-2 ">
-                            <button onclick="payment_create_table()" class="btn btn-sm btn-primary"
-                                style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button type="button" class="btn btn-sm btn-outline-warning" onclick="buscarNotasCargo()">
+                                <i class="fas fa-file-invoice-dollar me-1"></i> Generar Notas de Cargo
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="payment_create_table()">
+                                <i class="fas fa-search me-1"></i> Generar Reporte
+                            </button>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="card-body table-responsive">
-                    <!-- Agregar esto justo antes de la tabla payment_create_table -->
-                    <div class="d-flex justify-content-between  align-items-center mb-2">
-                        <div class="d-flex flex-row gap-2 col-8">
-                            <button type="button" class="btn btn-sm btn-primary m-1" onclick="addSelectedInvoices()">
-                                <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
-                            </button>
-                            <button type="button" id="filter-vencidas" class="btn btn-sm btn-warning m-1"
-                                onclick="toggleFilterVencidas()">
-                                <i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas
-                            </button>
-                            <button onclick="addAllToPayment()" class="btn btn-sm btn-success m-1">
-                                <i class="fas fa-angles-right me-1"></i>Agregar Todas
-                            </button>
-
+            <!-- CARD 2: FACTURAS (colapsable) -->
+            <div class="card mb-3" id="card-facturas">
+                <div class="card-header d-flex justify-content-between align-items-center py-2"
+                     style="cursor:pointer;" onclick="toggleFacturas()">
+                    <span>
+                        <i class="fas fa-file-invoice me-2"></i>
+                        <strong>Facturas</strong>
+                        <span class="badge bg-secondary ms-1" id="badge-facturas-count">0</span>
+                    </span>
+                    <i class="fas fa-chevron-down" id="facturas-chevron"></i>
+                </div>
+                <div id="facturas-collapse" style="display:none;">
+                    <div class="card-body table-responsive pt-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex flex-row gap-2">
+                                <button type="button" class="btn btn-sm btn-primary" onclick="addSelectedInvoices()">
+                                    <i class="fas fa-plus-circle"></i> Agregar Seleccionadas
+                                </button>
+                                <button type="button" id="filter-vencidas" class="btn btn-sm btn-warning"
+                                    onclick="toggleFilterVencidas()">
+                                    <i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas
+                                </button>
+                                <button onclick="addAllToPayment()" class="btn btn-sm btn-success">
+                                    <i class="fas fa-angles-right me-1"></i>Agregar Todas
+                                </button>
+                            </div>
+                            <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
                         </div>
-                        <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
+                        <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+                                    <th>Folio</th>
+                                    <th>Factura</th>
+                                    <th>Estación</th>
+                                    <th>Proveedor</th>
+                                    <th>Fecha</th>
+                                    <th>Vencimiento</th>
+                                    <th>Total</th>
+                                    <th>Producto</th>
+                                    <th>Estatus</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
+                </div>
+            </div>
 
-                    <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
-                        <thead>
-                            <tr>
-                                <th>
-                                    <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
-                                </th>
-                                <th>Folio</th>
-                                <th>Factura</th>
-                                <th>Estación</th>
-                                <th>Proveedor</th>
-                                <th>Fecha</th>
-                                <th>Vencimiento</th>
-                                <th>Total</th>
-                                <th>Producto</th>
-                                <th>Estatus</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
+            <!-- CARD 3: NOTAS DE CARGO (oculto hasta buscar) -->
+            <div class="card mb-3" id="card-notas-cargo" style="display:none;">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <span style="cursor:pointer;" onclick="toggleNotasCargo()">
+                        <i class="fas fa-tag me-2 text-warning"></i>
+                        <strong>Notas de Cargo</strong>
+                        <span class="badge bg-warning text-dark ms-1" id="badge-notas-count">0</span>
+                    </span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <i class="fas fa-chevron-up" id="notas-chevron" style="cursor:pointer;" onclick="toggleNotasCargo()"></i>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="cerrarNotasCargo()" title="Cerrar">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="notas-cargo-collapse">
+                    <div class="card-body pt-2">
+                        <div class="mb-2">
+                            <button type="button" class="btn btn-sm btn-warning" onclick="aplicarNotasSeleccionadas()">
+                                <i class="fas fa-check-square me-1"></i> Aplicar Seleccionadas
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="notas-cargo-table" class="table table-sm table-hover w-100">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="selectAllNotas" onchange="toggleSelectAllNotas()"></th>
+                                        <th>FOLIO</th>
+                                        <th>FECHA</th>
+                                        <th>PROVEEDOR</th>
+                                        <th class="text-right">TOTAL</th>
+                                        <th class="text-right">SALDO DISP.</th>
+                                        <th class="text-center">ESTATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="notas-cargo-tbody">
+                                    <tr><td colspan="7" class="text-center text-muted py-3">Haga clic en "Generar Notas de Cargo" para buscar</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
         </div>
-        <div class="col-4">
-            <div class="card h-100">
+        <!-- ═══════════════════════════════════════════════════════ COLUMNA DERECHA (col-3) -->
+        <div class="col-3">
+            <div class="card payment-basket-card" style="position:sticky; top:70px;">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="text-white mb-0">Armando Pago</h5>
+                    <h6 class="text-white mb-0"><i class="fas fa-shopping-cart me-1"></i> Armando Pago</h6>
                     <span id="item-count" class="badge bg-light text-dark">0 documentos</span>
                 </div>
-                <div class="card-body" style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                    <div class="mb-2 px-1">
-                        <label class="form-label fw-bold mb-1" for="scheduled_payment_date">
+                <div class="card-body p-2" style="display: flex; flex-direction: column;">
+                    <div class="mb-2">
+                        <label class="form-label fw-bold mb-1 small" for="scheduled_payment_date">
                             <i class="fas fa-calendar-alt me-1"></i> Fecha de Pago Deseada <span class="text-danger">*</span>
                         </label>
                         <input type="date" class="form-control form-control-sm" id="scheduled_payment_date"
                             name="scheduled_payment_date"
                             value="{{ 'now'|date('Y-m-d') }}"
                             required>
-                        <small class="text-muted">Fecha en que se desea realizar el pago</small>
+                        <small class="text-muted" style="font-size:0.75rem;">Fecha en que se desea realizar el pago</small>
                     </div>
-                    <div
-                        style="    display: flex;    flex-wrap: nowrap;    flex-direction: row;    justify-content: space-around;    align-content: center;    align-items: flex-end;">
+                    <div class="d-flex gap-1 mb-2">
+                        <button id="generar-pago" onclick="generatePayment()" class="btn btn-success btn-sm flex-fill">
+                            <i class="fas fa-credit-card me-1"></i>
+                            {{ edit_mode ? 'Agregar Facturas' : 'Generar Pago' }}
+                        </button>
+                        <button id="clear-basket" class="btn btn-outline-danger btn-sm" onclick="clearAllPayments()" style="display:none;">
+                            <i class="fas fa-trash me-1"></i> Limpiar Todo
+                        </button>
+                    </div>
 
-                        <button id="generar-pago" onclick="generatePayment()" style="width: 100%; margin: 5px;"
-                            class="btn btn-secondary mt-2 "> <i
-                                class="fas {{ edit_mode ? 'fa-plus-circle' : 'fa-credit-card' }} me-2"></i>{{ edit_mode
-                            ? 'Agregar Facturas al Pago' : 'Generar Pago' }} </button>
-                        <button id="clear-basket" style="width: 100%;  margin: 5px; display: none;"
-                            class="btn btn-outline-danger mt-2 " onclick="clearAllPayments()"><i
-                                class="fas fa-trash me-2"></i>Limpiar Todo </button>
-                    </div>
+                    <!-- Resumen del pago -->
                     <div id="payment-summary" class="payment-summary" style="display: none;">
-                        <h6 class="mb-3 text-white">Resumen del Pago</h6>
+                        <div id="current-provider-info" style="display:none;" class="mb-2 pb-2 border-bottom border-light">
+                            <small class="d-block text-white-50" style="font-size:0.7rem;">PROVEEDOR DEL PAGO:</small>
+                            <strong id="current-provider-name" class="text-white" style="font-size:0.85rem;"></strong>
+                        </div>
+                        <p class="mb-2 text-white fw-bold" style="font-size:0.85rem;">Resumen del Pago</p>
                         <div class="row text-center">
                             <div class="col-6">
                                 <div class="border-end">
-                                    <small class="d-block">Total Documentos</small>
-                                    <h5 id="total-docs" class="mb-0 text-white">0</h5>
+                                    <small class="d-block text-white-50" style="font-size:0.7rem;">Total Documentos</small>
+                                    <h6 id="total-docs" class="mb-0 text-white">0</h6>
                                 </div>
                             </div>
                             <div class="col-6">
-                                <small class="d-block">Monto Total</small>
-                                <h5 id="total-amount" class="mb-0 text-white">$0.00</h5>
+                                <small class="d-block text-white-50" style="font-size:0.7rem;">Monto Total</small>
+                                <h6 id="total-amount" class="mb-0 text-white">$0.00</h6>
                             </div>
                         </div>
-                        <div id="notes-summary" class="mt-2 small text-white-50 text-end"></div>
+                        <div id="notes-summary" class="mt-2 small text-white-50 text-end" style="font-size:0.75rem;"></div>
                     </div>
+
                     <!-- Notas pendientes aplicadas -->
-                    <div id="pending-notes-section" style="display:none;" class="mt-2 mb-2 px-1">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <small class="fw-bold text-dark"><i class="fas fa-tags"></i> Notas aplicadas:</small>
-                        </div>
-                        <ul id="pending-notes-list" class="list-group list-group-flush" style="font-size:0.82rem;"></ul>
+                    <div id="pending-notes-section" style="display:none;" class="mt-2 mb-1">
+                        <small class="fw-bold text-dark d-block mb-1"><i class="fas fa-tags me-1"></i> Notas de Cargo aplicadas:</small>
+                        <ul id="pending-notes-list" class="list-group list-group-flush" style="font-size:0.8rem;"></ul>
                     </div>
-                    <ul id="payment-basket" class="list-group">
+
+                    <!-- Canasta -->
+                    <ul id="payment-basket" class="list-group mt-2" style="overflow-y:auto; max-height:50vh;">
                         <li class="empty-basket-message">
                             <i class="fas fa-hand-point-right fa-2x mb-3"></i>
                             <p>Arrastra aquí los documentos desde la tabla</p>
@@ -460,8 +681,8 @@
         </div>
 
     </div>
-    <!-- Todo tu código actual de drag & drop -->
 </div>
+
 <!-- Modal: asignar nota de crédito/cargo a factura de la canasta -->
 <div class="modal fade" id="assignNoteModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -508,6 +729,7 @@
 <script src="{{ JS }}supply.js"></script>
 <script>
     let currentProvider = null;
+    let currentDebitProvider = null; // proveedor cuando el pago es solo de notas de cargo
     let paymentItems = [];
 
     // ── Notas pendientes ──────────────────────────────────────────────────────
@@ -516,12 +738,12 @@
     let assignNoteInvoiceTempKey = null;
 
     // Variables para modo edición
-    const EDIT_MODE = {{ edit_mode ?'true': 'false' }};
-    const PAYMENT_ID = {{ payment_id|default ('null') }};
+    const EDIT_MODE = {{ edit_mode ? 'true' : 'false' }};
+    const PAYMENT_ID = {{ payment_id|default('null') }};
 
     let filterVencidas = false;
-    $(document).ready(function () {
 
+    $(document).ready(function () {
         window.originalStationOptions = $('#station_id1').html();
         var company = document.getElementById('company');
         company.addEventListener('change', function () {
@@ -529,16 +751,13 @@
         });
 
         $('#clear-basket').on('click', clearAllPayments);
-
         updatePaymentSummary();
 
-        // Si está en modo edición, pre-cargar la empresa seleccionada
         {% if edit_mode %}
         setTimeout(function () {
             $('#company').selectpicker('val', '{{ selected_company }}');
             $('#company').selectpicker('refresh');
             filtrarEstacionesPorEmpresa();
-
             setTimeout(function () {
                 $('#proveedor_id').selectpicker('val', '{{ selected_provider }}');
                 $('#proveedor_id').selectpicker('refresh');
@@ -547,33 +766,225 @@
         {% endif %}
     });
 
-
-
-    function toggleFilterVencidas() {
-        console.log('Todo');
-        const btn = $('#filter-vencidas');
-
-        if (!filterVencidas) {
-            // ✅ Activar filtro
-            paymentTable.column(9).search('Vencido').draw();
-
-            btn.removeClass('btn-warning')
-                .addClass('btn-danger')
-                .html('<i class="fas fa-filter-circle-xmark"></i> Quitar Filtro');
-
-            filterVencidas = true;
+    // ── Colapsar / expandir filtros ───────────────────────────────────────────
+    function toggleFiltros() {
+        const body = document.getElementById('filtros-collapse');
+        const icon = document.getElementById('filtros-chevron');
+        if (body.style.display === 'none') {
+            body.style.display = '';
+            icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
         } else {
-            // ✅ Desactivar filtro
-            paymentTable.column(9).search('').draw();
+            body.style.display = 'none';
+            icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+        }
+    }
 
-            btn.removeClass('btn-danger')
-                .addClass('btn-warning')
-                .html('<i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas');
+    // ── Colapsar / expandir card facturas ─────────────────────────────────────
+    function toggleFacturas() {
+        const body = document.getElementById('facturas-collapse');
+        const icon = document.getElementById('facturas-chevron');
+        if (body.style.display === 'none') {
+            body.style.display = '';
+            icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+        } else {
+            body.style.display = 'none';
+            icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+        }
+    }
 
-            filterVencidas = false;
+    // ── Mostrar card facturas al generar reporte ──────────────────────────────
+    const _origPaymentCreateTable = window.payment_create_table;
+    window.payment_create_table = function() {
+        const collapse = document.getElementById('facturas-collapse');
+        const icon = document.getElementById('facturas-chevron');
+        collapse.style.display = '';
+        icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+        if (typeof _origPaymentCreateTable === 'function') _origPaymentCreateTable();
+    };
+
+    // Actualizar badge de conteo de facturas cuando la tabla cambie
+    $(document).on('draw.dt', '#payment_create_table', function() {
+        const count = $(this).DataTable().rows({ search: 'applied' }).count();
+        $('#badge-facturas-count').text(count);
+    });
+
+    // ── Colapsar / expandir notas de cargo ────────────────────────────────────
+    function toggleNotasCargo() {
+        const body = document.getElementById('notas-cargo-collapse');
+        const icon = document.getElementById('notas-chevron');
+        if (body.style.display === 'none') {
+            body.style.display = '';
+            icon.classList.replace('fa-chevron-down', 'fa-chevron-up');
+        } else {
+            body.style.display = 'none';
+            icon.classList.replace('fa-chevron-up', 'fa-chevron-down');
+        }
+    }
+
+    function cerrarNotasCargo() {
+        document.getElementById('card-notas-cargo').style.display = 'none';
+        document.getElementById('notas-cargo-tbody').innerHTML =
+            '<tr><td colspan="7" class="text-center text-muted py-3">Haga clic en "Generar Notas de Cargo" para buscar</td></tr>';
+        document.getElementById('badge-notas-count').textContent = '0';
+        document.getElementById('selectAllNotas').checked = false;
+    }
+
+    // ── Buscar notas de cargo del proveedor seleccionado (o todos si es 0) ────
+    function buscarNotasCargo() {
+        const proveedorId = $('#proveedor_id').val() || '0';
+
+        // Mostrar card y spinner de carga
+        const card = document.getElementById('card-notas-cargo');
+        const tbody = document.getElementById('notas-cargo-tbody');
+        card.style.display = '';
+        // Asegurarse que esté expandido
+        document.getElementById('notas-cargo-collapse').style.display = '';
+        document.getElementById('notas-chevron').classList.replace('fa-chevron-down', 'fa-chevron-up');
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Cargando notas de cargo...</td></tr>';
+
+        fetch('/supply/getProviderNotes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `provider_id=${encodeURIComponent(proveedorId)}`
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) throw new Error(data.message || 'Error al obtener notas');
+            // Filtrar solo DEBIT con saldo disponible
+            const notas = (data.notes || []).filter(n => n.note_type === 'DEBIT' && parseFloat(n.available_balance) > 0.001);
+            renderNotasCargoTable(notas);
+            document.getElementById('badge-notas-count').textContent = notas.length;
+        })
+        .catch(err => {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3"><i class="fas fa-exclamation-triangle me-2"></i>${err.message}</td></tr>`;
+        });
+    }
+
+    // ── Renderizar tabla de notas de cargo ────────────────────────────────────
+    function renderNotasCargoTable(notas) {
+        const tbody = document.getElementById('notas-cargo-tbody');
+        if (!notas || notas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No hay notas de cargo disponibles para este proveedor</td></tr>';
+            return;
         }
 
-        updateSelectedCount();
+        tbody.innerHTML = notas.map(n => {
+            const balance    = parseFloat(n.available_balance);
+            const total      = parseFloat(n.amount);
+            const yaAplicada = pendingNotes.some(pn => pn.credit_note_id == n.id && pn.invoice_temp_key === null);
+            const badgeClass = yaAplicada ? 'bg-warning text-dark' : 'bg-secondary';
+            const badgeText  = yaAplicada ? 'Aplicada' : 'Pendiente';
+            const fecha      = n.note_date ? n.note_date.substring(0, 10) : '—';
+            const proveedor  = n.provider_name || n.provider_id || '—';
+            const dragAttr   = yaAplicada ? '' : 'draggable="true"';
+            const dragClass  = yaAplicada ? '' : 'draggable-nota';
+
+            // Empaquetamos los datos de la nota para el drop
+            const dragData = JSON.stringify({
+                __tipo:        'nota_cargo',
+                credit_note_id: n.id,
+                note_number:   n.note_number || '',
+                note_type:     'DEBIT',
+                applied_amount: balance,
+                note_label:    `[Cargo] ${n.note_number || 'S/N'} — ${fecha}`,
+                provider_name: proveedor,
+                provider_id:   n.provider_id || ''
+            });
+
+            return `<tr class="nota-cargo-row ${dragClass} ${yaAplicada ? 'table-warning' : ''}" ${dragAttr} data-drag='${dragData.replace(/'/g,"&#39;")}'>
+                <td class="text-center"><input `21` type="checkbox" class="nota-cargo-check invoice-checkbox" data-id="${n.id}" data-balance="${balance}" data-total="${total}" data-number="${n.note_number || ''}" data-date="${fecha}" data-provider="${proveedor}" data-providerid="${n.provider_id || ''}" ${yaAplicada ? 'disabled checked' : ''}></td>
+                <td><i class="fas fa-grip-vertical text-muted me-1" style="font-size:0.75rem;"></i>${n.note_number || '—'}</td>
+                <td>${fecha}</td>
+                <td>${proveedor}</td>
+                <td class="text-right">$${total.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                <td class="text-right text-success fw-bold">$${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
+                <td class="text-center"><span class="badge ${badgeClass}">${badgeText}</span></td>
+            </tr>`;
+        }).join('');
+
+        // Configurar drag events en filas arrastrables
+        tbody.querySelectorAll('tr.draggable-nota').forEach(row => {
+            row.addEventListener('dragstart', function(e) {
+                this.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', this.dataset.drag);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+            row.addEventListener('dragend', function() {
+                this.classList.remove('dragging');
+            });
+        });
+    }
+
+    // ── Seleccionar / deseleccionar todas las notas ───────────────────────────
+    function toggleSelectAllNotas() {
+        const checked = document.getElementById('selectAllNotas').checked;
+        document.querySelectorAll('.nota-cargo-check:not(:disabled)').forEach(cb => {
+            cb.checked = checked;
+        });
+    }
+
+    // ── Aplicar notas de cargo seleccionadas a la canasta ────────────────────
+    function aplicarNotasSeleccionadas() {
+        const checks = document.querySelectorAll('.nota-cargo-check:not(:disabled):checked');
+        if (checks.length === 0) {
+            Swal.fire({ icon: 'warning', title: 'Sin selección', text: 'Seleccione al menos una nota de cargo.' });
+            return;
+        }
+
+        let agregadas = 0;
+        let proveedoresEnConflicto = [];
+
+        checks.forEach(cb => {
+            const noteId       = parseInt(cb.dataset.id);
+            const notaProvider = cb.dataset.provider || '';
+            const notaProviderId = cb.dataset.providerid || '';
+
+            // Validar que el proveedor sea compatible con la canasta
+            if (currentProvider && notaProvider && currentProvider !== notaProvider) {
+                proveedoresEnConflicto.push(cb.dataset.number || noteId);
+                return;
+            }
+
+            // No duplicar
+            if (pendingNotes.some(pn => pn.credit_note_id === noteId && pn.invoice_temp_key === null)) return;
+
+            const balance = parseFloat(cb.dataset.balance);
+            const label   = `[Cargo] ${cb.dataset.number || 'S/N'} — ${cb.dataset.date}`;
+            pendingNotes.push({
+                credit_note_id:   noteId,
+                note_number:      cb.dataset.number,
+                note_type:        'DEBIT',
+                applied_amount:   balance,
+                invoice_temp_key: null,
+                note_label:       label
+            });
+
+            // Si la canasta estaba vacía, setear el proveedor de la primer nota
+            if (!currentProvider && notaProvider) {
+                currentProvider    = notaProvider;
+                currentDebitProvider = notaProviderId;
+            }
+            agregadas++;
+        });
+
+        if (proveedoresEnConflicto.length > 0) {
+            Swal.fire({ icon: 'warning', title: 'Proveedor diferente', text: `Las notas ${proveedoresEnConflicto.join(', ')} son de un proveedor distinto al de la canasta ("${currentProvider}") y no se agregaron.` });
+        }
+
+        if (agregadas === 0) {
+            if (proveedoresEnConflicto.length === 0)
+                Swal.fire({ icon: 'info', title: 'Sin cambios', text: 'Las notas seleccionadas ya estaban aplicadas.' });
+            return;
+        }
+
+        // Re-renderizar tabla de notas para marcar como "Aplicada"
+        buscarNotasCargo();
+
+        renderPendingNotes();
+        updateNotesSummary();
+        updatePaymentSummary();
+        alertify.success(`${agregadas} nota(s) de cargo agregada(s) al pago`);
     }
 
     // ── Helper: clave temporal de factura ────────────────────────────────────
@@ -597,19 +1008,17 @@
         .catch(() => { availableNotes = []; });
     }
 
-    // ── Abrir modal de asignación ─────────────────────────────────────────────
+    // ── Abrir modal de asignación (nota ligada a factura) ─────────────────────
     function openAssignNoteModal(tempKey) {
         const item = paymentItems.find(i => getInvoiceTempKey(i) === tempKey);
         if (!item) return;
 
         assignNoteInvoiceTempKey = tempKey;
 
-        // Info de la factura
         const totalFac = parseFloat(item.total_fac) || 0;
         document.getElementById('assignNoteInvoiceInfo').innerHTML =
             `<strong>Folio:</strong> ${item.nro} | <strong>Factura:</strong> ${item.Factura || 'N/A'} | <strong>Total:</strong> $${totalFac.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
 
-        // Llenar select de notas (descontar lo ya usado en pendingNotes)
         const sel = document.getElementById('assignNoteSelect');
         sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
 
@@ -650,7 +1059,6 @@
 
         if (balance > 0) {
             balanceEl.textContent = `Saldo disponible: $${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
-            // Sugerir monto máximo respecto a la factura
             const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
             const totalFac = item ? parseFloat(item.total_fac) || 0 : 0;
             const alreadyApplied = pendingNotes
@@ -664,17 +1072,16 @@
         }
     }
 
-    // ── Confirmar asignación de nota ──────────────────────────────────────────
+    // ── Confirmar asignación de nota (ligada a factura) ───────────────────────
     function confirmNoteAssignment() {
         const sel = document.getElementById('assignNoteSelect');
         const noteId = sel.value;
         if (!noteId) { alertify.error('Seleccione una nota'); return; }
 
         const opt = sel.options[sel.selectedIndex];
-        const balance = parseFloat(opt.dataset.balance) || 0;
-        const noteType = opt.dataset.type;
+        const balance   = parseFloat(opt.dataset.balance) || 0;
+        const noteType  = opt.dataset.type;
         const noteLabel = opt.dataset.label;
-        const noteNumber = opt.text;
 
         const amount = parseFloat(document.getElementById('assignNoteAmount').value) || 0;
         if (amount <= 0) { alertify.error('Ingrese un monto válido'); return; }
@@ -693,12 +1100,12 @@
         }
 
         pendingNotes.push({
-            credit_note_id: parseInt(noteId),
-            note_number: noteLabel,
-            note_type: noteType,
-            applied_amount: amount,
+            credit_note_id:   parseInt(noteId),
+            note_number:      noteLabel,
+            note_type:        noteType,
+            applied_amount:   amount,
             invoice_temp_key: assignNoteInvoiceTempKey,
-            note_label: noteLabel
+            note_label:       noteLabel
         });
 
         $('#assignNoteModal').modal('hide');
@@ -714,24 +1121,27 @@
         renderPaymentItems();
         renderPendingNotes();
         updateNotesSummary();
+        updatePaymentSummary();
     }
 
-    // ── Renderizar lista de notas en el panel ─────────────────────────────────
+    // ── Renderizar lista de notas pendientes en panel ─────────────────────────
     function renderPendingNotes() {
         const section = document.getElementById('pending-notes-section');
-        const list = document.getElementById('pending-notes-list');
-        if (pendingNotes.length === 0) {
+        const list    = document.getElementById('pending-notes-list');
+
+        // Mostrar solo notas independientes (sin factura) en el panel lateral
+        const independientes = pendingNotes.filter(n => n.invoice_temp_key === null);
+        if (independientes.length === 0) {
             section.style.display = 'none';
             list.innerHTML = '';
             return;
         }
         section.style.display = 'block';
-        list.innerHTML = pendingNotes.map((n, i) => {
-            const colorClass = 'text-dark';
-            const sign = n.note_type === 'CREDIT' ? '−' : '+';
+        list.innerHTML = independientes.map((n, i) => {
+            const globalIndex = pendingNotes.indexOf(n);
             return `<li class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center">
-                <span class="${colorClass}"><i class="fas fa-tag me-1"></i>${n.note_label}: ${sign}$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
-                <button class="btn btn-xs btn-link text-danger p-0 ms-1" onclick="removeNoteAssignment(${i})" title="Quitar">×</button>
+                <span class="text-dark"><i class="fas fa-tag me-1 text-warning"></i>${n.note_label}: +$${parseFloat(n.applied_amount).toLocaleString('es-MX',{minimumFractionDigits:2})}</span>
+                <button class="btn btn-xs btn-link text-danger p-0 ms-1" onclick="removeNoteAssignment(${globalIndex})" title="Quitar">×</button>
             </li>`;
         }).join('');
     }
@@ -755,28 +1165,38 @@
         summaryEl.textContent = txt;
     }
 
-    // ── Guardar la función original generatePayment ───────────────────────────
+    // ── Override generatePayment para manejar notas independientes ────────────
     const originalGeneratePayment = window.generatePayment;
 
-    // Override para manejar modo edición Y notas pendientes
     window.generatePayment = async function () {
         if (EDIT_MODE) {
             await addInvoicesToExistingPayment();
         } else {
-            // Inyectar pending_notes en el payload via override de fetch
             await originalGeneratePaymentWithNotes();
         }
     };
 
     async function originalGeneratePaymentWithNotes() {
-        if (paymentItems.length === 0) {
-            alertify.myAlert(`<div class="container text-center text-warning"><h4 class="mt-2 text-warning">¡Advertencia!</h4></div><div class="text-dark"><p class="text-center">No hay documentos en el pago.</p></div>`);
+        const hasInvoices = paymentItems.length > 0;
+        const hasIndepNotes = pendingNotes.filter(n => n.invoice_temp_key === null).length > 0;
+
+        if (!hasInvoices && !hasIndepNotes) {
+            alertify.myAlert(`<div class="container text-center text-warning"><h4 class="mt-2 text-warning">¡Advertencia!</h4></div><div class="text-dark"><p class="text-center">No hay documentos ni notas de cargo en el pago.</p></div>`);
             return;
         }
 
-        const primerItem = paymentItems[0];
-        const proveedorCodigo = primerItem.proveedor_codigo || primerItem.id_control_gas || null;
-        const codigo_empresa = primerItem.codigo_empresa || null;
+        // Determinar proveedor
+        let proveedorCodigo, proveedorNombre, codigoEmpresa;
+        if (hasInvoices) {
+            const primerItem = paymentItems[0];
+            proveedorCodigo  = primerItem.proveedor_codigo || primerItem.id_control_gas || null;
+            proveedorNombre  = currentProvider;
+            codigoEmpresa    = primerItem.codigo_empresa || null;
+        } else {
+            proveedorCodigo = currentDebitProvider;
+            proveedorNombre = currentProvider;
+            codigoEmpresa   = null;
+        }
 
         if (!proveedorCodigo) {
             alertify.error('Error: No se pudo obtener el código del proveedor');
@@ -791,16 +1211,22 @@
                 showPaymentLoader('Creando pago...', 'Procesando documentos');
 
                 const scheduledDate = $('#scheduled_payment_date').val() || new Date().toISOString().split('T')[0];
+
+                // Monto total = facturas + notas de cargo independientes
+                const invoicesTotal = paymentItems.reduce((s, i) => s + (parseFloat(i.total_fac) || 0), 0);
+                const notasTotal    = pendingNotes.filter(n => n.invoice_temp_key === null && n.note_type === 'DEBIT')
+                                        .reduce((s, n) => s + parseFloat(n.applied_amount), 0);
+
                 const paymentData = {
-                    documentos: paymentItems,
+                    documentos:       paymentItems,
                     total_documentos: paymentItems.length,
-                    total_amount: paymentItems.reduce((sum, item) => sum + (parseFloat(item.total_fac) || 0), 0),
-                    fecha_pago: scheduledDate,
-                    comment: comment || 'Pago programado',
-                    provider_cod: proveedorCodigo,
-                    provider_name: currentProvider,
-                    empresa_cod: codigo_empresa,
-                    pending_notes: pendingNotes
+                    total_amount:     invoicesTotal + notasTotal,
+                    fecha_pago:       scheduledDate,
+                    comment:          comment || 'Pago programado',
+                    provider_cod:     proveedorCodigo,
+                    provider_name:    proveedorNombre,
+                    empresa_cod:      codigoEmpresa,
+                    pending_notes:    pendingNotes
                 };
 
                 try {
@@ -815,11 +1241,11 @@
 
                     if (data.success) {
                         alertify.success('Pago creado exitosamente: ID #' + data.payment_id);
-
                         paymentItems = [];
                         pendingNotes = [];
                         availableNotes = [];
                         currentProvider = null;
+                        currentDebitProvider = null;
                         renderPaymentItems();
                         updatePaymentSummary();
                         renderPendingNotes();
@@ -848,10 +1274,69 @@
         );
     }
 
+    // ── updatePaymentSummary override para mostrar proveedor y habilitar botón con notas ──
+    const _origUpdatePaymentSummary = window.updatePaymentSummary;
+    window.updatePaymentSummary = function() {
+        if (typeof _origUpdatePaymentSummary === 'function') _origUpdatePaymentSummary();
 
-    // ── Hookear addToPayment para cargar notas al primer ítem ────────────────
+        // Habilitar Generar Pago también cuando hay notas independientes
+        const hasIndepNotes = pendingNotes.filter(n => n.invoice_temp_key === null).length > 0;
+        if (hasIndepNotes) {
+            $('#generar-pago').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success');
+            $('#clear-basket').show();
+            $('#payment-summary').show();
+        }
+
+        // Mostrar proveedor en bloque dedicado
+        const provName = currentProvider;
+        if (provName) {
+            $('#current-provider-info').show();
+            $('#current-provider-name').text(provName);
+        } else {
+            $('#current-provider-info').hide();
+        }
+
+        renderPendingNotes();
+        updateNotesSummary();
+    };
+
+    // ── Hookear addToPayment: detectar facturas vs notas de cargo ────────────
     const _origAddToPayment = window.addToPayment;
     window.addToPayment = function(rowData) {
+        // Si el drop viene de una nota de cargo
+        if (rowData && rowData.__tipo === 'nota_cargo') {
+            const noteId = parseInt(rowData.credit_note_id);
+            // Validar proveedor compatible
+            if (currentProvider && rowData.provider_name && currentProvider !== rowData.provider_name) {
+                Swal.fire({ icon: 'error', title: 'Proveedor diferente', text: `La canasta tiene documentos de "${currentProvider}". Esta nota es de "${rowData.provider_name}".` });
+                return;
+            }
+            // No duplicar
+            if (pendingNotes.some(pn => pn.credit_note_id === noteId && pn.invoice_temp_key === null)) {
+                alertify.warning('Esta nota ya está en el pago');
+                return;
+            }
+            pendingNotes.push({
+                credit_note_id:   noteId,
+                note_number:      rowData.note_number,
+                note_type:        'DEBIT',
+                applied_amount:   parseFloat(rowData.applied_amount),
+                invoice_temp_key: null,
+                note_label:       rowData.note_label
+            });
+            if (!currentProvider && rowData.provider_name) {
+                currentProvider      = rowData.provider_name;
+                currentDebitProvider = rowData.provider_id;
+            }
+            renderPendingNotes();
+            updateNotesSummary();
+            updatePaymentSummary();
+            // Refrescar tabla de notas para marcar como Aplicada
+            buscarNotasCargo();
+            alertify.success('Nota de cargo agregada al pago');
+            return;
+        }
+        // Flujo normal — factura
         const wasEmpty = paymentItems.length === 0;
         _origAddToPayment(rowData);
         if (wasEmpty && paymentItems.length > 0) {
@@ -860,34 +1345,27 @@
         }
     };
 
-    // ── Hookear updatePaymentSummary para incluir notas ──────────────────────
-    const _origUpdatePaymentSummary = window.updatePaymentSummary;
-    window.updatePaymentSummary = function() {
-        _origUpdatePaymentSummary();
-        renderPendingNotes();
-        updateNotesSummary();
-    };
-
-    // ── Hookear clearAllPayments para limpiar notas ───────────────────────────
+    // ── Hookear clearAllPayments para limpiar notas y estado ─────────────────
     const _origClearAllPayments = window.clearAllPayments;
     window.clearAllPayments = function() {
-        // We intercept after the confirm inside the original, so we patch renderPaymentItems
         const _origRender = window.renderPaymentItems;
         window.renderPaymentItems = function() {
             if (paymentItems.length === 0) {
                 pendingNotes = [];
                 availableNotes = [];
+                currentProvider = null;
+                currentDebitProvider = null;
                 renderPendingNotes();
                 updateNotesSummary();
             }
             _origRender();
-            // Restore
             window.renderPaymentItems = _origRender;
         };
         _origClearAllPayments();
     };
 
-     async function addInvoicesToExistingPayment() {
+    // ── Agregar facturas a pago existente (modo edición) ──────────────────────
+    async function addInvoicesToExistingPayment() {
         if (paymentItems.length === 0) {
             alertify.myAlert(
                 `<div class="container text-center text-warning">
@@ -910,7 +1388,6 @@
                     payment_id: PAYMENT_ID,
                     documentos: paymentItems
                 };
-                console.log(requestData);
 
                 try {
                     const response = await fetch('/supply/add_invoices_bulk_to_payment', {
@@ -924,8 +1401,6 @@
 
                     if (result.success) {
                         alertify.success(result.message || 'Facturas agregadas exitosamente');
-
-                        // Esperar 1 segundo antes de redirigir
                         setTimeout(() => {
                             window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
                         }, 1000);
@@ -944,8 +1419,21 @@
         );
     }
 
-
-
+    function toggleFilterVencidas() {
+        const btn = $('#filter-vencidas');
+        if (!filterVencidas) {
+            paymentTable.column(9).search('Vencido').draw();
+            btn.removeClass('btn-warning').addClass('btn-danger')
+               .html('<i class="fas fa-filter-circle-xmark"></i> Quitar Filtro');
+            filterVencidas = true;
+        } else {
+            paymentTable.column(9).search('').draw();
+            btn.removeClass('btn-danger').addClass('btn-warning')
+               .html('<i class="fas fa-exclamation-triangle"></i> Mostrar Vencidas');
+            filterVencidas = false;
+        }
+        updateSelectedCount();
+    }
 </script>
 
 {% endblock %}

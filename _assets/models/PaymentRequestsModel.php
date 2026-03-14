@@ -24,11 +24,14 @@ class PaymentRequestsModel extends Model
 
     public function create_payment_with_invoices($user_id, $documents, $comment = 'Pago programado', $provider_cod = null, $empresa_cod = null, $monto_total = 0, $scheduled_payment_date = null, $pending_notes = []): array
     {
-        if (empty($documents) || !is_array($documents)) {
+        if ((empty($documents) || !is_array($documents)) && empty($pending_notes)) {
             return [
                 'success' => false,
-                'message' => 'No hay documentos para procesar'
+                'message' => 'No hay documentos ni notas de cargo para procesar'
             ];
+        }
+        if (!is_array($documents)) {
+            $documents = [];
         }
 
         $this->sql->beginTransaction();
@@ -99,10 +102,8 @@ class PaymentRequestsModel extends Model
                     VALUES (?, ?, ?, ?, ?, 1)";
 
                 foreach ($pending_notes as $note) {
-                    $temp_key = $note['invoice_temp_key'] ?? null;
-                    if (!$temp_key) continue;
-                    $invoice_id = $invoice_map[$temp_key] ?? null;
-                    if (!$invoice_id) continue;
+                    $temp_key   = $note['invoice_temp_key'] ?? null;
+                    $invoice_id = $temp_key ? ($invoice_map[$temp_key] ?? null) : null;
 
                     $this->sql->insert($note_query, [
                         $note['credit_note_id'],
