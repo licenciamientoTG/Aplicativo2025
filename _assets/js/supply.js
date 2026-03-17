@@ -4111,7 +4111,7 @@ function renderPaymentItems() {
       ? pendingNotes.filter(n => n.invoice_temp_key === tempKey)
       : [];
     const notesHtml = notesForItem.map((n, ni) => {
-      const colorClass = n.note_type === "CREDIT" ? "text-success" : "text-warning";
+      const colorClass = n.note_type === "CREDIT" ? "text-dark" : "text-dark";
       const sign = n.note_type === "CREDIT" ? "−" : "+";
       const globalIndex = typeof pendingNotes !== "undefined" ? pendingNotes.indexOf(n) : -1;
       return `<small class="d-block ${colorClass}">

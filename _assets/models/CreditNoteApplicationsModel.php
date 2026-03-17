@@ -50,7 +50,7 @@ class CreditNoteApplicationsModel extends Model
                  WHERE d.credit_note_id = n.id AND d.file_path IS NOT NULL) as documents_count
             FROM [tg].[dbo].credit_note_applications a
             INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
-            INNER JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
+            LEFT JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
             LEFT JOIN [TG].[dbo].[Usuario] u ON a.created_by = u.Id
             WHERE a.payment_request_id = ? AND a.status = 1
             ORDER BY a.created_at DESC";
@@ -92,7 +92,7 @@ class CreditNoteApplicationsModel extends Model
                 pri.invoice_number,
                 pr.request_date    as payment_date
             FROM [tg].[dbo].credit_note_applications a
-            INNER JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
+            LEFT JOIN [tg].[dbo].payment_request_invoices pri ON a.invoice_id = pri.id
             INNER JOIN [tg].[dbo].payment_requests pr ON a.payment_request_id = pr.id
             WHERE a.credit_note_id = ? AND a.status = 1
             ORDER BY a.created_at DESC";

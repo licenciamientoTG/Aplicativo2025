@@ -312,9 +312,9 @@
 									{% else %}
 										<div class="alert alert-secondary mb-0 mt-3">
 											{% if not authorization_status.abastos %}
-												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Abastos
+												<i class="fas fa-lock p-2" ></i> Bloqueado hasta autorización de Abastos
 											{% else %}
-												<i class="fas fa-lock"></i> En espera
+												<i class="fas fa-lock p-2"></i> En espera
 											{% endif %}
 										</div>
 									{% endif %}
@@ -634,7 +634,13 @@
 								</td>
 								<td>{{ app.note_number ?: '—' }}</td>
 								<td>{{ app.note_date|date('d/m/Y') }}</td>
-								<td>{{ app.invoice_folio }} — {{ app.invoice_number }}</td>
+								<td>
+										{% if app.invoice_folio %}
+											{{ app.invoice_folio }} — {{ app.invoice_number }}
+										{% else %}
+											<span class="text-muted small"><i class="fas fa-minus"></i> Sin factura</span>
+										{% endif %}
+									</td>
 								<td class="text-right">
 									{{ app.note_type == 'CREDIT' ? '-' : '+' }}
 									${{ app.applied_amount|number_format(2) }}
@@ -1615,11 +1621,11 @@
 							</select>
 							<small class="form-text text-muted" id="applyNoteBalanceHint"></small>
 						</div>
-						<!-- Selector de factura -->
+						<!-- Selector de factura (opcional) -->
 						<div class="form-group">
-							<label>Factura *</label>
-							<select name="invoice_id" class="form-control" required>
-								<option value="">Seleccione una factura...</option>
+							<label>Factura <small class="text-muted">(opcional — dejar vacío para nota independiente)</small></label>
+							<select name="invoice_id" class="form-control">
+								<option value="">Sin factura asociada (nota independiente)</option>
 								{% for inv in invoices %}
 									<option value="{{ inv.id }}">{{ inv.folio }} — {{ inv.invoice_number }}</option>
 								{% endfor %}

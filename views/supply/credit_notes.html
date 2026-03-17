@@ -1,71 +1,66 @@
 {% extends "views/layouts/base.html" %}
 {% block title %}Notas de Crédito y Cargo{% endblock %}
-{% block mycss %}{% endblock %}
+{% block mycss %}
+<style>
+    /* Header negro DataTable */
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #212529 !important;
+        color: #ffffff !important;
+        white-space: nowrap;
+    }
+    /* Fila de filtros */
+    table.dataTable thead tr.filter th {
+        background-color: #343a40 !important;
+        padding: 4px 6px !important;
+    }
+    table.dataTable thead tr.filter th input {
+        font-size: 0.72rem;
+        padding: 2px 5px;
+        height: 24px;
+    }
+    tr.row-credit { background-color: #e8f5e9 !important; }
+    tr.row-debit  { background-color: #fff8e1 !important; }
+    tr.row-saldo-cero td { opacity: 0.55; }
+    .badge { font-size: 0.73rem; }
+</style>
+{% endblock %}
 {% block menutitle %}Notas de Crédito y Cargo{% endblock %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <div class="container-fluid">
 
-    <!-- Encabezado -->
-    <div class="row mb-3">
-        <div class="col-12 d-flex justify-content-between align-items-center">
-            <h4><i class="fas fa-file-invoice-dollar"></i> Notas de Crédito y Cargo</h4>
+    <!-- Acciones -->
+    <div class="card mb-3">
+        <div class="card-body py-2 d-flex justify-content-end">
             <button class="btn btn-primary" onclick="openNewNoteModal()">
                 <i class="fas fa-plus"></i> Nueva Nota
             </button>
         </div>
     </div>
-    
-
-
-    <!-- Filtro por proveedor -->
-    <div class="card mb-3">
-        <div class="card-body py-2">
-            <div class="row align-items-center">
-                <div class="col-md-4">
-                    <label class="form-label mb-0">Proveedor</label>
-                    <select id="filterProvider" class="form-control selectpicker" data-live-search="true" data-live-search-placeholder="Buscar proveedor..." title="-- Seleccione un proveedor --" onchange="loadProviderNotes()">
-                        {% for p in proveedores %}
-                            <option value="{{ p.cod }}">{{ p.den }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2 mt-3">
-                    <button class="btn btn-secondary" onclick="loadProviderNotes()">
-                        <i class="fas fa-search"></i> Buscar
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Tabla de notas -->
     <div class="card">
-        <div class="card-body p-0">
-            <table class="table table-sm table-hover mb-0" id="notesTable">
-                <thead class="thead-light">
+        <div class="card-body p-2">
+            <table class="table table-sm table-hover mb-0 w-100" id="notesTable">
+                <thead>
                     <tr>
-                        <th class="text-center">#ID</th>
-                        <th class="text-center">Tipo</th>
+                        <th>#ID</th>
+                        <th>Tipo</th>
                         <th>Número</th>
                         <th>Proveedor</th>
-                        <th class="text-center">Fecha</th>
-                        <th class="text-right">Monto Total</th>
-                        <th class="text-right">Aplicado</th>
-                        <th class="text-right">Saldo Disponible</th>
+                        <th>Fecha</th>
+                        <th>Monto Total</th>
+                        <th>Aplicado</th>
+                        <th>Saldo Disponible</th>
                         <th>Descripción</th>
-                        <th class="text-center">Acciones</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
-                <tbody id="notesTableBody">
-                    <tr>
-                        <td colspan="9" class="text-center text-muted py-4">
-                            <i class="fas fa-arrow-up fa-2x d-block mb-2"></i>
-                            Seleccione un proveedor para ver sus notas
-                        </td>
-                    </tr>
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
@@ -223,91 +218,123 @@
 {% block myjs %}
 <script src="{{ JS }}supply.js"></script>
 <script>
-// ── Cargar notas del proveedor seleccionado ──────────────────────────────────
-function loadProviderNotes() {
-    const providerId = document.getElementById('filterProvider').value;
-    console.log('Cargando notas para proveedor ID:', providerId);
-    console.log('Cargando notas para proveedor ID:', providerId);
+var notesTableDT = null;
 
-    const tbody = document.getElementById('notesTableBody');
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando...</td></tr>';
+function initNotesTable() {
+    if ($.fn.DataTable.isDataTable('#notesTable')) {
+        $('#notesTable').DataTable().destroy();
+        $('#notesTable thead tr.filter').remove();
+    }
 
-    fetch('/supply/getAllProviderNotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        credentials: 'include',
-        body: 'provider_id=' + providerId
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (!data.success) throw new Error(data.message);
-        renderNotesTable(data.notes);
-    })
-    .catch(err => {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-danger py-3">${err.message}</td></tr>`;
+    // Fila de filtros en cabecera
+    $('#notesTable thead').prepend(
+        $('#notesTable thead tr').clone().addClass('filter')
+    );
+    $('#notesTable thead tr.filter th').each(function(i) {
+        var total = $('#notesTable thead th').length / 2;
+        if (i < total - 1) { // última columna Acciones sin filtro
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
+        } else {
+            $(this).html('');
+        }
+    });
+    $('#notesTable thead tr.filter th input').on('keyup change', function() {
+        notesTableDT.column($(this).parent().index()).search(this.value).draw();
+    });
+
+    notesTableDT = $('#notesTable').DataTable({
+        order: [[4, 'desc']],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        scrollX: true,
+        scrollY: 'calc(100vh - 320px)',
+        scrollCollapse: true,
+        paging: false,
+        language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'btn btn-success btn-sm',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                exportOptions: { columns: ':visible:not(:last-child)' }
+            },
+            {
+                extend: 'print',
+                className: 'btn btn-secondary btn-sm',
+                text: '<i class="fas fa-print"></i> Imprimir',
+                exportOptions: { columns: ':visible:not(:last-child)' }
+            },
+            {
+                extend: 'colvis',
+                className: 'btn btn-info btn-sm',
+                text: '<i class="fas fa-columns"></i> Columnas'
+            }
+        ],
+        columnDefs: [
+            { targets: [0], className: 'text-center text-muted small' },
+            { targets: [1, 4], className: 'text-center' },
+            { targets: [5, 6, 7], className: 'text-end' },
+            { targets: [9], orderable: false, searchable: false }
+        ],
+        ajax: {
+            url: '/supply/getAllProviderNotes',
+            type: 'POST',
+            dataSrc: function(json) { return json.notes || []; },
+            error: function() {
+                $('#notesTable tbody').html('<tr><td colspan="10" class="text-center text-danger py-3">Error al cargar datos</td></tr>');
+            }
+        },
+        columns: [
+            { data: 'id' },
+            { data: 'note_type', render: function(d) {
+                return d === 'CREDIT'
+                    ? '<span class="badge bg-success">Crédito</span>'
+                    : '<span class="badge bg-warning text-dark">Cargo</span>';
+            }},
+            { data: 'note_number', defaultContent: '—' },
+            { data: 'proveedor', defaultContent: '—' },
+            { data: 'note_date', render: function(d) { return d ? d.substring(0,10) : ''; } },
+            { data: 'amount', render: function(d) {
+                return '$' + parseFloat(d).toLocaleString('es-MX', {minimumFractionDigits:2});
+            }},
+            { data: 'total_applied', render: function(d) {
+                return '<span class="text-muted">$' + parseFloat(d).toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>';
+            }},
+            { data: 'available_balance', render: function(d) {
+                var b = parseFloat(d);
+                var cls = b > 0 ? 'text-success fw-bold' : 'text-muted';
+                return '<span class="' + cls + '">$' + b.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>';
+            }},
+            { data: 'description', defaultContent: '' },
+            { data: null, render: function(d) {
+                var docCount = parseInt(d.documents_count) || 0;
+                var docsBtn = docCount > 0
+                    ? '<button class="btn btn-sm btn-info view-note-docs-btn me-1" data-note-id="' + d.id + '" title="Ver ' + docCount + ' PDF"><i class="fas fa-file-pdf"></i> ' + docCount + '</button>'
+                    : '';
+                return '<div style="white-space:nowrap">'
+                    + docsBtn
+                    + '<button class="btn btn-sm btn-secondary me-1" onclick="openUploadDocModal(' + d.id + ')" title="Subir PDF"><i class="fas fa-upload"></i></button>'
+                    + '<button class="btn btn-sm btn-danger" onclick="deleteNoteFromCatalog(' + d.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button>'
+                    + '</div>';
+            }}
+        ],
+        createdRow: function(row, data) {
+            if (data.note_type === 'CREDIT') $(row).addClass('row-credit');
+            else $(row).addClass('row-debit');
+            if (parseFloat(data.available_balance) <= 0) $(row).addClass('row-saldo-cero');
+        }
     });
 }
 
-function renderNotesTable(notes) {
-    const tbody = document.getElementById('notesTableBody');
-    if (!notes || notes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No hay notas para este proveedor</td></tr>';
-
-        return;
-    }
-
-    tbody.innerHTML = notes.map(n => {
-        const isCredit = n.note_type === 'CREDIT';
-        const badge    = isCredit
-            ? '<span class="badge bg-success">Crédito</span>'
-            : '<span class="badge bg-warning text-dark">Cargo</span>';
-        const rowClass = isCredit ? 'table-success' : 'table-warning';
-        const balance  = parseFloat(n.available_balance);
-        const balClass = balance > 0 ? 'text-success font-weight-bold' : 'text-muted';
-        const docCount = parseInt(n.documents_count) || 0;
-
-        const viewDocsBtn = docCount > 0
-            ? `<button class="btn btn-sm btn-info view-note-docs-btn me-1" data-note-id="${n.id}" title="Ver ${docCount} PDF${docCount > 1 ? 's' : ''}">
-                   <i class="fas fa-file-pdf"></i> ${docCount}
-               </button>`
-            : '';
-
-        return `<tr class="${rowClass}">
-            <td class="text-center text-muted small">${n.id}</td>
-            <td class="text-center">${badge}</td>
-            <td>${n.note_number || '—'}</td>
-            <td>${n.proveedor || '—'}</td>
-            <td class="text-center">${n.note_date ? n.note_date.substring(0,10) : ''}</td>
-            <td class="text-right">$${parseFloat(n.amount).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-            <td class="text-right text-muted">$${parseFloat(n.total_applied).toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-            <td class="text-right ${balClass}">$${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}</td>
-            <td>${n.description || ''}</td>
-            <td class="text-center" style="white-space:nowrap">
-                ${viewDocsBtn}<button class="btn btn-sm btn-secondary me-1" onclick="openUploadDocModal(${n.id})" title="Subir PDF">
-                    <i class="fas fa-upload"></i>
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteNoteFromCatalog(${n.id})" title="Eliminar nota">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        </tr>`;
-    }).join('');
+function loadProviderNotes() {
+    initNotesTable();
 }
 
 // ── Abrir modal nueva nota ───────────────────────────────────────────────────
 function openNewNoteModal() {
-    const sel = document.getElementById('filterProvider');
-    const preselectedValue = sel.value;
-
     document.getElementById('newNoteForm').reset();
     document.querySelector('#newNoteModal .custom-file-label').textContent = 'Seleccionar archivo PDF...';
-
-    if (preselectedValue) {
-        $('#newNoteProvider').selectpicker('val', preselectedValue);
-    } else {
-        $('#newNoteProvider').selectpicker('val', '');
-    }
-
+    $('#newNoteProvider').selectpicker('val', '');
     $('#newNoteModal').modal('show');
 }
 
@@ -461,51 +488,9 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// ── Inicialización de selectpicker ───────────────────────────────────────────
-{# $(document).ready(function() {
-    // Limpiar y reconstruir ambos selects
-    ['filterProvider', 'newNoteProvider'].forEach(selectId => {
-        const $select = $('#' + selectId);
-        
-        // Destruir selectpicker si existe
-        if ($select.hasClass('selectpicker')) {
-            $select.selectpicker('destroy');
-        }
-        
-        // Limpiar opciones duplicadas
-        const uniqueOptions = new Map();
-        $select.find('option').each(function() {
-            const $option = $(this);
-            const value = $option.val();
-            const text = $option.text();
-            
-            if (!value) {
-                // Mantener opciones vacías (placeholders)
-                return;
-            }
-            
-            if (!uniqueOptions.has(value)) {
-                uniqueOptions.set(value, $option);
-            } else {
-                // Eliminar duplicado
-                $option.remove();
-            }
-        });
-        
-        // Inicializar selectpicker limpio
-        $select.selectpicker({
-            liveSearch: true,
-            liveSearchPlaceholder: 'Buscar proveedor...',
-            noneSelectedText: '-- Seleccione un proveedor --',
-            style: 'btn-white',
-            size: 10
-        });
-    });
-    
-    console.log('Selectpicker inicializado correctamente');
-}); #}
-
-loadProviderNotes(); // Cargar notas del proveedor seleccionado al cargar la página
+$(document).ready(function() {
+    loadProviderNotes();
+});
 
 </script>
 {% endblock %}

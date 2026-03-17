@@ -90,6 +90,8 @@
     }
 
     .nexus-badge { font-size:.68rem;font-weight:bold;color:#fff;background:#6c757d;padding:2px 6px;border-radius:4px;margin-right:6px;box-shadow:1px 1px 2px rgba(0,0,0,.2); }
+    .afil-badge { display:inline-flex;align-items:center;gap:6px;background:#e8f5e9;border:1px solid #27ae60;border-radius:50px;padding:4px 14px;font-size:.82rem;font-weight:700;color:#1a6e35;white-space:nowrap; }
+    .afil-badge i { color:#27ae60; }
 
     /* BOTONES ACCIÓN */
     .btn-action-mini { border:none;border-radius:6px;padding:4px 10px;font-size:.78rem;cursor:pointer;margin-left:5px;box-shadow:0 2px 5px rgba(0,0,0,.15);transition:all .2s;display:inline-flex;align-items:center;justify-content:center; }
@@ -204,6 +206,14 @@
             <select id="afiliacionSelect" class="form-control custom-select-pill border-success" style="min-width:200px;" onchange="actualizarTodo()">
                 <option value="">-- Seleccione --</option>
             </select>
+        </div>
+
+        <!-- Badge afiliación activa -->
+        <div id="badge-afil-activa" style="display:none;">
+            <span class="afil-badge">
+                <i class="fas fa-tag"></i>
+                <span id="badge-afil-texto"></span>
+            </span>
         </div>
 
         <!-- Modo Transacciones -->
@@ -637,6 +647,15 @@ let currentRS     = 'DIAZ GAS';
 let todasLasEstaciones = [];
 let stationConfig = [];
 let currentRule   = null;           // { entidad_id, afiliacion, nombre_banco }
+
+function actualizarBadgeAfil() {
+    if (currentRule && currentRule.afiliacion) {
+        $('#badge-afil-texto').text(currentRule.afiliacion);
+        $('#badge-afil-activa').show();
+    } else {
+        $('#badge-afil-activa').hide();
+    }
+}
 let mesCerrado    = false;
 
 const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS','DGM880621FU5':'GASOMEX' };
@@ -727,6 +746,7 @@ async function alCambiarEstacion() {
     $('#afiliacionSelect').empty().append('<option value="">-- Seleccione --</option>');
     $('#group-afiliacion').hide();
     currentRule = null;
+    actualizarBadgeAfil();
     limpiarPaneles();
 
     const id = $('#estacionSelect').val();
@@ -752,7 +772,7 @@ function llenarBancos() {
 function alCambiarBanco() {
     const eid = parseInt($('#bancoSelect').val());
     const $asel = $('#afiliacionSelect').empty().append('<option value="">-- Afiliación --</option>');
-    if (!eid) { $('#group-afiliacion').hide(); currentRule = null; return; }
+    if (!eid) { $('#group-afiliacion').hide(); currentRule = null; actualizarBadgeAfil(); return; }
 
     const afils = stationConfig.filter(r => r.entidad_id == eid);
     if (afils.length === 0) { $('#group-afiliacion').hide(); return; }
@@ -761,6 +781,7 @@ function alCambiarBanco() {
         // Única afiliación: seleccionar automáticamente
         const a = afils[0];
         currentRule = { entidad_id: eid, afiliacion: a.afiliacion, nombre_banco: a.nombre_banco, conceptos_cg: a.conceptos_cg || '' };
+        actualizarBadgeAfil();
         $('#group-afiliacion').hide();
         actualizarTodo();
         return;
@@ -773,6 +794,7 @@ function alCambiarBanco() {
         $asel.append(`<option value="${idx}">${label}</option>`);
     });
     currentRule = null;
+    actualizarBadgeAfil();
 }
 // Cuando cambia afiliación manualmente
 $('#afiliacionSelect').on('change', function() {
@@ -783,6 +805,7 @@ $('#afiliacionSelect').on('change', function() {
         const c = afils[parseInt(idx)];
         if (c) {
             currentRule = { entidad_id: eid, afiliacion: c.afiliacion, nombre_banco: c.nombre_banco || '', conceptos_cg: c.conceptos_cg || '' };
+            actualizarBadgeAfil();
             actualizarTodo();
         }
     }
@@ -861,12 +884,13 @@ async function fetchTesoreria(eid, year, month) {
         const json = await r.json();
         const raw  = (json.status === 'success') ? (json.data || []) : [];
 
-        // Filtrar por afiliación exacta — igual que V2
-        const afil = currentRule ? String(currentRule.afiliacion).trim() : '';
+        // Filtrar por afiliación — soporta valores combinados "A / B" en currentRule
+        const afilRaw   = currentRule ? String(currentRule.afiliacion).trim() : '';
+        const afilParts = afilRaw.split(/[,\/]+/).map(s => s.trim()).filter(s => s !== '');
         tesData = raw.filter(m => {
             const mAfil = String(m.Afiliacion || '').trim();
             const val   = parseFloat(m.Total || m.Depositos || 0);
-            return mAfil === afil && val > 0;
+            return afilParts.some(p => p === mAfil) && val > 0;
         }).map(m => ({
             // Normalizar a formato interno V3
             fecha:       m.Fecha,
