@@ -3719,9 +3719,9 @@ public function anomalies_client_tickets()
                 }
             } catch(Exception $e){}
 
-            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791
             foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
-                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533'] as $tablaRef) {
+                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
