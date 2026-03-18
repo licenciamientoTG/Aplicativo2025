@@ -3472,7 +3472,7 @@ public function anomalies_client_tickets()
 
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3513,7 +3513,7 @@ public function anomalies_client_tickets()
             }
 
             // Tablas adicionales Banorte por Referencia/Concepto
-            foreach (['Tesoreria_9475', 'Tesoreria_4113'] as $tablaRef) {
+            foreach (['Tesoreria_A9475', 'Tesoreria_FG4113'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
@@ -3577,7 +3577,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3588,24 +3588,28 @@ public function anomalies_client_tickets()
             });
 
             $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547',
-                       'Tesoreria_6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
-                       'Tesoreria_4098', 'Tesoreria_7291', 'Tesoreria_7553'];
+                       'Tesoreria_A6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
+                       'Tesoreria_4098', 'Tesoreria_7291', 'Tesoreria_7533'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
-                $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
-                if($check->fetchColumn() > 0) {
-                    $sql = "SELECT Fecha, Referencia, Concepto, Descripcion, Depositos FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
+                    $cols = $hasConcepto ? 'Fecha, Referencia, Concepto, Depositos' : 'Fecha, Referencia, NULL as Concepto, Depositos';
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
-                }
+                } catch(Exception $e){}
             }
 
             $agrupado = [];
             foreach($movimientosRaw as $row){
-                $ref      = trim($row['Referencia'] ?? '');
-                $concepto = trim($row['Concepto']   ?? '');
+                // Normalizar Referencia: quitar formato moneda ($8,828,251.00 → 8828251)
+                $ref      = preg_replace('/[^0-9A-Za-z]/', '', trim($row['Referencia'] ?? ''));
+                $concepto = trim($row['Concepto'] ?? '');
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
@@ -3663,7 +3667,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3715,9 +3719,9 @@ public function anomalies_client_tickets()
                 }
             } catch(Exception $e){}
 
-            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7553
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533
             foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
-                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7553'] as $tablaRef) {
+                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
@@ -3778,7 +3782,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
