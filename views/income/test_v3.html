@@ -1082,9 +1082,18 @@ function renderCG() {
         ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
         : [];
 
+    // Fecha de hoy en formato YYYY-MM-DD para excluir el día en curso
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
     const filtered = cgData.filter(item => {
         const monto = parseFloat(item.Total || 0);
         if (monto <= 0) return false;
+        // Excluir día en curso
+        const fItem = item.FechaVisual
+            ? (() => { const p = item.FechaVisual.split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual; })()
+            : normalizarFecha(item.Fecha || item.fch || '');
+        if (fItem === todayStr) return false;
         if (!keywords.length) return true;
         const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
         return keywords.some(k => c.includes(k));

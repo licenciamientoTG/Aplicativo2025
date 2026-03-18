@@ -3512,8 +3512,8 @@ public function anomalies_client_tickets()
                 }
             }
 
-            // Tablas adicionales Banorte por Referencia/Concepto
-            foreach (['Tesoreria_A9475', 'Tesoreria_FG4113'] as $tablaRef) {
+            // Tablas Banorte con afiliación embebida en Referencia/Concepto
+            foreach (['Tesoreria_A9475'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
@@ -3534,6 +3534,32 @@ public function anomalies_client_tickets()
                                 break;
                             }
                         }
+                    }
+                } catch(Exception $e){}
+            }
+
+            // Tablas Banorte dedicadas (todos sus depósitos pertenecen a una afiliación fija)
+            $tablasDedicadas = [
+                'Tesoreria_FG4113' => '9662848',
+            ];
+            foreach ($tablasDedicadas as $tablaRef => $afilFija) {
+                // Buscar el item del catálogo correspondiente a esta afiliación
+                $afilItem = null;
+                foreach ($catalogo as $c) {
+                    if ($c['afiliacion'] === $afilFija) { $afilItem = $c; break; }
+                }
+                if (!$afilItem) continue;
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $stmt = $conn->prepare("SELECT Fecha, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?");
+                    $stmt->execute([$year, $month]);
+                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $monto = (float)$row['Depositos'];
+                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
+                        $key = $fecha . '_' . $afilFija;
+                        if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilFija,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
+                        $agrupado[$key]['Total'] += $monto;
                     }
                 } catch(Exception $e){}
             }
@@ -3699,9 +3725,10 @@ public function anomalies_client_tickets()
                 }
             } catch(Exception $e){}
 
-            // Fuente 0956
+            // Fuentes con DescripcionDetallada: 0956, 8520
+            foreach (['Tesoreria_0956', 'Tesoreria_8520'] as $tablaDD) {
             try {
-                $sql0956 = "SELECT Fecha, DescripcionDetallada, Depositos FROM Tesoreria_0956 WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $sql0956 = "SELECT Fecha, DescripcionDetallada, Depositos FROM $tablaDD WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                 $stmt = $conn->prepare($sql0956); $stmt->execute([$year, $month]);
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $detalle = trim($row['DescripcionDetallada']);
@@ -3718,10 +3745,12 @@ public function anomalies_client_tickets()
                     }
                 }
             } catch(Exception $e){}
+            } // fin foreach tablaDD
 
-            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115
             foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
-                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791'] as $tablaRef) {
+                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791',
+                      'Tesoreria_A6115'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
