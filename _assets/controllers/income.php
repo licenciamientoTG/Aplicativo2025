@@ -7245,31 +7245,47 @@ public function stamped_invoices_detail(): void
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
             ");
 
-            $ids_creados = [];
+            // Pre-filtrar cortes válidos (sin tránsito activo) para poder identificar el último
+            $cortes_validos = [];
             foreach ($cortes as $corte) {
-                $ref          = trim($corte['ref']       ?? '');
-                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
-                $concepto     = trim($corte['concepto']  ?? '');
-                $cg_fecha     = trim($corte['cg_fecha']  ?? '');
-
+                $ref         = trim($corte['ref']       ?? '');
+                $monto_corte = (float)($corte['monto_corte'] ?? 0);
                 if (!$ref || $monto_corte <= 0) continue;
 
-                // Verificar que no tenga ya un tránsito activo
                 $ck = $conn->prepare("
                     SELECT id FROM CV3_Transito
                     WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
                       AND corte_ref_id = ? AND estado != 'CANCELADO'
                 ");
                 $ck->execute([$estacion_id, $entidad_id, $afiliacion, $ref]);
-                if ($ck->fetch()) continue;  // ya tiene tránsito, saltar
+                if ($ck->fetch()) continue;
 
-                // Distribuir proporcionalmente
-                $proporcion      = $monto_corte / $total_cortes;
-                $monto_transito  = round($monto_trans_total * $proporcion, 2);
-                $monto_efectivo  = round($monto_corte - $monto_transito, 2);
+                $cortes_validos[] = $corte;
+            }
 
-                // Asegurar que monto_transito no supere el corte
-                if ($monto_transito > $monto_corte) { $monto_transito = $monto_corte; $monto_efectivo = 0; }
+            $ids_creados        = [];
+            $suma_transito      = 0.0;
+            $n_validos          = count($cortes_validos);
+
+            foreach ($cortes_validos as $i => $corte) {
+                $ref          = trim($corte['ref']       ?? '');
+                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
+                $concepto     = trim($corte['concepto']  ?? '');
+                $cg_fecha     = trim($corte['cg_fecha']  ?? '');
+
+                if ($i === $n_validos - 1) {
+                    // Último ítem: asignar el resto exacto para que la suma sea perfecta
+                    $monto_transito = round($monto_trans_total - $suma_transito, 2);
+                } else {
+                    $proporcion     = $monto_corte / $total_cortes;
+                    $monto_transito = round($monto_trans_total * $proporcion, 2);
+                }
+
+                // Asegurar que monto_transito no supere el corte individual
+                if ($monto_transito > $monto_corte) { $monto_transito = $monto_corte; }
+                $monto_transito = round($monto_transito, 2);
+                $monto_efectivo = round($monto_corte - $monto_transito, 2);
+                $suma_transito  = round($suma_transito + $monto_transito, 2);
 
                 $stmt->execute([
                     $estacion_id, $entidad_id, $afiliacion, $ref, $cg_fecha,
