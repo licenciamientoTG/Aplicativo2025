@@ -245,4 +245,9 @@ public function buscarPorUUIDs($uuids) {
         return $result;
     }
 
+    public function update_ruta($facturaId, $ruta, $nombreArchivo) {
+        $query = "UPDATE TG.dbo.FacturasRecibidas SET RutaArchivo = ?, NombreArchivo = ? WHERE Id = ?";
+        return $this->sql->update($query, [$ruta, $nombreArchivo, $facturaId]);
+    }
+
 }

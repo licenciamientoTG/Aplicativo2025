@@ -3872,6 +3872,123 @@ class Supply
         echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores'));
     }
 
+    public function import_invoices()
+    {
+        echo $this->twig->render($this->route . 'import_invoices.html');
+    }
+
+    public function import_invoice_pdf()
+    {
+        header('Content-Type: application/json');
+
+        if (empty($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['success' => false, 'message' => 'No se recibió el archivo PDF.']);
+            return;
+        }
+
+        $proveedor = strtolower(trim($_POST['proveedor'] ?? ''));
+        $proveedoresValidos = ['lobo', 'mcg', 'tesoro', 'aemsa', 'enerey', 'essafuel', 'premiergas', 'petrotal'];
+        if (!in_array($proveedor, $proveedoresValidos)) {
+            echo json_encode(['success' => false, 'message' => 'Proveedor inválido.']);
+            return;
+        }
+
+        $apiUrl = 'http://192.168.0.109:82/api/importar_factura_pdf/';
+        $tmpFile = $_FILES['pdf']['tmp_name'];
+        $originalName = $_FILES['pdf']['name'];
+
+        $curl = curl_init();
+        curl_setopt_array($curl, [
+            CURLOPT_URL            => $apiUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => [
+                'pdf'       => new CURLFile($tmpFile, 'application/pdf', $originalName),
+                'proveedor' => $proveedor,
+            ],
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+
+        $responseRaw = curl_exec($curl);
+        $httpCode    = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $curlError   = curl_error($curl);
+        curl_close($curl);
+
+        if ($curlError) {
+            echo json_encode(['success' => false, 'message' => "Error de conexión con la API: $curlError"]);
+            return;
+        }
+
+        $response = json_decode($responseRaw, true);
+        if (!$response) {
+            echo json_encode(['success' => false, 'message' => 'Respuesta inválida de la API.']);
+            return;
+        }
+
+        $estado = $response['estado'] ?? '';
+
+        if ($estado !== 'exitosa') {
+            echo json_encode([
+                'success' => false,
+                'estado'  => $estado,
+                'message' => $response['mensaje'] ?? 'La factura no fue importada.',
+            ]);
+            return;
+        }
+
+        // Guardar el PDF con nombre UUID en la ruta correspondiente
+        $uuid       = $response['uuid'] ?? '';
+        $facturaId  = $response['factura_id'] ?? null;
+        $rutaBase   = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\attachments';
+        $rutaDir    = $rutaBase . '\\' . $proveedor . '\\procesadas';
+        $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
+        $rutaCompleta  = $rutaDir . '\\' . $nombreArchivo;
+
+        $debugInfo = [
+            'tmp_exists'  => file_exists($tmpFile),
+            'tmp_size'    => file_exists($tmpFile) ? filesize($tmpFile) : 0,
+            'dir_exists'  => is_dir($rutaDir),
+            'rutaDir'     => $rutaDir,
+            'rutaCompleta'=> $rutaCompleta,
+        ];
+
+        if (!is_dir($rutaDir)) {
+            $debugInfo['mkdir_result'] = mkdir($rutaDir, 0777, true);
+            $debugInfo['mkdir_error']  = $debugInfo['mkdir_result'] ? null : error_get_last();
+        }
+
+        $guardado = false;
+        if (file_exists($tmpFile)) {
+            $guardado = copy($tmpFile, $rutaCompleta);
+            $debugInfo['copy_result'] = $guardado;
+            if (!$guardado) $debugInfo['copy_error'] = error_get_last();
+        }
+
+        if (!$guardado) {
+            echo json_encode([
+                'success'     => true,
+                'factura_id'  => $facturaId,
+                'uuid'        => $uuid,
+                'mensaje'     => $response['mensaje'],
+                'advertencia' => 'Factura importada pero no se pudo guardar el PDF.',
+                'debug'       => $debugInfo,
+            ]);
+            return;
+        }
+
+        // Actualizar RutaArchivo y NombreArchivo en BD
+        $this->facturasRecibidasModel->update_ruta($facturaId, $rutaCompleta, $nombreArchivo);
+
+        echo json_encode([
+            'success'    => true,
+            'factura_id' => $facturaId,
+            'uuid'       => $uuid,
+            'ruta'       => $rutaCompleta,
+            'mensaje'    => $response['mensaje'],
+            'debug'      => $debugInfo,
+        ]);
+    }
+
     public function delete_payment()
     {
         header('Content-Type: application/json');

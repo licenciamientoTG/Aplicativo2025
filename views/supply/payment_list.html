@@ -34,22 +34,20 @@
         transition: all 0.3s ease;
     }
 
-    #count-abastos.badge,
-    #count-admin.badge,
-    #count-tesoreria.badge {
-        animation: pulse-badge 2s infinite;
+    #count-abastos.badge-updated,
+    #count-admin.badge-updated,
+    #count-tesoreria.badge-updated,
+    #count-contabilidad.badge-updated {
+        animation: pulse-badge 0.4s ease;
     }
 
     @keyframes pulse-badge {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+    }
 
-        0%,
-        100% {
-            transform: scale(1);
-        }
-
-        50% {
-            transform: scale(1.1);
-        }
+    .badge-updated {
+        animation: pulse-badge 0.4s ease;
     }
 
     /* Hover effects en cards */
@@ -67,7 +65,7 @@
     }
 
     #payment_list_table thead th {
-        background-color: #000000 !important;
+        background-color: #212529 !important;
         color: #ffffff !important;
     }
 
@@ -347,7 +345,7 @@ function resetTestData() {
                 <i class="fas fa-hand-holding-usd"></i> Lista de Pagos Programados
             </div>
             <div class="card-body table-responsive">
-                <table id="payment_list_table" class="table table-hover table-sm w-100  table-striped  dataTable">
+                <table id="payment_list_table" class="table table-bordered table-hover table-sm w-100  table-striped  dataTable">
                     <thead>
                         <tr>
                             <th>ID</th>
@@ -358,8 +356,8 @@ function resetTestData() {
                             <th>Usuario</th>
                             <th>Facturas</th>
                             <th>Total Facturas</th>
-                            <th>NC</th>
-                            <th>ND</th>
+                            <th title="Notas de Crédito">NC</th>
+                            <th title="Notas de Débito">ND</th>
                             <th>Monto Total</th>
                             <th>Pagado</th>
                             <th>Autorizadas</th>
@@ -381,7 +379,7 @@ function resetTestData() {
                 <div class="row" style="align-items: flex-end;">
                     <div class="col-2">
                         <label class="col-form-label-sm">Estado:</label>
-                        <select class="form-control form-control-sm form-select" id="status_filter">
+                        <select class="form-control form-control-sm form-select" id="status_filter_anticipos">
                             <option value="all">Todos</option>
                             <option value="pending">Pendiente</option>
                             <option value="authorized">Autorizado</option>
@@ -390,7 +388,7 @@ function resetTestData() {
                         </select>
                     </div>
                     <div class="col-2">
-                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary"
+                        <button onclick="loadAnticiposList()" class="btn btn-sm btn-primary"
                             style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                     <div class="col-2">
@@ -1080,11 +1078,19 @@ function resetTestData() {
             dataType: 'json',
             success: function (response) {
                 if (response.success) {
-                    // Actualizar contadores
-                    $('#count-abastos').text(response.abastos || 0);
-                    $('#count-contabilidad').text(response.contabilidad || 0);
-                    $('#count-admin').text(response.admin || 0);
-                    $('#count-tesoreria').text(response.tesoreria || 0);
+                    // Actualizar contadores con animación puntual
+                    function updateBadgeCount(id, value) {
+                        var $el = $(id);
+                        $el.text(value || 0);
+                        $el.removeClass('badge-updated');
+                        void $el[0].offsetWidth; // reflow para reiniciar animación
+                        $el.addClass('badge-updated');
+                        setTimeout(function() { $el.removeClass('badge-updated'); }, 400);
+                    }
+                    updateBadgeCount('#count-abastos', response.abastos);
+                    updateBadgeCount('#count-contabilidad', response.contabilidad);
+                    updateBadgeCount('#count-admin', response.admin);
+                    updateBadgeCount('#count-tesoreria', response.tesoreria);
 
                     // Habilitar/deshabilitar botones según permisos del usuario
                     const userPermissions = response.user_permissions || [];
