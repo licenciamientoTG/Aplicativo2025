@@ -507,6 +507,20 @@ class Supply
         echo $this->twig->render($this->route . 'tgr01.html', compact('stations', 'from', 'to', 'codgas', 'shift', 'product', 'data'));
     }
 
+    function inventarioMermas()
+    {
+        $stations = $this->gasolinerasModel->get_active_stations();
+        isset($_GET['codgas']) ? $codgas = $_GET['codgas'] : $codgas = 7;
+        isset($_GET['from']) ? $from = $_GET['from'] : $from = date('Y-m-d');
+        isset($_GET['to']) ? $to = $_GET['to'] : $to = date('Y-m-d');
+        isset($_GET['shift']) ? $shift = $_GET['shift'] : $shift = 0;
+        isset($_GET['product']) ? $product = $_GET['product'] : $product = 0;
+
+        $data = $this->gasolinerasModel->GetInventarioMermasConsolidado(dateToInt($from), dateToInt($to), intval($codgas), intval($product));
+
+        echo $this->twig->render($this->route . 'inventarioMermas.html', compact('stations', 'from', 'to', 'codgas', 'shift', 'product', 'data'));
+    }
+
     function creProducts()
     {
         $stations = $this->gasolinerasModel->get_active_station_TG();
