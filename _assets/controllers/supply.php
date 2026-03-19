@@ -3930,21 +3930,46 @@ class Supply
         $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
         $rutaCompleta  = $rutaDir . '\\' . $nombreArchivo;
 
+        // Debug info
+        $debugInfo = [
+            'tmp_file'      => $tmpFile,
+            'tmp_exists'    => file_exists($tmpFile),
+            'tmp_size'      => file_exists($tmpFile) ? filesize($tmpFile) : 0,
+            'rutaDir'       => $rutaDir,
+            'dir_exists'    => is_dir($rutaDir),
+            'rutaCompleta'  => $rutaCompleta,
+            'is_uploaded'   => is_uploaded_file($tmpFile),
+            'php_user'      => get_current_user(),
+        ];
+
         if (!is_dir($rutaDir)) {
-            mkdir($rutaDir, 0777, true);
+            $mkdirResult = mkdir($rutaDir, 0777, true);
+            $debugInfo['mkdir_result'] = $mkdirResult;
+            $debugInfo['mkdir_error']  = $mkdirResult ? null : error_get_last();
         }
 
-        if (!move_uploaded_file($tmpFile, $rutaCompleta)) {
-            // Si no se pudo mover, igual la factura ya fue importada — solo avisar
+        // Usar copy() en lugar de move_uploaded_file() ya que el tmp puede no ser reconocido tras cURL
+        $guardado = false;
+        if (file_exists($tmpFile)) {
+            $guardado = copy($tmpFile, $rutaCompleta);
+            $debugInfo['metodo'] = 'copy';
+            $debugInfo['copy_result'] = $guardado;
+            if (!$guardado) $debugInfo['copy_error'] = error_get_last();
+        }
+
+        if (!$guardado) {
             echo json_encode([
                 'success'    => true,
                 'factura_id' => $facturaId,
                 'uuid'       => $uuid,
                 'mensaje'    => $response['mensaje'],
                 'advertencia' => 'Factura importada pero no se pudo guardar el archivo PDF en el servidor.',
+                'debug'      => $debugInfo,
             ]);
             return;
         }
+
+        $debugInfo['archivo_guardado'] = file_exists($rutaCompleta);
 
         // Actualizar RutaArchivo y NombreArchivo en BD
         $this->facturasRecibidasModel->update_ruta($facturaId, $rutaCompleta, $nombreArchivo);
@@ -3955,6 +3980,7 @@ class Supply
             'uuid'       => $uuid,
             'ruta'       => $rutaCompleta,
             'mensaje'    => $response['mensaje'],
+            'debug'      => $debugInfo,
         ]);
     }
 
