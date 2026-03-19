@@ -3,6 +3,8 @@
 {% block title %}Conciliación V3 — CG vs Tesorería{% endblock %}
 {% block menutitle %}Conciliación Global V3{% endblock %}
 
+
+
 {% block content %}
 <style>
     :root {
@@ -30,8 +32,39 @@
     body { background:#f4f6f9;overflow-x:hidden; }
 
     /* HEADER */
-    .controls-header { background:#fff;padding:12px 20px;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,.05);margin-bottom:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between; }
-    .custom-select-pill { border-radius:50px;border:1px solid #ced4da;padding-left:15px;background:#f8f9fa;font-weight:600;color:var(--primary-color);height:38px; }
+    .controls-header {
+        background:#fff;
+        border-radius:12px;
+        box-shadow:0 4px 15px rgba(0,0,0,.06);
+        margin-bottom:14px;
+        border:1px solid #e9ecef;
+    }
+    .controls-row {
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:10px 16px;
+        flex-wrap:wrap;
+    }
+    .controls-row-top {
+        background:#f8f9fa;
+        border-bottom:1px solid #e9ecef;
+        border-radius:12px 12px 0 0;
+    }
+    .controls-row-bottom {
+        background:#fff;
+        justify-content:space-between;
+    }
+    .controls-divider {
+        width:1px;height:24px;background:#dee2e6;flex-shrink:0;
+    }
+    .controls-group {
+        display:flex;align-items:center;gap:8px;
+    }
+    .custom-select-pill {
+        border-radius:50px;border:1px solid #ced4da;padding-left:15px;
+        background:#fff;font-weight:600;color:var(--primary-color);height:36px;
+    }
 
     /* SPLIT */
     .split-container { display:flex;gap:16px;padding:0 10px 20px;height:calc(100vh - 230px); }
@@ -125,6 +158,43 @@
     .btn-cancel-transit { background:none;border:1px solid #dc3545;color:#dc3545;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
     .btn-cancel-transit:hover { background:#dc3545;color:white; }
 
+    /* DIFERIDOS CG — estados */
+    .row-en-diferido { background:#f5f3ff!important; border-left:5px solid #7c3aed!important; pointer-events:none!important; cursor:default!important; }
+    .row-en-diferido .row-line1 { color:#6d28d9!important; }
+    .row-diferido-fake { background:#f5f3ff!important; border-left:5px solid #7c3aed!important; cursor:pointer; }
+    .row-diferido-fake:not(.active):hover { background:#ede9fe!important; }
+    .row-diferido-fake.active { background:var(--selected-bg)!important; border-left:5px solid var(--selected-border)!important; }
+    .row-diferido-fake.row-concil-ok  { pointer-events:none; }
+    .row-diferido-fake.row-concil-diff { pointer-events:none; }
+    .diferido-badge { display:inline-block;font-size:.65rem;font-weight:700;color:#fff;background:#7c3aed;border-radius:4px;padding:1px 5px;margin-right:5px;vertical-align:middle; }
+    .diferido-badge-blocked { display:inline-flex;align-items:center;gap:3px;font-size:.65rem;font-weight:700;color:#fff;background:#4c1d95;border-radius:4px;padding:2px 6px;margin-right:6px;vertical-align:middle;box-shadow:0 1px 3px rgba(0,0,0,.25); }
+    .diferido-split { font-size:.71rem;color:#6c757d;margin-top:2px; }
+    .diferido-split .t-purple { color:#7c3aed;font-weight:600; }
+    .diferido-split .t-green  { color:#16a34a;font-weight:600; }
+    .btn-diferir { background:none;border:1px solid #7c3aed;color:#7c3aed;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:5px;white-space:nowrap;transition:all .15s; }
+    .btn-diferir:hover { background:#7c3aed;color:white; }
+    .btn-mover-diferido { background:none;border:1px solid #0891b2;color:#0891b2;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
+    .btn-mover-diferido:hover { background:#0891b2;color:white; }
+    .btn-cancel-diferido { background:none;border:1px solid #dc3545;color:#dc3545;border-radius:10px;padding:1px 6px;font-size:.68rem;cursor:pointer;margin-left:3px;transition:all .15s;pointer-events:auto; }
+    .btn-cancel-diferido:hover { background:#dc3545;color:white; }
+
+    /* PANEL RANGO DE FECHAS */
+    .rango-panel { background:#fff;border:1px solid #dee2e6;border-radius:10px;overflow:hidden; }
+    .rango-col { padding:6px 18px;display:flex;flex-direction:column;gap:4px; }
+    .rango-col + .rango-col { border-left:1px solid #e9ecef; }
+    .rango-col-header { font-size:.72rem;font-weight:700;text-transform:uppercase;color:#6c757d;display:flex;align-items:center;gap:5px;margin-bottom:2px; }
+    .rango-inputs { display:flex;align-items:center;gap:6px; }
+    .rango-inputs label { font-size:.7rem;color:#adb5bd;font-weight:600;margin:0;white-space:nowrap; }
+    .rango-day-input { width:48px;text-align:center;border:1px solid #ced4da;border-radius:6px;padding:2px 4px;font-weight:700;font-size:.85rem;height:28px; }
+    .rango-value { font-family:'Consolas',monospace;font-weight:700;font-size:1.1rem;margin-top:2px; }
+    .rango-col-dif { padding:6px 16px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;min-width:160px; }
+    .rango-col-dif .rango-dif-label { font-size:.72rem;font-weight:700;color:#6c757d;text-transform:uppercase; }
+    .rango-col-dif .rango-dif-value { font-family:'Consolas',monospace;font-weight:700;font-size:1.1rem; }
+    .rango-shared-row { display:flex;align-items:center;gap:8px;padding:6px 18px;border-bottom:1px solid #e9ecef;background:#f8f9fa;border-radius:10px 10px 0 0; }
+    .rango-shared-row label { font-size:.75rem;font-weight:700;color:#6c757d;margin:0;white-space:nowrap; }
+    .rango-panel.individual-mode .rango-shared-inputs { display:none; }
+    .rango-panel:not(.individual-mode) .rango-inputs { display:none; }
+
     /* BARRA FLOTANTE */
     .action-bar { position:fixed;bottom:28px;left:50%;transform:translate(-50%,150%);background:#2c3e50;color:white;padding:12px 28px;border-radius:50px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;align-items:center;gap:18px;z-index:1000;transition:transform .3s cubic-bezier(.175,.885,.32,1.275); }
     .action-bar.visible { transform:translate(-50%,0); }
@@ -153,92 +223,120 @@
     <!-- CONTROLES -->
     <div class="controls-header">
 
-        <!-- Razón Social -->
-        <div class="btn-group btn-group-toggle shadow-sm rounded-pill overflow-hidden" data-toggle="buttons">
-            <label class="btn btn-outline-dark btn-sm active" onclick="setRS('DIAZ GAS')">
-                <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
-            </label>
-            <label class="btn btn-outline-dark btn-sm" onclick="setRS('FORANEAS')">
-                <input type="radio" name="rs_type" autocomplete="off"> FORA
-            </label>
-            <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
-                <input type="radio" name="rs_type" autocomplete="off"> GASO
-            </label>
-        </div>
+        <!-- Fila 1: Contexto — Razón social, Periodo, Selects -->
+        <div class="controls-row controls-row-top">
 
-        <!-- Date picker widget -->
-        <div class="position-relative">
-            <div class="date-widget-trigger border px-3 py-2 rounded-pill bg-white" onclick="toggleDatePicker()">
-                <i class="far fa-calendar-alt text-success"></i>
-                <span id="displayFullDate">Cargando...</span>
-            </div>
-            <input type="hidden" id="hiddenYear">
-            <input type="hidden" id="hiddenMonth">
-            <div class="date-widget-dropdown" id="dateDropdown">
-                <div class="d-flex justify-content-between mb-2">
-                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)">&lt;</button>
-                    <strong id="widgetYearDisplay">2025</strong>
-                    <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">&gt;</button>
+            <!-- Razón Social -->
+            <div class="controls-group">
+                <span class="small font-weight-bold text-muted" style="white-space:nowrap;">R.S.</span>
+                <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
+                    <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setRS('DIAZ GAS')">
+                        <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
+                    </label>
+                    <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('FORANEAS')">
+                        <input type="radio" name="rs_type" autocomplete="off"> FORA
+                    </label>
+                    <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('GASOMEX')">
+                        <input type="radio" name="rs_type" autocomplete="off"> GASO
+                    </label>
                 </div>
-                <div class="month-grid" id="monthGrid"></div>
             </div>
+
+            <div class="controls-divider"></div>
+
+            <!-- Date picker -->
+            <div class="position-relative">
+                <div class="date-widget-trigger border px-3 py-1 rounded-pill bg-white" style="height:34px;" onclick="toggleDatePicker()">
+                    <i class="far fa-calendar-alt text-success"></i>
+                    <span id="displayFullDate">Cargando...</span>
+                </div>
+                <input type="hidden" id="hiddenYear">
+                <input type="hidden" id="hiddenMonth">
+                <div class="date-widget-dropdown" id="dateDropdown">
+                    <div class="d-flex justify-content-between mb-2">
+                        <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)">&lt;</button>
+                        <strong id="widgetYearDisplay">2025</strong>
+                        <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">&gt;</button>
+                    </div>
+                    <div class="month-grid" id="monthGrid"></div>
+                </div>
+            </div>
+
+            <div class="controls-divider"></div>
+
+            <!-- Estación -->
+            <div class="controls-group flex-grow-1" style="min-width:180px;">
+                <label class="mb-0 small font-weight-bold text-muted text-nowrap">ESTACIÓN</label>
+                <select id="estacionSelect" class="form-control custom-select-pill flex-grow-1" onchange="alCambiarEstacion()">
+                    <option value="">Cargando...</option>
+                </select>
+            </div>
+
+            <!-- Banco -->
+            <div class="controls-group">
+                <label class="mb-0 small font-weight-bold text-muted text-nowrap">BANCO</label>
+                <select id="bancoSelect" class="form-control custom-select-pill" style="min-width:140px;" onchange="alCambiarBanco()">
+                    <option value="">--</option>
+                </select>
+            </div>
+
+            <!-- Afiliación -->
+            <div class="controls-group" id="group-afiliacion" style="display:none;">
+                <label class="mb-0 small font-weight-bold text-muted text-nowrap">AFILIACIÓN</label>
+                <select id="afiliacionSelect" class="form-control custom-select-pill border-success" style="min-width:190px;" onchange="actualizarTodo()">
+                    <option value="">-- Seleccione --</option>
+                </select>
+            </div>
+
+            <!-- Badge afiliación activa -->
+            <div id="badge-afil-activa" style="display:none;">
+                <span class="afil-badge">
+                    <i class="fas fa-tag"></i>
+                    <span id="badge-afil-texto"></span>
+                </span>
+            </div>
+
         </div>
 
-        <!-- Estación -->
-        <div class="control-group flex-grow-1">
-            <label class="mb-0 small font-weight-bold text-muted mr-2">ESTACIÓN:</label>
-            <select id="estacionSelect" class="form-control custom-select-pill w-100" onchange="alCambiarEstacion()">
-                <option value="">Cargando...</option>
-            </select>
+        <!-- Fila 2: Herramientas y acciones -->
+        <div class="controls-row controls-row-bottom">
+
+            <!-- Grupo: Herramientas de análisis -->
+            <div class="controls-group">
+                <span class="small font-weight-bold text-muted mr-1">HERRAMIENTAS</span>
+                <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="toggleRangoPanel()" title="Calcular totales por rango de días">
+                    <i class="fas fa-calculator mr-1"></i> Σ Rango
+                </button>
+                <button class="btn btn-sm btn-outline-info rounded-pill" onclick="abrirModoTransacciones()" title="Comparar CG vs Transacciones por día">
+                    <i class="fas fa-exchange-alt mr-1"></i> Modo TX
+                </button>
+                <button class="btn btn-sm btn-outline-warning rounded-pill d-none" id="btn-gestionar-transitos" onclick="abrirModalGestionTransitos()" title="Ver y cancelar tránsitos activos">
+                    <i class="fas fa-shipping-fast mr-1"></i> Tránsitos
+                    <span id="transitos-cg-count" class="badge badge-warning ml-1">0</span>
+                </button>
+            </div>
+
+            <div class="controls-divider"></div>
+
+            <!-- Grupo: Acciones del mes -->
+            <div class="controls-group ml-auto">
+                <span class="small font-weight-bold text-muted mr-1">MES</span>
+                <button class="btn btn-sm btn-outline-danger rounded-pill" id="btn-deshacer-mes" onclick="deshacerMes()" title="Deshacer todas las conciliaciones del mes">
+                    <i class="fas fa-trash-alt mr-1"></i> Deshacer
+                </button>
+                <button class="btn btn-sm btn-warning rounded-pill font-weight-bold" id="btn-cerrar-mes" onclick="abrirModalCierre()" title="Cerrar el mes">
+                    <i class="fas fa-calendar-check mr-1"></i> Cerrar Mes
+                </button>
+                <button class="btn btn-sm btn-success rounded-pill font-weight-bold d-none" id="btn-reabrir-mes" onclick="abrirModalReabrirMes()" title="Reabrir mes cerrado">
+                    <i class="fas fa-lock-open mr-1"></i> Reabrir Mes
+                </button>
+                <button class="btn btn-sm btn-primary rounded-circle" onclick="actualizarTodo()" title="Actualizar" style="width:32px;height:32px;padding:0;">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+
         </div>
 
-        <!-- Banco -->
-        <div class="control-group">
-            <label class="mb-0 small font-weight-bold text-muted mr-2">BANCO:</label>
-            <select id="bancoSelect" class="form-control custom-select-pill" style="min-width:140px;" onchange="alCambiarBanco()">
-                <option value="">--</option>
-            </select>
-        </div>
-
-        <!-- Afiliación -->
-        <div class="control-group" id="group-afiliacion" style="display:none;">
-            <label class="mb-0 small font-weight-bold text-muted mr-2">AFILIACIÓN:</label>
-            <select id="afiliacionSelect" class="form-control custom-select-pill border-success" style="min-width:200px;" onchange="actualizarTodo()">
-                <option value="">-- Seleccione --</option>
-            </select>
-        </div>
-
-        <!-- Badge afiliación activa -->
-        <div id="badge-afil-activa" style="display:none;">
-            <span class="afil-badge">
-                <i class="fas fa-tag"></i>
-                <span id="badge-afil-texto"></span>
-            </span>
-        </div>
-
-        <!-- Modo Transacciones -->
-        <button class="btn btn-outline-info rounded-pill shadow-sm font-weight-bold" onclick="abrirModoTransacciones()" title="Comparar CG vs Transacciones por día">
-            <i class="fas fa-exchange-alt mr-1"></i> Modo Transacciones
-        </button>
-
-        <!-- Tránsitos activos -->
-        <button class="btn btn-outline-warning rounded-pill shadow-sm font-weight-bold d-none" id="btn-gestionar-transitos" onclick="abrirModalGestionTransitos()" title="Ver y cancelar tránsitos activos">
-            <i class="fas fa-exchange-alt mr-1"></i> Tránsitos <span id="transitos-cg-count" class="badge badge-warning ml-1">0</span>
-        </button>
-
-        <!-- Acciones -->
-        <button class="btn btn-outline-danger rounded-pill shadow-sm font-weight-bold" id="btn-deshacer-mes" onclick="deshacerMes()" title="Deshacer todas las conciliaciones del mes">
-            <i class="fas fa-trash-alt mr-1"></i> Deshacer Mes
-        </button>
-        <button class="btn btn-warning rounded-pill shadow-sm font-weight-bold" id="btn-cerrar-mes" onclick="abrirModalCierre()" title="Cerrar el mes">
-            <i class="fas fa-calendar-check mr-1"></i> Cerrar Mes
-        </button>
-        <button class="btn btn-success rounded-pill shadow-sm font-weight-bold d-none" id="btn-reabrir-mes" onclick="abrirModalReabrirMes()" title="Reabrir mes cerrado">
-            <i class="fas fa-lock-open mr-1"></i> Reabrir Mes
-        </button>
-        <button class="btn btn-primary rounded-circle shadow-sm" onclick="actualizarTodo()" title="Actualizar">
-            <i class="fas fa-sync-alt"></i>
-        </button>
     </div>
 
     <!-- RESUMEN SUPERIOR -->
@@ -277,6 +375,76 @@
                         </span>
                         <small class="text-muted">Haz clic para ver</small>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANEL RANGO DE FECHAS (colapsable) -->
+    <div id="rango-panel" class="row px-2 mb-2 d-none">
+        <div class="col-12">
+            <div class="rango-panel shadow-sm" id="rango-panel-inner">
+
+                <!-- Fila superior: rango compartido + toggle -->
+                <div class="rango-shared-row">
+                    <label>Día</label>
+                    <input type="number" id="rango-shared-desde" class="rango-day-input rango-shared-inputs" min="1" max="31" value="1" oninput="calcularRango()">
+                    <span class="rango-shared-inputs" style="color:#adb5bd;font-size:.8rem;">—</span>
+                    <input type="number" id="rango-shared-hasta" class="rango-day-input rango-shared-inputs" min="1" max="31" value="31" oninput="calcularRango()">
+                    <div class="ml-3 d-flex align-items-center gap-2" style="gap:6px;">
+                        <div class="custom-control custom-switch" style="padding-left:2.4rem;">
+                            <input type="checkbox" class="custom-control-input" id="rango-individual-check" onchange="toggleRangoIndividual()">
+                            <label class="custom-control-label" for="rango-individual-check" style="font-size:.75rem;font-weight:700;color:#495057;cursor:pointer;">Rango individual por columna</label>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill ml-auto" onclick="toggleRangoPanel()" style="font-size:.72rem;padding:2px 10px;">Cerrar</button>
+                </div>
+
+                <!-- Fila de columnas con totales -->
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;">
+
+                    <!-- Columna CG -->
+                    <div class="rango-col">
+                        <div class="rango-col-header text-dark"><i class="fas fa-gas-pump"></i> ControlGas</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-cg-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-cg-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-dark" id="rango-cg">$0.00</span>
+                    </div>
+
+                    <!-- Columna Tesorería -->
+                    <div class="rango-col">
+                        <div class="rango-col-header" style="color:var(--tes-color);"><i class="fas fa-university"></i> Tesorería</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-tes-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-tes-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-success" id="rango-tes">$0.00</span>
+                    </div>
+
+                    <!-- Columna TX -->
+                    <div class="rango-col">
+                        <div class="rango-col-header text-secondary"><i class="fas fa-exchange-alt"></i> Transacciones</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-tx-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-tx-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-secondary" id="rango-tx">$0.00</span>
+                    </div>
+
+                    <!-- Diferencia -->
+                    <div class="rango-col-dif">
+                        <span class="rango-dif-label">Dif. CG − TES</span>
+                        <span class="rango-dif-value" id="rango-dif">$0.00</span>
+                    </div>
+
                 </div>
             </div>
         </div>
@@ -495,6 +663,80 @@
     </div>
 </div>
 
+<!-- MODAL: DIFERIR CORTE -->
+<div class="modal fade" id="modalDiferido" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:15px;overflow:hidden;">
+            <div class="modal-header border-0 py-3" style="background:#7c3aed;">
+                <h5 class="modal-title font-weight-bold text-white"><i class="fas fa-calendar-day mr-2"></i>Diferir a otro día</h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalDiferido').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <input type="hidden" id="dif-ref">
+                <div class="mb-3">
+                    <div class="text-muted small font-weight-bold text-uppercase mb-1">Corte</div>
+                    <div class="font-weight-bold" id="dif-concepto-label"></div>
+                    <div class="text-muted small" id="dif-fecha-label"></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="text-muted small font-weight-bold text-uppercase mb-1">Disponible para diferir</div>
+                        <div class="font-numeric h5 text-dark" id="dif-total-label"></div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small font-weight-bold text-uppercase mb-1">Fecha destino</div>
+                        <input type="date" id="dif-fecha-dest" class="form-control form-control-sm">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="text-muted small font-weight-bold text-uppercase mb-1">Monto a diferir</label>
+                    <input type="number" id="dif-monto" class="form-control" step="0.01" min="0.01" oninput="actualizarEfectivoDif()">
+                </div>
+                <div class="mb-3 p-2 rounded" style="background:#d1fae5;">
+                    <div class="text-muted small font-weight-bold text-uppercase mb-1">Queda en este día (efectivo)</div>
+                    <div class="font-numeric h5 text-success mb-0" id="dif-efectivo-label">$0.00</div>
+                </div>
+                <div class="mb-2">
+                    <label class="text-muted small font-weight-bold text-uppercase mb-1">Descripción (opcional)</label>
+                    <input type="text" id="dif-desc" class="form-control form-control-sm" placeholder="Ej: Depósito del día siguiente">
+                </div>
+            </div>
+            <div class="modal-footer bg-white border-0 pt-0">
+                <button class="btn btn-secondary rounded-pill px-4" onclick="$('#modalDiferido').modal('hide')">Cancelar</button>
+                <button class="btn rounded-pill px-4 font-weight-bold text-white" style="background:#7c3aed;" onclick="confirmarCrearDiferido()">
+                    <i class="fas fa-calendar-day mr-1"></i>Diferir
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: MOVER DIFERIDO -->
+<div class="modal fade" id="modalMoverDiferido" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-sm" role="document">
+        <div class="modal-content border-0 shadow-lg" style="border-radius:15px;overflow:hidden;">
+            <div class="modal-header border-0 py-3" style="background:#0891b2;">
+                <h5 class="modal-title font-weight-bold text-white"><i class="fas fa-arrows-alt-h mr-2"></i>Mover diferido</h5>
+                <button type="button" class="btn btn-link text-white p-0" onclick="$('#modalMoverDiferido').modal('hide')" style="font-size:1.5rem;opacity:.8;text-decoration:none;">&times;</button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <input type="hidden" id="mov-dif-id">
+                <div class="mb-2 text-muted small" id="mov-dif-info"></div>
+                <div class="mb-3">
+                    <label class="text-muted small font-weight-bold text-uppercase mb-1">Nueva fecha destino</label>
+                    <input type="date" id="mov-dif-fecha" class="form-control form-control-sm">
+                </div>
+            </div>
+            <div class="modal-footer bg-white border-0 pt-0">
+                <button class="btn btn-secondary rounded-pill px-3" onclick="$('#modalMoverDiferido').modal('hide')">Cancelar</button>
+                <button class="btn rounded-pill px-3 font-weight-bold text-white" style="background:#0891b2;" onclick="confirmarMoverDiferido()">
+                    <i class="fas fa-arrows-alt-h mr-1"></i>Mover
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL: ENVIAR A TRÁNSITO -->
 <div class="modal fade" id="modalTransito" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
     <div class="modal-dialog modal-dialog-centered" role="document">
@@ -631,6 +873,12 @@ const URLS_V3 = {
     crear_transito_dia:  '/income/crear_transito_dia_v3',
     cancelar_transito:   '/income/cancelar_transito_v3',
     reabrir_mes:         '/income/reabrir_mes_v3',
+    // Diferidos
+    diferidos_cg:        '/income/get_diferidos_cg_v3',
+    crear_diferido:      '/income/crear_diferido_v3',
+    crear_diferido_dia:  '/income/crear_diferido_dia_v3',
+    mover_diferido:      '/income/mover_diferido_v3',
+    cancelar_diferido:   '/income/cancelar_diferido_v3',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -674,6 +922,11 @@ let historial = [];                 // detalles conciliados actuales
 // enTransito: { [corte_ref_id]: { id, monto_corte, monto_transito, monto_efectivo, ... } }
 // fakes:      Array de registros fake del mes destino
 let transitosCG = { enTransito: {}, fakes: [] };
+
+// Diferidos CG V3
+// enDiferido: { [corte_ref_id]: [ {id, monto_diferido, cg_fecha_destino, estado, ...} ] }
+// fakes:      Array de registros fake del día destino
+let diferidosCG = { enDiferido: {}, fakes: [] };
 
 // Persistencia de grupos abiertos/cerrados (sobrevive a actualizarTodo)
 let openGroupsCG  = new Set();
@@ -843,6 +1096,7 @@ function actualizarTodo() {
         fetchConciliadas(estid, eid, afil, year, month),
         fetchTransitos(estid, eid, afil),
         fetchTransitosCG(estid, eid, afil, year, month),
+        fetchDiferidosCG(estid, eid, afil, year, month),
         checkMesCerrado(estid, eid, afil, mes),
     ]).finally(() => {
         body_loading(false);
@@ -850,6 +1104,7 @@ function actualizarTodo() {
         renderCG();
         renderTes();
         actualizarResumenSuperior();
+        if (!$('#rango-panel').hasClass('d-none')) calcularRango();
         // Restaurar scroll
         setTimeout(() => {
             $('#cg-content').scrollTop(scrollCG);
@@ -927,14 +1182,32 @@ async function fetchConciliadas(estid, eid, afil, year, month) {
     } catch(e) { historial = []; }
 
     // Construir set de refs conciliadas por origen
-    conciliadasSet = { CG: new Set(), TES: new Set(), TRANSITO: new Set() };
+    conciliadasSet = { CG: new Set(), TES: new Set(), TRANSITO: new Set(), DIFERIDO: new Set() };
     const gruposConDiff = {};
     historial.forEach(d => {
-        if (d.origen === 'CG')      conciliadasSet.CG.add(d.ref);
-        if (d.origen === 'TES')     conciliadasSet.TES.add(d.ref);
+        if (d.origen === 'CG')       conciliadasSet.CG.add(d.ref);
+        if (d.origen === 'TES')      conciliadasSet.TES.add(d.ref);
         if (d.origen === 'TRANSITO') conciliadasSet.TRANSITO.add(d.ref);
+        if (d.origen === 'DIFERIDO') conciliadasSet.DIFERIDO.add(d.ref);
         gruposConDiff[d.grupo_id] = d.diferencia;
     });
+}
+
+// ── FETCH DIFERIDOS CG V3 ─────────────────────────────────────
+async function fetchDiferidosCG(estid, eid, afil, year, month) {
+    try {
+        const r    = await fetch(`${URLS_V3.diferidos_cg}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
+        const json = await r.json();
+        if (json.status === 'success') {
+            diferidosCG.enDiferido = {};
+            (json.en_diferido || []) && Object.entries(json.en_diferido || {}).forEach(([ref, arr]) => {
+                diferidosCG.enDiferido[ref] = arr;
+            });
+            diferidosCG.fakes = json.fakes || [];
+        } else {
+            diferidosCG = { enDiferido: {}, fakes: [] };
+        }
+    } catch(e) { diferidosCG = { enDiferido: {}, fakes: [] }; }
 }
 
 // ── FETCH TRÁNSITOS CG V3 (nuevo sistema) ─────────────────────
@@ -1128,13 +1401,17 @@ function renderCG() {
     let grandTotal = 0;
 
     Object.keys(byDate).sort().forEach(fecha => {
-        const items  = byDate[fecha];
+        const items      = byDate[fecha];
+        const dayFakesDif = diferidosCG.fakes.filter(f => f.cg_fecha_destino === fecha);
         const dayTot = items.reduce((a, b) => {
-            const ref = b.ID_Unico || '';
-            const tr  = transitosCG.enTransito[ref];
-            const monto = tr ? tr.monto_efectivo : parseFloat(b.Total || 0);
+            const ref    = b.ID_Unico || '';
+            const tr     = transitosCG.enTransito[ref];
+            const difs   = diferidosCG.enDiferido[ref] || [];
+            const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
+            const montoOrig = parseFloat(b.Total || 0);
+            const monto = tr ? tr.monto_efectivo : Math.max(0, montoOrig - sumDif);
             return a + monto;
-        }, 0);
+        }, 0) + dayFakesDif.reduce((s, f) => s + f.monto_diferido, 0);
         grandTotal += dayTot;
 
         const isOpen = openGroupsCG.has(fecha);
@@ -1142,12 +1419,18 @@ function renderCG() {
         // Progreso de conciliación del día
         let nConcil = 0;
         let nTransito = 0;
+        let nDiferido = 0;
         const gruposVistosDay = new Set();
         let diffDia = 0;
         let itemsTransitables = [];   // pendientes sin tránsito activo
         let itemsEnTransitoDia = [];  // ids de tránsitos PENDIENTE del día
+        let itemsDiferibles = [];     // pendientes sin tránsito ni diferido completo
         items.forEach(item => {
-            const ref = item.ID_Unico || '';
+            const ref    = item.ID_Unico || '';
+            const montoOrig = parseFloat(item.Total || 0);
+            const difs   = diferidosCG.enDiferido[ref] || [];
+            const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
+            const montoEfec = Math.max(0, montoOrig - sumDif);
             if (conciliadasSet.CG && conciliadasSet.CG.has(ref)) {
                 nConcil++;
                 const h = historial.find(x => x.origen === 'CG' && String(x.ref) === String(ref));
@@ -1159,14 +1442,24 @@ function renderCG() {
                 const tr = transitosCG.enTransito[ref];
                 if (tr.monto_efectivo < 0.01) nTransito++;
                 if (tr.estado === 'PENDIENTE') itemsEnTransitoDia.push(tr.id);
+            } else if (montoEfec < 0.01 && sumDif > 0) {
+                nDiferido++;
             } else {
-                // Pendiente y sin tránsito — puede enviarse a tránsito
+                // Pendiente — puede enviarse a tránsito o diferir
                 itemsTransitables.push({
-                    ref:        ref,
-                    monto_corte: parseFloat(item.Total || 0),
-                    concepto:   item.Concepto || item.concepto || '',
-                    cg_fecha:   fecha,
+                    ref:         ref,
+                    monto_corte: montoOrig,
+                    concepto:    item.Concepto || item.concepto || '',
+                    cg_fecha:    fecha,
                 });
+                if (montoEfec > 0) {
+                    itemsDiferibles.push({
+                        ref:         ref,
+                        monto_corte: montoEfec,
+                        concepto:    item.Concepto || item.concepto || '',
+                        cg_fecha:    fecha,
+                    });
+                }
             }
         });
         const nTotal = items.length;
@@ -1194,17 +1487,22 @@ function renderCG() {
         // Filas del grupo
         let itemsHtml = '';
         items.forEach(item => {
-            const ref      = item.ID_Unico || '';
+            const ref       = item.ID_Unico || '';
             const montoOrig = parseFloat(item.Total || 0);
-            const concepto = item.Concepto || item.concepto || '';
-            const esConcil = conciliadasSet.CG && conciliadasSet.CG.has(ref);
-            const transitoInfo = transitosCG.enTransito[ref] || null;
+            const concepto  = item.Concepto || item.concepto || '';
+            const esConcil  = conciliadasSet.CG && conciliadasSet.CG.has(ref);
+            const transitoInfo  = transitosCG.enTransito[ref] || null;
+            const difsDelCorte  = diferidosCG.enDiferido[ref] || [];
+            const sumaDiferida  = difsDelCorte.reduce((s, d) => s + d.monto_diferido, 0);
+            const difOrigIds    = difsDelCorte.filter(d => d.estado === 'PENDIENTE').map(d => d.id);
 
-            // Si tiene tránsito, usar monto_efectivo para selección/display
-            const montoEfectivo = transitoInfo ? transitoInfo.monto_efectivo : montoOrig;
-            const esSel    = sel.left.some(s => s.ref === ref);
+            // Monto efectivo: sin tránsito usa montoOrig - sumaDiferida
+            const montoEfectivo = transitoInfo
+                ? transitoInfo.monto_efectivo
+                : Math.max(0, montoOrig - sumaDiferida);
 
-            const hRec = historial.find(h => h.ref === String(ref) && h.origen === 'CG');
+            const esSel     = sel.left.some(s => s.ref === ref);
+            const hRec      = historial.find(h => h.ref === String(ref) && h.origen === 'CG');
             let difTag = '', unlinkBtn = '', statusClass = 'row-pendiente';
 
             if (esConcil) {
@@ -1218,8 +1516,9 @@ function renderCG() {
                     statusClass = 'row-concil-ok';
                 }
             } else if (transitoInfo) {
-                // Corte con tránsito activo: estilo especial
                 statusClass = transitoInfo.monto_efectivo < 0.01 ? 'row-en-transito' : 'row-pendiente';
+            } else if (montoEfectivo < 0.01 && sumaDiferida > 0) {
+                statusClass = 'row-en-diferido';
             }
 
             let syncBtn = '';
@@ -1231,10 +1530,16 @@ function renderCG() {
                 }
             }
 
-            // Botón [T] — solo en items pendientes sin tránsito activo
+            // Botón [T] tránsito — solo sin tránsito activo
             let transitBtn = '';
             if (!esConcil && !transitoInfo && !mesCerrado) {
                 transitBtn = `<button class="btn-transit" onclick="event.stopPropagation();abrirModalTransito('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},'${escHtml(concepto)}')" title="Enviar a tránsito"><i class="fas fa-arrow-right"></i> T</button>`;
+            }
+
+            // Botón [D] diferir — solo si hay monto efectivo disponible y no está conciliado
+            let diferirBtn = '';
+            if (!esConcil && !transitoInfo && montoEfectivo > 0 && !mesCerrado) {
+                diferirBtn = `<button class="btn-diferir" onclick="event.stopPropagation();abrirModalDiferido('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},${montoEfectivo},'${escHtml(concepto)}')" title="Diferir a otro día"><i class="fas fa-calendar-day"></i> D</button>`;
             }
 
             // Botón cancelar tránsito
@@ -1249,6 +1554,12 @@ function renderCG() {
                 transitSplit = `<span class="transit-split">Total: ${fmt.format(montoOrig)} · <span class="t-red">Tránsito: ${fmt.format(transitoInfo.monto_transito)}</span> · <span class="t-green">Efectivo: ${fmt.format(montoEfectivo)}</span></span>`;
             }
 
+            // Split info de diferidos
+            let diferidoSplit = '';
+            if (sumaDiferida > 0 && !transitoInfo) {
+                diferidoSplit = `<span class="diferido-split">Total: ${fmt.format(montoOrig)} · <span class="t-purple">Diferido: ${fmt.format(sumaDiferida)}</span> · <span class="t-green">Efectivo: ${fmt.format(montoEfectivo)}</span></span>`;
+            }
+
             if (esConcil) {
                 itemsHtml += `<div class="row-item ${statusClass}">
                     <div class="row-left">
@@ -1258,7 +1569,7 @@ function renderCG() {
                     <div class="row-right">${syncBtn}${difTag}${unlinkBtn}<span class="font-numeric">${fmt.format(montoEfectivo)}</span></div>
                 </div>`;
             } else if (transitoInfo && transitoInfo.monto_efectivo < 0.01) {
-                // 100% en tránsito — completamente bloqueado
+                // 100% en tránsito
                 itemsHtml += `<div class="row-item row-en-transito">
                     <div class="row-left">
                         <span class="row-line1"><span class="transit-badge-blocked"><i class="fas fa-lock" style="font-size:.6rem;"></i> EN TRÁNSITO</span>${escHtml(concepto)}</span>
@@ -1267,7 +1578,7 @@ function renderCG() {
                     <div class="row-right" style="pointer-events:auto;">${cancelTransitBtn}<span class="font-numeric" style="text-decoration:line-through;color:#9ca3af;">${fmt.format(montoOrig)}</span></div>
                 </div>`;
             } else if (transitoInfo) {
-                // Parcialmente en tránsito — seleccionable con monto_efectivo
+                // Parcialmente en tránsito
                 const transito_orig_id = transitoInfo.id;
                 itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,${transito_orig_id})">
                     <div class="row-left">
@@ -1276,16 +1587,81 @@ function renderCG() {
                     </div>
                     <div class="row-right">${cancelTransitBtn}<span class="font-numeric">${fmt.format(montoEfectivo)}</span></div>
                 </div>`;
+            } else if (montoEfectivo < 0.01 && sumaDiferida > 0) {
+                // 100% diferido
+                const cancelDifOrigenBtn = difOrigIds.length && !mesCerrado
+                    ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})" title="Cancelar diferido"><i class="fas fa-times"></i></button>`
+                    : '';
+                itemsHtml += `<div class="row-item row-en-diferido">
+                    <div class="row-left">
+                        <span class="row-line1"><span class="diferido-badge-blocked"><i class="fas fa-calendar-day" style="font-size:.6rem;"></i> DIFERIDO</span>${escHtml(concepto)}</span>
+                        ${diferidoSplit}
+                    </div>
+                    <div class="row-right" style="pointer-events:auto;">${cancelDifOrigenBtn}<span class="font-numeric" style="text-decoration:line-through;color:#9ca3af;">${fmt.format(montoOrig)}</span></div>
+                </div>`;
+            } else if (sumaDiferida > 0) {
+                // Parcialmente diferido — seleccionable con monto_efectivo
+                const cancelDifOrigenBtn = difOrigIds.length && !mesCerrado
+                    ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})" title="Cancelar diferido"><i class="fas fa-times"></i></button>`
+                    : '';
+                itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoEfectivo},'${escHtml(concepto)}',this,null,${JSON.stringify(difOrigIds).replace(/"/g,'&quot;')})">
+                    <div class="row-left">
+                        <span class="row-line1"><span class="diferido-badge">PARCIAL-D</span>${escHtml(concepto)}</span>
+                        ${diferidoSplit}
+                    </div>
+                    <div class="row-right">${cancelDifOrigenBtn}${diferirBtn}<span class="font-numeric">${fmt.format(montoEfectivo)}</span></div>
+                </div>`;
             } else {
                 itemsHtml += `<div class="row-item row-pendiente ${esSel?'active':''}" onclick="toggleCG('${escHtml(ref)}','${escHtml(fecha)}',${montoOrig},'${escHtml(concepto)}',this)">
                     <div class="row-left">
                         <span class="row-line1">${escHtml(concepto)}</span>
                         <span class="row-line2">ControlGas</span>
                     </div>
-                    <div class="row-right">${transitBtn}<span class="font-numeric">${fmt.format(montoOrig)}</span></div>
+                    <div class="row-right">${transitBtn}${diferirBtn}<span class="font-numeric">${fmt.format(montoOrig)}</span></div>
                 </div>`;
             }
         });
+
+        // Fakes de diferidos cuya fecha destino es este día — agrupados en UN solo ítem
+        const fakesDelDia = dayFakesDif;
+        if (fakesDelDia.length) {
+            const grpRef      = `diferido_grp_${fecha}`;
+            const totalGrp    = fakesDelDia.reduce((s, f) => s + f.monto_diferido, 0);
+            const allIds      = fakesDelDia.map(f => f.id);
+            const pendingIds  = fakesDelDia.filter(f => f.estado === 'PENDIENTE').map(f => f.id);
+            // Determinar estado del grupo
+            const hRecs       = fakesDelDia.map(f => historial.find(h => h.ref === `diferido_${f.id}` && h.origen === 'DIFERIDO')).filter(Boolean);
+            const todosConc   = fakesDelDia.every(f => conciliadasSet.DIFERIDO && conciliadasSet.DIFERIDO.has(`diferido_${f.id}`));
+            const esSel       = sel.left.some(s => s.ref === grpRef);
+            const origenLabel = [...new Set(fakesDelDia.map(f => f.cg_fecha_origen))].join(', ');
+            let statusClass   = 'row-diferido-fake';
+            let dTag = '', unlinkB = '';
+            if (todosConc && hRecs.length) {
+                const difVal = hRecs.reduce((s, h) => s + parseFloat(h.diferencia), 0);
+                const ok     = Math.abs(difVal) < 0.01;
+                statusClass += ' ' + (ok ? 'row-concil-ok' : 'row-concil-diff');
+                dTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
+                unlinkB = `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRecs[0].grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>`;
+            } else if (todosConc) {
+                statusClass += ' row-concil-ok';
+            }
+            const clickAttr = (!todosConc && !mesCerrado)
+                ? `onclick="toggleDiferidoFake('${grpRef}','${escHtml(fecha)}',${totalGrp},'Diferido',${JSON.stringify(allIds).replace(/"/g,'&quot;')},this)"`
+                : '';
+            const moverBtn = (!todosConc && pendingIds.length && !mesCerrado)
+                ? `<button class="btn-mover-diferido" onclick="event.stopPropagation();abrirModalMoverDiferidoGrupo(${JSON.stringify(pendingIds).replace(/"/g,'&quot;')},'${escHtml(origenLabel)}','${escHtml(fecha)}')" title="Mover todos a otro día"><i class="fas fa-arrows-alt-h"></i></button>`
+                : '';
+            const cancelDifBtn = (!todosConc && pendingIds.length && !mesCerrado)
+                ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(pendingIds).replace(/"/g,'&quot;')})" title="Cancelar diferidos"><i class="fas fa-times"></i></button>`
+                : '';
+            itemsHtml += `<div class="row-item ${statusClass} ${esSel?'active':''}" ${clickAttr}>
+                <div class="row-left">
+                    <span class="row-line1"><span class="diferido-badge">DIFERIDO</span>Diferido de día${fakesDelDia.length > 1 ? ` (${fakesDelDia.length})` : ''}</span>
+                    <span class="row-line2">Origen: ${origenLabel}</span>
+                </div>
+                <div class="row-right" style="pointer-events:auto;">${dTag}${unlinkB}${moverBtn}${cancelDifBtn}<span class="font-numeric">${fmt.format(totalGrp)}</span></div>
+            </div>`;
+        }
 
         // Botón de tránsito a nivel de día
         const diaTransitBtn = (!mesCerrado && itemsTransitables.length > 0)
@@ -1296,6 +1672,12 @@ function renderCG() {
         const diaCancelTransitBtn = (!mesCerrado && itemsEnTransitoDia.length > 0)
             ? `<button class="btn-cancel-transit ml-2" onclick="event.stopPropagation();cancelarTransitosDia(${JSON.stringify(itemsEnTransitoDia).replace(/"/g,'&quot;')})" title="Cancelar todos los tránsitos del día">
                    <i class="fas fa-times"></i> Cancelar T.
+               </button>`
+            : '';
+        // Botón de diferir a nivel de día
+        const diaDiferirBtn = (!mesCerrado && itemsDiferibles.length > 0)
+            ? `<button class="btn-diferir ml-2" onclick="event.stopPropagation();abrirModalDiferidoDia('${escHtml(fecha)}',${JSON.stringify(itemsDiferibles).replace(/"/g,'&quot;')})" title="Diferir día completo a otro día">
+                   <i class="fas fa-calendar-day"></i> D Día
                </button>`
             : '';
 
@@ -1310,7 +1692,9 @@ function renderCG() {
                     <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
                     ${diaTransitBtn}
                     ${diaCancelTransitBtn}
+                    ${diaDiferirBtn}
                     ${nTransito > 0 ? `<span class="transit-badge-blocked ml-2"><i class="fas fa-lock" style="font-size:.6rem;"></i> ${nTransito} en tránsito</span>` : ''}
+                    ${nDiferido > 0 ? `<span class="diferido-badge-blocked ml-2"><i class="fas fa-calendar-day" style="font-size:.6rem;"></i> ${nDiferido} diferido</span>` : ''}
                 </div>
                 <span class="font-numeric">${fmt.format(dayTot)}</span>
             </div>
@@ -1588,16 +1972,26 @@ function toggleTransitosPanel() {
 }
 
 // ── SELECCIÓN ─────────────────────────────────────────────────
-function toggleCG(ref, fecha, monto, concepto, el, transitoOrigId) {
+function toggleCG(ref, fecha, monto, concepto, el, transitoOrigId, diferidoOrigIds) {
     if (mesCerrado) return;
     const idx = sel.left.findIndex(s => s.ref === ref);
     if (idx >= 0) { sel.left.splice(idx, 1); $(el).removeClass('active'); }
     else {
         const item = { ref, fecha, monto, concepto, tipo: 'CG' };
         if (transitoOrigId) item.transito_orig_id = transitoOrigId;
+        if (diferidoOrigIds && diferidoOrigIds.length) item.diferido_orig_ids = diferidoOrigIds;
         sel.left.push(item);
         $(el).addClass('active');
     }
+    recalcTotals();
+}
+// diferidoIds puede ser un número (legacy) o un array
+function toggleDiferidoFake(ref, fecha, monto, concepto, diferidoIds, el) {
+    if (mesCerrado) return;
+    const ids = Array.isArray(diferidoIds) ? diferidoIds : [diferidoIds];
+    const idx = sel.left.findIndex(s => s.ref === ref);
+    if (idx >= 0) { sel.left.splice(idx, 1); $(el).removeClass('active'); }
+    else          { sel.left.push({ ref, fecha, monto, concepto, tipo: 'DIFERIDO', diferido_ids: ids }); $(el).addClass('active'); }
     recalcTotals();
 }
 function toggleTransitoFake(ref, fecha, monto, concepto, transitoId, el) {
@@ -1629,7 +2023,7 @@ function seleccionarDiaCG(fecha) {
         ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')).filter(k => k)
         : [];
 
-    // Items pendientes del día — excluye conciliados y los 100% en tránsito
+    // Items pendientes del día — excluye conciliados, 100% en tránsito y 100% diferido
     const pendientes = cgData.filter(item => {
         const itemFecha = item.FechaVisual
             ? (() => { const p = item.FechaVisual.split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual; })()
@@ -1639,9 +2033,12 @@ function seleccionarDiaCG(fecha) {
         if (!ref) return false;
         if (conciliadasSet.CG && conciliadasSet.CG.has(ref)) return false;
         if (parseFloat(item.Total || 0) <= 0) return false;
-        // Excluir los que están 100% en tránsito (monto_efectivo = 0)
         const tr = transitosCG.enTransito[ref];
         if (tr && tr.monto_efectivo < 0.01) return false;
+        // Excluir 100% diferido
+        const difs = diferidosCG.enDiferido[ref] || [];
+        const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
+        if (!tr && sumDif > 0 && Math.max(0, parseFloat(item.Total || 0) - sumDif) < 0.01) return false;
         if (keywords.length) {
             const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
             if (!keywords.some(k => c.includes(k))) return false;
@@ -1649,11 +2046,20 @@ function seleccionarDiaCG(fecha) {
         return true;
     });
 
-    if (!pendientes.length) return;
+    // Fakes de diferido pendientes cuya fecha destino es este día
+    const grpRef = `diferido_grp_${fecha}`;
+    const pendingFakes = diferidosCG.fakes.filter(f =>
+        f.cg_fecha_destino === fecha && f.estado === 'PENDIENTE' &&
+        !(conciliadasSet.DIFERIDO && conciliadasSet.DIFERIDO.has(`diferido_${f.id}`))
+    );
+    const hasPendingFakes = pendingFakes.length > 0;
+
+    if (!pendientes.length && !hasPendingFakes) return;
 
     const groupBodyId = `cg-${fecha.replace(/-/g,'')}`;
     const $header = $(`#cg-header-${fecha.replace(/-/g,'')}`);
-    const allSelected = pendientes.every(item => sel.left.some(s => s.ref === (item.ID_Unico || '')));
+    const allSelected = pendientes.every(item => sel.left.some(s => s.ref === (item.ID_Unico || '')))
+        && (!hasPendingFakes || sel.left.some(s => s.ref === grpRef));
 
     if (allSelected) {
         pendientes.forEach(item => {
@@ -1661,23 +2067,39 @@ function seleccionarDiaCG(fecha) {
             const idx = sel.left.findIndex(s => s.ref === ref);
             if (idx >= 0) sel.left.splice(idx, 1);
         });
+        if (hasPendingFakes) {
+            const idx = sel.left.findIndex(s => s.ref === grpRef);
+            if (idx >= 0) sel.left.splice(idx, 1);
+        }
         $(`#${groupBodyId} .row-item`).removeClass('active');
         $header.removeClass('day-selected');
     } else {
         pendientes.forEach(item => {
             const ref = item.ID_Unico || '';
             if (sel.left.some(s => s.ref === ref)) return;
-            // Usar monto_efectivo si el corte tiene tránsito parcial
             const tr = transitosCG.enTransito[ref];
-            const monto = tr ? tr.monto_efectivo : parseFloat(item.Total || 0);
+            const difs = diferidosCG.enDiferido[ref] || [];
+            const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
+            const monto = tr ? tr.monto_efectivo : Math.max(0, parseFloat(item.Total || 0) - sumDif);
             const entry = { ref, fecha, monto, concepto: item.Concepto || item.concepto || '', tipo: 'CG' };
             if (tr) entry.transito_orig_id = tr.id;
+            const difOrigIds = difs.filter(d => d.estado === 'PENDIENTE').map(d => d.id);
+            if (difOrigIds.length) entry.diferido_orig_ids = difOrigIds;
             sel.left.push(entry);
             $(`#${groupBodyId} .row-item`).filter(function() {
                 const oc = $(this).attr('onclick') || '';
                 return oc.indexOf("'" + ref + "'") >= 0;
             }).addClass('active');
         });
+        // Seleccionar el grupo de fakes diferidos del día
+        if (hasPendingFakes && !sel.left.some(s => s.ref === grpRef)) {
+            const totalGrp = pendingFakes.reduce((s, f) => s + f.monto_diferido, 0);
+            const allIds   = pendingFakes.map(f => f.id);
+            sel.left.push({ ref: grpRef, fecha, monto: totalGrp, concepto: 'Diferido', tipo: 'DIFERIDO', diferido_ids: allIds });
+            $(`#${groupBodyId} .row-item`).filter(function() {
+                return ($(this).attr('onclick') || '').indexOf(grpRef) >= 0;
+            }).addClass('active');
+        }
         $header.addClass('day-selected');
     }
 
@@ -1764,7 +2186,7 @@ function ejecutarGuardado() {
         fecha_deposito:  fechaDep,
         total_cg:        sumCG,
         total_tes:       sumTES,
-        left_rows:       sel.left.map(s => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto, tipo:s.tipo||'CG', transito_id:s.transito_id||null, transito_orig_id:s.transito_orig_id||null })),
+        left_rows:       sel.left.map(s => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto, tipo:s.tipo||'CG', transito_id:s.transito_id||null, transito_orig_id:s.transito_orig_id||null, diferido_ids:s.diferido_ids||[], diferido_orig_ids:s.diferido_orig_ids||[] })),
         tes_rows:        sel.tes.map(s  => ({ ref:s.ref, fecha:s.fecha, monto:s.monto, concepto:s.concepto })),
     };
 
@@ -2116,10 +2538,136 @@ function updateTxCounter()  {
     $('#tx-counter').text(fmt.format(tot));
 }
 
+// ── TOTALES POR RANGO DE DÍAS ─────────────────────────────────
+function toggleRangoPanel() {
+    const $p = $('#rango-panel');
+    if ($p.hasClass('d-none')) {
+        const { year, month } = widgetState;
+        if (year && month) {
+            const lastDay = new Date(year, month, 0).getDate();
+            $('#rango-shared-desde').val(1);
+            $('#rango-shared-hasta').val(lastDay);
+            ['cg','tes','tx'].forEach(col => {
+                $(`#rango-${col}-desde`).val(1);
+                $(`#rango-${col}-hasta`).val(lastDay);
+            });
+        }
+        $p.removeClass('d-none');
+        calcularRango();
+    } else {
+        $p.addClass('d-none');
+    }
+}
+
+function toggleRangoIndividual() {
+    const individual = $('#rango-individual-check').is(':checked');
+    const $inner = $('#rango-panel-inner');
+    if (individual) {
+        $inner.addClass('individual-mode');
+        // Propagar el rango compartido actual a cada columna
+        const desde = $('#rango-shared-desde').val();
+        const hasta  = $('#rango-shared-hasta').val();
+        ['cg','tes','tx'].forEach(col => {
+            $(`#rango-${col}-desde`).val(desde);
+            $(`#rango-${col}-hasta`).val(hasta);
+        });
+    } else {
+        $inner.removeClass('individual-mode');
+        // Propagar el rango de CG al compartido como referencia
+        $('#rango-shared-desde').val($('#rango-cg-desde').val());
+        $('#rango-shared-hasta').val($('#rango-cg-hasta').val());
+    }
+    calcularRango();
+}
+
+function calcularRango() {
+    const { year, month } = widgetState;
+    if (!year || !month) return;
+
+    const pad = n => String(n).padStart(2, '0');
+    const monthPfx = `${year}-${pad(month)}`;
+    const individual = $('#rango-individual-check').is(':checked');
+
+    // Helper: construye rango para una columna y devuelve función inRange
+    const makeRange = (col) => {
+        const desdeId = individual ? `#rango-${col}-desde` : '#rango-shared-desde';
+        const hastaId  = individual ? `#rango-${col}-hasta`  : '#rango-shared-hasta';
+        const desde = Math.max(1,  parseInt($(desdeId).val()) || 1);
+        const hasta  = Math.min(31, parseInt($(hastaId).val())  || 31);
+        const fd = `${monthPfx}-${pad(desde)}`;
+        const fh = `${monthPfx}-${pad(hasta)}`;
+        return f => f >= fd && f <= fh;
+    };
+
+    const inCG  = makeRange('cg');
+    const inTES = makeRange('tes');
+    const inTX  = makeRange('tx');
+
+    // Helper: extrae fecha YYYY-MM-DD de un item de cgData
+    const cgFecha = item => item.FechaVisual
+        ? (() => { const p = item.FechaVisual.split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual; })()
+        : (item.Fecha || item.fch || '').substring(0, 10);
+
+    // Mismo filtro que renderCG: monto > 0, no hoy, keywords
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    const keywords = currentRule && currentRule.conceptos_cg
+        ? currentRule.conceptos_cg.split(',').map(k => k.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))
+        : [];
+    const filteredCG = cgData.filter(item => {
+        if (parseFloat(item.Total || 0) <= 0) return false;
+        if (cgFecha(item) === todayStr) return false;
+        if (!keywords.length) return true;
+        const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+        return keywords.some(k => c.includes(k));
+    });
+
+    // ── CG ──────────────────────────────────────────────────────
+    // Items reales con monto efectivo
+    let totalCG = filteredCG.reduce((acc, item) => {
+        if (!inCG(cgFecha(item))) return acc;
+        const ref    = item.ID_Unico || '';
+        const tr     = transitosCG.enTransito[ref];
+        const difs   = diferidosCG.enDiferido[ref] || [];
+        const sumDif = difs.reduce((s, d) => s + d.monto_diferido, 0);
+        const monto  = tr ? tr.monto_efectivo : Math.max(0, parseFloat(item.Total || 0) - sumDif);
+        return acc + monto;
+    }, 0);
+    // Fakes de tránsito (dates from previous month — included if cg_fecha in range)
+    totalCG += (transitosCG.fakes || []).reduce((acc, f) => {
+        const fecha = (f.cg_fecha || '').substring(0, 10);
+        return inCG(fecha) ? acc + f.monto_transito : acc;
+    }, 0);
+    // Fakes de diferidos cuya fecha_destino cae en rango
+    totalCG += (diferidosCG.fakes || []).reduce((acc, f) => {
+        const fecha = (f.cg_fecha_destino || '').substring(0, 10);
+        return inCG(fecha) ? acc + f.monto_diferido : acc;
+    }, 0);
+
+    // ── TESORERÍA ───────────────────────────────────────────────
+    const totalTES = tesData.reduce((acc, item) => {
+        const fecha = (item.fecha || '').substring(0, 10);
+        return inTES(fecha) ? acc + parseFloat(item.monto || 0) : acc;
+    }, 0);
+
+    // ── TRANSACCIONES ───────────────────────────────────────────
+    const totalTX = txData.reduce((acc, item) => {
+        const fecha = (item.FechaConciliacion || item.FechaTransaccion || '').substring(0, 10);
+        return inTX(fecha) ? acc + parseFloat(item.Total || 0) : acc;
+    }, 0);
+
+    const dif = totalCG - totalTES;
+    $('#rango-cg').text(fmt.format(totalCG));
+    $('#rango-tes').text(fmt.format(totalTES));
+    $('#rango-tx').text(fmt.format(totalTX));
+    $('#rango-dif').text(fmt.format(dif)).css('color', Math.abs(dif) < 0.01 ? '#2ecc71' : '#e74c3c');
+}
+
 // ── LIMPIAR PANELES ───────────────────────────────────────────
 function limpiarPaneles() {
     cgData = []; tesData = []; txData = []; historial = [];
-    conciliadasSet = { CG: new Set(), TES: new Set(), TRANSITO: new Set() };
+    conciliadasSet = { CG: new Set(), TES: new Set(), TRANSITO: new Set(), DIFERIDO: new Set() };
+    diferidosCG = { enDiferido: {}, fakes: [] };
     sel = { left:[], tes:[] };
     openGroupsCG.clear();   // al cambiar de estación/banco, resetear grupos abiertos
     openGroupsTES.clear();
@@ -2550,6 +3098,192 @@ async function cancelarTransitosDia(ids) {
     } finally {
         body_loading(false);
     }
+}
+
+// ── DIFERIDOS CG V3 ───────────────────────────────────────────
+let _difState = {};   // datos temporales del modal de diferido
+
+function abrirModalDiferido(ref, fecha, montoOrig, montoEfec, concepto) {
+    _difState = { mode: 'single', ref, fecha, montoOrig, monto: montoEfec, concepto };
+    $('#dif-ref').val(ref);
+    $('#dif-concepto-label').text(concepto);
+    $('#dif-fecha-label').text(fecha.split('-').reverse().join('/'));
+    $('#dif-total-label').text(fmt.format(montoEfec));
+    $('#dif-monto').val('');
+    $('#dif-efectivo-label').text(fmt.format(montoEfec));
+    $('#dif-desc').val('');
+    // Límites: mínimo el día siguiente al origen, máximo último día del mes
+    const mesAno = `${widgetState.year}-${widgetState.month}`;
+    const ultimoDia = new Date(widgetState.year, parseInt(widgetState.month), 0).getDate();
+    $('#dif-fecha-dest')
+        .attr('min', mesAno + '-01')
+        .attr('max', `${mesAno}-${String(ultimoDia).padStart(2,'0')}`)
+        .val('');
+    $('#modalDiferido').modal('show');
+}
+
+function abrirModalDiferidoDia(fecha, items) {
+    const totalDia = items.reduce((a, b) => a + (b.monto_corte || 0), 0);
+    _difState = { mode: 'dia', fecha, monto: totalDia, montoOrig: totalDia, items };
+    $('#dif-ref').val('');
+    $('#dif-concepto-label').text(`Día completo (${items.length} corte${items.length>1?'s':''})`);
+    $('#dif-fecha-label').text(fecha.split('-').reverse().join('/'));
+    $('#dif-total-label').text(fmt.format(totalDia));
+    $('#dif-monto').val('');
+    $('#dif-efectivo-label').text(fmt.format(totalDia));
+    $('#dif-desc').val('');
+    const mesAno = `${widgetState.year}-${widgetState.month}`;
+    const ultimoDia = new Date(widgetState.year, parseInt(widgetState.month), 0).getDate();
+    $('#dif-fecha-dest')
+        .attr('min', mesAno + '-01')
+        .attr('max', `${mesAno}-${String(ultimoDia).padStart(2,'0')}`)
+        .val('');
+    $('#modalDiferido').modal('show');
+}
+
+function actualizarEfectivoDif() {
+    const montoDisp   = _difState.monto || 0;
+    const montoDif    = parseFloat($('#dif-monto').val()) || 0;
+    const efectivo    = Math.max(0, montoDisp - montoDif);
+    $('#dif-efectivo-label').text(fmt.format(efectivo));
+}
+
+async function confirmarCrearDiferido() {
+    const r2          = v => Math.round(v * 100) / 100;
+    const montoDif    = r2(parseFloat($('#dif-monto').val()));
+    const montoDisp   = r2(_difState.monto || 0);
+    const montoOrig   = r2(_difState.montoOrig || 0);
+    const fechaDest   = $('#dif-fecha-dest').val();
+    const desc        = $('#dif-desc').val().trim();
+
+    if (!montoDif || montoDif <= 0) { alert('Ingresa un monto válido.'); return; }
+    if (montoDif > montoDisp + 0.005) { alert('El monto a diferir supera el disponible del corte.'); return; }
+    if (!fechaDest) { alert('Selecciona una fecha destino.'); return; }
+    if (fechaDest === _difState.fecha) { alert('La fecha destino debe ser diferente al día del corte.'); return; }
+
+    const estid  = $('#estacionSelect').val();
+    const eid    = currentRule ? currentRule.entidad_id : 0;
+    const afil   = currentRule ? currentRule.afiliacion : '';
+    const mes    = `${widgetState.year}-${widgetState.month}`;
+
+    body_loading(true);
+    try {
+        let url, payload;
+        if (_difState.mode === 'dia') {
+            url     = URLS_V3.crear_diferido_dia;
+            payload = {
+                estacion_id:           parseInt(estid),
+                entidad_id:            eid,
+                afiliacion:            afil,
+                mes,
+                cg_fecha_destino:      fechaDest,
+                monto_diferido_total:  montoDif,
+                descripcion:           desc,
+                cortes:                _difState.items,
+            };
+        } else {
+            url     = URLS_V3.crear_diferido;
+            payload = {
+                estacion_id:      parseInt(estid),
+                entidad_id:       eid,
+                afiliacion:       afil,
+                corte_ref_id:     _difState.ref,
+                cg_fecha_origen:  _difState.fecha,
+                cg_fecha_destino: fechaDest,
+                mes,
+                monto_corte:      montoOrig,
+                monto_diferido:   montoDif,
+                concepto:         _difState.concepto,
+                descripcion:      desc,
+            };
+        }
+        const r    = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        const json = await r.json();
+        if (json.status === 'success') {
+            $('#modalDiferido').modal('hide');
+            actualizarTodo();
+        } else {
+            alert('Error: ' + json.message);
+        }
+    } catch(e) {
+        alert('Error de conexión.');
+    } finally {
+        body_loading(false);
+    }
+}
+
+// Mover un grupo de diferidos (todos los pendientes de un mismo día destino)
+let _movGrupoIds = [];
+function abrirModalMoverDiferidoGrupo(ids, origenLabel, fechaActual) {
+    _movGrupoIds = ids;
+    $('#mov-dif-id').val('');
+    $('#mov-dif-info').text(`${ids.length} diferido(s) · Origen: ${origenLabel} · Destino actual: ${fechaActual}`);
+    const mesAno    = `${widgetState.year}-${widgetState.month}`;
+    const ultimoDia = new Date(widgetState.year, parseInt(widgetState.month), 0).getDate();
+    $('#mov-dif-fecha')
+        .attr('min', mesAno + '-01')
+        .attr('max', `${mesAno}-${String(ultimoDia).padStart(2,'0')}`)
+        .val(fechaActual);
+    $('#modalMoverDiferido').modal('show');
+}
+
+async function cancelarDiferidoGrupo(ids) {
+    if (!confirm(`¿Cancelar ${ids.length} diferido(s)? Los montos volverán a estar disponibles en sus días de origen.`)) return;
+    body_loading(true);
+    try {
+        await Promise.all(ids.map(id =>
+            fetch(URLS_V3.cancelar_diferido, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id }) })
+        ));
+        actualizarTodo();
+    } catch(e) { alert('Error de conexión.'); }
+    finally { body_loading(false); }
+}
+
+function abrirModalMoverDiferido(id, fechaOrigen, fechaActual) {
+    _movGrupoIds = [];
+    $('#mov-dif-id').val(id);
+    $('#mov-dif-info').text(`Diferido #${id} · Origen: ${fechaOrigen} · Destino actual: ${fechaActual}`);
+    const mesAno    = `${widgetState.year}-${widgetState.month}`;
+    const ultimoDia = new Date(widgetState.year, parseInt(widgetState.month), 0).getDate();
+    $('#mov-dif-fecha')
+        .attr('min', mesAno + '-01')
+        .attr('max', `${mesAno}-${String(ultimoDia).padStart(2,'0')}`)
+        .val(fechaActual);
+    $('#modalMoverDiferido').modal('show');
+}
+
+async function confirmarMoverDiferido() {
+    const nuevaFecha = $('#mov-dif-fecha').val();
+    if (!nuevaFecha) { alert('Selecciona una fecha.'); return; }
+    // Si hay grupo, mover todos; si es individual, mover uno
+    const ids = _movGrupoIds.length ? _movGrupoIds : [parseInt($('#mov-dif-id').val())].filter(Boolean);
+    if (!ids.length) { alert('No hay diferidos para mover.'); return; }
+    body_loading(true);
+    try {
+        const results = await Promise.all(ids.map(id =>
+            fetch(URLS_V3.mover_diferido, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id, nueva_fecha_destino: nuevaFecha }) }).then(r => r.json())
+        ));
+        const error = results.find(r => r.status !== 'success');
+        if (error) { alert('Error: ' + error.message); return; }
+        $('#modalMoverDiferido').modal('hide');
+        actualizarTodo();
+    } catch(e) { alert('Error de conexión.'); }
+    finally { body_loading(false); }
+}
+
+async function cancelarDiferido(id) {
+    if (!confirm('¿Cancelar este diferido? El monto volverá a estar disponible en el día origen.')) return;
+    body_loading(true);
+    try {
+        const r    = await fetch(URLS_V3.cancelar_diferido, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        const json = await r.json();
+        if (json.status === 'success') actualizarTodo();
+        else alert('Error: ' + json.message);
+    } catch(e) { alert('Error de conexión.'); }
+    finally { body_loading(false); }
 }
 
 // ── UTILIDADES ────────────────────────────────────────────────

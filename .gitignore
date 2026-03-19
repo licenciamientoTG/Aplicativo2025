@@ -4,6 +4,8 @@ uploads/
 # Vendor dependencies
 vendor/
 
+.claude/
+
 # IDE and editor files
 .vscode/
 .idea/

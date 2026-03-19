@@ -6506,6 +6506,10 @@ public function stamped_invoices_detail(): void
             $transitoDestIds = [];   // fake transit items (monto_transito)
             $transitoOrigRefs = [];  // CG items con transit activo (monto_efectivo)
 
+            // IDs de CV3_Diferido que se reconcilian en este grupo
+            $diferidoDestIds = [];   // fakes diferidos siendo conciliados en día destino
+            $diferidoOrigIds = [];   // diferidos cuyo corte origen se está conciliando
+
             foreach ($data['left_rows'] as $row) {
                 $tipo = $row['tipo'] ?? 'CG';
                 if ($tipo === 'TRANSITO') {
@@ -6520,6 +6524,23 @@ public function stamped_invoices_detail(): void
                     if (!empty($row['transito_id'])) {
                         $transitoDestIds[] = (int)$row['transito_id'];
                     }
+                } elseif ($tipo === 'DIFERIDO') {
+                    // Fake diferido — origen = DIFERIDO
+                    $stmtDet->execute([
+                        $grupo_id, 'DIFERIDO',
+                        $row['ref']      ?? '',
+                        $row['fecha']    ?? date('Y-m-d'),
+                        (float)$row['monto'],
+                        $row['concepto'] ?? '',
+                    ]);
+                    // Acepta diferido_ids (array) o diferido_id (legacy)
+                    if (!empty($row['diferido_ids']) && is_array($row['diferido_ids'])) {
+                        foreach ($row['diferido_ids'] as $did) {
+                            $diferidoDestIds[] = (int)$did;
+                        }
+                    } elseif (!empty($row['diferido_id'])) {
+                        $diferidoDestIds[] = (int)$row['diferido_id'];
+                    }
                 } else {
                     $stmtDet->execute([
                         $grupo_id, 'CG',
@@ -6530,6 +6551,11 @@ public function stamped_invoices_detail(): void
                     ]);
                     if (!empty($row['transito_orig_id'])) {
                         $transitoOrigRefs[] = (int)$row['transito_orig_id'];
+                    }
+                    if (!empty($row['diferido_orig_ids']) && is_array($row['diferido_orig_ids'])) {
+                        foreach ($row['diferido_orig_ids'] as $did) {
+                            $diferidoOrigIds[] = (int)$did;
+                        }
                     }
                 }
             }
@@ -6562,7 +6588,25 @@ public function stamped_invoices_detail(): void
                 )->execute(array_merge([$grupo_id], $transitoOrigRefs));
             }
 
-            // 3c. Si viene de un tránsito previo (sistema antiguo), cerrarlo
+            // 3c. Marcar fakes de diferido como CONCILIADO (día destino)
+            if (!empty($diferidoDestIds)) {
+                $ph = implode(',', array_fill(0, count($diferidoDestIds), '?'));
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET estado = 'CONCILIADO', conciliacion_id_dest = ?
+                     WHERE id IN ($ph)"
+                )->execute(array_merge([$grupo_id], $diferidoDestIds));
+            }
+
+            // 3d. Marcar conciliacion_id_orig en diferidos cuyo origen se concilió
+            if (!empty($diferidoOrigIds)) {
+                $ph = implode(',', array_fill(0, count($diferidoOrigIds), '?'));
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET conciliacion_id_orig = ?
+                     WHERE id IN ($ph)"
+                )->execute(array_merge([$grupo_id], $diferidoOrigIds));
+            }
+
+            // 3e. Si viene de un tránsito previo (sistema antiguo), cerrarlo
             if (!empty($data['transit_ids_to_close']) && is_array($data['transit_ids_to_close'])) {
                 $ids  = array_map('intval', $data['transit_ids_to_close']);
                 $ph   = implode(',', array_fill(0, count($ids), '?'));
@@ -7738,6 +7782,429 @@ public function stamped_invoices_detail(): void
             }
 
             $conn->prepare("UPDATE CV3_Transito SET estado = 'CANCELADO' WHERE id = ?")->execute([$id]);
+
+            echo json_encode(['status' => 'success']);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+    // D I F E R I D O S   C G   V 3
+    // =========================================================================
+
+    private function v3_ensure_diferido_table(PDO $conn): void {
+        $conn->exec("
+            IF NOT EXISTS (SELECT * FROM sys.objects WHERE name = 'CV3_Diferido' AND type = 'U')
+            CREATE TABLE CV3_Diferido (
+                id                   INT IDENTITY(1,1) PRIMARY KEY,
+                estacion_id          INT NOT NULL,
+                entidad_id           INT NOT NULL,
+                afiliacion           VARCHAR(50) NOT NULL,
+                corte_ref_id         VARCHAR(200) NOT NULL,
+                cg_fecha_origen      DATE NOT NULL,
+                cg_fecha_destino     DATE NOT NULL,
+                mes                  VARCHAR(7) NOT NULL,
+                monto_corte          DECIMAL(18,2) NOT NULL,
+                monto_diferido       DECIMAL(18,2) NOT NULL,
+                concepto             VARCHAR(200),
+                descripcion          VARCHAR(300),
+                estado               VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                conciliacion_id_orig INT NULL,
+                conciliacion_id_dest INT NULL,
+                created_at           DATETIME DEFAULT GETDATE(),
+                created_by           INT NULL
+            )
+        ");
+    }
+
+    // -------------------------------------------------------------------------
+    //     GET /income/get_diferidos_cg_v3
+    // -------------------------------------------------------------------------
+    public function get_diferidos_cg_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+        $year        = (int)($_GET['year']        ?? date('Y'));
+        $month       = (int)($_GET['month']       ?? date('m'));
+
+        if (!$estacion_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta estacion_id']);
+            exit;
+        }
+
+        $mes = sprintf('%04d-%02d', $year, $month);
+        $af  = $afiliacion !== '' ? ' AND afiliacion = ?' : '';
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_diferido_table($conn);
+
+            $p = [$estacion_id, $entidad_id];
+            if ($afiliacion !== '') $p[] = $afiliacion;
+            $p[] = $mes;
+
+            $s = $conn->prepare("
+                SELECT id, corte_ref_id,
+                       CONVERT(VARCHAR(10), cg_fecha_origen,  23) AS cg_fecha_origen,
+                       CONVERT(VARCHAR(10), cg_fecha_destino, 23) AS cg_fecha_destino,
+                       mes, monto_corte, monto_diferido,
+                       concepto, descripcion, estado,
+                       conciliacion_id_orig, conciliacion_id_dest
+                FROM CV3_Diferido
+                WHERE estacion_id = ? AND entidad_id = ? $af
+                  AND mes = ? AND estado != 'CANCELADO'
+                ORDER BY cg_fecha_origen ASC, id ASC
+            ");
+            $s->execute($p);
+            $rows = $s->fetchAll(PDO::FETCH_ASSOC);
+
+            $enDiferido = [];
+            $fakes      = [];
+
+            foreach ($rows as $r) {
+                $r['id']             = (int)$r['id'];
+                $r['monto_corte']    = (float)$r['monto_corte'];
+                $r['monto_diferido'] = (float)$r['monto_diferido'];
+                $ref = $r['corte_ref_id'];
+                if (!isset($enDiferido[$ref])) $enDiferido[$ref] = [];
+                $enDiferido[$ref][] = $r;
+                $fakes[] = $r;
+            }
+
+            echo json_encode(['status' => 'success', 'en_diferido' => $enDiferido, 'fakes' => $fakes]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    //     POST /income/crear_diferido_v3   Body: { estacion_id, entidad_id,
+    //       afiliacion, corte_ref_id, cg_fecha_origen, cg_fecha_destino, mes,
+    //       monto_corte, monto_diferido, concepto?, descripcion? }
+    // -------------------------------------------------------------------------
+    public function crear_diferido_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $required = ['estacion_id','entidad_id','afiliacion','corte_ref_id',
+                     'cg_fecha_origen','cg_fecha_destino','mes','monto_corte','monto_diferido'];
+        foreach ($required as $k) {
+            if (!isset($data[$k]) || $data[$k] === '') {
+                echo json_encode(['status' => 'error', 'message' => "Falta campo: $k"]);
+                exit;
+            }
+        }
+
+        $estacion_id      = (int)$data['estacion_id'];
+        $entidad_id       = (int)$data['entidad_id'];
+        $afiliacion       = trim($data['afiliacion']);
+        $corte_ref_id     = trim($data['corte_ref_id']);
+        $cg_fecha_origen  = trim($data['cg_fecha_origen']);
+        $cg_fecha_destino = trim($data['cg_fecha_destino']);
+        $mes              = trim($data['mes']);
+        $monto_corte      = (float)$data['monto_corte'];
+        $monto_diferido   = round((float)$data['monto_diferido'], 2);
+        $concepto         = trim($data['concepto']    ?? '');
+        $descripcion      = trim($data['descripcion'] ?? '');
+
+        if ($monto_diferido <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Monto diferido inválido']);
+            exit;
+        }
+        if (substr($cg_fecha_origen,  0, 7) !== $mes ||
+            substr($cg_fecha_destino, 0, 7) !== $mes) {
+            echo json_encode(['status' => 'error', 'message' => 'Las fechas deben pertenecer al mes activo']);
+            exit;
+        }
+        if ($cg_fecha_destino === $cg_fecha_origen) {
+            echo json_encode(['status' => 'error', 'message' => 'La fecha destino debe ser diferente a la fecha origen']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_diferido_table($conn);
+
+            // Mes no cerrado
+            $cm = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $mes]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes ya está cerrado']);
+                exit;
+            }
+
+            // Suma ya diferida para este corte
+            $sd = $conn->prepare("
+                SELECT ISNULL(SUM(monto_diferido), 0)
+                FROM CV3_Diferido
+                WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
+                  AND corte_ref_id = ? AND estado != 'CANCELADO'
+            ");
+            $sd->execute([$estacion_id, $entidad_id, $afiliacion, $corte_ref_id]);
+            $sumaDiferida = (float)$sd->fetchColumn();
+
+            if ($sumaDiferida + $monto_diferido > $monto_corte + 0.005) {
+                echo json_encode(['status' => 'error', 'message' => 'El monto diferido supera el disponible del corte']);
+                exit;
+            }
+
+            $conn->prepare("
+                INSERT INTO CV3_Diferido
+                    (estacion_id, entidad_id, afiliacion, corte_ref_id,
+                     cg_fecha_origen, cg_fecha_destino, mes,
+                     monto_corte, monto_diferido, concepto, descripcion, estado)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
+            ")->execute([
+                $estacion_id, $entidad_id, $afiliacion, $corte_ref_id,
+                $cg_fecha_origen, $cg_fecha_destino, $mes,
+                $monto_corte, $monto_diferido, $concepto, $descripcion,
+            ]);
+
+            $id             = (int)$conn->query("SELECT @@IDENTITY")->fetchColumn();
+            $monto_efectivo = round($monto_corte - $sumaDiferida - $monto_diferido, 2);
+
+            echo json_encode(['status' => 'success', 'id' => $id, 'monto_efectivo' => $monto_efectivo]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    //     POST /income/crear_diferido_dia_v3   Body: { estacion_id, entidad_id,
+    //       afiliacion, mes, cg_fecha_destino, monto_diferido_total,
+    //       descripcion?, cortes:[{ref,cg_fecha,monto_corte,concepto}] }
+    // -------------------------------------------------------------------------
+    public function crear_diferido_dia_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+
+        $estacion_id      = (int)($data['estacion_id']          ?? 0);
+        $entidad_id       = (int)($data['entidad_id']           ?? 0);
+        $afiliacion       = trim($data['afiliacion']            ?? '');
+        $mes              = trim($data['mes']                   ?? '');
+        $cg_fecha_destino = trim($data['cg_fecha_destino']      ?? '');
+        $monto_dif_total  = round((float)($data['monto_diferido_total'] ?? 0), 2);
+        $descripcion      = trim($data['descripcion']           ?? '');
+        $cortes           = $data['cortes']                     ?? [];
+
+        if (!$estacion_id || !$entidad_id || !$mes || !$cg_fecha_destino || empty($cortes) || $monto_dif_total <= 0) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            exit;
+        }
+        if (substr($cg_fecha_destino, 0, 7) !== $mes) {
+            echo json_encode(['status' => 'error', 'message' => 'Fecha destino fuera del mes activo']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $this->v3_ensure_diferido_table($conn);
+
+            $cm = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $mes]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes ya está cerrado']);
+                exit;
+            }
+
+            // Filtrar cortes válidos (fecha origen ≠ destino y monto > 0)
+            $cortes_validos = array_values(array_filter($cortes, function ($c) use ($cg_fecha_destino) {
+                return !empty($c['ref'])
+                    && (float)($c['monto_corte'] ?? 0) > 0
+                    && trim($c['cg_fecha'] ?? '') !== $cg_fecha_destino;
+            }));
+
+            if (empty($cortes_validos)) {
+                echo json_encode(['status' => 'error', 'message' => 'No hay cortes válidos para diferir']);
+                exit;
+            }
+
+            $total_cortes = array_sum(array_map(fn($c) => (float)($c['monto_corte'] ?? 0), $cortes_validos));
+
+            $conn->beginTransaction();
+
+            $stmt = $conn->prepare("
+                INSERT INTO CV3_Diferido
+                    (estacion_id, entidad_id, afiliacion, corte_ref_id,
+                     cg_fecha_origen, cg_fecha_destino, mes,
+                     monto_corte, monto_diferido, concepto, descripcion, estado)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
+            ");
+
+            $ids_creados   = [];
+            $suma_diferido = 0.0;
+            $n_validos     = count($cortes_validos);
+
+            foreach ($cortes_validos as $i => $corte) {
+                $ref          = trim($corte['ref']       ?? '');
+                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
+                $concepto     = trim($corte['concepto']  ?? '');
+                $cg_fecha_org = trim($corte['cg_fecha']  ?? '');
+
+                if ($i === $n_validos - 1) {
+                    $monto_diferido = round($monto_dif_total - $suma_diferido, 2);
+                } else {
+                    $monto_diferido = round($monto_dif_total * ($monto_corte / $total_cortes), 2);
+                }
+                if ($monto_diferido > $monto_corte) $monto_diferido = $monto_corte;
+                $monto_diferido = round($monto_diferido, 2);
+                $suma_diferido  = round($suma_diferido + $monto_diferido, 2);
+
+                $stmt->execute([
+                    $estacion_id, $entidad_id, $afiliacion, $ref,
+                    $cg_fecha_org, $cg_fecha_destino, $mes,
+                    $monto_corte, $monto_diferido, $concepto, $descripcion,
+                ]);
+                $ids_creados[] = (int)$conn->query("SELECT @@IDENTITY")->fetchColumn();
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'creados' => count($ids_creados), 'ids' => $ids_creados]);
+
+        } catch (PDOException $e) {
+            if (isset($conn)) $conn->rollBack();
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    //     POST /income/mover_diferido_v3   Body: { id, nueva_fecha_destino }
+    // -------------------------------------------------------------------------
+    public function mover_diferido_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data             = json_decode(file_get_contents('php://input'), true);
+        $id               = (int)($data['id']                ?? 0);
+        $nueva_fecha_dest = trim($data['nueva_fecha_destino'] ?? '');
+
+        if (!$id || !$nueva_fecha_dest) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $s = $conn->prepare("SELECT * FROM CV3_Diferido WHERE id = ?");
+            $s->execute([$id]);
+            $d = $s->fetch(PDO::FETCH_ASSOC);
+
+            if (!$d) {
+                echo json_encode(['status' => 'error', 'message' => 'Diferido no encontrado']);
+                exit;
+            }
+            if ($d['estado'] !== 'PENDIENTE') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se puede mover un diferido PENDIENTE']);
+                exit;
+            }
+
+            $mes = (string)$d['mes'];
+            if (substr($nueva_fecha_dest, 0, 7) !== $mes) {
+                echo json_encode(['status' => 'error', 'message' => 'La nueva fecha debe pertenecer al mismo mes']);
+                exit;
+            }
+
+            $cg_fecha_origen = substr((string)$d['cg_fecha_origen'], 0, 10);
+            if ($nueva_fecha_dest === $cg_fecha_origen) {
+                echo json_encode(['status' => 'error', 'message' => 'La fecha destino no puede ser igual a la fecha origen']);
+                exit;
+            }
+
+            $cm = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([(int)$d['estacion_id'], (int)$d['entidad_id'], $d['afiliacion'], $d['afiliacion'], $mes]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes ya está cerrado']);
+                exit;
+            }
+
+            $conn->prepare("UPDATE CV3_Diferido SET cg_fecha_destino = ? WHERE id = ?")
+                 ->execute([$nueva_fecha_dest, $id]);
+
+            echo json_encode(['status' => 'success']);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
+    //     POST /income/cancelar_diferido_v3   Body: { id }
+    // -------------------------------------------------------------------------
+    public function cancelar_diferido_v3(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $id   = (int)($data['id'] ?? 0);
+
+        if (!$id) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta id']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $s = $conn->prepare("SELECT * FROM CV3_Diferido WHERE id = ?");
+            $s->execute([$id]);
+            $d = $s->fetch(PDO::FETCH_ASSOC);
+
+            if (!$d) {
+                echo json_encode(['status' => 'error', 'message' => 'Diferido no encontrado']);
+                exit;
+            }
+            if ($d['estado'] !== 'PENDIENTE') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo se puede cancelar un diferido PENDIENTE']);
+                exit;
+            }
+
+            $mes = (string)$d['mes'];
+            $cm  = $conn->prepare("
+                SELECT id FROM Conciliacion_V3_CierreMes
+                WHERE estacion_id = ? AND entidad_id = ?
+                  AND (afiliacion = ? OR (afiliacion IS NULL AND ? = ''))
+                  AND mes = ?
+            ");
+            $cm->execute([(int)$d['estacion_id'], (int)$d['entidad_id'], $d['afiliacion'], $d['afiliacion'], $mes]);
+            if ($cm->fetch()) {
+                echo json_encode(['status' => 'error', 'message' => 'El mes ya está cerrado']);
+                exit;
+            }
+
+            $conn->prepare("UPDATE CV3_Diferido SET estado = 'CANCELADO' WHERE id = ?")
+                 ->execute([$id]);
 
             echo json_encode(['status' => 'success']);
 
