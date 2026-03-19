@@ -180,18 +180,19 @@
 
     /* PANEL RANGO DE FECHAS */
     .rango-panel { background:#fff;border:1px solid #dee2e6;border-radius:10px;overflow:hidden; }
-    .rango-col { padding:6px 18px;display:flex;flex-direction:column;gap:4px; }
+    .rango-col { padding:6px 12px;display:flex;flex-direction:column;gap:3px;min-width:0; }
     .rango-col + .rango-col { border-left:1px solid #e9ecef; }
-    .rango-col-header { font-size:.72rem;font-weight:700;text-transform:uppercase;color:#6c757d;display:flex;align-items:center;gap:5px;margin-bottom:2px; }
-    .rango-inputs { display:flex;align-items:center;gap:6px; }
-    .rango-inputs label { font-size:.7rem;color:#adb5bd;font-weight:600;margin:0;white-space:nowrap; }
-    .rango-day-input { width:48px;text-align:center;border:1px solid #ced4da;border-radius:6px;padding:2px 4px;font-weight:700;font-size:.85rem;height:28px; }
-    .rango-value { font-family:'Consolas',monospace;font-weight:700;font-size:1.1rem;margin-top:2px; }
-    .rango-col-dif { padding:6px 16px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;min-width:160px; }
-    .rango-col-dif .rango-dif-label { font-size:.72rem;font-weight:700;color:#6c757d;text-transform:uppercase; }
-    .rango-col-dif .rango-dif-value { font-family:'Consolas',monospace;font-weight:700;font-size:1.1rem; }
-    .rango-shared-row { display:flex;align-items:center;gap:8px;padding:6px 18px;border-bottom:1px solid #e9ecef;background:#f8f9fa;border-radius:10px 10px 0 0; }
-    .rango-shared-row label { font-size:.75rem;font-weight:700;color:#6c757d;margin:0;white-space:nowrap; }
+    .rango-col-tx { padding:6px 10px; }
+    .rango-col-header { font-size:.7rem;font-weight:700;text-transform:uppercase;color:#6c757d;display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .rango-inputs { display:flex;align-items:center;gap:4px; }
+    .rango-inputs label { font-size:.68rem;color:#adb5bd;font-weight:600;margin:0;white-space:nowrap; }
+    .rango-day-input { width:40px;text-align:center;border:1px solid #ced4da;border-radius:6px;padding:2px 2px;font-weight:700;font-size:.8rem;height:26px; }
+    .rango-value { font-family:'Consolas',monospace;font-weight:700;font-size:1rem;margin-top:1px;white-space:nowrap; }
+    .rango-col-dif { padding:6px 12px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:3px;white-space:nowrap; }
+    .rango-col-dif .rango-dif-label { font-size:.68rem;font-weight:700;color:#6c757d;text-transform:uppercase; }
+    .rango-col-dif .rango-dif-value { font-family:'Consolas',monospace;font-weight:700;font-size:1rem; }
+    .rango-shared-row { display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid #e9ecef;background:#f8f9fa;border-radius:10px 10px 0 0;flex-wrap:nowrap; }
+    .rango-shared-row label { font-size:.72rem;font-weight:700;color:#6c757d;margin:0;white-space:nowrap; }
     .rango-panel.individual-mode .rango-shared-inputs { display:none; }
     .rango-panel:not(.individual-mode) .rango-inputs { display:none; }
 
@@ -401,7 +402,7 @@
                 </div>
 
                 <!-- Fila de columnas con totales -->
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;">
+                <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 90px auto;">
 
                     <!-- Columna CG -->
                     <div class="rango-col">
@@ -428,8 +429,8 @@
                     </div>
 
                     <!-- Columna TX -->
-                    <div class="rango-col">
-                        <div class="rango-col-header text-secondary"><i class="fas fa-exchange-alt"></i> Transacciones</div>
+                    <div class="rango-col rango-col-tx">
+                        <div class="rango-col-header text-secondary"><i class="fas fa-exchange-alt"></i> TX</div>
                         <div class="rango-inputs">
                             <label>Día</label>
                             <input type="number" id="rango-tx-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
@@ -503,7 +504,7 @@
         </div>
 
         <!-- PANEL 3: TX (informativo / ghost) -->
-        <div class="panel-split ghost-panel">
+        <div class="panel-split ghost-panel" style="flex:0 0 340px;">
             <div class="panel-header" id="header-tx">
                 <span><i class="fas fa-exchange-alt mr-2"></i>Transacciones <small class="text-white-50 ml-1">(Informativo)</small></span>
                 <span class="badge badge-light text-dark font-numeric" id="tx-counter">$0.00</span>
