@@ -26,7 +26,10 @@
       "Bash(cd \"C:\\\\Users\\\\daniel.ramirez\\\\Documents\\\\codigo\\\\Aplicativo2025\" && php -r \"\n\\\\$conn = new PDO\\('sqlsrv:Server=192.168.0.6;Database=TG', 'cguser', 'sahei1712'\\);\n\\\\$conn->setAttribute\\(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION\\);\n\n// Buscar afiliaciones de Puertecito en banco_getnet\necho '--- Afiliaciones de Puertecito en banco_getnet ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\(\\\\\"SELECT DISTINCT Afiliacion, Terminal FROM banco_getnet WHERE Terminal LIKE '%puert%' OR Afiliacion IN \\(SELECT afiliacion FROM Tesoreria_afil WHERE estacion_id = 37\\) ORDER BY Afiliacion\\\\\"\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo 'Afiliacion=' . \\\\$r['Afiliacion'] . ' Terminal=' . \\\\$r['Terminal'] . PHP_EOL;\n\n// Tambien buscar por nombre en banco_getnet \\(por si hay alguna referencia\\)\necho PHP_EOL . '--- Terminales PUERTECITO en banco_getnet \\(busqueda amplia\\) ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\(\\\\\"SELECT DISTINCT Afiliacion, Terminal FROM banco_getnet WHERE Afiliacion LIKE '%9322%' OR Afiliacion LIKE '%9323%' OR Afiliacion LIKE '%9324%' OR Afiliacion LIKE '%9273%'\\\\\"\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo 'Afiliacion=' . \\\\$r['Afiliacion'] . ' Terminal=' . \\\\$r['Terminal'] . PHP_EOL;\n\")",
       "Bash(head -5 \"C:\\\\Users\\\\daniel.ramirez\\\\Documents\\\\codigo\\\\Aplicativo2025\\\\_assets\\\\temporal\\\\statement_17032026 \\(1\\).csv\")",
       "Bash(sqlcmd:*)",
-      "Bash(__NEW_LINE_3e7f889bdbf61c4b__ sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \":*)"
+      "Bash(__NEW_LINE_3e7f889bdbf61c4b__ sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \":*)",
+      "Bash(ls -la /c/Users/daniel.ramirez/Documents/codigo/Aplicativo2025/_assets/models/*.php)",
+      "Bash(find /c/Users/daniel.ramirez/Documents/codigo/Aplicativo2025 -type f \\\\\\(-name *.sql -o -name *migration* -o -name *schema* \\\\\\))",
+      "Bash(php -r \":*)"
     ],
     "deny": [],
     "ask": []
