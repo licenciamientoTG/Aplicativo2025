@@ -3472,7 +3472,7 @@ public function anomalies_client_tickets()
 
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3510,6 +3510,58 @@ public function anomalies_client_tickets()
                         break; 
                     }
                 }
+            }
+
+            // Tablas Banorte con afiliación embebida en Referencia/Concepto
+            foreach (['Tesoreria_A9475'] as $tablaRef) {
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $sqlRef = "SELECT Fecha, Referencia, Concepto, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $stmt = $conn->prepare($sqlRef); $stmt->execute([$year, $month]);
+                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $ref      = trim($row['Referencia'] ?? '');
+                        $concepto = trim($row['Concepto']   ?? '');
+                        if ($ref === '' && $concepto === '') continue;
+                        $monto = (float)$row['Depositos'];
+                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
+                        foreach ($catalogo as $afilItem) {
+                            $afiliacionStr = $afilItem['afiliacion'];
+                            if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false) {
+                                $key = $fecha . '_' . $afiliacionStr;
+                                if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afiliacionStr,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
+                                $agrupado[$key]['Total'] += $monto;
+                                break;
+                            }
+                        }
+                    }
+                } catch(Exception $e){}
+            }
+
+            // Tablas Banorte dedicadas (todos sus depósitos pertenecen a una afiliación fija)
+            $tablasDedicadas = [
+                'Tesoreria_FG4113' => '9662848',
+            ];
+            foreach ($tablasDedicadas as $tablaRef => $afilFija) {
+                // Buscar el item del catálogo correspondiente a esta afiliación
+                $afilItem = null;
+                foreach ($catalogo as $c) {
+                    if ($c['afiliacion'] === $afilFija) { $afilItem = $c; break; }
+                }
+                if (!$afilItem) continue;
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $stmt = $conn->prepare("SELECT Fecha, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?");
+                    $stmt->execute([$year, $month]);
+                    while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $monto = (float)$row['Depositos'];
+                        $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
+                        $key = $fecha . '_' . $afilFija;
+                        if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilFija,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
+                        $agrupado[$key]['Total'] += $monto;
+                    }
+                } catch(Exception $e){}
             }
 
             $resultado = array_values($agrupado);
@@ -3551,7 +3603,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3561,29 +3613,36 @@ public function anomalies_client_tickets()
                 return ($res == 0) ? strcmp($a['afiliacion'], $b['afiliacion']) : $res;
             });
 
-            $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547'];
+            $tablas = ['Tesoreria_5117', 'Tesoreria_8973', 'Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4547',
+                       'Tesoreria_A6115', 'Tesoreria_5791', 'Tesoreria_2951', 'Tesoreria_5247',
+                       'Tesoreria_4098', 'Tesoreria_7291', 'Tesoreria_7533'];
             $movimientosRaw = [];
 
             foreach ($tablas as $tabla) {
-                $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
-                if($check->fetchColumn() > 0) {
-                    $sql = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                try {
+                    $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tabla'");
+                    if ($check->fetchColumn() == 0) continue;
+                    $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
+                    $cols = $hasConcepto ? 'Fecha, Referencia, Concepto, Depositos' : 'Fecha, Referencia, NULL as Concepto, Depositos';
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
-                }
+                } catch(Exception $e){}
             }
-            
+
             $agrupado = [];
             foreach($movimientosRaw as $row){
-                $ref = trim($row['Referencia']);
+                // Normalizar Referencia: quitar formato moneda ($8,828,251.00 → 8828251)
+                $ref      = preg_replace('/[^0-9A-Za-z]/', '', trim($row['Referencia'] ?? ''));
+                $concepto = trim($row['Concepto'] ?? '');
                 $fechaVal = $row['Fecha'];
                 $fecha = ($fechaVal instanceof DateTime) ? $fechaVal->format('Y-m-d') : substr((string)$fechaVal, 0, 10);
                 $monto = (float)$row['Depositos'];
 
                 foreach ($catalogo as $afilItem) {
                     $afiliacionStr = $afilItem['afiliacion'];
-                    if (stripos($ref, $afiliacionStr) !== false) {
+                    if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false) {
                         $key = $fecha . '_' . $afiliacionStr;
                         if (!isset($agrupado[$key])) {
                             $agrupado[$key] = [
@@ -3634,7 +3693,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -3666,9 +3725,10 @@ public function anomalies_client_tickets()
                 }
             } catch(Exception $e){}
 
-            // Fuente 0956
+            // Fuentes con DescripcionDetallada: 0956, 8520
+            foreach (['Tesoreria_0956', 'Tesoreria_8520'] as $tablaDD) {
             try {
-                $sql0956 = "SELECT Fecha, DescripcionDetallada, Depositos FROM Tesoreria_0956 WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                $sql0956 = "SELECT Fecha, DescripcionDetallada, Depositos FROM $tablaDD WHERE DescripcionDetallada IS NOT NULL AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                 $stmt = $conn->prepare($sql0956); $stmt->execute([$year, $month]);
                 while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
                     $detalle = trim($row['DescripcionDetallada']);
@@ -3685,21 +3745,25 @@ public function anomalies_client_tickets()
                     }
                 }
             } catch(Exception $e){}
+            } // fin foreach tablaDD
 
-            // Fuentes por Referencia: 8504, 8492, 4638, 4777
-            foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777'] as $tablaRef) {
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115
+            foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
+                      'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791',
+                      'Tesoreria_A6115'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
-                    $sqlRef = "SELECT Fecha, Concepto, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $sqlRef = "SELECT Fecha, Referencia, Concepto, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sqlRef); $stmt->execute([$year, $month]);
                     while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                        $ref = trim($row['Concepto'] ?? '');
-                        if ($ref === '') continue;
+                        $ref      = trim($row['Referencia'] ?? '');
+                        $concepto = trim($row['Concepto']   ?? '');
+                        if ($ref === '' && $concepto === '') continue;
                         $monto = (float)$row['Depositos'];
                         $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                         foreach ($catalogo as $afilItem) {
-                            if (stripos($ref, $afilItem['afiliacion']) !== false) {
+                            if (stripos($ref, $afilItem['afiliacion']) !== false || stripos($concepto, $afilItem['afiliacion']) !== false) {
                                 $key = $fecha . '_' . $afilItem['afiliacion'];
                                 if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afilItem['afiliacion'],'Estacion'=>$afilItem['Estacion'],'Total'=>0];
                                 $agrupado[$key]['Total'] += $monto;
@@ -3747,7 +3811,7 @@ public function anomalies_client_tickets()
             $catalogo = [];
             while($r = $stmtAfil->fetch(PDO::FETCH_ASSOC)){
                 foreach (preg_split('/[,\/\-]+/', trim($r['afiliacion'])) as $token) {
-                    $token = trim($token);
+                    $token = ltrim(trim($token), '0') ?: trim($token);
                     if ($token === '') continue;
                     $catalogo[] = ['afiliacion' => $token, 'Estacion' => $r['Estacion'], 'RFC' => trim($r['RFC'])];
                 }
@@ -7210,31 +7274,47 @@ public function stamped_invoices_detail(): void
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'PENDIENTE')
             ");
 
-            $ids_creados = [];
+            // Pre-filtrar cortes válidos (sin tránsito activo) para poder identificar el último
+            $cortes_validos = [];
             foreach ($cortes as $corte) {
-                $ref          = trim($corte['ref']       ?? '');
-                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
-                $concepto     = trim($corte['concepto']  ?? '');
-                $cg_fecha     = trim($corte['cg_fecha']  ?? '');
-
+                $ref         = trim($corte['ref']       ?? '');
+                $monto_corte = (float)($corte['monto_corte'] ?? 0);
                 if (!$ref || $monto_corte <= 0) continue;
 
-                // Verificar que no tenga ya un tránsito activo
                 $ck = $conn->prepare("
                     SELECT id FROM CV3_Transito
                     WHERE estacion_id = ? AND entidad_id = ? AND afiliacion = ?
                       AND corte_ref_id = ? AND estado != 'CANCELADO'
                 ");
                 $ck->execute([$estacion_id, $entidad_id, $afiliacion, $ref]);
-                if ($ck->fetch()) continue;  // ya tiene tránsito, saltar
+                if ($ck->fetch()) continue;
 
-                // Distribuir proporcionalmente
-                $proporcion      = $monto_corte / $total_cortes;
-                $monto_transito  = round($monto_trans_total * $proporcion, 2);
-                $monto_efectivo  = round($monto_corte - $monto_transito, 2);
+                $cortes_validos[] = $corte;
+            }
 
-                // Asegurar que monto_transito no supere el corte
-                if ($monto_transito > $monto_corte) { $monto_transito = $monto_corte; $monto_efectivo = 0; }
+            $ids_creados        = [];
+            $suma_transito      = 0.0;
+            $n_validos          = count($cortes_validos);
+
+            foreach ($cortes_validos as $i => $corte) {
+                $ref          = trim($corte['ref']       ?? '');
+                $monto_corte  = (float)($corte['monto_corte'] ?? 0);
+                $concepto     = trim($corte['concepto']  ?? '');
+                $cg_fecha     = trim($corte['cg_fecha']  ?? '');
+
+                if ($i === $n_validos - 1) {
+                    // Último ítem: asignar el resto exacto para que la suma sea perfecta
+                    $monto_transito = round($monto_trans_total - $suma_transito, 2);
+                } else {
+                    $proporcion     = $monto_corte / $total_cortes;
+                    $monto_transito = round($monto_trans_total * $proporcion, 2);
+                }
+
+                // Asegurar que monto_transito no supere el corte individual
+                if ($monto_transito > $monto_corte) { $monto_transito = $monto_corte; }
+                $monto_transito = round($monto_transito, 2);
+                $monto_efectivo = round($monto_corte - $monto_transito, 2);
+                $suma_transito  = round($suma_transito + $monto_transito, 2);
 
                 $stmt->execute([
                     $estacion_id, $entidad_id, $afiliacion, $ref, $cg_fecha,
