@@ -177,7 +177,7 @@
     .btn-cancel-diferido:hover { background:#dc3545;color:white; }
 
     /* PANEL RANGO DE FECHAS */
-    .rango-panel { background:#fff;border:1px solid #dee2e6;border-radius:10px;padding:10px 16px;display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:0;align-items:stretch; }
+    .rango-panel { background:#fff;border:1px solid #dee2e6;border-radius:10px;overflow:hidden; }
     .rango-col { padding:6px 18px;display:flex;flex-direction:column;gap:4px; }
     .rango-col + .rango-col { border-left:1px solid #e9ecef; }
     .rango-col-header { font-size:.72rem;font-weight:700;text-transform:uppercase;color:#6c757d;display:flex;align-items:center;gap:5px;margin-bottom:2px; }
@@ -188,6 +188,10 @@
     .rango-col-dif { padding:6px 16px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;gap:4px;min-width:160px; }
     .rango-col-dif .rango-dif-label { font-size:.72rem;font-weight:700;color:#6c757d;text-transform:uppercase; }
     .rango-col-dif .rango-dif-value { font-family:'Consolas',monospace;font-weight:700;font-size:1.1rem; }
+    .rango-shared-row { display:flex;align-items:center;gap:8px;padding:6px 18px;border-bottom:1px solid #e9ecef;background:#f8f9fa;border-radius:10px 10px 0 0; }
+    .rango-shared-row label { font-size:.75rem;font-weight:700;color:#6c757d;margin:0;white-space:nowrap; }
+    .rango-panel.individual-mode .rango-shared-inputs { display:none; }
+    .rango-panel:not(.individual-mode) .rango-inputs { display:none; }
 
     /* BARRA FLOTANTE */
     .action-bar { position:fixed;bottom:28px;left:50%;transform:translate(-50%,150%);background:#2c3e50;color:white;padding:12px 28px;border-radius:50px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;align-items:center;gap:18px;z-index:1000;transition:transform .3s cubic-bezier(.175,.885,.32,1.275); }
@@ -377,51 +381,69 @@
     <!-- PANEL RANGO DE FECHAS (colapsable) -->
     <div id="rango-panel" class="row px-2 mb-2 d-none">
         <div class="col-12">
-            <div class="rango-panel shadow-sm">
+            <div class="rango-panel shadow-sm" id="rango-panel-inner">
 
-                <!-- Columna CG -->
-                <div class="rango-col">
-                    <div class="rango-col-header text-dark"><i class="fas fa-gas-pump"></i> ControlGas</div>
-                    <div class="rango-inputs">
-                        <label>Día</label>
-                        <input type="number" id="rango-cg-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
-                        <span style="color:#adb5bd;font-size:.8rem;">—</span>
-                        <input type="number" id="rango-cg-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                <!-- Fila superior: rango compartido + toggle -->
+                <div class="rango-shared-row">
+                    <label>Día</label>
+                    <input type="number" id="rango-shared-desde" class="rango-day-input rango-shared-inputs" min="1" max="31" value="1" oninput="calcularRango()">
+                    <span class="rango-shared-inputs" style="color:#adb5bd;font-size:.8rem;">—</span>
+                    <input type="number" id="rango-shared-hasta" class="rango-day-input rango-shared-inputs" min="1" max="31" value="31" oninput="calcularRango()">
+                    <div class="ml-3 d-flex align-items-center gap-2" style="gap:6px;">
+                        <div class="custom-control custom-switch" style="padding-left:2.4rem;">
+                            <input type="checkbox" class="custom-control-input" id="rango-individual-check" onchange="toggleRangoIndividual()">
+                            <label class="custom-control-label" for="rango-individual-check" style="font-size:.75rem;font-weight:700;color:#495057;cursor:pointer;">Rango individual por columna</label>
+                        </div>
                     </div>
-                    <span class="rango-value text-dark" id="rango-cg">$0.00</span>
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill ml-auto" onclick="toggleRangoPanel()" style="font-size:.72rem;padding:2px 10px;">Cerrar</button>
                 </div>
 
-                <!-- Columna Tesorería -->
-                <div class="rango-col">
-                    <div class="rango-col-header" style="color:var(--tes-color);"><i class="fas fa-university"></i> Tesorería</div>
-                    <div class="rango-inputs">
-                        <label>Día</label>
-                        <input type="number" id="rango-tes-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
-                        <span style="color:#adb5bd;font-size:.8rem;">—</span>
-                        <input type="number" id="rango-tes-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                <!-- Fila de columnas con totales -->
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;">
+
+                    <!-- Columna CG -->
+                    <div class="rango-col">
+                        <div class="rango-col-header text-dark"><i class="fas fa-gas-pump"></i> ControlGas</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-cg-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-cg-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-dark" id="rango-cg">$0.00</span>
                     </div>
-                    <span class="rango-value text-success" id="rango-tes">$0.00</span>
-                </div>
 
-                <!-- Columna TX -->
-                <div class="rango-col">
-                    <div class="rango-col-header text-secondary"><i class="fas fa-exchange-alt"></i> Transacciones</div>
-                    <div class="rango-inputs">
-                        <label>Día</label>
-                        <input type="number" id="rango-tx-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
-                        <span style="color:#adb5bd;font-size:.8rem;">—</span>
-                        <input type="number" id="rango-tx-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                    <!-- Columna Tesorería -->
+                    <div class="rango-col">
+                        <div class="rango-col-header" style="color:var(--tes-color);"><i class="fas fa-university"></i> Tesorería</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-tes-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-tes-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-success" id="rango-tes">$0.00</span>
                     </div>
-                    <span class="rango-value text-secondary" id="rango-tx">$0.00</span>
-                </div>
 
-                <!-- Diferencia + cerrar -->
-                <div class="rango-col-dif">
-                    <span class="rango-dif-label">Dif. CG − TES</span>
-                    <span class="rango-dif-value" id="rango-dif">$0.00</span>
-                    <button class="btn btn-sm btn-outline-secondary rounded-pill mt-1" onclick="toggleRangoPanel()" style="font-size:.72rem;padding:2px 10px;">Cerrar</button>
-                </div>
+                    <!-- Columna TX -->
+                    <div class="rango-col">
+                        <div class="rango-col-header text-secondary"><i class="fas fa-exchange-alt"></i> Transacciones</div>
+                        <div class="rango-inputs">
+                            <label>Día</label>
+                            <input type="number" id="rango-tx-desde" class="rango-day-input" min="1" max="31" value="1" oninput="calcularRango()">
+                            <span style="color:#adb5bd;font-size:.8rem;">—</span>
+                            <input type="number" id="rango-tx-hasta" class="rango-day-input" min="1" max="31" value="31" oninput="calcularRango()">
+                        </div>
+                        <span class="rango-value text-secondary" id="rango-tx">$0.00</span>
+                    </div>
 
+                    <!-- Diferencia -->
+                    <div class="rango-col-dif">
+                        <span class="rango-dif-label">Dif. CG − TES</span>
+                        <span class="rango-dif-value" id="rango-dif">$0.00</span>
+                    </div>
+
+                </div>
             </div>
         </div>
     </div>
@@ -2521,6 +2543,8 @@ function toggleRangoPanel() {
         const { year, month } = widgetState;
         if (year && month) {
             const lastDay = new Date(year, month, 0).getDate();
+            $('#rango-shared-desde').val(1);
+            $('#rango-shared-hasta').val(lastDay);
             ['cg','tes','tx'].forEach(col => {
                 $(`#rango-${col}-desde`).val(1);
                 $(`#rango-${col}-hasta`).val(lastDay);
@@ -2533,17 +2557,41 @@ function toggleRangoPanel() {
     }
 }
 
+function toggleRangoIndividual() {
+    const individual = $('#rango-individual-check').is(':checked');
+    const $inner = $('#rango-panel-inner');
+    if (individual) {
+        $inner.addClass('individual-mode');
+        // Propagar el rango compartido actual a cada columna
+        const desde = $('#rango-shared-desde').val();
+        const hasta  = $('#rango-shared-hasta').val();
+        ['cg','tes','tx'].forEach(col => {
+            $(`#rango-${col}-desde`).val(desde);
+            $(`#rango-${col}-hasta`).val(hasta);
+        });
+    } else {
+        $inner.removeClass('individual-mode');
+        // Propagar el rango de CG al compartido como referencia
+        $('#rango-shared-desde').val($('#rango-cg-desde').val());
+        $('#rango-shared-hasta').val($('#rango-cg-hasta').val());
+    }
+    calcularRango();
+}
+
 function calcularRango() {
     const { year, month } = widgetState;
     if (!year || !month) return;
 
     const pad = n => String(n).padStart(2, '0');
     const monthPfx = `${year}-${pad(month)}`;
+    const individual = $('#rango-individual-check').is(':checked');
 
     // Helper: construye rango para una columna y devuelve función inRange
     const makeRange = (col) => {
-        const desde = Math.max(1,  parseInt($(`#rango-${col}-desde`).val()) || 1);
-        const hasta  = Math.min(31, parseInt($(`#rango-${col}-hasta`).val()) || 31);
+        const desdeId = individual ? `#rango-${col}-desde` : '#rango-shared-desde';
+        const hastaId  = individual ? `#rango-${col}-hasta`  : '#rango-shared-hasta';
+        const desde = Math.max(1,  parseInt($(desdeId).val()) || 1);
+        const hasta  = Math.min(31, parseInt($(hastaId).val())  || 31);
         const fd = `${monthPfx}-${pad(desde)}`;
         const fh = `${monthPfx}-${pad(hasta)}`;
         return f => f >= fd && f <= fh;
