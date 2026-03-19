@@ -42,7 +42,16 @@
                     </select>
                 </div>
                 <div class="col">
-                    <label for="shift" style="color: transparent;"></label>
+                    <label for="shift">Turno: </label>
+                    <select class="form-control" name="shift" id="shift">
+                        <option value="0" {{ shift==0 ? 'selected' : '' }}>Todos</option>
+                        <option value="11" {{ shift==11 ? 'selected' : '' }}>Turno 11</option>
+                        <option value="21" {{ shift==21 ? 'selected' : '' }}>Turno 21</option>
+                        <option value="41" {{ shift==41 ? 'selected' : '' }}>Turno 41</option>
+                    </select>
+                </div>
+                <div class="col">
+                    <label style="color: transparent;">.</label>
                     <button type="submit" class="btn btn-primary btn-block w-100">Buscar</button>
                 </div>
             </div>
@@ -118,6 +127,7 @@
                         <th>Total: {{ ventasreales | number_format(2, '.', ',') }}</th>
                         <th>INV. FISICO</th>
                         <th>COMPRA</th>
+                        <th>INV. INICIAL</th>
                         <th>INV. CONTABLE</th>
                         <th>DIFERENCIA</th>
                         <th>ESTADO</th>
@@ -133,9 +143,8 @@
 <script src="{{ JS }}administration.js"></script>
 <script>
     $(document).ready(function () {
-        $('#losses_table').DataTable({
+        var table = $('#losses_table').DataTable({
             order: [[0, "desc"]],
-            dom: 'rftip',  // Remueve el selector de longitud de página
             pageLength: 100,
             dom: '<"top"Bf>rt<"bottom"lip>',
             buttons: [
@@ -146,6 +155,10 @@
                 }
             ],
         });
+
+        {% if shift != 0 %}
+        table.column(3).search('^{{ shift }}$', true, false).draw();
+        {% endif %}
 
         // Vamos a agregar un loader cuando se envie el formulario #mermas_form
         $('#mermas_form').submit(function () {
