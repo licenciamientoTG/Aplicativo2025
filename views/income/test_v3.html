@@ -158,11 +158,11 @@
             <label class="btn btn-outline-dark btn-sm active" onclick="setRS('DIAZ GAS')">
                 <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
             </label>
-            <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
-                <input type="radio" name="rs_type" autocomplete="off"> GASO
-            </label>
             <label class="btn btn-outline-dark btn-sm" onclick="setRS('FORANEAS')">
                 <input type="radio" name="rs_type" autocomplete="off"> FORA
+            </label>
+            <label class="btn btn-outline-dark btn-sm" onclick="setRS('GASOMEX')">
+                <input type="radio" name="rs_type" autocomplete="off"> GASO
             </label>
         </div>
 
@@ -767,7 +767,12 @@ function llenarBancos() {
     stationConfig.forEach(r => {
         if (!vistos.has(r.entidad_id)) vistos.set(r.entidad_id, r.nombre_banco || `Banco ${r.entidad_id}`);
     });
-    vistos.forEach((nom, id) => $sel.append(`<option value="${id}">${nom}</option>`));
+    const orden = [4, 1, 3, 13]; // Banorte, Santander, AMEX, Afirme
+    const sorted = [...vistos.entries()].sort((a, b) => {
+        const ia = orden.indexOf(a[0]), ib = orden.indexOf(b[0]);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+    sorted.forEach(([id, nom]) => $sel.append(`<option value="${id}">${nom}</option>`));
 }
 function alCambiarBanco() {
     const eid = parseInt($('#bancoSelect').val());
