@@ -3421,7 +3421,16 @@ function loadPaymentList() {
   const status = $("#status_filter").val();
 
   paymentListTable = $("#payment_list_table").DataTable({
-    responsive: false,
+    responsive: true,
+    dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+    buttons: [
+      {
+        extend: "colvis",
+        text: '<i class="fas fa-columns"></i> Columnas',
+        className: "btn btn-sm btn-outline-secondary",
+        columns: ":not(:last-child)",
+      },
+    ],
     ajax: {
       url: "/supply/payment_list_table",
       type: "POST",
@@ -3514,9 +3523,19 @@ function loadPaymentList() {
       { data: "actions", orderable: false, className: "text-center" },
     ],
     order: [[0, "desc"]],
-    // language: {
-    //     url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json'
-    // }
+    columnDefs: [
+      { targets: [5, 6, 8, 9], visible: false },
+    ],
+    language: {
+      url: "//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json"
+    },
+    drawCallback: function () {
+      // Inicializar tooltips de Bootstrap en los auth-boxes renderizados dinámicamente
+      var tooltipEls = document.querySelectorAll('#payment_list_table [data-bs-toggle="tooltip"]');
+      tooltipEls.forEach(function (el) {
+        bootstrap.Tooltip.getOrCreateInstance(el);
+      });
+    },
   });
 }
 
@@ -3525,7 +3544,7 @@ function loadAnticiposList() {
     $("#tabla_anticipos").DataTable().destroy();
   }
 
-  const status = $("#status_filter").val();
+  const status = $("#status_filter_anticipos").val();
   paymentListTable = $("#tabla_anticipos").DataTable({
     dom: '<"top"f>rt<"bottom"lip>',
     ajax: {
