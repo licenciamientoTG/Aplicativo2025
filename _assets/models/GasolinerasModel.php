@@ -183,4 +183,227 @@ class GasolinerasModel extends Model{
     function get_fuel_prices_by_station($Servidor, $BaseDatos, $Codigo, $Estacion, $Nombre) {
         return ($this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_precios_combustibles_estacion]', [$Servidor, $BaseDatos, $Codigo, $Estacion, $Nombre])) ?: false ;
     }
+
+    function GetInventarioMermasConsolidado($from, $until, $codgas, $codprd) {
+        $sql = "
+        SET NOCOUNT ON;
+        DECLARE @from_param    INT = ?;
+        DECLARE @until_param   INT = ?;
+        DECLARE @codgas_param  INT = ?;
+        DECLARE @codprd_param  INT = ?;
+
+        DROP TABLE IF EXISTS #ResultadosEstaciones;
+        DROP TABLE IF EXISTS #ErrorLog;
+
+        CREATE TABLE #ResultadosEstaciones (
+            Servidor            NVARCHAR(255),
+            BaseDatos           NVARCHAR(255),
+            Fecha               NVARCHAR(10),
+            Estacion            NVARCHAR(255),
+            Producto            NVARCHAR(255),
+            Turno               NVARCHAR(10),
+            InventarioInicial   FLOAT,
+            CantidadCompra      FLOAT,
+            VentasReales        FLOAT,
+            InventarioContable  FLOAT,
+            Inventario          FLOAT,
+            Diferencia          FLOAT,
+            Estado              NVARCHAR(10),
+            PctMerma            FLOAT,
+        );
+
+        CREATE TABLE #ErrorLog (
+            Estacion  NVARCHAR(255),
+            Servidor  NVARCHAR(255),
+            TipoError NVARCHAR(20),
+            ErrNum    INT,
+            ErrMsg    NVARCHAR(MAX),
+            Momento   DATETIME DEFAULT GETDATE()
+        );
+
+        DECLARE @condicion_codprd NVARCHAR(MAX) =
+            CASE WHEN @codprd_param = 0
+                 THEN 'codprd IN (1,2,3,179,180,181,192,193)'
+                 ELSE 'codprd = ' + CAST(@codprd_param AS NVARCHAR)
+            END;
+
+        DECLARE @extra_where NVARCHAR(MAX) =
+            CASE WHEN @codgas_param = 2
+                 THEN N' WHERE SdoReal > 0 AND SdoInicial > 0'
+                 ELSE N''
+            END;
+
+        DECLARE
+            @Nombre      NVARCHAR(255),
+            @Servidor    NVARCHAR(255),
+            @BaseDatos   NVARCHAR(255),
+            @test_result INT,
+            @Consulta    NVARCHAR(MAX);
+
+        DECLARE cursor_estaciones CURSOR LOCAL FAST_FORWARD FOR
+            SELECT Nombre, Servidor, BaseDatos
+            FROM [TG].[dbo].[Estaciones]
+            WHERE (@codgas_param = 0 AND Codigo NOT IN (0, 4, 20))
+               OR (@codgas_param <> 0 AND Codigo = @codgas_param);
+
+        OPEN cursor_estaciones;
+        FETCH NEXT FROM cursor_estaciones INTO @Nombre, @Servidor, @BaseDatos;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @test_result = -1;
+            BEGIN TRY
+                EXEC @test_result = sp_testlinkedserver @servername = @Servidor;
+            END TRY
+            BEGIN CATCH
+                INSERT INTO #ErrorLog (Estacion, Servidor, TipoError, ErrNum, ErrMsg)
+                VALUES (@Nombre, @Servidor, 'SIN_CONEXION', ERROR_NUMBER(), ERROR_MESSAGE());
+            END CATCH;
+
+            IF @test_result = 0
+            BEGIN
+                BEGIN TRY
+                    SET @Consulta = N'
+                    INSERT INTO #ResultadosEstaciones
+                    SELECT
+                        ''' + @Servidor + ''',
+                        ''' + @BaseDatos + ''',
+                        Fecha,
+                        ''' + @Nombre   + ''',
+                        Producto,
+                        ''DÍA'' as Turno,
+                        SdoInicial as InventarioInicial,
+                        Compras as CantidadCompra,
+                        Ventas as VentasReales,
+                        SdoFinal as InventarioContable,
+                        SdoReal as Inventario,
+                        Merma as Diferencia,
+                        Estado,
+                        PctMerma
+                    FROM OPENQUERY([' + @Servidor + '], ''
+                        SELECT
+                            Fecha,
+                            Producto,
+                            SUM(SdoInicial)                                                                         AS SdoInicial,
+                            SUM(Compras)                                                                            AS Compras,
+                            SUM(Ventas)                                                                             AS Ventas,
+                            ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2)                               AS SdoFinal,
+                            SUM(SdoReal)                                                                            AS SdoReal,
+                            ROUND(SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2), 2)      AS Merma,
+                            CASE
+                                WHEN ROUND(SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2), 2) >= 9000
+                                THEN ''''DIFERENCIA''''
+                            END AS Estado,
+                            ROUND(
+                                CASE WHEN SUM(SdoInicial) = 0 THEN 0
+                                ELSE (SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2))
+                                     / NULLIF(SUM(Ventas), 0) * 100
+                                END,
+                            2) AS PctMerma
+                        FROM (
+                            SELECT
+                                V.Fecha,
+                                V.Producto,
+                                ROUND(ISNULL(IA.Cantidad, 0), 2) AS SdoInicial,
+                                ISNULL(C.CantidadCompra,  0)     AS Compras,
+                                ROUND(V.VentasReales, 2)         AS Ventas,
+                                ROUND(ISNULL(I.Cantidad,  0), 2) AS SdoReal
+                            FROM (
+                                SELECT
+                                    CONVERT(VARCHAR(10), CAST(cal.fch AS DATETIME) - 1, 23) AS Fecha,
+                                    p.den          AS Producto,
+                                    cal.codprd     AS CodProducto,
+                                    cal.codgas     AS CodGasolinera,
+                                    cal.fch,
+                                    ISNULL(SUM(v.canven), 0) AS VentasReales
+                                FROM (
+                                    SELECT DISTINCT v2.fch, v2.codprd, i3.codgas
+                                    FROM ' + QUOTENAME(@BaseDatos) + '.dbo.Ventas v2
+                                    JOIN ' + QUOTENAME(@BaseDatos) + '.dbo.Islas i3 ON v2.codisl = i3.cod
+                                    WHERE ' + @condicion_codprd + '
+                                      AND v2.fch BETWEEN ' + CAST(@from_param AS NVARCHAR) + ' AND ' + CAST(@until_param AS NVARCHAR) + '
+                                    UNION
+                                    SELECT DISTINCT fch, codprd, codgas
+                                    FROM ' + QUOTENAME(@BaseDatos) + '.dbo.StockReal (NOLOCK)
+                                    WHERE ' + @condicion_codprd + '
+                                      AND fch BETWEEN ' + CAST(@from_param AS NVARCHAR) + ' AND ' + CAST(@until_param AS NVARCHAR) + '
+                                      AND nrotur BETWEEN 40 AND 49
+                                ) cal
+                                LEFT JOIN ' + QUOTENAME(@BaseDatos) + '.dbo.Productos p  ON cal.codprd = p.cod
+                                LEFT JOIN ' + QUOTENAME(@BaseDatos) + '.dbo.Ventas    v  ON cal.fch = v.fch AND cal.codprd = v.codprd
+                                LEFT JOIN ' + QUOTENAME(@BaseDatos) + '.dbo.Islas     i2 ON v.codisl = i2.cod AND i2.codgas = cal.codgas
+                                GROUP BY cal.fch, cal.codprd, cal.codgas, p.den
+                            ) V
+                            LEFT JOIN (
+                                SELECT
+                                    CONVERT(VARCHAR(10), CAST(sr.fch AS DATETIME) - 1, 23) AS Fecha,
+                                    sr.codprd          AS CodProducto,
+                                    sr.codgas          AS CodGasolinera,
+                                    SUM(sr.can)        AS Cantidad
+                                FROM ' + QUOTENAME(@BaseDatos) + '.dbo.StockReal sr (NOLOCK)
+                                INNER JOIN (
+                                    SELECT fch, codprd, codgas, MAX(nrotur) AS UltimoCorte
+                                    FROM ' + QUOTENAME(@BaseDatos) + '.dbo.StockReal (NOLOCK)
+                                    WHERE fch BETWEEN ' + CAST(@from_param AS NVARCHAR) + ' AND ' + CAST(@until_param AS NVARCHAR) + '
+                                      AND ' + @condicion_codprd + '
+                                      AND nrotur BETWEEN 40 AND 49
+                                    GROUP BY fch, codprd, codgas
+                                ) ult ON sr.fch = ult.fch AND sr.codprd = ult.codprd
+                                      AND sr.codgas = ult.codgas AND sr.nrotur = ult.UltimoCorte
+                                GROUP BY CONVERT(VARCHAR(10), CAST(sr.fch AS DATETIME) - 1, 23), sr.codprd, sr.codgas
+                            ) I  ON V.Fecha         = I.Fecha
+                                AND V.CodProducto   = I.CodProducto
+                                AND V.CodGasolinera = I.CodGasolinera
+                            LEFT JOIN (
+                                SELECT
+                                    fch,
+                                    codprd      AS CodProducto,
+                                    codgas      AS CodGasolinera,
+                                    SUM(can)    AS Cantidad
+                                FROM ' + QUOTENAME(@BaseDatos) + '.dbo.StockReal (NOLOCK)
+                                WHERE fch BETWEEN (' + CAST(@from_param AS NVARCHAR) + ' - 1) AND (' + CAST(@until_param AS NVARCHAR) + ' - 1)
+                                  AND ' + @condicion_codprd + '
+                                  AND nrotur = 40
+                                GROUP BY fch, codprd, codgas
+                            ) IA ON (V.fch - 1)      = IA.fch
+                                 AND V.CodProducto   = IA.CodProducto
+                                 AND V.CodGasolinera = IA.CodGasolinera
+                        LEFT JOIN (
+                            SELECT
+                                CONVERT(VARCHAR(10), CAST(fch AS DATETIME) - 1, 23) AS Fecha,
+                                codprd AS CodProducto,
+                                codgas AS CodGasolinera,
+                                SUM(ROUND(can, 0)) AS CantidadCompra
+                            FROM ' + QUOTENAME(@BaseDatos) + '.dbo.Movimientos (NOLOCK)
+                            WHERE fch BETWEEN ' + CAST(@from_param AS NVARCHAR) + ' AND ' + CAST(@until_param AS NVARCHAR) + '
+                              AND can > 0
+                              AND ' + @condicion_codprd + '
+                            GROUP BY fch, codgas, codprd
+                            ) C  ON V.Fecha         = C.Fecha
+                                AND V.CodProducto   = C.CodProducto
+                                AND V.CodGasolinera = C.CodGasolinera
+                        ) base
+                        GROUP BY Fecha, Producto
+                    '')' + @extra_where;
+
+                    EXEC sp_executesql @Consulta;
+                END TRY
+                BEGIN CATCH
+                    INSERT INTO #ErrorLog (Estacion, Servidor, TipoError, ErrNum, ErrMsg)
+                    VALUES (@Nombre, @Servidor, 'QUERY_ERROR', ERROR_NUMBER(), ERROR_MESSAGE());
+                END CATCH;
+            END
+
+            FETCH NEXT FROM cursor_estaciones INTO @Nombre, @Servidor, @BaseDatos;
+        END
+
+        CLOSE cursor_estaciones;
+        DEALLOCATE cursor_estaciones;
+
+        SELECT * FROM #ResultadosEstaciones
+        ORDER BY Fecha, Estacion, Producto;
+        ";
+
+        return $this->sql->select($sql, [$from, $until, $codgas, $codprd]);
+    }
 }
