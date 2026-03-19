@@ -3930,18 +3930,34 @@ class Supply
         $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
         $rutaCompleta  = $rutaDir . '\\' . $nombreArchivo;
 
+        $debugInfo = [
+            'tmp_exists'  => file_exists($tmpFile),
+            'tmp_size'    => file_exists($tmpFile) ? filesize($tmpFile) : 0,
+            'dir_exists'  => is_dir($rutaDir),
+            'rutaDir'     => $rutaDir,
+            'rutaCompleta'=> $rutaCompleta,
+        ];
+
         if (!is_dir($rutaDir)) {
-            mkdir($rutaDir, 0777, true);
+            $debugInfo['mkdir_result'] = mkdir($rutaDir, 0777, true);
+            $debugInfo['mkdir_error']  = $debugInfo['mkdir_result'] ? null : error_get_last();
         }
 
-        if (!move_uploaded_file($tmpFile, $rutaCompleta)) {
-            // Si no se pudo mover, igual la factura ya fue importada — solo avisar
+        $guardado = false;
+        if (file_exists($tmpFile)) {
+            $guardado = copy($tmpFile, $rutaCompleta);
+            $debugInfo['copy_result'] = $guardado;
+            if (!$guardado) $debugInfo['copy_error'] = error_get_last();
+        }
+
+        if (!$guardado) {
             echo json_encode([
-                'success'    => true,
-                'factura_id' => $facturaId,
-                'uuid'       => $uuid,
-                'mensaje'    => $response['mensaje'],
-                'advertencia' => 'Factura importada pero no se pudo guardar el archivo PDF en el servidor.',
+                'success'     => true,
+                'factura_id'  => $facturaId,
+                'uuid'        => $uuid,
+                'mensaje'     => $response['mensaje'],
+                'advertencia' => 'Factura importada pero no se pudo guardar el PDF.',
+                'debug'       => $debugInfo,
             ]);
             return;
         }
@@ -3955,6 +3971,7 @@ class Supply
             'uuid'       => $uuid,
             'ruta'       => $rutaCompleta,
             'mensaje'    => $response['mensaje'],
+            'debug'      => $debugInfo,
         ]);
     }
 
