@@ -8219,4 +8219,106 @@ public function stamped_invoices_detail(): void
     // =========================================================================
     // FIN  C O N C I L I A C I Ó N   V 3
     // =========================================================================
+
+    // =========================================================================
+    // BUG REPORTER
+    // =========================================================================
+    public function report_bug_v3(): void
+    {
+        header('Content-Type: application/json');
+
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']);
+            exit;
+        }
+
+        $data        = json_decode(file_get_contents('php://input'), true) ?? [];
+        $titulo      = htmlspecialchars(trim($data['titulo']      ?? ''), ENT_QUOTES, 'UTF-8');
+        $descripcion = nl2br(htmlspecialchars(trim($data['descripcion'] ?? ''), ENT_QUOTES, 'UTF-8'));
+        $reporter    = htmlspecialchars(trim($data['reporter']    ?? 'Usuario desconocido'), ENT_QUOTES, 'UTF-8');
+        $pagina      = htmlspecialchars(trim($data['pagina']      ?? ''), ENT_QUOTES, 'UTF-8');
+        $screenshots = array_slice((array)($data['screenshots'] ?? []), 0, 10);
+
+        if (!$titulo && !trim($data['descripcion'] ?? '')) {
+            echo json_encode(['status' => 'error', 'message' => 'Ingrese un título o descripción.']);
+            exit;
+        }
+
+        $fecha      = date('d/m/Y H:i:s');
+        $numCapt    = count($screenshots);
+        $captInfo   = $numCapt > 0 ? "{$numCapt} captura(s) adjunta(s)" : 'Sin capturas';
+
+        $body = "
+        <div style='font-family:Arial,sans-serif;max-width:640px;margin:0 auto;border-radius:10px;overflow:hidden;border:1px solid #dee2e6;'>
+            <div style='background:#c0392b;color:white;padding:18px 24px;'>
+                <h2 style='margin:0;font-size:20px;'>&#x1F41E; Bug Report — Conciliación V3</h2>
+            </div>
+            <div style='background:#f8f9fa;padding:20px 24px;'>
+                <table style='width:100%;border-collapse:collapse;font-size:14px;'>
+                    <tr><td style='padding:8px 10px;font-weight:bold;color:#495057;width:150px;background:#fff;border:1px solid #dee2e6;'>Título</td><td style='padding:8px 10px;background:#fff;border:1px solid #dee2e6;'>{$titulo}</td></tr>
+                    <tr><td style='padding:8px 10px;font-weight:bold;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;'>Reportado por</td><td style='padding:8px 10px;background:#f8f9fa;border:1px solid #dee2e6;'>{$reporter}</td></tr>
+                    <tr><td style='padding:8px 10px;font-weight:bold;color:#495057;background:#fff;border:1px solid #dee2e6;'>Página</td><td style='padding:8px 10px;background:#fff;border:1px solid #dee2e6;'>{$pagina}</td></tr>
+                    <tr><td style='padding:8px 10px;font-weight:bold;color:#495057;background:#f8f9fa;border:1px solid #dee2e6;'>Fecha / Hora</td><td style='padding:8px 10px;background:#f8f9fa;border:1px solid #dee2e6;'>{$fecha}</td></tr>
+                    <tr><td style='padding:8px 10px;font-weight:bold;color:#495057;background:#fff;border:1px solid #dee2e6;'>Capturas</td><td style='padding:8px 10px;background:#fff;border:1px solid #dee2e6;'>{$captInfo}</td></tr>
+                </table>
+                <div style='margin-top:16px;'>
+                    <strong style='color:#495057;font-size:14px;'>Descripción:</strong>
+                    <div style='background:#fff;border:1px solid #dee2e6;border-radius:4px;padding:12px;margin-top:8px;font-size:14px;color:#212529;line-height:1.6;'>{$descripcion}</div>
+                </div>
+            </div>
+            <div style='background:#e9ecef;padding:10px 24px;text-align:center;font-size:11px;color:#6c757d;'>
+                TotalGas &mdash; Sistema de Gestión &nbsp;|&nbsp; Reporte automático
+            </div>
+        </div>";
+
+        // Guardar capturas en /tmp
+        $tmpFiles = [];
+        $tmpDir   = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        foreach ($screenshots as $i => $dataUrl) {
+            if (empty($dataUrl) || strpos($dataUrl, 'base64,') === false) continue;
+            $b64 = explode('base64,', $dataUrl, 2)[1] ?? '';
+            if (!$b64) continue;
+            $path = $tmpDir . 'bugreport_' . time() . '_' . $i . '.png';
+            if (@file_put_contents($path, base64_decode($b64, true)) !== false) {
+                $tmpFiles[] = $path;
+            }
+        }
+
+        // Enviar con PHPMailer directamente (sin límite de adjuntos)
+        $ok = false;
+        try {
+            $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+            $mail->isSMTP();
+            $mail->SMTPDebug  = \PHPMailer\PHPMailer\SMTP::DEBUG_OFF;
+            $mail->Host       = 'smtp.gmail.com';
+            $mail->SMTPAuth   = true;
+            $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
+            $mail->Port       = 465;
+            $mail->Username   = 'no-reply@totalgas.com';
+            $mail->Password   = 'sysdhepknmlkigbs';
+            $mail->CharSet    = 'UTF-8';
+            $mail->Encoding   = 'base64';
+            $mail->isHTML(true);
+            $mail->setLanguage('es');
+            $mail->setFrom('no-reply@totalgas.com', 'TotalGas | Bug Reporter');
+            $mail->addAddress('daniel.ramirez@totalgas.com');
+            $mail->Subject = "Bug Report: {$titulo}";
+            $mail->Body    = $body;
+            $mail->AltBody = strip_tags($body);
+            foreach ($tmpFiles as $i => $path) {
+                $mail->addAttachment($path, 'captura_' . ($i + 1) . '.png');
+            }
+            $ok = $mail->send();
+        } catch (\Exception $e) {
+            error_log('BugReporter mailer error: ' . $e->getMessage());
+        }
+
+        foreach ($tmpFiles as $path) { @unlink($path); }
+
+        echo json_encode($ok
+            ? ['status' => 'success', 'message' => 'Reporte enviado correctamente.' . ($tmpFiles ? ' (' . count($tmpFiles) . ' captura(s) adjunta(s))' : '')]
+            : ['status' => 'error',   'message' => 'No se pudo enviar el reporte.']
+        );
+        exit;
+    }
 }
