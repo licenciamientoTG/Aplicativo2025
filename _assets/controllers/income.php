@@ -2273,6 +2273,8 @@ public function anomalies_client_tickets()
         $norm = preg_replace('/[^A-Z0-9\s]/', '', $norm);
 
         // Reglas de Fuzzy Matching especÃ­ficas
+        // HORA debe evaluarse ANTES que TRANSACCION para que "Hora Transaccion" no se mapee a ID_Externo
+        if (strpos($norm, 'HORA') !== false) return 'Hora';
         if (strpos($norm, 'TRANSACCION') !== false || (strpos($norm, 'TRANS') !== false && $bankType === 'AFIRME')) {
             if (strpos($norm, 'FECHA') !== false) return 'Fecha_Transaccion';
             return ($bankType === 'AFIRME') ? 'Referencia' : 'ID_Externo';
@@ -2281,12 +2283,12 @@ public function anomalies_client_tickets()
             if (strpos($norm, 'DEPOSITO') !== false || strpos($norm, 'APLICACION') !== false || strpos($norm, 'PAGO') !== false) return 'Fecha_Deposito';
         }
         if (strpos($norm, 'ID MOVIMIENTO') !== false || (strpos($norm, 'REFERENCIA') !== false && strpos($norm, 'CARGO') !== false)) return 'ID_Externo';
-        if (strpos($norm, 'HORA') !== false) return 'Hora';
-        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false || strpos($norm, 'COMERCIO') !== false) return 'Afiliacion';
+        if (strpos($norm, 'AFILIACION') !== false || strpos($norm, 'ESTABLECIMIENTO') !== false || (strpos($norm, 'COMERCIO') !== false && strpos($norm, 'NOMBRE') === false)) return 'Afiliacion';
         if (strpos($norm, 'TARJETA') !== false) return 'Tarjeta';
         if (strpos($norm, 'TERMINAL') !== false) return 'Terminal';
-        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE' || (strpos($norm, 'MONTO') !== false && strpos($norm, 'CARGO') !== false)) return 'Monto';
-        if ((strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) || strpos($norm, 'AUTORIZACION') !== false) return 'Codigo_Autorizacion';
+        if ($norm === 'TOTAL' || $norm === 'MONTO' || $norm === 'IMPORTE' || (strpos($norm, 'MONTO') !== false && strpos($norm, 'CARGO') !== false && strpos($norm, 'RETIRO') === false)) return 'Monto';
+        // Excluir columnas tipo "Tipo de autorizacion de switch" que no son codigo de autorizacion real
+        if ((strpos($norm, 'COD') !== false && strpos($norm, 'AUT') !== false) || (strpos($norm, 'AUTORIZACION') !== false && strpos($norm, 'TIPO') === false)) return 'Codigo_Autorizacion';
         if (strpos($norm, 'COD') !== false && strpos($norm, 'TERMINAL') !== false) return 'Terminal';
         if (strpos($norm, 'REFERENCIA') !== false) return 'Referencia';
 
