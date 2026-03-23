@@ -846,6 +846,139 @@
     </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- FLOATING BUG REPORT BUTTON                                  -->
+<!-- ============================================================ -->
+<style>
+    #btn-bug-report {
+        position: fixed;
+        bottom: 28px;
+        right: 28px;
+        z-index: 10000;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: #c0392b;
+        color: #fff;
+        border: none;
+        box-shadow: 0 4px 16px rgba(0,0,0,.28);
+        font-size: 22px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background .2s, transform .15s;
+    }
+    #btn-bug-report:hover { background: #e74c3c; transform: scale(1.08); }
+    #bug-screenshot-zone {
+        border: 2px dashed #ced4da;
+        border-radius: 8px;
+        padding: 14px;
+        text-align: center;
+        color: #6c757d;
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color .2s, background .2s;
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 6px;
+        background: #f8f9fa;
+    }
+    #bug-screenshot-zone.drag-over { border-color: #3498db; background: #eaf4fd; }
+    #bug-screenshot-zone.full      { border-color: #6c757d; background: #e9ecef; cursor: default; color:#6c757d; }
+    #bug-thumbs-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .bug-thumb-wrap {
+        position: relative;
+        width: 88px;
+        height: 66px;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 1px 4px rgba(0,0,0,.1);
+        background: #000;
+    }
+    .bug-thumb-wrap img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .bug-thumb-remove {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(192,57,43,.9);
+        color: #fff;
+        border: none;
+        font-size: 10px;
+        line-height: 18px;
+        text-align: center;
+        cursor: pointer;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .bug-thumb-remove:hover { background: #e74c3c; }
+    #bug-count-label { font-size: 11px; color: #6c757d; margin-top: 4px; }
+</style>
+
+<button id="btn-bug-report" title="Reportar un bug" onclick="openBugModal()">
+    <i class="fas fa-bug"></i>
+</button>
+
+<!-- Bug Report Modal -->
+<div id="modalBugReport" class="modal" tabindex="-1" role="dialog" style="display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);">
+    <div class="modal-dialog modal-lg" role="document" style="margin:auto;width:100%;max-width:620px;">
+        <div class="modal-content shadow-lg">
+            <div class="modal-header" style="background:#c0392b;color:#fff;border-radius:4px 4px 0 0;">
+                <h5 class="modal-title font-weight-bold"><i class="fas fa-bug mr-2"></i>Reportar Bug / Hallazgo</h5>
+                <button type="button" class="close text-white" onclick="closeBugModal()" style="opacity:1;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding:20px 24px;">
+                <div class="form-group mb-3">
+                    <label class="font-weight-bold" style="font-size:13px;">Título <span class="text-danger">*</span></label>
+                    <input type="text" id="bug-titulo" class="form-control form-control-sm" placeholder="Ej: Los totales no cuadran en enero…" maxlength="120">
+                </div>
+                <div class="form-group mb-3">
+                    <label class="font-weight-bold" style="font-size:13px;">Descripción</label>
+                    <textarea id="bug-descripcion" class="form-control form-control-sm" rows="4" placeholder="Explica el problema, pasos para reproducirlo, comportamiento esperado…"></textarea>
+                </div>
+                <div class="form-group mb-2">
+                    <label class="font-weight-bold" style="font-size:13px;">
+                        Capturas de pantalla
+                        <span id="bug-count-label" class="ml-1">(0 / 10)</span>
+                    </label>
+                    <div id="bug-screenshot-zone">
+                        <i class="fas fa-clipboard fa-lg" style="color:#adb5bd;"></i>
+                        <span id="bug-zone-text">Pega con <strong>Ctrl+V</strong>, arrastra o <u>haz clic</u> para añadir — hasta 10 capturas</span>
+                        <input type="file" id="bug-file-input" accept="image/*" multiple style="display:none;">
+                    </div>
+                    <div id="bug-thumbs-grid"></div>
+                </div>
+                <div id="bug-alert" class="alert mt-2" style="display:none;font-size:13px;padding:8px 14px;"></div>
+            </div>
+            <div class="modal-footer" style="padding:12px 24px;">
+                <button type="button" class="btn btn-secondary btn-sm rounded-pill px-4" onclick="closeBugModal()">Cancelar</button>
+                <button type="button" class="btn btn-danger btn-sm rounded-pill px-4 font-weight-bold" id="btn-bug-send" onclick="sendBugReport()">
+                    <i class="fas fa-paper-plane mr-1"></i>Enviar reporte
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block myjs %}
@@ -880,6 +1013,7 @@ const URLS_V3 = {
     crear_diferido_dia:  '/income/crear_diferido_dia_v3',
     mover_diferido:      '/income/mover_diferido_v3',
     cancelar_diferido:   '/income/cancelar_diferido_v3',
+    report_bug:          '/income/report_bug_v3',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -1148,17 +1282,31 @@ async function fetchTesoreria(eid, year, month) {
         // Filtrar por afiliación — soporta valores combinados "A / B" en currentRule
         const afilRaw   = currentRule ? String(currentRule.afiliacion).trim() : '';
         const afilParts = afilRaw.split(/[,\/]+/).map(s => s.trim()).filter(s => s !== '');
-        tesData = raw.filter(m => {
+
+        // Agrupar por fecha para manejar afiliaciones múltiples (ej. "A / B" → varias filas por día)
+        const byFecha = {};
+        raw.filter(m => {
             const mAfil = String(m.Afiliacion || '').trim();
             const val   = parseFloat(m.Total || m.Depositos || 0);
             return afilParts.some(p => p === mAfil) && val > 0;
-        }).map(m => ({
-            // Normalizar a formato interno V3
-            fecha:       m.Fecha,
-            monto:       parseFloat(m.Total || m.Depositos || 0),
-            descripcion: m.Estacion || m.Afiliacion || '',
-            // Ref determinista: fecha_afiliacion (único por día en datos ya agregados)
-            id_origen:   `${m.Fecha}_${String(m.Afiliacion || '').trim()}`,
+        }).forEach(m => {
+            const fecha = m.Fecha || '';
+            const afil  = String(m.Afiliacion || '').trim();
+            if (!byFecha[fecha]) byFecha[fecha] = { monto: 0, afils: [], desc: m.Estacion || '' };
+            byFecha[fecha].monto += parseFloat(m.Total || m.Depositos || 0);
+            byFecha[fecha].afils.push(afil);
+            if (!byFecha[fecha].desc) byFecha[fecha].desc = m.Estacion || afil || '';
+        });
+
+        tesData = Object.entries(byFecha).map(([fecha, g]) => ({
+            fecha,
+            monto:       g.monto,
+            descripcion: g.desc,
+            // Ref: mantiene formato fecha_afil cuando hay una sola afiliación (compatibilidad hacia atrás)
+            // Cuando hay múltiples, usa solo la fecha para no duplicar filas
+            id_origen:   g.afils.length === 1 ? `${fecha}_${g.afils[0]}` : fecha,
+            // all_refs incluye los refs individuales para detectar conciliaciones antiguas
+            all_refs:    g.afils.map(a => `${fecha}_${a}`),
             sucursal:    ''
         }));
     } catch(e) { tesData = []; }
@@ -1727,11 +1875,13 @@ function renderTes() {
         grandTotal  += monto;
 
         const dateFmt  = fecha.split('-').reverse().join('/');
-        const esConcil = conciliadasSet.TES && conciliadasSet.TES.has(ref);
+        // Revisar también all_refs para detectar conciliaciones previas con formato fecha_afil
+        const allRefs  = [ref, ...(item.all_refs || [])];
+        const esConcil = conciliadasSet.TES && allRefs.some(r => conciliadasSet.TES.has(r));
         const esSel    = sel.tes.some(s => s.ref === ref);
         const clase    = esConcil ? 'conciliated' : (esSel ? 'active' : '');
 
-        const hRec = historial.find(h => h.ref === String(ref) && h.origen === 'TES');
+        const hRec = historial.find(h => allRefs.includes(String(h.ref)) && h.origen === 'TES');
         let difTag = '', unlinkBtn = '', statusClass = 'row-pendiente';
         if (esConcil) {
             if (hRec) {
@@ -1926,7 +2076,8 @@ function conciliarDia(fecha) {
         if (itemFecha !== fecha) return;
         const ref = item.id_origen || '';
         if (!ref) return;
-        if (conciliadasSet.TES && conciliadasSet.TES.has(ref)) return;
+        const itemAllRefs = [ref, ...(item.all_refs || [])];
+        if (conciliadasSet.TES && itemAllRefs.some(r => conciliadasSet.TES.has(r))) return;
         if (sel.tes.some(s => s.ref === ref)) return;
         const monto = parseFloat(item.monto || 0);
         if (monto <= 0) return;
@@ -3296,6 +3447,166 @@ function normalizarFecha(v) {
 }
 function escHtml(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── BUG REPORTER ──────────────────────────────────────────────
+const BUG_MAX = 10;
+let _bugScreenshots = []; // array of base64 data URLs
+
+function openBugModal() {
+    const m = document.getElementById('modalBugReport');
+    m.style.display = 'flex';
+    m.classList.add('show');
+}
+function closeBugModal() {
+    const m = document.getElementById('modalBugReport');
+    m.classList.remove('show');
+    m.style.display = 'none';
+}
+
+function _bugUpdateZone() {
+    const zone  = document.getElementById('bug-screenshot-zone');
+    const label = document.getElementById('bug-count-label');
+    const n     = _bugScreenshots.length;
+    label.textContent = `(${n} / ${BUG_MAX})`;
+    if (n >= BUG_MAX) {
+        zone.classList.add('full');
+        document.getElementById('bug-zone-text').innerHTML = 'Límite de 10 capturas alcanzado';
+    } else {
+        zone.classList.remove('full');
+        document.getElementById('bug-zone-text').innerHTML =
+            'Pega con <strong>Ctrl+V</strong>, arrastra o <u>haz clic</u> para añadir — hasta 10 capturas';
+    }
+}
+
+function _bugAddImage(dataUrl) {
+    if (_bugScreenshots.length >= BUG_MAX) return;
+    _bugScreenshots.push(dataUrl);
+    _bugRenderThumbs();
+    _bugUpdateZone();
+}
+
+function _bugRenderThumbs() {
+    const grid = document.getElementById('bug-thumbs-grid');
+    grid.innerHTML = '';
+    _bugScreenshots.forEach((src, i) => {
+        const wrap   = document.createElement('div');
+        wrap.className = 'bug-thumb-wrap';
+        const img    = document.createElement('img');
+        img.src      = src;
+        img.alt      = `Captura ${i + 1}`;
+        const btn    = document.createElement('button');
+        btn.className = 'bug-thumb-remove';
+        btn.title    = 'Quitar';
+        btn.innerHTML = '&times;';
+        btn.onclick  = () => _bugRemoveAt(i);
+        wrap.appendChild(img);
+        wrap.appendChild(btn);
+        grid.appendChild(wrap);
+    });
+}
+
+function _bugRemoveAt(index) {
+    _bugScreenshots.splice(index, 1);
+    _bugRenderThumbs();
+    _bugUpdateZone();
+}
+
+function _bugReadFiles(files) {
+    Array.from(files).forEach(file => {
+        if (!file.type.startsWith('image/') || _bugScreenshots.length >= BUG_MAX) return;
+        const reader = new FileReader();
+        reader.onload = ev => _bugAddImage(ev.target.result);
+        reader.readAsDataURL(file);
+    });
+}
+
+// Ctrl+V — sólo cuando el modal está abierto
+document.addEventListener('paste', function(e) {
+    if (document.getElementById('modalBugReport').style.display === 'none') return;
+    if (_bugScreenshots.length >= BUG_MAX) return;
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            const blob = item.getAsFile();
+            const reader = new FileReader();
+            reader.onload = ev => _bugAddImage(ev.target.result);
+            reader.readAsDataURL(blob);
+            e.preventDefault();
+            break;
+        }
+    }
+});
+
+// Click en zona → selector de archivo (multiple)
+document.getElementById('bug-screenshot-zone').addEventListener('click', function() {
+    if (_bugScreenshots.length >= BUG_MAX) return;
+    document.getElementById('bug-file-input').click();
+});
+document.getElementById('bug-file-input').addEventListener('change', function() {
+    _bugReadFiles(this.files);
+    this.value = '';
+});
+
+// Drag & drop
+const bugZone = document.getElementById('bug-screenshot-zone');
+bugZone.addEventListener('dragover',  e => { e.preventDefault(); if (_bugScreenshots.length < BUG_MAX) bugZone.classList.add('drag-over'); });
+bugZone.addEventListener('dragleave', ()  => bugZone.classList.remove('drag-over'));
+bugZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    bugZone.classList.remove('drag-over');
+    _bugReadFiles(e.dataTransfer.files);
+});
+
+// Cerrar al hacer clic fuera
+document.getElementById('modalBugReport').addEventListener('click', function(e) {
+    if (e.target === this) closeBugModal();
+});
+
+function showBugAlert(msg, type) {
+    const el = document.getElementById('bug-alert');
+    el.className = `alert alert-${type} mt-2`;
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+async function sendBugReport() {
+    const titulo      = document.getElementById('bug-titulo').value.trim();
+    const descripcion = document.getElementById('bug-descripcion').value.trim();
+    if (!titulo) { showBugAlert('Por favor ingresa un título.', 'warning'); return; }
+
+    const btn = document.getElementById('btn-bug-send');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Enviando…';
+    document.getElementById('bug-alert').style.display = 'none';
+
+    const reporter = '{{ tg_user.Nombre ?? tg_user.nombre ?? "Usuario" }}';
+    const pagina   = window.location.pathname;
+
+    try {
+        const res  = await fetch(URLS_V3.report_bug, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titulo, descripcion, reporter, pagina, screenshots: _bugScreenshots })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+            showBugAlert('✓ ' + json.message, 'success');
+            document.getElementById('bug-titulo').value = '';
+            document.getElementById('bug-descripcion').value = '';
+            _bugScreenshots = [];
+            _bugRenderThumbs();
+            _bugUpdateZone();
+            setTimeout(closeBugModal, 2000);
+        } else {
+            showBugAlert('Error: ' + json.message, 'danger');
+        }
+    } catch(e) {
+        showBugAlert('Error de conexión al enviar el reporte.', 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Enviar reporte';
+    }
 }
 </script>
 {% endblock %}
