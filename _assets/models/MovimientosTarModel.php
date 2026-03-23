@@ -71,35 +71,39 @@ class MovimientosTarModel extends Model{
      * @throws Exception
      */
     function add($fchmov, $codgas, $ValorButt_Id, $nrotrn, $nrotar, $nroter, $nroref, $nroaut, $mto, $nrotur, $codbco, $codisl) : bool{
-        // Aqui vamos a obtener el numero consecutivo de la tabla del campo llamado `nromov`
         $nromov = $this->sql->select("SELECT ISNULL(MAX(nromov), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ?", [$fchmov])[0]['sec'];
 
         $nroitm = 1;
         $trxcod = 'TD-MANUAL';
         $tiptar = 102;
+        $datref = null; // nuevo campo
 
-        if (in_array($ValorButt_Id, [13, 14, 15, 24, 26, 34])) { // Efecticar, TicketCar, Inburgas, Ultragas, Endenred, TicketCar+
+        if (in_array($ValorButt_Id, [13, 14, 15, 24, 26, 34])) {
             $nroitm = 1;
             $nrotar = 1;
             $trxcod = ($ValorButt_Id == 34) ? 'P05-TCAR+' : 'TD-MANUAL';
             $tiptar = ($ValorButt_Id == 34) ? 53 : 102;
-        } else if(in_array($ValorButt_Id, [20, 21])) { // Banorte, Santander
-            // Aqui vamos a obtener el consecutivo de
+
+            if ($ValorButt_Id == 34) {
+                $nroref = 223;
+                $codbco = 144;
+                $datref = '@Y:223';
+            }
+        } else if(in_array($ValorButt_Id, [20, 21])) {
             $nroitm = $this->sql->select("SELECT ISNULL(MAX(nroitm), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ? AND nroitm > 200000000", [$fchmov])[0]['sec'];
             $nrotar = 0;
             $trxcod = 0;
             $tiptar = 68;
         }
 
-        // Aqui vamos a obtener el numero consecutivo de la tabla del campo llamado `nromov`
         $query = "INSERT INTO {$this->databases[$codgas]}.[MovimientosTar]
             ([fchmov],[nromov],[codgas],[nroitm],[fchlog],[nrotrn],[nrotar],[nroter],[nroref],[trxcod],[nroaut],[mto],[fchapl],[tiptar],[tipmov],
-            [estmov],[codbco],[codres],[fchcor],[nrotur],[lotfch],[lotnro],[lottrn],[mdacod],[mdactz],[mdamto],[logexp],[codisl],[mtoprp])
+            [estmov],[codbco],[codres],[fchcor],[nrotur],[lotfch],[lotnro],[lottrn],[mdacod],[mdactz],[mdamto],[logexp],[codisl],[mtoprp],[datref])
         VALUES
-            (?,?,?,?,GETDATE(),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,GETDATE(),?,?);
+            (?,?,?,?,GETDATE(),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,GETDATE(),?,?,?);
         ";
         $params = [$fchmov, $nromov, $codgas, $nroitm, $nrotrn, $nrotar, $nroter, $nroref, $trxcod, $nroaut, $mto, 0, $tiptar, 65,
-            0, $codbco, 0, $fchmov, $nrotur, 0, 0, 0, 0, 0, 0, $codisl, 0];
+            0, $codbco, 0, $fchmov, $nrotur, 0, 0, 0, 0, 0, 0, $codisl, 0, $datref];
         return (bool)$this->sql->insert($query, $params);
     }
 
@@ -171,6 +175,7 @@ class MovimientosTarModel extends Model{
                         WHEN t1.codbco = '217' THEN 'Transferencias'
                         WHEN t1.codbco = '218' THEN 'Self-Service'
                         WHEN t1.codbco = '219' THEN 'Mobil FleetPro'
+                        WHEN t1.codbco = '223' THEN 'Tarjeta TicketCar +'
                         ELSE CAST(t1.codbco AS VARCHAR)
                     END AS ValorDescripcion,
                     COALESCE(CAST(SUM(t1.mto) AS FLOAT), 0) AS Total

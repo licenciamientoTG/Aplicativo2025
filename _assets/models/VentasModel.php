@@ -802,7 +802,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -901,7 +901,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago
                     FROM SG12.dbo.Valores v
@@ -997,7 +997,7 @@ class VentasModel extends Model
 							WHEN v.den IN ('Clientes Crédito') THEN 'CREDITO'
 							WHEN v.den IN ('Clientes Débito') THEN 'DEBITO'
 							WHEN v.den IN (' SMARTBT - MANUAL Bancarias',' SMARTBT - Bancarias',' Tarjetas Bancomer', ' SMARTBT - American Express', ' Tarjetas Santander', ' Tarjetas Banorte', ' Tarjetas Afirme', 'SMARTBT - MANUAL Bancarias', 'INTERL - Tarjeta de Crédito', 'INTERL - Tarjeta de Débito', 'INTERLOGIC Manual','HTI - Tarjeta de Crédito','HTI - Tarjeta de Débito',' Tarjetas Scotiabank',' Tarjetas American Express') THEN 'TARJETAS'
-							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)') THEN 'VALERAS'
+							WHEN v.den IN (' Tarjeta EfectiCard',' Tarjetas Sodexo (Pluxee)',' SMARTBT - SODEXO WIZEO',' Vale Edenred',' Vale Sodexo','Mobil FleetPro', ' Tarjeta Inburgas', ' Tarjeta TicketCar', ' Vale Efectivale', ' SMARTBT - EFECTIVALE', 'Ultra Gas', 'Tarjetas Sodexo (Pluxee)', ' Tarjeta EfectiCard +') THEN 'VALERAS'
 						    ELSE 'OTRO'
                         END AS MedioPago,
                     E.Nombre as Estacion
