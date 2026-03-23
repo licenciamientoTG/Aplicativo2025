@@ -12,7 +12,7 @@
             <div class="card-header">
                 <h5 class="card-title mb-0">
                     Tabulador: #{{ tabulator.Id }}
-                    <small class="float-end">Fecha de creación: {{ tabulator.FechaTabular | date('Y-m-d') }}</small>
+                    <small class="float-end">Fecha de creación: {{ tabulator.FechaTabular is not null ? tabulator.FechaTabular | date('Y-m-d') : '' }}</small>
                 </h5>
             </div>
         </div>

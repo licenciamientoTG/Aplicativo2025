@@ -68,7 +68,7 @@
       </div>
       <div class="col-9">
         <input type="text" id="CodigoTar" name="CodigoTar" class="form-control form-control-sm" maxlength="4"
-          value="{{ now|date('md')}}" readonly>
+          value="{{ 'now'|date('md')}}" readonly>
       </div>
     </div>
 
@@ -78,7 +78,7 @@
       </div>
       <div class="col-9">
         <input type="text" id="CodigoRut" name="CodigoRut" class="form-control form-control-sm" maxlength="6"
-          value="{{ now|date('Ym')}}" readonly>
+          value="{{ 'now'|date('Ym')}}" readonly>
       </div>
     </div>
   </div>

@@ -70,7 +70,7 @@ class MovimientosTarModel extends Model{
      * @return bool
      * @throws Exception
      */
-    function add($fchmov, $codgas, $ValorButt_Id, $nrotrn, $nrotar, $nroter, $nroref, $nroaut, $mto, $nrotur, $codbco, $codisl) : bool{
+    function add($fchmov, $codgas, $ValorButt_Id, $nrotrn, $nrotar, $nroter, $nroref, $nroaut, $mto, $nrotur, $codbco, $codisl, $CodigoTar) : bool{
         $nromov = $this->sql->select("SELECT ISNULL(MAX(nromov), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ?", [$fchmov])[0]['sec'];
 
         $nroitm = 1;
@@ -85,6 +85,8 @@ class MovimientosTarModel extends Model{
             $tiptar = ($ValorButt_Id == 34) ? 53 : 102;
 
             if ($ValorButt_Id == 34) {
+                $nroitm = 200000000 + $CodigoTar;
+                $nrotar = $CodigoTar;
                 $nroref = 223;
                 $codbco = 144;
                 $datref = '@Y:223';

@@ -1132,7 +1132,7 @@ class Operations{
                     // Ahora vamos a actualizar la tabla de anticipos
                     if ($this->anticiposModel->sp_actualizar_tabulador_y_anticipos($tabular, $dispatchRow, $CodigoValor, $responsable[0]['Responsable'])) {
                         // Ahora insertamos en la tabla de MovimientosTar
-                        $this->movimientosTarModel->add(dateToInt($tabular['FechaTabular']), $tabular['CodigoEstacion'], $CodigoValor["ValorButt_Id"], $dispatch, $dispatchRow['tar'], '001', $_POST['CodigoRut'], $_POST['CodigoRut'], $dispatchRow['mto'], $dispatchRow['nrotur'], $CodigoValor["ValorButt_Num"], $dispatchRow['codisl']);
+                        $this->movimientosTarModel->add(dateToInt($tabular['FechaTabular']), $tabular['CodigoEstacion'], $CodigoValor["ValorButt_Id"], $dispatch, $dispatchRow['tar'], '001', $_POST['CodigoRut'], $_POST['CodigoRut'], $dispatchRow['mto'], $dispatchRow['nrotur'], $CodigoValor["ValorButt_Num"], $dispatchRow['codisl'], $_POST['CodigoTar']);
                     } else {
                         setFlashMessage('error','No se pudo marcar el despacho '. $dispatch .' en Anticipos.');
                     }

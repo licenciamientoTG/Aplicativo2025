@@ -33,7 +33,7 @@
                     <small class="float-end"><h4><a href="/operations/history/{{ tabulator.Id }}"><span class="mx-1 badge bg-warning-dark">Historial</span></a></h4></small>
                     <small class="float-end ml-1"><h4><span class="mx-1 badge bg-primary">Tipo de cambio: ${{ tabulator.TipoCambio }}</span></h4></small>
                     <small class="float-end"><h4><span class="mx-1 badge bg-teal">Turno: {{ tabulator.Turno }}</span></h4></small>
-                    <small class="float-end"><h4><span class="mx-1 badge bg-purple">Fecha: {{ tabulator.FechaTabular | date('Y-m-d') }}</span></h4></small>
+                    <small class="float-end"><h4><span class="mx-1 badge bg-purple">Fecha: {{ tabulator.FechaTabular is not null ? tabulator.FechaTabular | date('Y-m-d') : '' }}</span></h4></small>
                 </h5>
             </div>
             <div class="card-body">
@@ -187,7 +187,7 @@
                                         <tr>
                                             <td>{{ assignation.IslaNombre }}</td>
                                             <td>{{ assignation.Nombre }}</td>
-                                            <td>{{ assignation.Fecha | date('Y-m-d') }}</td>
+                                            <td>{{ assignation.Fecha is not null ? assignation.Fecha | date('Y-m-d') : '' }}</td>
                                             <td>{{ assignation.Turno }}</td>
                                             <td>{{ assignation.Estacion }}</td>
                                             <td>
