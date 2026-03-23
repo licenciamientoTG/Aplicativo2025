@@ -78,11 +78,11 @@ class MovimientosTarModel extends Model{
         $trxcod = 'TD-MANUAL';
         $tiptar = 102;
 
-        if (in_array($ValorButt_Id, [13, 14, 15, 24, 26])) { // Efecticar, TicketCar, Inburgas, Ultragas, Endenred
+        if (in_array($ValorButt_Id, [13, 14, 15, 24, 26, 34])) { // Efecticar, TicketCar, Inburgas, Ultragas, Endenred, TicketCar+
             $nroitm = 1;
             $nrotar = 1;
-            $trxcod = 'TD-MANUAL';
-            $tiptar = 102;
+            $trxcod = ($ValorButt_Id == 34) ? 'P05-TCAR+' : 'TD-MANUAL';
+            $tiptar = ($ValorButt_Id == 34) ? 53 : 102;
         } else if(in_array($ValorButt_Id, [20, 21])) { // Banorte, Santander
             // Aqui vamos a obtener el consecutivo de
             $nroitm = $this->sql->select("SELECT ISNULL(MAX(nroitm), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ? AND nroitm > 200000000", [$fchmov])[0]['sec'];
