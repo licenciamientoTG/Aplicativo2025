@@ -3457,6 +3457,7 @@ function openBugModal() {
     const m = document.getElementById('modalBugReport');
     m.style.display = 'flex';
     m.classList.add('show');
+    setTimeout(() => document.getElementById('bug-titulo').focus(), 50);
 }
 function closeBugModal() {
     const m = document.getElementById('modalBugReport');
@@ -3521,9 +3522,12 @@ function _bugReadFiles(files) {
     });
 }
 
-// Ctrl+V — sólo cuando el modal está abierto
+// Ctrl+V — sólo cuando el modal está abierto y el foco NO está en un campo de texto
 document.addEventListener('paste', function(e) {
     if (document.getElementById('modalBugReport').style.display === 'none') return;
+    // Si el foco está en un input o textarea, dejar que el campo maneje el paste normalmente
+    const active = document.activeElement;
+    if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
     if (_bugScreenshots.length >= BUG_MAX) return;
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     for (const item of items) {
