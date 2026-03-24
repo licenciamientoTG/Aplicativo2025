@@ -3554,9 +3554,11 @@ public function anomalies_client_tickets()
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
-                    $stmt = $conn->prepare("SELECT Fecha, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?");
+                    $stmt = $conn->prepare("SELECT Fecha, Depositos, Descripcion FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?");
                     $stmt->execute([$year, $month]);
                     while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
+                        $desc = trim($row['Descripcion'] ?? '');
+                        if (stripos($desc, $afilFija) === false && stripos($desc, 'FORMULA GAS') === false) continue;
                         $monto = (float)$row['Depositos'];
                         $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                         $key = $fecha . '_' . $afilFija;
