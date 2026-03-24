@@ -76,7 +76,8 @@ class MovimientosTarModel extends Model{
         $nroitm = 1;
         $trxcod = 'TD-MANUAL';
         $tiptar = 102;
-        $datref = null; // nuevo campo
+        $datref = null;
+        $trxmsg = null; // nuevo campo
 
         if (in_array($ValorButt_Id, [13, 14, 15, 24, 26, 34])) {
             $nroitm = 1;
@@ -85,11 +86,13 @@ class MovimientosTarModel extends Model{
             $tiptar = ($ValorButt_Id == 34) ? 53 : 102;
 
             if ($ValorButt_Id == 34) {
-                $nroitm = 200000000 + $CodigoTar;
-                $nrotar = $CodigoTar;
-                $nroref = 223;
+                $nroitm = '200000223';
+                $nrotar = '0000000000000223';
+                $nroref = '0000XXXX';
                 $codbco = 144;
                 $datref = '@Y:223';
+                $nroter = 'Terminal01';
+                $trxmsg = '05';
             }
         } else if(in_array($ValorButt_Id, [20, 21])) {
             $nroitm = $this->sql->select("SELECT ISNULL(MAX(nroitm), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ? AND nroitm > 200000000", [$fchmov])[0]['sec'];
@@ -100,12 +103,12 @@ class MovimientosTarModel extends Model{
 
         $query = "INSERT INTO {$this->databases[$codgas]}.[MovimientosTar]
             ([fchmov],[nromov],[codgas],[nroitm],[fchlog],[nrotrn],[nrotar],[nroter],[nroref],[trxcod],[nroaut],[mto],[fchapl],[tiptar],[tipmov],
-            [estmov],[codbco],[codres],[fchcor],[nrotur],[lotfch],[lotnro],[lottrn],[mdacod],[mdactz],[mdamto],[logexp],[codisl],[mtoprp],[datref])
+            [estmov],[codbco],[codres],[fchcor],[nrotur],[lotfch],[lotnro],[lottrn],[mdacod],[mdactz],[mdamto],[logexp],[codisl],[mtoprp],[datref],[trxmsg])
         VALUES
-            (?,?,?,?,GETDATE(),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,GETDATE(),?,?,?);
+            (?,?,?,?,GETDATE(),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,GETDATE(),?,?,?,?);
         ";
         $params = [$fchmov, $nromov, $codgas, $nroitm, $nrotrn, $nrotar, $nroter, $nroref, $trxcod, $nroaut, $mto, 0, $tiptar, 65,
-            0, $codbco, 0, $fchmov, $nrotur, 0, 0, 0, 0, 0, 0, $codisl, 0, $datref];
+            0, $codbco, 0, $fchmov, $nrotur, 0, 0, 0, 0, 0, 0, $codisl, 0, $datref, $trxmsg];
         return (bool)$this->sql->insert($query, $params);
     }
 
