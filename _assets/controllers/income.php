@@ -3626,7 +3626,7 @@ public function anomalies_client_tickets()
                     if ($check->fetchColumn() == 0) continue;
                     $hasConcepto = $conn->query("SELECT count(*) FROM information_schema.columns WHERE table_name='$tabla' AND column_name='Concepto'")->fetchColumn() > 0;
                     $cols = $hasConcepto ? 'Fecha, Referencia, Concepto, Depositos' : 'Fecha, Referencia, NULL as Concepto, Depositos';
-                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $sql  = "SELECT $cols FROM $tabla WHERE Depositos > 0 AND Descripcion LIKE 'DEPOSITO VENTAS%' AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sql);
                     $stmt->execute([$year, $month]);
                     while($r = $stmt->fetch(PDO::FETCH_ASSOC)) $movimientosRaw[] = $r;
