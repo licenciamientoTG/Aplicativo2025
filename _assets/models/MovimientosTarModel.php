@@ -88,11 +88,11 @@ class MovimientosTarModel extends Model{
             if ($ValorButt_Id == 34) {
                 $nroitm = '200000223';
                 $nrotar = '0000000000000223';
-                $nroref = '0000XXXX';
-                $codbco = 144;
-                $datref = '@Y:223';
                 $nroter = 'Terminal01';
+                $nroref = '0000XXXX';
                 $trxmsg = '05';
+                $codbco = 223;
+                $datref = '@Y:223';
             }
         } else if(in_array($ValorButt_Id, [20, 21])) {
             $nroitm = $this->sql->select("SELECT ISNULL(MAX(nroitm), 0) + 1 AS sec FROM {$this->databases[$codgas]}.[MovimientosTar] WHERE fchmov = ? AND nroitm > 200000000", [$fchmov])[0]['sec'];
