@@ -1601,44 +1601,22 @@ let isTableInitialized = false; // Bandera para saber si la tabla ya está inici
             $('#movement_analysis_table').DataTable().destroy();
             $('#movement_analysis_table thead .filter').remove();
         }
-        
-        // Validar que los elementos existan
-        var fromElement = document.getElementById('from');
-        var untilElement = document.getElementById('until');
+
+        var fromElement    = document.getElementById('from');
+        var untilElement   = document.getElementById('until');
         var stationElement = document.getElementById('station');
-        var supplierElement = document.getElementById('supplier_val');
-        
+        var supplierElement = document.getElementById('supplier');
+
         if (!fromElement || !untilElement) {
             alertify.error('Por favor complete los campos de fecha');
             return;
         }
-        
+
         var fromDate = fromElement.value;
         var untilDate = untilElement.value;
-        var codgas = stationElement ? (stationElement.value || 0) : 0;
-        var supplier = supplierElement ? supplierElement.value : '';
-        
-        if (!fromDate || !untilDate) {
-            alertify.error('Por favor seleccione las fechas');
-            return;
-        }
-        
-        // Validar que los elementos existan
-        var fromElement = document.getElementById('from');
-        var untilElement = document.getElementById('until');
-        var stationElement = document.getElementById('station');
-        var supplierElement = document.getElementById('supplier_val');
-        
-        if (!fromElement || !untilElement) {
-            alertify.error('Por favor complete los campos de fecha');
-            return;
-        }
-        
-        var fromDate = fromElement.value;
-        var untilDate = untilElement.value;
-        var codgas = stationElement ? (stationElement.value || 0) : 0;
-        var supplier = supplierElement ? supplierElement.value : '';
-        
+        var codgas   = stationElement  ? (stationElement.value  || 0) : 0;
+        var supplier = supplierElement ? (supplierElement.value || 0) : 0;
+
         if (!fromDate || !untilDate) {
             alertify.error('Por favor seleccione las fechas');
             return;

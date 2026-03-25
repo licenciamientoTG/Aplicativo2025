@@ -1155,41 +1155,38 @@ class Accounting{
         set_time_limit(280);
         header('Content-Type: application/json');
 
-        $from = dateToInt($_POST['fromDate']);
-        $until = dateToInt($_POST['untilDate']);
-        $codgas = $_POST['codgas'];
+        $from     = dateToInt($_POST['fromDate']);
+        $until    = dateToInt($_POST['untilDate']);
+        $codgas   = $_POST['codgas'];
         $supplier = $_POST['supplier'];
 
-        if ($rows = $this->Documentos->movement_analysis_table($from,$until,$codgas,$supplier)) {
+        $rows = $this->Documentos->movement_analysis_table($from, $until, $codgas, $supplier);
 
-            foreach ($rows as $row) {
-                $data[] = array(
-                    'Número'          => $row['Número'],
-                    'Factura'         => $row['Factura'],
-                    'Orden de Compra' => $row['Orden de Compra'],
-                    'Fecha'           => $row['Fecha'],
-                    'Vencimiento'     => $row['Vencimiento'],
-                    'Producto'        => $row['Producto'],
-                    'VolumenRecibido' => $row['VolumenRecibido'],
-                    'Facturado'       => $row['Facturado'],
-                    'Importe'         => $row['Importe'],
-                    'IEPS'            => $row['I.E.P.S'],
-                    'IVA'             => ($row['I.V.A.'] + $row['iva_concepto']),
-                    'Recargos'        => $row['Recargos'],
-                    'TotalFactura'    => $row['TotalFactura'],
-                    'Estación'        => $row['Estación'],
-                    'UUID'            => $row['UUID'],
-                    'RFC'             => $row['RFC'],
-                    'Remision'        => $row['Remision'],
-                    'Vehiculo'        => $row['Vehiculo'],
-                    'Proveedor'       => $row['Proveedor'],
-                );
-            }
-            $data = array("data" => $data);
-            echo json_encode($data);
-        } else {
-            echo json_encode(["data" => []]); // Devuelve un array vacío si no hay datos
+        $data = [];
+        foreach ((array)$rows as $row) {
+            $data[] = [
+                'Número'          => $row['Número'],
+                'Factura'         => $row['Factura'],
+                'Orden de Compra' => $row['Orden de Compra'],
+                'Fecha'           => $row['Fecha'],
+                'Vencimiento'     => $row['Vencimiento'],
+                'Producto'        => $row['Producto'],
+                'VolumenRecibido' => $row['VolumenRecibido'],
+                'Facturado'       => $row['Facturado'],
+                'Importe'         => $row['Importe'],
+                'IEPS'            => $row['I.E.P.S'],
+                'IVA'             => $row['I.V.A.'] + $row['iva_concepto'],
+                'Recargos'        => $row['Recargos'],
+                'TotalFactura'    => $row['TotalFactura'],
+                'Estación'        => $row['Estación'],
+                'UUID'            => $row['UUID'],
+                'RFC'             => $row['RFC'],
+                'Remision'        => $row['Remision'],
+                'Vehiculo'        => $row['Vehiculo'],
+                'Proveedor'       => $row['Proveedor'],
+            ];
         }
+        echo json_encode(["data" => $data]);
     }
 
    
