@@ -6738,7 +6738,7 @@ public function stamped_invoices_detail(): void
 
             // 4. Recalcular totales del grupo
             $stmt = $conn->prepare(
-                "SELECT SUM(CASE WHEN origen='CG'  THEN monto ELSE 0 END) as total_cg,
+                "SELECT SUM(CASE WHEN origen IN ('CG','TRANSITO','DIFERIDO') THEN monto ELSE 0 END) as total_cg,
                         SUM(CASE WHEN origen='TES' THEN monto ELSE 0 END) as total_tes
                  FROM Conciliacion_V3_Detalles WHERE grupo_id = ?"
             );
@@ -8214,6 +8214,138 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'success']);
 
         } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    // =========================================================================
+    // DETECTAR / SINCRONIZAR CAMBIOS EN TESORERÍA
+    // =========================================================================
+
+    public function detectar_cambios_tes(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $estacion_id = (int)($_GET['estacion_id'] ?? 0);
+        $entidad_id  = (int)($_GET['entidad_id']  ?? 0);
+        $afiliacion  = trim($_GET['afiliacion']   ?? '');
+        $year        = (int)($_GET['year']         ?? date('Y'));
+        $month       = (int)($_GET['month']        ?? date('m'));
+
+        if (!$estacion_id || !$entidad_id) {
+            echo json_encode(['status' => 'error', 'message' => 'Faltan parámetros']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+
+            $sql = "
+                SELECT
+                    d.id                          AS detalle_id,
+                    d.grupo_id,
+                    d.referencia_externa,
+                    d.monto                       AS monto_concil,
+                    CAST(t.Depositos AS DECIMAL(18,2)) AS monto_actual,
+                    d.concepto,
+                    CONVERT(VARCHAR(10), g.fecha_operativa, 23) AS fecha_operativa
+                FROM Conciliacion_V3_Detalles d
+                JOIN Conciliacion_V3_Grupos g   ON d.grupo_id = g.id
+                JOIN Tesoreria_V3_Unificada t   ON t.id_origen = d.referencia_externa
+                WHERE d.origen       = 'TES'
+                  AND g.estacion_id  = ?
+                  AND g.entidad_id   = ?
+                  AND (g.afiliacion  = ? OR (g.afiliacion IS NULL AND ? = ''))
+                  AND YEAR(g.fecha_operativa)  = ?
+                  AND MONTH(g.fecha_operativa) = ?
+                  AND ABS(d.monto - CAST(t.Depositos AS DECIMAL(18,2))) > 0.001
+            ";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$estacion_id, $entidad_id, $afiliacion, $afiliacion, $year, $month]);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $data = array_map(function($r) {
+                return [
+                    'detalle_id'      => (int)$r['detalle_id'],
+                    'grupo_id'        => (int)$r['grupo_id'],
+                    'referencia_externa' => $r['referencia_externa'],
+                    'monto_concil'    => (float)$r['monto_concil'],
+                    'monto_actual'    => (float)$r['monto_actual'],
+                    'concepto'        => $r['concepto'],
+                    'fecha_operativa' => $r['fecha_operativa'],
+                ];
+            }, $rows);
+
+            echo json_encode(['status' => 'success', 'data' => $data]);
+
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        exit;
+    }
+
+    public function sincronizar_tes_montos(): void {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $data = json_decode(file_get_contents('php://input'), true);
+        $ids  = array_filter(array_map('intval', $data['ids'] ?? []));
+
+        if (empty($ids)) {
+            echo json_encode(['status' => 'error', 'message' => 'Sin IDs']);
+            exit;
+        }
+
+        try {
+            $conn = $this->v3_conn();
+            $conn->beginTransaction();
+
+            $ph   = implode(',', array_fill(0, count($ids), '?'));
+
+            // 1. Obtener montos actuales desde Tesoreria_V3_Unificada
+            $rows = $conn->prepare("
+                SELECT d.id, d.grupo_id, CAST(t.Depositos AS DECIMAL(18,2)) AS monto_nuevo
+                FROM Conciliacion_V3_Detalles d
+                JOIN Tesoreria_V3_Unificada t ON t.id_origen = d.referencia_externa
+                WHERE d.id IN ($ph)
+            ");
+            $rows->execute($ids);
+            $items = $rows->fetchAll(PDO::FETCH_ASSOC);
+
+            // 2. Actualizar cada detalle
+            $stmtUpd = $conn->prepare("UPDATE Conciliacion_V3_Detalles SET monto = ? WHERE id = ?");
+            $gruposAfectados = [];
+            foreach ($items as $item) {
+                $stmtUpd->execute([(float)$item['monto_nuevo'], (int)$item['id']]);
+                $gruposAfectados[(int)$item['grupo_id']] = true;
+            }
+
+            // 3. Recalcular total_tesoreria y diferencia en cada grupo afectado
+            $stmtGrp = $conn->prepare("
+                UPDATE Conciliacion_V3_Grupos
+                SET total_tesoreria = (
+                        SELECT ISNULL(SUM(monto), 0)
+                        FROM Conciliacion_V3_Detalles
+                        WHERE grupo_id = ? AND origen = 'TES'
+                    ),
+                    diferencia = (
+                        SELECT ISNULL(SUM(monto), 0)
+                        FROM Conciliacion_V3_Detalles
+                        WHERE grupo_id = ? AND origen = 'TES'
+                    ) - total_sistema
+                WHERE id = ?
+            ");
+            foreach (array_keys($gruposAfectados) as $gid) {
+                $stmtGrp->execute([$gid, $gid, $gid]);
+            }
+
+            $conn->commit();
+            echo json_encode(['status' => 'success', 'actualizados' => count($items)]);
+
+        } catch (PDOException $e) {
+            $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         exit;
