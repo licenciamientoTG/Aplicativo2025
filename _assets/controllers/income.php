@@ -3341,7 +3341,7 @@ public function anomalies_client_tickets()
                     i.fch, 
                     i.nrotur AS Turno,
                     v.den AS Concepto,
-                    CAST(i.mto AS FLOAT) AS Total,
+                    CAST(i.mto AS DECIMAL(18,2)) AS Total,
                     
                     -- COLUMNAS QUE FALTABAN
                     i.codgas AS CodEstacion,  -- <--- FALTABA ESTO
