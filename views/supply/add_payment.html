@@ -745,8 +745,7 @@
 
     $(document).ready(function () {
         window.originalStationOptions = $('#station_id1').html();
-        var company = document.getElementById('company');
-        company.addEventListener('change', function () {
+        $('#company').on('changed.bs.select', function () {
             filtrarEstacionesPorEmpresa();
         });
 
@@ -893,7 +892,7 @@
             });
 
             return `<tr class="nota-cargo-row ${dragClass} ${yaAplicada ? 'table-warning' : ''}" ${dragAttr} data-drag='${dragData.replace(/'/g,"&#39;")}'>
-                <td class="text-center"><input `21` type="checkbox" class="nota-cargo-check invoice-checkbox" data-id="${n.id}" data-balance="${balance}" data-total="${total}" data-number="${n.note_number || ''}" data-date="${fecha}" data-provider="${proveedor}" data-providerid="${n.provider_id || ''}" ${yaAplicada ? 'disabled checked' : ''}></td>
+                <td class="text-center"><input type="checkbox" class="nota-cargo-check invoice-checkbox" data-id="${n.id}" data-balance="${balance}" data-total="${total}" data-number="${n.note_number || ''}" data-date="${fecha}" data-provider="${proveedor}" data-providerid="${n.provider_id || ''}" ${yaAplicada ? 'disabled checked' : ''}></td>
                 <td><i class="fas fa-grip-vertical text-muted me-1" style="font-size:0.75rem;"></i>${n.note_number || '—'}</td>
                 <td>${fecha}</td>
                 <td>${proveedor}</td>

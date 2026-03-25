@@ -22,20 +22,19 @@
       "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT Codigo, Nombre, RFC FROM Estaciones WHERE Nombre LIKE '%Misiones%'\" -W 2>&1)",
       "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT estacion_id, entidad_id, afiliacion, rfc FROM Tesoreria_afil WHERE estacion_id = 10 ORDER BY entidad_id\" -W 2>&1)",
       "Bash(sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \"SELECT TOP 3 Codigo, Nombre, RFC FROM Estaciones WHERE Codigo = 10\" -W 2>&1)",
-<<<<<<< HEAD
-      "Bash(cd \"C:\\\\Users\\\\daniel.ramirez\\\\Documents\\\\codigo\\\\Aplicativo2025\" && php -r \"\n\\\\$conn = new PDO\\('sqlsrv:Server=192.168.0.6;Database=TG', 'cguser', 'sahei1712'\\);\n\\\\$conn->setAttribute\\(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION\\);\n\n// Buscar estacion 37 en Estaciones y Estaciones_Virtuales\necho '--- Estaciones ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\('SELECT Codigo, Nombre FROM Estaciones WHERE Codigo = 37 OR Nombre LIKE \\\\'%puerto%\\\\' OR Nombre LIKE \\\\'%puert%\\\\''\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo \\\\$r['Codigo'] . ' | ' . \\\\$r['Nombre'] . PHP_EOL;\n\necho '--- Estaciones Virtuales ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\('SELECT Codigo, Nombre FROM Tesoreria_Estaciones_Virtuales WHERE Codigo = 37 OR Nombre LIKE \\\\'%puerto%\\\\' OR Nombre LIKE \\\\'%puert%\\\\''\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo \\\\$r['Codigo'] . ' | ' . \\\\$r['Nombre'] . PHP_EOL;\n\necho '--- Tesoreria_afil estacion_id=37 \\(todos los bancos\\) ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\('SELECT entidad_id, afiliacion, rfc, estacion_id FROM Tesoreria_afil WHERE estacion_id = 37'\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo 'entidad=' . \\\\$r['entidad_id'] . ' afil=' . \\\\$r['afiliacion'] . ' rfc=' . \\\\$r['rfc'] . PHP_EOL;\n\")",
-      "Bash(cd \"C:\\\\Users\\\\daniel.ramirez\\\\Documents\\\\codigo\\\\Aplicativo2025\" && php -r \"\n\\\\$conn = new PDO\\('sqlsrv:Server=192.168.0.6;Database=TG', 'cguser', 'sahei1712'\\);\n\\\\$conn->setAttribute\\(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION\\);\n\n// Buscar afiliaciones de Puertecito en banco_getnet\necho '--- Afiliaciones de Puertecito en banco_getnet ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\(\\\\\"SELECT DISTINCT Afiliacion, Terminal FROM banco_getnet WHERE Terminal LIKE '%puert%' OR Afiliacion IN \\(SELECT afiliacion FROM Tesoreria_afil WHERE estacion_id = 37\\) ORDER BY Afiliacion\\\\\"\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo 'Afiliacion=' . \\\\$r['Afiliacion'] . ' Terminal=' . \\\\$r['Terminal'] . PHP_EOL;\n\n// Tambien buscar por nombre en banco_getnet \\(por si hay alguna referencia\\)\necho PHP_EOL . '--- Terminales PUERTECITO en banco_getnet \\(busqueda amplia\\) ---' . PHP_EOL;\n\\\\$s = \\\\$conn->query\\(\\\\\"SELECT DISTINCT Afiliacion, Terminal FROM banco_getnet WHERE Afiliacion LIKE '%9322%' OR Afiliacion LIKE '%9323%' OR Afiliacion LIKE '%9324%' OR Afiliacion LIKE '%9273%'\\\\\"\\);\nwhile\\(\\\\$r = \\\\$s->fetch\\(PDO::FETCH_ASSOC\\)\\) echo 'Afiliacion=' . \\\\$r['Afiliacion'] . ' Terminal=' . \\\\$r['Terminal'] . PHP_EOL;\n\")",
-      "Bash(head -5 \"C:\\\\Users\\\\daniel.ramirez\\\\Documents\\\\codigo\\\\Aplicativo2025\\\\_assets\\\\temporal\\\\statement_17032026 \\(1\\).csv\")",
-      "Bash(sqlcmd:*)",
-      "Bash(__NEW_LINE_3e7f889bdbf61c4b__ sqlcmd -S 192.168.0.6 -d TG -U cguser -P sahei1712 -Q \":*)",
-      "Bash(ls -la /c/Users/daniel.ramirez/Documents/codigo/Aplicativo2025/_assets/models/*.php)",
-      "Bash(find /c/Users/daniel.ramirez/Documents/codigo/Aplicativo2025 -type f \\\\\\(-name *.sql -o -name *migration* -o -name *schema* \\\\\\))",
-      "Bash(php -r \":*)"
-=======
       "Bash(ls:*)",
       "Bash(cp \"C:/Users/alejandro.martinez/Desktop/pago a proveedores/correoFacturas/profiles.py\" \"C:/Users/alejandro.martinez/Desktop/codigo/ApiER/api/pdf_extractors/profiles.py\")",
-      "Bash(__NEW_LINE_7a6165b171de75c8__ cp:*)"
->>>>>>> 6905cdb8c39ac12058f6880339abe2389e203604
+      "Bash(__NEW_LINE_7a6165b171de75c8__ cp:*)",
+      "mcp__claude_ai_Atlassian__atlassianUserInfo",
+      "mcp__claude_ai_Atlassian__getAccessibleAtlassianResources",
+      "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql",
+      "mcp__claude_ai_Atlassian__getVisibleJiraProjects",
+      "mcp__claude_ai_Atlassian__createJiraIssue",
+      "mcp__claude_ai_Atlassian__getTransitionsForJiraIssue",
+      "mcp__claude_ai_Atlassian__editJiraIssue",
+      "mcp__claude_ai_Atlassian__transitionJiraIssue",
+      "mcp__claude_ai_Atlassian__getJiraIssue",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
