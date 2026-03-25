@@ -1443,7 +1443,7 @@ class Accounting{
                 $pdf->SetFont('Arial', 'I', 7);
                 $pdf->Cell(200, 1, '', 'B', 1, 'L');
                 // Agregar los textos del pie
-                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas', 0, 0, 'L');
                 $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
 
 
@@ -1604,7 +1604,7 @@ class Accounting{
                 $pdf->SetFont('Arial', 'I', 7);
                 $pdf->Cell(200, 1, '', 'B', 1, 'L');
                 // Agregar los textos del pie
-                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas', 0, 0, 'L');
                 $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
 
 
@@ -1854,7 +1854,7 @@ class Accounting{
                     $pdf->SetFont('Arial', 'I', 7);
                     $pdf->Cell(200, 1, '', 'B', 1, 'L');
                     // Agregar los textos del pie
-                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas', 0, 0, 'L');
                     $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
                     
                     // Restaurar la posición Y para el siguiente documento (si lo hay)
@@ -2009,7 +2009,7 @@ class Accounting{
                     $pdf->SetFont('Arial', 'I', 7);
                     $pdf->Cell(200, 1, '', 'B', 1, 'L');
                     // Agregar los textos del pie
-                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
+                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas', 0, 0, 'L');
                     $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
 
                     
