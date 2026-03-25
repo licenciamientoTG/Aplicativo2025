@@ -1441,18 +1441,7 @@ class Accounting{
                 
                 // Configurar fuente para el pie
                 $pdf->SetFont('Arial', 'I', 7);
-                $pdf->Cell(200, 1, '', 'B', 1, 'L');
-                // Agregar los textos del pie
-                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
-                $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
-
-
-
-
-
-
-
-                
+                $pdf->Cell(200, 1, '', 'B', 1, 'L');                
                 // Restaurar la posición Y para el siguiente documento (si lo hay)
                 $pdf->SetY($currentY);
             }
@@ -1603,17 +1592,6 @@ class Accounting{
                 // Configurar fuente para el pie
                 $pdf->SetFont('Arial', 'I', 7);
                 $pdf->Cell(200, 1, '', 'B', 1, 'L');
-                // Agregar los textos del pie
-                $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
-                $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
-
-
-
-
-
-
-
-                
                 // Restaurar la posición Y para el siguiente documento (si lo hay)
                 $pdf->SetY($currentY);
             }
@@ -1852,11 +1830,7 @@ class Accounting{
                     
                     // Configurar fuente para el pie
                     $pdf->SetFont('Arial', 'I', 7);
-                    $pdf->Cell(200, 1, '', 'B', 1, 'L');
-                    // Agregar los textos del pie
-                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
-                    $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
-                    
+                    $pdf->Cell(200, 1, '', 'B', 1, 'L');                    
                     // Restaurar la posición Y para el siguiente documento (si lo hay)
                     $pdf->SetY($currentY);
                 }
@@ -2008,11 +1982,6 @@ class Accounting{
                     // Configurar fuente para el pie
                     $pdf->SetFont('Arial', 'I', 7);
                     $pdf->Cell(200, 1, '', 'B', 1, 'L');
-                    // Agregar los textos del pie
-                    $pdf->Cell(100, 5, 'Generado por Aplicativo TotalGas | ' . date('d/m/Y H:i:s'), 0, 0, 'L');
-                    $pdf->Cell(100, 5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Página ') . $pageNumber, 0, 0, 'R');
-
-                    
                     // Restaurar la posición Y para el siguiente documento (si lo hay)
                     $pdf->SetY($currentY);
                 }
