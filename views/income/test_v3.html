@@ -816,6 +816,8 @@
     </div>
 </div>
 
+<!-- MODAL: CAMBIOS TESORERÍA -->
+
 <!-- MODAL: CIERRE DE MES -->
 <div class="modal fade" id="modalCierreMes" tabindex="-1" role="dialog" aria-hidden="true" data-backdrop="static">
     <div class="modal-dialog modal-lg modal-dialog-centered" role="document">
@@ -1014,6 +1016,8 @@ const URLS_V3 = {
     mover_diferido:      '/income/mover_diferido_v3',
     cancelar_diferido:   '/income/cancelar_diferido_v3',
     report_bug:          '/income/report_bug_v3',
+    detectar_cambios_tes:    '/income/detectar_cambios_tes',
+    sincronizar_tes_montos:  '/income/sincronizar_tes_montos',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -1803,7 +1807,7 @@ function renderCG() {
             const cancelDifBtn = (!todosConc && pendingIds.length && !mesCerrado)
                 ? `<button class="btn-cancel-diferido" onclick="event.stopPropagation();cancelarDiferidoGrupo(${JSON.stringify(pendingIds).replace(/"/g,'&quot;')})" title="Cancelar diferidos"><i class="fas fa-times"></i></button>`
                 : '';
-            itemsHtml += `<div class="row-item ${statusClass} ${esSel?'active':''}" ${clickAttr}>
+            itemsHtml += `<div class="row-item ${statusClass} ${esSel?'active':''}" data-grp-ref="${escHtml(grpRef)}" ${clickAttr}>
                 <div class="row-left">
                     <span class="row-line1"><span class="diferido-badge">DIFERIDO</span>Diferido de día${fakesDelDia.length > 1 ? ` (${fakesDelDia.length})` : ''}</span>
                     <span class="row-line2">Origen: ${origenLabel}</span>
@@ -1882,7 +1886,7 @@ function renderTes() {
         const clase    = esConcil ? 'conciliated' : (esSel ? 'active' : '');
 
         const hRec = historial.find(h => allRefs.includes(String(h.ref)) && h.origen === 'TES');
-        let difTag = '', unlinkBtn = '', statusClass = 'row-pendiente';
+        let difTag = '', unlinkBtn = '', staleBtn = '', statusClass = 'row-pendiente';
         if (esConcil) {
             if (hRec) {
                 const difVal = parseFloat(hRec.diferencia);
@@ -1890,6 +1894,11 @@ function renderTes() {
                 statusClass = ok ? 'row-concil-ok' : 'row-concil-diff';
                 difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                 unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
+                // Detectar si el monto en UI difiere del guardado en la conciliación
+                if (!mesCerrado && Math.abs(hRec.monto - monto) > 0.01) {
+                    statusClass = 'row-concil-diff';
+                    staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetalleTes(${hRec.id},${monto})" title="Monto cambió: guardado ${fmt.format(hRec.monto)} → actual ${fmt.format(monto)}. Clic para actualizar."><i class="fas fa-exclamation-triangle"></i></button>`;
+                }
             } else {
                 statusClass = 'row-concil-ok';
             }
@@ -1901,7 +1910,7 @@ function renderTes() {
                     <span class="row-line1">${dateFmt}</span>
                     <span class="row-line2">Tesorería</span>
                 </div>
-                <div class="row-right" style="pointer-events:auto;">${difTag}${unlinkBtn}<span class="font-numeric">${fmt.format(monto)}</span></div>
+                <div class="row-right" style="pointer-events:auto;">${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(monto)}</span></div>
             </div>`);
         } else {
             $c.append(`<div class="row-item row-pendiente ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" onclick="toggleTES('${escHtml(ref)}','${escHtml(fecha)}',${monto},'${escHtml(desc)}',this)">
@@ -2248,9 +2257,7 @@ function seleccionarDiaCG(fecha) {
             const totalGrp = pendingFakes.reduce((s, f) => s + f.monto_diferido, 0);
             const allIds   = pendingFakes.map(f => f.id);
             sel.left.push({ ref: grpRef, fecha, monto: totalGrp, concepto: 'Diferido', tipo: 'DIFERIDO', diferido_ids: allIds });
-            $(`#${groupBodyId} .row-item`).filter(function() {
-                return ($(this).attr('onclick') || '').indexOf(grpRef) >= 0;
-            }).addClass('active');
+            $(`#${groupBodyId} [data-grp-ref="${grpRef}"]`).addClass('active');
         }
         $header.addClass('day-selected');
     }
@@ -3610,6 +3617,124 @@ async function sendBugReport() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>Enviar reporte';
+    }
+}
+
+// ── RECALCULAR DETALLE TES ────────────────────────────────────
+async function recalcularDetalleTes(idDetalle, nuevoMonto) {
+    try {
+        const r = await fetch(URLS_V3.actualizar_det, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_detalle: idDetalle, nuevo_monto: parseFloat(nuevoMonto) })
+        });
+        const json = await r.json();
+        if (json.status === 'success') {
+            actualizarTodo();
+        } else {
+            alert('Error al actualizar: ' + json.message);
+        }
+    } catch(e) {
+        alert('Error de conexión al actualizar el monto.');
+    }
+}
+
+// ── CAMBIOS TESORERÍA ─────────────────────────────────────────
+let _cambiosTes = [];
+
+async function abrirModalDetectarCambiosTes() {
+    const estid = $('#estacionSelect').val();
+    const eid   = currentRule ? currentRule.entidad_id : 0;
+    const afil  = currentRule ? (currentRule.afiliacion || '') : '';
+    const year  = widgetState.year;
+    const month = widgetState.month;
+
+    if (!estid || !eid) { alert('Selecciona una estación y banco primero.'); return; }
+
+    $('#cambios-tes-body').html('<div class="text-center py-4"><div class="spinner-border text-danger"></div></div>');
+    $('#btn-aplicar-cambios-tes').hide();
+    $('#modalCambiosTes').modal('show');
+
+    try {
+        const r    = await fetch(`${URLS_V3.detectar_cambios_tes}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
+        const json = await r.json();
+
+        if (json.status !== 'success') {
+            $('#cambios-tes-body').html(`<div class="alert alert-danger">${json.message}</div>`);
+            return;
+        }
+
+        _cambiosTes = json.data;
+
+        if (!_cambiosTes.length) {
+            $('#cambios-tes-body').html('<div class="alert alert-success"><i class="fas fa-check-circle mr-2"></i>Los montos de tesorería en las conciliaciones están al día. No hay diferencias.</div>');
+            return;
+        }
+
+        let rows = _cambiosTes.map(c => {
+            const diff = c.monto_actual - c.monto_concil;
+            const sign = diff > 0 ? '+' : '';
+            return `<tr>
+                <td>${c.fecha_operativa}</td>
+                <td class="small text-muted">${escHtml(c.concepto)}</td>
+                <td class="text-right font-numeric">${fmt.format(c.monto_concil)}</td>
+                <td class="text-right font-numeric">${fmt.format(c.monto_actual)}</td>
+                <td class="text-right font-numeric font-weight-bold ${diff > 0 ? 'text-success' : 'text-danger'}">${sign}${fmt.format(diff)}</td>
+            </tr>`;
+        }).join('');
+
+        $('#cambios-tes-body').html(`
+            <p class="text-danger mb-3"><strong>${_cambiosTes.length}</strong> registro(s) con monto diferente entre la conciliación guardada y los datos actuales de tesorería.</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered bg-white" style="font-size:.875rem;">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Fecha</th><th>Concepto</th>
+                            <th class="text-right">Monto conciliado</th>
+                            <th class="text-right">Monto actual</th>
+                            <th class="text-right">Diferencia</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <p class="text-muted small mb-0">Al aplicar, se corregirán los montos en los detalles de cada conciliación y se recalcularán los totales de los grupos afectados.</p>
+        `);
+        $('#btn-aplicar-cambios-tes').show();
+
+    } catch(e) {
+        $('#cambios-tes-body').html('<div class="alert alert-danger">Error de conexión.</div>');
+    }
+}
+
+async function aplicarCambiosTes() {
+    if (!_cambiosTes.length) return;
+    const btn = document.getElementById('btn-aplicar-cambios-tes');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Aplicando...';
+
+    try {
+        const ids = _cambiosTes.map(c => c.detalle_id);
+        const r    = await fetch(URLS_V3.sincronizar_tes_montos, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids })
+        });
+        const json = await r.json();
+
+        if (json.status === 'success') {
+            $('#cambios-tes-body').html(`<div class="alert alert-success"><i class="fas fa-check-circle mr-2"></i>Se corrigieron <strong>${json.actualizados}</strong> registro(s) correctamente.</div>`);
+            $('#btn-aplicar-cambios-tes').hide();
+            actualizarTodo();
+        } else {
+            alert('Error: ' + json.message);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Aplicar correcciones';
+        }
+    } catch(e) {
+        alert('Error de conexión al aplicar cambios.');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Aplicar correcciones';
     }
 }
 </script>
