@@ -3341,7 +3341,7 @@ public function anomalies_client_tickets()
                     i.fch, 
                     i.nrotur AS Turno,
                     v.den AS Concepto,
-                    CAST(i.mto AS FLOAT) AS Total,
+                    CAST(i.mto AS DECIMAL(18,2)) AS Total,
                     
                     -- COLUMNAS QUE FALTABAN
                     i.codgas AS CodEstacion,  -- <--- FALTABA ESTO
@@ -3519,17 +3519,18 @@ public function anomalies_client_tickets()
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
-                    $sqlRef = "SELECT Fecha, Referencia, Concepto, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
+                    $sqlRef = "SELECT Fecha, Referencia, Descripcion, Depositos FROM $tablaRef WHERE Depositos > 0 AND YEAR(Fecha) = ? AND MONTH(Fecha) = ?";
                     $stmt = $conn->prepare($sqlRef); $stmt->execute([$year, $month]);
                     while($row = $stmt->fetch(PDO::FETCH_ASSOC)){
-                        $ref      = trim($row['Referencia'] ?? '');
-                        $concepto = trim($row['Concepto']   ?? '');
-                        if ($ref === '' && $concepto === '') continue;
+                        $ref      = trim($row['Referencia']  ?? '');
+                        $concepto = '';
+                        $desc     = trim($row['Descripcion'] ?? '');
+                        if ($ref === '' && $desc === '') continue;
                         $monto = (float)$row['Depositos'];
                         $fecha = ($row['Fecha'] instanceof DateTime) ? $row['Fecha']->format('Y-m-d') : substr((string)$row['Fecha'], 0, 10);
                         foreach ($catalogo as $afilItem) {
                             $afiliacionStr = $afilItem['afiliacion'];
-                            if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false) {
+                            if (stripos($ref, $afiliacionStr) !== false || stripos($concepto, $afiliacionStr) !== false || stripos($desc, $afiliacionStr) !== false) {
                                 $key = $fecha . '_' . $afiliacionStr;
                                 if (!isset($agrupado[$key])) $agrupado[$key] = ['Fecha'=>$fecha,'Afiliacion'=>$afiliacionStr,'Estacion'=>$afilItem['Estacion'],'Total'=>0];
                                 $agrupado[$key]['Total'] += $monto;

@@ -191,6 +191,42 @@ class Marketing{
      * @param $card
      * @param $codcli
      * @return void
+     * @throws Exception
+     */
+    function print_uber_card($card, $codcli) : void {
+        $card_info = $this->clientsVehiclesModel->getVehiclesInfo($card, $codcli);
+
+        $pdf = new PDF_Code128();
+        $pdf->AddPage('L', array(85, 54));
+        $pdf->SetMargins(0, 0, 0);
+        $pdf->SetAutoPageBreak(false);
+
+        $pdf->Image($_SERVER['DOCUMENT_ROOT'] . '/_assets/images/tarjeta_uber.jpg', 0, 0, 85, 54);
+
+        $pdf->SetTextColor(255, 255, 255);
+
+        // Número de tarjeta — arriba derecha
+        $pdf->SetFont('Arial', 'B', 9);
+        $pdf->SetXY(40, 5);
+        $pdf->Cell(42, 5, $card_info['Tarjeta'], 0, 0, 'R');
+
+        // Nombre del chofer — justo debajo del número
+        $pdf->SetFont('Arial', '', 8);
+        $pdf->SetXY(40, 11);
+        $pdf->Cell(42, 5, mb_convert_encoding($card_info['Descripcion'], 'ISO-8859-1'), 0, 0, 'R');
+
+        // Cliente — abajo derecha con margen
+        $pdf->SetFont('Arial', 'B', 7);
+        $pdf->SetXY(40, 44);
+        $pdf->Cell(42, 5, mb_convert_encoding($card_info['Cliente'], 'ISO-8859-1'), 0, 0, 'R');
+
+        $pdf->Output();
+    }
+
+    /**
+     * @param $card
+     * @param $codcli
+     * @return void
      */
     function print_card_2($card, $codcli) : void {
         echo '<pre>';
