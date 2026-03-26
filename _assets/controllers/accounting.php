@@ -1328,12 +1328,6 @@ class Accounting{
     function print_purchase_receipts($from, $until, $codgas = 0, $supplier = 0) {
         $rows = $this->Documentos->movement_analysis_table(dateToInt($from), dateToInt($until), $codgas, $supplier);
 
-        if (!$rows) {
-            echo '<pre>';
-            var_dump("Algo malio sal");
-            die();
-        }
-
         // --- Batch preload: evita N×2 queries individuales ---
         $pairs = array_map(fn($r) => ['codgas' => $r['codgas'], 'nro' => $r['Número']], $rows);
 
