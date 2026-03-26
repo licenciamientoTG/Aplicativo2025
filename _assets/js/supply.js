@@ -3268,6 +3268,7 @@ async function ModalinvoicePdf(id, data) {
   try {
     console.log("Abriendo modal PDF para factura ID:", id, data);
     $("#ModalinvoicePdf").modal("show"); // Abre el modal
+
     const response = await fetch("/supply/ModalinvoicePdf", {
       method: "POST",
       headers: {
@@ -8297,9 +8298,9 @@ function loadAccountingGroupsTable() {
         className: "text-center",
         render: function (data, type, row) {
           return `<div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-dark" title="Ver facturas"
-                    onclick='abrirModalDetalleFacturasGrupo(${row.id}, "${row.accounting_id}", "${(row.emp_name||"").replace(/"/g,"&quot;")}")'>
-              <i class="fas fa-file-invoice"></i>
+            <button class="btn btn-outline-secondary" title="Ver facturas"
+                    onclick='toggleFacturasInline(this, ${row.id})'>
+              <i class="fas fa-chevron-down"></i>
             </button>
             <button class="btn btn-outline-primary" title="Imprimir comprobantes de compra"
                     onclick='imprimirComprobantesGrupo(${row.id})'>
@@ -8396,6 +8397,120 @@ async function abrirModalDetalleFacturasGrupo(groupId, accountingId, empName) {
  */
 function imprimirComprobantesGrupo(groupId) {
   window.open("/supply/print_accounting_group_receipts/" + groupId, "_blank");
+}
+
+/**
+ * Expande / colapsa una fila inline con las facturas del grupo y su PDF.
+ */
+async function toggleFacturasInline(btn, groupId) {
+  var tr      = $(btn).closest("tr");
+  var rowId   = "inline-facturas-" + groupId;
+  var existing = $("#" + rowId);
+
+  // Colapsar si ya está abierta
+  if (existing.length) {
+    existing.remove();
+    $(btn).find("i").removeClass("fa-chevron-up").addClass("fa-chevron-down");
+    return;
+  }
+
+  $(btn).find("i").removeClass("fa-chevron-down").addClass("fa-chevron-up");
+
+  // Número de columnas de la tabla para el colspan
+  var colspan = tr.find("td").length;
+
+  // Insertar fila con loader
+  var loaderRow = `<tr id="${rowId}">
+    <td colspan="${colspan}" style="padding:0; background:#f8f9fa;">
+      <div class="text-center py-3">
+        <i class="fas fa-spinner fa-spin text-secondary"></i>
+        <span class="text-muted ms-2">Cargando facturas...</span>
+      </div>
+    </td>
+  </tr>`;
+  tr.after(loaderRow);
+
+  try {
+    const res = await fetch("/supply/get_accounting_group_invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "group_id=" + groupId,
+    });
+    const data = await res.json();
+
+    if (!data.success || !data.data || data.data.length === 0) {
+      $("#" + rowId).find("td").html(
+        `<div class="text-center text-muted py-3">
+           <i class="fas fa-inbox"></i> No hay facturas para este grupo.
+         </div>`
+      );
+      return;
+    }
+
+    // Construir tabla de facturas
+    var rows = "";
+    data.data.forEach(function (inv) {
+      var vto = inv.expiration_date
+        ? new Date(inv.expiration_date).toLocaleDateString("es-MX")
+        : "-";
+
+      var pdfBtn;
+      if (parseInt(inv.tiene_factura_recibida)) {
+        pdfBtn = `<button class="btn btn-sm btn-success" title="${inv.fr_nombre_archivo || 'Ver PDF'}"
+                          onclick='ModalinvoicePdf(${inv.fr_id}, {})'>
+                    <i class="fas fa-file-pdf"></i>
+                  </button>`;
+      } else {
+        pdfBtn = `<span class="badge bg-danger" title="No descargada del correo">
+                    <i class="fas fa-times"></i>
+                  </span>`;
+      }
+
+      rows += `<tr>
+        <td><span class="badge bg-secondary">#${inv.payment_request_id}</span></td>
+        <td><small>${inv.emp_name || "-"}</small></td>
+        <td><small>${inv.provider_name || "-"}</small></td>
+        <td>${inv.folio || "-"}</td>
+        <td>${inv.invoice_number || "-"}</td>
+        <td>${inv.codgas || "-"}</td>
+        <td>${vto}</td>
+        <td class="text-end fw-bold">$${parseFloat(inv.amount||0).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+        <td class="text-center">${pdfBtn}</td>
+      </tr>`;
+    });
+
+    var html = `
+      <div style="padding: 8px 16px; background:#f8f9fa; border-top: 2px solid #dee2e6;">
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered table-hover mb-0" style="background:#fff;">
+            <thead class="table-secondary">
+              <tr>
+                <th>Req. #</th>
+                <th>Empresa</th>
+                <th>Proveedor</th>
+                <th>Folio</th>
+                <th>Factura</th>
+                <th>Estación</th>
+                <th>Vencimiento</th>
+                <th class="text-end">Monto</th>
+                <th class="text-center">PDF</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+
+    $("#" + rowId).find("td").html(html);
+
+  } catch (e) {
+    console.error("Error cargando facturas inline:", e);
+    $("#" + rowId).find("td").html(
+      `<div class="text-center text-danger py-3">
+         <i class="fas fa-exclamation-circle"></i> Error al cargar las facturas.
+       </div>`
+    );
+  }
 }
 
 
