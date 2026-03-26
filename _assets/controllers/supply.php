@@ -1,6 +1,7 @@
 ﻿<?php
 // Incluir la clase generadora (ajusta la ruta según tu estructura)
 require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/GeneradorXMLPrecios.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/_assets/classes/code128.php';
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -61,6 +62,7 @@ class Supply
     public InvoiceCreditDebitNotesModel $InvoiceCreditDebitNotesModel;
     public InvoiceCreditDebitNotesDocModel $InvoiceCreditDebitNotesDocModel;
     public CreditNoteApplicationsModel $CreditNoteApplicationsModel;
+    public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
     /**
      * @param $twig
      */
@@ -98,6 +100,7 @@ class Supply
         $this->InvoiceCreditDebitNotesModel                     = new InvoiceCreditDebitNotesModel();
         $this->InvoiceCreditDebitNotesDocModel                     = new InvoiceCreditDebitNotesDocModel();
         $this->CreditNoteApplicationsModel                       = new CreditNoteApplicationsModel();
+        $this->PaymentAccountingGroupsModel                       = new PaymentAccountingGroupsModel();
     }
 
     /**
@@ -7212,5 +7215,231 @@ class Supply
                 'message' => 'Error al buscar facturas: ' . $e->getMessage()
             ]);
         }
+    }
+
+    // =====================================================================
+    // ARCHIVOS DE CONTABILIDAD (PDP-38 / PDP-39)
+    // =====================================================================
+
+    /**
+     * Renderiza el modal para crear un archivo de contabilidad.
+     * Recibe opcionalmente provider_cod y emp_cod por POST para precargar la tabla.
+     */
+    public function modalCrearArchivoContabilidad()
+    {
+        try {
+            $requisiciones  = $this->PaymentAccountingGroupsModel->get_ungrouped_abastos_approved();
+            $next_id        = $this->PaymentAccountingGroupsModel->get_next_accounting_id();
+
+            echo $this->twig->render(
+                $this->route . 'modals/crear_archivo_contabilidad.html',
+                compact('requisiciones', 'next_id')
+            );
+        } catch (Exception $e) {
+            error_log('Error en modalCrearArchivoContabilidad: ' . $e->getMessage());
+            echo '<div class="modal-body">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i>
+                        Error al cargar el formulario: ' . htmlspecialchars($e->getMessage()) . '
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+                  </div>';
+        }
+    }
+
+    /**
+     * POST: Crea un grupo de contabilidad con las requisiciones seleccionadas.
+     */
+    public function create_accounting_group()
+    {
+        header('Content-Type: application/json');
+        try {
+            $accounting_id = trim($_POST['accounting_id'] ?? '');
+            $emp_cod       = trim($_POST['emp_cod']       ?? '');
+            $emp_name      = trim($_POST['razon_social']  ?? ''); // nombre de la empresa
+            $request_ids   = $_POST['request_ids']        ?? [];
+            $user_id       = $_SESSION['user_id']         ?? 0;
+
+            if (!$accounting_id) {
+                echo json_encode(['success' => false, 'message' => 'El ID de contabilidad es requerido']);
+                return;
+            }
+            if (empty($request_ids)) {
+                echo json_encode(['success' => false, 'message' => 'Seleccione al menos una requisición']);
+                return;
+            }
+
+            $result = $this->PaymentAccountingGroupsModel->create_group(
+                $accounting_id,
+                null, // provider_cod no se usa para agrupar, la agrupación es por empresa
+                $emp_cod,
+                $emp_name,
+                (int)$user_id,
+                $request_ids
+            );
+
+            echo json_encode($result);
+        } catch (Exception $e) {
+            error_log('Error en create_accounting_group: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * JSON para el DataTable del tab "Archivos Contabilidad".
+     */
+    public function get_accounting_groups_table()
+    {
+        header('Content-Type: application/json');
+        try {
+            $groups = $this->PaymentAccountingGroupsModel->get_all_groups();
+            echo json_encode(['success' => true, 'data' => $groups]);
+        } catch (Exception $e) {
+            error_log('Error en get_accounting_groups_table: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'data' => [], 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Renderiza el template estático del modal de detalle de facturas del grupo.
+     */
+    public function modalDetalleFacturasGrupo()
+    {
+        echo $this->twig->render($this->route . 'modals/detalle_facturas_grupo.html', []);
+    }
+
+    /**
+     * JSON: Facturas de todas las requisiciones de un grupo.
+     */
+    public function get_accounting_group_invoices()
+    {
+        header('Content-Type: application/json');
+        try {
+            $group_id = (int)($_POST['group_id'] ?? 0);
+            if (!$group_id) {
+                echo json_encode(['success' => false, 'message' => 'group_id requerido']);
+                return;
+            }
+            $invoices = $this->PaymentAccountingGroupsModel->get_invoices_by_group($group_id);
+            echo json_encode(['success' => true, 'data' => $invoices]);
+        } catch (Exception $e) {
+            error_log('Error en get_accounting_group_invoices: ' . $e->getMessage());
+            echo json_encode(['success' => false, 'data' => [], 'message' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * PDF: Comprobantes de compra de todas las facturas agrupadas.
+     * Replica print_purchase_receipts4 usando los invoice_number del grupo.
+     */
+    public function print_accounting_group_receipts($group_id)
+    {
+        $group_id = (int)$group_id;
+        if (!$group_id) {
+            echo 'ID de grupo inválido';
+            return;
+        }
+
+        $invoice_numbers = $this->PaymentAccountingGroupsModel->get_invoice_numbers_by_group($group_id);
+
+        if (empty($invoice_numbers)) {
+            echo 'No se encontraron facturas para este grupo.';
+            return;
+        }
+
+        // Construir lista entre comillas para la query
+        $facturasLimpio = "'" . implode("','", array_map('trim', $invoice_numbers)) . "'";
+
+        $rows = $this->documentosModel->movement_analysis_table4($facturasLimpio);
+
+        if (!$rows) {
+            echo 'No se encontraron documentos en ControlGas para las facturas de este grupo.';
+            return;
+        }
+
+        $pdf = new PDF_Code128();
+        $pdf->SetMargins(5, 5, 5);
+        $pdf->SetAutoPageBreak(true, 12);
+
+        foreach ($rows as $row) {
+            $pdf->AddPage('P');
+            $pdf->SetFont('Arial', 'B', 9);
+
+            $pdf->Cell(200, 11.5, '', 0, 1, 'C');
+            $pdf->Cell(200, 3.9, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['Empresa']), 0, 1, 'C');
+            $pdf->Cell(200, 3.9, $row['Domicilio'], 0, 1, 'C');
+            $pdf->Cell(200, 3.9, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['Ciudad']), 0, 1, 'C');
+            $pdf->Cell(200, 3.9, $row['RFC'], 0, 1, 'C');
+            $pdf->Cell(200, 3.9, '', 0, 1, 'C');
+            $pdf->Cell(200, 3.9, 'COMPROBANTE DE COMPRA', 0, 1, 'C');
+
+            $pdf->SetFont('Arial', 'IB', 7);
+            $pdf->Cell(200, 3, '', 0, 1, 'C');
+            $pdf->Cell(23, 3.6, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['Estación']), 0, 0, 'l');
+            $pdf->Cell(5, 3.6, ':', 0, 0, 'C');
+            $pdf->Cell(176, 3.6, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['DocDenominacion'] . ' (' . $row['nropcc'] . ')'), 0, 1, 'L');
+            $pdf->Cell(23, 3.6, 'Documento ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['NroDocumento'], 0, 1, 'L');
+            $pdf->Cell(23, 3.6, 'Fecha ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocFecha'], 0, 1, 'L');
+            $pdf->Cell(23, 3.6, 'Turno ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['DocTurno'], 0, 1, 'L');
+            $pdf->Cell(23, 3.6, 'Proveedor ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $row['Proveedor'], 0, 1, 'L');
+
+            $factura = (!empty(trim($row['Factura']))) ? 'Factura ' . $row['Factura'] : '';
+            $pdf->Cell(23, 3.6, 'Referencias ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, $factura . ' ' . iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $row['RemisionVehiculo']), 0, 1, 'L');
+            $pdf->Cell(23, 3.6, 'Notas ', 0, 0, 'l'); $pdf->Cell(5, 3.6, ':', 0, 0, 'C'); $pdf->Cell(176, 3.6, '', 0, 1, 'L');
+
+            $pdf->Cell(200, 3.5, '', 0, 1, 'C');
+            $pdf->Cell(40, 3.5, 'Concepto', 'TB', 0, 'L'); $pdf->Cell(63, 3.5, 'Producto', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Cantidad', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, 'Precio', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, 'Importe', 'TB', 0, 'L'); $pdf->Cell(32, 3.5, 'Destino', 'TB', 1, 'L');
+            $pdf->SetFont('Arial', '', 7);
+            $subtotal = 0;
+            $iva_concepto = 0;
+            if ($conceptos = $this->documentosModel->get_concepts($row['codgas'], $row['Número'])) {
+                foreach ($conceptos as $concepto) {
+                    $subtotal += $concepto['Monto'];
+                    if (str_contains($concepto['Concepto'], 'IVA')) {
+                        $iva_concepto += $concepto['Monto'];
+                    }
+                    $pdf->Cell(40, 3.5, $concepto['Concepto'], 0, 0, 'L');
+                    $pdf->Cell(63, 3.5, $concepto['Producto'], 0, 0, 'L');
+                    $pdf->Cell(20, 3.5, number_format($concepto['Cantidad'] ?? 0, 3, '.', ','), 0, 0, 'L');
+                    $pdf->Cell(20, 3.5, number_format($concepto['Precio'] ?? 0, 5, '.', ','), 0, 0, 'L');
+                    $pdf->Cell(25, 3.5, number_format($concepto['Monto'] ?? 0, 2, '.', ','), 0, 0, 'L');
+                    $pdf->Cell(32, 3.5, $concepto['Producto'], 0, 1, 'L');
+                }
+            }
+
+            $pdf->SetFont('Arial', 'B', 7);
+            $pdf->Cell(123, 3.5, 'SUBTOTAL', 'T', 0, 'L'); $pdf->Cell(20, 3.5, '', 'T', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['Importe'] + $row['Recargos']), 2, '.', ','), 'T', 0, 'L'); $pdf->Cell(32, 3.5, '', 'T', 1, 'L');
+            $pdf->Cell(123, 3.5, 'I.V.A.', 'B', 0, 'L'); $pdf->Cell(20, 3.5, '', 'B', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($row['I.V.A.'] + $iva_concepto), 2, '.', ','), 'B', 0, 'L'); $pdf->Cell(32, 3.5, '', 'B', 1, 'L');
+            $pdf->Cell(123, 3.5, 'TOTAL', 'TB', 0, 'L'); $pdf->Cell(20, 3.5, '', 'TB', 0, 'L'); $pdf->Cell(25, 3.5, number_format(($subtotal + $row['I.V.A.']), 2, '.', ','), 'TB', 0, 'L'); $pdf->Cell(32, 3.5, '', 'TB', 1, 'L');
+
+            $pdf->Cell(200, 10, '', 0, 1, 'L');
+            $pdf->Cell(33.3, 3.5, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Recepción'), 'TB', 0, 'L');
+            $pdf->Cell(33.3, 3.5, 'Tanque', 'TB', 0, 'L');
+            $pdf->Cell(33.3, 3.5, 'Fecha', 'TB', 0, 'L');
+            $pdf->Cell(33.3, 3.5, 'Hora', 'TB', 0, 'L');
+            $pdf->Cell(33.3, 3.5, 'Volumen', 'TB', 0, 'L');
+            $pdf->Cell(33.3, 3.5, 'Aplicado', 'TB', 1, 'L');
+            if ($receptions = $this->documentosModel->get_receptions($row['codgas'], $row['Número'])) {
+                $pdf->SetFont('Arial', '', 7);
+                foreach ($receptions as $rec) {
+                    $pdf->Cell(33.3, 3.5, $rec['nrotrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Tanque'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['Fecha'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, $rec['hratrn'], 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 0, 'L'); $pdf->Cell(33.3, 3.5, number_format($rec['VolumenRecibido'], 3, '.', ','), 'TB', 1, 'L');
+                }
+            }
+
+            $pdf->SetFont('Arial', '', 7);
+            $pdf->Cell(40, 10, 'Conformidad Registro', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, $row['LogRegistro'], 0, 1, 'L');
+            $pdf->Cell(40, 10, iconv('UTF-8', 'ISO-8859-1//TRANSLIT', 'Conformidad Estación'), 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+            $pdf->Cell(40, 10, 'Conformidad Transportista', 0, 0, 'L'); $pdf->Cell(5, 10, ':', 0, 0, 'C'); $pdf->Cell(159, 10, '', 0, 1, 'L');
+
+            $currentY = $pdf->GetY();
+            $pdf->SetY(-18);
+            $pdf->SetFont('Arial', 'I', 7);
+            $pdf->Cell(200, 1, '', 'B', 1, 'L');
+            $pdf->SetY($currentY);
+        }
+
+        $pdf->Output();
     }
 }

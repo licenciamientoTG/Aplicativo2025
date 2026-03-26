@@ -1362,8 +1362,7 @@ class VentasModel extends Model
         $columnsList = implode(',', $columns);
 
         // Construir consulta SQL dinámica
-        $query = "
-                WITH DatosMensual AS (
+        $query = "WITH DatosMensual AS (
             SELECT
                 CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS Fecha,
                 MONTH(CONVERT(SMALLDATETIME, fch - 1, 103)) AS Mes,

@@ -1,0 +1,192 @@
+{# Modal: Crear Archivo de Contabilidad #}
+<div class="modal-body">
+
+    <!-- Instrucción compacta -->
+    <div class="d-flex align-items-start gap-2 mb-3 p-2 rounded border border-info bg-light">
+        <i class="fas fa-info-circle text-info mt-1" style="font-size:1rem; flex-shrink:0;"></i>
+        <small class="text-muted">
+            Seleccione las requisiciones que desea agrupar. Solo puede combinar requisiciones de la
+            <strong class="text-dark">misma empresa</strong>.
+        </small>
+    </div>
+
+    <form id="formCrearArchivoContabilidad">
+        <input type="hidden" id="arch_emp_cod"  name="emp_cod"      value="">
+        <input type="hidden" id="arch_emp_name" name="razon_social" value="">
+
+        <!-- ID de Contabilidad -->
+        <div class="row mb-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-bold mb-1">
+                    ID Contabilidad <span class="text-danger">*</span>
+                </label>
+                <input type="text" class="form-control form-control-sm" id="arch_accounting_id" name="accounting_id"
+                       value="{{ next_id }}" required maxlength="50">
+                <small class="text-muted" style="font-size:0.72rem;">Generado automáticamente — editable si es necesario.</small>
+            </div>
+        </div>
+
+        <!-- Tabla de requisiciones -->
+        <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+            <table class="table table-sm table-bordered table-hover mb-0" id="tablaRequisicionesArchivoModal">
+                <thead class="table-dark" style="position: sticky; top: 0; z-index: 1;">
+                    <tr>
+                        <th style="width:36px;" class="text-center">
+                            <input type="checkbox" id="checkAllRequisiciones"
+                                   title="Seleccionar todas de la misma empresa">
+                        </th>
+                        <th>ID</th>
+                        <th>Solicitud</th>
+                        <th>Fecha Pago</th>
+                        <th>Empresa</th>
+                        <th>Proveedor</th>
+                        <th class="text-center">Facts.</th>
+                        <th class="text-end">Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if requisiciones is empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <i class="fas fa-inbox fa-2x d-block mb-2 text-secondary"></i>
+                            No hay requisiciones aprobadas por Abastos pendientes de agrupar.
+                        </td>
+                    </tr>
+                    {% else %}
+                    {% for req in requisiciones %}
+                    <tr data-emp="{{ req.emp_cod }}">
+                        <td class="text-center align-middle">
+                            <input type="checkbox"
+                                   class="req-checkbox"
+                                   name="request_ids[]"
+                                   value="{{ req.id }}"
+                                   data-emp-cod="{{ req.emp_cod }}"
+                                   data-emp-name="{{ req.emp_name }}">
+                        </td>
+                        <td class="align-middle"><span class="badge bg-secondary">#{{ req.id }}</span></td>
+                        <td class="align-middle">{{ req.request_date|date('d/m/Y') }}</td>
+                        <td class="align-middle">{{ req.scheduled_payment_date ? req.scheduled_payment_date|date('d/m/Y') : '-' }}</td>
+                        <td class="align-middle"><small>{{ req.emp_name }}</small></td>
+                        <td class="align-middle"><small>{{ req.provider_name }}</small></td>
+                        <td class="text-center align-middle">{{ req.total_invoices }}</td>
+                        <td class="text-end align-middle fw-bold">
+                            ${{ req.monto_total|number_format(2, '.', ',') }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Resumen selección -->
+        <div id="resumenArchivoContabilidad" style="display:none;" class="mt-3">
+            <div class="row g-2">
+                <div class="col-4">
+                    <div class="border rounded p-2 text-center bg-light">
+                        <div class="text-muted" style="font-size:0.7rem; text-transform:uppercase; letter-spacing:.5px;">Empresa</div>
+                        <div class="fw-bold text-primary text-truncate" id="resumen_arch_empresa" style="font-size:0.85rem;">-</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="border rounded p-2 text-center bg-light">
+                        <div class="text-muted" style="font-size:0.7rem; text-transform:uppercase; letter-spacing:.5px;">Requisiciones</div>
+                        <div class="fw-bold text-primary" id="resumen_arch_count" style="font-size:1.1rem;">0</div>
+                    </div>
+                </div>
+                <div class="col-4">
+                    <div class="border rounded p-2 text-center bg-light">
+                        <div class="text-muted" style="font-size:0.7rem; text-transform:uppercase; letter-spacing:.5px;">Monto Total</div>
+                        <div class="fw-bold text-success" id="resumen_arch_monto" style="font-size:1rem;">$0.00</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </form>
+</div>
+
+<div class="modal-footer">
+    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+        <i class="fas fa-times"></i> Cancelar
+    </button>
+    <button type="button" class="btn btn-primary btn-sm" id="btnConfirmarArchivoContabilidad"
+            onclick="confirmarCrearArchivoContabilidad()" disabled>
+        <i class="fas fa-folder-plus"></i> Crear Archivo
+    </button>
+</div>
+
+<script>
+(function () {
+    var empCodBloqueado = null;
+
+    document.getElementById('checkAllRequisiciones').addEventListener('change', function () {
+        var checks = document.querySelectorAll('.req-checkbox');
+        if (this.checked) {
+            var primera = null;
+            checks.forEach(function (c) {
+                if (!primera && !c.disabled) primera = c.dataset.empCod;
+            });
+            empCodBloqueado = primera;
+            checks.forEach(function (c) {
+                if (c.dataset.empCod === empCodBloqueado) c.checked = true;
+            });
+        } else {
+            checks.forEach(function (c) { c.checked = false; });
+            empCodBloqueado = null;
+        }
+        actualizarResumenArchivo();
+    });
+
+    document.querySelectorAll('.req-checkbox').forEach(function (chk) {
+        chk.addEventListener('change', function () {
+            if (this.checked) {
+                if (!empCodBloqueado) {
+                    empCodBloqueado = this.dataset.empCod;
+                } else if (this.dataset.empCod !== empCodBloqueado) {
+                    this.checked = false;
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Empresa diferente',
+                        text: 'Solo puede agrupar requisiciones de la misma empresa.',
+                        timer: 2500,
+                        showConfirmButton: false
+                    });
+                    return;
+                }
+            }
+            var alguna = Array.from(document.querySelectorAll('.req-checkbox')).some(function(c){ return c.checked; });
+            if (!alguna) empCodBloqueado = null;
+            actualizarResumenArchivo();
+        });
+    });
+
+    function actualizarResumenArchivo() {
+        var seleccionadas = Array.from(document.querySelectorAll('.req-checkbox:checked'));
+        var count   = seleccionadas.length;
+        var monto   = 0;
+        var empName = '-';
+
+        seleccionadas.forEach(function (c) {
+            var fila = c.closest('tr');
+            var montoText = fila.cells[fila.cells.length - 1].textContent.replace(/[$,]/g, '').trim();
+            monto  += parseFloat(montoText) || 0;
+            empName = c.dataset.empName;
+        });
+
+        if (count > 0) {
+            document.getElementById('resumenArchivoContabilidad').style.display = '';
+            document.getElementById('resumen_arch_empresa').textContent = empName;
+            document.getElementById('resumen_arch_count').textContent   = count;
+            document.getElementById('resumen_arch_monto').textContent   = '$' + monto.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('arch_emp_cod').value               = empCodBloqueado || '';
+            document.getElementById('arch_emp_name').value              = empName;
+            document.getElementById('btnConfirmarArchivoContabilidad').disabled = false;
+        } else {
+            document.getElementById('resumenArchivoContabilidad').style.display = 'none';
+            document.getElementById('btnConfirmarArchivoContabilidad').disabled = true;
+            empCodBloqueado = null;
+        }
+    }
+})();
+</script>

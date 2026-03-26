@@ -3526,9 +3526,7 @@ function loadPaymentList() {
     columnDefs: [
       { targets: [5, 6, 8, 9], visible: false },
     ],
-    language: {
-      url: "//cdn.datatables.net/plug-ins/1.13.7/i18n/es-ES.json"
-    },
+
     drawCallback: function () {
       // Inicializar tooltips de Bootstrap en los auth-boxes renderizados dinámicamente
       var tooltipEls = document.querySelectorAll('#payment_list_table [data-bs-toggle="tooltip"]');
@@ -8141,6 +8139,263 @@ async function analisis_compras_table() {
       $("#tfoot_total").text("$" + fmt(totalFac));
     }
   });
+}
+
+// ============================================================
+// ARCHIVOS DE CONTABILIDAD (PDP-38 / PDP-39)
+// ============================================================
+
+var tablaArchivosContabilidad = null;
+
+/**
+ * Abre el modal para crear un archivo de contabilidad.
+ * Carga el contenido dinámicamente desde el servidor.
+ */
+async function abrirModalCrearArchivoContabilidad(providerCod, empCod) {
+  $("#modalCrearArchivoContabilidad").modal("show");
+  $("#modalCrearArchivoContabilidadContent").html(
+    `<div class="modal-body text-center py-5">
+       <i class="fas fa-spinner fa-spin fa-3x text-secondary"></i>
+       <p class="mt-3">Cargando requisiciones...</p>
+     </div>`
+  );
+
+  try {
+    const formData = new URLSearchParams();
+    if (providerCod) formData.append("provider_cod", providerCod);
+    if (empCod)      formData.append("emp_cod",      empCod);
+
+    const response = await fetch("/supply/modalCrearArchivoContabilidad", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData.toString(),
+    });
+
+    if (!response.ok) throw new Error("Error al cargar el formulario");
+
+    const content = await response.text();
+    $("#modalCrearArchivoContabilidadContent").html(content);
+  } catch (error) {
+    console.error("Error:", error);
+    $("#modalCrearArchivoContabilidadContent").html(
+      `<div class="modal-body">
+         <div class="alert alert-danger">
+           <i class="fas fa-exclamation-circle"></i>
+           Error al cargar el formulario. Intente nuevamente.
+         </div>
+       </div>
+       <div class="modal-footer">
+         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+       </div>`
+    );
+  }
+}
+
+/**
+ * Envía el form para crear el archivo de contabilidad.
+ */
+async function confirmarCrearArchivoContabilidad() {
+  const form = document.getElementById("formCrearArchivoContabilidad");
+  if (!form) return;
+
+  const checkedBoxes = form.querySelectorAll('.req-checkbox:checked');
+  if (checkedBoxes.length === 0) {
+    Swal.fire({ icon: 'warning', title: 'Sin selección', text: 'Seleccione al menos una requisición.' });
+    return;
+  }
+
+  const accountingId = document.getElementById("arch_accounting_id").value.trim();
+  if (!accountingId) {
+    Swal.fire({ icon: 'warning', title: 'ID requerido', text: 'Ingrese el ID de contabilidad.' });
+    return;
+  }
+
+  Swal.fire({
+    title: "Procesando...",
+    text: "Creando archivo de contabilidad",
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading(),
+  });
+
+  try {
+    const formData = new FormData(form);
+
+    const response = await fetch("/supply/create_accounting_group", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+    Swal.close();
+
+    if (data.success) {
+      Swal.fire({
+        icon: "success",
+        title: "Archivo creado",
+        text: "ID Contabilidad: " + data.accounting_id,
+        timer: 2000,
+        showConfirmButton: false,
+      }).then(() => {
+        $("#modalCrearArchivoContabilidad").modal("hide");
+        // Recargar tabla si el tab está activo
+        if (tablaArchivosContabilidad) {
+          tablaArchivosContabilidad.ajax.reload();
+        }
+      });
+    } else {
+      Swal.fire({ icon: "error", title: "Error", text: data.message || "No se pudo crear el archivo." });
+    }
+  } catch (error) {
+    Swal.close();
+    console.error("Error:", error);
+    Swal.fire({ icon: "error", title: "Error", text: "Error de comunicación con el servidor." });
+  }
+}
+
+/**
+ * Carga el DataTable del tab "Archivos Contabilidad".
+ * Se llama al hacer click en el tab (onclick).
+ */
+function loadAccountingGroupsTable() {
+  if (tablaArchivosContabilidad) {
+    tablaArchivosContabilidad.ajax.reload();
+    return;
+  }
+
+  tablaArchivosContabilidad = $("#tabla_archivos_contabilidad").DataTable({
+    ajax: {
+      url: "/supply/get_accounting_groups_table",
+      type: "POST",
+      dataSrc: function (json) {
+        return json.data || [];
+      },
+    },
+    columns: [
+      { data: "accounting_id" },
+      { data: "razon_social", defaultContent: "-" },
+      { data: "emp_name", defaultContent: "-" },
+      { data: "total_requisiciones", className: "text-end" },
+      {
+        data: "monto_total",
+        className: "text-end",
+        render: function (data) {
+          return "$" + parseFloat(data || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+        },
+      },
+      { data: "created_by_name", defaultContent: "-" },
+      {
+        data: "created_at",
+        render: function (data) {
+          if (!data) return "-";
+          var d = new Date(data);
+          return d.toLocaleDateString("es-MX");
+        },
+      },
+      {
+        data: null,
+        orderable: false,
+        className: "text-center",
+        render: function (data, type, row) {
+          return `<div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-dark" title="Ver facturas"
+                    onclick='abrirModalDetalleFacturasGrupo(${row.id}, "${row.accounting_id}", "${(row.emp_name||"").replace(/"/g,"&quot;")}")'>
+              <i class="fas fa-file-invoice"></i>
+            </button>
+            <button class="btn btn-outline-primary" title="Imprimir comprobantes de compra"
+                    onclick='imprimirComprobantesGrupo(${row.id})'>
+              <i class="fas fa-print"></i>
+            </button>
+          </div>`;
+        },
+      },
+    ],
+    order: [[6, "desc"]],
+    pageLength: 25,
+    responsive: true,
+  });
+}
+
+/**
+ * Abre el modal con el detalle de facturas de un grupo de contabilidad.
+ */
+async function abrirModalDetalleFacturasGrupo(groupId, accountingId, empName) {
+  const tplRes = await fetch("/supply/modalDetalleFacturasGrupo", { method: "POST" });
+  const html = await tplRes.text();
+  document.getElementById("modalDetalleFacturasGrupoContent").innerHTML = html;
+
+  document.getElementById("dfg_accounting_id").textContent = accountingId;
+  document.getElementById("dfg_empresa").textContent       = empName;
+
+  $("#modalDetalleFacturasGrupo").modal("show");
+
+  try {
+    const res = await fetch("/supply/get_accounting_group_invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: "group_id=" + groupId,
+    });
+    const data = await res.json();
+
+    document.getElementById("dfg_loading").style.display = "none";
+
+    if (!data.success || !data.data || data.data.length === 0) {
+      document.getElementById("dfg_empty").style.display = "";
+      return;
+    }
+
+    document.getElementById("dfg_tabla_container").style.display = "";
+    var tbody      = document.getElementById("dfg_tbody");
+    tbody.innerHTML = "";
+    var montoTotal  = 0;
+
+    data.data.forEach(function (inv) {
+      montoTotal += parseFloat(inv.amount || 0);
+      var vto = inv.expiration_date
+        ? new Date(inv.expiration_date).toLocaleDateString("es-MX")
+        : "-";
+
+      var badgeFactura;
+      if (parseInt(inv.tiene_factura_recibida)) {
+        badgeFactura = `<button class="btn btn-sm btn-success"
+                                title="${inv.fr_nombre_archivo || 'Ver factura'}"
+                                onclick='ModalinvoicePdf(${inv.fr_id}, {})'>
+                          <i class="fas fa-file-pdf"></i>
+                        </button>`;
+      } else {
+        badgeFactura = `<span class="badge bg-danger" title="No se descargó del correo">
+                          <i class="fas fa-times"></i>
+                        </span>`;
+      }
+
+      tbody.insertAdjacentHTML("beforeend", `<tr>
+        <td><span class="badge bg-secondary">#${inv.payment_request_id}</span></td>
+        <td><small>${inv.emp_name || "-"}</small></td>
+        <td><small>${inv.provider_name || "-"}</small></td>
+        <td>${inv.folio || "-"}</td>
+        <td>${inv.invoice_number || "-"}</td>
+        <td>${inv.codgas || "-"}</td>
+        <td>${vto}</td>
+        <td class="text-end fw-bold">$${parseFloat(inv.amount||0).toLocaleString("es-MX",{minimumFractionDigits:2})}</td>
+        <td class="text-center">${badgeFactura}</td>
+      </tr>`);
+    });
+
+    document.getElementById("dfg_total_facturas").textContent = data.data.length;
+    document.getElementById("dfg_monto_total").textContent =
+      "$" + montoTotal.toLocaleString("es-MX", { minimumFractionDigits: 2 });
+
+  } catch (e) {
+    console.error("Error cargando facturas del grupo:", e);
+    document.getElementById("dfg_loading").style.display = "none";
+    document.getElementById("dfg_empty").style.display   = "";
+  }
+}
+
+/**
+ * Abre el PDF de comprobantes de compra del grupo en nueva pestaña.
+ */
+function imprimirComprobantesGrupo(groupId) {
+  window.open("/supply/print_accounting_group_receipts/" + groupId, "_blank");
 }
 
 

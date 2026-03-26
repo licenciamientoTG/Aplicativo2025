@@ -239,10 +239,15 @@ function resetTestData() {
                                 <span class="badge bg-warning text-dark fs-6" id="count-contabilidad">0</span>
                                 <small class="d-block text-muted">pendientes</small>
                             </div>
-                            <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(70, 'Contabilidad')"
+                            <button class="btn btn-primary btn-sm w-100 mb-1" onclick="abrirModalAprobacionMasiva(70, 'Contabilidad')"
                                 id="btn-aprobar-contabilidad" disabled>
                                 <i class="fas fa-check-double"></i> Aprobar Nivel 2
                             </button>
+                            {% if authorized(70) %}
+                            <button class="btn btn-outline-secondary btn-sm w-100" onclick="abrirModalCrearArchivoContabilidad()">
+                                <i class="fas fa-folder-plus"></i> Crear Archivo
+                            </button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -305,6 +310,14 @@ function resetTestData() {
             <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas para Pago
         </a>
     </li>
+    {% if authorized(70) %}
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#tab_archivos_contabilidad"
+           id="tab_archivos_contabilidad_link" onclick="loadAccountingGroupsTable()">
+            <i class="fas fa-folder-open"></i> Archivos Contabilidad
+        </a>
+    </li>
+    {% endif %}
 
     <!-- ... otras tabs ... -->
 </ul>
@@ -568,7 +581,89 @@ function resetTestData() {
             </div>
         </div>
     </div>
+
+    {% if authorized(70) %}
+    <!-- Tab: Archivos Contabilidad -->
+    <div class="tab-pane fade" id="tab_archivos_contabilidad">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-folder-open"></i> Archivos de Contabilidad</span>
+                <button class="btn btn-sm btn-success" onclick="abrirModalCrearArchivoContabilidad()">
+                    <i class="fas fa-folder-plus"></i> Crear Archivo
+                </button>
+            </div>
+            <div class="card-body table-responsive">
+                <table id="tabla_archivos_contabilidad" class="table table-sm table-bordered table-hover w-100">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID Contabilidad</th>
+                            <th>Razón Social / Proveedor</th>
+                            <th>Empresa</th>
+                            <th class="text-end">Requisiciones</th>
+                            <th class="text-end">Monto Total</th>
+                            <th>Creado por</th>
+                            <th>Fecha</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
+
+    <!-- Modal Ver PDF Factura -->
+    <div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="ModalinvoicePdfLabel">Factura</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div id="ModalinvoicePdfContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Crear Archivo Contabilidad -->
+    {% if authorized(70) %}
+    <div class="modal fade" id="modalCrearArchivoContabilidad" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-secondary text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-folder-plus"></i> Crear Archivo de Contabilidad
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div id="modalCrearArchivoContabilidadContent">
+                    <!-- Contenido cargado dinámicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Modal Detalle Facturas Grupo Contabilidad -->
+    {% if authorized(70) %}
+    <div class="modal fade" id="modalDetalleFacturasGrupo" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-file-invoice"></i> Facturas del Archivo de Contabilidad
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div id="modalDetalleFacturasGrupoContent">
+                    <!-- Contenido estático cargado en JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Modal Base Crear Anticipo -->
     <div class="modal fade" id="modalCrearAnticipo" tabindex="-1" aria-hidden="true">
