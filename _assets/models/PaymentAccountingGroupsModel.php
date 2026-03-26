@@ -196,6 +196,24 @@ class PaymentAccountingGroupsModel extends Model
     }
 
     /**
+     * Obtiene pares (folio/nro, codgas) de todas las facturas del grupo.
+     * Usados para buscar documentos en ControlGas por nro+codgas.
+     */
+    public function get_folio_codgas_pairs_by_group(int $group_id): array
+    {
+        $query = "
+            SELECT DISTINCT pri.folio, pri.codgas
+            FROM [TG].[dbo].[payment_requests] pr
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri
+                ON pri.payment_request_id = pr.id
+            WHERE pr.accounting_group_id = ?
+              AND pri.folio IS NOT NULL
+              AND pri.codgas IS NOT NULL
+        ";
+        return $this->sql->select($query, [$group_id]) ?: [];
+    }
+
+    /**
      * Obtiene las rutas de archivos PDF de facturas recibidas asociadas a un grupo.
      * Usado para combinar PDFs en print_accounting_group_receipts().
      */

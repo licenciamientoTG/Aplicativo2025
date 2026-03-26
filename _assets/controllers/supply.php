@@ -7342,15 +7342,14 @@ class Supply
             return;
         }
 
-        $invoice_numbers = $this->PaymentAccountingGroupsModel->get_invoice_numbers_by_group($group_id);
+        $pairs = $this->PaymentAccountingGroupsModel->get_folio_codgas_pairs_by_group($group_id);
 
-        if (empty($invoice_numbers)) {
+        if (empty($pairs)) {
             echo 'No se encontraron facturas para este grupo.';
             return;
         }
 
-        $facturasLimpio = "'" . implode("','", array_map('trim', $invoice_numbers)) . "'";
-        $rows = $this->documentosModel->movement_analysis_table4($facturasLimpio);
+        $rows = $this->documentosModel->movement_analysis_by_nro_codgas($pairs);
 
         if (!$rows) {
             echo 'No se encontraron documentos en ControlGas para las facturas de este grupo.';
