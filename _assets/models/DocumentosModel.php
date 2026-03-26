@@ -1330,7 +1330,7 @@ class DocumentosModel extends Model{
             ON t5.codemp = t6.cod
 
         LEFT JOIN (
-            SELECT SUM(mto\100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
+            SELECT SUM(mto/100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
         ) AS t7 ON t1.nro    = t7.nro AND t1.codgas = t7.codgas
 
         {$where}
