@@ -62,7 +62,22 @@
             </div>
         </div>
 
-        <!-- ROBOT -->
+        <!-- ROBOT — EN MANTENIMIENTO (descomentar el bloque de abajo para reactivar) -->
+        <div class="col-md-3 mb-4">
+            <div class="card bank-card shadow-sm h-100 border-secondary" style="opacity:.55;cursor:not-allowed;">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <div style="font-size: 3rem; color: #adb5bd; margin-bottom: 10px;">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <h5 class="font-weight-bold text-secondary">Robot Extractor</h5>
+                    <p class="small text-muted">Abre el portal y escanea transacciones automáticamente (Local/Remoto)</p>
+                    <span class="badge badge-secondary px-3 py-2 rounded-pill" style="font-size:.8rem;">
+                        <i class="fas fa-tools mr-1"></i> En Mantenimiento
+                    </span>
+                </div>
+            </div>
+        </div>
+        <!--
         <div class="col-md-3 mb-4">
             <div class="card bank-card shadow-sm h-100 border-warning" onclick="openRobotModal()">
                 <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
@@ -75,6 +90,7 @@
                 </div>
             </div>
         </div>
+        -->
 
         <!-- AMEX -->
         <div class="col-md-3 mb-4">
@@ -96,6 +112,47 @@
                     <h5 class="font-weight-bold">AFIRME</h5>
                     <p class="small text-muted">Carga manual de reportes .CSV</p>
                     <button class="btn btn-success btn-sm rounded-pill px-4">Subir Reporte</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SECCIÓN: COMISIONES ── -->
+    <div class="row px-1 mb-2">
+        <div class="col-12">
+            <div class="d-flex align-items-center gap-2" style="gap:10px;">
+                <hr class="flex-grow-1 m-0" style="border-color:#dee2e6;">
+                <span class="px-3 py-1 rounded-pill text-uppercase font-weight-bold small"
+                      style="background:#f0f4ff;color:#3b5bdb;border:1px solid #bac8ff;white-space:nowrap;letter-spacing:.04em;">
+                    <i class="fas fa-percentage mr-1"></i> Comisiones
+                </span>
+                <hr class="flex-grow-1 m-0" style="border-color:#dee2e6;">
+            </div>
+            <p class="text-muted small text-center mt-1 mb-3">
+                Archivos con desglose de comisiones e IVA cobrados por la institución sobre cada depósito.
+                Se usan para completar el monto bruto en la conciliación.
+            </p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- AMEX — Reporte de Envíos -->
+        <div class="col-md-3 mb-4">
+            <div class="card shadow-sm h-100" style="border-radius:15px;overflow:hidden;border:2px solid #bac8ff;cursor:pointer;transition:transform .2s,box-shadow .2s;"
+                 onmouseover="this.style.transform='translateY(-5px)';this.style.boxShadow='0 10px 20px rgba(0,0,0,.1)'"
+                 onmouseout="this.style.transform='';this.style.boxShadow=''"
+                 onclick="openAmexComisionesModal()">
+                <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/American_Express_logo_%282018%29.svg/1200px-American_Express_logo_%282018%29.svg.png"
+                         alt="AMEX" class="bank-logo"
+                         onerror="this.src='/_assets/images/logos/Logo.png'">
+                    <h5 class="font-weight-bold">AMEX — Envíos</h5>
+                    <p class="small text-muted mb-2">Reporte de comisiones e IVA por depósito (.CSV / .XLSX)</p>
+                    <div id="amex-com-status" class="mb-2" style="min-height:22px;"></div>
+                    <button class="btn btn-sm rounded-pill px-4 font-weight-bold"
+                            style="background:#3b5bdb;color:#fff;border:none;">
+                        <i class="fas fa-upload mr-1"></i> Subir Comisiones
+                    </button>
                 </div>
             </div>
         </div>
@@ -128,6 +185,53 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-success" onclick="executeUpload()">Iniciar Carga</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal AMEX Comisiones -->
+<div class="modal fade" id="modalAmexComisiones" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#3b5bdb;color:#fff;">
+                <h5 class="modal-title font-weight-bold">
+                    <i class="fas fa-percentage mr-2"></i> Subir Reporte de Comisiones — AMEX
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">
+                    Selecciona el archivo exportado del portal AMEX (<strong>Envíos</strong>).
+                    Puedes subir varios archivos del mismo mes — los registros duplicados se omiten automáticamente.
+                </p>
+                <div id="amex-com-ultimo-upload" class="mb-3" style="display:none;">
+                    <div class="alert alert-info py-2 mb-0 small">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        <span id="amex-com-ultimo-texto"></span>
+                    </div>
+                </div>
+                <form id="formAmexComisiones" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label class="form-label font-weight-bold">Archivo del reporte:</label>
+                        <input type="file" name="report_file" id="amexComFile" class="form-control" accept=".csv,.xlsx,.xls">
+                    </div>
+                    <div id="amexComProgress" style="display:none;">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                 style="background:#3b5bdb;" role="progressbar" style="width:100%"></div>
+                        </div>
+                        <p class="text-center small text-muted">Procesando registros, por favor espere...</p>
+                    </div>
+                    <div id="amexComResult" style="display:none;"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn font-weight-bold" id="btnAmexComSubir"
+                        style="background:#3b5bdb;color:#fff;" onclick="executeAmexComisionesUpload()">
+                    <i class="fas fa-upload mr-1"></i> Iniciar Carga
+                </button>
             </div>
         </div>
     </div>
@@ -479,5 +583,111 @@
             }
         });
     }
+
+    // ── AMEX COMISIONES ────────────────────────────────────────
+    function openAmexComisionesModal() {
+        $('#amexComFile').val('');
+        $('#amexComProgress').hide();
+        $('#amexComResult').hide().empty();
+        $('#btnAmexComSubir').attr('disabled', false);
+
+        // Consultar estado del último upload del mes actual
+        const now   = new Date();
+        const year  = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+
+        $.get(`/income/get_amex_comisiones?year=${year}&month=${month}`, function(resp) {
+            const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+            if (data.status === 'success' && data.ultimo_upload) {
+                const u = data.ultimo_upload;
+                const fecha = u.created_at ? u.created_at.substring(0, 16).replace('T', ' ') : '';
+                $('#amex-com-ultimo-texto').html(
+                    `Último archivo: <strong>${escHtmlSimple(u.nombre_archivo)}</strong> — `
+                    + `<strong>${data.total_registros}</strong> registros en BD`
+                    + (fecha ? ` (${fecha})` : '')
+                );
+                $('#amex-com-ultimo-upload').show();
+            } else {
+                $('#amex-com-ultimo-upload').hide();
+            }
+        }).fail(function() { $('#amex-com-ultimo-upload').hide(); });
+
+        $('#modalAmexComisiones').modal('show');
+    }
+
+    function executeAmexComisionesUpload() {
+        const fileInput = $('#amexComFile')[0];
+        const file = fileInput.files[0];
+        if (!file) { alert('Por favor selecciona un archivo.'); return; }
+
+        $('#amexComProgress').show();
+        $('#amexComResult').hide().empty();
+        $('#btnAmexComSubir').attr('disabled', true);
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const base64Data = e.target.result.split(',')[1];
+            $.ajax({
+                url: '/income/upload_amex_comisiones',
+                type: 'POST',
+                data: { file_name: file.name, file_data: base64Data },
+                success: function(resp) {
+                    $('#amexComProgress').hide();
+                    $('#btnAmexComSubir').attr('disabled', false);
+                    let data = {};
+                    try { data = typeof resp === 'string' ? JSON.parse(resp) : resp; } catch(e) {}
+                    if (data.status === 'success') {
+                        $('#amexComResult').html(
+                            `<div class="alert alert-success py-2 small mb-0">
+                                <i class="fas fa-check-circle mr-1"></i>
+                                <strong>${data.inserted}</strong> registros nuevos insertados.
+                                ${data.skipped > 0 ? `<strong>${data.skipped}</strong> duplicados omitidos.` : ''}
+                                ${data.errors  > 0 ? `<strong>${data.errors}</strong> filas con errores de formato.` : ''}
+                            </div>`
+                        ).show();
+                        actualizarStatusAmex();
+                    } else {
+                        $('#amexComResult').html(
+                            `<div class="alert alert-danger py-2 small mb-0">
+                                <i class="fas fa-exclamation-circle mr-1"></i> ${data.message || 'Error desconocido'}
+                            </div>`
+                        ).show();
+                    }
+                },
+                error: function() {
+                    $('#amexComProgress').hide();
+                    $('#btnAmexComSubir').attr('disabled', false);
+                    alert('Error de conexión con el servidor.');
+                }
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function actualizarStatusAmex() {
+        const now   = new Date();
+        const year  = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        $.get(`/income/get_amex_comisiones?year=${year}&month=${month}`, function(resp) {
+            const data = typeof resp === 'string' ? JSON.parse(resp) : resp;
+            const $s = $('#amex-com-status');
+            if (data.status === 'success' && data.total_registros > 0) {
+                $s.html(`<span class="badge badge-success px-2 py-1" style="font-size:.75rem;">
+                            <i class="fas fa-check mr-1"></i>${data.total_registros} registros cargados
+                         </span>`);
+            } else {
+                $s.html(`<span class="badge badge-warning px-2 py-1" style="font-size:.75rem;">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>Sin datos este mes
+                         </span>`);
+            }
+        });
+    }
+
+    function escHtmlSimple(str) {
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Cargar estado AMEX al iniciar la página
+    $(document).ready(function() { actualizarStatusAmex(); });
 </script>
 {% endblock %}

@@ -2698,17 +2698,21 @@ public function anomalies_client_tickets()
                 while ($r = $stmtH->fetch(PDO::FETCH_ASSOC)) {
                     $fch = ($r['Fecha_Transaccion'] instanceof DateTime) ? $r['Fecha_Transaccion']->format('Y-m-d') : substr((string)$r['Fecha_Transaccion'], 0, 10);
                     $hora_db = trim($r['Hora'] ?? '');
-                    if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $hora_db)) {
-                        $parts = explode(':', $hora_db);
-                        $hora_db = sprintf("%02d:%02d:%02d", $parts[0], $parts[1], $parts[2]);
+                    // SQL Server time type returns HH:MM:SS.NNNNNNN — strip fractional part before normalizing
+                    if (preg_match('/^(\d{1,2}):(\d{2}):(\d{2})/', $hora_db, $hm)) {
+                        $hora_db = sprintf("%02d:%02d:%02d", $hm[1], $hm[2], $hm[3]);
                     }
                     $afil_db  = ltrim(trim($r['Afiliacion']??''), '0');
                     $idext_db = trim($r['ID_Externo']??'');
+                    if (preg_match('/^="(.*)"$/', $idext_db, $em)) $idext_db = $em[1];
                     $monto_db = number_format((float)$r['Monto'], 2, '.', '');
                     $auth_db  = trim($r['Codigo_Autorizacion']??'');
+                    if (preg_match('/^="(.*)"$/', $auth_db, $em)) $auth_db = $em[1];
                     $term_db  = trim($r['Terminal']??'');
+                    if (preg_match('/^="(.*)"$/', $term_db, $em)) $term_db = $em[1];
                     // Normalizar Referencia: quitar sufijo ".0" de valores numéricos guardados desde CSV
                     $ref_db = trim($r['Referencia']??'');
+                    if (preg_match('/^="(.*)"$/', $ref_db, $em)) $ref_db = $em[1];
                     if (preg_match('/^\d+\.0$/', $ref_db)) $ref_db = (string)((int)((float)$ref_db));
                     // Clave 8 campos
                     $key = "$afil_db|$idext_db|$fch|$monto_db|$hora_db|$auth_db|$ref_db|$term_db";
@@ -2729,7 +2733,9 @@ public function anomalies_client_tickets()
                     foreach($columnas_oficiales as $col) {
                         if ($col === 'Nombre_Archivo') { $dataRow[$col] = $dbFilePath; continue; }
                         $val = isset($mappedIndices[$col]) ? $row[$mappedIndices[$col]] : null;
-                        
+                        // Strip Excel formula notation: ="VALUE" → VALUE
+                        if (is_string($val) && preg_match('/^="(.*)"$/', $val, $em)) $val = $em[1];
+
                         if ($col === 'Monto') $val = (float)str_replace(['$', ','], '', $val ?? 0);
                         if ($col === 'Fecha_Transaccion' || $col === 'Fecha_Deposito') {
                             if ($val && trim((string)$val) !== '-') {
@@ -8454,6 +8460,268 @@ public function stamped_invoices_detail(): void
             ? ['status' => 'success', 'message' => 'Reporte enviado correctamente.' . ($tmpFiles ? ' (' . count($tmpFiles) . ' captura(s) adjunta(s))' : '')]
             : ['status' => 'error',   'message' => 'No se pudo enviar el reporte.']
         );
+        exit;
+    }
+
+    // =========================================================================
+    // AMEX COMISIONES — Carga del reporte de envíos (CSV / XLSX)
+    // =========================================================================
+
+    public function upload_amex_comisiones() {
+        set_time_limit(0);
+        ini_set('memory_limit', '-1');
+        ob_clean();
+        header('Content-Type: application/json');
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['status' => 'error', 'message' => 'Método no permitido']); exit;
+        }
+
+        // ── Recibir archivo (base64 o upload tradicional) ──────────────────
+        $originalName = $_POST['file_name'] ?? ($_FILES['report_file']['name'] ?? 'amex_comisiones.csv');
+        $extension    = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+        $targetDir = __DIR__ . '/../uploads/AMEX_COMISIONES/' . date('Y') . '/' . date('m') . '/';
+        if (!file_exists($targetDir)) mkdir($targetDir, 0777, true);
+
+        $safeName  = date('His') . '_' . basename($originalName);
+        $filePath  = $targetDir . $safeName;
+
+        if (!empty($_POST['file_data'])) {
+            if (file_put_contents($filePath, base64_decode($_POST['file_data'])) === false) {
+                echo json_encode(['status' => 'error', 'message' => 'Error al guardar el archivo']); exit;
+            }
+        } elseif (isset($_FILES['report_file']) && $_FILES['report_file']['error'] === UPLOAD_ERR_OK) {
+            if (!move_uploaded_file($_FILES['report_file']['tmp_name'], $filePath)) {
+                echo json_encode(['status' => 'error', 'message' => 'Error al mover el archivo']); exit;
+            }
+        } else {
+            echo json_encode(['status' => 'error', 'message' => 'No se recibió ningún archivo']); exit;
+        }
+
+        // ── Parsear filas del reporte ───────────────────────────────────────
+        $rows = [];
+
+        if (in_array($extension, ['xlsx', 'xls'])) {
+            // Leer con PhpSpreadsheet
+            try {
+                $spreadsheet = IOFactory::load($filePath);
+                $sheet       = $spreadsheet->getActiveSheet();
+                $allRows     = $sheet->toArray(null, true, true, false);
+                // Buscar fila de encabezados: contiene "Número de establecimiento que envía"
+                $headerIdx = null;
+                foreach ($allRows as $i => $row) {
+                    foreach ($row as $cell) {
+                        if ($cell !== null && stripos((string)$cell, 'establecimiento') !== false) {
+                            $headerIdx = $i; break 2;
+                        }
+                    }
+                }
+                if ($headerIdx === null) {
+                    echo json_encode(['status' => 'error', 'message' => 'No se encontró la fila de encabezados en el archivo']); exit;
+                }
+                $dataRows = array_slice($allRows, $headerIdx + 1);
+                foreach ($dataRows as $row) {
+                    if (empty(array_filter($row, fn($v) => $v !== null && $v !== ''))) continue;
+                    $rows[] = array_values($row);
+                }
+            } catch (\Exception $e) {
+                echo json_encode(['status' => 'error', 'message' => 'Error leyendo el archivo Excel: ' . $e->getMessage()]); exit;
+            }
+        } else {
+            // Leer CSV — detectar encabezados en la fila que empiece con "Número de establecimiento"
+            $handle = fopen($filePath, 'r');
+            if (!$handle) {
+                echo json_encode(['status' => 'error', 'message' => 'No se pudo abrir el archivo']); exit;
+            }
+            $headerFound = false;
+            while (($line = fgetcsv($handle, 0, ',')) !== false) {
+                if (!$headerFound) {
+                    // Detectar fila de encabezados
+                    $first = isset($line[0]) ? trim((string)$line[0]) : '';
+                    if (stripos($first, 'establecimiento') !== false || stripos($first, 'N') !== false && stripos($first, 'mero') !== false) {
+                        $headerFound = true;
+                    }
+                    continue;
+                }
+                if (empty(array_filter($line, fn($v) => trim($v) !== ''))) continue;
+                $rows[] = $line;
+            }
+            fclose($handle);
+        }
+
+        if (empty($rows)) {
+            echo json_encode(['status' => 'error', 'message' => 'No se encontraron filas de datos en el archivo']); exit;
+        }
+
+        // ── Helper: parsear montos AMEX ─────────────────────────────────────
+        // Formatos: "MXN$ 2,190.19" | "(MXN$ 24.09)" | MXN$ 879.26
+        $parseMonto = function(string $raw): float {
+            $s = preg_replace('/[^0-9.()\-]/', '', str_replace(',', '', $raw));
+            // Paréntesis = positivo (son descuentos que sumamos como positivos)
+            $s = trim($s, '()');
+            return (float)$s;
+        };
+
+        // ── Helper: parsear fecha DD/M/YYYY o DD/MM/YYYY → Y-m-d ───────────
+        $parseFecha = function(string $raw): ?string {
+            $raw = trim($raw);
+            if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $raw, $m)) {
+                return sprintf('%04d-%02d-%02d', (int)$m[3], (int)$m[2], (int)$m[1]);
+            }
+            return null;
+        };
+
+        // ── Helper: normalizar establecimiento (quitar ceros líderes) ───────
+        $normalizeAfil = function(string $raw): string {
+            $t = trim($raw);
+            return ltrim($t, '0') ?: $t;
+        };
+
+        // ── Conexión BD ─────────────────────────────────────────────────────
+        try {
+            $conn = new PDO("sqlsrv:Server=192.168.0.6;Database=TG", "cguser", "sahei1712");
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch (\Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error de conexión a BD: ' . $e->getMessage()]); exit;
+        }
+
+        // ── Insertar log de upload ───────────────────────────────────────────
+        $uploadedBy = $_SESSION['tg_user']['Id'] ?? null;
+        $conn->prepare("INSERT INTO AMEX_Envios_Uploads (nombre_archivo, anio, mes, total_filas, uploaded_by)
+                        VALUES (?, ?, ?, 0, ?)")
+             ->execute([$originalName, date('Y'), date('m'), $uploadedBy]);
+        $uploadId = (int)$conn->lastInsertId();
+
+        // ── Procesar e insertar filas ────────────────────────────────────────
+        $stmtCheck = $conn->prepare(
+            "SELECT COUNT(*) FROM AMEX_Envios
+             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ?"
+        );
+        $stmtIns = $conn->prepare(
+            "INSERT INTO AMEX_Envios
+                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        );
+
+        $inserted = 0;
+        $skipped  = 0;
+        $errors   = 0;
+
+        foreach ($rows as $row) {
+            // Columnas esperadas:
+            // [0] Número de establecimiento  [1] Fecha transacción  [2] Cargos totales
+            // [3] Fecha de pago              [4] Monto del pago     [5] Monto del descuento  [6] IVA
+            if (count($row) < 7) { $errors++; continue; }
+
+            $establecimiento  = $normalizeAfil((string)($row[0] ?? ''));
+            $fechaTransStr    = (string)($row[1] ?? '');
+            $cargosStr        = (string)($row[2] ?? '');
+            $fechaPagoStr     = (string)($row[3] ?? '');
+            $montoPagoStr     = (string)($row[4] ?? '');
+            $comisionStr      = (string)($row[5] ?? '');
+            $ivaStr           = (string)($row[6] ?? '');
+
+            if ($establecimiento === '') { $errors++; continue; }
+
+            $fechaTrans = $parseFecha($fechaTransStr);
+            $fechaPago  = $parseFecha($fechaPagoStr);
+            if (!$fechaTrans || !$fechaPago) { $errors++; continue; }
+
+            $cargos   = $parseMonto($cargosStr);
+            $montoPago = $parseMonto($montoPagoStr);
+            $comision = $parseMonto($comisionStr);
+            $iva      = $parseMonto($ivaStr);
+
+            if ($cargos <= 0) { $errors++; continue; }
+
+            // Antiduplicado
+            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos]);
+            if ((int)$stmtCheck->fetchColumn() > 0) { $skipped++; continue; }
+
+            try {
+                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva]);
+                $inserted++;
+            } catch (\Exception $e) {
+                // Violación de índice único (race condition) — tratar como duplicado
+                $skipped++;
+            }
+        }
+
+        // Actualizar total_filas en el log
+        $conn->prepare("UPDATE AMEX_Envios_Uploads SET total_filas = ? WHERE id = ?")
+             ->execute([$inserted, $uploadId]);
+
+        echo json_encode([
+            'status'   => 'success',
+            'inserted' => $inserted,
+            'skipped'  => $skipped,
+            'errors'   => $errors,
+            'message'  => "$inserted registros nuevos insertados. $skipped duplicados omitidos."
+                        . ($errors > 0 ? " $errors filas con errores de formato." : '')
+        ]);
+        exit;
+    }
+
+    // =========================================================================
+    // AMEX COMISIONES — Consulta agrupada por establecimiento + fecha_pago
+    // =========================================================================
+
+    public function get_amex_comisiones() {
+        ob_clean();
+        header('Content-Type: application/json');
+
+        $year  = $_GET['year']  ?? date('Y');
+        $month = $_GET['month'] ?? date('m');
+
+        try {
+            $conn = new PDO("sqlsrv:Server=192.168.0.6;Database=TG", "cguser", "sahei1712");
+            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+            // Verificar si hay datos para este mes (para saber si se subió el archivo)
+            $stmtCheck = $conn->prepare(
+                "SELECT COUNT(*) FROM AMEX_Envios
+                 WHERE YEAR(fecha_pago) = ? AND MONTH(fecha_pago) = ?"
+            );
+            $stmtCheck->execute([$year, $month]);
+            $totalRegistros = (int)$stmtCheck->fetchColumn();
+
+            // Datos agrupados: un registro por establecimiento + fecha_pago
+            $stmt = $conn->prepare(
+                "SELECT
+                    establecimiento,
+                    CONVERT(VARCHAR(10), fecha_pago, 23) AS fecha_pago,
+                    SUM(cargos_totales) AS total_bruto,
+                    SUM(monto_pago)     AS total_neto,
+                    SUM(comision)       AS total_comision,
+                    SUM(iva)            AS total_iva
+                 FROM AMEX_Envios
+                 WHERE YEAR(fecha_pago) = ? AND MONTH(fecha_pago) = ?
+                 GROUP BY establecimiento, fecha_pago
+                 ORDER BY fecha_pago, establecimiento"
+            );
+            $stmt->execute([$year, $month]);
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Último upload del mes
+            $stmtUpload = $conn->prepare(
+                "SELECT TOP 1 nombre_archivo, created_at, total_filas
+                 FROM AMEX_Envios_Uploads
+                 WHERE anio = ? AND mes = ?
+                 ORDER BY created_at DESC"
+            );
+            $stmtUpload->execute([$year, $month]);
+            $ultimoUpload = $stmtUpload->fetch(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'status'         => 'success',
+                'data'           => $data,
+                'total_registros'=> $totalRegistros,
+                'ultimo_upload'  => $ultimoUpload ?: null
+            ]);
+        } catch (\Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage(), 'data' => []]);
+        }
         exit;
     }
 }
