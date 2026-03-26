@@ -196,6 +196,27 @@ class PaymentAccountingGroupsModel extends Model
     }
 
     /**
+     * Obtiene las rutas de archivos PDF de facturas recibidas asociadas a un grupo.
+     * Usado para combinar PDFs en print_accounting_group_receipts().
+     */
+    public function get_invoice_pdf_paths_by_group(int $group_id): array
+    {
+        $query = "
+            SELECT DISTINCT fr.RutaArchivo
+            FROM [TG].[dbo].[payment_requests] pr
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri
+                ON pri.payment_request_id = pr.id
+            INNER JOIN [TG].[dbo].[FacturasRecibidas] fr
+                ON fr.UUID = pri.uuid
+                AND fr.RutaArchivo IS NOT NULL
+                AND fr.RutaArchivo != ''
+            WHERE pr.accounting_group_id = ?
+        ";
+        $rows = $this->sql->select($query, [$group_id]) ?: [];
+        return array_column($rows, 'RutaArchivo');
+    }
+
+    /**
      * Obtiene las requisiciones aprobadas por abastos (nivel 66) que aún no tienen grupo.
      * La agrupación es por empresa nuestra (emp_cod de SG12).
      */

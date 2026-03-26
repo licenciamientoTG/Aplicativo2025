@@ -2,6 +2,7 @@
     "require": {
         "twig/twig": "^3.0",
         "phpmailer/phpmailer": "^6.9.1",
-        "phpoffice/phpspreadsheet": "^2.2"
+        "phpoffice/phpspreadsheet": "^2.2",
+        "setasign/fpdi": "^2.6"
     }
 }

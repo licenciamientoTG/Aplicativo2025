@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => '__root__',
-        'pretty_version' => '1.0.0+no-version-set',
-        'version' => '1.0.0.0',
-        'reference' => NULL,
+        'pretty_version' => 'dev-main',
+        'version' => 'dev-main',
+        'reference' => '29d2e50f29f70ac5fa9cbbeb13b1c164fa963f35',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -11,9 +11,9 @@
     ),
     'versions' => array(
         '__root__' => array(
-            'pretty_version' => '1.0.0+no-version-set',
-            'version' => '1.0.0.0',
-            'reference' => NULL,
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '29d2e50f29f70ac5fa9cbbeb13b1c164fa963f35',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -97,6 +97,15 @@
             'reference' => '764e0b3939f5ca87cb904f570ef9be2d78a07865',
             'type' => 'library',
             'install_path' => __DIR__ . '/../psr/simple-cache',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'setasign/fpdi' => array(
+            'pretty_version' => 'v2.6.6',
+            'version' => '2.6.6.0',
+            'reference' => 'de0cf35911be3e9ea63b48e0f307883b1c7c48ac',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../setasign/fpdi',
             'aliases' => array(),
             'dev_requirement' => false,
         ),

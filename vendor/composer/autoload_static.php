@@ -12,6 +12,10 @@ class ComposerStaticInitdde161faf7e0a4d226ca801c966ab1ce
     );
 
     public static $prefixLengthsPsr4 = array (
+        's' => 
+        array (
+            'setasign\\Fpdi\\' => 14,
+        ),
         'Z' => 
         array (
             'ZipStream\\' => 10,
@@ -44,6 +48,10 @@ class ComposerStaticInitdde161faf7e0a4d226ca801c966ab1ce
     );
 
     public static $prefixDirsPsr4 = array (
+        'setasign\\Fpdi\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/setasign/fpdi/src',
+        ),
         'ZipStream\\' => 
         array (
             0 => __DIR__ . '/..' . '/maennchen/zipstream-php/src',

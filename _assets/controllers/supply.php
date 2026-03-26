@@ -7349,9 +7349,7 @@ class Supply
             return;
         }
 
-        // Construir lista entre comillas para la query
         $facturasLimpio = "'" . implode("','", array_map('trim', $invoice_numbers)) . "'";
-
         $rows = $this->documentosModel->movement_analysis_table4($facturasLimpio);
 
         if (!$rows) {
@@ -7359,6 +7357,7 @@ class Supply
             return;
         }
 
+        // --- 1. Generar comprobantes con FPDF normal ---
         $pdf = new PDF_Code128();
         $pdf->SetMargins(5, 5, 5);
         $pdf->SetAutoPageBreak(true, 12);
@@ -7440,6 +7439,57 @@ class Supply
             $pdf->SetY($currentY);
         }
 
-        $pdf->Output();
+        // Volcar comprobantes a string en memoria
+        $comprobantesStr = $pdf->Output('S');
+
+        // --- 2. Obtener rutas de facturas PDF del grupo ---
+        $facturasPdf = $this->PaymentAccountingGroupsModel->get_invoice_pdf_paths_by_group($group_id);
+
+        // Si no hay facturas PDF, entregar solo los comprobantes
+        if (empty($facturasPdf)) {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="comprobantes_grupo_' . $group_id . '.pdf"');
+            echo $comprobantesStr;
+            return;
+        }
+
+        // --- 3. Combinar con FPDI ---
+        $fpdi = new \setasign\Fpdi\Fpdi();
+        $fpdi->SetAutoPageBreak(false);
+
+        // Importar páginas de los comprobantes
+        $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($comprobantesStr));
+        $totalComprobantes = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($comprobantesStr));
+        for ($i = 1; $i <= $totalComprobantes; $i++) {
+            $tpl  = $fpdi->importPage($i);
+            $size = $fpdi->getTemplateSize($tpl);
+            $fpdi->AddPage($size['width'] > $size['height'] ? 'L' : 'P', [$size['width'], $size['height']]);
+            $fpdi->useTemplate($tpl, 0, 0, $size['width'], $size['height']);
+        }
+
+        // Importar cada factura PDF
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        foreach ($facturasPdf as $ruta) {
+            $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
+            $real = realpath($ruta);
+            if (!$real || strpos($real, $baseAllowed) !== 0 || !is_readable($real)) {
+                continue; // Saltar archivos no accesibles
+            }
+            try {
+                $totalPages = $fpdi->setSourceFile($real);
+                for ($i = 1; $i <= $totalPages; $i++) {
+                    $tpl  = $fpdi->importPage($i);
+                    $size = $fpdi->getTemplateSize($tpl);
+                    $fpdi->AddPage($size['width'] > $size['height'] ? 'L' : 'P', [$size['width'], $size['height']]);
+                    $fpdi->useTemplate($tpl, 0, 0, $size['width'], $size['height']);
+                }
+            } catch (\Exception $e) {
+                error_log("Error importando factura PDF ($real): " . $e->getMessage());
+            }
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="comprobantes_grupo_' . $group_id . '.pdf"');
+        echo $fpdi->Output('S');
     }
 }
