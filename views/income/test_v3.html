@@ -215,6 +215,14 @@
 
     /* CIERRE MES */
     .mes-cerrado-banner { background:#d1e7dd;border-left:4px solid #198754;padding:8px 14px;font-size:.85rem;font-weight:600;color:#0f5132; }
+
+    /* AMEX COMISIONES */
+    .amex-badge-iva  { display:inline-block;font-size:.63rem;font-weight:700;color:#fff;background:#6610f2;border-radius:4px;padding:1px 5px;margin-right:3px;vertical-align:middle;font-family:'Consolas',monospace; }
+    .amex-badge-com  { display:inline-block;font-size:.63rem;font-weight:700;color:#fff;background:#0d6efd;border-radius:4px;padding:1px 5px;margin-right:4px;vertical-align:middle;font-family:'Consolas',monospace; }
+    .amex-badge-lock { display:inline-flex;align-items:center;gap:3px;font-size:.63rem;font-weight:700;color:#fff;background:#fd7e14;border-radius:4px;padding:2px 6px;margin-right:6px;vertical-align:middle; }
+    .row-sin-comision { background:#fff8f0!important;border-left:5px solid #fd7e14!important;pointer-events:none!important;cursor:not-allowed!important;opacity:.85; }
+    .row-sin-comision .row-line1 { color:#c0540a!important; }
+    .row-sin-comision .font-numeric { color:#c0540a!important; }
 </style>
 
 <div class="loading-overlay"><div class="loading-spinner"></div></div>
@@ -1016,8 +1024,7 @@ const URLS_V3 = {
     mover_diferido:      '/income/mover_diferido_v3',
     cancelar_diferido:   '/income/cancelar_diferido_v3',
     report_bug:          '/income/report_bug_v3',
-    detectar_cambios_tes:    '/income/detectar_cambios_tes',
-    sincronizar_tes_montos:  '/income/sincronizar_tes_montos',
+    amex_comisiones:     '/income/get_amex_comisiones',
 };
 
 // Misma tabla de endpoints que V2 — misma fuente de datos para Tesorería
@@ -1056,6 +1063,10 @@ let tesData = [];
 let txData  = [];
 let conciliadasSet = new Set();     // grupo_id ya conciliados
 let historial = [];                 // detalles conciliados actuales
+
+// AMEX Comisiones — mapa: "YYYY-MM-DD_ESTABLECIMIENTO" → { comision, iva, bruto }
+let amexComisiones = {};
+let isAmex = false;   // true cuando bancoId === 3
 
 // Tránsitos CG V3
 // enTransito: { [corte_ref_id]: { id, monto_corte, monto_transito, monto_efectivo, ... } }
@@ -1227,6 +1238,9 @@ function actualizarTodo() {
     const estid = $('#estacionSelect').val();
     const mes   = `${year}-${month}`;
 
+    isAmex = (eid === 3);
+    if (!isAmex) amexComisiones = {};   // limpiar si cambiamos de banco
+
     // Llamadas en paralelo — renderizado único al final para que todos los datos estén disponibles
     Promise.all([
         fetchCG(estid, year, month),
@@ -1237,6 +1251,7 @@ function actualizarTodo() {
         fetchTransitosCG(estid, eid, afil, year, month),
         fetchDiferidosCG(estid, eid, afil, year, month),
         checkMesCerrado(estid, eid, afil, mes),
+        isAmex ? fetchAmexComisiones(year, month) : Promise.resolve(),
     ]).finally(() => {
         body_loading(false);
         // Render único después de que TODOS los datos cargaron
@@ -1314,6 +1329,28 @@ async function fetchTesoreria(eid, year, month) {
             sucursal:    ''
         }));
     } catch(e) { tesData = []; }
+}
+
+// ── FETCH AMEX COMISIONES ─────────────────────────────────────
+// Construye amexComisiones: mapa "YYYY-MM-DD_ESTABLECIMIENTO" → { comision, iva, bruto, neto }
+// El establecimiento se normaliza igual que la afiliación en Tesorería (sin ceros líderes)
+async function fetchAmexComisiones(year, month) {
+    amexComisiones = {};
+    try {
+        const r    = await fetch(`${URLS_V3.amex_comisiones}?year=${year}&month=${month}`);
+        const json = await r.json();
+        if (json.status !== 'success') return;
+        json.data.forEach(row => {
+            const est  = String(row.establecimiento || '').replace(/^0+/, '') || String(row.establecimiento || '');
+            const key  = `${row.fecha_pago}_${est}`;
+            amexComisiones[key] = {
+                comision: parseFloat(row.total_comision || 0),
+                iva:      parseFloat(row.total_iva     || 0),
+                bruto:    parseFloat(row.total_bruto   || 0),
+                neto:     parseFloat(row.total_neto    || 0),
+            };
+        });
+    } catch(e) { amexComisiones = {}; }
 }
 
 // ── FETCH TX (informativo) ────────────────────────────────────
@@ -1858,6 +1895,31 @@ function renderCG() {
     $('#cg-counter').text(fmt.format(grandTotal));
 }
 
+// ── HELPER: buscar comisión AMEX para un item de tesData ─────
+// Extrae las afiliaciones de all_refs y suma las comisiones encontradas en amexComisiones
+function getAmexComision(item) {
+    if (!isAmex) return null;
+    const fecha    = (item.fecha || '').substring(0, 10);
+    const allRefs  = [...new Set([item.id_origen, ...(item.all_refs || [])].filter(Boolean))];
+    let totalCom = 0, totalIva = 0, totalBruto = 0, found = false;
+    allRefs.forEach(r => {
+        // ref tiene formato "YYYY-MM-DD_AFILIACION" — extraer afiliacion
+        const parts = r.split('_');
+        if (parts.length < 2) return;
+        const afil = parts.slice(1).join('_');   // por si la afiliación contiene guiones bajos
+        const normalAfil = afil.replace(/^0+/, '') || afil;
+        const key  = `${fecha}_${normalAfil}`;
+        if (amexComisiones[key]) {
+            totalCom   += amexComisiones[key].comision;
+            totalIva   += amexComisiones[key].iva;
+            totalBruto += amexComisiones[key].bruto;
+            found = true;
+        }
+    });
+    if (!found) return null;
+    return { comision: totalCom, iva: totalIva, bruto: totalBruto };
+}
+
 // ── RENDER TESORERÍA (flat — un total por día, sin desplegable) ──
 function renderTes() {
     const $c = $('#tes-content').empty();
@@ -1876,14 +1938,18 @@ function renderTes() {
         const monto  = parseFloat(item.monto || 0);
         const fecha  = item.fecha || '';
         const desc   = item.descripcion || '';
-        grandTotal  += monto;
+
+        // ── Enriquecimiento AMEX ──────────────────────────────
+        const amexCom  = isAmex ? getAmexComision(item) : null;
+        const tieneComision = amexCom !== null;
+        // Monto a usar para conciliación: tesorería + comisión + IVA (monto real cobrado al cliente)
+        const montoConc = (isAmex && tieneComision) ? monto + amexCom.comision + amexCom.iva : monto;
+        grandTotal += montoConc;
 
         const dateFmt  = fecha.split('-').reverse().join('/');
-        // Revisar también all_refs para detectar conciliaciones previas con formato fecha_afil
         const allRefs  = [ref, ...(item.all_refs || [])];
         const esConcil = conciliadasSet.TES && allRefs.some(r => conciliadasSet.TES.has(r));
         const esSel    = sel.tes.some(s => s.ref === ref);
-        const clase    = esConcil ? 'conciliated' : (esSel ? 'active' : '');
 
         const hRec = historial.find(h => allRefs.includes(String(h.ref)) && h.origen === 'TES');
         let difTag = '', unlinkBtn = '', staleBtn = '', statusClass = 'row-pendiente';
@@ -1894,13 +1960,25 @@ function renderTes() {
                 statusClass = ok ? 'row-concil-ok' : 'row-concil-diff';
                 difTag    = `<span class="diff-tag ${ok?'ok':(difVal>0?'pos':'neg')}">${fmt.format(difVal)}</span>`;
                 unlinkBtn = !mesCerrado ? `<button class="btn-action-mini btn-action-unlink" onclick="event.stopPropagation();deshacerGrupo(${hRec.grupo_id})" title="Deshacer"><i class="fas fa-unlink"></i></button>` : '';
-                // Detectar si el monto en UI difiere del guardado en la conciliación
-                if (!mesCerrado && Math.abs(hRec.monto - monto) > 0.01) {
+                if (!mesCerrado && Math.abs(hRec.monto - montoConc) > 0.01) {
                     statusClass = 'row-concil-diff';
-                    staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetalleTes(${hRec.id},${monto})" title="Monto cambió: guardado ${fmt.format(hRec.monto)} → actual ${fmt.format(monto)}. Clic para actualizar."><i class="fas fa-exclamation-triangle"></i></button>`;
+                    staleBtn = `<button class="btn-action-mini" style="background:#f39c12;color:#fff;" onclick="event.stopPropagation();recalcularDetalleTes(${hRec.id},${montoConc})" title="Monto cambió: guardado ${fmt.format(hRec.monto)} → actual ${fmt.format(montoConc)}. Clic para actualizar."><i class="fas fa-exclamation-triangle"></i></button>`;
                 }
             } else {
                 statusClass = 'row-concil-ok';
+            }
+        }
+
+        // ── Badges AMEX ───────────────────────────────────────
+        let amexBadgesHtml = '';
+        let amexLine2Extra = '';
+        if (isAmex) {
+            if (tieneComision) {
+                amexBadgesHtml = `<span class="amex-badge-com" title="Comisión AMEX">COM ${fmt.format(amexCom.comision)}</span>`
+                               + `<span class="amex-badge-iva" title="IVA sobre comisión">IVA ${fmt.format(amexCom.iva)}</span>`;
+                amexLine2Extra = `<span style="font-size:.68rem;color:#6c757d;"> · Neto: ${fmt.format(monto)}</span>`;
+            } else {
+                amexBadgesHtml = `<span class="amex-badge-lock"><i class="fas fa-lock" style="font-size:.6rem;"></i> Sin comisión</span>`;
             }
         }
 
@@ -1908,17 +1986,26 @@ function renderTes() {
             $c.append(`<div class="row-item ${statusClass}" data-fecha="${escHtml(fecha)}">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
-                    <span class="row-line2">Tesorería</span>
+                    <span class="row-line2">Tesorería${amexLine2Extra}</span>
                 </div>
-                <div class="row-right" style="pointer-events:auto;">${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(monto)}</span></div>
+                <div class="row-right" style="pointer-events:auto;">${amexBadgesHtml}${difTag}${staleBtn}${unlinkBtn}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`);
-        } else {
-            $c.append(`<div class="row-item row-pendiente ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" onclick="toggleTES('${escHtml(ref)}','${escHtml(fecha)}',${monto},'${escHtml(desc)}',this)">
+        } else if (isAmex && !tieneComision) {
+            // AMEX sin comisión — bloqueado, no clickeable
+            $c.append(`<div class="row-item row-sin-comision" data-fecha="${escHtml(fecha)}" title="Sube el reporte de comisiones AMEX para poder conciliar este día">
                 <div class="row-left">
                     <span class="row-line1">${dateFmt}</span>
-                    <span class="row-line2">Tesorería</span>
+                    <span class="row-line2">Tesorería — pendiente comisión</span>
                 </div>
-                <div class="row-right"><span class="font-numeric">${fmt.format(monto)}</span></div>
+                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(monto)}</span></div>
+            </div>`);
+        } else {
+            $c.append(`<div class="row-item row-pendiente ${esSel ? 'active' : ''}" data-fecha="${escHtml(fecha)}" onclick="toggleTES('${escHtml(ref)}','${escHtml(fecha)}',${montoConc},'${escHtml(desc)}',this)">
+                <div class="row-left">
+                    <span class="row-line1">${dateFmt}</span>
+                    <span class="row-line2">Tesorería${amexLine2Extra}</span>
+                </div>
+                <div class="row-right">${amexBadgesHtml}<span class="font-numeric">${fmt.format(montoConc)}</span></div>
             </div>`);
         }
     });
@@ -2051,6 +2138,20 @@ function verDetalleTransaccion(dataJson) {
 // ── CONCILIAR TODO EL DÍA ─────────────────────────────────────
 function conciliarDia(fecha) {
     if (mesCerrado) return;
+
+    // Validación AMEX: verificar que exista comisión para todos los items TES del día
+    if (isAmex) {
+        const itemsSinComision = tesData.filter(item => {
+            const itemFecha = (item.fecha || '').substring(0, 10);
+            if (itemFecha !== fecha) return false;
+            return getAmexComision(item) === null;
+        });
+        if (itemsSinComision.length > 0) {
+            alert('No se puede conciliar este día: falta el reporte de comisiones AMEX.\nSube el archivo desde Carga de Reportes → Comisiones antes de conciliar.');
+            return;
+        }
+    }
+
     limpiarSeleccion();
 
     // Keywords para filtrar CG (mismo criterio que renderCG)
@@ -2660,7 +2761,15 @@ function actualizarResumenSuperior() {
         return keywords.some(k => c.includes(k)) && parseFloat(item.Total || 0) > 0;
     }).reduce((a,b) => a + parseFloat(b.Total||0), 0);
 
-    const totalTES = tesData.reduce((a,b) => a + parseFloat(b.monto||0), 0);
+    // AMEX: sumar tesorería + comisión + IVA para que el total sea comparable con CG
+    const totalTES = tesData.reduce((a, b) => {
+        const neto = parseFloat(b.monto || 0);
+        if (isAmex) {
+            const com = getAmexComision(b);
+            return a + (com !== null ? neto + com.comision + com.iva : neto);
+        }
+        return a + neto;
+    }, 0);
     const totalTX  = txData.reduce((a,b)  => a + parseFloat(b.Total||0), 0);
 
     $('#cg-resumen-total').text(fmt.format(totalCG));
@@ -3642,100 +3751,5 @@ async function recalcularDetalleTes(idDetalle, nuevoMonto) {
 // ── CAMBIOS TESORERÍA ─────────────────────────────────────────
 let _cambiosTes = [];
 
-async function abrirModalDetectarCambiosTes() {
-    const estid = $('#estacionSelect').val();
-    const eid   = currentRule ? currentRule.entidad_id : 0;
-    const afil  = currentRule ? (currentRule.afiliacion || '') : '';
-    const year  = widgetState.year;
-    const month = widgetState.month;
-
-    if (!estid || !eid) { alert('Selecciona una estación y banco primero.'); return; }
-
-    $('#cambios-tes-body').html('<div class="text-center py-4"><div class="spinner-border text-danger"></div></div>');
-    $('#btn-aplicar-cambios-tes').hide();
-    $('#modalCambiosTes').modal('show');
-
-    try {
-        const r    = await fetch(`${URLS_V3.detectar_cambios_tes}?estacion_id=${estid}&entidad_id=${eid}&afiliacion=${encodeURIComponent(afil)}&year=${year}&month=${month}`);
-        const json = await r.json();
-
-        if (json.status !== 'success') {
-            $('#cambios-tes-body').html(`<div class="alert alert-danger">${json.message}</div>`);
-            return;
-        }
-
-        _cambiosTes = json.data;
-
-        if (!_cambiosTes.length) {
-            $('#cambios-tes-body').html('<div class="alert alert-success"><i class="fas fa-check-circle mr-2"></i>Los montos de tesorería en las conciliaciones están al día. No hay diferencias.</div>');
-            return;
-        }
-
-        let rows = _cambiosTes.map(c => {
-            const diff = c.monto_actual - c.monto_concil;
-            const sign = diff > 0 ? '+' : '';
-            return `<tr>
-                <td>${c.fecha_operativa}</td>
-                <td class="small text-muted">${escHtml(c.concepto)}</td>
-                <td class="text-right font-numeric">${fmt.format(c.monto_concil)}</td>
-                <td class="text-right font-numeric">${fmt.format(c.monto_actual)}</td>
-                <td class="text-right font-numeric font-weight-bold ${diff > 0 ? 'text-success' : 'text-danger'}">${sign}${fmt.format(diff)}</td>
-            </tr>`;
-        }).join('');
-
-        $('#cambios-tes-body').html(`
-            <p class="text-danger mb-3"><strong>${_cambiosTes.length}</strong> registro(s) con monto diferente entre la conciliación guardada y los datos actuales de tesorería.</p>
-            <div class="table-responsive">
-                <table class="table table-sm table-bordered bg-white" style="font-size:.875rem;">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Fecha</th><th>Concepto</th>
-                            <th class="text-right">Monto conciliado</th>
-                            <th class="text-right">Monto actual</th>
-                            <th class="text-right">Diferencia</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-            <p class="text-muted small mb-0">Al aplicar, se corregirán los montos en los detalles de cada conciliación y se recalcularán los totales de los grupos afectados.</p>
-        `);
-        $('#btn-aplicar-cambios-tes').show();
-
-    } catch(e) {
-        $('#cambios-tes-body').html('<div class="alert alert-danger">Error de conexión.</div>');
-    }
-}
-
-async function aplicarCambiosTes() {
-    if (!_cambiosTes.length) return;
-    const btn = document.getElementById('btn-aplicar-cambios-tes');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Aplicando...';
-
-    try {
-        const ids = _cambiosTes.map(c => c.detalle_id);
-        const r    = await fetch(URLS_V3.sincronizar_tes_montos, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ids })
-        });
-        const json = await r.json();
-
-        if (json.status === 'success') {
-            $('#cambios-tes-body').html(`<div class="alert alert-success"><i class="fas fa-check-circle mr-2"></i>Se corrigieron <strong>${json.actualizados}</strong> registro(s) correctamente.</div>`);
-            $('#btn-aplicar-cambios-tes').hide();
-            actualizarTodo();
-        } else {
-            alert('Error: ' + json.message);
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Aplicar correcciones';
-        }
-    } catch(e) {
-        alert('Error de conexión al aplicar cambios.');
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i>Aplicar correcciones';
-    }
-}
 </script>
 {% endblock %}

@@ -697,20 +697,18 @@ class DocumentosModel extends Model{
 
     function movement_analysis_table($from, $until, $codgas=0,$supplier=0) {
 
-        // Construye la base del WHERE
-        $where = "
-            WHERE
-                t1.fch BETWEEN {$from} AND {$until}
-        ";
+        // Construye la base del WHERE con parámetros PDO para evitar SQL injection
+        $where = "WHERE t1.fch BETWEEN ? AND ?";
+        $params = [(int)$from, (int)$until];
 
-        // Si se envía una estación específica (distinta de 0 o cadena vacía)
         if (!empty($codgas) && $codgas != 0) {
-            $where .= " AND t1.codgas = {$codgas}";
+            $where .= " AND t1.codgas = ?";
+            $params[] = (int)$codgas;
         }
 
-        // Si se envía una estación específica (distinta de 0 o cadena vacía)
         if (!empty($supplier) && $supplier != 0) {
-            $where .= " AND t1.codopr = {$supplier}";
+            $where .= " AND t1.codopr = ?";
+            $params[] = (int)$supplier;
         }
 
 
@@ -721,16 +719,14 @@ class DocumentosModel extends Model{
             t1.nro AS [Número],
             t1.Entidad AS Proveedor,
 
-            -- FACTURA
+            -- FACTURA (usa posiciones precalculadas en CROSS APPLY pos)
             LTRIM(RTRIM(
                 SUBSTRING(
                     x.txt,
-                    CHARINDEX('@F:', x.txt) + 3,
+                    pos.posF + 3,
                     CASE
-                        WHEN CHARINDEX('@R:', x.txt) > 0 
-                            THEN CHARINDEX('@R:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
-                        WHEN CHARINDEX('@V:', x.txt) > 0 
-                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@F:', x.txt) + 3)
+                        WHEN pos.posR > 0 THEN pos.posR - (pos.posF + 3)
+                        WHEN pos.posV > 0 THEN pos.posV - (pos.posF + 3)
                         ELSE LEN(x.txt)
                     END
                 )
@@ -748,8 +744,8 @@ class DocumentosModel extends Model{
             ROUND(t1.mto / 100.0, 2) AS Importe,
             ROUND(t1.mtoiie / 100.0, 2) AS [I.E.P.S],
             ROUND(t1.mtoiva / 100.0, 2) AS [I.V.A.],
-            ROUND(ISNULL(t4.Recargos, 0) / 100.0, 2) AS [Recargos],
-            ROUND(ISNULL(t7.iva_concepto, 0), 2) AS iva_concepto,
+            ROUND(ISNULL(t4_t7.Recargos, 0) / 100.0, 2) AS [Recargos],
+            ROUND(ISNULL(t4_t7.iva_concepto, 0), 2) AS iva_concepto,
             ROUND((t1.mto / 100.0) + (t1.mtoiva / 100.0), 2) AS TotalFactura,
             t5.abr AS [Estación],
             t5.den AS [DocDenominacion],
@@ -761,10 +757,9 @@ class DocumentosModel extends Model{
             LTRIM(RTRIM(
                 SUBSTRING(
                     x.txt,
-                    CHARINDEX('@R:', x.txt) + 3,
-                    CASE 
-                        WHEN CHARINDEX('@V:', x.txt) > 0 
-                            THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
+                    pos.posR + 3,
+                    CASE
+                        WHEN pos.posV > 0 THEN pos.posV - (pos.posR + 3)
                         ELSE LEN(x.txt)
                     END
                 )
@@ -772,11 +767,7 @@ class DocumentosModel extends Model{
 
             -- VEHÍCULO
             LTRIM(RTRIM(
-                SUBSTRING(
-                    x.txt,
-                    CHARINDEX('@V:', x.txt) + 3,
-                    LEN(x.txt)
-                )
+                SUBSTRING(x.txt, pos.posV + 3, LEN(x.txt))
             )) AS Vehiculo,
 
             t6.den AS [Empresa],
@@ -785,13 +776,13 @@ class DocumentosModel extends Model{
             'R.F.C.: ' + COALESCE(t6.rfc, '') AS [RFC],
             COALESCE(t2.den, '') + ' ' + COALESCE(t5.nropcc, '') AS [Denominación],
             CAST(ISNULL(t1.nro, 0) AS VARCHAR(20)) + ' Compra Combustibles Pesos' AS [NroDocumento],
-            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) 
-            + ', Vencimiento ' 
+            CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103)
+            + ', Vencimiento '
             + CONVERT(VARCHAR(10), DATEADD(DAY, t1.vto, '1899-12-31'), 103) AS DocFecha,
 
-            -- 🔹 TURNO según hratrn del movimiento prioritario
+            -- TURNO según hratrn del movimiento prioritario
             CONVERT(VARCHAR(10), DATEADD(DAY, t1.fch, '1899-12-31'), 103) + ', ' +
-            CASE 
+            CASE
                 WHEN t3.HrSel BETWEEN 0 AND 599 THEN '1 (00:00 a 06:00) [4]'
                 WHEN t3.HrSel BETWEEN 600 AND 1399 THEN '2 (06:01 a 14:00) [1]'
                 WHEN t3.HrSel BETWEEN 1400 AND 2199 THEN '3 (14:01 a 22:00) [2]'
@@ -799,33 +790,29 @@ class DocumentosModel extends Model{
                 ELSE 'Sin turno'
             END AS DocTurno,
 
-            -- 🔹 HORA del turno (derivada de HrSel en formato time)
-            CASE 
+            -- HORA del turno (derivada de HrSel en formato time)
+            CASE
                 WHEN t3.HrSel IS NOT NULL THEN
                     CONVERT(time, DATEADD(MINUTE, (t3.HrSel % 100), DATEADD(HOUR, (t3.HrSel / 100), '00:00')))
                 ELSE NULL
             END AS HoraTurno,
-            t1.Entidad AS Proveedor,
-            'Remisión ' + 
-        LTRIM(RTRIM(
-            SUBSTRING(
-                x.txt,
-                CHARINDEX('@R:', x.txt) + 3,
-                CASE 
-                    WHEN CHARINDEX('@V:', x.txt) > 0 
-                        THEN CHARINDEX('@V:', x.txt) - (CHARINDEX('@R:', x.txt) + 3)
-                    ELSE LEN(x.txt)
-                END
-            )
-        )) + 
-        ' Vehículo ' + 
-        LTRIM(RTRIM(
-            SUBSTRING(
-                x.txt,
-                CHARINDEX('@V:', x.txt) + 3,
-                LEN(x.txt)
-            )
-        )) AS [RemisionVehiculo]
+
+            -- RemisionVehiculo reutiliza posiciones precalculadas
+            'Remisión ' +
+            LTRIM(RTRIM(
+                SUBSTRING(
+                    x.txt,
+                    pos.posR + 3,
+                    CASE
+                        WHEN pos.posV > 0 THEN pos.posV - (pos.posR + 3)
+                        ELSE LEN(x.txt)
+                    END
+                )
+            )) +
+            ' Vehículo ' +
+            LTRIM(RTRIM(
+                SUBSTRING(x.txt, pos.posV + 3, LEN(x.txt))
+            )) AS [RemisionVehiculo]
 
         FROM [TG].[dbo].[vw_Documentos_Unificados] AS t1
         LEFT JOIN [SG12].[dbo].[Productos] AS t2
@@ -833,9 +820,17 @@ class DocumentosModel extends Model{
 
         CROSS APPLY (SELECT CAST(t1.TxtRef AS VARCHAR(MAX)) AS txt) AS x
 
-        -- Subconsulta priorizada: primero 3, si no hay 4; con HrSel (usa MIN, cambia a MAX si quieres)
+        -- Precalcula posiciones de marcadores para evitar CHARINDEX repetidos
+        CROSS APPLY (
+            SELECT
+                CHARINDEX('@F:', x.txt) AS posF,
+                CHARINDEX('@R:', x.txt) AS posR,
+                CHARINDEX('@V:', x.txt) AS posV
+        ) AS pos
+
+        -- Subconsulta priorizada: primero tiptrn=3, si no hay usa tiptrn=4
         LEFT JOIN (
-            SELECT 
+            SELECT
                 s.nrodoc,
                 s.codgas,
                 s.VolumenRecibido,
@@ -848,7 +843,7 @@ class DocumentosModel extends Model{
                     mt.codgas,
                     mt.tiptrn,
                     ROUND(SUM(CAST(mt.volrec AS DECIMAL(14,3))), 3) AS VolumenRecibido,
-                    MAX(mt.hratrn) AS HrSel,  -- 👈 cambia a MAX(mt.hratrn) si prefieres
+                    MAX(mt.hratrn) AS HrSel,
                     CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END AS prioridad,
                     MIN(CASE WHEN mt.tiptrn = 3 THEN 1 ELSE 2 END)
                         OVER (PARTITION BY mt.nrodoc, mt.codgas) AS prioridad_grupo
@@ -860,16 +855,21 @@ class DocumentosModel extends Model{
             WHERE s.prioridad = s.prioridad_grupo
         ) AS t3
             ON t1.codgas = t3.codgas
-        AND t1.nro    = t3.nrodoc
+           AND t1.nro    = t3.nrodoc
 
+        -- Recargos e iva_concepto fusionados en un solo scan de Documentos
         LEFT JOIN (
-            SELECT SUM(mto) AS Recargos, nro, codgas
+            SELECT
+                nro,
+                codgas,
+                SUM(CASE WHEN satdat = '@e:7' THEN mto ELSE 0 END) AS Recargos,
+                SUM(CASE WHEN codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) THEN mto / 100.0 ELSE 0 END) AS iva_concepto
             FROM [SG12].[dbo].[Documentos]
-            WHERE satdat = '@e:7'
+            WHERE satdat IN ('@e:7', '@e:4')
             GROUP BY nro, codgas
-        ) AS t4
-            ON t1.nro    = t4.nro
-        AND t1.codgas = t4.codgas
+        ) AS t4_t7
+            ON t1.nro    = t4_t7.nro
+           AND t1.codgas = t4_t7.codgas
 
         LEFT JOIN [SG12].[dbo].[Gasolineras] AS t5
             ON t1.codgas = t5.cod
@@ -877,17 +877,11 @@ class DocumentosModel extends Model{
         LEFT JOIN [SG12].[dbo].[Empresas] AS t6
             ON t5.codemp = t6.cod
 
-        LEFT JOIN (
-            SELECT SUM(mto/100) AS iva_concepto, nro, codgas FROM [SG12].[dbo].Documentos WHERE codcpt > 0 AND satdat = '@e:4' AND codcpt NOT IN (4) GROUP BY nro, codgas
-        ) AS t7 ON t1.nro    = t7.nro AND t1.codgas = t7.codgas
-
         {$where}
 
-        ORDER BY
-            t1.nro ASC;
+        ORDER BY t1.nro ASC;
         ";
-                   
-        $params = [];
+
         return $this->sql->select($query, $params);
     }
 
@@ -1343,6 +1337,66 @@ class DocumentosModel extends Model{
             ";
             return ($rs=$this->sql->select($query, [])) ? $rs : false ;
         }
+    }
+
+    function get_concepts_batch(array $pairs): array {
+        if (empty($pairs)) return [];
+
+        // Interpolación directa de enteros: segura (cast a int) y evita el límite de 2100 params de SQL Server
+        $values = implode(',', array_map(
+            fn($p) => '(' . (int)$p['codgas'] . ',' . (int)$p['nro'] . ')',
+            $pairs
+        ));
+
+        $query = "
+        SELECT
+            t1.codgas,
+            t1.nro,
+            t2.dencpt AS Concepto,
+            COALESCE(t3.den, '') AS Producto,
+            NULLIF(t1.can, 0) AS Cantidad,
+            NULLIF(t1.pre, 0) AS Precio,
+            (t1.mto / 100) AS Monto
+        FROM Documentos t1
+        LEFT JOIN (SELECT * FROM Efectos WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
+        LEFT JOIN Productos t3 ON t1.codprd = t3.cod
+        INNER JOIN (VALUES {$values}) AS f(codgas, nro)
+            ON t1.codgas = f.codgas AND t1.nro = f.nro
+        WHERE t1.satdat IN ('@e:7','@e:2','@e:4')
+          AND t1.codcpt NOT IN (4)
+          AND t1.codcpt > 0
+        ";
+
+        return $this->sql->select($query, []) ?: [];
+    }
+
+    function get_receptions_batch(array $pairs): array {
+        if (empty($pairs)) return [];
+
+        // Interpolación directa de enteros: segura (cast a int) y evita el límite de 2100 params de SQL Server
+        $values = implode(',', array_map(
+            fn($p) => '(' . (int)$p['codgas'] . ',' . (int)$p['nro'] . ')',
+            $pairs
+        ));
+
+        $query = "
+        SELECT
+            t1.codgas,
+            t1.nrodoc AS nro,
+            t1.tiptrn,
+            t1.nrotrn,
+            t2.nrotf1 AS Tanque,
+            CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha,
+            t1.hratrn,
+            t1.volrec AS VolumenRecibido
+        FROM MovimientosTan t1
+        LEFT JOIN Tanques t2 ON t1.codtan = t2.cod
+        INNER JOIN (VALUES {$values}) AS f(codgas, nro)
+            ON t1.codgas = f.codgas AND t1.nrodoc = f.nro
+        WHERE t1.tiptrn IN (3, 4)
+        ";
+
+        return $this->sql->select($query, []) ?: [];
     }
 
     function get_suppliers() {
