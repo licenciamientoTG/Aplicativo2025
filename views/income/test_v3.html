@@ -1820,8 +1820,8 @@ function renderCG() {
             const allIds      = fakesDelDia.map(f => f.id);
             const pendingIds  = fakesDelDia.filter(f => f.estado === 'PENDIENTE').map(f => f.id);
             // Determinar estado del grupo
-            const hRecs       = fakesDelDia.map(f => historial.find(h => h.ref === `diferido_${f.id}` && h.origen === 'DIFERIDO')).filter(Boolean);
-            const todosConc   = fakesDelDia.every(f => conciliadasSet.DIFERIDO && conciliadasSet.DIFERIDO.has(`diferido_${f.id}`));
+            const hRecs       = historial.filter(h => h.ref === grpRef && h.origen === 'DIFERIDO');
+            const todosConc   = fakesDelDia.every(f => f.estado === 'CONCILIADO');
             const esSel       = sel.left.some(s => s.ref === grpRef);
             const origenLabel = [...new Set(fakesDelDia.map(f => f.cg_fecha_origen))].join(', ');
             let statusClass   = 'row-diferido-fake';
@@ -2358,7 +2358,7 @@ function seleccionarDiaCG(fecha) {
             const totalGrp = pendingFakes.reduce((s, f) => s + f.monto_diferido, 0);
             const allIds   = pendingFakes.map(f => f.id);
             sel.left.push({ ref: grpRef, fecha, monto: totalGrp, concepto: 'Diferido', tipo: 'DIFERIDO', diferido_ids: allIds });
-            $(`#${groupBodyId} [data-grp-ref="${grpRef}"]`).addClass('active');
+            $(`#${groupBodyId} .row-diferido-fake`).addClass('active');
         }
         $header.addClass('day-selected');
     }
