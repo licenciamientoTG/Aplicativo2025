@@ -1339,6 +1339,66 @@ class DocumentosModel extends Model{
         }
     }
 
+    function get_concepts_batch(array $pairs): array {
+        if (empty($pairs)) return [];
+
+        // Interpolación directa de enteros: segura (cast a int) y evita el límite de 2100 params de SQL Server
+        $values = implode(',', array_map(
+            fn($p) => '(' . (int)$p['codgas'] . ',' . (int)$p['nro'] . ')',
+            $pairs
+        ));
+
+        $query = "
+        SELECT
+            t1.codgas,
+            t1.nro,
+            t2.dencpt AS Concepto,
+            COALESCE(t3.den, '') AS Producto,
+            NULLIF(t1.can, 0) AS Cantidad,
+            NULLIF(t1.pre, 0) AS Precio,
+            (t1.mto / 100) AS Monto
+        FROM Documentos t1
+        LEFT JOIN (SELECT * FROM Efectos WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
+        LEFT JOIN Productos t3 ON t1.codprd = t3.cod
+        INNER JOIN (VALUES {$values}) AS f(codgas, nro)
+            ON t1.codgas = f.codgas AND t1.nro = f.nro
+        WHERE t1.satdat IN ('@e:7','@e:2','@e:4')
+          AND t1.codcpt NOT IN (4)
+          AND t1.codcpt > 0
+        ";
+
+        return $this->sql->select($query, []) ?: [];
+    }
+
+    function get_receptions_batch(array $pairs): array {
+        if (empty($pairs)) return [];
+
+        // Interpolación directa de enteros: segura (cast a int) y evita el límite de 2100 params de SQL Server
+        $values = implode(',', array_map(
+            fn($p) => '(' . (int)$p['codgas'] . ',' . (int)$p['nro'] . ')',
+            $pairs
+        ));
+
+        $query = "
+        SELECT
+            t1.codgas,
+            t1.nrodoc AS nro,
+            t1.tiptrn,
+            t1.nrotrn,
+            t2.nrotf1 AS Tanque,
+            CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha,
+            t1.hratrn,
+            t1.volrec AS VolumenRecibido
+        FROM MovimientosTan t1
+        LEFT JOIN Tanques t2 ON t1.codtan = t2.cod
+        INNER JOIN (VALUES {$values}) AS f(codgas, nro)
+            ON t1.codgas = f.codgas AND t1.nrodoc = f.nro
+        WHERE t1.tiptrn IN (3, 4)
+        ";
+
+        return $this->sql->select($query, []) ?: [];
+    }
+
     function get_suppliers() {
         $query = "SELECT codopr, Entidad FROM [TG].[dbo].[vw_Documentos_Unificados] GROUP BY Entidad, codopr ORDER BY Entidad;";
         return ($rs=$this->sql->select($query, [])) ? $rs : false ;
