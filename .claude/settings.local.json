@@ -34,7 +34,12 @@
       "mcp__claude_ai_Atlassian__editJiraIssue",
       "mcp__claude_ai_Atlassian__transitionJiraIssue",
       "mcp__claude_ai_Atlassian__getJiraIssue",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(tr '\\\\n' '|')",
+      "Bash(cd:*)",
+      "Bash(__NEW_LINE_a292b7eb3cee567e__ sed:*)",
+      "Bash(sed -i \"s|/supply/invoiceFile|/payment/invoiceFile|g\" invoice_pdf.html)",
+      "Bash(__NEW_LINE_a292b7eb3cee567e__ echo:*)"
     ],
     "deny": [],
     "ask": []

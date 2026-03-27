@@ -118,7 +118,7 @@
 				<div class="card-header d-flex justify-content-between align-items-center">
 					<h5 class="mb-0">Pago Programado #{{ payment.id }}</h5>
 					<div>
-						<a href="/supply/payment_list" class="btn btn-sm btn-secondary">
+						<a href="/payment/payment_list" class="btn btn-sm btn-secondary">
 							<i class="fas fa-arrow-left"></i>
 							Volver
 						</a>
@@ -719,7 +719,7 @@
 							<span class="badge bg-warning text-dark">Pendientes:
 								{{ total_facturas - facturas_autorizadas }}</span>
 							{% if payment.status == 0 or payment.status == 1 %}
-								<button class="btn btn-sm btn-primary" onclick="window.location.href='/supply/add_more_invoices_to_payment?payment_id={{ payment.id }}'">
+								<button class="btn btn-sm btn-primary" onclick="window.location.href='/payment/add_more_invoices_to_payment?payment_id={{ payment.id }}'">
 									<i class="fas fa-plus"></i>
 									Agregar Factura
 								</button>
@@ -1711,7 +1711,7 @@
 
 {% endblock %}
 {% block myjs %}
-	<script src="{{ JS }}supply.js"></script>
+	<script src="{{ JS }}payment.js"></script>
 
 	<script>
 		var paymentId = document.getElementById('paymentId').value;
@@ -1758,7 +1758,7 @@
 		`);
 
 		$.ajax({
-		url: '/supply/search_available_invoices',
+		url: '/payment/search_available_invoices',
 		type: 'GET',
 		data: {
 		provider_cod: provider_cod,

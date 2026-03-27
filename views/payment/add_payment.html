@@ -5,7 +5,7 @@
 {% block menutitle %}
 <div style="display: flex;justify-content: space-between;">
     {{ edit_mode ? 'Agregar Facturas al Pago' : 'Crear Pago' }}
-    <a onclick="{{ edit_mode ? 'window.location.href=\'/supply/payment_detail?id=' ~ payment_id ~ '\'' : 'ReturnListPayment()' }}"
+    <a onclick="{{ edit_mode ? 'window.location.href=\'/payment/payment_detail?id=' ~ payment_id ~ '\'' : 'ReturnListPayment()' }}"
         class="btn btn-primary text-light small" style="border-radius: 15px;"><i class="fas fa-backward"></i>
         Regresar</a>
 </div>
@@ -726,7 +726,7 @@
 {% endblock %}
 {% block myjs %}
 
-<script src="{{ JS }}supply.js"></script>
+<script src="{{ JS }}payment.js"></script>
 <script>
     let currentProvider = null;
     let currentDebitProvider = null; // proveedor cuando el pago es solo de notas de cargo
@@ -841,7 +841,7 @@
         document.getElementById('notas-chevron').classList.replace('fa-chevron-down', 'fa-chevron-up');
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3"><i class="fas fa-spinner fa-spin me-2"></i>Cargando notas de cargo...</td></tr>';
 
-        fetch('/supply/getProviderNotes', {
+        fetch('/payment/getProviderNotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
@@ -994,7 +994,7 @@
     // ── Cargar notas disponibles del proveedor ────────────────────────────────
     function loadAvailableNotes(provider_cod) {
         if (!provider_cod) return;
-        fetch('/supply/getProviderNotes', {
+        fetch('/payment/getProviderNotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
@@ -1229,7 +1229,7 @@
                 };
 
                 try {
-                    const response = await fetch('/supply/generate_payment', {
+                    const response = await fetch('/payment/generate_payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(paymentData)
@@ -1253,7 +1253,7 @@
                         alertify.confirm(
                             '¿Ver detalle del pago?',
                             '¿Desea ver el detalle del pago creado?',
-                            function () { window.location.href = '/supply/payment_detail/' + data.payment_id; },
+                            function () { window.location.href = '/payment/payment_detail/' + data.payment_id; },
                             function () {
                                 if ($.fn.DataTable.isDataTable('#payment_create_table')) {
                                     $('#payment_create_table').DataTable().ajax.reload();
@@ -1389,7 +1389,7 @@
                 };
 
                 try {
-                    const response = await fetch('/supply/add_invoices_bulk_to_payment', {
+                    const response = await fetch('/payment/add_invoices_bulk_to_payment', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(requestData)
@@ -1401,7 +1401,7 @@
                     if (result.success) {
                         alertify.success(result.message || 'Facturas agregadas exitosamente');
                         setTimeout(() => {
-                            window.location.href = '/supply/payment_detail/' + PAYMENT_ID;
+                            window.location.href = '/payment/payment_detail/' + PAYMENT_ID;
                         }, 1000);
                     } else {
                         alertify.error(result.message || 'Error al agregar las facturas');
