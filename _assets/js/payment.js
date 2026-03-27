@@ -1,5 +1,6 @@
 // payment.js - Funciones de Pago a Proveedores
 // Migrado desde supply.js
+console.log('payment.js')
 
 $(document).ready(function () {
 	$("#payment_create_table").on("draw.dt", function () {
