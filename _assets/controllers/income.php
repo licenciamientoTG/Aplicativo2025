@@ -8539,9 +8539,14 @@ public function stamped_invoices_detail(): void
             $headerFound = false;
             while (($line = fgetcsv($handle, 0, ',')) !== false) {
                 if (!$headerFound) {
-                    // Detectar fila de encabezados
-                    $first = isset($line[0]) ? trim((string)$line[0]) : '';
-                    if (stripos($first, 'establecimiento') !== false || stripos($first, 'N') !== false && stripos($first, 'mero') !== false) {
+                    // Detectar fila de encabezados buscando "establecimiento" en cualquier celda
+                    $isHeader = false;
+                    foreach ($line as $cell) {
+                        if (stripos((string)$cell, 'establecimiento') !== false) {
+                            $isHeader = true; break;
+                        }
+                    }
+                    if ($isHeader) {
                         $headerFound = true;
                         $headers = $line;  // capturar fila de encabezados
                     }
