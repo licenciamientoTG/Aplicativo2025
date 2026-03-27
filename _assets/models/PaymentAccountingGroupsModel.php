@@ -109,7 +109,7 @@ class PaymentAccountingGroupsModel extends Model
         $group = $this->sql->select(
             "SELECT g.*, u.Nombre AS created_by_name
              FROM [TG].[dbo].[payment_accounting_groups] g
-             LEFT JOIN [TG].[dbo].[Usuarios] u ON u.id = g.created_by
+             LEFT JOIN [TG].[dbo].[Usuario] u ON u.id = g.created_by
              WHERE g.id = ?",
             [$group_id]
         );

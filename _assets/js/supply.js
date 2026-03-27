@@ -8238,7 +8238,7 @@ async function confirmarCrearArchivoContabilidad() {
         showConfirmButton: false,
       }).then(() => {
         $("#modalCrearArchivoContabilidad").modal("hide");
-        // Recargar tabla si el tab está activo
+        // Recargar tabla si ya se había inicializado
         if (tablaArchivosContabilidad) {
           tablaArchivosContabilidad.ajax.reload();
         }

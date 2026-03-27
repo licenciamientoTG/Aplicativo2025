@@ -1440,6 +1440,14 @@ class Supply
                 ]);
                 return;
             }
+
+            if (!empty($payment['accounting_group_id'])) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Esta requisición ya fue incluida en un archivo de contabilidad y no puede modificarse. Contacte a Contabilidad.'
+                ]);
+                return;
+            }
             // Comenzar transacción
             // $this->PaymentRequestsModel->sql->beginTransaction();
 
@@ -5167,9 +5175,9 @@ class Supply
     {
         try {
             // ============================================================
-            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
+            // 🚧 MODO PRUEBAS - solo enviar a manuelmtz9k@gmail.com
             // ============================================================
-            $emails = ['alejandro.martinez@totalgas.com'];
+            $emails = ['manuelmtz9k@gmail.com'];
 
             // Crear el cuerpo del correo
             $subject = "Nuevo Pago Creado - ID #{$payment_id}";
@@ -5643,9 +5651,9 @@ class Supply
     {
         try {
             // ============================================================
-            // 🚧 MODO PRUEBAS - solo enviar a alejandro.martinez@totalgas.com
+            // 🚧 MODO PRUEBAS - solo enviar a manuelmtz9k@gmail.com
             // ============================================================
-            $emails = ['alejandro.martinez@totalgas.com'];
+            $emails = ['manuelmtz9k@gmail.com'];
             // Obtener información del pago
             $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
             if (!$payment) {
@@ -7260,7 +7268,8 @@ class Supply
             $emp_cod       = trim($_POST['emp_cod']       ?? '');
             $emp_name      = trim($_POST['razon_social']  ?? ''); // nombre de la empresa
             $request_ids   = $_POST['request_ids']        ?? [];
-            $user_id       = $_SESSION['user_id']         ?? 0;
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+
 
             if (!$accounting_id) {
                 echo json_encode(['success' => false, 'message' => 'El ID de contabilidad es requerido']);
@@ -7457,7 +7466,6 @@ class Supply
         $fpdi->SetAutoPageBreak(false);
 
         // Importar páginas de los comprobantes
-        $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($comprobantesStr));
         $totalComprobantes = $fpdi->setSourceFile(\setasign\Fpdi\PdfParser\StreamReader::createByString($comprobantesStr));
         for ($i = 1; $i <= $totalComprobantes; $i++) {
             $tpl  = $fpdi->importPage($i);
@@ -7466,13 +7474,18 @@ class Supply
             $fpdi->useTemplate($tpl, 0, 0, $size['width'], $size['height']);
         }
 
-        // Importar cada factura PDF
-        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores');
+        // Importar cada factura PDF (si no se puede leer, se omite sin error fatal)
+        $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores') ?: '';
         foreach ($facturasPdf as $ruta) {
             $ruta = str_replace(['/', '\\\\'], DIRECTORY_SEPARATOR, $ruta);
             $real = realpath($ruta);
-            if (!$real || strpos($real, $baseAllowed) !== 0 || !is_readable($real)) {
-                continue; // Saltar archivos no accesibles
+            if (!$real || !is_readable($real)) {
+                error_log("Factura PDF no accesible, omitida: $ruta");
+                continue;
+            }
+            if ($baseAllowed !== '' && strpos($real, $baseAllowed) !== 0) {
+                error_log("Factura PDF fuera de ruta permitida, omitida: $real");
+                continue;
             }
             try {
                 $totalPages = $fpdi->setSourceFile($real);
