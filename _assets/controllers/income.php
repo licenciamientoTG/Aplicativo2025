@@ -8500,7 +8500,8 @@ public function stamped_invoices_detail(): void
         }
 
         // ── Parsear filas del reporte ───────────────────────────────────────
-        $rows = [];
+        $rows    = [];
+        $headers = [];
 
         if (in_array($extension, ['xlsx', 'xls'])) {
             // Leer con PhpSpreadsheet
@@ -8520,6 +8521,7 @@ public function stamped_invoices_detail(): void
                 if ($headerIdx === null) {
                     echo json_encode(['status' => 'error', 'message' => 'No se encontró la fila de encabezados en el archivo']); exit;
                 }
+                $headers  = array_values($allRows[$headerIdx]);
                 $dataRows = array_slice($allRows, $headerIdx + 1);
                 foreach ($dataRows as $row) {
                     if (empty(array_filter($row, fn($v) => $v !== null && $v !== ''))) continue;
@@ -8537,10 +8539,16 @@ public function stamped_invoices_detail(): void
             $headerFound = false;
             while (($line = fgetcsv($handle, 0, ',')) !== false) {
                 if (!$headerFound) {
-                    // Detectar fila de encabezados
-                    $first = isset($line[0]) ? trim((string)$line[0]) : '';
-                    if (stripos($first, 'establecimiento') !== false || stripos($first, 'N') !== false && stripos($first, 'mero') !== false) {
+                    // Detectar fila de encabezados buscando "establecimiento" en cualquier celda
+                    $isHeader = false;
+                    foreach ($line as $cell) {
+                        if (stripos((string)$cell, 'establecimiento') !== false) {
+                            $isHeader = true; break;
+                        }
+                    }
+                    if ($isHeader) {
                         $headerFound = true;
+                        $headers = $line;  // capturar fila de encabezados
                     }
                     continue;
                 }
@@ -8552,6 +8560,48 @@ public function stamped_invoices_detail(): void
 
         if (empty($rows)) {
             echo json_encode(['status' => 'error', 'message' => 'No se encontraron filas de datos en el archivo']); exit;
+        }
+
+        // ── Mapa de columnas por nombre (tolera orden diferente y columnas extra) ──
+        // Palabras clave para identificar cada columna necesaria:
+        //   establecimiento → 'establecimiento'
+        //   fecha transacción → 'transac'
+        //   cargos totales → 'cargos'
+        //   fecha de pago → 'pago' (sin 'monto')
+        //   monto del pago → 'monto' + 'pago'
+        //   monto del descuento / comisión → 'descuento' o 'comisi'
+        //   IVA → 'iva'
+        $colMap = [
+            'establecimiento' => null,
+            'fecha_trans'     => null,
+            'cargos'          => null,
+            'fecha_pago'      => null,
+            'monto_pago'      => null,
+            'comision'        => null,
+            'iva'             => null,
+        ];
+        foreach ($headers as $idx => $h) {
+            $h = mb_strtolower(trim((string)$h));
+            if (stripos($h, 'establecimiento') !== false)                                 $colMap['establecimiento'] = $idx;
+            elseif (stripos($h, 'transac') !== false)                                     $colMap['fecha_trans']     = $idx;
+            elseif (stripos($h, 'cargos') !== false)                                      $colMap['cargos']          = $idx;
+            elseif (stripos($h, 'monto') !== false && stripos($h, 'pago') !== false)      $colMap['monto_pago']      = $idx;
+            elseif (stripos($h, 'pago') !== false)                                        $colMap['fecha_pago']      = $idx;
+            elseif (stripos($h, 'descuento') !== false || stripos($h, 'comisi') !== false) $colMap['comision']       = $idx;
+            elseif (stripos($h, 'iva') !== false)                                         $colMap['iva']             = $idx;
+        }
+        // Si no se detectaron encabezados, usar posiciones fijas como fallback
+        $useColMap = !in_array(null, $colMap, true);
+        if (!$useColMap) {
+            $colMap = [
+                'establecimiento' => 0,
+                'fecha_trans'     => 1,
+                'cargos'          => 2,
+                'fecha_pago'      => 3,
+                'monto_pago'      => 4,
+                'comision'        => 5,
+                'iva'             => 6,
+            ];
         }
 
         // ── Helper: parsear montos AMEX ─────────────────────────────────────
@@ -8609,18 +8659,14 @@ public function stamped_invoices_detail(): void
         $errors   = 0;
 
         foreach ($rows as $row) {
-            // Columnas esperadas:
-            // [0] Número de establecimiento  [1] Fecha transacción  [2] Cargos totales
-            // [3] Fecha de pago              [4] Monto del pago     [5] Monto del descuento  [6] IVA
-            if (count($row) < 7) { $errors++; continue; }
-
-            $establecimiento  = $normalizeAfil((string)($row[0] ?? ''));
-            $fechaTransStr    = (string)($row[1] ?? '');
-            $cargosStr        = (string)($row[2] ?? '');
-            $fechaPagoStr     = (string)($row[3] ?? '');
-            $montoPagoStr     = (string)($row[4] ?? '');
-            $comisionStr      = (string)($row[5] ?? '');
-            $ivaStr           = (string)($row[6] ?? '');
+            // Columnas leídas por nombre de encabezado (orden flexible, columnas extra ignoradas)
+            $establecimiento  = $normalizeAfil((string)($row[$colMap['establecimiento']] ?? ''));
+            $fechaTransStr    = (string)($row[$colMap['fecha_trans']]     ?? '');
+            $cargosStr        = (string)($row[$colMap['cargos']]          ?? '');
+            $fechaPagoStr     = (string)($row[$colMap['fecha_pago']]      ?? '');
+            $montoPagoStr     = (string)($row[$colMap['monto_pago']]      ?? '');
+            $comisionStr      = (string)($row[$colMap['comision']]        ?? '');
+            $ivaStr           = (string)($row[$colMap['iva']]             ?? '');
 
             if ($establecimiento === '') { $errors++; continue; }
 
