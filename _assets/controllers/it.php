@@ -43,6 +43,18 @@ class It{
     /**
      * @return void
      */
+    public function hello_world() : void {
+        $allowed = [6382, 6371, 6177, 6296, 6375, 6274];
+        if (!in_array((int)$_SESSION['tg_user']['Id'], $allowed)) {
+            (new Errors())->get404();
+            return;
+        }
+        echo $this->twig->render($this->route . 'hello_world.html');
+    }
+
+    /**
+     * @return void
+     */
     public function users() : void {
         echo $this->twig->render($this->route . 'users.html');
     }

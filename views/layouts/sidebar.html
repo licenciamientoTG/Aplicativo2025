@@ -637,15 +637,16 @@
           </li>
         </ul>
       </li>
-      {% endif %} {% endif %} {% if authorized(3) %}
+      {% endif %} {% endif %} {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
-      {% if authorized(22) %}
+      {% if authorized(22) or for_sistemas() %}
       <li class="sidebar-item">
         <a data-bs-target="#it_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
           <i data-feather="tool"></i>
           <span class="align-middle">Herramientas</span>
         </a>
         <ul id="it_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(22) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/it/date_to_int">Convertidor de fechas</a>
           </li>
@@ -658,6 +659,12 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/it/CFDISender_monitor">Monitor CFDISender</a>
           </li>
+          {% endif %}
+          {% if for_sistemas() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/it/hello_world">Hola Mundo</a>
+          </li>
+          {% endif %}
         </ul>
       </li>
       {% endif %} {% if authorized(4) %}
