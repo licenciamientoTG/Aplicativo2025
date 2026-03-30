@@ -98,6 +98,12 @@ $foradmin = new \Twig\TwigFunction('foradmin', function () {
     return ($_SESSION['tg_user']["Id"] == 6177) ? true : false ;
 });
 
+// Función para restringir vista a usuarios específicos del área de Sistemas
+$for_sistemas = new \Twig\TwigFunction('for_sistemas', function () {
+    $allowed = [6382, 6371, 6177, 6296, 6375, 6274];
+    return in_array((int)$_SESSION['tg_user']["Id"], $allowed);
+});
+
 // Función global para establecer mensajes flash
 $getFlashMessage = new \Twig\TwigFunction('getFlashMessage', function ($type) use ($twig) {
   if (isset($_SESSION['flash'][$type])) {
@@ -147,6 +153,7 @@ $twig->addFunction($datetimeDiffHours);
 $twig->addFunction($strpad);
 $twig->addFunction($authorized);
 $twig->addFunction($foradmin);
+$twig->addFunction($for_sistemas);
 $twig->addFunction($getFlashMessage);
 $twig->addFunction($get_week_days);
 $twig->addFunction($text_to_int);

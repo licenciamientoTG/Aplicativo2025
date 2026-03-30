@@ -435,23 +435,11 @@
           <span class="align-middle">Conciliaciones</span>
         </a>
         <ul id="income_conc" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item sidebar-subheader">
-            <small class="text-muted px-3" style="font-size:0.65rem;font-weight:700;letter-spacing:1px;">V3 — CG vs TESORERÍA</small>
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/income/test_v3">Conciliar</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/test_v3"><i class="fas fa-balance-scale mr-1 text-success" style="font-size:0.75rem;"></i> Conciliar V3</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/summary_v3"><i class="fas fa-chart-bar mr-1 text-success" style="font-size:0.75rem;"></i> Dashboard V3</a>
-          </li>
-          <li class="sidebar-item sidebar-subheader mt-1">
-            <small class="text-muted px-3" style="font-size:0.65rem;font-weight:700;letter-spacing:1px;">V2 — LEGACY</small>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/conc_test">Conciliar V2</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/income/conc_results">Resultados V2</a>
+            <a class="sidebar-link" href="/income/summary_v3">Dashboard</a>
           </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/income/upload_bank_reports">Subir Manual</a>
@@ -649,15 +637,16 @@
           </li>
         </ul>
       </li>
-      {% endif %} {% endif %} {% if authorized(3) %}
+      {% endif %} {% endif %} {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
-      {% if authorized(22) %}
+      {% if authorized(22) or for_sistemas() %}
       <li class="sidebar-item">
         <a data-bs-target="#it_tools" data-bs-toggle="collapse" class="sidebar-link collapsed" aria-expanded="false">
           <i data-feather="tool"></i>
           <span class="align-middle">Herramientas</span>
         </a>
         <ul id="it_tools" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
+          {% if authorized(22) %}
           <li class="sidebar-item">
             <a class="sidebar-link" href="/it/date_to_int">Convertidor de fechas</a>
           </li>
@@ -670,6 +659,12 @@
           <li class="sidebar-item">
             <a class="sidebar-link" href="/it/CFDISender_monitor">Monitor CFDISender</a>
           </li>
+          {% endif %}
+          {% if for_sistemas() %}
+          <li class="sidebar-item">
+            <a class="sidebar-link" href="/it/hello_world">Hola Mundo</a>
+          </li>
+          {% endif %}
         </ul>
       </li>
       {% endif %} {% if authorized(4) %}
