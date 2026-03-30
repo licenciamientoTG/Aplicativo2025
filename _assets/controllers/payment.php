@@ -3890,6 +3890,8 @@ class Payment
         header('Content-Type: application/json');
 
         try {
+            $rut = 'C:\Software\TareasProgramadas\Facturas_proveedores\correoFacturas\attachments\aemsa\procesadas';
+            $existe = is_dir($rut);
             // 1. Validaciones iniciales
             $this->validate_pdf_request();
             $proveedor = $this->get_validated_provider();
@@ -3989,10 +3991,6 @@ class Payment
 
         // 2. Construir la ruta del directorio: Base + Proveedor + "procesadas"
         $rutaDir = self::BASE_ATTACHMENTS_PATH . '\\' . $proveedor . '\\procesadas';
-        echo '<pre>';
-        var_dump($rutaDir);
-        die();
-
         // 3. Generar el nombre del archivo final (UUID en mayúsculas y sin guiones medios)
         $nombreArchivo = strtoupper(str_replace('-', '_', $uuid)) . '.pdf';
 
@@ -4006,8 +4004,15 @@ class Payment
             }
         }
 
+        if (!file_exists($tmpFile)) {
+            throw new Exception("El archivo temporal no existe: $tmpFile");
+        }
+
+        if (!is_writable($rutaDir)) {
+            throw new Exception("El directorio no tiene permisos de escritura: $rutaDir");
+        }
         // 6. Mover el archivo desde la carpeta temporal de PHP a la ruta final
-        if (!copy($tmpFile, $rutaCompleta)) {
+        if (!move_uploaded_file($tmpFile, $rutaCompleta)) {
             throw new Exception("Error al guardar el archivo PDF en el servidor local.");
         }
 
