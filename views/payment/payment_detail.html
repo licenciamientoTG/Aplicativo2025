@@ -1,1063 +1,465 @@
 {# payment_detail.html #}
 {% extends "views/layouts/base.html" %}
-{% block title
-%}Detalle de Pago #{{ payment.id }}
-{% endblock %}
+{% block title %}Detalle de Pago #{{ payment.id }}{% endblock %}
 {% block content %}
 	<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 	<style>
-		.table-success th {
-			background-color: #198754 !important;
-			color: white !important;
-		}
-
-		.transaction-row:hover {
-			background-color: #f8f9fa;
-			cursor: pointer;
-		}
-
-		.badge {
-			font-size: 0.75rem;
-		}
-
-		/* Estilos para facturas autorizadas */
-		#tablaAutorizarPago tr.table-success {
-			background-color: #d1fae5 !important;
-		}
-
-		#tablaAutorizarPago tr.table-success td {
-			opacity: 0.8;
-		}
-
-		/* Animación sutil para nuevas autorizaciones */
-		.monto-autorizar:focus {
-			border-color: #17a2b8;
-			box-shadow: 0 0 0 0.2rem rgba(23, 162, 184, 0.25);
-		}
-
-		/* Estilo para inputs readonly de facturas autorizadas */
-		input[readonly] {
-			cursor: not-allowed;
-		}
-		/* Estilos para facturas autorizadas */
-		#tablaFacturasIncluidas tr.table-success {
-			background-color: #d1fae5 !important;
-		}
-
-		#tablaFacturasIncluidas tr.table-success:hover {
-			background-color: #a7f3d0 !important;
-		}
-
-		/* Animación sutil para el ícono de check */
-		#tablaFacturasIncluidas .fa-check-circle {
-			animation: fadeIn 0.5s ease-in;
-		}
-
-		@keyframes fadeIn {
-			from {
-				opacity: 0;
-				transform: scale(0.8);
-			}
-			to {
-				opacity: 1;
-				transform: scale(1);
-			}
-		}
-
-		/* Badge de autorizada en el folio */
-		#tablaFacturasIncluidas .badge.bg-success {
-			box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
-		}
-
-		/* Highlight del monto autorizado */
-		#tablaFacturasIncluidas .text-success strong {
-			font-size: 0.95rem;
-			text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-		}
-
-		.bg-light-success {
-			background-color: #d4edda !important;
-		}
-
-		.bg-light-warning {
-			background-color: #fff3cd !important;
-		}
-
-		.text-success {
-			color: #28a745 !important;
-		}
-
-		.text-warning {
-			color: #ffc107 !important;
-		}
-
-		.text-danger {
-			color: #dc3545 !important;
-		}
-
-		/* Animación sutil para el total */
-		.card-body table tr.summary-total {
-			animation: pulse-subtle 2s ease-in-out infinite;
-		}
-
-		/* @keyframes 
-			pulse-subtle {
-			0,
-			100% {
-				transform: scale(1);
-			}
-			50% {
-				transform: scale(1.02);
-			}
-		} */
+		.pd-tab-link { border-bottom: 2px solid transparent; color: #6c757d; background: none; border-top:none; border-left:none; border-right:none; padding: 0.75rem 0; font-size: 0.875rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: color .15s, border-color .15s; }
+		.pd-tab-link:hover { color: #343a40; }
+		.pd-tab-link.active { border-bottom-color: #3d6b9e; color: #3d6b9e; }
+		.pd-tab-content { display: none; }
+		.pd-tab-content.active { display: block; }
+		#tablaFacturasIncluidas tr.table-success { background-color: #d1fae5 !important; }
+		#tablaFacturasIncluidas tr.table-success:hover { background-color: #a7f3d0 !important; }
+		#tablaAutorizarPago tr.table-success { background-color: #d1fae5 !important; }
+		#tablaAutorizarPago tr.table-success td { opacity: 0.8; }
+		.monto-autorizar:focus { border-color: #3d6b9e; box-shadow: 0 0 0 .2rem rgba(61,107,158,.25); }
+		input[readonly] { cursor: not-allowed; }
+		.pd-footer-spacer { height: 4.5rem; }
+		#pd-sticky-footer { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #dee2e6; box-shadow: 0 -2px 8px rgba(0,0,0,.07); z-index: 1040; }
+		.auth-step { display: flex; align-items: flex-start; gap: 1rem; padding: 0.6rem 0; }
+		.auth-step-icon { width: 2.1rem; height: 2.1rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.85rem; }
+		@keyframes fadeIn { from { opacity:0; transform:scale(.8); } to { opacity:1; transform:scale(1); } }
+		#tablaFacturasIncluidas .fa-check-circle { animation: fadeIn .5s ease-in; }
 	</style>
-	<div class="row">
-		<div class="col-12">
-			<div class="card">
-				<div class="card-header d-flex justify-content-between align-items-center">
-					<h5 class="mb-0">Pago Programado #{{ payment.id }}</h5>
-					<div>
-						<a href="/payment/payment_list" class="btn btn-sm btn-secondary">
-							<i class="fas fa-arrow-left"></i>
-							Volver
+
+	{% set total_facturas = invoices|length %}
+	{% set facturas_autorizadas = 0 %}
+	{% for invoice in invoices %}{% if invoice.payment_authorized == 1 %}{% set facturas_autorizadas = facturas_autorizadas + 1 %}{% endif %}{% endfor %}
+
+	<!-- HEADER + MÉTRICAS en mismo row -->
+	{% set pendiente = payment_calculation.final_amount - summary.total_paid %}
+	<div class="row g-3 mb-3">
+
+		<!-- Card info / header (1/3) -->
+		<div class="col-12 col-lg-4">
+			<div class="card border-0 shadow-sm h-100" style="border-left:4px solid #3d6b9e !important;">
+				<div class="card-body py-3 px-3 d-flex flex-column gap-2">
+					<div class="d-flex align-items-center gap-2">
+						<a href="/payment/payment_list" class="btn btn-sm btn-light border p-1" style="line-height:1;">
+							<i class="fas fa-arrow-left" style="font-size:.75rem;"></i>
 						</a>
+						<span class="fw-semibold text-dark" style="font-size:.95rem;">Pago Programado #{{ payment.id }}</span>
 					</div>
-				</div>
-				<div class="card-body">
-					<div class="row">
-						<div class="col-md-3">
-							<p>
-								<strong>Fecha Solicitud:</strong><br/>{{
-              payment.request_date|date('d/m/Y H:i') }}
-							</p>
-						</div>
-						<div class="col-md-3">
-							<p>
-								<strong>Usuario:</strong><br/>{{ payment.usuario_nombre ?? 'N/A'
-              }}
-							</p>
-						</div>
-						<div class="col-md-3">
-							<p>
-								<strong>Estado:</strong><br/>
-								{% if payment.status == 0 %}
-									<span class="badge bg-secondary">Pendiente Autorización</span>
-								{% elseif payment.status == 1 %}
-									<span class="badge bg-secondary">Autorizado - Listo para Pagar</span>
-								{% elseif payment.status == 2 %}
-									<span class="badge bg-success">Pagado</span>
-								{% else %}
-									<span class="badge bg-danger">Cancelado</span>
-								{% endif %}
-							</p>
-						</div>
-						<div class="col-md-3">
-							<p>
-								<strong>Comentario:</strong><br/>{{ payment.comment ?? 'Sin
-              comentario' }}
-							</p>
-						</div>
+					<div>
+						{% if payment.status == 0 %}
+							<span class="badge" style="background:#fff3cd;color:#856404;border:1px solid #ffc107;font-weight:600;font-size:.72rem;">Pendiente Autorización</span>
+						{% elseif payment.status == 1 %}
+							<span class="badge" style="background:#cfe2ff;color:#084298;border:1px solid #9ec5fe;font-weight:600;font-size:.72rem;">Autorizado</span>
+						{% elseif payment.status == 2 %}
+							<span class="badge" style="background:#d1e7dd;color:#0a3622;border:1px solid #a3cfbb;font-weight:600;font-size:.72rem;">Pagado</span>
+						{% else %}
+							<span class="badge bg-danger" style="font-size:.72rem;">Cancelado</span>
+						{% endif %}
 					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Resumen Financiero -->
-	<div class="row mt-3 g-3">
-		<div class="col">
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid #6c757d !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Total Facturas</p>
-					<h5 class="mb-0 text-dark fw-bold">${{ summary.total_amount|number_format(2) }}</h5>
-					<small class="text-muted">{{ summary.total_invoices }} factura(s)</small>
-				</div>
-			</div>
-		</div>
-		<div class="col">
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid #6c757d !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Notas de Crédito</p>
-					<h5 class="mb-0 text-dark fw-bold">-${{ notes_totals.total_credits|number_format(2) }}</h5>
-					<small class="text-muted">Descuentos y devoluciones</small>
-				</div>
-			</div>
-		</div>
-		<div class="col">
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid #6c757d !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Notas de Cargo</p>
-					<h5 class="mb-0 text-dark fw-bold">+${{ notes_totals.total_debits|number_format(2) }}</h5>
-					<small class="text-muted">Cargos adicionales</small>
-				</div>
-			</div>
-		</div>
-		<div class="col">
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid #343a40 !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Monto Total</p>
-					<h5 class="mb-0 fw-bold" style="color:#343a40;">${{ payment_calculation.final_amount|number_format(2) }}</h5>
-					<small class="text-muted">Neto a pagar</small>
-				</div>
-			</div>
-		</div>
-		<div class="col">
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid #6c757d !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Pagado</p>
-					<h5 class="mb-0 text-dark fw-bold">${{ summary.total_paid|number_format(2) }}</h5>
-					<small class="text-muted">Abonos realizados</small>
-				</div>
-			</div>
-		</div>
-		<div class="col">
-			{% set pendiente = payment_calculation.final_amount - summary.total_paid %}
-			<div class="card border-0 shadow-sm h-100" style="border-left: 3px solid {% if pendiente <= 0 %}#6c757d{% else %}#343a40{% endif %} !important;">
-				<div class="card-body py-3">
-					<p class="text-muted mb-1" style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600;">Saldo Pendiente</p>
-					<h5 class="mb-0 fw-bold" style="color:{% if pendiente <= 0 %}#6c757d{% else %}#343a40{% endif %};">${{ pendiente|number_format(2) }}</h5>
-					<small class="text-muted">{% if pendiente <= 0 %}Liquidado{% else %}Por pagar{% endif %}</small>
-				</div>
-			</div>
-		</div>
-	</div>
-
-	<!-- Autorizaciones con Flujo Secuencial -->
-	<div class="row mt-3">
-		<div class="col-12">
-			<div class="card">
-				<div class="card-header">
-					<h6 class="mb-0">
-						<i class="fas fa-list-ol"></i>
-						Flujo de Autorizaciones Secuenciales
-					</h6>
-				</div>
-				<div
-					class="card-body">
-					<!-- Diagrama de flujo visual con botones -->
-					<div class="row text-center">
-						<!-- NIVEL 1: ABASTOS -->
-						<div class="col-md-3 mb-3">
-							<div class="card h-100 {% if authorization_status.abastos %}border-success{% elseif authorization_status.next_level == 66 %}border-dark border-3{% else %}border-secondary{% endif %}">
-								<div class="card-body">
-									<div class="mb-3">
-										{% if authorization_status.abastos %}
-											<i class="fas fa-check-circle fa-4x text-success"></i>
-										{% elseif authorization_status.next_level == 66 %}
-											<i class="fas fa-box fa-4x text-dark"></i>
-										{% else %}
-											<i class="fas fa-box fa-4x text-muted"></i>
-										{% endif %}
-									</div>
-									<h5 class="card-title">
-										<span class="badge bg-secondary">Nivel 1</span>
-									</h5>
-									<h6>Abastos</h6>
-									{% if authorization_status.abastos %}
-										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
-											<i class="fas fa-check"></i> Autorizado
-											{% if auth_info.abastos %}
-												<br/><small>{{ auth_info.abastos.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.abastos.authorization_date|date('d/m/Y H:i') }}</small>
-											{% endif %}
-										</div>
-									{% elseif authorization_status.next_level == 66 %}
-										{% if authorized(66) %}
-											<button class="btn btn-success btn-lg mt-3 w-100" onclick="openAuthModal(66, 'Abastos')">
-												<i class="fas fa-check"></i> Autorizar como Abastos
-											</button>
-										{% else %}
-											<div class="alert alert-warning mb-0 mt-3">
-												<i class="fas fa-clock"></i> Esperando autorización de Abastos
-											</div>
-										{% endif %}
-									{% else %}
-										<div class="alert alert-secondary mb-0 mt-3">
-											<i class="fas fa-lock"></i> En espera
-										</div>
-									{% endif %}
-								</div>
-							</div>
-						</div>
-
-						<!-- NIVEL 2: CONTABILIDAD -->
-						<div class="col-md-3 mb-3">
-							<div class="card h-100 {% if authorization_status.contabilidad %}border-success{% elseif authorization_status.next_level == 70 %}border-dark border-3{% else %}border-secondary{% endif %}">
-								<div class="card-body">
-									<div class="mb-3">
-										{% if authorization_status.contabilidad %}
-											<i class="fas fa-check-circle fa-4x text-success"></i>
-										{% elseif authorization_status.next_level == 70 %}
-											<i class="fas fa-calculator fa-4x text-dark"></i>
-										{% else %}
-											<i class="fas fa-calculator fa-4x text-muted"></i>
-										{% endif %}
-									</div>
-									<h5 class="card-title">
-										<span class="badge bg-secondary">Nivel 2</span>
-									</h5>
-									<h6>Contabilidad</h6>
-									{% if authorization_status.contabilidad %}
-										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
-											<i class="fas fa-check"></i> Autorizado
-											{% if auth_info.contabilidad %}
-												<br/><small>{{ auth_info.contabilidad.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.contabilidad.authorization_date|date('d/m/Y H:i') }}</small>
-											{% endif %}
-										</div>
-									{% elseif authorization_status.next_level == 70 %}
-										{% if authorized(70) %}
-											<button class="btn btn-success btn-lg mt-3 w-100" onclick="openAuthModal(70, 'Contabilidad')">
-												<i class="fas fa-check"></i> Autorizar como Contabilidad
-											</button>
-										{% else %}
-											<div class="alert alert-warning mb-0 mt-3">
-												<i class="fas fa-clock"></i> Esperando autorización de Contabilidad
-											</div>
-										{% endif %}
-									{% else %}
-										<div class="alert alert-secondary mb-0 mt-3">
-											{% if not authorization_status.abastos %}
-												<i class="fas fa-lock p-2" ></i> Bloqueado hasta autorización de Abastos
-											{% else %}
-												<i class="fas fa-lock p-2"></i> En espera
-											{% endif %}
-										</div>
-									{% endif %}
-								</div>
-							</div>
-						</div>
-
-						<!-- NIVEL 3: ADMINISTRACIÓN Y FINANZAS -->
-						<div class="col-md-3 mb-3">
-							<div class="card h-100 {% if authorization_status.admin_finanzas %}border-success{% elseif authorization_status.next_level == 67 %}border-dark border-3{% else %}border-secondary{% endif %}">
-								<div class="card-body">
-									<div class="mb-3">
-										{% if authorization_status.admin_finanzas %}
-											<i class="fas fa-check-circle fa-4x text-success"></i>
-										{% elseif authorization_status.next_level == 67 %}
-											<i class="fas fa-building fa-4x text-dark"></i>
-										{% else %}
-											<i class="fas fa-building fa-4x text-muted"></i>
-										{% endif %}
-									</div>
-									<h5 class="card-title">
-										<span class="badge bg-secondary">Nivel 3</span>
-									</h5>
-									<h6>Administración y Finanzas</h6>
-									{% if authorization_status.admin_finanzas %}
-										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
-											<i class="fas fa-check"></i> Autorizado
-											{% if auth_info.admin_finanzas %}
-												<br/><small>{{ auth_info.admin_finanzas.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.admin_finanzas.authorization_date|date('d/m/Y H:i') }}</small>
-											{% endif %}
-										</div>
-									{% elseif authorization_status.next_level == 67 %}
-										{% if authorized(67) %}
-											<button class="btn btn-dark btn-lg mt-3 w-100" onclick="openAuthModal(67, 'Administración y Finanzas')">
-												<i class="fas fa-check"></i> Autorizar como Admin y Finanzas
-											</button>
-										{% else %}
-											<div class="alert alert-warning mb-0 mt-3">
-												<i class="fas fa-clock"></i> Esperando autorización de Admin y Finanzas
-											</div>
-										{% endif %}
-									{% else %}
-										<div class="alert alert-secondary mb-0 mt-3">
-											{% if not authorization_status.contabilidad %}
-												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Contabilidad
-											{% else %}
-												<i class="fas fa-lock"></i> En espera
-											{% endif %}
-										</div>
-									{% endif %}
-								</div>
-							</div>
-						</div>
-
-						<!-- NIVEL 4: TESORERÍA -->
-						<div class="col-md-3 mb-3">
-							<div class="card h-100 {% if authorization_status.tesoreria %}border-success{% elseif authorization_status.next_level == 68 %}border-dark border-3{% else %}border-secondary{% endif %}">
-								<div class="card-body">
-									<div class="mb-3">
-										{% if authorization_status.tesoreria %}
-											<i class="fas fa-check-circle fa-4x text-success"></i>
-										{% elseif authorization_status.next_level == 68 %}
-											<i class="fas fa-money-check-alt fa-4x text-dark"></i>
-										{% else %}
-											<i class="fas fa-money-check-alt fa-4x text-muted"></i>
-										{% endif %}
-									</div>
-									<h5 class="card-title">
-										<span class="badge bg-secondary">Nivel 4</span>
-									</h5>
-									<h6>Tesorería</h6>
-									{% if authorization_status.tesoreria %}
-										<div class="alert alert-success mb-0 mt-3" style="display:flex;flex-direction:column;padding:0.8rem 0;">
-											<i class="fas fa-check"></i> Autorizado - Listo para Pagar
-											{% if auth_info.tesoreria %}
-												<br/><small>{{ auth_info.tesoreria.autorizador_nombre }}</small>
-												<br/><small>{{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
-											{% endif %}
-										</div>
-										{% if payment.status == 1 and authorized(68) %}
-											<button class="btn btn-dark mt-3 w-100" onclick="autorizarPago()">
-												<i class="fas fa-check-circle"></i> Autorizar Pago
-											</button>
-										{% endif %}
-									{% elseif authorization_status.next_level == 68 %}
-										{% if authorized(68) %}
-											<button class="btn btn-dark btn-lg mt-3 w-100" onclick="openAuthModal(68, 'Tesorería')">
-												<i class="fas fa-check"></i> Autorizar como Tesorería
-											</button>
-										{% else %}
-											<div class="alert alert-secondary mb-0 mt-3">
-												<i class="fas fa-clock"></i> Esperando autorización de Tesorería
-											</div>
-										{% endif %}
-									{% else %}
-										<div class="alert alert-secondary mb-0 mt-3">
-											{% if not authorization_status.admin_finanzas %}
-												<i class="fas fa-lock"></i> Bloqueado hasta autorización de Admin y Finanzas
-											{% else %}
-												<i class="fas fa-lock"></i> En espera
-											{% endif %}
-										</div>
-									{% endif %}
-								</div>
-							</div>
-						</div>
+					<div>
+						<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#94a3b8;letter-spacing:.06em;">Solicitante</p>
+						<p class="mb-0 fw-medium text-dark" style="font-size:.82rem;">{{ payment.usuario_nombre ?? 'N/A' }}</p>
+						<p class="mb-0" style="font-size:.75rem;color:#64748b;"><i class="fas fa-clock fa-xs me-1"></i>{{ payment.request_date|date('d/m/Y H:i') }}</p>
 					</div>
-
-					<!-- Indicador de progreso -->
-					<div class="row mt-4">
-						<div class="col-12">
-							<h6>Progreso de Autorización</h6>
-							<div class="progress" style="height: 30px">
-								{% set progress = 0 %}
-								{% if authorization_status.abastos %}{% set progress = progress + 25 %}{% endif %}
-								{% if authorization_status.contabilidad %}{% set progress = progress + 25 %}{% endif %}
-								{% if authorization_status.admin_finanzas %}{% set progress = progress + 25 %}{% endif %}
-								{% if authorization_status.tesoreria %}{% set progress = progress + 25 %}{% endif %}
-								<div class="progress-bar bg-success progress-bar-striped {% if not authorization_status.completed %}progress-bar-animated{% endif %}" role="progressbar" style="width: {{ progress }}%" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100">
-									{{ progress }}% Completado
-								</div>
-							</div>
-						</div>
+					{% if payment.comment %}
+					<div>
+						<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#94a3b8;letter-spacing:.06em;">Comentario</p>
+						<p class="mb-0 text-dark" style="font-size:.82rem;background:#f8fafc;padding:.4rem .6rem;border-radius:6px;border:1px solid #e2e8f0;">{{ payment.comment }}</p>
 					</div>
-
-					<!-- Historial de autorizaciones -->
-					{% if authorizations %}
-						<div class="row mt-4">
-							<div class="col-12">
-								<h6>
-									<i class="fas fa-history"></i>
-									Historial de Autorizaciones
-								</h6>
-								<div class="table-responsive">
-									<table class="table table-sm table-bordered">
-										<thead class="table-light">
-											<tr>
-												<th width="80">Nivel</th>
-												<th>Departamento</th>
-												<th>Autorizador</th>
-												<th>Fecha y Hora</th>
-											</tr>
-										</thead>
-										<tbody>
-											{% for auth in authorizations %}
-												<tr>
-													<td class="text-center">
-														<span class="badge bg-secondary">
-															{% if auth.permission_number == 66 %}Nivel 1
-															{% elseif auth.permission_number == 70 %}Nivel 2
-															{% elseif auth.permission_number == 67 %}Nivel 3
-															{% elseif auth.permission_number == 68 %}Nivel 4
-															{% endif %}
-														</span>
-													</td>
-													<td>{{ auth.departamento }}</td>
-													<td>
-														<i class="fas fa-user"></i>
-														{{ auth.autorizador_nombre }}
-													</td>
-													<td>
-														<i class="fas fa-calendar"></i>
-														{{ auth.authorization_date|date('d/m/Y H:i:s') }}
-													</td>
-												</tr>
-											{% endfor %}
-										</tbody>
-									</table>
-								</div>
-							</div>
-						</div>
 					{% endif %}
 				</div>
 			</div>
 		</div>
-	</div>
 
-	<div class="row mt-4">
-		<div class="col-md-6 offset-md-6">
-			<div class="card">
-				<div class="card-header">
-					<h6 class="mb-0">
-						<i class="fas fa-calculator"></i>
-						Cálculo Total a Pagar
-					</h6>
-				</div>
-				<div class="card-body">
-					<table
-						class="table table-sm mb-0">
-						<!-- Subtotal de facturas -->
-						<tr>
-							<td>
-								<i class="fas fa-file-invoice text-primary"></i>
-								Total Facturas:
-							</td>
-							<td class="text-right">
-								<strong>${{ payment_calculation.invoice_total|number_format(2)}}</strong>
-							</td>
-						</tr>
+		<!-- 4 métricas en un solo card contenedor (2/3) -->
+		<div class="col-12 col-lg-8">
+			<div class="card border-0 shadow-sm h-100">
+				<div class="card-body p-3 h-100">
+					<div class="row g-2 h-100">
 
-						<!-- Anticipos aplicados -->
-						{% if payment_calculation.advance_total > 0 %}
-							<tr class="text-muted">
-								<td>
-									<i class="fas fa-hand-holding-usd"></i>
-									Menos: Anticipos
-								</td>
-								<td class="text-right">
-									<span class="text-danger">
-										-${{ payment_calculation.advance_total|number_format(2) }}
-									</span>
-								</td>
-							</tr>
-						{% endif %}
+						<!-- Total Facturas -->
+						<div class="col-6 col-md-3">
+							<div class="d-flex flex-column justify-content-center p-3 rounded-3 h-100" style="background:#f8fafc;border:1px solid #e2e8f0;">
+								<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#64748b;letter-spacing:.06em;">Total Facturas ({{ summary.total_invoices }})</p>
+								<p class="mb-0 fw-semibold text-dark" style="font-size:1.05rem;">${{ summary.total_amount|number_format(2) }}</p>
+							</div>
+						</div>
 
-						<!-- Notas de crédito (REDUCEN el monto) -->
-						{% if payment_calculation.credit_notes_total > 0 %}
-							<tr class="bg-light-success">
-								<td>
-									<i class="fas fa-minus-circle text-success"></i>
-									Menos: Notas de Crédito
-									<small class="text-muted d-block">
-										(Descuentos, devoluciones, bonificaciones)
-									</small>
-								</td>
-								<td class="text-right">
-									<span class="text-success font-weight-bold">
-										-${{ payment_calculation.credit_notes_total|number_format(2) }}
-									</span>
-								</td>
-							</tr>
-						{% endif %}
+						<!-- Notas -->
+						<div class="col-6 col-md-3">
+							<div class="d-flex flex-column justify-content-center p-3 rounded-3 h-100" style="background:#f8fafc;border:1px solid #e2e8f0;">
+								<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#64748b;letter-spacing:.06em;">Notas (Crédito / Cargo)</p>
+								<p class="mb-0 fw-semibold" style="font-size:1rem;">
+									<span style="color:#3a7d60;">-${{ notes_totals.total_credits|number_format(2) }}</span>
+									<span class="text-muted mx-1">/</span>
+									<span style="color:#b05c3a;">+${{ notes_totals.total_debits|number_format(2) }}</span>
+								</p>
+							</div>
+						</div>
 
-						<!-- Notas de cargo (INCREMENTAN el monto) -->
-						{% if payment_calculation.debit_notes_total > 0 %}
-							<tr class="bg-light-warning">
-								<td>
-									<i class="fas fa-plus-circle text-warning"></i>
-									Más: Notas de Cargo
-									<small class="text-muted d-block">
-										(Cargos extra, servicios adicionales)
-									</small>
-								</td>
-								<td class="text-right">
-									<span class="text-warning font-weight-bold">
-										+${{ payment_calculation.debit_notes_total|number_format(2) }}
-									</span>
-								</td>
-							</tr>
-						{% endif %}
+						<!-- Pagado -->
+						<div class="col-6 col-md-3">
+							<div class="d-flex flex-column justify-content-center p-3 rounded-3 h-100" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+								<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#16a34a;letter-spacing:.06em;">Pagado / Abonos</p>
+								<p class="mb-0 fw-semibold" style="font-size:1.05rem;color:#15803d;">${{ summary.total_paid|number_format(2) }}</p>
+							</div>
+						</div>
 
-						<!-- Línea divisoria -->
-						<tr>
-							<td colspan="2"><hr class="my-2"/></td>
-						</tr>
-
-						<!-- Total final -->
-						<tr class="" style="background-color:#f8f9fa; border-top:2px solid #343a40;">
-							<td>
-								<strong>
-									<i class="fas fa-equals"></i>
-									TOTAL A PAGAR:
-								</strong>
-							</td>
-							<td class="text-right">
-								<strong style="font-size: 1.3em">
-									${{ payment_calculation.final_amount|number_format(2) }}
-								</strong>
-							</td>
-						</tr>
-					</table>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Sección de Notas de Crédito/Cargo en payment_details.twig -->
-	<div class="card mt-4">
-		<div class="card-header">
-			<h5>
-				<i class="fas fa-file-invoice-dollar"></i>
-				Notas de Crédito y Cargo
-				<button type="button" class="btn btn-sm btn-secondary float-right ms-1" onclick="openApplyCreditNoteModal()">
-					<i class="fas fa-link"></i>
-					Aplicar Nota
-				</button>
-				<button type="button" class="btn btn-sm btn-primary float-right" onclick="addNoteModal()">
-					<i class="fas fa-plus"></i>
-					Nueva Nota
-				</button>
-			</h5>
-		</div>
-		<div class="card-body p-0">
-			<table class="table table-sm table-hover mb-0" id="noteApplicationsTable">
-				<thead class="thead-light">
-					<tr>
-						<th class="text-center">#ID</th>
-						<th class="text-center">Tipo</th>
-						<th>Número de Nota</th>
-						<th class="text-center">Fecha</th>
-						<th>Factura</th>
-						<th class="text-right">Monto Aplicado</th>
-						<th class="text-center">Acciones</th>
-					</tr>
-				</thead>
-				<tbody class="text-center">
-					{% if note_applications and note_applications|length > 0 %}
-						{% for app in note_applications %}
-							<tr class="{{ app.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
-								<td class="text-muted small">{{ app.credit_note_id }}</td>
-								<td>
-									{% if app.note_type == 'CREDIT' %}
-										<span class="badge bg-success"><i class="fas fa-minus-circle"></i> Crédito</span>
-									{% else %}
-										<span class="badge bg-secondary"><i class="fas fa-plus-circle"></i> Cargo</span>
-									{% endif %}
-								</td>
-								<td>{{ app.note_number ?: '—' }}</td>
-								<td>{{ app.note_date|date('d/m/Y') }}</td>
-								<td>
-										{% if app.invoice_folio %}
-											{{ app.invoice_folio }} — {{ app.invoice_number }}
-										{% else %}
-											<span class="text-muted small"><i class="fas fa-minus"></i> Sin factura</span>
-										{% endif %}
-									</td>
-								<td class="text-right">
-									{{ app.note_type == 'CREDIT' ? '-' : '+' }}
-									${{ app.applied_amount|number_format(2) }}
-								</td>
-								<td style="white-space:nowrap">
-									{% if app.documents_count > 0 %}
-										<button class="btn btn-sm btn-info view-note-docs-btn mr-1"
-											data-note-id="{{ app.credit_note_id }}"
-											title="Ver PDF(s)">
-											<i class="fas fa-file-pdf"></i> {{ app.documents_count }}
-										</button>
-									{% endif %}
-									<button class="btn btn-sm btn-secondary mr-1"
-										onclick="openUploadDocModalPD({{ app.credit_note_id }})"
-										title="Subir PDF">
-										<i class="fas fa-upload"></i>
-									</button>
-									<button class="btn btn-sm btn-danger"
-										onclick="removeApplication({{ app.id }})"
-										title="Quitar aplicación">
-										<i class="fas fa-unlink"></i>
-									</button>
-								</td>
-							</tr>
-						{% endfor %}
-					{% else %}
-						<tr><td colspan="7" class="text-center text-muted py-3">Sin notas aplicadas a este pago</td></tr>
-					{% endif %}
-				</tbody>
-			</table>
-
-			<!-- Resumen de ajustes -->
-			<div class="row mt-3 px-3 pb-3">
-				<div class="col-md-4 offset-md-8">
-					<table class="table table-sm">
-						<tr>
-							<td><strong>Total Crédito aplicado:</strong></td>
-							<td class="text-right text-success">-${{ notes_totals.total_credits|number_format(2) }}</td>
-						</tr>
-						<tr>
-							<td><strong>Total Cargo aplicado:</strong></td>
-							<td class="text-right text-warning">+${{ notes_totals.total_debits|number_format(2) }}</td>
-						</tr>
-					</table>
-				</div>
-			</div>
-		</div>
-	</div>
-	<!-- Facturas -->
-	<div class="row mt-3">
-		<div class="col-12">
-			<div class="card">
-				<div class="card-header">
-					<div class="d-flex justify-content-between align-items-center">
-						<h6 class="mb-0">
-							<i class="fas fa-file-invoice-dollar"></i>
-							Facturas Incluidas
-						</h6>
-						<div>
-							{% set total_facturas = invoices|length %}
-							{% set
-            facturas_autorizadas = 0 %}
-							{% for invoice in invoices %}
-								{% if
-            invoice.payment_authorized == 1 %}
-									{% set facturas_autorizadas =
-            facturas_autorizadas + 1 %}
-								{% endif %}
-							{% endfor %}
-							<span class="badge bg-secondary">Total:
-								{{ payment.status }}</span>
-							<span class="badge bg-secondary">Total:
-								{{ total_facturas }}</span>
-							<span class="badge bg-success">Autorizadas:
-								{{ facturas_autorizadas }}</span>
-							<span class="badge bg-secondary">Pendientes:
-								{{ total_facturas - facturas_autorizadas }}</span>
-							{% if payment.status == 0 or payment.status == 1 %}
-								<button class="btn btn-sm btn-primary" onclick="window.location.href='/payment/add_more_invoices_to_payment?payment_id={{ payment.id }}'">
-									<i class="fas fa-plus"></i>
-									Agregar Factura
-								</button>
+						<!-- Saldo Pendiente -->
+						<div class="col-6 col-md-3">
+							{% if pendiente <= 0 %}
+							<div class="d-flex flex-column justify-content-center p-3 rounded-3 h-100" style="background:#f0fdf4;border:1px solid #bbf7d0;">
+								<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#16a34a;letter-spacing:.06em;">Saldo Pendiente</p>
+								<p class="mb-0 fw-bold" style="font-size:1.15rem;color:#15803d;">${{ pendiente|number_format(2) }}</p>
+								<small style="color:#16a34a;">Liquidado</small>
+							</div>
+							{% else %}
+							<div class="d-flex flex-column justify-content-center p-3 rounded-3 h-100" style="background:#eff6ff;border:1px solid #bfdbfe;">
+								<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#2563eb;letter-spacing:.06em;">Saldo Pendiente</p>
+								<p class="mb-0 fw-bold" style="font-size:1.15rem;color:#1d4ed8;">${{ pendiente|number_format(2) }}</p>
+								<small style="color:#3b82f6;">Por pagar</small>
+							</div>
 							{% endif %}
 						</div>
+
 					</div>
 				</div>
-				<div class="card-body table-responsive">
-					<table class="table table-sm table-hover" id="tablaFacturasIncluidas">
-						<thead class="table-light">
-							<tr>
-								<th width="40">
-									<i class="fas fa-check-circle text-success" data-bs-toggle="tooltip" title="Autorizada para pago"></i>
-								</th>
-								<th>Folio</th>
-								<th>Factura</th>
-								<th>Proveedor</th>
-								<th>Estación</th>
-								<th class="text-end">Monto</th>
-								<th class="text-end">Pagado</th>
-								<th class="text-end">Saldo</th>
-								<th>Estado Pago</th>
-								<th>Autorización</th>
-								<th>Vencimiento</th>
-								<th>Notas de Crédito</th>
-								<th class="text-end">Total Notas</th>
-								<th class="text-end">Total Saldo</th>
-								<th>Acciones</th>
-							</tr>
-						</thead>
-						<tbody>
-							{% for invoice in invoices %}
-								{% set saldo = invoice.amount -
-            invoice.paid_amount %}
-								{% set autorizada =
-            invoice.payment_authorized == 1 %}
+			</div>
+		</div>
 
-								<tr
-									{% if autorizada %} class="table-success" {% endif %}>
-									{# Indicador de Autorización #}
-									<td class="text-center">
-										{% if autorizada %}
-											<i class="fas fa-check-circle fa-lg text-success" data-bs-toggle="tooltip" title="Autorizada para pago"></i>
-										{% else %}
-											<i class="fas fa-circle fa-sm text-muted" data-bs-toggle="tooltip" title="No autorizada"></i>
-										{% endif %}
-									</td>
+	</div>
 
-									{# Folio #}
-									<td>
-										<strong>{{ invoice.folio }}</strong>
-										{% if autorizada %}
-											<br/>
-											<span class="badge bg-success" style="font-size: 0.7rem">
-												<i class="fas fa-check"></i>
-												Autorizada
-											</span>
-										{% endif %}
-									</td>
+	<!-- TABS -->
+	<div class="card border-0 shadow-sm">
+		<div class="px-3 border-bottom d-flex gap-4" style="overflow-x:auto;">
+			<button class="pd-tab-link active" onclick="pdTab(this,'tab-facturas')">
+				<i class="fas fa-file-invoice-dollar"></i> Facturas
+				<span class="badge bg-secondary ms-1">{{ total_facturas }}</span>
+			</button>
+			<button class="pd-tab-link" onclick="pdTab(this,'tab-notas')">
+				<i class="fas fa-receipt"></i> Notas de Crédito/Cargo
+			</button>
+			<button class="pd-tab-link" onclick="pdTab(this,'tab-auth')">
+				<i class="fas fa-shield-alt"></i> Autorizaciones
+				<span class="badge ms-1" style="background:{% if authorization_status.completed %}#d1e7dd;color:#0a3622{% else %}#fff3cd;color:#856404{% endif %};">
+					{% set done_count = (authorization_status.abastos ? 1 : 0) + (authorization_status.contabilidad ? 1 : 0) + (authorization_status.admin_finanzas ? 1 : 0) + (authorization_status.tesoreria ? 1 : 0) %}{{ done_count }}/4
+				</span>
+			</button>
+			{% if transactions and transactions|length > 0 %}
+			<button class="pd-tab-link" onclick="pdTab(this,'tab-transacciones')">
+				<i class="fas fa-money-check-alt"></i> Transacciones
+				<span class="badge bg-secondary ms-1">{{ transactions|length }}</span>
+			</button>
+			{% endif %}
+		</div>
 
-									{# Factura #}
-									<td>{{ invoice.invoice_number }}</td>
-
-									{# Proveedor #}
-									<td>{{ invoice.proveedor_nombre }}</td>
-
-									{# Estación #}
-									<td>{{ invoice.estacion_nombre }}</td>
-
-									{# Monto #}
-									<td class="text-end">${{ invoice.amount|number_format(2) }}</td>
-
-									{# Pagado #}
-									<td class="text-end">
-										${{ invoice.paid_amount|number_format(2) }}
-									</td>
-
-									{# Saldo #}
-									<td class="text-end">
-										{% if saldo > 0 %}
-											<strong class="text-danger">${{ saldo|number_format(2) }}</strong>
-										{% else %}
-											<span class="text-success">$0.00</span>
-										{% endif %}
-									</td>
-
-									{# Estado de Pago #}
-									<td>
-										{% if invoice.status == 2 %}
-											<span class="badge bg-success">Pagado</span>
-										{% elseif invoice.status == 3 %}
-											<span class="badge bg-secondary">Pago Parcial</span>
-										{% else %}
-											<span class="badge bg-secondary">Pendiente</span>
-										{% endif %}
-									</td>
-
-									{# Información de Autorización - NUEVA COLUMNA #}
-									<td>
-										{% if autorizada %}
-											<div class="text-center">
-												<div class="mb-1">
-													<strong class="text-success">
-														${{ invoice.authorized_amount|number_format(2) }}
-													</strong>
-												</div>
-												<small class="text-muted d-block">
-													<i class="fas fa-user"></i>
-													{{ invoice.authorized_by_name ?? 'N/A' }}
-												</small>
-												<small class="text-muted d-block">
-													<i class="fas fa-calendar"></i>
-													{{ invoice.authorized_at|date('d/m/Y H:i') }}
-												</small>
-											</div>
-										{% else %}
-											<div class="text-center">
-												<span class="badge bg-secondary" style="font-size: 0.7rem">
-													<i class="fas fa-clock"></i>
-													Sin autorizar
-												</span>
-											</div>
-										{% endif %}
-									</td>
-
-									{# Vencimiento #}
-									<td>
-										{% if invoice.expiration_date %}
-											{{ invoice.expiration_date|date('d/m/Y') }}
-										{% else %}
-											<span class="text-muted">-</span>
-										{% endif %}
-									</td>
-
-									{# Notas de Credito #}
-									<td>
-										{% if invoice.notas_count > 0 %}
-											<span class="badge bg-secondary" title="Notas aplicadas">
-												<i class="fas fa-sticky-note"></i>
-												{{ invoice.notas_count }} nota{{ invoice.notas_count != 1 ? 's' : '' }}
-											</span>
-											{% if invoice.total_notas_credito > 0 %}
-												<br/><small class="text-success"><i class="fas fa-minus-circle"></i> NC: ${{ invoice.total_notas_credito|number_format(2) }}</small>
-											{% endif %}
-											{% if invoice.total_notas_cargo > 0 %}
-												<br/><small class="text-danger"><i class="fas fa-plus-circle"></i> ND: ${{ invoice.total_notas_cargo|number_format(2) }}</small>
-											{% endif %}
-										{% else %}
-											<span class="text-muted">-</span>
-										{% endif %}
-									</td>
-									{# Total Notas (neto: cargo - credito) #}
-									{% set neto_notas = invoice.total_notas_cargo - invoice.total_notas_credito %}
-									<td class="text-end">
-										{% if invoice.notas_count > 0 %}
-											{% if neto_notas < 0 %}
-												<strong class="text-success">-${{ neto_notas|abs|number_format(2) }}</strong>
-												<br/><small class="text-muted">NC</small>
-											{% elseif neto_notas > 0 %}
-												<strong class="text-danger">+${{ neto_notas|number_format(2) }}</strong>
-												<br/><small class="text-muted">ND</small>
-											{% else %}
-												<span class="text-muted">$0.00</span>
-											{% endif %}
-										{% else %}
-											<span class="text-muted">-</span>
-										{% endif %}
-									</td>
-									{# Total Saldo (saldo factura +/- notas) #}
-									{% set saldo_neto = saldo + neto_notas %}
-									<td class="text-end">
-										{% if saldo_neto > 0 %}
-											<strong class="text-danger">${{ saldo_neto|number_format(2) }}</strong>
-										{% elseif saldo_neto < 0 %}
-											<strong class="text-warning">${{ saldo_neto|number_format(2) }}</strong>
-										{% else %}
-											<span class="text-success">$0.00</span>
-										{% endif %}
-									</td>
-
-									{# Acciones #}
-									<td class="text-center">
-										<button class="btn btn-sm btn-outline-info" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Ver historial de pagos">
-											<i class="fas fa-history"></i>
-										</button>
-										{% if payment.status == 0 or payment.status == 1 and invoice.paid_amount == 0 %}
-											<button class="btn btn-sm btn-outline-danger" onclick="removeInvoiceFromPayment({{ invoice.id }}, '{{ invoice.folio }}')" title="Quitar factura del pago">
-												<i class="fas fa-times"></i>
-											</button>
-										{% endif %}
-									</td>
-								</tr>
-							{% endfor %}
-						</tbody>
-						{% set total_monto = 0 %}
+		<!-- Tab: Facturas -->
+		<div id="tab-facturas" class="pd-tab-content active">
+			<div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
+				<div class="d-flex gap-2">
+					<span class="badge bg-secondary">Total: {{ total_facturas }}</span>
+					<span class="badge" style="background:#d1e7dd;color:#0a3622;">Autorizadas: {{ facturas_autorizadas }}</span>
+					<span class="badge" style="background:#fff3cd;color:#856404;">Pendientes: {{ total_facturas - facturas_autorizadas }}</span>
+				</div>
+				{% if payment.status == 0 or payment.status == 1 %}
+				<button class="btn btn-sm btn-outline-secondary" onclick="window.location.href='/payment/add_more_invoices_to_payment?payment_id={{ payment.id }}'">
+					<i class="fas fa-plus"></i> Agregar Factura
+				</button>
+				{% endif %}
+			</div>
+			<div class="table-responsive">
+				<table class="table table-sm table-hover mb-0" id="tablaFacturasIncluidas">
+					<thead class="table-light" style="font-size:.78rem;">
+						<tr>
+							<th width="32"><i class="fas fa-check-circle text-success" title="Autorizada"></i></th>
+							<th>Folio / Factura</th>
+							<th>Proveedor</th>
+							<th>Estación</th>
+							<th class="text-end">Monto</th>
+							<th class="text-end">Saldo</th>
+							<th class="text-end">Saldo Neto</th>
+							<th>Estado</th>
+							<th>Vencimiento</th>
+							<th>Acciones</th>
+						</tr>
+					</thead>
+					<tbody>
+					{% set total_monto = 0 %}
 					{% set total_pagado_calc = 0 %}
 					{% set total_nc = 0 %}
 					{% set total_nd = 0 %}
 					{% set total_autorizado_tabla = 0 %}
 					{% for invoice in invoices %}
+						{% set saldo = invoice.amount - invoice.paid_amount %}
+						{% set autorizada = invoice.payment_authorized == 1 %}
+						{% set neto_notas = invoice.total_notas_cargo - invoice.total_notas_credito %}
+						{% set saldo_neto = saldo + neto_notas %}
 						{% set total_monto = total_monto + invoice.amount %}
 						{% set total_pagado_calc = total_pagado_calc + invoice.paid_amount %}
 						{% set total_nc = total_nc + invoice.total_notas_credito %}
 						{% set total_nd = total_nd + invoice.total_notas_cargo %}
-						{% if invoice.payment_authorized == 1 %}
-							{% set total_autorizado_tabla = total_autorizado_tabla + invoice.authorized_amount %}
-						{% endif %}
+						{% if autorizada %}{% set total_autorizado_tabla = total_autorizado_tabla + invoice.authorized_amount %}{% endif %}
+						<tr{% if autorizada %} class="table-success"{% endif %}>
+							<td class="text-center">
+								{% if autorizada %}<i class="fas fa-check-circle text-success"></i>{% else %}<i class="fas fa-circle fa-sm text-muted"></i>{% endif %}
+							</td>
+							<td>
+								<strong>{{ invoice.folio }}</strong>
+								<br><small class="text-muted">{{ invoice.invoice_number }}</small>
+								{% if autorizada %}<br><small class="text-muted">Auth: ${{ invoice.authorized_amount|number_format(2) }} &middot; {{ invoice.authorized_at|date('d/m/Y') }}</small>{% endif %}
+							</td>
+							<td style="max-width:150px;" class="text-truncate" title="{{ invoice.proveedor_nombre }}">{{ invoice.proveedor_nombre }}</td>
+							<td>{{ invoice.estacion_nombre }}</td>
+							<td class="text-end">${{ invoice.amount|number_format(2) }}</td>
+							<td class="text-end">
+								{% if saldo > 0 %}<strong class="text-danger">${{ saldo|number_format(2) }}</strong>{% else %}<span class="text-success">$0.00</span>{% endif %}
+							</td>
+							<td class="text-end">
+								{% if saldo_neto > 0 %}<strong class="text-danger">${{ saldo_neto|number_format(2) }}</strong>
+								{% elseif saldo_neto < 0 %}<strong class="text-warning">${{ saldo_neto|number_format(2) }}</strong>
+								{% else %}<span class="text-success">$0.00</span>{% endif %}
+							</td>
+							<td>
+								{% if invoice.status == 2 %}<span class="badge" style="background:#d1e7dd;color:#0a3622;">Pagado</span>
+								{% elseif invoice.status == 3 %}<span class="badge bg-secondary">Pago Parcial</span>
+								{% else %}<span class="badge bg-secondary">Pendiente</span>{% endif %}
+							</td>
+							<td>
+								{% if invoice.expiration_date %}{{ invoice.expiration_date|date('d/m/Y') }}{% else %}<span class="text-muted">-</span>{% endif %}
+							</td>
+							<td class="text-center" style="white-space:nowrap;">
+								<button class="btn btn-sm btn-outline-secondary" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Historial"><i class="fas fa-history"></i></button>
+								{% if payment.status == 0 or payment.status == 1 and invoice.paid_amount == 0 %}
+								<button class="btn btn-sm btn-outline-danger" onclick="removeInvoiceFromPayment({{ invoice.id }}, '{{ invoice.folio }}')" title="Quitar"><i class="fas fa-times"></i></button>
+								{% endif %}
+							</td>
+						</tr>
 					{% endfor %}
+					</tbody>
 					{% set total_saldo = total_monto - total_pagado_calc %}
 					{% set total_neto_notas = total_nd - total_nc %}
 					{% set total_saldo_neto = total_saldo + total_neto_notas %}
-					<tfoot class="table-light">
+					<tfoot class="table-light" style="font-size:.82rem;">
 						<tr>
-							<th colspan="5" class="text-end">TOTALES:</th>
+							<th colspan="4" class="text-end text-muted">TOTALES:</th>
 							<th class="text-end">${{ total_monto|number_format(2) }}</th>
-							<th class="text-end">${{ total_pagado_calc|number_format(2) }}</th>
 							<th class="text-end"><strong class="text-danger">${{ total_saldo|number_format(2) }}</strong></th>
+							<th class="text-end">
+								{% if total_saldo_neto > 0 %}<strong class="text-danger">${{ total_saldo_neto|number_format(2) }}</strong>{% else %}<span class="text-success">$0.00</span>{% endif %}
+							</th>
 							<th colspan="3"></th>
-							<th></th>
-							<th class="text-end">
-								{% if total_nc > 0 %}<small class="text-success d-block">-${{ total_nc|number_format(2) }} NC</small>{% endif %}
-								{% if total_nd > 0 %}<small class="text-danger d-block">+${{ total_nd|number_format(2) }} ND</small>{% endif %}
-								{% if total_nc == 0 and total_nd == 0 %}<span class="text-muted">-</span>{% endif %}
-							</th>
-							<th class="text-end">
-								{% if total_saldo_neto > 0 %}<strong class="text-danger">${{ total_saldo_neto|number_format(2) }}</strong>
-								{% elseif total_saldo_neto < 0 %}<strong class="text-warning">${{ total_saldo_neto|number_format(2) }}</strong>
-								{% else %}<span class="text-success">$0.00</span>{% endif %}
-							</th>
-							<th></th>
 						</tr>
 						<tr>
-							<th colspan="5" class="text-end">MONTO AUTORIZADO:</th>
-							<th class="text-end" colspan="3">
-								<strong class="text-success" style="font-size: 1.1rem">
-									${{ total_autorizado_tabla|number_format(2) }}
-								</strong>
-							</th>
-							<th colspan="7">
-								<small class="text-muted">{{ facturas_autorizadas }} de {{ total_facturas }} facturas autorizadas</small>
-							</th>
+							<th colspan="4" class="text-end text-muted">MONTO AUTORIZADO:</th>
+							<th class="text-end" colspan="3"><strong class="text-success">${{ total_autorizado_tabla|number_format(2) }}</strong></th>
+							<th colspan="3"><small class="text-muted">{{ facturas_autorizadas }} de {{ total_facturas }} autorizadas</small></th>
 						</tr>
 					</tfoot>
-					</table>
-				</div>
+				</table>
 			</div>
 		</div>
-	</div>
 
-	{% if transactions and transactions|length > 0 %}
-		<div class="row mt-3">
-			<div class="col-12">
-				<div class="card border-success">
-					<div class="card-header bg-success text-white">
-						<h6 class="mb-0">
-							<i class="fas fa-money-check-alt"></i>
-							Transacciones de Pago Realizadas
-						</h6>
+		<!-- Tab: Notas -->
+		<div id="tab-notas" class="pd-tab-content">
+			<div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light">
+				<span class="text-muted" style="font-size:.85rem;">Notas aplicadas a este pago</span>
+				<div class="d-flex gap-2">
+					<button class="btn btn-sm btn-outline-secondary" onclick="openApplyCreditNoteModal()"><i class="fas fa-link"></i> Aplicar Nota</button>
+					<button class="btn btn-sm btn-outline-secondary" onclick="addNoteModal()"><i class="fas fa-plus"></i> Nueva Nota</button>
+				</div>
+			</div>
+			<div class="table-responsive">
+				<table class="table table-sm table-hover mb-0" id="noteApplicationsTable">
+					<thead class="table-light" style="font-size:.78rem;">
+						<tr>
+							<th class="text-center">#ID</th>
+							<th class="text-center">Tipo</th>
+							<th>Número de Nota</th>
+							<th class="text-center">Fecha</th>
+							<th>Factura</th>
+							<th class="text-end">Monto Aplicado</th>
+							<th class="text-center">Acciones</th>
+						</tr>
+					</thead>
+					<tbody class="text-center">
+						{% if note_applications and note_applications|length > 0 %}
+							{% for app in note_applications %}
+								<tr class="{{ app.note_type == 'CREDIT' ? 'table-success' : 'table-warning' }}">
+									<td class="text-muted small">{{ app.credit_note_id }}</td>
+									<td>
+										{% if app.note_type == 'CREDIT' %}<span class="badge bg-success"><i class="fas fa-minus-circle"></i> Crédito</span>
+										{% else %}<span class="badge bg-secondary"><i class="fas fa-plus-circle"></i> Cargo</span>{% endif %}
+									</td>
+									<td>{{ app.note_number ?: '—' }}</td>
+									<td>{{ app.note_date|date('d/m/Y') }}</td>
+									<td>{% if app.invoice_folio %}{{ app.invoice_folio }} — {{ app.invoice_number }}{% else %}<span class="text-muted small">Sin factura</span>{% endif %}</td>
+									<td class="text-end">{{ app.note_type == 'CREDIT' ? '-' : '+' }} ${{ app.applied_amount|number_format(2) }}</td>
+									<td style="white-space:nowrap;">
+										{% if app.documents_count > 0 %}
+											<button class="btn btn-sm btn-outline-secondary view-note-docs-btn me-1" data-note-id="{{ app.credit_note_id }}" title="Ver PDF(s)"><i class="fas fa-file-pdf"></i> {{ app.documents_count }}</button>
+										{% endif %}
+										<button class="btn btn-sm btn-outline-secondary me-1" onclick="openUploadDocModalPD({{ app.credit_note_id }})" title="Subir PDF"><i class="fas fa-upload"></i></button>
+										<button class="btn btn-sm btn-outline-danger" onclick="removeApplication({{ app.id }})" title="Quitar"><i class="fas fa-unlink"></i></button>
+									</td>
+								</tr>
+							{% endfor %}
+						{% else %}
+							<tr><td colspan="7" class="text-center text-muted py-4"><i class="fas fa-receipt fa-lg d-block mb-2 text-muted"></i>Sin notas aplicadas a este pago</td></tr>
+						{% endif %}
+					</tbody>
+				</table>
+			</div>
+			{% if notes_totals.total_credits > 0 or notes_totals.total_debits > 0 %}
+			<div class="px-3 py-2 border-top bg-light d-flex justify-content-end gap-4" style="font-size:.85rem;">
+				<span>Total Crédito: <strong style="color:#3a7d60;">-${{ notes_totals.total_credits|number_format(2) }}</strong></span>
+				<span>Total Cargo: <strong style="color:#b05c3a;">+${{ notes_totals.total_debits|number_format(2) }}</strong></span>
+			</div>
+			{% endif %}
+		</div>
+
+		<!-- Tab: Autorizaciones -->
+		<div id="tab-auth" class="pd-tab-content">
+			<div class="px-3 pt-3 pb-2">
+				{% set progress = 0 %}
+				{% if authorization_status.abastos %}{% set progress = progress + 25 %}{% endif %}
+				{% if authorization_status.contabilidad %}{% set progress = progress + 25 %}{% endif %}
+				{% if authorization_status.admin_finanzas %}{% set progress = progress + 25 %}{% endif %}
+				{% if authorization_status.tesoreria %}{% set progress = progress + 25 %}{% endif %}
+				<div class="d-flex justify-content-between mb-1">
+					<small class="text-muted fw-semibold">Progreso de autorización</small>
+					<small class="text-muted">{{ progress }}% completado</small>
+				</div>
+				<div class="progress mb-4" style="height:5px;">
+					<div class="progress-bar" style="width:{{ progress }}%;background:#3a7d60;"></div>
+				</div>
+
+				<!-- Nivel 1: Abastos -->
+				{% set done = authorization_status.abastos %}
+				{% set is_next = authorization_status.next_level == 66 %}
+				<div class="auth-step">
+					<div class="auth-step-icon" style="background:{% if done %}#3a7d60{% elseif is_next %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if done %}#3a7d60{% elseif is_next %}#343a40{% else %}#dee2e6{% endif %};color:{% if done %}#fff{% else %}#6c757d{% endif %};">
+						<i class="fas {% if done %}fa-check{% else %}fa-box{% endif %}"></i>
 					</div>
-					<div
-						class="card-body">
-						<!-- Resumen de transacciones -->
-						<div class="row mb-3">
-							<div class="col-md-3">
-								<div class="card bg-light">
-									<div class="card-body text-center p-2">
-										<small class="text-muted d-block">Total Transacciones</small>
-										<h5 class="mb-0 text-primary">{{ transactions|length }}</h5>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-3">
-								<div class="card bg-light">
-									<div class="card-body text-center p-2">
-										<small class="text-muted d-block">Monto Total Pagado</small>
-										{% set total_pagado = 0 %}
-										{% for tx in transactions %}
-											{% set
-                total_pagado = total_pagado + tx.payment_amount %}
-										{% endfor %}
-										<h5 class="mb-0 text-success">
-											${{ total_pagado|number_format(2) }}
-										</h5>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-3">
-								<div class="card bg-light">
-									<div class="card-body text-center p-2">
-										<small class="text-muted d-block">Primera Transacción</small>
-										<h6 class="mb-0 text-info">
-											{% set first_date = transactions|first %}
-											{{
-                  first_date.payment_date|date('d/m/Y') }}
-										</h6>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-3">
-								<div class="card bg-light">
-									<div class="card-body text-center p-2">
-										<small class="text-muted d-block">Última Transacción</small>
-										<h6 class="mb-0 text-info">
-											{% set last_date = transactions|last %}
-											{{
-                  last_date.payment_date|date('d/m/Y') }}
-										</h6>
-									</div>
-								</div>
-							</div>
+					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
+						<div>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Nivel 1 — Abastos</p>
+							{% if done and auth_info.abastos is defined %}<small class="text-muted">{{ auth_info.abastos.autorizador_nombre }} &middot; {{ auth_info.abastos.authorization_date|date('d/m/Y H:i') }}</small>
+							{% elseif is_next %}<small class="text-muted">Turno actual</small>
+							{% else %}<small class="text-muted">En espera</small>{% endif %}
 						</div>
+						<div>
+							{% if done %}<span class="badge" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check me-1"></i>Autorizado</span>
+							{% elseif is_next and authorized(66) %}<button class="btn btn-sm btn-dark" onclick="openAuthModal(66, 'Abastos')"><i class="fas fa-check me-1"></i>Autorizar</button>
+							{% elseif is_next %}<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando</span>
+							{% else %}<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Bloqueado</span>{% endif %}
+						</div>
+					</div>
+				</div>
+				<div style="width:2px;height:1.2rem;background:#e9ecef;margin-left:1.05rem;"></div>
 
-						<!-- Tabla de transacciones -->
-						<div class="table-responsive">
-							<table class="table table-sm table-hover table-bordered">
-								<thead class="table-success">
-									<tr>
-										<th width="50">#</th>
-										<th>Folio Factura</th>
-										<th>Factura</th>
-										<th>Fecha Pago</th>
-										<th class="text-end">Monto</th>
-										<th>Método</th>
-										<th>Referencia</th>
-										<th>Cuenta Beneficiario</th>
-										<th>Procesado Por</th>
-										<th>Estado</th>
-										<th width="80">Acciones</th>
-									</tr>
-								</thead>
-								<tbody>
+				<!-- Nivel 2: Contabilidad -->
+				{% set done = authorization_status.contabilidad %}
+				{% set is_next = authorization_status.next_level == 70 %}
+				<div class="auth-step">
+					<div class="auth-step-icon" style="background:{% if done %}#3a7d60{% elseif is_next %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if done %}#3a7d60{% elseif is_next %}#343a40{% else %}#dee2e6{% endif %};color:{% if done %}#fff{% else %}#6c757d{% endif %};">
+						<i class="fas {% if done %}fa-check{% else %}fa-calculator{% endif %}"></i>
+					</div>
+					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
+						<div>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Nivel 2 — Contabilidad</p>
+							{% if done and auth_info.contabilidad is defined %}<small class="text-muted">{{ auth_info.contabilidad.autorizador_nombre }} &middot; {{ auth_info.contabilidad.authorization_date|date('d/m/Y H:i') }}</small>
+							{% elseif is_next %}<small class="text-muted">Turno actual</small>
+							{% else %}<small class="text-muted">En espera</small>{% endif %}
+						</div>
+						<div>
+							{% if done %}<span class="badge" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check me-1"></i>Autorizado</span>
+							{% elseif is_next and authorized(70) %}<button class="btn btn-sm btn-dark" onclick="openAuthModal(70, 'Contabilidad')"><i class="fas fa-check me-1"></i>Autorizar</button>
+							{% elseif is_next %}<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando</span>
+							{% else %}<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Bloqueado</span>{% endif %}
+						</div>
+					</div>
+				</div>
+				<div style="width:2px;height:1.2rem;background:#e9ecef;margin-left:1.05rem;"></div>
+
+				<!-- Nivel 3: Admin y Finanzas -->
+				{% set done = authorization_status.admin_finanzas %}
+				{% set is_next = authorization_status.next_level == 67 %}
+				<div class="auth-step">
+					<div class="auth-step-icon" style="background:{% if done %}#3a7d60{% elseif is_next %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if done %}#3a7d60{% elseif is_next %}#343a40{% else %}#dee2e6{% endif %};color:{% if done %}#fff{% else %}#6c757d{% endif %};">
+						<i class="fas {% if done %}fa-check{% else %}fa-building{% endif %}"></i>
+					</div>
+					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
+						<div>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Nivel 3 — Administración y Finanzas</p>
+							{% if done and auth_info.admin_finanzas is defined %}<small class="text-muted">{{ auth_info.admin_finanzas.autorizador_nombre }} &middot; {{ auth_info.admin_finanzas.authorization_date|date('d/m/Y H:i') }}</small>
+							{% elseif is_next %}<small class="text-muted">Turno actual</small>
+							{% else %}<small class="text-muted">En espera</small>{% endif %}
+						</div>
+						<div>
+							{% if done %}<span class="badge" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check me-1"></i>Autorizado</span>
+							{% elseif is_next and authorized(67) %}<button class="btn btn-sm btn-dark" onclick="openAuthModal(67, 'Administración y Finanzas')"><i class="fas fa-check me-1"></i>Autorizar</button>
+							{% elseif is_next %}<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando</span>
+							{% else %}<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Bloqueado</span>{% endif %}
+						</div>
+					</div>
+				</div>
+				<div style="width:2px;height:1.2rem;background:#e9ecef;margin-left:1.05rem;"></div>
+
+				<!-- Nivel 4: Tesorería -->
+				{% set done = authorization_status.tesoreria %}
+				{% set is_next = authorization_status.next_level == 68 %}
+				<div class="auth-step">
+					<div class="auth-step-icon" style="background:{% if done %}#3a7d60{% elseif is_next %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if done %}#3a7d60{% elseif is_next %}#343a40{% else %}#dee2e6{% endif %};color:{% if done %}#fff{% else %}#6c757d{% endif %};">
+						<i class="fas {% if done %}fa-check{% else %}fa-money-check-alt{% endif %}"></i>
+					</div>
+					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
+						<div>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Nivel 4 — Tesorería</p>
+							{% if done and auth_info.tesoreria is defined %}<small class="text-muted">{{ auth_info.tesoreria.autorizador_nombre }} &middot; {{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
+							{% elseif is_next %}<small class="text-muted">Turno actual</small>
+							{% else %}<small class="text-muted">En espera</small>{% endif %}
+						</div>
+						<div>
+							{% if done %}<span class="badge" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check me-1"></i>Autorizado</span>
+							{% elseif is_next and authorized(68) %}<button class="btn btn-sm btn-dark" onclick="openAuthModal(68, 'Tesorería')"><i class="fas fa-check me-1"></i>Autorizar</button>
+							{% elseif is_next %}<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando</span>
+							{% else %}<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Bloqueado</span>{% endif %}
+						</div>
+					</div>
+				</div>
+
+				{% if authorizations %}
+				<hr class="my-3">
+				<p class="text-muted mb-2" style="font-size:.75rem;font-weight:700;text-transform:uppercase;">Historial</p>
+				<table class="table table-sm mb-0" style="font-size:.82rem;">
+					<thead class="table-light">
+						<tr><th>Nivel</th><th>Departamento</th><th>Autorizador</th><th>Fecha</th></tr>
+					</thead>
+					<tbody>
+					{% for auth in authorizations %}
+						<tr>
+							<td><span class="badge bg-secondary">Nivel {{ auth.permission_number == 66 ? 1 : (auth.permission_number == 70 ? 2 : (auth.permission_number == 67 ? 3 : 4)) }}</span></td>
+							<td>{{ auth.departamento }}</td>
+							<td>{{ auth.autorizador_nombre }}</td>
+							<td>{{ auth.authorization_date|date('d/m/Y H:i') }}</td>
+						</tr>
+					{% endfor %}
+					</tbody>
+				</table>
+				{% endif %}
+			</div>
+		</div>
+
+		<!-- Tab: Transacciones -->
+		{% if transactions and transactions|length > 0 %}
+		<div id="tab-transacciones" class="pd-tab-content">
+			<div class="table-responsive">
+				<table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+					<thead class="table-light">
+						<tr>
+							<th>#</th><th>Folio Factura</th><th>Factura</th><th>Fecha Pago</th>
+							<th class="text-end">Monto</th><th>Método</th><th>Referencia</th>
+							<th>Cuenta Beneficiario</th><th>Procesado Por</th><th>Estado</th><th>Acciones</th>
+						</tr>
+					</thead>
+					<tbody>
 									{% for tx in transactions %}
 										<tr>
 											<td class="text-center">{{ loop.index }}</td>
@@ -1130,26 +532,63 @@
 										<th colspan="6"></th>
 									</tr>
 								</tfoot>
-							</table>
-						</div>
+					</tbody>
+				</table>
+			</div>
+		</div>
+		{% endif %}
+	</div>
 
-						<!-- Notas adicionales -->
-						{% if transactions|length > 0 %}
-							<div class="alert alert-info mt-3 mb-0">
-								<i class="fas fa-info-circle"></i>
-								<strong>Información:</strong>
-								Se han registrado
-								{{ transactions|length }}
-								transacción(es) de pago
-																          por un total de
-								<strong>${{ total_pagado|number_format(2) }}</strong>.
-							</div>
-						{% endif %}
+	<div class="pd-footer-spacer"></div>
+
+	<!-- STICKY FOOTER -->
+	<div id="pd-sticky-footer">
+		<div class="container-fluid px-3">
+			<div class="d-flex align-items-center justify-content-between py-2 flex-wrap gap-2">
+				<div class="d-flex gap-4 align-items-center flex-wrap" style="font-size:.82rem;">
+					<span class="text-muted">Facturas: <strong class="text-dark">${{ payment_calculation.invoice_total|number_format(2) }}</strong></span>
+					{% if payment_calculation.credit_notes_total > 0 %}
+					<span class="text-muted">NC: <strong style="color:#3a7d60;">-${{ payment_calculation.credit_notes_total|number_format(2) }}</strong></span>
+					{% endif %}
+					{% if payment_calculation.debit_notes_total > 0 %}
+					<span class="text-muted">ND: <strong style="color:#b05c3a;">+${{ payment_calculation.debit_notes_total|number_format(2) }}</strong></span>
+					{% endif %}
+					{% if payment_calculation.advance_total > 0 %}
+					<span class="text-muted">Anticipos: <strong style="color:#8b1a1a;">-${{ payment_calculation.advance_total|number_format(2) }}</strong></span>
+					{% endif %}
+					<span class="text-muted">Autorizado: <strong class="text-success">${{ total_autorizado_tabla|number_format(2) }}</strong> <small class="text-muted">({{ facturas_autorizadas }}/{{ total_facturas }})</small></span>
+				</div>
+				<div class="d-flex align-items-center gap-3">
+					<div class="text-end">
+						<p class="mb-0 text-muted" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Total a Pagar</p>
+						<p class="mb-0 fw-bold" style="font-size:1.3rem;color:#4a3f8f;">${{ payment_calculation.final_amount|number_format(2) }}</p>
 					</div>
+					{% if payment.status == 1 and authorized(68) %}
+					<button class="btn btn-dark px-4" onclick="autorizarPago()">
+						<i class="fas fa-check-circle me-1"></i> Autorizar Pago
+					</button>
+					{% elseif payment.status == 0 and authorized(66) and not authorization_status.abastos %}
+					<button class="btn btn-dark px-4" onclick="openAuthModal(66, 'Abastos')">
+						<i class="fas fa-check me-1"></i> Autorizar
+					</button>
+					{% endif %}
 				</div>
 			</div>
 		</div>
-	{% endif %}
+	</div>
+
+	<script>
+		function pdTab(btn, tabId) {
+			document.querySelectorAll('.pd-tab-link').forEach(b => b.classList.remove('active'));
+			document.querySelectorAll('.pd-tab-content').forEach(t => t.classList.remove('active'));
+			btn.classList.add('active');
+			document.getElementById(tabId).classList.add('active');
+		}
+	</script>
+
+	<input type="number" id="paymentId" value="{{ payment.id }}" hidden>
+	<input type="hidden" id="paymentProviderId" value="{{ payment.provider_id }}">
+
 	<!-- ✅ NUEVO: Modal de Historial de Pagos -->
 	<div class="modal fade" id="modalHistorialPagos" tabindex="-1">
 		<div class="modal-dialog modal-lg">

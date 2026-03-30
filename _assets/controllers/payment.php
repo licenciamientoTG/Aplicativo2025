@@ -984,11 +984,11 @@ class Payment
 
                 $canDelete = in_array(69, explode(',', $_SESSION['tg_user']['permissions']));
                 $deleteBtn = $canDelete
-                    ? '<button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash"></i></button>'
+                    ? '<button class="btn btn-sm" style="color:#dc2626;background:#fef2f2;border:none;border-radius:5px;padding:.3rem .5rem;" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar"><i class="fas fa-trash" style="font-size:.8rem;"></i></button>'
                     : '';
                 $actions = '
-                    <div class="btn-group btn-group-sm">
-                        <a href="/payment/payment_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle"><i class="fas fa-eye"></i></a>
+                    <div class="d-flex align-items-center justify-content-center gap-1">
+                        <a href="/payment/payment_detail/' . $row['id'] . '" class="btn btn-sm" style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver detalle"><i class="fas fa-eye" style="font-size:.8rem;"></i></a>
                         ' . $deleteBtn . '
                     </div>
                 ';
@@ -1068,14 +1068,12 @@ class Payment
 
                 // ✅ ACCIONES ESPECÍFICAS PARA ANTICIPOS
                 $actions = '
-                    <div class="btn-group btn-group-sm">
-                        <a href="/payment/anticipo_detail/' . $row['id'] . '" class="btn btn-info" title="Ver detalle">
-                            <i class="fas fa-eye"></i>
-                        </a>';
-
-                $actions .= '
-                        <button class="btn btn-danger" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
-                            <i class="fas fa-trash"></i>
+                    <div class="d-flex align-items-center justify-content-center gap-1">
+                        <a href="/payment/anticipo_detail/' . $row['id'] . '" class="btn btn-sm" style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver detalle">
+                            <i class="fas fa-eye" style="font-size:.8rem;"></i>
+                        </a>
+                        <button class="btn btn-sm" style="color:#dc2626;background:#fef2f2;border:none;border-radius:5px;padding:.3rem .5rem;" onclick="deletePayment(' . $row['id'] . ')" title="Eliminar">
+                            <i class="fas fa-trash" style="font-size:.8rem;"></i>
                         </button>
                     </div>
                 ';

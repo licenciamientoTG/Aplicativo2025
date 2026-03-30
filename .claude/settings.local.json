@@ -39,7 +39,8 @@
       "Bash(cd:*)",
       "Bash(__NEW_LINE_a292b7eb3cee567e__ sed:*)",
       "Bash(sed -i \"s|/supply/invoiceFile|/payment/invoiceFile|g\" invoice_pdf.html)",
-      "Bash(__NEW_LINE_a292b7eb3cee567e__ echo:*)"
+      "Bash(__NEW_LINE_a292b7eb3cee567e__ echo:*)",
+      "Bash(/tmp/fix_divs2.py:*)"
     ],
     "deny": [],
     "ask": []

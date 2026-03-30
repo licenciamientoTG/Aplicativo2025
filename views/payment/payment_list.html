@@ -14,608 +14,379 @@
 </script>
 
 <style>
-    /* Estilos para los cards de aprobación masiva */
-    .card.opacity-50 {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
+    .pl-tab-link { border-bottom: 2px solid transparent; color: #64748b; background: none; border-top:none; border-left:none; border-right:none; padding: 0.75rem 0; font-size: 0.875rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: color .15s, border-color .15s; white-space: nowrap; }
+    .pl-tab-link:hover { color: #1e293b; }
+    .pl-tab-link.active { border-bottom-color: #3d6b9e; color: #3d6b9e; }
+    .pl-tab-content { display: none; }
+    .pl-tab-content.active { display: block; }
 
-    .card.opacity-50 .btn {
-        pointer-events: none;
-    }
+    #payment_list_table thead th,
+    #tabla_anticipos thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+    #tabla_facturas_autorizadas thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
 
-    /* Animación para los badges de contador */
-    #count-abastos,
-    #count-admin,
-    #count-tesoreria {
-        display: inline-block;
-        min-width: 40px;
-        padding: 8px 12px;
-        transition: all 0.3s ease;
-    }
+    .auth-box { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 12px; transition: all .2s; }
+    .auth-box.bg-success { background-color: #dcfce7 !important; color: #16a34a !important; }
+    .auth-box.bg-warning { background-color: #fef9c3 !important; color: #ca8a04 !important; }
+    .auth-box.bg-info { background-color: #dbeafe !important; color: #2563eb !important; }
+    .auth-box.bg-secondary { background-color: #f1f5f9 !important; color: #94a3b8 !important; }
 
-    #count-abastos.badge-updated,
-    #count-admin.badge-updated,
-    #count-tesoreria.badge-updated,
-    #count-contabilidad.badge-updated {
-        animation: pulse-badge 0.4s ease;
-    }
+    #collapseAprobacionMasiva { transition: all .3s ease; }
+    .pipeline-card { display: flex; align-items: center; justify-content: space-between; padding: .75rem 1rem; border-radius: .5rem; border: 1px solid; }
+    .pipeline-card.active-level { background: #eff6ff; border-color: #bfdbfe; }
+    .pipeline-card.locked-level { background: #fff; border-color: #e2e8f0; opacity: .7; }
+    .pipeline-icon { width: 2.2rem; height: 2.2rem; border-radius: .4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-    @keyframes pulse-badge {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-    }
+    .table-responsive { padding: 0 .75rem .75rem; }
+    .table tbody tr:hover { background-color: #f8fafc; }
+    .table tbody tr td { font-size: .82rem; vertical-align: middle; color: #334155; border-color: #f1f5f9; }
+    .table tbody tr td, .table thead th { padding: .55rem .75rem; }
+    .badge.status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .badge.status-authorized { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .badge.status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
-    .badge-updated {
-        animation: pulse-badge 0.4s ease;
-    }
-
-    /* Hover effects en cards */
-    .card.border-primary:hover,
-    .card.border-success:hover,
-    .card.border-info:hover {
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        transform: translateY(-2px);
-        transition: all 0.3s ease;
-    }
-
-    /* Iconos de los cards */
-    .card-body .fa-2x {
-        margin-bottom: 1rem;
-    }
-
-    #payment_list_table thead th {
-        background-color: #212529 !important;
-        color: #ffffff !important;
-    }
-
-    #tabla_anticipos thead th {
-        background-color: rgb(108, 117, 125, 1) !important;
-        color: #ffffff !important;
-    }
-
-    #tabla_facturas_autorizadas thead th {
-        background-color: rgb(23, 162, 184, 1) !important;
-        color: #ffffff !important;
-    }
-
-    .auth-box {
-        width: 32px;
-        height: 32px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        font-size: 14px;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .auth-box:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    }
-
-    .auth-box i {
-        font-size: 16px;
-    }
-
-    /* Colores específicos */
-    .auth-box.bg-success {
-        background-color: #28a745 !important;
-    }
-
-    .auth-box.bg-warning {
-        background-color: #ffc107 !important;
-    }
-
-    .auth-box.bg-info {
-        background-color: #17a2b8 !important;
-    }
-
-    .auth-box.bg-secondary {
-        background-color: #6c757d !important;
-    }
-
-    /* Espaciado entre cuadros */
-    .d-flex.gap-1 {
-        gap: 0.5rem;
-    }
-
-    #tabla_facturas_autorizadas .group-header {
-        background-color: #f8f9fa !important;
-        font-weight: bold;
-        border-top: 2px solid #dee2e6;
-        border-bottom: 2px solid #dee2e6;
-    }
-
-    #tabla_facturas_autorizadas .group-header td {
-        padding: 12px 8px !important;
-    }
-
-    /* Colores de banco */
-    .badge[style*="C9302C"] {
-        background-color: #C9302C !important;
-        /* Banorte */
-    }
-
-    .badge[style*="EC1C24"] {
-        background-color: #EC1C24 !important;
-        /* Santander */
-    }
-
-    /* Resaltar filas de anticipos */
-    .table-warning {
-        --bs-table-bg: #fff3cd !important;
-        --bs-table-striped-bg: #ffe69c !important;
-    }
-
-    /* Badge de anticipo */
-    .badge.bg-warning.text-dark {
-        background-color: #ffc107 !important;
-        color: #000 !important;
-        font-weight: 600;
-    }
-
-    /* Estilos para sección colapsable de aprobación masiva */
-    #collapseAprobacionMasiva {
-        transition: all 0.3s ease;
-    }
-
-    .card-header[data-bs-toggle="collapse"] {
-        transition: background-color 0.2s ease;
-    }
-
-    .card-header[data-bs-toggle="collapse"]:hover {
-        background-color: #e9ecef !important;
-    }
-
-    .card-header[data-bs-toggle="collapse"] .fa-chevron-down {
-        transition: transform 0.3s ease;
-    }
-
-    .card-header[data-bs-toggle="collapse"][aria-expanded="true"] .fa-chevron-down {
-        transform: rotate(180deg);
-    }
+    #tabla_facturas_autorizadas .group-header { background-color: #f8fafc !important; font-weight: 700; border-top: 2px solid #e2e8f0; }
+    .badge-updated { animation: pulse-badge .4s ease; }
+    @keyframes pulse-badge { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
+    .badge[style*="C9302C"] { background-color: #C9302C !important; }
+    .badge[style*="EC1C24"] { background-color: #EC1C24 !important; }
+    .table-warning { --bs-table-bg: #fffbeb !important; }
 </style>
 
-<!-- TEMPORAL PRUEBAS - COMENTADO
-<button class="btn btn-sm btn-danger mb-2" onclick="resetTestData()">RESET PRUEBAS</button>
-<script>
-function resetTestData() {
-    if (!confirm('¿Borrar TODOS los registros de las tablas de pagos? Esto no se puede deshacer.')) return;
-    $.post('/payment/reset_test_data', function(res) {
-        if (res.success) {
-            alert('Tablas limpiadas correctamente.');
-        } else {
-            alert('Error: ' + res.message);
-        }
-    }, 'json').fail(function(){ alert('Error en la petición.'); });
-}
-</script>
--->
-
-<!-- Agregar después de la sección de tabs, antes del tab-content -->
-<div class="card mb-3 bg-light border border-secondary border-opacity-25 shadow-sm">
-    <!-- Header colapsable -->
-    <div class="card-header bg-light" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#collapseAprobacionMasiva" aria-expanded="false">
-        <h6 class="mb-0">
-            <i class="fas fa-bolt text-warning"></i> Aprobación Masiva de Pagos
-            <i class="fas fa-chevron-down float-end text-muted"></i>
-        </h6>
+<!-- PIPELINE DE APROBACIÓN MASIVA -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white border-bottom px-3 py-2 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#collapseAprobacionMasiva" aria-expanded="false">
+        <span class="d-flex align-items-center gap-2 fw-medium" style="font-size:.85rem;color:#334155;">
+            <i class="fas fa-shield-alt text-warning"></i> Aprobación Masiva de Pagos
+        </span>
+        <i class="fas fa-chevron-down text-muted" style="font-size:.75rem;transition:transform .3s;"></i>
     </div>
-
-    <!-- Contenido colapsable (cerrado por defecto) -->
     <div class="collapse" id="collapseAprobacionMasiva">
-        <div class="card-body">
+        <div class="card-body p-3">
             <div class="row g-3">
-                <!-- Botón Abastos -->
-                <div class="col-md-3">
-                    <div class="card border-primary h-100" id="card-abastos">
-                        <div class="card-body text-center">
-                            <i class="fas fa-truck fa-2x text-primary mb-2"></i>
-                            <h6>Abastos</h6>
-                            <p class="text-muted small mb-2">Nivel 1</p>
-                            <div class="mb-3">
-                                <span class="badge bg-warning text-dark fs-6" id="count-abastos">0</span>
-                                <small class="d-block text-muted">pendientes</small>
-                            </div>
-                            <button class="btn btn-primary btn-sm w-100" onclick="abrirModalAprobacionMasiva(66, 'Abastos')"
-                                id="btn-aprobar-abastos" disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 1
-                            </button>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Botón Contabilidad -->
-                <div class="col-md-3">
-                    <div class="card border-primary h-100" id="card-contabilidad">
-                        <div class="card-body text-center">
-                            <i class="fas fa-calculator fa-2x text-primary mb-2"></i>
-                            <h6>Contabilidad</h6>
-                            <p class="text-muted small mb-2">Nivel 2</p>
-                            <div class="mb-3">
-                                <span class="badge bg-warning text-dark fs-6" id="count-contabilidad">0</span>
-                                <small class="d-block text-muted">pendientes</small>
+                <!-- Abastos -->
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="pipeline-card active-level" id="card-abastos">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="pipeline-icon" style="background:#dbeafe;color:#2563eb;"><i class="fas fa-truck" style="font-size:.9rem;"></i></div>
+                            <div>
+                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Abastos</p>
+                                <p class="mb-0 text-muted" style="font-size:.72rem;">Nivel 1</p>
                             </div>
-                            <button class="btn btn-primary btn-sm w-100 mb-1" onclick="abrirModalAprobacionMasiva(70, 'Contabilidad')"
-                                id="btn-aprobar-contabilidad" disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 2
-                            </button>
-                            {% if authorized(70) %}
-                            <button class="btn btn-outline-secondary btn-sm w-100" onclick="abrirModalCrearArchivoContabilidad()">
-                                <i class="fas fa-folder-plus"></i> Crear Archivo
-                            </button>
+                        </div>
+                        <div class="d-flex flex-column align-items-end gap-1">
+                            <span class="badge fw-bold px-2" style="background:#fbbf24;color:#1c1917;font-size:.72rem;" id="count-abastos">0</span>
+                            {% if authorized(66) %}
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#2563eb;" onclick="abrirModalAprobacionMasiva(66, 'Abastos')" id="btn-aprobar-abastos" disabled>Aprobar</button>
                             {% endif %}
                         </div>
                     </div>
                 </div>
 
-                <!-- Botón Administración y Finanzas -->
-                <div class="col-md-3">
-                    <div class="card border-success h-100" id="card-admin">
-                        <div class="card-body text-center">
-                            <i class="fas fa-building fa-2x text-success mb-2"></i>
-                            <h6>Administración y Finanzas</h6>
-                            <p class="text-muted small mb-2">Nivel 3</p>
-                            <div class="mb-3">
-                                <span class="badge bg-warning text-dark fs-6" id="count-admin">0</span>
-                                <small class="d-block text-muted">pendientes</small>
+                <!-- Contabilidad -->
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="pipeline-card locked-level" id="card-contabilidad">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="pipeline-icon" style="background:#f1f5f9;color:#64748b;"><i class="fas fa-calculator" style="font-size:.9rem;"></i></div>
+                            <div>
+                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Contabilidad</p>
+                                <p class="mb-0 text-muted" style="font-size:.72rem;">Nivel 2</p>
                             </div>
-                            <button class="btn btn-success btn-sm w-100"
-                                onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin"
-                                disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 3
-                            </button>
+                        </div>
+                        <div class="d-flex flex-column align-items-end gap-1">
+                            <span class="badge fw-bold px-2" style="background:#e2e8f0;color:#475569;font-size:.72rem;" id="count-contabilidad">0</span>
+                            {% if authorized(70) %}
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#2563eb;" onclick="abrirModalAprobacionMasiva(70, 'Contabilidad')" id="btn-aprobar-contabilidad" disabled>Aprobar</button>
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#64748b;" onclick="abrirModalCrearArchivoContabilidad()">Crear Archivo</button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
 
-                <!-- Botón Tesorería -->
-                <div class="col-md-3">
-                    <div class="card border-info h-100" id="card-tesoreria">
-                        <div class="card-body text-center">
-                            <i class="fas fa-money-check-alt fa-2x text-info mb-2"></i>
-                            <h6>Tesorería</h6>
-                            <p class="text-muted small mb-2">Nivel 4</p>
-                            <div class="mb-3">
-                                <span class="badge bg-warning text-dark fs-6" id="count-tesoreria">0</span>
-                                <small class="d-block text-muted">pendientes</small>
+                <!-- Admin & Finanzas -->
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="pipeline-card locked-level" id="card-admin">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="pipeline-icon" style="background:#f1f5f9;color:#64748b;"><i class="fas fa-building" style="font-size:.9rem;"></i></div>
+                            <div>
+                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Admin & Finanzas</p>
+                                <p class="mb-0 text-muted" style="font-size:.72rem;">Nivel 3</p>
                             </div>
-                            <button class="btn btn-info btn-sm w-100 mb-2" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')"
-                                id="btn-aprobar-tesoreria" disabled>
-                                <i class="fas fa-check-double"></i> Aprobar Nivel 4
-                            </button>
-                            <button class="btn btn-outline-info btn-sm w-100" onclick="abrirModalAutorizarPagoMasivo()">
-                                <i class="fas fa-money-check-alt"></i> Autorizar Pago Facturas
-                            </button>
+                        </div>
+                        <div class="d-flex flex-column align-items-end gap-1">
+                            <span class="badge fw-bold px-2" style="background:#e2e8f0;color:#475569;font-size:.72rem;" id="count-admin">0</span>
+                            {% if authorized(67) %}
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#2563eb;" onclick="abrirModalAprobacionMasiva(67, 'Administración y Finanzas')" id="btn-aprobar-admin" disabled>Aprobar</button>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
+
+                <!-- Tesorería -->
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="pipeline-card locked-level" id="card-tesoreria">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="pipeline-icon" style="background:#f1f5f9;color:#64748b;"><i class="fas fa-landmark" style="font-size:.9rem;"></i></div>
+                            <div>
+                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Tesorería</p>
+                                <p class="mb-0 text-muted" style="font-size:.72rem;">Nivel 4</p>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-column align-items-end gap-1">
+                            <span class="badge fw-bold px-2" style="background:#e2e8f0;color:#475569;font-size:.72rem;" id="count-tesoreria">0</span>
+                            {% if authorized(68) %}
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#2563eb;" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')" id="btn-aprobar-tesoreria" disabled>Aprobar</button>
+                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#64748b;" onclick="abrirModalAutorizarPagoMasivo()">Autorizar Pago</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
 </div>
-<ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <a class="nav-link active" data-bs-toggle="tab" href="#tab_pagos"><i class="fas fa-list"></i> Pagos</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link " data-bs-toggle="tab" href="#tab_anticipos"><i class="fas fa-hand-holding-usd"></i>
-            Anticipos</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab_facturas_autorizadas">
-            <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas para Pago
-        </a>
-    </li>
-    {% if authorized(70) %}
-    <li class="nav-item">
-        <a class="nav-link" data-bs-toggle="tab" href="#tab_archivos_contabilidad"
-           id="tab_archivos_contabilidad_link" onclick="loadAccountingGroupsTable()">
+
+<!-- CARD PRINCIPAL: Tabs + Toolbar + Tabla -->
+<div class="card border-0 shadow-sm">
+
+    <!-- Tabs -->
+    <div class="px-3 border-bottom d-flex gap-4" style="overflow-x:auto;">
+        <button class="pl-tab-link active" onclick="plTab(this,'pl-tab-pagos')">
+            <i class="fas fa-list"></i> Pagos
+        </button>
+        <button class="pl-tab-link" onclick="plTab(this,'pl-tab-anticipos')">
+            <i class="fas fa-hand-holding-usd"></i> Anticipos
+        </button>
+        <button class="pl-tab-link" onclick="plTab(this,'pl-tab-facturas-auth')">
+            <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas
+        </button>
+        {% if authorized(70) %}
+        <button class="pl-tab-link" onclick="plTab(this,'pl-tab-archivos'); loadAccountingGroupsTable();" id="tab_archivos_contabilidad_link">
             <i class="fas fa-folder-open"></i> Archivos Contabilidad
-        </a>
-    </li>
-    {% endif %}
-
-    <!-- ... otras tabs ... -->
-</ul>
-
-
-
-<div class="tab-content">
-    <div class="tab-pane fade show active " id="tab_pagos">
-        <div class="card">
-            <div class="card-body">
-                <div class="row" style="align-items: flex-end;">
-                    <div class="col-2">
-                        <label class="col-form-label-sm">Estado:</label>
-                        <select class="form-control form-control-sm form-select" id="status_filter">
-                            <option value="all">Todos</option>
-                            <option value="pending">Pendiente</option>
-                            <option value="authorized">Autorizado</option>
-                            <option value="paid">Pagado</option>
-                            <option value="cancelled">Cancelado</option>
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <button onclick="loadPaymentList()" class="btn btn-sm btn-primary"
-                            style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
-                    </div>
-                    <div class="col-2">
-                        <a href="/payment/add_payment" class="btn btn-sm btn-success"
-                            style="width: 100%; margin-top: 15px;"><i class="fas fa-plus"></i> Nuevo Pago</a>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-
-        <div class="card mt-3">
-
-            <div class="card-header  ">
-                <i class="fas fa-hand-holding-usd"></i> Lista de Pagos Programados
-            </div>
-            <div class="card-body table-responsive">
-                <table id="payment_list_table" class="table table-bordered table-hover table-sm w-100  table-striped  dataTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Fecha Solicitud</th>
-                            <th>Fecha Pago Esperada</th>
-                            <th>Empresa</th>
-                            <th>Proveedor</th>
-                            <th>Usuario</th>
-                            <th>Facturas</th>
-                            <th>Total Facturas</th>
-                            <th title="Notas de Crédito">NC</th>
-                            <th title="Notas de Débito">ND</th>
-                            <th>Monto Total</th>
-                            <th>Pagado</th>
-                            <th>Autorizadas</th>
-                            <th>Estado</th>
-                            <th>Autorizaciones</th>
-                            <th>Comentario</th>
-                            <th>Acciones</th>
-                            {% if authorized(999) %}<th></th>{% endif %}
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-        </div>
+        </button>
+        {% endif %}
     </div>
-    <div class="tab-pane fade " id="tab_anticipos">
-        <div class="card">
-            <div class="card-body">
-                <div class="row" style="align-items: flex-end;">
-                    <div class="col-2">
-                        <label class="col-form-label-sm">Estado:</label>
-                        <select class="form-control form-control-sm form-select" id="status_filter_anticipos">
-                            <option value="all">Todos</option>
-                            <option value="pending">Pendiente</option>
-                            <option value="authorized">Autorizado</option>
-                            <option value="paid">Pagado</option>
-                            <option value="cancelled">Cancelado</option>
-                        </select>
-                    </div>
-                    <div class="col-2">
-                        <button onclick="loadAnticiposList()" class="btn btn-sm btn-primary"
-                            style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
-                    </div>
-                    <div class="col-2">
-                        <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-success"
-                            style="width: 100%; margin-top: 15px;">
-                            <i class="fas fa-plus"></i> Nuevo Anticipo
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div class="card-header ">
-                <i class="fas fa-hand-holding-usd"></i> Gestión de Anticipos
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table id="tabla_anticipos" class="table w-100 table-striped table-hover">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Fecha Solicitud</th>
-                                <th>Empresa</th>
-                                <th>Proveedor</th>
-                                <th>Usuario</th>
-                                <th>Aplicaciones</th> <!-- ✅ CAMBIO DE NOMBRE -->
-                                <th>Monto Total</th>
-                                <th>Aplicado</th> <!-- ✅ CAMBIO DE NOMBRE -->
-                                <th>Saldo</th> <!-- ✅ NUEVA COLUMNA -->
-                                <th>Estado</th>
-                                <th>Autorizaciones</th>
-                                <th>Comentario</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- DataTable -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="tab-pane fade" id="tab_facturas_autorizadas">
-        <!-- Resumen por Banco -->
-        <div class="row mb-3">
-            <div class="col-md-4">
-                <div class="card border-danger">
-                    <div class="card-body text-center p-3">
-                        <h6 class="text-muted mb-2">
-                            <i class="fas fa-university"></i> Banorte
-                        </h6>
-                        <h3 class="mb-1 text-danger" id="totalBanorte">$0.00</h3>
-                        <small class="text-muted" id="facturasBanorte">0 facturas</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-danger">
-                    <div class="card-body text-center p-3">
-                        <h6 class="text-muted mb-2">
-                            <i class="fas fa-university"></i> Santander
-                        </h6>
-                        <h3 class="mb-1 text-danger" id="totalSantander">$0.00</h3>
-                        <small class="text-muted" id="facturasSantander">0 facturas</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card border-primary">
-                    <div class="card-body text-center p-3">
-                        <h6 class="text-muted mb-2">
-                            <i class="fas fa-check-double"></i> Seleccionadas
-                        </h6>
-                        <h3 class="mb-1 text-primary" id="totalSeleccionadas">$0.00</h3>
-                        <small class="text-muted" id="facturasSeleccionadas">0 facturas</small>
-                    </div>
-                </div>
-            </div>
-        </div>
 
-        <!-- Filtros y Acciones -->
-        <div class="card mb-3 shadow-sm">
-            <div class="card-header py-2" >
+    <!-- ===== TAB: PAGOS ===== -->
+    <div id="pl-tab-pagos" class="pl-tab-content active">
+
+        <!-- Toolbar -->
+        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
+            <div class="d-flex align-items-center gap-2 w-100" style="max-width:480px;">
+                <div class="position-relative flex-grow-1">
+                    <i class="fas fa-search position-absolute" style="left:.7rem;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.8rem;"></i>
+                    <input type="text" id="search_pagos" placeholder="Buscar pago, proveedor..." class="form-control form-control-sm" style="padding-left:2.1rem;border-radius:.5rem;border-color:#cbd5e1;" oninput="loadPaymentList()">
+                </div>
                 <div class="d-flex align-items-center gap-2">
-                    <i class="fas fa-sliders-h "></i>
-                    <span class=" fw-semibold" style="font-size: 0.85rem; letter-spacing: 0.5px; color: #000;">FILTROS Y ACCIONES</span>
-                </div>
-            </div>
-            <div class="card-body py-3 px-3">
-                <div class="row align-items-end g-2" id="cabecera_pagos">
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                            <i class="fas fa-university me-1 text-primary"></i> Banco
-                        </label>
-                        <select class="form-select form-select-sm" id="filtroBanco">
-                            <option value="all">Todos los Bancos</option>
-                            <option value="Banorte">Banorte</option>
-                            <option value="Santander">Santander</option>
-                            <option value="Sin asignar">Sin Asignar</option>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                            <i class="fas fa-building me-1 text-primary"></i> Empresa
-                        </label>
-                        <select class="form-select form-select-sm" id="filtroEmpresa">
-                            <option value="all">Todas las Empresas</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <button class="btn btn-sm btn-primary w-100 d-flex align-items-center justify-content-center gap-1" onclick="aplicarFiltros()" style="height: 31px;">
-                            <i class="fas fa-filter"></i> Filtrar
-                        </button>
-                    </div>
-                    <div class="col-md-2">
-                        <button class="btn btn-sm btn-outline-success w-100 d-flex align-items-center justify-content-center gap-1"
-                            id="btnGenerarLayout" onclick="validarYGenerarLayout()" disabled style="height: 31px;">
-                            <i class="fas fa-file-excel"></i> Layout
-                        </button>
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-sm btn-success w-100 d-flex align-items-center justify-content-center gap-1"
-                            id="btnRegistrarPago" onclick="abrirModalRegistroPago()" style="height: 31px;">
-                            <i class="fas fa-check-circle"></i> Registrar Pago
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tabla de Facturas -->
-        <div class="card">
-            <div class="card-header ">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        <i class="fas fa-file-invoice-dollar"></i>
-                        Facturas Autorizadas Pendientes de Pago
-                    </h6>
-                    <button class="btn btn-sm btn-light" onclick="toggleSelectAll()">
-                        <i class="fas fa-check-square"></i> Seleccionar Todo
+                    <select class="form-select form-select-sm" id="status_filter" style="border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;min-width:130px;">
+                        <option value="all">Todos los estados</option>
+                        <option value="pending">Pendiente</option>
+                        <option value="authorized">Autorizado</option>
+                        <option value="paid">Pagado</option>
+                        <option value="cancelled">Cancelado</option>
+                    </select>
+                    <button onclick="loadPaymentList()" class="btn btn-sm border" style="border-color:#cbd5e1;color:#64748b;border-radius:.5rem;">
+                        <i class="fas fa-filter" style="font-size:.8rem;"></i>
                     </button>
                 </div>
             </div>
-            <div class="card-body table-responsive">
-                <table id="tabla_facturas_autorizadas" class="table table-sm table-hover w-100">
-                    <thead >
-                        <tr>
-                            <th width="40">
-                                <input type="checkbox" id="selectAllInvoices" onchange="toggleSelectAll()">
-                            </th>
-                            <th>Banco</th>
-                            <th>Empresa (Razón Social)</th>
-                            <th>Proveedor</th>
-                            <th class="text-center">Tipo</th> <!-- ✅ CAMBIO DE NOMBRE -->
-                            <th class="text-end">Monto Total Autorizado</th>
-                            <th class="text-end">Saldo Total</th>
-                            <th>Autorizado Por</th>
-                            <th>Última Autorización</th>
-                            <th>Vencimiento / Folio</th> <!-- ✅ CAMBIO DE NOMBRE -->
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- DataTable -->
-                    </tbody>
-                    <tfoot class="table-light">
-                        <tr>
-                            <th colspan="5" class="text-end">TOTAL SELECCIONADO:</th>
-                            <th class="text-end">
-                                <strong id="footerTotalSeleccionado">$0.00</strong>
-                            </th>
-                            <th colspan="5"></th>
-                        </tr>
-                    </tfoot>
-                </table>
+            <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
+            </a>
+        </div>
+
+        <!-- Tabla -->
+        <div class="table-responsive">
+            <table id="payment_list_table" class="table table-hover table-sm w-100 dataTable mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha Solicitud</th>
+                        <th>Fecha Pago Esp.</th>
+                        <th>Empresa</th>
+                        <th>Proveedor</th>
+                        <th>Usuario</th>
+                        <th class="text-center">Facturas</th>
+                        <th class="text-end">Total Facturas</th>
+                        <th class="text-end" title="Notas de Crédito">NC</th>
+                        <th class="text-end" title="Notas de Débito">ND</th>
+                        <th class="text-end">Monto Total</th>
+                        <th class="text-end">Pagado</th>
+                        <th class="text-center">Autorizadas</th>
+                        <th class="text-center">Estado</th>
+                        <th class="text-center">Autorizaciones</th>
+                        <th>Comentario</th>
+                        <th class="text-center">Acciones</th>
+                        {% if authorized(999) %}<th></th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== TAB: ANTICIPOS ===== -->
+    <div id="pl-tab-anticipos" class="pl-tab-content">
+
+        <!-- Toolbar -->
+        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
+            <div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm" id="status_filter_anticipos" style="border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;min-width:130px;">
+                    <option value="all">Todos los estados</option>
+                    <option value="pending">Pendiente</option>
+                    <option value="authorized">Autorizado</option>
+                    <option value="paid">Pagado</option>
+                    <option value="cancelled">Cancelado</option>
+                </select>
+                <button onclick="loadAnticiposList()" class="btn btn-sm border" style="border-color:#cbd5e1;color:#64748b;border-radius:.5rem;">
+                    <i class="fas fa-filter" style="font-size:.8rem;"></i>
+                </button>
             </div>
+            <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Anticipo
+            </button>
+        </div>
+
+        <!-- Tabla -->
+        <div class="table-responsive">
+            <table id="tabla_anticipos" class="table table-hover table-sm w-100 mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Fecha Solicitud</th>
+                        <th>Empresa</th>
+                        <th>Proveedor</th>
+                        <th>Usuario</th>
+                        <th>Aplicaciones</th>
+                        <th class="text-end">Monto Total</th>
+                        <th class="text-end">Aplicado</th>
+                        <th class="text-end">Saldo</th>
+                        <th class="text-center">Estado</th>
+                        <th class="text-center">Autorizaciones</th>
+                        <th>Comentario</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== TAB: FACTURAS AUTORIZADAS ===== -->
+    <div id="pl-tab-facturas-auth" class="pl-tab-content">
+        <div class="p-3">
+
+            <!-- Resumen por banco -->
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-4">
+                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#fef2f2;border:1px solid #fecaca;">
+                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#dc2626;letter-spacing:.06em;"><i class="fas fa-university me-1"></i>Banorte</p>
+                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#b91c1c;" id="totalBanorte">$0.00</p>
+                        <small style="color:#ef4444;" id="facturasBanorte">0 facturas</small>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#fef2f2;border:1px solid #fecaca;">
+                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#dc2626;letter-spacing:.06em;"><i class="fas fa-university me-1"></i>Santander</p>
+                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#b91c1c;" id="totalSantander">$0.00</p>
+                        <small style="color:#ef4444;" id="facturasSantander">0 facturas</small>
+                    </div>
+                </div>
+                <div class="col-12 col-md-4">
+                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
+                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#2563eb;letter-spacing:.06em;"><i class="fas fa-check-double me-1"></i>Seleccionadas</p>
+                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#1d4ed8;" id="totalSeleccionadas">$0.00</p>
+                        <small style="color:#3b82f6;" id="facturasSeleccionadas">0 facturas</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtros y acciones (se mantiene igual, solo el card wrapper cambia) -->
+            <div id="cabecera_pagos_wrapper">
+
+            </div>
+
+        </div>
+
+        <!-- La tabla de facturas autorizadas se renderiza aquí por JS -->
+        <div class="table-responsive">
+            <table id="tabla_facturas_autorizadas" class="table table-hover table-sm w-100 mb-0">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Banco</th>
+                        <th>Empresa</th>
+                        <th>Proveedor</th>
+                        <th class="text-center">Facturas / Tipo</th>
+                        <th class="text-end">Monto Total</th>
+                        <th class="text-end">Saldo</th>
+                        <th>Autorizado Por</th>
+                        <th>Fecha Auth.</th>
+                        <th>Vencimiento / Folio</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
     {% if authorized(70) %}
-    <!-- Tab: Archivos Contabilidad -->
-    <div class="tab-pane fade" id="tab_archivos_contabilidad">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-folder-open"></i> Archivos de Contabilidad</span>
-                <button class="btn btn-sm btn-success" onclick="abrirModalCrearArchivoContabilidad()">
-                    <i class="fas fa-folder-plus"></i> Crear Archivo
-                </button>
-            </div>
-            <div class="card-body table-responsive">
-                <table id="tabla_archivos_contabilidad" class="table table-sm table-bordered table-hover w-100">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>ID Contabilidad</th>
-                            <th>Razón Social / Proveedor</th>
-                            <th>Empresa</th>
-                            <th class="text-end">Requisiciones</th>
-                            <th class="text-end">Monto Total</th>
-                            <th>Creado por</th>
-                            <th>Fecha</th>
-                            <th class="text-center">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
+    <!-- ===== TAB: ARCHIVOS CONTABILIDAD ===== -->
+    <div id="pl-tab-archivos" class="pl-tab-content">
+        <div class="table-responsive">
+            <table id="tabla_archivos_contabilidad" class="table table-hover table-sm w-100 mb-0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Razón Social</th>
+                        <th>Empresa</th>
+                        <th class="text-end">Requisiciones</th>
+                        <th class="text-end">Monto Total</th>
+                        <th>Creado Por</th>
+                        <th>Fecha</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
     {% endif %}
+
 </div>
 
-    <!-- Modal Ver PDF Factura -->
-    <div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
+<script>
+function plTab(btn, tabId) {
+    document.querySelectorAll('.pl-tab-link').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.pl-tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+    // Sync old Bootstrap tab IDs for JS compatibility
+    const map = {
+        'pl-tab-pagos': 'tab_pagos',
+        'pl-tab-anticipos': 'tab_anticipos',
+        'pl-tab-facturas-auth': 'tab_facturas_autorizadas',
+        'pl-tab-archivos': 'tab_archivos_contabilidad'
+    };
+}
+// Also handle chevron rotation for pipeline collapse
+document.addEventListener('DOMContentLoaded', function() {
+    var collapseEl = document.getElementById('collapseAprobacionMasiva');
+    if (collapseEl) {
+        collapseEl.addEventListener('show.bs.collapse', function() {
+            document.querySelector('[data-bs-target="#collapseAprobacionMasiva"] .fa-chevron-down').style.transform = 'rotate(180deg)';
+        });
+        collapseEl.addEventListener('hide.bs.collapse', function() {
+            document.querySelector('[data-bs-target="#collapseAprobacionMasiva"] .fa-chevron-down').style.transform = 'rotate(0deg)';
+        });
+    }
+});
+</script>
+
+<div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-labelledby="ModalinvoicePdfLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
