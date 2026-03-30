@@ -184,7 +184,7 @@
 <script>
 function resetTestData() {
     if (!confirm('¿Borrar TODOS los registros de las tablas de pagos? Esto no se puede deshacer.')) return;
-    $.post('/supply/reset_test_data', function(res) {
+    $.post('/payment/reset_test_data', function(res) {
         if (res.success) {
             alert('Tablas limpiadas correctamente.');
         } else {
@@ -344,7 +344,7 @@ function resetTestData() {
                             style="width: 100%; margin-top: 15px;"><i class="fas fa-search"></i> Buscar</button>
                     </div>
                     <div class="col-2">
-                        <a href="/supply/add_payment" class="btn btn-sm btn-success"
+                        <a href="/payment/add_payment" class="btn btn-sm btn-success"
                             style="width: 100%; margin-top: 15px;"><i class="fas fa-plus"></i> Nuevo Pago</a>
                     </div>
 
@@ -1101,7 +1101,7 @@ function resetTestData() {
 {% endblock %}
 
 {% block myjs %}
-<script src="{{ JS }}supply.js"></script>
+<script src="{{ JS }}payment.js"></script>
 <script>
 
     let paymentListTable;
@@ -1168,7 +1168,7 @@ function resetTestData() {
 
     function cargarContadoresPendientes() {
         $.ajax({
-            url: '/supply/get_pending_counts_all',
+            url: '/payment/get_pending_counts_all',
             type: 'GET',
             dataType: 'json',
             success: function (response) {
@@ -1254,7 +1254,7 @@ function resetTestData() {
         mostrarCargando('Cargando pagos pendientes...');
 
         $.ajax({
-            url: '/supply/get_pending_bulk_authorization',
+            url: '/payment/get_pending_bulk_authorization',
             type: 'GET',
             dataType: 'json',
             data: {
@@ -1524,7 +1524,7 @@ function resetTestData() {
         $btnCancelar.prop('disabled', true);
 
         $.ajax({
-            url: '/supply/process_bulk_authorization',
+            url: '/payment/process_bulk_authorization',
             type: 'POST',
             dataType: 'json',
             data: {
@@ -1592,7 +1592,7 @@ function deletePayment(paymentId) {
         cancelButtonText: 'Cancelar'
     }).then(function(result) {
         if (!result.isConfirmed) return;
-        $.post('/supply/delete_payment', { payment_id: paymentId }, function(res) {
+        $.post('/payment/delete_payment', { payment_id: paymentId }, function(res) {
             if (res.success) {
                 Swal.fire({ icon: 'success', title: 'Eliminado', text: 'Pago #' + paymentId + ' eliminado correctamente.', timer: 2000, showConfirmButton: false });
                 loadPaymentList();
