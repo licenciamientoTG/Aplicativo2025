@@ -291,7 +291,7 @@ class GasolinerasModel extends Model{
                             SUM(SdoReal)                                                                            AS SdoReal,
                             ROUND(SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2), 2)      AS Merma,
                             CASE
-                                WHEN ROUND(SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2), 2) >= 9000
+                                WHEN ABS(ROUND(SUM(SdoReal) - ROUND((SUM(SdoInicial) - SUM(Ventas)) + SUM(Compras), 2), 2)) >= 9000
                                 THEN ''''DIFERENCIA''''
                             END AS Estado,
                             ROUND(
