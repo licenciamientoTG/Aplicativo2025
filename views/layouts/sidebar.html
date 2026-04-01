@@ -202,9 +202,6 @@
             <a class="sidebar-link" href="/supply/tgr01">Mermas por estación</a>
           </li>
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/supply/inventarioMermas">Inventario/Mermas</a>
-          </li>
-          <li class="sidebar-item">
             <a class="sidebar-link" href="/supply/creProducts">Combustibles por estaciones</a>
           </li>
           <li class="sidebar-item">
@@ -248,7 +245,8 @@
         </a>
         <ul id="supply_payments" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
           <!-- <li class="sidebar-item"><a class="sidebar-link" href="/supply/shops_fuel">Compras</a></li> -->
-          <li class="sidebar-item"><a class="sidebar-link" href="/payment/fuel_payments">Facturas de Combustible</a></li>
+          <li class="sidebar-item"><a class="sidebar-link" href="/payment/fuel_payments">Facturas de Combustible</a>
+          </li>
           <li class="sidebar-item">
             <a class="sidebar-link" href="/payment/payment_list">Lista de Pagos</a>
           </li>
@@ -271,6 +269,13 @@
         <a class="sidebar-link" href="/supply/purchase_analysis">
           <i data-feather="bar-chart-2"></i>
           <span class="align-middle">Análisis de Compras</span>
+        </a>
+      </li>
+
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/supply/inventarioMermas">
+          <i data-feather="sliders"></i>
+          <span class="align-middle">Inventario/Mermas</span>
         </a>
       </li>
 
@@ -662,7 +667,7 @@
           {% endif %}
           {% if for_sistemas() %}
           <li class="sidebar-item">
-            <a class="sidebar-link" href="/it/hello_world">Hola Mundo</a>
+            <a class="sidebar-link" href="/it/retardos">Retardos</a>
           </li>
           {% endif %}
         </ul>

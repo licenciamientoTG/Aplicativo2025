@@ -1,0 +1,892 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Retardos — Sistemas{% endblock %}
+
+{% block mycss %}
+<style>
+  .tacha-cell {
+    min-width: 78px;
+    height: 62px;
+    vertical-align: middle !important;
+    transition: opacity 0.12s;
+    padding: 4px !important;
+  }
+  .tacha-cell:hover { opacity: 0.82; }
+  #retardos-grid { min-height: 180px; }
+  .loading-overlay {
+    display: flex; align-items: center; justify-content: center;
+    height: 180px; color: #6c757d; font-size: 0.95rem;
+  }
+  #retardos-table thead th { font-size: 0.82rem; }
+  .ho-sub { font-size: 0.7rem; color: #999; }
+</style>
+{% endblock %}
+
+{% block menutitle %}Herramientas{% endblock %}
+
+{% block content %}
+<!-- ── Banner de servicio ── -->
+<div class="d-flex align-items-center gap-2 mb-2" id="servicio-banner">
+  {% if servicio_hoy %}
+    <div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2 w-100">
+      ☕ <strong>{{ servicio_hoy.nombre }}</strong> está en servicio hoy
+    </div>
+  {% elseif puede_reclamar %}
+    <button class="btn btn-warning fw-semibold" onclick="reclamarServicio()" id="btn-servicio">
+      ☕ QUIERO HACER SERVICIO
+    </button>
+  {% else %}
+    <div class="alert alert-secondary py-2 px-3 mb-0 d-flex align-items-center gap-2 w-100">
+      ⏰ El servicio solo se puede reclamar hasta las 9:30 AM
+    </div>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex align-items-center gap-2 flex-wrap py-2">
+
+    <div class="btn-group btn-group-sm" role="group">
+      <button type="button" id="btn-semana" class="btn btn-primary" onclick="setVista('semana')">Semana</button>
+      <button type="button" id="btn-mes"    class="btn btn-outline-primary" onclick="setVista('mes')">Mes</button>
+    </div>
+
+    <button class="btn btn-outline-secondary btn-sm" onclick="navigate(-1)" title="Anterior">&#8592;</button>
+    <span id="periodo-label" class="fw-bold px-1" style="min-width:220px;text-align:center">Cargando…</span>
+    <button class="btn btn-outline-secondary btn-sm" onclick="navigate(1)" title="Siguiente">&#8594;</button>
+
+    <button class="btn btn-outline-secondary btn-sm ms-1" onclick="goToday()">Hoy</button>
+
+    <button class="btn btn-success btn-sm ms-auto" onclick="previewInforme()">
+      <i data-feather="send" style="width:14px;height:14px"></i> Enviar informe
+    </button>
+
+  </div>
+
+  <div id="retardos-grid">
+    <div class="loading-overlay">
+      <div class="spinner-border spinner-border-sm me-2"></div> Cargando…
+    </div>
+  </div>
+</div>
+
+<!-- ── Tachas pendientes ── -->
+<div class="card shadow-sm mt-3" id="pendientes-card">
+  <div class="card-header py-2 fw-semibold">❌ Tachas pendientes de pago</div>
+  <div id="pendientes-area">
+    {% if tachas_pendientes %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0" style="font-size:0.85rem">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Nombre</th>
+            <th>Fecha</th>
+            <th>Método</th>
+            {% if can_edit %}<th>Acción</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in tachas_pendientes %}
+          <tr>
+            <td class="ps-3 fw-semibold">{{ t.nombre }}</td>
+            <td>{{ t.fecha }}</td>
+            <td>
+              {% if t.metodo_pago == 'tiempo' %}⏱ Tiempo
+              {% elseif t.metodo_pago == 'dinero' %}💸 $100
+              {% elseif t.metodo_pago == 'servicio' %}☕ Servicio
+              {% else %}<span class="text-danger">Sin método</span>
+              {% endif %}
+            </td>
+            {% if can_edit %}
+            <td>
+              {% if t.metodo_pago %}
+                <button class="btn btn-success btn-sm py-0" onclick="validarPagoPend({{ t.id }})">✅ Validar</button>
+                <button class="btn btn-outline-secondary btn-sm py-0" onclick="cambiarMetodoPend({{ t.id }})">✏️</button>
+              {% else %}
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend({{ t.id }},'tiempo')" title="Tiempo">⏱</button>
+                  <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend({{ t.id }},'dinero')" title="$100">💸</button>
+                  <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend({{ t.id }},'servicio')" title="Servicio">☕</button>
+                </div>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-success p-3 mb-0">✓ No hay tachas pendientes de pago</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── Modal: cambiar método (pendientes) ── -->
+<div class="modal fade" id="metodoPendModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0">Cambiar método de pago</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <div class="d-grid gap-2">
+          <button class="btn btn-outline-secondary btn-sm" onclick="setMetodoPend(_pendId,'tiempo')">⏱ Tiempo (quedarse 1 hora)</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="setMetodoPend(_pendId,'dinero')">💸 Dinero ($100)</button>
+          <button class="btn btn-outline-secondary btn-sm" onclick="setMetodoPend(_pendId,'servicio')">☕ Servicio (agua / café)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: gestionar tacha ── -->
+<div class="modal fade" id="tachaModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0" id="tachaModalTitle">Gestionar tacha</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2" id="tachaModalBody"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: ajuste de deuda ── -->
+<div class="modal fade" id="deudaModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0">💰 Ajustar deuda</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <p class="small fw-semibold mb-1" id="deudaModalNombre"></p>
+        <p class="small mb-3">Deuda actual: <strong id="deudaModalActual" class="text-danger"></strong></p>
+        <label class="form-label small mb-1">Ajuste <span class="text-muted">(+ agregar / − quitar)</span>:</label>
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text">$</span>
+          <input type="number" class="form-control" id="deudaAjusteMonto" placeholder="ej: 150 ó -100">
+        </div>
+        <label class="form-label small mb-1">Descripción <span class="text-muted">(opcional)</span>:</label>
+        <input type="text" class="form-control form-control-sm" id="deudaAjusteDesc" placeholder="ej: deuda anterior al sistema">
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="confirmarAjusteDeuda()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: programar home office ── -->
+<div class="modal fade" id="hoModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0">🏠 Programar Home Office</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <p class="small fw-semibold mb-1" id="hoModalNombre"></p>
+        <label class="form-label small mb-1">Fecha del Home Office:</label>
+        <input type="date" class="form-control form-control-sm" id="hoFecha">
+        <div class="form-text">Debe ser un día hábil (Lun–Vie) futuro.</div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="confirmarProgramarHO()">🏠 Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: enviar informe ── -->
+<div class="modal fade" id="informeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0">📋 Vista previa del informe</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <p class="small text-muted mb-2">Este mensaje se enviará por WhatsApp:</p>
+        <pre id="informePreview" style="background:#f8f9fa;border-radius:8px;padding:12px;font-size:0.82rem;white-space:pre-wrap;word-break:break-word;border:1px solid #dee2e6"></pre>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" id="btnEnviarInforme" onclick="enviarInforme()">
+          <i data-feather="send" style="width:13px;height:13px"></i> Enviar por WhatsApp
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: pagar efectivo ── -->
+<div class="modal fade" id="pagarModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title mb-0">💸 Pagar efectivo</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body py-2">
+        <p class="mb-1 small">Marcar como pagadas <strong>todas</strong> las tachas de dinero pendientes:</p>
+        <p id="pagarModalDetalles" class="text-muted small mb-0"></p>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="confirmarPagoEfectivo()">Confirmar pago</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script>
+const CAN_EDIT     = {{ can_edit ? 'true' : 'false' }};
+const TODAY        = '{{ today }}';
+const INITIAL_DATA = {{ initial_data | raw }};
+
+const DIAS  = ['Lun','Mar','Mié','Jue','Vie'];
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+/* ─── Estado ─────────────────────────────────────────── */
+let state = { vista: 'semana', fecha: null, data: null, loading: false };
+
+document.addEventListener('DOMContentLoaded', () => {
+  state.data  = INITIAL_DATA;
+  state.vista = 'semana';
+  state.fecha = TODAY;
+  render();
+});
+
+/* ─── Navegación ─────────────────────────────────────── */
+
+function navigate(dir) {
+  if (state.loading) return;
+  let d = new Date(state.fecha + 'T12:00:00');
+  if (state.vista === 'semana') d.setDate(d.getDate() + dir * 7);
+  else d.setMonth(d.getMonth() + dir);
+  state.fecha = d.toISOString().split('T')[0];
+  loadData();
+}
+
+function setVista(v) {
+  if (state.vista === v) return;
+  state.vista = v;
+  loadData();
+}
+
+function goToday() {
+  state.fecha = TODAY;
+  state.vista = 'semana';
+  loadData();
+}
+
+function goToWeek(fecha) {
+  state.vista = 'semana';
+  state.fecha = fecha;
+  loadData();
+}
+
+/* ─── Carga de datos ─────────────────────────────────── */
+
+function loadData() {
+  if (state.loading) return;
+  state.loading = true;
+  document.getElementById('retardos-grid').innerHTML =
+    '<div class="loading-overlay"><div class="spinner-border spinner-border-sm me-2"></div> Cargando…</div>';
+
+  fetch(`/it/retardos_data?vista=${state.vista}&fecha=${state.fecha}`)
+    .then(r => r.json())
+    .then(data => {
+      state.data  = data;
+      state.fecha = data.inicio;
+      render();
+    })
+    .catch(() => {
+      document.getElementById('retardos-grid').innerHTML =
+        '<div class="loading-overlay text-danger">Error al cargar. Intente de nuevo.</div>';
+    })
+    .finally(() => { state.loading = false; });
+}
+
+function refreshData() { loadData(); }
+
+/* ─── Render principal ───────────────────────────────── */
+
+function render() {
+  updatePeriodoLabel();
+  updateVistaButtons();
+  if (state.vista === 'semana') renderWeekView(state.data);
+  else renderMonthView(state.data);
+}
+
+function updatePeriodoLabel() {
+  const d  = state.data;
+  if (!d) return;
+  const el = document.getElementById('periodo-label');
+  const d0 = new Date(d.inicio + 'T12:00:00');
+  const d1 = new Date(d.fin   + 'T12:00:00');
+  if (d.vista === 'semana') {
+    const m0 = MESES[d0.getMonth()], m1 = MESES[d1.getMonth()], y = d0.getFullYear();
+    el.textContent = (m0 === m1)
+      ? `${d0.getDate()} – ${d1.getDate()} de ${m0} ${y}`
+      : `${d0.getDate()} ${m0.slice(0,3)} – ${d1.getDate()} ${m1.slice(0,3)} ${y}`;
+  } else {
+    el.textContent = `${MESES[d0.getMonth()]} ${d0.getFullYear()}`;
+  }
+}
+
+function updateVistaButtons() {
+  document.getElementById('btn-semana').className = 'btn btn-sm ' +
+    (state.vista === 'semana' ? 'btn-primary' : 'btn-outline-primary');
+  document.getElementById('btn-mes').className = 'btn btn-sm ' +
+    (state.vista === 'mes' ? 'btn-primary' : 'btn-outline-primary');
+}
+
+/* ─── Vista semana ───────────────────────────────────── */
+
+function renderWeekView(data) {
+  const { dias, usuarios } = data;
+  const totalDeuda = usuarios.reduce((s, u) => s + (u.deuda || 0), 0);
+
+  const rows = usuarios.map(u => `
+    <tr>
+      <td class="text-start fw-semibold ps-3" style="white-space:nowrap">${u.nombre}</td>
+      ${dias.map(d => renderTachaCell(u.tachas[d], u.id, d)).join('')}
+      ${renderHOCell(u.ho, u.ho_pendiente, u.id)}
+      ${renderDeudaCell(u.deuda, u.id)}
+    </tr>`).join('');
+
+  const pagarBtn = (CAN_EDIT && totalDeuda > 0) ? `
+    <div class="p-2 border-top d-flex justify-content-end">
+      <button class="btn btn-success btn-sm" onclick="showPagarModal()">
+        💸 Pagar efectivo &nbsp;—&nbsp; Acumulado: $${totalDeuda}
+      </button>
+    </div>` : '';
+
+  document.getElementById('retardos-grid').innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle text-center mb-0" id="retardos-table">
+        <thead class="table-dark">
+          <tr>
+            <th class="text-start ps-3" style="min-width:140px">Usuario</th>
+            ${dias.map(d => `<th class="tacha-cell">${fmtDiaHeader(d)}</th>`).join('')}
+            <th style="min-width:110px">Home Office</th>
+            <th style="min-width:80px">Deuda</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${pagarBtn}`;
+  feather.replace();
+}
+
+/* ─── Vista mes ──────────────────────────────────────── */
+
+function renderMonthView(data) {
+  const { semanas, usuarios } = data;
+  if (!semanas || !semanas.length) {
+    document.getElementById('retardos-grid').innerHTML =
+      '<p class="text-muted p-3">Sin semanas disponibles.</p>';
+    return;
+  }
+
+  const totalDeuda = usuarios.reduce((s, u) => s + (u.deuda || 0), 0);
+
+  const semHeaders = semanas.map((s, i) => {
+    const d0 = new Date(s[0] + 'T12:00:00');
+    const d1 = new Date(s[s.length - 1] + 'T12:00:00');
+    return `<th class="small" style="cursor:pointer;min-width:105px"
+                onclick="goToWeek('${s[0]}')" title="Ir a esta semana">
+              Sem ${i + 1}<br>
+              <span class="fw-normal">${d0.getDate()}–${d1.getDate()} ${MESES[d1.getMonth()].slice(0,3)}</span>
+            </th>`;
+  }).join('');
+
+  const rows = usuarios.map(u => {
+    const weekCells = semanas.map(semana => {
+      const cnt  = semana.filter(d => u.tachas[d]).length;
+      const paid = semana.filter(d => u.tachas[d] && u.tachas[d].pagada == 1).length;
+      if (cnt === 0) {
+        return `<td style="background:#d4edda"><span class="text-success">✓</span></td>`;
+      }
+      return `<td style="background:#f8d7da;cursor:pointer" onclick="goToWeek('${semana[0]}')" title="Ver semana">
+        <span class="text-danger fw-bold">${cnt} tacha${cnt > 1 ? 's' : ''}</span>
+        ${paid > 0 ? `<br><span class="text-success small">${paid} pagada${paid > 1 ? 's' : ''}</span>` : ''}
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td class="text-start fw-semibold ps-3" style="white-space:nowrap">${u.nombre}</td>
+      ${weekCells}
+      ${renderHOCell(u.ho, u.ho_pendiente, u.id)}
+      ${renderDeudaCell(u.deuda, u.id)}
+    </tr>`;
+  }).join('');
+
+  const pagarBtn = (CAN_EDIT && totalDeuda > 0) ? `
+    <div class="p-2 border-top d-flex justify-content-end">
+      <button class="btn btn-success btn-sm" onclick="showPagarModal()">
+        💸 Pagar efectivo &nbsp;—&nbsp; Acumulado: $${totalDeuda}
+      </button>
+    </div>` : '';
+
+  document.getElementById('retardos-grid').innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-bordered align-middle text-center mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th class="text-start ps-3" style="min-width:140px">Usuario</th>
+            ${semHeaders}
+            <th style="min-width:110px">Home Office</th>
+            <th style="min-width:80px">Deuda</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${pagarBtn}`;
+  feather.replace();
+}
+
+/* ─── Helpers de celda ───────────────────────────────── */
+
+function fmtDiaHeader(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return `${DIAS[d.getDay() - 1]}<br><small>${d.getDate()} ${MESES[d.getMonth()].slice(0,3)}</small>`;
+}
+
+function renderTachaCell(tacha, userId, fecha) {
+  if (!tacha) {
+    if (CAN_EDIT)
+      return `<td class="tacha-cell" style="background:#f8f9fa;cursor:pointer"
+                  onclick="addTacha(${userId},'${fecha}')" title="Agregar tacha">
+                <span class="text-muted" style="font-size:1.4rem;line-height:1">+</span>
+              </td>`;
+    return `<td class="tacha-cell" style="background:#f8f9fa"></td>`;
+  }
+
+  const { id, metodo_pago, pagada } = tacha;
+  const clickAttr = CAN_EDIT
+    ? `onclick="manageTacha(${id},'${metodo_pago || ''}',${pagada == 1 ? 1 : 0})" style="cursor:pointer"`
+    : '';
+
+  if (pagada == 1) {
+    const mi = { tiempo: '⏱', dinero: '💸', servicio: '☕' }[metodo_pago] || '';
+    return `<td class="tacha-cell" ${clickAttr} style="background:#d4edda">
+      <div style="font-size:1.1rem">✅</div>
+      <small class="text-muted">${mi}</small>
+    </td>`;
+  }
+
+  if (!metodo_pago) {
+    return `<td class="tacha-cell" ${clickAttr} style="background:#f8d7da">
+      <div style="font-size:1.2rem">❌</div>
+      <small class="text-danger" style="font-size:0.7rem">Sin método</small>
+    </td>`;
+  }
+
+  const cfg = {
+    tiempo:   { bg: '#fde8c8', icon: '⏱', lbl: 'Tiempo' },
+    dinero:   { bg: '#fff3cd', icon: '💸', lbl: '$100' },
+    servicio: { bg: '#cce5ff', icon: '☕', lbl: 'Servicio' },
+  }[metodo_pago];
+
+  return `<td class="tacha-cell" ${clickAttr} style="background:${cfg.bg}">
+    <div style="font-size:1.1rem">${cfg.icon}</div>
+    <small style="font-size:0.72rem">${cfg.lbl}</small>
+  </td>`;
+}
+
+function renderHOCell(ho, hoPendiente, userId) {
+  // Contador siempre visible (hacia el siguiente HO)
+  let cls = 'text-success';
+  if (ho.remaining <= 5)       cls = 'text-danger fw-bold';
+  else if (ho.remaining <= 10) cls = 'text-warning fw-bold';
+  const counterHtml = `<div><span class="${cls}">${ho.remaining} días</span><br><span class="ho-sub">${ho.elapsed}/20</span></div>`;
+
+  // HO programado: mostrar fecha encima del contador
+  if (hoPendiente) {
+    const d        = new Date(hoPendiente.fecha + 'T12:00:00');
+    const fechaStr = `${d.getDate()} ${MESES[d.getMonth()].slice(0,3)}`;
+    const cancelAttr = CAN_EDIT
+      ? `onclick="cancelarHO(${hoPendiente.id})" style="cursor:pointer" title="Click para cancelar"`
+      : '';
+    return `<td style="background:#cce5ff;vertical-align:middle">
+      <div ${cancelAttr}>
+        <div>📅 <small class="text-primary fw-semibold">${fechaStr}</small></div>
+        ${CAN_EDIT ? '<small class="text-muted" style="font-size:0.65rem">Cancelar</small>' : ''}
+      </div>
+      <hr style="margin:3px 0;border-color:#99c9f0">
+      ${counterHtml}
+    </td>`;
+  }
+
+  // HO ganado y sin programar: badge encima del contador
+  if (ho.earned) {
+    if (CAN_EDIT) {
+      return `<td style="background:#d4edda">
+        <div style="cursor:pointer" onclick="programarHO(${userId})" title="Click para programar">
+          <div>🏠 <small class="text-success fw-bold">¡Ganado!</small></div>
+          <small class="text-muted" style="font-size:0.65rem">Programar</small>
+        </div>
+        <hr style="margin:3px 0;border-color:#a3d9a5">
+        ${counterHtml}
+      </td>`;
+    }
+    return `<td style="background:#d4edda">
+      <div>🏠 <small class="text-success fw-bold">¡Ganado!</small></div>
+      <hr style="margin:3px 0;border-color:#a3d9a5">
+      ${counterHtml}
+    </td>`;
+  }
+
+  // Solo el contador
+  return `<td>${counterHtml}</td>`;
+}
+
+function renderDeudaCell(deuda, userId) {
+  const content = (deuda > 0)
+    ? `<span class="text-danger fw-bold">$${deuda}</span>`
+    : `<span class="text-muted">-</span>`;
+  if (CAN_EDIT) {
+    return `<td style="cursor:pointer" onclick="editarDeuda(${userId}, ${deuda})" title="Click para ajustar">${content}</td>`;
+  }
+  return `<td>${content}</td>`;
+}
+
+/* ─── Acciones ───────────────────────────────────────── */
+
+function addTacha(userId, fecha) {
+  if (!CAN_EDIT) return;
+  const u    = state.data.usuarios.find(u => u.id == userId);
+  const name = u ? u.nombre : 'Usuario';
+  const d    = new Date(fecha + 'T12:00:00');
+  const ds   = `${DIAS[d.getDay() - 1]} ${d.getDate()} ${MESES[d.getMonth()].slice(0,3)}`;
+  if (!confirm(`¿Agregar tacha a ${name} el ${ds}?`)) return;
+  post('/it/retardos_add', { usuario_id: userId, fecha })
+    .then(r => r.success ? refreshData() : alert(r.message || 'Error al agregar tacha'));
+}
+
+function manageTacha(id, metodo, pagada) {
+  if (!CAN_EDIT) return;
+
+  const mk = m => ({ tiempo: '⏱ Tiempo', dinero: '💸 Dinero ($100)', servicio: '☕ Servicio' }[m] || m);
+  const selCls = m => metodo === m ? 'btn-warning' : 'btn-outline-secondary';
+
+  let body;
+  if (pagada) {
+    body = `<p class="text-success mb-3">✅ Tacha ya pagada (${mk(metodo) || '—'}).</p>
+      <button class="btn btn-outline-danger btn-sm w-100" onclick="quitarTacha(${id})">
+        🗑 Quitar tacha (fue un error)
+      </button>`;
+  } else {
+    body = `<p class="small fw-semibold mb-2">Método de pago:</p>
+      <div class="d-grid gap-2 mb-3">
+        <button class="btn ${selCls('tiempo')} btn-sm"   onclick="setMetodo(${id},'tiempo')">⏱ Tiempo (quedarse 1 hora)</button>
+        <button class="btn ${selCls('dinero')} btn-sm"   onclick="setMetodo(${id},'dinero')">💸 Dinero ($100)</button>
+        <button class="btn ${selCls('servicio')} btn-sm" onclick="setMetodo(${id},'servicio')">☕ Servicio (agua / café)</button>
+      </div>`;
+    if (metodo) {
+      body += `<button class="btn btn-success btn-sm w-100 mb-2" onclick="validarPago(${id})">✅ Validar pago</button>`;
+    }
+    body += `<hr class="my-2">
+      <button class="btn btn-outline-danger btn-sm w-100" onclick="quitarTacha(${id})">
+        🗑 Quitar tacha (fue un error)
+      </button>`;
+  }
+
+  document.getElementById('tachaModalTitle').textContent =
+    'Tacha — ' + (state.data.usuarios.find(u =>
+      u.tachas && Object.values(u.tachas).some(t => t && t.id == id)
+    )?.nombre || '');
+  document.getElementById('tachaModalBody').innerHTML = body;
+  new bootstrap.Modal(document.getElementById('tachaModal')).show();
+}
+
+function setMetodo(id, metodo) {
+  post('/it/retardos_metodo', { id, metodo }).then(r => {
+    if (r.success) { closeTachaModal(); refreshData(); }
+    else alert(r.message || 'Error');
+  });
+}
+
+function validarPago(id) {
+  if (!confirm('¿Confirmar que el pago de esta tacha se realizó?')) return;
+  post('/it/retardos_validar', { id }).then(r => {
+    if (r.success) { closeTachaModal(); refreshData(); }
+    else alert(r.message || 'Error');
+  });
+}
+
+function quitarTacha(id) {
+  if (!confirm('¿Quitar esta tacha? Solo si fue puesta por error.')) return;
+  post('/it/retardos_remove', { id }).then(r => {
+    if (r.success) { closeTachaModal(); refreshData(); }
+    else alert(r.message || 'Error');
+  });
+}
+
+function showPagarModal() {
+  const total    = state.data.usuarios.reduce((s, u) => s + (u.deuda || 0), 0);
+  const detalles = state.data.usuarios
+    .filter(u => u.deuda > 0)
+    .map(u => `${u.nombre}: $${u.deuda}`)
+    .join(' · ');
+  document.getElementById('pagarModalDetalles').textContent =
+    `${detalles} — Total: $${total}`;
+  new bootstrap.Modal(document.getElementById('pagarModal')).show();
+}
+
+function confirmarPagoEfectivo() {
+  post('/it/retardos_pagar_efectivo', {}).then(r => {
+    if (r.success) {
+      bootstrap.Modal.getInstance(document.getElementById('pagarModal'))?.hide();
+      refreshData();
+    } else alert(r.message || 'Error');
+  });
+}
+
+/* ─── Utilidades ─────────────────────────────────────── */
+
+function closeTachaModal() {
+  bootstrap.Modal.getInstance(document.getElementById('tachaModal'))?.hide();
+}
+
+/* ─── Ajuste de deuda ───────────────────────────────── */
+
+let _deudaUserId = null;
+
+function editarDeuda(userId, deudaActual) {
+  if (!CAN_EDIT) return;
+  const u = state.data.usuarios.find(u => u.id == userId);
+  _deudaUserId = userId;
+  document.getElementById('deudaModalNombre').textContent  = u ? u.nombre : '';
+  document.getElementById('deudaModalActual').textContent  = deudaActual > 0 ? '$' + deudaActual : '$0';
+  document.getElementById('deudaAjusteMonto').value = '';
+  document.getElementById('deudaAjusteDesc').value  = '';
+  new bootstrap.Modal(document.getElementById('deudaModal')).show();
+}
+
+function confirmarAjusteDeuda() {
+  const monto = parseInt(document.getElementById('deudaAjusteMonto').value, 10);
+  const desc  = document.getElementById('deudaAjusteDesc').value.trim();
+  if (!monto || monto === 0) { alert('Ingresa un monto válido'); return; }
+
+  post('/it/retardos_ajuste_deuda', { usuario_id: _deudaUserId, monto, descripcion: desc })
+    .then(r => {
+      if (r.success) {
+        bootstrap.Modal.getInstance(document.getElementById('deudaModal'))?.hide();
+        refreshData();
+      } else alert(r.message || 'Error');
+    });
+}
+
+/* ─── Home Office ────────────────────────────────────── */
+
+let _hoUserId = null;
+
+function programarHO(userId) {
+  if (!CAN_EDIT) return;
+  const u = state.data.usuarios.find(u => u.id == userId);
+  _hoUserId = userId;
+  document.getElementById('hoModalNombre').textContent = u ? u.nombre : '';
+
+  // Mínimo = mañana (o lunes si es fin de semana)
+  const min = new Date(TODAY + 'T12:00:00');
+  min.setDate(min.getDate() + 1);
+  while ([0, 6].includes(min.getDay())) min.setDate(min.getDate() + 1);
+  const minStr = min.toISOString().split('T')[0];
+
+  const inp = document.getElementById('hoFecha');
+  inp.min   = minStr;
+  inp.value = minStr;
+
+  new bootstrap.Modal(document.getElementById('hoModal')).show();
+}
+
+function confirmarProgramarHO() {
+  const fecha = document.getElementById('hoFecha').value;
+  if (!fecha) { alert('Selecciona una fecha'); return; }
+  const d = new Date(fecha + 'T12:00:00');
+  if ([0, 6].includes(d.getDay())) { alert('Debe ser un día hábil (Lun–Vie)'); return; }
+
+  post('/it/retardos_programar_ho', { usuario_id: _hoUserId, fecha })
+    .then(r => {
+      if (r.success) {
+        bootstrap.Modal.getInstance(document.getElementById('hoModal'))?.hide();
+        refreshData();
+      } else alert(r.message || 'Error');
+    });
+}
+
+function cancelarHO(id) {
+  if (!CAN_EDIT) return;
+  if (!confirm('¿Cancelar el home office programado?')) return;
+  post('/it/retardos_cancelar_ho', { id })
+    .then(r => r.success ? refreshData() : alert(r.message || 'Error'));
+}
+
+/* ─── Informe WhatsApp ───────────────────────────────── */
+
+function previewInforme() {
+  const btn = document.getElementById('btnEnviarInforme');
+  document.getElementById('informePreview').textContent = 'Generando vista previa…';
+  new bootstrap.Modal(document.getElementById('informeModal')).show();
+
+  fetch('/it/retardos_preview_informe')
+    .then(r => r.json())
+    .then(r => {
+      if (r.success) {
+        document.getElementById('informePreview').textContent = r.mensaje;
+        btn.disabled = false;
+      } else {
+        document.getElementById('informePreview').textContent = 'Error: ' + r.message;
+      }
+    })
+    .catch(() => {
+      document.getElementById('informePreview').textContent = 'Error al generar el informe.';
+    });
+}
+
+function enviarInforme() {
+  const btn = document.getElementById('btnEnviarInforme');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+
+  post('/it/retardos_enviar_informe', {})
+    .then(r => {
+      bootstrap.Modal.getInstance(document.getElementById('informeModal'))?.hide();
+      alert(r.success ? '✅ ' + r.message : '❌ ' + r.message);
+    })
+    .catch(() => alert('❌ Error de conexión'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-feather="send" style="width:13px;height:13px"></i> Enviar por WhatsApp';
+      feather.replace();
+    });
+}
+
+function post(url, data) {
+  const fd = new FormData();
+  Object.entries(data).forEach(([k, v]) => fd.append(k, v));
+  return fetch(url, { method: 'POST', body: fd }).then(r => r.json());
+}
+
+/* ─── Servicio del día ───────────────────────────────── */
+
+function reclamarServicio() {
+  const btn = document.getElementById('btn-servicio');
+  if (btn) btn.disabled = true;
+  post('/it/retardos_reclamar_servicio', {})
+    .then(r => {
+      if (r.success) {
+        document.getElementById('servicio-banner').innerHTML =
+          `<div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2 w-100">
+             ☕ <strong>${r.nombre}</strong> está en servicio hoy
+           </div>`;
+      } else {
+        alert(r.message || 'No se pudo reclamar');
+        if (btn) btn.disabled = false;
+        recargarPendientes(); // por si alguien más lo tomó al mismo tiempo
+      }
+    });
+}
+
+/* ─── Pendientes ─────────────────────────────────────── */
+
+let _pendId = null;
+
+function setMetodoPend(id, metodo) {
+  const m = bootstrap.Modal.getInstance(document.getElementById('metodoPendModal'));
+  if (m) m.hide();
+  post('/it/retardos_metodo', { id, metodo })
+    .then(r => r.success ? recargarPendientes() : alert(r.message || 'Error'));
+}
+
+function cambiarMetodoPend(id) {
+  _pendId = id;
+  new bootstrap.Modal(document.getElementById('metodoPendModal')).show();
+}
+
+function validarPagoPend(id) {
+  if (!confirm('¿Confirmar que el pago de esta tacha se realizó?')) return;
+  post('/it/retardos_validar', { id })
+    .then(r => {
+      if (r.success) { recargarPendientes(); refreshData(); }
+      else alert(r.message || 'Error');
+    });
+}
+
+function recargarPendientes() {
+  fetch('/it/retardos_pendientes')
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) return;
+
+      // Servicio
+      const banner = document.getElementById('servicio-banner');
+      if (data.servicio) {
+        banner.innerHTML = `<div class="alert alert-info py-2 px-3 mb-0 d-flex align-items-center gap-2 w-100">
+          ☕ <strong>${data.servicio.nombre}</strong> está en servicio hoy</div>`;
+      } else if (!document.getElementById('btn-servicio')) {
+        banner.innerHTML = `<button class="btn btn-warning fw-semibold" onclick="reclamarServicio()" id="btn-servicio">
+          ☕ QUIERO HACER SERVICIO</button>`;
+      }
+
+      // Tabla de pendientes
+      const area = document.getElementById('pendientes-area');
+      const METODOS = { tiempo: '⏱ Tiempo', dinero: '💸 $100', servicio: '☕ Servicio' };
+
+      if (!data.tachas || data.tachas.length === 0) {
+        area.innerHTML = '<p class="text-success p-3 mb-0">✓ No hay tachas pendientes de pago</p>';
+        return;
+      }
+
+      const rows = data.tachas.map(t => {
+        const nombre    = t.nombre.split(' ')[0];
+        const metodoTxt = t.metodo_pago
+          ? (METODOS[t.metodo_pago] || t.metodo_pago)
+          : '<span class="text-danger">Sin método</span>';
+        let accion = '';
+        if (CAN_EDIT) {
+          accion = t.metodo_pago
+            ? `<td>
+                <button class="btn btn-success btn-sm py-0" onclick="validarPagoPend(${t.id})">✅ Validar</button>
+                <button class="btn btn-outline-secondary btn-sm py-0" onclick="cambiarMetodoPend(${t.id})">✏️</button>
+               </td>`
+            : `<td><div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend(${t.id},'tiempo')" title="Tiempo">⏱</button>
+                <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend(${t.id},'dinero')" title="$100">💸</button>
+                <button class="btn btn-outline-secondary py-0" onclick="setMetodoPend(${t.id},'servicio')" title="Servicio">☕</button>
+               </div></td>`;
+        }
+        return `<tr>
+          <td class="ps-3 fw-semibold">${nombre}</td>
+          <td>${t.fecha}</td>
+          <td>${metodoTxt}</td>
+          ${accion}
+        </tr>`;
+      }).join('');
+
+      area.innerHTML = `<div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0" style="font-size:0.85rem">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Nombre</th><th>Fecha</th><th>Método</th>
+              ${CAN_EDIT ? '<th>Acción</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    });
+}
+</script>
+{% endblock %}

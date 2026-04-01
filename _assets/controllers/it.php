@@ -43,13 +43,329 @@ class It{
     /**
      * @return void
      */
-    public function hello_world() : void {
-        $allowed = [ 6371, 6177, 6296, 6375, 6274];
-        if (!in_array((int)$_SESSION['tg_user']['Id'], $allowed)) {
+    public function hello_world(): void {
+        header('Location: /it/retardos');
+        exit;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /*  RETARDOS                                                            */
+    /* ------------------------------------------------------------------ */
+
+    public function retardos(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS)) {
             (new Errors())->get404();
             return;
         }
-        echo $this->twig->render($this->route . 'hello_world.html');
+        $today = date('Y-m-d');
+        $data  = $this->_build_periodo_data('semana', $today);
+        $model = new SistemasTachasModel();
+
+        // Validar si ya pasó la hora límite para reclamar servicio (9:30 AM Ciudad Juárez)
+        $tz = new DateTimeZone('America/Chihuahua');
+        $now = new DateTime('now', $tz);
+        $limite = clone $now;
+        $limite->setTime(9, 30, 0);
+        $puede_reclamar = $now <= $limite;
+
+        echo $this->twig->render($this->route . 'retardos.html', [
+            'initial_data'      => json_encode($data),
+            'today'             => $today,
+            'can_edit'          => in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS),
+            'servicio_hoy'      => $model->get_servicio_hoy(),
+            'puede_reclamar'    => $puede_reclamar,
+            'tachas_pendientes' => $model->get_tachas_pendientes(),
+        ]);
+    }
+
+    public function retardos_data(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']);
+            return;
+        }
+        $vista = in_array($_GET['vista'] ?? '', ['semana', 'mes']) ? $_GET['vista'] : 'semana';
+        $fecha = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['fecha'] ?? '') ? $_GET['fecha'] : date('Y-m-d');
+        echo json_encode($this->_build_periodo_data($vista, $fecha));
+    }
+
+    public function retardos_add(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $uid   = (int)($_POST['usuario_id'] ?? 0);
+        $fecha = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['fecha'] ?? '') ? $_POST['fecha'] : '';
+        if (!$uid || !$fecha) { echo json_encode(['success' => false, 'message' => 'Datos incompletos']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->add_tacha($uid, $fecha, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_remove(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) { echo json_encode(['success' => false, 'message' => 'ID inválido']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->remove_tacha($id, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_metodo(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $id     = (int)($_POST['id'] ?? 0);
+        $metodo = $_POST['metodo'] ?? '';
+        if (!$id || !$metodo) { echo json_encode(['success' => false, 'message' => 'Datos incompletos']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->set_metodo($id, $metodo));
+    }
+
+    public function retardos_validar(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) { echo json_encode(['success' => false, 'message' => 'ID inválido']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->validar_pago($id, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_programar_ho(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $uid   = (int)($_POST['usuario_id'] ?? 0);
+        $fecha = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['fecha'] ?? '') ? $_POST['fecha'] : '';
+        if (!$uid || !$fecha) { echo json_encode(['success' => false, 'message' => 'Datos incompletos']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->programar_ho($uid, $fecha, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_cancelar_ho(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) { echo json_encode(['success' => false, 'message' => 'ID inválido']); return; }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->cancelar_ho($id, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_ajuste_deuda(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $uid   = (int)($_POST['usuario_id'] ?? 0);
+        $monto = (int)($_POST['monto']      ?? 0);
+        $desc  = trim($_POST['descripcion'] ?? '');
+        if (!$uid || $monto === 0) {
+            echo json_encode(['success' => false, 'message' => 'Datos incompletos']); return;
+        }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->add_ajuste($uid, $monto, $desc, (int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_pagar_efectivo(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->pagar_efectivo((int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_reclamar_servicio(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $model = new SistemasTachasModel();
+        echo json_encode($model->reclamar_servicio((int)$_SESSION['tg_user']['Id']));
+    }
+
+    public function retardos_pendientes(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS)) {
+            echo json_encode(['success' => false]); return;
+        }
+        $model = new SistemasTachasModel();
+        echo json_encode([
+            'success'  => true,
+            'tachas'   => $model->get_tachas_pendientes(),
+            'servicio' => $model->get_servicio_hoy(),
+        ]);
+    }
+
+    public function retardos_preview_informe(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::ALLOWED_USERS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        
+        // Debug: registrar información sobre las deudas
+        $model = new SistemasTachasModel();
+        $stats = $model->build_stats();
+        error_log('Stats de usuarios: ' . print_r($stats, true));
+        
+        echo json_encode(['success' => true, 'mensaje' => $this->_build_informe()]);
+    }
+
+    public function retardos_enviar_informe(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], SistemasTachasModel::EDITORS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+
+        $mensaje = $this->_build_informe();
+        $phone   = '5216566743249';
+        $apikey  = '1546951';
+
+        // Codificar el mensaje para URL
+        $texto_codificado = rawurlencode($mensaje);
+        $url = 'https://api.callmebot.com/whatsapp.php?phone=' . $phone
+             . '&text=' . $texto_codificado
+             . '&apikey=' . $apikey;
+
+        $ctx      = stream_context_create(['http' => ['timeout' => 15]]);
+        $response = @file_get_contents($url, false, $ctx);
+
+        if ($response === false) {
+            echo json_encode(['success' => false, 'message' => 'No se pudo conectar con CallMeBot. Verifica la conexión a internet.']);
+            return;
+        }
+
+        // Verificar si la respuesta contiene un error
+        if (stripos($response, 'error') !== false || stripos($response, '/system/bin/sh') !== false) {
+            error_log('CallMeBot error response: ' . $response);
+            echo json_encode(['success' => false, 'message' => 'Error en la API de WhatsApp. Intente de nuevo.']);
+            return;
+        }
+
+        echo json_encode(['success' => true, 'message' => 'Informe enviado por WhatsApp ✓']);
+    }
+
+    private function _build_informe(): string {
+        $data   = $this->_build_periodo_data('semana', date('Y-m-d'));
+        $meses  = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+        $d0   = new DateTime($data['inicio']);
+        $d1   = new DateTime($data['fin']);
+        $mes0 = $meses[(int)$d0->format('n') - 1];
+        $mes1 = $meses[(int)$d1->format('n') - 1];
+
+        $periodo = ($mes0 === $mes1)
+            ? $d0->format('j') . ' al ' . $d1->format('j') . ' ' . $mes0 . ' ' . $d0->format('Y')
+            : $d0->format('j') . ' ' . $mes0 . ' al ' . $d1->format('j') . ' ' . $mes1 . ' ' . $d0->format('Y');
+
+        $msg  = "Informe de Retardos\n";
+        $msg .= "Semana del " . $periodo . "\n";
+        $msg .= str_repeat('-', 30) . "\n\n";
+
+        $total_deuda = 0;
+
+        foreach ($data['usuarios'] as $u) {
+            $tachas_semana = count(array_filter($u['tachas']));
+            $deuda = (int)($u['deuda'] ?? 0);
+            $ho = $u['ho'];
+            $total_deuda += $deuda;
+
+            $ho_str = $ho['earned'] ? 'Ganado!' : $ho['remaining'] . ' dias para HO';
+            $deuda_str = $deuda > 0 ? (string)$deuda : '-';
+
+            $nombre_parts = explode(' ', trim($u['nombre']));
+            $nombre = implode(' ', array_slice($nombre_parts, 0, 2));
+
+            $msg .= $nombre . "\n";
+            $msg .= "  Tachas: " . $tachas_semana . "\n";
+            $msg .= "  Deuda: " . $deuda_str . "\n";
+            $msg .= "  HO: " . $ho_str . "\n\n";
+        }
+
+        $msg .= str_repeat('-', 30) . "\n";
+        $msg .= "Deuda total: " . ($total_deuda > 0 ? (string)$total_deuda : '0');
+
+        return $msg;
+    }
+
+    private function _build_periodo_data(string $vista, string $fecha_ref): array {
+        $model = new SistemasTachasModel();
+
+        if ($vista === 'semana') {
+            $dow    = (int)date('N', strtotime($fecha_ref));
+            $inicio = date('Y-m-d', strtotime('-' . ($dow - 1) . ' days', strtotime($fecha_ref)));
+            $fin    = date('Y-m-d', strtotime('+4 days', strtotime($inicio)));
+        } else {
+            $inicio = date('Y-m-01', strtotime($fecha_ref));
+            $fin    = date('Y-m-t',  strtotime($fecha_ref));
+        }
+
+        $tachas_raw   = $model->get_tachas($inicio, $fin);
+        $usuarios_raw = $model->get_usuarios();
+        $stats        = $model->build_stats();
+
+        // Indexar tachas por [usuario_id][fecha]
+        $tachas_idx = [];
+        foreach ($tachas_raw as $t) {
+            $tachas_idx[(int)$t['usuario_id']][$t['fecha']] = $t;
+        }
+
+        // Días hábiles del período
+        $dias = [];
+        $cur  = strtotime($inicio);
+        $end_ts = strtotime($fin);
+        while ($cur <= $end_ts) {
+            if ((int)date('N', $cur) < 6) $dias[] = date('Y-m-d', $cur);
+            $cur = strtotime('+1 day', $cur);
+        }
+
+        // Construir usuarios con sus tachas
+        $usuarios = [];
+        foreach ($usuarios_raw as $u) {
+            $uid = (int)$u['Id'];
+            $user_tachas = [];
+            foreach ($dias as $d) {
+                $user_tachas[$d] = $tachas_idx[$uid][$d] ?? null;
+            }
+            $usuarios[] = [
+                'id'          => $uid,
+                'nombre'      => $u['Nombre'],
+                'tachas'      => $user_tachas,
+                'ho'          => $stats[$uid]['home_office']  ?? ['remaining' => 20, 'earned' => false, 'elapsed' => 0],
+                'deuda'       => $stats[$uid]['deuda']        ?? 0,
+                'ho_pendiente'=> $stats[$uid]['ho_pendiente'] ?? null,
+            ];
+        }
+
+        // Para vista mes: agrupar días por semana (lunes a viernes)
+        $semanas = [];
+        if ($vista === 'mes') {
+            $week_buf = [];
+            foreach ($dias as $d) {
+                if ((int)date('N', strtotime($d)) === 1 && !empty($week_buf)) {
+                    $semanas[] = $week_buf;
+                    $week_buf  = [];
+                }
+                $week_buf[] = $d;
+            }
+            if (!empty($week_buf)) $semanas[] = $week_buf;
+        }
+
+        return [
+            'vista'    => $vista,
+            'inicio'   => $inicio,
+            'fin'      => $fin,
+            'dias'     => $dias,
+            'semanas'  => $semanas,
+            'usuarios' => $usuarios,
+        ];
     }
 
     /**
