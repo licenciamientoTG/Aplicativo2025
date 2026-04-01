@@ -90,6 +90,9 @@ $strpad = new \Twig\TwigFunction('strpad', function ($number, $pad_length, $pad_
 
 // Función global para todos los archivos de Twig, se llama en archivo Index.php
 $authorized = new \Twig\TwigFunction('authorized', function ($permission_id) {
+  if (!isset($_SESSION['tg_user']['permissions'])) {
+      return false;
+  }
   return (in_array($permission_id, explode(",", $_SESSION['tg_user']['permissions']))) ? true : false ;
 });
 
@@ -100,7 +103,7 @@ $foradmin = new \Twig\TwigFunction('foradmin', function () {
 
 // Función para restringir vista a usuarios específicos del área de Sistemas
 $for_sistemas = new \Twig\TwigFunction('for_sistemas', function () {
-    $allowed = [6382, 6371, 6177, 6296, 6375, 6274];
+    $allowed = [6382, 6371, 6177, 6296, 6274];
     return in_array((int)$_SESSION['tg_user']["Id"], $allowed);
 });
 
