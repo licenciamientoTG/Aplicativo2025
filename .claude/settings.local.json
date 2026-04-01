@@ -40,7 +40,13 @@
       "Bash(__NEW_LINE_a292b7eb3cee567e__ sed:*)",
       "Bash(sed -i \"s|/supply/invoiceFile|/payment/invoiceFile|g\" invoice_pdf.html)",
       "Bash(__NEW_LINE_a292b7eb3cee567e__ echo:*)",
-      "Bash(/tmp/fix_divs2.py:*)"
+      "Bash(/tmp/fix_divs2.py:*)",
+      "Bash(pip install:*)",
+      "Bash(pip --version)",
+      "Bash(pip3 install:*)",
+      "Read(//c/tmp/**)",
+      "Bash(unzip -q \"/c/Users/alejandro.martinez/Desktop/2025-10-30 Pago a proveedores/1-FRU_Pagos a proveedores de combustible.docx\" -d doc1_extracted)",
+      "Bash(unzip -q \"/c/Users/alejandro.martinez/Desktop/2025-10-30 Pago a proveedores/2-Arquitectura de software \\(corregido\\).html.docx\" -d doc2_extracted)"
     ],
     "deny": [],
     "ask": []
