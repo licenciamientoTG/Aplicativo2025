@@ -268,16 +268,10 @@ body { background:#f1f5f9; }
 
   <!-- ── GRÁFICAS ── -->
   <div class="row mb-3" id="charts-row">
-    <div class="col-md-8 mb-3">
-      <div class="chart-card h-100">
-        <div class="chart-title"><i class="fas fa-chart-line mr-1"></i> CG vs Depositado por Mes</div>
-        <canvas id="chart-trend" height="100"></canvas>
-      </div>
-    </div>
-    <div class="col-md-4 mb-3">
-      <div class="chart-card h-100">
-        <div class="chart-title"><i class="fas fa-chart-bar mr-1"></i> Diferencias por Razón Social</div>
-        <canvas id="chart-rs" height="160"></canvas>
+    <div class="col-12 mb-3">
+      <div class="chart-card">
+        <div class="chart-title"><i class="fas fa-chart-line mr-1" id="chart-main-title-icon"></i> <span id="chart-main-title">Evolución de Diferencias</span></div>
+        <canvas id="chart-trend" height="80"></canvas>
       </div>
     </div>
   </div>
@@ -479,7 +473,6 @@ function cargarDatos(f) {
         _data = res;
         renderKPIs(res.kpis);
         renderChartTrend(res.trend);
-        renderChartRS(res.por_rs);
         renderResumenCombinacion(res.por_combinacion || []);
     });
 }
@@ -513,31 +506,62 @@ function renderKPIs(k) {
 
 // ── GRÁFICA TREND ─────────────────────────────────────────────────────────────
 function renderChartTrend(trend) {
+    if (!trend || !trend.length) {
+        if (chartTrend) chartTrend.destroy();
+        return;
+    }
     const labels = trend.map(r => r.mes);
-    const cg     = trend.map(r => parseFloat(r.cg));
-    const dep    = trend.map(r => parseFloat(r.depositado));
     const dif    = trend.map(r => parseFloat(r.diferencias));
+    
+    // Cambiar título e icono según si es por día o por mes
+    const isDaily = labels[0] && labels[0].length > 7; // YYYY-MM-DD
+    $('#chart-main-title').text(isDaily ? 'Diferencias diarias del mes' : 'Evolución mensual de diferencias');
+    $('#chart-main-title-icon').attr('class', isDaily ? 'fas fa-calendar-day mr-1' : 'fas fa-chart-line mr-1');
 
     if (chartTrend) chartTrend.destroy();
     chartTrend = new Chart(document.getElementById('chart-trend'), {
-        type: 'bar',
+        type: 'line',
         data: {
             labels,
             datasets: [
-                { label:'CG',         data:cg,  backgroundColor:'rgba(37,99,235,.7)',  order:1 },
-                { label:'Depositado', data:dep, backgroundColor:'rgba(5,150,105,.7)',   order:1 },
-                { label:'Diferencia', data:dif, type:'line',
-                  borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,.15)',
-                  pointRadius:4, tension:.3, fill:true, order:0 }
+                { 
+                  label: 'Diferencia', 
+                  data: dif, 
+                  borderColor: '#ef4444', 
+                  backgroundColor: 'rgba(239,68,68,.1)',
+                  borderWidth: 3,
+                  pointRadius: isDaily ? 2 : 4, 
+                  pointBackgroundColor: '#ef4444',
+                  tension: 0.3, 
+                  fill: true 
+                }
             ]
         },
         options: {
-            responsive:true, maintainAspectRatio:true,
-            plugins: { legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } },
-                       tooltip:{ callbacks:{ label: ctx => ' ' + FMT.format(ctx.parsed.y) } } },
+            responsive: true, 
+            maintainAspectRatio: true,
+            plugins: { 
+                legend: { display: false },
+                tooltip: { 
+                    callbacks: { 
+                        label: ctx => ' Diferencia: ' + FMT.format(ctx.parsed.y) 
+                    } 
+                } 
+            },
             scales: {
-                y: { ticks:{ callback: v => '$'+FMT2.format(v/1000)+'K', font:{ size:10 } }, grid:{ color:'#f1f5f9' } },
-                x: { ticks:{ font:{ size:10 } } }
+                y: { 
+                    ticks: { callback: v => '$' + FMT2.format(v), font: { size: 10 } }, 
+                    grid: { color: '#f1f5f9' } 
+                },
+                x: { 
+                    ticks: { 
+                        font: { size: 10 },
+                        callback: function(val, index) {
+                            const label = this.getLabelForValue(val);
+                            return isDaily ? label.split('-')[2] : label; // Solo el día si es diario
+                        }
+                    } 
+                }
             }
         }
     });

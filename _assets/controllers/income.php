@@ -5947,8 +5947,14 @@ public function stamped_invoices_detail(): void
             $where  = "WHERE C.estado = 'CERRADO'";
             $params = [];
 
-            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre) = ?";  $params[] = $year;        }
-            if ($month > 0)       { $where .= " AND MONTH(C.fecha_cierre) = ?"; $params[] = $month;       }
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
             if ($banco !== '')    { $where .= " AND TE.Nombre = ?";              $params[] = $banco;       }
             if ($estacion_id > 0) { $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";         $params[] = $afiliacion;  }
@@ -5984,12 +5990,37 @@ public function stamped_invoices_detail(): void
             $r->execute($params); $meses = $r->fetchAll(PDO::FETCH_ASSOC);
 
             // Trend (CG vs Depositado vs Diferencias por mes, para gráficas)
-            $r = $conn->prepare("SELECT C.mes,
-                    ISNULL(SUM(C.total_cg),0) AS cg,
-                    ISNULL(SUM(C.total_depositado),0) AS depositado,
-                    ISNULL(SUM(C.total_diferencias),0) AS diferencias
-                $from GROUP BY C.mes ORDER BY C.mes ASC");
-            $r->execute($params); $trend = $r->fetchAll(PDO::FETCH_ASSOC);
+            if ($year > 0 && $month > 0) {
+                // Tendencia DIARIA si hay un mes seleccionado
+                $mesBusqueda = sprintf("%04d-%02d", $year, $month);
+                $whereG = "WHERE G.estado = 'CERRADO' AND G.mes_cierre = ?";
+                $paramsG = [$mesBusqueda];
+                
+                if ($banco !== '')    { $whereG .= " AND TE.Nombre = ?";      $paramsG[] = $banco;       }
+                if ($estacion_id > 0) { $whereG .= " AND G.estacion_id = ?"; $paramsG[] = $estacion_id; }
+                if ($afiliacion !== ''){ $whereG .= " AND G.afiliacion = ?";  $paramsG[] = $afiliacion;  }
+                if ($rs === 'DIAZ GAS')  { $whereG .= " AND E.RFC = 'DGA930823KD3'"; }
+                elseif ($rs === 'GASOMEX')  { $whereG .= " AND E.RFC = 'DGM880621FU5'"; }
+                elseif ($rs === 'FORANEAS') { $whereG .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+                $rTrend = $conn->prepare("SELECT G.fecha_operativa AS mes,
+                        ISNULL(SUM(G.total_sistema),0) AS cg,
+                        ISNULL(SUM(G.total_tesoreria),0) AS depositado,
+                        ISNULL(SUM(G.diferencia),0) AS diferencias
+                    FROM Conciliacion_V3_Grupos G
+                    LEFT JOIN Estaciones E ON E.Codigo = G.estacion_id
+                    LEFT JOIN Tesoreria_Entidad TE ON TE.id = G.entidad_id
+                    $whereG GROUP BY G.fecha_operativa ORDER BY G.fecha_operativa ASC");
+                $rTrend->execute($paramsG); $trend = $rTrend->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                // Tendencia MENSUAL si no hay mes o solo hay año
+                $rTrend = $conn->prepare("SELECT C.mes,
+                        ISNULL(SUM(C.total_cg),0) AS cg,
+                        ISNULL(SUM(C.total_depositado),0) AS depositado,
+                        ISNULL(SUM(C.total_diferencias),0) AS diferencias
+                    $from GROUP BY C.mes ORDER BY C.mes ASC");
+                $rTrend->execute($params); $trend = $rTrend->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Por razón social
             $r = $conn->prepare("SELECT $rsCASE AS razon_social,
@@ -6007,8 +6038,13 @@ public function stamped_invoices_detail(): void
             $joinCond  = "C.estacion_id = TA.estacion_id AND C.entidad_id = TA.entidad_id
                           AND C.afiliacion = TA.afiliacion AND C.estado = 'CERRADO'";
             $joinParams = [];
-            if ($year > 0)  { $joinCond .= " AND YEAR(C.fecha_cierre) = ?";  $joinParams[] = $year;  }
-            if ($month > 0) { $joinCond .= " AND MONTH(C.fecha_cierre) = ?"; $joinParams[] = $month; }
+            if ($year > 0 && $month > 0) {
+                $joinCond .= " AND C.mes = ?";
+                $joinParams[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $joinCond .= " AND C.mes LIKE ?";
+                $joinParams[] = "$year-%";
+            }
 
             $catWhere  = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
             $catParams = [];
@@ -6139,6 +6175,7 @@ public function stamped_invoices_detail(): void
     public function export_diferencias_v3(): void {
         ob_clean();
         $year        = (int)($_GET['year']         ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
         $banco_id    = (int)($_GET['banco_id']      ?? 0);
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
@@ -6149,7 +6186,15 @@ public function stamped_invoices_detail(): void
 
             $where  = "WHERE C.estado='CERRADO' AND ABS(ISNULL(C.total_diferencias,0)) > 0.01";
             $params = [];
-            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
             if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
             if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
@@ -6225,6 +6270,7 @@ public function stamped_invoices_detail(): void
     public function export_resumen_v3(): void {
         ob_clean();
         $year        = (int)($_GET['year']         ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
         $banco_id    = (int)($_GET['banco_id']      ?? 0);
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
@@ -6235,7 +6281,15 @@ public function stamped_invoices_detail(): void
 
             $where  = "WHERE C.estado='CERRADO'";
             $params = [];
-            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
             if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
             if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
