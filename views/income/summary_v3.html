@@ -132,11 +132,8 @@ body { background:#f1f5f9; }
       <div class="controls-group">
         <span class="small font-weight-bold text-muted" style="white-space:nowrap;">R.S.</span>
         <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
-          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setRS('')">
-            <input type="radio" name="rs_type" autocomplete="off" checked> TODAS
-          </label>
-          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('DIAZ GAS')">
-            <input type="radio" name="rs_type" autocomplete="off"> DIAZ
+          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setRS('DIAZ GAS')">
+            <input type="radio" name="rs_type" autocomplete="off" checked> DIAZ
           </label>
           <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('FORANEAS')">
             <input type="radio" name="rs_type" autocomplete="off"> FORA
@@ -150,33 +147,23 @@ body { background:#f1f5f9; }
       <div class="controls-divider"></div>
 
       <!-- Estación -->
-      <div class="controls-group">
+      <div class="controls-group flex-grow-1" style="min-width:180px;">
         <label class="mb-0 small font-weight-bold text-muted text-nowrap">ESTACIÓN</label>
-        <select id="f-estacion" class="form-control custom-select-pill" style="min-width:190px;" onchange="aplicarFiltros()">
-          <option value="">Todas</option>
+        <select id="estacionSelect" class="form-control custom-select-pill flex-grow-1" onchange="aplicarFiltros()">
+          <option value="">-- Estación --</option>
         </select>
       </div>
 
       <!-- Banco -->
       <div class="controls-group">
         <span class="small font-weight-bold text-muted" style="white-space:nowrap;">BANCO</span>
-        <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
-          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setBanco('')">
-            <input type="radio" name="banco_type" autocomplete="off" checked> TODOS
-          </label>
-          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Santander')">
-            <input type="radio" name="banco_type" autocomplete="off"> SANTANDER
-          </label>
-          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Banamex')">
-            <input type="radio" name="banco_type" autocomplete="off"> BANAMEX
-          </label>
-          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('American Express')">
-            <input type="radio" name="banco_type" autocomplete="off"> AMEX
-          </label>
-          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Banorte')">
-            <input type="radio" name="banco_type" autocomplete="off"> BANORTE
-          </label>
-        </div>
+        <select id="f-banco" class="form-control custom-select-pill" style="min-width:160px;" onchange="setBanco(this.value)">
+          <option value="">Todos</option>
+          <option value="Santander">Santander</option>
+          <option value="Banamex">Banamex</option>
+          <option value="American Express">American Express</option>
+          <option value="Banorte">Banorte</option>
+        </select>
       </div>
 
       <div class="controls-divider"></div>
@@ -361,6 +348,9 @@ body { background:#f1f5f9; }
   </div>
 </div>
 
+{% endblock %}
+
+{% block myjs %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 const FMT = new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', maximumFractionDigits:2 });
@@ -370,10 +360,10 @@ let _data = null, _tran = null;
 
 // ── ESTADO DE FILTROS ────────────────────────────────────────────────────────
 let widgetState   = { year: new Date().getFullYear(), month: '' };
-let currentRS     = '';
+let currentRS     = 'DIAZ GAS';
 let currentBanco  = '';
 let todasLasEstaciones = [];
-const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS', 'DGM880621FU5':'GASOMEX' };
+const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS','DGM880621FU5':'GASOMEX' };
 const MESES_NOMBRES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 // ── DATE WIDGET ──────────────────────────────────────────────────────────────
@@ -420,11 +410,7 @@ function toggleDatePicker() {
 function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#sumPickerOverlay').hide(); }
 
 // ── RAZÓN SOCIAL ─────────────────────────────────────────────────────────────
-function setRS(rs) {
-    currentRS = rs;
-    filtrarEstaciones();
-    aplicarFiltros();
-}
+function setRS(rs) { currentRS = rs; filtrarEstaciones(); aplicarFiltros(); }
 
 // ── BANCO ─────────────────────────────────────────────────────────────────────
 function setBanco(nombre) {
@@ -434,26 +420,17 @@ function setBanco(nombre) {
 
 // ── ESTACIONES ────────────────────────────────────────────────────────────────
 function cargarEstaciones() {
-    $.getJSON('/income/get_estaciones_catalogo', function(r) {
-        if (r.status !== 'success') return;
-        todasLasEstaciones = r.respuesta || [];
-        filtrarEstaciones();
+    $.get('/income/get_estaciones_catalogo', function(r) {
+        if (r.status === 'success') { todasLasEstaciones = r.respuesta; filtrarEstaciones(); }
     });
 }
 function filtrarEstaciones() {
-    const curE = $('#f-estacion').val();
-    const $s = $('#f-estacion').empty().append('<option value="">Todas</option>');
-    todasLasEstaciones.forEach(function(e) {
-        if (!currentRS) {
-            $s.append('<option value="' + e.Codigo + '">' + e.Nombre + '</option>');
-        } else {
-            const rs = RS_MAPPING[e.RFC] || 'FORANEAS';
-            if (rs === currentRS) {
-                $s.append('<option value="' + e.Codigo + '">' + e.Nombre + '</option>');
-            }
-        }
+    const $s = $('#estacionSelect').empty().append('<option value="">-- Estación --</option>');
+    todasLasEstaciones.forEach(e => {
+        const rfc = e.RFC || 'FORANEAS';
+        const rs  = RS_MAPPING[rfc] || 'FORANEAS';
+        if (rs === currentRS) $s.append(`<option value="${e.Codigo}">${e.Nombre}</option>`);
     });
-    if (curE) $s.val(curE);
 }
 
 // ── FILTROS ──────────────────────────────────────────────────────────────────
@@ -463,7 +440,7 @@ function getFilters() {
         month:       widgetState.month || '',
         razon_social: currentRS,
         banco:       currentBanco,
-        estacion_id: $('#f-estacion').val() || '',
+        estacion_id: $('#estacionSelect').val() || '',
         afiliacion:  ''
     };
 }
@@ -471,14 +448,12 @@ function buildQS(f) {
     return Object.entries(f).filter(([,v]) => v !== '').map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 }
 function limpiarFiltros() {
-    currentRS = '';
+    currentRS = 'DIAZ GAS';
     currentBanco = '';
     $('[name="rs_type"]').prop('checked', false);
     $('[name="rs_type"]:eq(0)').prop('checked', true)
         .closest('label').addClass('active').siblings('label').removeClass('active');
-    $('[name="banco_type"]').prop('checked', false);
-    $('[name="banco_type"]:eq(0)').prop('checked', true)
-        .closest('label').addClass('active').siblings('label').removeClass('active');
+    $('#f-banco').val('');
     widgetState.month = '';
     updateDisplayDate();
     renderWidgetYear();
@@ -491,7 +466,7 @@ function aplicarFiltros() {
     if (f.month) labels.push(`${MESES_NOMBRES[parseInt(f.month)]} ${f.year}`);
     if (f.razon_social) labels.push(f.razon_social);
     if (f.banco) labels.push(f.banco);
-    if (f.estacion_id) labels.push($('#f-estacion option:selected').text());
+    if (f.estacion_id) labels.push($('#estacionSelect option:selected').text());
     $('#filtros-activos').text(labels.length ? '▸ ' + labels.join(' / ') : '');
     cargarDatos(f);
     cargarTransitos(f);

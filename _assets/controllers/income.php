@@ -6669,6 +6669,7 @@ public function stamped_invoices_detail(): void
 
         try {
             $conn = $this->v3_conn();
+            $conn->beginTransaction();
 
             // Verificar que el mes no esté cerrado
             $stmt = $conn->prepare(
@@ -6678,10 +6679,12 @@ public function stamped_invoices_detail(): void
             $grupo = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$grupo) {
+                $conn->rollBack();
                 echo json_encode(['status' => 'error', 'message' => 'Grupo no encontrado']);
                 exit;
             }
             if ($grupo['estado'] === 'CERRADO') {
+                $conn->rollBack();
                 echo json_encode(['status' => 'error',
                     'message' => "El mes {$grupo['mes_cierre']} ya está cerrado. No se puede deshacer."]);
                 exit;
@@ -6706,12 +6709,26 @@ public function stamped_invoices_detail(): void
                  WHERE conciliacion_id_orig = ?"
             )->execute([$grupo_id]);
 
+            // Revertir CV3_Diferido: fakes reconciliados en este grupo (día destino)
+            $conn->prepare(
+                "UPDATE CV3_Diferido SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                 WHERE conciliacion_id_dest = ?"
+            )->execute([$grupo_id]);
+
+            // Revertir CV3_Diferido: monto_diferido reconciliado en este grupo (día origen)
+            $conn->prepare(
+                "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
+                 WHERE conciliacion_id_orig = ?"
+            )->execute([$grupo_id]);
+
             // Borrar detalles y grupo (FK CASCADE borra detalles)
             $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id = ?")->execute([$grupo_id]);
 
+            $conn->commit();
             echo json_encode(['status' => 'success']);
 
         } catch (PDOException $e) {
+            if (isset($conn)) $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         exit;
@@ -6802,8 +6819,7 @@ public function stamped_invoices_detail(): void
         $month = (int)$data['month'];
 
         try {
-            $conn = new PDO("sqlsrv:Server=192.168.0.6;Database=TG", "cguser", "sahei1712");
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn = $this->v3_conn();
             $conn->beginTransaction();
 
             // Obtener todos los grupos del mes (excluye CERRADOS)
@@ -6825,13 +6841,39 @@ public function stamped_invoices_detail(): void
             $chunks = array_chunk($groupIds, 500);
             foreach ($chunks as $chunk) {
                 $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                // Reabrir tránsitos cerrados por estos grupos
+
+                // 1. Reabrir tránsitos cerrados por estos grupos (sistema antiguo)
                 $conn->prepare(
                     "UPDATE Conciliacion_V3_Transito
                      SET estado = 'PENDIENTE', grupo_id_cierre = NULL, fecha_cierre = NULL
                      WHERE grupo_id_cierre IN ($placeholders)"
                 )->execute($chunk);
-                // Borrar grupos (FK CASCADE elimina detalles)
+
+                // 2. Revertir CV3_Transito (mes destino)
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                     WHERE conciliacion_id_dest IN ($placeholders)"
+                )->execute($chunk);
+
+                // 3. Revertir CV3_Transito (mes origen)
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET conciliacion_id_orig = NULL
+                     WHERE conciliacion_id_orig IN ($placeholders)"
+                )->execute($chunk);
+
+                // 4. Revertir CV3_Diferido (día destino)
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                     WHERE conciliacion_id_dest IN ($placeholders)"
+                )->execute($chunk);
+
+                // 5. Revertir CV3_Diferido (día origen)
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
+                     WHERE conciliacion_id_orig IN ($placeholders)"
+                )->execute($chunk);
+
+                // 6. Borrar grupos (FK CASCADE elimina detalles)
                 $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id IN ($placeholders)")->execute($chunk);
             }
 
