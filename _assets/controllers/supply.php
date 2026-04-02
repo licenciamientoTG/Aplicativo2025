@@ -1345,6 +1345,7 @@ class Supply
                     'fecha'            => $row['fecha'],
                     'fechaVto'         => $fechaVencimiento,
                     'proveedor'        => $row['proveedor'],
+                    'volrec'        => $row['volrec'],
                     'proveedor_codigo' => $row['proveedor_codigo'],
                     'Factura'          => $row['Factura'],
                     'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',

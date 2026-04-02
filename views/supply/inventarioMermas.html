@@ -91,6 +91,7 @@
                 </thead>
                 <tbody>
                     {% set ventasreales = 0 %}
+                    {% set compras = 0 %}
                     {% for row in data %}
                     <tr>
                         <td>{{ row.Fecha | date('d-m-Y') }}</td>
@@ -107,13 +108,14 @@
                     </tr>
 
                     {% set ventasreales = ventasreales + row.VentasReales %}
+                    {% set compras = compras + row.CantidadCompra %}
                     {% endfor %}
                 </tbody>
                 <tfoot>
                     <tr>
                         <th colspan="4" style="text-align: right;">TOTAL:</th>
                         <th></th>
-                        <th></th>
+                        <th>{{ compras | number_format(2, '.', ',') }}</th>
                         <th>{{ ventasreales | number_format(2, '.', ',') }}</th>
                         <th></th>
                         <th></th>

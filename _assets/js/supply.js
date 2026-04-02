@@ -2666,31 +2666,37 @@ async function analisis_compras_table() {
       },
       // 7 — Producto
       { data: "producto", className: "text-start" },
-      // 8 — Cantidad
+      // 8 — Vol. Recibido
+      {
+        data: "volrec",
+        className: "text-end",
+        render: $.fn.dataTable.render.number(",", ".", 2)
+      },
+      // 9 — Cantidad
       {
         data: "can",
         className: "text-end",
         render: $.fn.dataTable.render.number(",", ".", 2)
       },
-      // 9 — Monto
+      // 10 — Monto
       {
         data: "mto",
         className: "text-end",
         render: $.fn.dataTable.render.number(",", ".", 2, "$")
       },
-      // 10 — I.V.A.
+      // 11 — I.V.A.
       {
         data: "iva_total",
         className: "text-end",
         render: $.fn.dataTable.render.number(",", ".", 2, "$")
       },
-      // 11 — Total
+      // 12 — Total
       {
         data: "total_fac",
         className: "text-end fw-bold",
         render: $.fn.dataTable.render.number(",", ".", 2, "$")
       },
-      // 12 — UUID
+      // 13 — UUID
       {
         data: "satuid",
         className: "text-start",
@@ -2701,7 +2707,7 @@ async function analisis_compras_table() {
             data.substring(0, 8) + '…</span>';
         }
       },
-      // 13 — R.F.C.
+      // 14 — R.F.C.
       {
         data: "rfc",
         className: "text-start text-nowrap",
@@ -2709,7 +2715,7 @@ async function analisis_compras_table() {
           return data || '<span class="text-muted badge bg-secondary">debug</span>';
         }
       },
-      // 14 — Factura SAT (PDF)
+      // 15 — Factura SAT (PDF)
       {
         data: "factura_recibida_id",
         className: "text-center",
@@ -2727,7 +2733,7 @@ async function analisis_compras_table() {
           return '<span class="badge bg-secondary" title="Sin archivo PDF">Sin PDF</span>';
         }
       },
-      // 15 — Nro. Corpo
+      // 16 — Nro. Corpo
       {
         data: "nro_corp",
         className: "text-center text-nowrap",
@@ -2736,7 +2742,7 @@ async function analisis_compras_table() {
           return '<span class="badge bg-success">' + data + '</span>';
         }
       },
-      // 16 — Factura Corpo
+      // 17 — Factura Corpo
       {
         data: "Factura_corpo",
         className: "text-start text-nowrap",
@@ -2751,7 +2757,7 @@ async function analisis_compras_table() {
           return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
         }
       },
-      // 17 — Proveedor Corpo
+      // 18 — Proveedor Corpo
       {
         data: "proveedor_corpo",
         className: "text-start text-nowrap",
@@ -2766,7 +2772,7 @@ async function analisis_compras_table() {
           return '<span class="text-success"><i class="fas fa-check"></i> ' + data + '</span>';
         }
       },
-      // 18 — UUID Corpo
+      // 19 — UUID Corpo
       {
         data: "uuid_corp",
         className: "text-start",
@@ -2801,9 +2807,10 @@ async function analisis_compras_table() {
       var dt = $("#analisis_compras_table").DataTable();
       var filas = dt.rows({ search: 'applied' }).data();
       var total    = filas.length;
-      var cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0, sinCorpo = 0, difiereCorpo = 0;
+      var volrec = 0, cantidad = 0, monto = 0, iva = 0, totalFac = 0, mismatch = 0, sinCorpo = 0, difiereCorpo = 0;
       for (var i = 0; i < total; i++) {
         var r = filas[i];
+        volrec   += parseFloat(r.volrec    || 0);
         cantidad += parseFloat(r.can       || 0);
         monto    += parseFloat(r.mto       || 0);
         iva      += parseFloat(r.iva_total || 0);
@@ -2823,6 +2830,7 @@ async function analisis_compras_table() {
       $("#kpi_analisis_difiere_corpo").text(difiereCorpo);
       $("#contador_analisis").text(total + " facturas");
       $("#total_monto_analisis").text("$" + fmt(totalFac));
+      $("#tfoot_volrec").text(fmt(volrec));
       $("#tfoot_cantidad").text(fmt(cantidad));
       $("#tfoot_monto").text("$" + fmt(monto));
       $("#tfoot_iva").text("$" + fmt(iva));
