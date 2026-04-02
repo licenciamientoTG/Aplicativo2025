@@ -5931,7 +5931,8 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
 
         $year        = (int)($_GET['year']         ?? 0);
-        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
+        $banco       = trim($_GET['banco']          ?? '');
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
         $afiliacion  = trim($_GET['afiliacion']     ?? '');
@@ -5946,10 +5947,11 @@ public function stamped_invoices_detail(): void
             $where  = "WHERE C.estado = 'CERRADO'";
             $params = [];
 
-            if ($year > 0)       { $where .= " AND YEAR(C.fecha_cierre) = ?";  $params[] = $year;        }
-            if ($banco_id > 0)   { $where .= " AND C.entidad_id = ?";          $params[] = $banco_id;    }
-            if ($estacion_id > 0){ $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
-            if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";        $params[] = $afiliacion;  }
+            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre) = ?";  $params[] = $year;        }
+            if ($month > 0)       { $where .= " AND MONTH(C.fecha_cierre) = ?"; $params[] = $month;       }
+            if ($banco !== '')    { $where .= " AND TE.Nombre = ?";              $params[] = $banco;       }
+            if ($estacion_id > 0) { $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";         $params[] = $afiliacion;  }
             if ($rs === 'DIAZ GAS')  { $where .= " AND E.RFC = 'DGA930823KD3'"; }
             elseif ($rs === 'GASOMEX')  { $where .= " AND E.RFC = 'DGM880621FU5'"; }
             elseif ($rs === 'FORANEAS') { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
@@ -5999,45 +6001,54 @@ public function stamped_invoices_detail(): void
                 $from GROUP BY $rsCASE ORDER BY razon_social");
             $r->execute($params); $por_rs = $r->fetchAll(PDO::FETCH_ASSOC);
 
-            // Por banco / afiliación
-            $r = $conn->prepare("SELECT ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
-                    C.afiliacion,
-                    ISNULL(SUM(C.total_cg),0) AS total_cg,
-                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
-                    ISNULL(SUM(C.total_transito),0) AS total_transito,
-                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
-                    COUNT(*) AS n_cierres
-                $from GROUP BY TE.Nombre, C.entidad_id, C.afiliacion
-                ORDER BY banco, C.afiliacion");
-            $r->execute($params); $por_banco = $r->fetchAll(PDO::FETCH_ASSOC);
+            // ── Resumen por combinación (catálogo completo LEFT JOIN cierres) ──────
+            // Las condiciones de fecha van en el ON del LEFT JOIN (no en WHERE)
+            // para que aparezcan todas las combinaciones aunque no tengan cierres.
+            $joinCond  = "C.estacion_id = TA.estacion_id AND C.entidad_id = TA.entidad_id
+                          AND C.afiliacion = TA.afiliacion AND C.estado = 'CERRADO'";
+            $joinParams = [];
+            if ($year > 0)  { $joinCond .= " AND YEAR(C.fecha_cierre) = ?";  $joinParams[] = $year;  }
+            if ($month > 0) { $joinCond .= " AND MONTH(C.fecha_cierre) = ?"; $joinParams[] = $month; }
 
-            // Por estación
-            $r = $conn->prepare("SELECT ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
-                    $rsCASE AS razon_social,
-                    ISNULL(SUM(C.total_cg),0) AS total_cg,
-                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
-                    ISNULL(SUM(C.total_transito),0) AS total_transito,
-                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
-                    COUNT(*) AS n_cierres
-                $from GROUP BY E.Nombre, C.estacion_id, E.RFC
-                ORDER BY estacion");
-            $r->execute($params); $por_estacion = $r->fetchAll(PDO::FETCH_ASSOC);
+            $catWhere  = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
+            $catParams = [];
+            if ($estacion_id > 0) { $catWhere .= " AND TA.estacion_id = ?"; $catParams[] = $estacion_id; }
+            if ($banco !== '')    { $catWhere .= " AND TE.Nombre = ?";      $catParams[] = $banco;        }
+            if ($rs === 'DIAZ GAS')    { $catWhere .= " AND ISNULL(E.RFC,'') = 'DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX') { $catWhere .= " AND ISNULL(E.RFC,'') = 'DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS'){ $catWhere .= " AND ISNULL(E.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')"; }
 
-            // Catálogos para filtros
-            $years_list = $conn->query(
-                "SELECT DISTINCT YEAR(fecha_cierre) AS y FROM Conciliacion_V3_CierreMes WHERE estado='CERRADO' ORDER BY y DESC"
-            )->fetchAll(PDO::FETCH_COLUMN);
-            $bancos_list = $conn->query(
-                "SELECT DISTINCT TE.id, TE.Nombre FROM Conciliacion_V3_CierreMes C
-                 JOIN Tesoreria_Entidad TE ON TE.id=C.entidad_id
-                 WHERE C.estado='CERRADO' ORDER BY TE.Nombre"
-            )->fetchAll(PDO::FETCH_ASSOC);
-            $estaciones_list = $conn->query(
-                "SELECT DISTINCT C.estacion_id, ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS nombre
-                 FROM Conciliacion_V3_CierreMes C
-                 LEFT JOIN Estaciones E ON E.Codigo=C.estacion_id
-                 WHERE C.estado='CERRADO' ORDER BY nombre"
-            )->fetchAll(PDO::FETCH_ASSOC);
+            $r = $conn->prepare("
+                SELECT
+                    ISNULL(E.Nombre,'Est.'+CAST(TA.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(TA.entidad_id AS VARCHAR)) AS banco,
+                    TA.afiliacion,
+                    CASE WHEN ISNULL(E.RFC,'') = 'DGA930823KD3' THEN 'DIAZ GAS'
+                         WHEN ISNULL(E.RFC,'') = 'DGM880621FU5' THEN 'GASOMEX'
+                         ELSE 'FORANEAS' END AS razon_social,
+                    ISNULL(SUM(C.total_cg),0)            AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0)     AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0)       AS total_transito,
+                    ISNULL(SUM(ISNULL(C.total_diferencias,0)),0) AS total_diferencias,
+                    COUNT(C.id)                           AS n_cierres
+                FROM Tesoreria_afil TA
+                LEFT JOIN Estaciones E        ON E.Codigo  = TA.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id   = TA.entidad_id
+                LEFT JOIN Conciliacion_V3_CierreMes C ON $joinCond
+                $catWhere
+                GROUP BY TA.estacion_id, TA.entidad_id, TA.afiliacion, E.Nombre, E.RFC, TE.Nombre
+                ORDER BY estacion, banco, TA.afiliacion
+            ");
+            $r->execute(array_merge($joinParams, $catParams));
+            $por_combinacion = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($por_combinacion as &$row) {
+                $row['total_cg']          = (float)$row['total_cg'];
+                $row['total_depositado']  = (float)$row['total_depositado'];
+                $row['total_transito']    = (float)$row['total_transito'];
+                $row['total_diferencias'] = (float)$row['total_diferencias'];
+                $row['n_cierres']         = (int)$row['n_cierres'];
+            }
 
             // Floats
             foreach (['total_cg','total_depositado','total_transito','total_diferencias'] as $f) {
@@ -6053,8 +6064,7 @@ public function stamped_invoices_detail(): void
             echo json_encode([
                 'status' => 'success',
                 'kpis' => $kpis, 'meses' => $meses, 'trend' => $trend,
-                'por_rs' => $por_rs, 'por_banco' => $por_banco, 'por_estacion' => $por_estacion,
-                'years_list' => $years_list, 'bancos_list' => $bancos_list, 'estaciones_list' => $estaciones_list,
+                'por_rs' => $por_rs, 'por_combinacion' => $por_combinacion,
             ]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
@@ -6068,7 +6078,8 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
 
         $year        = (int)($_GET['year']         ?? 0);
-        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
+        $banco       = trim($_GET['banco']          ?? '');
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
         $afiliacion  = trim($_GET['afiliacion']     ?? '');
@@ -6079,8 +6090,9 @@ public function stamped_invoices_detail(): void
             $where  = "WHERE T.estado != 'CANCELADO' AND (T.monto_efectivo IS NULL OR T.monto_efectivo < 0.01)";
             $params = [];
 
-            if ($year > 0)        { $where .= " AND YEAR(T.cg_fecha) = ?";  $params[] = $year;        }
-            if ($banco_id > 0)    { $where .= " AND T.entidad_id = ?";      $params[] = $banco_id;    }
+            if ($year > 0)     { $where .= " AND YEAR(T.cg_fecha) = ?";   $params[] = $year;   }
+            if ($month > 0)    { $where .= " AND MONTH(T.cg_fecha) = ?";  $params[] = $month;  }
+            if ($banco !== '') { $where .= " AND TE.Nombre = ?";           $params[] = $banco;  }
             if ($estacion_id > 0) { $where .= " AND T.estacion_id = ?";     $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND T.afiliacion = ?";     $params[] = $afiliacion;  }
             if ($rs === 'DIAZ GAS')   { $where .= " AND E.RFC = 'DGA930823KD3'"; }

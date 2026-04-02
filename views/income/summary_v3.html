@@ -16,16 +16,19 @@
 }
 body { background:#f1f5f9; }
 
-/* ── FILTROS ── */
-.filter-bar {
-    position:sticky; top:0; z-index:900;
-    background:rgba(255,255,255,.97); backdrop-filter:blur(8px);
-    border-bottom:1px solid #e2e8f0;
-    padding:10px 0; box-shadow:0 2px 8px rgba(0,0,0,.06);
-}
-.filter-bar select, .filter-bar .btn {
-    height:36px; font-size:.82rem; font-weight:600; border-radius:8px;
-}
+/* ── CONTROLES ── */
+.controls-header { background:#fff; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,.06); margin-bottom:14px; border:1px solid #e9ecef; }
+.controls-row { display:flex; align-items:center; gap:10px; padding:10px 16px; flex-wrap:wrap; }
+.controls-divider { width:1px; height:24px; background:#dee2e6; flex-shrink:0; }
+.controls-group { display:flex; align-items:center; gap:8px; }
+.custom-select-pill { border-radius:50px; border:1px solid #ced4da; padding-left:15px; background:#fff; font-weight:600; color:#2c3e50; height:36px; }
+.date-widget-trigger { cursor:pointer; display:flex; align-items:center; gap:8px; font-weight:bold; }
+.date-widget-dropdown { position:absolute; top:100%; left:0; background:white; z-index:2000; border:1px solid #ddd; padding:15px; border-radius:10px; display:none; width:280px; }
+.date-widget-dropdown.active { display:block; }
+.month-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:10px; }
+.month-btn { padding:5px; text-align:center; cursor:pointer; border-radius:5px; font-size:.8rem; }
+.month-btn:hover { background:#eee; }
+.month-btn.selected { background:#059669; color:white; }
 
 /* ── KPI CARDS ── */
 .kpi-card {
@@ -122,29 +125,93 @@ body { background:#f1f5f9; }
   </div>
 
   <!-- ── FILTROS ── -->
-  <div class="filter-bar mb-3">
-    <div class="container-fluid px-3">
-      <div class="d-flex gap-2 align-items-center flex-wrap">
-        <select id="f-year" class="form-control" style="width:110px;" onchange="aplicarFiltros()">
-          <option value="">Todos los años</option>
+  <div class="controls-header">
+    <div class="controls-row">
+
+      <!-- Razón Social -->
+      <div class="controls-group">
+        <span class="small font-weight-bold text-muted" style="white-space:nowrap;">R.S.</span>
+        <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
+          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setRS('')">
+            <input type="radio" name="rs_type" autocomplete="off" checked> TODAS
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('DIAZ GAS')">
+            <input type="radio" name="rs_type" autocomplete="off"> DIAZ
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('FORANEAS')">
+            <input type="radio" name="rs_type" autocomplete="off"> FORA
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-3" style="line-height:22px;" onclick="setRS('GASOMEX')">
+            <input type="radio" name="rs_type" autocomplete="off"> GASO
+          </label>
+        </div>
+      </div>
+
+      <div class="controls-divider"></div>
+
+      <!-- Estación -->
+      <div class="controls-group">
+        <label class="mb-0 small font-weight-bold text-muted text-nowrap">ESTACIÓN</label>
+        <select id="f-estacion" class="form-control custom-select-pill" style="min-width:190px;" onchange="aplicarFiltros()">
+          <option value="">Todas</option>
         </select>
-        <select id="f-rs" class="form-control" style="width:150px;" onchange="aplicarFiltros()">
-          <option value="">Todas las RS</option>
-          <option value="DIAZ GAS">Díaz Gas</option>
-          <option value="GASOMEX">Gasomex</option>
-          <option value="FORANEAS">Foráneas</option>
-        </select>
-        <select id="f-banco" class="form-control" style="width:160px;" onchange="aplicarFiltros()">
-          <option value="">Todos los bancos</option>
-        </select>
-        <select id="f-estacion" class="form-control" style="width:200px;" onchange="aplicarFiltros()">
-          <option value="">Todas las estaciones</option>
-        </select>
-        <button class="btn btn-outline-secondary btn-sm" onclick="limpiarFiltros()">
+      </div>
+
+      <!-- Banco -->
+      <div class="controls-group">
+        <span class="small font-weight-bold text-muted" style="white-space:nowrap;">BANCO</span>
+        <div class="btn-group btn-group-toggle rounded-pill overflow-hidden border" data-toggle="buttons" style="height:34px;">
+          <label class="btn btn-outline-dark btn-sm active px-3" style="line-height:22px;" onclick="setBanco('')">
+            <input type="radio" name="banco_type" autocomplete="off" checked> TODOS
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Santander')">
+            <input type="radio" name="banco_type" autocomplete="off"> SANTANDER
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Banamex')">
+            <input type="radio" name="banco_type" autocomplete="off"> BANAMEX
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('American Express')">
+            <input type="radio" name="banco_type" autocomplete="off"> AMEX
+          </label>
+          <label class="btn btn-outline-dark btn-sm px-2" style="line-height:22px;" onclick="setBanco('Banorte')">
+            <input type="radio" name="banco_type" autocomplete="off"> BANORTE
+          </label>
+        </div>
+      </div>
+
+      <div class="controls-divider"></div>
+
+      <!-- Período -->
+      <div class="controls-group">
+        <label class="mb-0 small font-weight-bold text-muted text-nowrap">PERÍODO</label>
+        <div class="position-relative">
+          <div class="date-widget-trigger border px-3 py-1 rounded-pill bg-white" style="height:34px;" onclick="toggleDatePicker()">
+            <i class="far fa-calendar-alt text-success"></i>
+            <span id="displayFullDate">Todos los períodos</span>
+          </div>
+          <input type="hidden" id="hiddenYear">
+          <input type="hidden" id="hiddenMonth">
+          <div class="date-widget-dropdown" id="dateDropdown">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <button class="btn btn-sm btn-light" onclick="changeWidgetYear(-1)">&lt;</button>
+              <strong id="widgetYearDisplay"></strong>
+              <button class="btn btn-sm btn-light" onclick="changeWidgetYear(1)">&gt;</button>
+            </div>
+            <div class="month-grid" id="monthGrid"></div>
+            <button class="btn btn-sm btn-outline-secondary btn-block mt-2" onclick="clearPeriod()">
+              <i class="fas fa-times mr-1"></i> Todos los períodos
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-auto d-flex align-items-center gap-2">
+        <span id="filtros-activos" class="text-muted" style="font-size:.75rem;"></span>
+        <button class="btn btn-outline-secondary btn-sm rounded-pill" onclick="limpiarFiltros()">
           <i class="fas fa-times mr-1"></i> Limpiar
         </button>
-        <span id="filtros-activos" class="text-muted" style="font-size:.75rem;"></span>
       </div>
+
     </div>
   </div>
 
@@ -228,91 +295,31 @@ body { background:#f1f5f9; }
     </div>
   </div>
 
-  <!-- ── TABS ── -->
-  <ul class="nav dash-tabs mb-3" id="dash-nav">
-    <li class="nav-item"><a class="nav-link active" href="#" data-tab="resumen">
-      <i class="fas fa-table mr-1"></i> Resumen</a></li>
-    <li class="nav-item"><a class="nav-link" href="#" data-tab="rs">
-      <i class="fas fa-building mr-1"></i> Por Razón Social</a></li>
-    <li class="nav-item"><a class="nav-link" href="#" data-tab="banco">
-      <i class="fas fa-university mr-1"></i> Por Banco</a></li>
-    <li class="nav-item"><a class="nav-link" href="#" data-tab="estacion">
-      <i class="fas fa-map-marker-alt mr-1"></i> Por Estación</a></li>
-    <li class="nav-item"><a class="nav-link" href="#" data-tab="transitos">
-      <i class="fas fa-clock mr-1"></i> Tránsitos Pendientes
-      <span id="badge-transitos" class="badge badge-warning ml-1" style="display:none;font-size:.65rem;"></span>
-    </a></li>
-  </ul>
-
-  <!-- ── CONTENIDO TABS ── -->
-  <div id="tab-resumen" class="tab-pane">
-    <div class="chart-card">
-      <div class="table-responsive">
-        <table class="dash-table">
-          <thead><tr>
-            <th>Mes</th><th>Estación</th><th>Razón Social</th><th>Banco</th><th>Afiliación</th>
-            <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
-            <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
-            <th>Cierre</th><th></th>
-          </tr></thead>
-          <tbody id="tbody-resumen"></tbody>
-        </table>
+  <!-- ── RESUMEN GENERAL (todas las combinaciones del catálogo) ── -->
+  <div class="chart-card mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="chart-title mb-0">
+        <i class="fas fa-list-alt mr-1"></i> Resumen General — Todas las Estaciones / Afiliaciones
       </div>
-      <div id="empty-resumen" class="empty-state d-none">
-        <i class="fas fa-inbox"></i> No hay meses cerrados con los filtros seleccionados
-      </div>
+      <small class="text-muted" id="resumen-comb-label"></small>
+    </div>
+    <div class="table-responsive">
+      <table class="dash-table">
+        <thead><tr>
+          <th>Estación</th><th>RS</th><th>Banco</th><th>Afiliación</th>
+          <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
+          <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
+          <th class="num">Cierres</th>
+        </tr></thead>
+        <tbody id="tbody-combinacion"></tbody>
+      </table>
+    </div>
+    <div id="empty-combinacion" class="empty-state d-none">
+      <i class="fas fa-inbox"></i> Sin combinaciones en el catálogo
     </div>
   </div>
 
-  <div id="tab-rs" class="tab-pane d-none">
-    <div class="chart-card">
-      <div class="table-responsive">
-        <table class="dash-table">
-          <thead><tr>
-            <th>Razón Social</th>
-            <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
-            <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
-            <th class="num">Cierres</th>
-          </tr></thead>
-          <tbody id="tbody-rs"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="tab-banco" class="tab-pane d-none">
-    <div class="chart-card">
-      <div class="table-responsive">
-        <table class="dash-table">
-          <thead><tr>
-            <th>Banco</th><th>Afiliación</th>
-            <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
-            <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
-            <th class="num">Cierres</th>
-          </tr></thead>
-          <tbody id="tbody-banco"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="tab-estacion" class="tab-pane d-none">
-    <div class="chart-card">
-      <div class="table-responsive">
-        <table class="dash-table">
-          <thead><tr>
-            <th>Estación</th><th>Razón Social</th>
-            <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
-            <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
-            <th class="num">Cierres</th>
-          </tr></thead>
-          <tbody id="tbody-estacion"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="tab-transitos" class="tab-pane d-none">
+  <div id="tab-transitos">
     <!-- Aging summary -->
     <div class="row mb-3" id="aging-summary"></div>
     <div class="chart-card">
@@ -339,6 +346,8 @@ body { background:#f1f5f9; }
 
 </div><!-- /container -->
 
+<div id="sumPickerOverlay" onclick="closeDatePicker()" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:1900;display:none;"></div>
+
 <!-- Modal nota cierre -->
 <div class="modal fade" id="modalNota" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -359,31 +368,131 @@ const FMT2 = new Intl.NumberFormat('es-MX', { maximumFractionDigits:2 });
 let chartTrend = null, chartRS = null;
 let _data = null, _tran = null;
 
-// ── FILTROS ─────────────────────────────────────────────────────────────────
+// ── ESTADO DE FILTROS ────────────────────────────────────────────────────────
+let widgetState   = { year: new Date().getFullYear(), month: '' };
+let currentRS     = '';
+let currentBanco  = '';
+let todasLasEstaciones = [];
+const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS', 'DGM880621FU5':'GASOMEX' };
+const MESES_NOMBRES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ── DATE WIDGET ──────────────────────────────────────────────────────────────
+function initWidget() {
+    renderWidgetYear();
+    updateDisplayDate();
+}
+function renderWidgetYear() {
+    const meses = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    $('#widgetYearDisplay').text(widgetState.year);
+    const $grid = $('#monthGrid').empty();
+    meses.forEach((m, i) => {
+        const num = (i + 1).toString().padStart(2, '0');
+        const sel = num === widgetState.month ? 'selected' : '';
+        $grid.append(`<div class="month-btn ${sel}" onclick="selectWidgetMonth('${num}')">${m}</div>`);
+    });
+}
+function changeWidgetYear(d) { widgetState.year += d; renderWidgetYear(); }
+function selectWidgetMonth(m) {
+    widgetState.month = (widgetState.month === m) ? '' : m;
+    updateDisplayDate();
+    renderWidgetYear();
+    closeDatePicker();
+    aplicarFiltros();
+}
+function clearPeriod() {
+    widgetState.month = '';
+    updateDisplayDate();
+    renderWidgetYear();
+    closeDatePicker();
+    aplicarFiltros();
+}
+function updateDisplayDate() {
+    if (widgetState.month) {
+        $('#displayFullDate').text(`${MESES_NOMBRES[parseInt(widgetState.month)]} ${widgetState.year}`);
+    } else {
+        $('#displayFullDate').text('Todos los períodos');
+    }
+}
+function toggleDatePicker() {
+    $('#dateDropdown').toggleClass('active');
+    $('#sumPickerOverlay').toggle($('#dateDropdown').hasClass('active'));
+}
+function closeDatePicker() { $('#dateDropdown').removeClass('active'); $('#sumPickerOverlay').hide(); }
+
+// ── RAZÓN SOCIAL ─────────────────────────────────────────────────────────────
+function setRS(rs) {
+    currentRS = rs;
+    filtrarEstaciones();
+    aplicarFiltros();
+}
+
+// ── BANCO ─────────────────────────────────────────────────────────────────────
+function setBanco(nombre) {
+    currentBanco = nombre;
+    aplicarFiltros();
+}
+
+// ── ESTACIONES ────────────────────────────────────────────────────────────────
+function cargarEstaciones() {
+    $.getJSON('/income/get_estaciones_catalogo', function(r) {
+        if (r.status !== 'success') return;
+        todasLasEstaciones = r.respuesta || [];
+        filtrarEstaciones();
+    });
+}
+function filtrarEstaciones() {
+    const curE = $('#f-estacion').val();
+    const $s = $('#f-estacion').empty().append('<option value="">Todas</option>');
+    todasLasEstaciones.forEach(function(e) {
+        if (!currentRS) {
+            $s.append('<option value="' + e.Codigo + '">' + e.Nombre + '</option>');
+        } else {
+            const rs = RS_MAPPING[e.RFC] || 'FORANEAS';
+            if (rs === currentRS) {
+                $s.append('<option value="' + e.Codigo + '">' + e.Nombre + '</option>');
+            }
+        }
+    });
+    if (curE) $s.val(curE);
+}
+
+// ── FILTROS ──────────────────────────────────────────────────────────────────
 function getFilters() {
     return {
-        year:       $('#f-year').val()     || '',
-        razon_social: $('#f-rs').val()     || '',
-        banco_id:   $('#f-banco').val()    || '',
-        estacion_id:$('#f-estacion').val() || '',
-        afiliacion: ''
+        year:        widgetState.month ? String(widgetState.year) : '',
+        month:       widgetState.month || '',
+        razon_social: currentRS,
+        banco:       currentBanco,
+        estacion_id: $('#f-estacion').val() || '',
+        afiliacion:  ''
     };
 }
 function buildQS(f) {
     return Object.entries(f).filter(([,v]) => v !== '').map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&');
 }
 function limpiarFiltros() {
-    $('#f-year,#f-rs,#f-banco,#f-estacion').val('');
+    currentRS = '';
+    currentBanco = '';
+    $('[name="rs_type"]').prop('checked', false);
+    $('[name="rs_type"]:eq(0)').prop('checked', true)
+        .closest('label').addClass('active').siblings('label').removeClass('active');
+    $('[name="banco_type"]').prop('checked', false);
+    $('[name="banco_type"]:eq(0)').prop('checked', true)
+        .closest('label').addClass('active').siblings('label').removeClass('active');
+    widgetState.month = '';
+    updateDisplayDate();
+    renderWidgetYear();
+    filtrarEstaciones();
     aplicarFiltros();
 }
 function aplicarFiltros() {
     const f = getFilters();
     const labels = [];
-    if (f.year) labels.push(f.year);
+    if (f.month) labels.push(`${MESES_NOMBRES[parseInt(f.month)]} ${f.year}`);
     if (f.razon_social) labels.push(f.razon_social);
-    if (f.banco_id) labels.push($('#f-banco option:selected').text());
+    if (f.banco) labels.push(f.banco);
     if (f.estacion_id) labels.push($('#f-estacion option:selected').text());
-    $('#filtros-activos').text(labels.length ? '▸ '+labels.join(' / ') : '');
+    $('#filtros-activos').text(labels.length ? '▸ ' + labels.join(' / ') : '');
     cargarDatos(f);
     cargarTransitos(f);
 }
@@ -393,14 +502,10 @@ function cargarDatos(f) {
     $.getJSON('/income/get_dashboard_v3?' + buildQS(f), function(res) {
         if (res.status !== 'success') return;
         _data = res;
-        poblarFiltros(res);
         renderKPIs(res.kpis);
         renderChartTrend(res.trend);
         renderChartRS(res.por_rs);
-        renderTabResumen(res.meses);
-        renderTabRS(res.por_rs);
-        renderTabBanco(res.por_banco);
-        renderTabEstacion(res.por_estacion);
+        renderResumenCombinacion(res.por_combinacion || []);
     });
 }
 function cargarTransitos(f) {
@@ -418,22 +523,6 @@ function cargarTransitos(f) {
     });
 }
 
-function poblarFiltros(res) {
-    const y = $('#f-year'), b = $('#f-banco'), e = $('#f-estacion');
-    const curY = y.val(), curB = b.val(), curE = e.val();
-    if (y.find('option').length <= 1) {
-        (res.years_list || []).forEach(yr => y.append(`<option value="${yr}">${yr}</option>`));
-    }
-    if (b.find('option').length <= 1) {
-        (res.bancos_list || []).forEach(bk => b.append(`<option value="${bk.id}">${bk.Nombre}</option>`));
-    }
-    if (e.find('option').length <= 1) {
-        (res.estaciones_list || []).forEach(es => e.append(`<option value="${es.estacion_id}">${es.nombre}</option>`));
-    }
-    if (curY) y.val(curY);
-    if (curB) b.val(curB);
-    if (curE) e.val(curE);
-}
 
 // ── KPIs ──────────────────────────────────────────────────────────────────────
 function renderKPIs(k) {
@@ -613,6 +702,57 @@ function renderTabEstacion(data) {
     });
 }
 
+// ── RESUMEN GENERAL (catálogo completo) ───────────────────────────────────────
+function renderResumenCombinacion(rows) {
+    const tb = $('#tbody-combinacion').empty();
+    if (!rows.length) { $('#empty-combinacion').removeClass('d-none'); $('#resumen-comb-label').text(''); return; }
+    $('#empty-combinacion').addClass('d-none');
+    $('#resumen-comb-label').text(rows.length + ' combinaciones');
+
+    // Agrupar por estación para mostrar subtotales
+    let curEst = null, grpCG = 0, grpDep = 0, grpTran = 0, grpDif = 0, grpN = 0;
+
+    const flushGrp = () => {
+        if (curEst === null) return;
+        tb.append(`<tr style="background:#f1f5f9;font-size:.75rem;font-weight:700;color:#475569;">
+            <td colspan="4" style="padding-left:24px;">Subtotal ${curEst}</td>
+            <td class="num">${FMT.format(grpCG)}</td>
+            <td class="num">${FMT.format(grpDep)}</td>
+            <td class="num ${grpTran > 0.01 ? 'text-warning' : ''}">${FMT.format(grpTran)}</td>
+            <td class="num ${difClass(grpDif)}">${FMT.format(grpDif)}</td>
+            <td class="num">${grpN}</td>
+        </tr>`);
+        grpCG = grpDep = grpTran = grpDif = grpN = 0;
+    };
+
+    rows.forEach(r => {
+        if (r.estacion !== curEst) {
+            flushGrp();
+            curEst = r.estacion;
+            // Fila de encabezado de estación
+            tb.append(`<tr class="group-header">
+                <td colspan="9"><i class="fas fa-gas-pump mr-1" style="color:#2563eb;"></i>${r.estacion} — ${rsBadge(r.razon_social)}</td>
+            </tr>`);
+        }
+        grpCG += r.total_cg; grpDep += r.total_depositado;
+        grpTran += r.total_transito; grpDif += r.total_diferencias; grpN += r.n_cierres;
+
+        const sinDatos = r.n_cierres === 0;
+        tb.append(`<tr class="sub-row ${sinDatos ? 'text-muted' : ''}">
+            <td></td>
+            <td>${rsBadge(r.razon_social)}</td>
+            <td>${r.banco}</td>
+            <td style="font-family:monospace;font-size:.78rem;">${r.afiliacion || '—'}</td>
+            <td class="num ${sinDatos ? '' : ''}">${sinDatos ? '<span class="text-muted">Sin cierres</span>' : FMT.format(r.total_cg)}</td>
+            <td class="num">${sinDatos ? '—' : FMT.format(r.total_depositado)}</td>
+            <td class="num ${r.total_transito > 0.01 ? 'text-warning' : ''}">${sinDatos ? '—' : FMT.format(r.total_transito)}</td>
+            <td class="num ${sinDatos ? '' : difClass(r.total_diferencias)}">${sinDatos ? '—' : FMT.format(r.total_diferencias)}</td>
+            <td class="num">${r.n_cierres}</td>
+        </tr>`);
+    });
+    flushGrp();
+}
+
 // ── TAB TRÁNSITOS ─────────────────────────────────────────────────────────────
 function renderAgingSummary(aging) {
     const pct = t => t > 0 ? Math.round((aging[t] / aging.total) * 100) : 0;
@@ -683,18 +823,10 @@ function verNota(encoded) {
     $('#modalNota').modal('show');
 }
 
-// ── TABS SWITCH ───────────────────────────────────────────────────────────────
-$('#dash-nav .nav-link').on('click', function(e) {
-    e.preventDefault();
-    $('#dash-nav .nav-link').removeClass('active');
-    $(this).addClass('active');
-    const tab = $(this).data('tab');
-    $('.tab-pane').addClass('d-none');
-    $('#tab-' + tab).removeClass('d-none');
-});
-
 // ── INIT ──────────────────────────────────────────────────────────────────────
 $(function() {
+    initWidget();
+    cargarEstaciones(); // dispara filtrarEstaciones → cargarBancos
     aplicarFiltros();
 });
 </script>
