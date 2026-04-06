@@ -287,10 +287,9 @@ body { background:#f1f5f9; }
     <div class="table-responsive">
       <table class="dash-table">
         <thead><tr>
-          <th>Estación</th><th>RS</th><th>Banco</th><th>Afiliación</th>
+          <th>Estación / Banco</th><th>Afiliación</th>
           <th class="num">CG ($)</th><th class="num">Depositado ($)</th>
           <th class="num">Tránsito ($)</th><th class="num">Diferencia ($)</th>
-          <th class="num">Cierres</th>
         </tr></thead>
         <tbody id="tbody-combinacion"></tbody>
       </table>
@@ -306,18 +305,22 @@ body { background:#f1f5f9; }
     <div class="chart-card">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="chart-title mb-0"><i class="fas fa-hourglass-half mr-1"></i> Tránsitos Pendientes de Conciliar</div>
-        <small class="text-muted" id="transitos-total-label"></small>
+        <div class="d-flex align-items-center gap-3">
+            <small class="text-muted" id="transitos-total-label"></small>
+            <div id="pagination-transitos-top"></div>
+        </div>
       </div>
       <div class="table-responsive">
         <table class="dash-table">
           <thead><tr>
             <th>Antigüedad</th><th>Estación</th><th>Banco</th><th>Afiliación</th>
-            <th>Mes Origen</th><th>Fecha TX</th><th>Concepto</th>
+            <th>Mes Origen</th><th>Concepto</th>
             <th class="num">Monto ($)</th><th>Días</th>
           </tr></thead>
           <tbody id="tbody-transitos"></tbody>
         </table>
       </div>
+      <div id="pagination-transitos-bottom" class="d-flex justify-content-center mt-3"></div>
       <div id="empty-transitos" class="empty-state d-none">
         <i class="fas fa-check-circle" style="color:#22c55e;"></i>
         Sin tránsitos pendientes
@@ -359,6 +362,10 @@ let currentBanco  = '';
 let todasLasEstaciones = [];
 const RS_MAPPING  = { 'DGA930823KD3':'DIAZ GAS','DGM880621FU5':'GASOMEX' };
 const MESES_NOMBRES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// Pagination Transitos
+let transitosPage = 1;
+const transitosPerPage = 20;
 
 // ── DATE WIDGET ──────────────────────────────────────────────────────────────
 function initWidget() {
