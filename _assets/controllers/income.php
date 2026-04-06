@@ -8787,7 +8787,7 @@ public function stamped_invoices_detail(): void
             $comision = $parseMonto($comisionStr);
             $iva      = $parseMonto($ivaStr);
 
-            if ($cargos <= 0) { $errors++; continue; }
+            if ($cargos <= 0 && $comision <= 0 && $iva <= 0) { $skipped++; continue; } // fila vacía sin valores monetarios
 
             // Antiduplicado
             $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos]);
