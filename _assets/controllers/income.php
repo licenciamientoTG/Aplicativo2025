@@ -3758,10 +3758,10 @@ public function anomalies_client_tickets()
             } catch(Exception $e){}
             } // fin foreach tablaDD
 
-            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115, 4547, 8214
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115, 4547, 8214, 4669
             foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
                       'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791',
-                      'Tesoreria_A6115', 'Tesoreria_4547', 'Tesoreria_8214'] as $tablaRef) {
+                      'Tesoreria_A6115', 'Tesoreria_4547', 'Tesoreria_8214', 'Tesoreria_4669'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
