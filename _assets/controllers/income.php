@@ -1877,13 +1877,33 @@ public function anomalies_client_tickets()
 
     function form_find($nrotrn, $fch, $codgas, $shift) : void {
         $fch = dateToInt($fch);
-        $payment_type = $_POST['dispatch_type'];
+        $payment_type = $_POST['dispatch_type'] ?? '';
 
         // Verificamos que el despacho exista
         if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
+            $tipval = intval($dispatch[0]['tipval'] ?? 0);
 
-            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
-                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
+            // Hotfix: normalizamos el tipo recibido para evitar falsos positivos por acentos/codificación.
+            $normalized_type = trim((string)$payment_type);
+            $normalized_type = rawurldecode($normalized_type);
+            $normalized_type = urldecode($normalized_type);
+            $normalized_type = strtolower($normalized_type);
+            $normalized_type = str_replace(
+                array('á', 'é', 'í', 'ó', 'ú', 'Ã¡', 'Ã©', 'Ã­', 'Ã³', 'Ãº'),
+                array('a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u'),
+                $normalized_type
+            );
+            $normalized_type = str_replace(' ', '', $normalized_type);
+
+            $expected_tipval = null;
+            if (strpos($normalized_type, 'credito') !== false || strpos($normalized_type, 'crdito') !== false) {
+                $expected_tipval = 3;
+            } elseif (strpos($normalized_type, 'debito') !== false || strpos($normalized_type, 'dbito') !== false) {
+                $expected_tipval = 4;
+            }
+
+            if (!is_null($expected_tipval) && $tipval !== $expected_tipval) {
+                json_output(array("status" => "error", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
             }
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
             if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
