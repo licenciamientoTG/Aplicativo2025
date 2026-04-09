@@ -8707,6 +8707,7 @@ public function stamped_invoices_detail(): void
             'monto_pago'      => null,
             'comision'        => null,
             'iva'             => null,
+            'numero_factura'  => null,
         ];
         foreach ($headers as $idx => $h) {
             $h = mb_strtolower(trim((string)$h));
@@ -8717,6 +8718,7 @@ public function stamped_invoices_detail(): void
             elseif (stripos($h, 'pago') !== false)                                        $colMap['fecha_pago']      = $idx;
             elseif (stripos($h, 'descuento') !== false || stripos($h, 'comisi') !== false) $colMap['comision']       = $idx;
             elseif (stripos($h, 'iva') !== false)                                         $colMap['iva']             = $idx;
+            elseif (stripos($h, 'factura') !== false)                                     $colMap['numero_factura']  = $idx;
         }
         // Si no se detectaron encabezados, usar posiciones fijas como fallback
         $useColMap = !in_array(null, $colMap, true);
@@ -8729,6 +8731,7 @@ public function stamped_invoices_detail(): void
                 'monto_pago'      => 4,
                 'comision'        => 5,
                 'iva'             => 6,
+                'numero_factura'  => 7,
             ];
         }
 
@@ -8755,6 +8758,9 @@ public function stamped_invoices_detail(): void
             $t = trim($raw);
             return ltrim($t, '0') ?: $t;
         };
+        $normalizeFactura = function(string $raw): string {
+            return trim($raw);
+        };
 
         // ── Conexión BD ─────────────────────────────────────────────────────
         try {
@@ -8774,12 +8780,12 @@ public function stamped_invoices_detail(): void
         // ── Procesar e insertar filas ────────────────────────────────────────
         $stmtCheck = $conn->prepare(
             "SELECT COUNT(*) FROM AMEX_Envios
-             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ?"
+             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ? AND numero_factura = ?"
         );
         $stmtIns = $conn->prepare(
             "INSERT INTO AMEX_Envios
-                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva, numero_factura)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
         $inserted = 0;
@@ -8795,8 +8801,11 @@ public function stamped_invoices_detail(): void
             $montoPagoStr     = (string)($row[$colMap['monto_pago']]      ?? '');
             $comisionStr      = (string)($row[$colMap['comision']]        ?? '');
             $ivaStr           = (string)($row[$colMap['iva']]             ?? '');
+            $numeroFacturaRaw = (string)($row[$colMap['numero_factura']]  ?? '');
 
             if ($establecimiento === '') { $errors++; continue; }
+            $numeroFactura = $normalizeFactura($numeroFacturaRaw);
+            if ($numeroFactura === '') { $errors++; continue; }
 
             $fechaTrans = $parseFecha($fechaTransStr);
             $fechaPago  = $parseFecha($fechaPagoStr);
@@ -8810,11 +8819,11 @@ public function stamped_invoices_detail(): void
             if ($cargos <= 0 && $comision <= 0 && $iva <= 0) { $skipped++; continue; } // fila vacía sin valores monetarios
 
             // Antiduplicado
-            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos]);
+            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos, $numeroFactura]);
             if ((int)$stmtCheck->fetchColumn() > 0) { $skipped++; continue; }
 
             try {
-                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva]);
+                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva, $numeroFactura]);
                 $inserted++;
             } catch (\Exception $e) {
                 // Violación de índice único (race condition) — tratar como duplicado
