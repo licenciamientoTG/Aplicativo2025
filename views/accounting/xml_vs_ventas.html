@@ -61,7 +61,8 @@
                 </div>
                 <div class="mb-2">
                     <span class="badge bg-primary fs-6" id="badge_estaciones_diarias">
-                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span id="count_estaciones_diarias">—</span>
+                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span
+                            id="count_estaciones_diarias">—</span>
                     </span>
                 </div>
                 <div class="table-responsive">
@@ -77,7 +78,8 @@
                                 <th class="text-end">Volumen Ventas</th>
                                 <th class="text-end">Dif. Volumen</th>
                                 <th class="text-end">Dif. %</th>
-                                <th class="text-end">Transacciones</th>
+                                <th class="text-end">Transacciones XML</th>
+                                <th class="text-end">Transacciones Despachos</th>
                                 <th>Archivo</th>
                             </tr>
                         </thead>
@@ -93,6 +95,7 @@
                                 <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
+                                <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
                             </tr>
@@ -125,7 +128,8 @@
                 </div>
                 <div class="mb-2">
                     <span class="badge bg-primary fs-6" id="badge_estaciones_mensuales">
-                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span id="count_estaciones_mensuales">—</span>
+                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span
+                            id="count_estaciones_mensuales">—</span>
                     </span>
                 </div>
                 <div class="table-responsive">
@@ -140,7 +144,8 @@
                                 <th class="text-end">Volumen Ventas</th>
                                 <th class="text-end">Dif. Volumen</th>
                                 <th class="text-end">Dif. %</th>
-                                <th class="text-end">Transacciones</th>
+                                <th class="text-end">Transacciones XML</th>
+                                <th class="text-end">Transacciones Despachos</th>
                                 <th>Archivo</th>
                             </tr>
                         </thead>
@@ -155,6 +160,7 @@
                                 <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
+                                <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
                             </tr>
@@ -300,6 +306,11 @@
                     className: 'text-end',
                     render: $.fn.dataTable.render.number(',', '.', 0)
                 },
+                {
+                    data: 'transacciones_despachos',
+                    className: 'text-end',
+                    render: $.fn.dataTable.render.number(',', '.', 0)
+                },
                 { data: 'archivo' }
             ],
             order: [[0, 'asc'], [2, 'asc']],
@@ -326,11 +337,13 @@
                     );
                 });
                 $(api.column(8).footer()).html('');
-                let totalTrans = api.column(9, { search: 'applied' }).data()
-                    .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
-                $(api.column(9).footer()).html(
-                    `<span>${new Intl.NumberFormat('es-MX').format(totalTrans)}</span>`
-                );
+                [9, 10].forEach(function (colIdx) {
+                    let total = api.column(colIdx, { search: 'applied' }).data()
+                        .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
+                    $(api.column(colIdx).footer()).html(
+                        `<span>${new Intl.NumberFormat('es-MX').format(total)}</span>`
+                    );
+                });
             },
             initComplete: function () {
                 let api = this.api();
@@ -446,6 +459,11 @@
                         className: 'text-end',
                         render: $.fn.dataTable.render.number(',', '.', 0)
                     },
+                    {
+                        data: 'transacciones_despachos',
+                        className: 'text-end',
+                        render: $.fn.dataTable.render.number(',', '.', 0)
+                    },
                     { data: 'archivo' }
                 ],
                 order: [[0, 'asc']],
@@ -479,11 +497,13 @@
                         );
                     });
                     $(api.column(7).footer()).html('');
-                    let totalTransM = api.column(8, { search: 'applied' }).data()
-                        .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
-                    $(api.column(8).footer()).html(
-                        `<span>${new Intl.NumberFormat('es-MX').format(totalTransM)}</span>`
-                    );
+                    [8, 9].forEach(function (colIdx) {
+                        let total = api.column(colIdx, { search: 'applied' }).data()
+                            .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
+                        $(api.column(colIdx).footer()).html(
+                            `<span>${new Intl.NumberFormat('es-MX').format(total)}</span>`
+                        );
+                    });
                 },
                 initComplete: function () {
                     let api = this.api();
