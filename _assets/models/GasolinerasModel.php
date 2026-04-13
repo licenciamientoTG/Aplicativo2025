@@ -373,7 +373,7 @@ class GasolinerasModel extends Model{
                                 CONVERT(VARCHAR(10), CAST(fch AS DATETIME) - 1, 23) AS Fecha,
                                 codprd AS CodProducto,
                                 codgas AS CodGasolinera,
-                                SUM(ROUND(can, 0)) AS CantidadCompra
+                                SUM(can) AS CantidadCompra
                             FROM ' + QUOTENAME(@BaseDatos) + '.dbo.Movimientos (NOLOCK)
                             WHERE fch BETWEEN ' + CAST(@from_param AS NVARCHAR) + ' AND ' + CAST(@until_param AS NVARCHAR) + '
                               AND can > 0

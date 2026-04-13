@@ -2546,6 +2546,9 @@ function abrirModalCierre() {
     const eid   = currentRule.entidad_id;
     const afil  = currentRule.afiliacion;
 
+    // Resetear estado del botón por si se quedó en "Cerrando..."
+    $('#btn-confirmar-cierre').prop('disabled', false).html('<i class="fas fa-lock mr-2"></i><span id="btn-cierre-label">Confirmar Cierre</span>');
+
     $('#cierre-mes-label').text(mes);
     $('#cierre-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-warning"></div></div>');
     $('#cierre-footer').hide();
@@ -2683,6 +2686,9 @@ function abrirModalReabrirMes() {
     const estid = $('#estacionSelect').val();
     const eid   = currentRule.entidad_id;
     const afil  = currentRule.afiliacion;
+
+    // Resetear estado del botón por si se quedó en "Reabriendo..."
+    $('#btn-confirmar-reabrir').prop('disabled', false).html('<i class="fas fa-lock-open mr-2"></i>Confirmar Reapertura');
 
     $('#reabrir-mes-label').text(mes);
     $('#reabrir-modal-body').html('<div class="text-center py-4"><div class="spinner-border text-success"></div></div>');

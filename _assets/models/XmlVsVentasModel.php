@@ -26,6 +26,8 @@ class XmlVsVentasModel extends Model {
                     WHEN (v.[volumen_total_xml] - v.[jarreos]) = 0 THEN NULL
                     ELSE ROUND((v.[venta_estacion] - (v.[volumen_total_xml] - v.[jarreos])) / (v.[volumen_total_xml] - v.[jarreos]) * 100, 2)
                 END AS [dif_porcentaje],
+                v.[transacciones_validas],
+                v.[transacciones_ventas_controlgas] AS [transacciones_despachos],
                 v.[archivo_origen] AS [archivo]
             FROM [TG].[dbo].[cv_ventas_diarias] v
             INNER JOIN [TG].[dbo].[Estaciones] e
@@ -123,6 +125,8 @@ class XmlVsVentasModel extends Model {
                     WHEN (v.[volumen_total] - ISNULL(d.[total_jarreos], 0)) = 0 THEN NULL
                     ELSE ROUND((v.[venta_total] - (v.[volumen_total] - ISNULL(d.[total_jarreos], 0))) / (v.[volumen_total] - ISNULL(d.[total_jarreos], 0)) * 100, 2)
                 END AS [dif_porcentaje],
+                ISNULL(d.[total_transacciones_validas], 0) AS [transacciones_validas],
+                ISNULL(d.[total_transacciones_despachos], 0) AS [transacciones_despachos],
                 v.[archivo_origen] AS [archivo]
             FROM [TG].[dbo].[cv_ventas_mensuales] v
             INNER JOIN [TG].[dbo].[Estaciones] e
@@ -133,7 +137,9 @@ class XmlVsVentasModel extends Model {
                     [clave_producto],
                     [clave_sub_producto],
                     [octanaje],
-                    SUM([jarreos]) AS [total_jarreos]
+                    SUM([jarreos]) AS [total_jarreos],
+                    SUM([transacciones_validas]) AS [total_transacciones_validas],
+                    SUM([transacciones_ventas_controlgas]) AS [total_transacciones_despachos]
                 FROM [TG].[dbo].[cv_ventas_diarias]
                 WHERE [fecha] >= DATEFROMPARTS(YEAR(DATEADD(MONTH, -1, GETDATE())), MONTH(DATEADD(MONTH, -1, GETDATE())), 1)
                 AND [fecha] <  DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1)

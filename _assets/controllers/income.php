@@ -1877,13 +1877,33 @@ public function anomalies_client_tickets()
 
     function form_find($nrotrn, $fch, $codgas, $shift) : void {
         $fch = dateToInt($fch);
-        $payment_type = $_POST['dispatch_type'];
+        $payment_type = $_POST['dispatch_type'] ?? '';
 
         // Verificamos que el despacho exista
         if ($dispatch = $this->despachosModel->check_dispatch(intval($nrotrn), $codgas, $fch)) {
+            $tipval = intval($dispatch[0]['tipval'] ?? 0);
 
-            if (($payment_type == "Débito" AND $dispatch[0]['tipval'] == 3) || ($payment_type == "Crédito" AND $dispatch[0]['tipval'] == 4)) {
-                json_output(array("status" => "warning", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
+            // Hotfix: normalizamos el tipo recibido para evitar falsos positivos por acentos/codificación.
+            $normalized_type = trim((string)$payment_type);
+            $normalized_type = rawurldecode($normalized_type);
+            $normalized_type = urldecode($normalized_type);
+            $normalized_type = strtolower($normalized_type);
+            $normalized_type = str_replace(
+                array('á', 'é', 'í', 'ó', 'ú', 'Ã¡', 'Ã©', 'Ã­', 'Ã³', 'Ãº'),
+                array('a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'u'),
+                $normalized_type
+            );
+            $normalized_type = str_replace(' ', '', $normalized_type);
+
+            $expected_tipval = null;
+            if (strpos($normalized_type, 'credito') !== false || strpos($normalized_type, 'crdito') !== false) {
+                $expected_tipval = 3;
+            } elseif (strpos($normalized_type, 'debito') !== false || strpos($normalized_type, 'dbito') !== false) {
+                $expected_tipval = 4;
+            }
+
+            if (!is_null($expected_tipval) && $tipval !== $expected_tipval) {
+                json_output(array("status" => "error", "message" => "Este despacho no puede ser liberado por no ser del tipo correcto."));
             }
             // Ahora vamos a verificar si este despacho puede tratarse de un error de venta
             if ((($dispatch[0]['rut'] != '' && $dispatch[0]['rut'] != null) AND $dispatch[0]['nroveh'] < 1 )) {
@@ -3758,10 +3778,10 @@ public function anomalies_client_tickets()
             } catch(Exception $e){}
             } // fin foreach tablaDD
 
-            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115, 4547
+            // Fuentes por Referencia/Concepto: 8504, 8492, 4638, 4777, 5247, 7291, 7533, 5791, A6115, 4547, 8214, 4669
             foreach (['Tesoreria_8504', 'Tesoreria_8492', 'Tesoreria_4638', 'Tesoreria_4777',
                       'Tesoreria_5247', 'Tesoreria_7291', 'Tesoreria_7533', 'Tesoreria_5791',
-                      'Tesoreria_A6115', 'Tesoreria_4547'] as $tablaRef) {
+                      'Tesoreria_A6115', 'Tesoreria_4547', 'Tesoreria_8214', 'Tesoreria_4669'] as $tablaRef) {
                 try {
                     $check = $conn->query("SELECT count(*) FROM information_schema.tables WHERE table_name = '$tablaRef'");
                     if ($check->fetchColumn() == 0) continue;
@@ -5931,7 +5951,8 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
 
         $year        = (int)($_GET['year']         ?? 0);
-        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
+        $banco       = trim($_GET['banco']          ?? '');
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
         $afiliacion  = trim($_GET['afiliacion']     ?? '');
@@ -5946,10 +5967,17 @@ public function stamped_invoices_detail(): void
             $where  = "WHERE C.estado = 'CERRADO'";
             $params = [];
 
-            if ($year > 0)       { $where .= " AND YEAR(C.fecha_cierre) = ?";  $params[] = $year;        }
-            if ($banco_id > 0)   { $where .= " AND C.entidad_id = ?";          $params[] = $banco_id;    }
-            if ($estacion_id > 0){ $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
-            if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";        $params[] = $afiliacion;  }
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
+            if ($banco !== '')    { $where .= " AND TE.Nombre = ?";              $params[] = $banco;       }
+            if ($estacion_id > 0) { $where .= " AND C.estacion_id = ?";         $params[] = $estacion_id; }
+            if ($afiliacion !== ''){ $where .= " AND C.afiliacion = ?";         $params[] = $afiliacion;  }
             if ($rs === 'DIAZ GAS')  { $where .= " AND E.RFC = 'DGA930823KD3'"; }
             elseif ($rs === 'GASOMEX')  { $where .= " AND E.RFC = 'DGM880621FU5'"; }
             elseif ($rs === 'FORANEAS') { $where .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
@@ -5982,12 +6010,37 @@ public function stamped_invoices_detail(): void
             $r->execute($params); $meses = $r->fetchAll(PDO::FETCH_ASSOC);
 
             // Trend (CG vs Depositado vs Diferencias por mes, para gráficas)
-            $r = $conn->prepare("SELECT C.mes,
-                    ISNULL(SUM(C.total_cg),0) AS cg,
-                    ISNULL(SUM(C.total_depositado),0) AS depositado,
-                    ISNULL(SUM(C.total_diferencias),0) AS diferencias
-                $from GROUP BY C.mes ORDER BY C.mes ASC");
-            $r->execute($params); $trend = $r->fetchAll(PDO::FETCH_ASSOC);
+            if ($year > 0 && $month > 0) {
+                // Tendencia DIARIA si hay un mes seleccionado
+                $mesBusqueda = sprintf("%04d-%02d", $year, $month);
+                $whereG = "WHERE G.estado = 'CERRADO' AND G.mes_cierre = ?";
+                $paramsG = [$mesBusqueda];
+                
+                if ($banco !== '')    { $whereG .= " AND TE.Nombre = ?";      $paramsG[] = $banco;       }
+                if ($estacion_id > 0) { $whereG .= " AND G.estacion_id = ?"; $paramsG[] = $estacion_id; }
+                if ($afiliacion !== ''){ $whereG .= " AND G.afiliacion = ?";  $paramsG[] = $afiliacion;  }
+                if ($rs === 'DIAZ GAS')  { $whereG .= " AND E.RFC = 'DGA930823KD3'"; }
+                elseif ($rs === 'GASOMEX')  { $whereG .= " AND E.RFC = 'DGM880621FU5'"; }
+                elseif ($rs === 'FORANEAS') { $whereG .= " AND (E.RFC NOT IN ('DGA930823KD3','DGM880621FU5') OR E.RFC IS NULL)"; }
+
+                $rTrend = $conn->prepare("SELECT G.fecha_operativa AS mes,
+                        ISNULL(SUM(G.total_sistema),0) AS cg,
+                        ISNULL(SUM(G.total_tesoreria),0) AS depositado,
+                        ISNULL(SUM(G.diferencia),0) AS diferencias
+                    FROM Conciliacion_V3_Grupos G
+                    LEFT JOIN Estaciones E ON E.Codigo = G.estacion_id
+                    LEFT JOIN Tesoreria_Entidad TE ON TE.id = G.entidad_id
+                    $whereG GROUP BY G.fecha_operativa ORDER BY G.fecha_operativa ASC");
+                $rTrend->execute($paramsG); $trend = $rTrend->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                // Tendencia MENSUAL si no hay mes o solo hay año
+                $rTrend = $conn->prepare("SELECT C.mes,
+                        ISNULL(SUM(C.total_cg),0) AS cg,
+                        ISNULL(SUM(C.total_depositado),0) AS depositado,
+                        ISNULL(SUM(C.total_diferencias),0) AS diferencias
+                    $from GROUP BY C.mes ORDER BY C.mes ASC");
+                $rTrend->execute($params); $trend = $rTrend->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Por razón social
             $r = $conn->prepare("SELECT $rsCASE AS razon_social,
@@ -5999,45 +6052,59 @@ public function stamped_invoices_detail(): void
                 $from GROUP BY $rsCASE ORDER BY razon_social");
             $r->execute($params); $por_rs = $r->fetchAll(PDO::FETCH_ASSOC);
 
-            // Por banco / afiliación
-            $r = $conn->prepare("SELECT ISNULL(TE.Nombre,'Banco '+CAST(C.entidad_id AS VARCHAR)) AS banco,
-                    C.afiliacion,
-                    ISNULL(SUM(C.total_cg),0) AS total_cg,
-                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
-                    ISNULL(SUM(C.total_transito),0) AS total_transito,
-                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
-                    COUNT(*) AS n_cierres
-                $from GROUP BY TE.Nombre, C.entidad_id, C.afiliacion
-                ORDER BY banco, C.afiliacion");
-            $r->execute($params); $por_banco = $r->fetchAll(PDO::FETCH_ASSOC);
+            // ── Resumen por combinación (catálogo completo LEFT JOIN cierres) ──────
+            // Las condiciones de fecha van en el ON del LEFT JOIN (no en WHERE)
+            // para que aparezcan todas las combinaciones aunque no tengan cierres.
+            $joinCond  = "C.estacion_id = TA.estacion_id AND C.entidad_id = TA.entidad_id
+                          AND C.afiliacion = TA.afiliacion AND C.estado = 'CERRADO'";
+            $joinParams = [];
+            if ($year > 0 && $month > 0) {
+                $joinCond .= " AND C.mes = ?";
+                $joinParams[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $joinCond .= " AND C.mes LIKE ?";
+                $joinParams[] = "$year-%";
+            }
 
-            // Por estación
-            $r = $conn->prepare("SELECT ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS estacion,
-                    $rsCASE AS razon_social,
-                    ISNULL(SUM(C.total_cg),0) AS total_cg,
-                    ISNULL(SUM(C.total_depositado),0) AS total_depositado,
-                    ISNULL(SUM(C.total_transito),0) AS total_transito,
-                    ISNULL(SUM(C.total_diferencias),0) AS total_diferencias,
-                    COUNT(*) AS n_cierres
-                $from GROUP BY E.Nombre, C.estacion_id, E.RFC
-                ORDER BY estacion");
-            $r->execute($params); $por_estacion = $r->fetchAll(PDO::FETCH_ASSOC);
+            $catWhere  = "WHERE LEN(ISNULL(TA.afiliacion,'')) > 0";
+            $catParams = [];
+            if ($estacion_id > 0) { $catWhere .= " AND TA.estacion_id = ?"; $catParams[] = $estacion_id; }
+            if ($banco !== '')    { $catWhere .= " AND TE.Nombre = ?";      $catParams[] = $banco;        }
+            if ($rs === 'DIAZ GAS')    { $catWhere .= " AND ISNULL(E.RFC,'') = 'DGA930823KD3'"; }
+            elseif ($rs === 'GASOMEX') { $catWhere .= " AND ISNULL(E.RFC,'') = 'DGM880621FU5'"; }
+            elseif ($rs === 'FORANEAS'){ $catWhere .= " AND ISNULL(E.RFC,'') NOT IN ('DGA930823KD3','DGM880621FU5')"; }
 
-            // Catálogos para filtros
-            $years_list = $conn->query(
-                "SELECT DISTINCT YEAR(fecha_cierre) AS y FROM Conciliacion_V3_CierreMes WHERE estado='CERRADO' ORDER BY y DESC"
-            )->fetchAll(PDO::FETCH_COLUMN);
-            $bancos_list = $conn->query(
-                "SELECT DISTINCT TE.id, TE.Nombre FROM Conciliacion_V3_CierreMes C
-                 JOIN Tesoreria_Entidad TE ON TE.id=C.entidad_id
-                 WHERE C.estado='CERRADO' ORDER BY TE.Nombre"
-            )->fetchAll(PDO::FETCH_ASSOC);
-            $estaciones_list = $conn->query(
-                "SELECT DISTINCT C.estacion_id, ISNULL(E.Nombre,'Est.'+CAST(C.estacion_id AS VARCHAR)) AS nombre
-                 FROM Conciliacion_V3_CierreMes C
-                 LEFT JOIN Estaciones E ON E.Codigo=C.estacion_id
-                 WHERE C.estado='CERRADO' ORDER BY nombre"
-            )->fetchAll(PDO::FETCH_ASSOC);
+            $r = $conn->prepare("
+                SELECT
+                    ISNULL(E.Nombre,'Est.'+CAST(TA.estacion_id AS VARCHAR)) AS estacion,
+                    ISNULL(TE.Nombre,'Banco '+CAST(TA.entidad_id AS VARCHAR)) AS banco,
+                    TA.afiliacion,
+                    CASE WHEN ISNULL(E.RFC,'') = 'DGA930823KD3' THEN 'DIAZ GAS'
+                         WHEN ISNULL(E.RFC,'') = 'DGM880621FU5' THEN 'GASOMEX'
+                         ELSE 'FORANEAS' END AS razon_social,
+                    ISNULL(SUM(C.total_cg),0)            AS total_cg,
+                    ISNULL(SUM(C.total_depositado),0)     AS total_depositado,
+                    ISNULL(SUM(C.total_transito),0)       AS total_transito,
+                    ISNULL(SUM(ISNULL(C.total_diferencias,0)),0) AS total_diferencias,
+                    COUNT(C.id)                           AS n_cierres
+                FROM Tesoreria_afil TA
+                LEFT JOIN Estaciones E        ON E.Codigo  = TA.estacion_id
+                LEFT JOIN Tesoreria_Entidad TE ON TE.id   = TA.entidad_id
+                LEFT JOIN Conciliacion_V3_CierreMes C ON $joinCond
+                $catWhere
+                GROUP BY TA.estacion_id, TA.entidad_id, TA.afiliacion, E.Nombre, E.RFC, TE.Nombre
+                ORDER BY estacion, banco, TA.afiliacion
+            ");
+            $r->execute(array_merge($joinParams, $catParams));
+            $por_combinacion = $r->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($por_combinacion as &$row) {
+                $row['total_cg']          = (float)$row['total_cg'];
+                $row['total_depositado']  = (float)$row['total_depositado'];
+                $row['total_transito']    = (float)$row['total_transito'];
+                $row['total_diferencias'] = (float)$row['total_diferencias'];
+                $row['n_cierres']         = (int)$row['n_cierres'];
+            }
 
             // Floats
             foreach (['total_cg','total_depositado','total_transito','total_diferencias'] as $f) {
@@ -6053,8 +6120,7 @@ public function stamped_invoices_detail(): void
             echo json_encode([
                 'status' => 'success',
                 'kpis' => $kpis, 'meses' => $meses, 'trend' => $trend,
-                'por_rs' => $por_rs, 'por_banco' => $por_banco, 'por_estacion' => $por_estacion,
-                'years_list' => $years_list, 'bancos_list' => $bancos_list, 'estaciones_list' => $estaciones_list,
+                'por_rs' => $por_rs, 'por_combinacion' => $por_combinacion,
             ]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
@@ -6068,7 +6134,8 @@ public function stamped_invoices_detail(): void
         header('Content-Type: application/json');
 
         $year        = (int)($_GET['year']         ?? 0);
-        $banco_id    = (int)($_GET['banco_id']      ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
+        $banco       = trim($_GET['banco']          ?? '');
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
         $afiliacion  = trim($_GET['afiliacion']     ?? '');
@@ -6079,8 +6146,9 @@ public function stamped_invoices_detail(): void
             $where  = "WHERE T.estado != 'CANCELADO' AND (T.monto_efectivo IS NULL OR T.monto_efectivo < 0.01)";
             $params = [];
 
-            if ($year > 0)        { $where .= " AND YEAR(T.cg_fecha) = ?";  $params[] = $year;        }
-            if ($banco_id > 0)    { $where .= " AND T.entidad_id = ?";      $params[] = $banco_id;    }
+            if ($year > 0)     { $where .= " AND YEAR(T.cg_fecha) = ?";   $params[] = $year;   }
+            if ($month > 0)    { $where .= " AND MONTH(T.cg_fecha) = ?";  $params[] = $month;  }
+            if ($banco !== '') { $where .= " AND TE.Nombre = ?";           $params[] = $banco;  }
             if ($estacion_id > 0) { $where .= " AND T.estacion_id = ?";     $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND T.afiliacion = ?";     $params[] = $afiliacion;  }
             if ($rs === 'DIAZ GAS')   { $where .= " AND E.RFC = 'DGA930823KD3'"; }
@@ -6127,6 +6195,7 @@ public function stamped_invoices_detail(): void
     public function export_diferencias_v3(): void {
         ob_clean();
         $year        = (int)($_GET['year']         ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
         $banco_id    = (int)($_GET['banco_id']      ?? 0);
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
@@ -6137,7 +6206,15 @@ public function stamped_invoices_detail(): void
 
             $where  = "WHERE C.estado='CERRADO' AND ABS(ISNULL(C.total_diferencias,0)) > 0.01";
             $params = [];
-            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
             if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
             if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
@@ -6213,6 +6290,7 @@ public function stamped_invoices_detail(): void
     public function export_resumen_v3(): void {
         ob_clean();
         $year        = (int)($_GET['year']         ?? 0);
+        $month       = (int)($_GET['month']        ?? 0);
         $banco_id    = (int)($_GET['banco_id']      ?? 0);
         $rs          = trim($_GET['razon_social']   ?? '');
         $estacion_id = (int)($_GET['estacion_id']   ?? 0);
@@ -6223,7 +6301,15 @@ public function stamped_invoices_detail(): void
 
             $where  = "WHERE C.estado='CERRADO'";
             $params = [];
-            if ($year > 0)        { $where .= " AND YEAR(C.fecha_cierre)=?"; $params[] = $year; }
+
+            if ($year > 0 && $month > 0) {
+                $where .= " AND C.mes = ?";
+                $params[] = sprintf("%04d-%02d", $year, $month);
+            } elseif ($year > 0) {
+                $where .= " AND C.mes LIKE ?";
+                $params[] = "$year-%";
+            }
+
             if ($banco_id > 0)    { $where .= " AND C.entidad_id=?";         $params[] = $banco_id; }
             if ($estacion_id > 0) { $where .= " AND C.estacion_id=?";        $params[] = $estacion_id; }
             if ($afiliacion !== ''){ $where .= " AND C.afiliacion=?";        $params[] = $afiliacion; }
@@ -6657,6 +6743,7 @@ public function stamped_invoices_detail(): void
 
         try {
             $conn = $this->v3_conn();
+            $conn->beginTransaction();
 
             // Verificar que el mes no esté cerrado
             $stmt = $conn->prepare(
@@ -6666,10 +6753,12 @@ public function stamped_invoices_detail(): void
             $grupo = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$grupo) {
+                $conn->rollBack();
                 echo json_encode(['status' => 'error', 'message' => 'Grupo no encontrado']);
                 exit;
             }
             if ($grupo['estado'] === 'CERRADO') {
+                $conn->rollBack();
                 echo json_encode(['status' => 'error',
                     'message' => "El mes {$grupo['mes_cierre']} ya está cerrado. No se puede deshacer."]);
                 exit;
@@ -6694,12 +6783,26 @@ public function stamped_invoices_detail(): void
                  WHERE conciliacion_id_orig = ?"
             )->execute([$grupo_id]);
 
+            // Revertir CV3_Diferido: fakes reconciliados en este grupo (día destino)
+            $conn->prepare(
+                "UPDATE CV3_Diferido SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                 WHERE conciliacion_id_dest = ?"
+            )->execute([$grupo_id]);
+
+            // Revertir CV3_Diferido: monto_diferido reconciliado en este grupo (día origen)
+            $conn->prepare(
+                "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
+                 WHERE conciliacion_id_orig = ?"
+            )->execute([$grupo_id]);
+
             // Borrar detalles y grupo (FK CASCADE borra detalles)
             $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id = ?")->execute([$grupo_id]);
 
+            $conn->commit();
             echo json_encode(['status' => 'success']);
 
         } catch (PDOException $e) {
+            if (isset($conn)) $conn->rollBack();
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         exit;
@@ -6790,8 +6893,7 @@ public function stamped_invoices_detail(): void
         $month = (int)$data['month'];
 
         try {
-            $conn = new PDO("sqlsrv:Server=192.168.0.6;Database=TG", "cguser", "sahei1712");
-            $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $conn = $this->v3_conn();
             $conn->beginTransaction();
 
             // Obtener todos los grupos del mes (excluye CERRADOS)
@@ -6813,13 +6915,39 @@ public function stamped_invoices_detail(): void
             $chunks = array_chunk($groupIds, 500);
             foreach ($chunks as $chunk) {
                 $placeholders = implode(',', array_fill(0, count($chunk), '?'));
-                // Reabrir tránsitos cerrados por estos grupos
+
+                // 1. Reabrir tránsitos cerrados por estos grupos (sistema antiguo)
                 $conn->prepare(
                     "UPDATE Conciliacion_V3_Transito
                      SET estado = 'PENDIENTE', grupo_id_cierre = NULL, fecha_cierre = NULL
                      WHERE grupo_id_cierre IN ($placeholders)"
                 )->execute($chunk);
-                // Borrar grupos (FK CASCADE elimina detalles)
+
+                // 2. Revertir CV3_Transito (mes destino)
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                     WHERE conciliacion_id_dest IN ($placeholders)"
+                )->execute($chunk);
+
+                // 3. Revertir CV3_Transito (mes origen)
+                $conn->prepare(
+                    "UPDATE CV3_Transito SET conciliacion_id_orig = NULL
+                     WHERE conciliacion_id_orig IN ($placeholders)"
+                )->execute($chunk);
+
+                // 4. Revertir CV3_Diferido (día destino)
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET estado = 'PENDIENTE', conciliacion_id_dest = NULL
+                     WHERE conciliacion_id_dest IN ($placeholders)"
+                )->execute($chunk);
+
+                // 5. Revertir CV3_Diferido (día origen)
+                $conn->prepare(
+                    "UPDATE CV3_Diferido SET conciliacion_id_orig = NULL
+                     WHERE conciliacion_id_orig IN ($placeholders)"
+                )->execute($chunk);
+
+                // 6. Borrar grupos (FK CASCADE elimina detalles)
                 $conn->prepare("DELETE FROM Conciliacion_V3_Grupos WHERE id IN ($placeholders)")->execute($chunk);
             }
 
@@ -8579,6 +8707,7 @@ public function stamped_invoices_detail(): void
             'monto_pago'      => null,
             'comision'        => null,
             'iva'             => null,
+            'numero_factura'  => null,
         ];
         foreach ($headers as $idx => $h) {
             $h = mb_strtolower(trim((string)$h));
@@ -8589,6 +8718,7 @@ public function stamped_invoices_detail(): void
             elseif (stripos($h, 'pago') !== false)                                        $colMap['fecha_pago']      = $idx;
             elseif (stripos($h, 'descuento') !== false || stripos($h, 'comisi') !== false) $colMap['comision']       = $idx;
             elseif (stripos($h, 'iva') !== false)                                         $colMap['iva']             = $idx;
+            elseif (stripos($h, 'factura') !== false)                                     $colMap['numero_factura']  = $idx;
         }
         // Si no se detectaron encabezados, usar posiciones fijas como fallback
         $useColMap = !in_array(null, $colMap, true);
@@ -8601,6 +8731,7 @@ public function stamped_invoices_detail(): void
                 'monto_pago'      => 4,
                 'comision'        => 5,
                 'iva'             => 6,
+                'numero_factura'  => 7,
             ];
         }
 
@@ -8627,6 +8758,9 @@ public function stamped_invoices_detail(): void
             $t = trim($raw);
             return ltrim($t, '0') ?: $t;
         };
+        $normalizeFactura = function(string $raw): string {
+            return trim($raw);
+        };
 
         // ── Conexión BD ─────────────────────────────────────────────────────
         try {
@@ -8646,12 +8780,12 @@ public function stamped_invoices_detail(): void
         // ── Procesar e insertar filas ────────────────────────────────────────
         $stmtCheck = $conn->prepare(
             "SELECT COUNT(*) FROM AMEX_Envios
-             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ?"
+             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ? AND numero_factura = ?"
         );
         $stmtIns = $conn->prepare(
             "INSERT INTO AMEX_Envios
-                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva, numero_factura)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         );
 
         $inserted = 0;
@@ -8667,8 +8801,11 @@ public function stamped_invoices_detail(): void
             $montoPagoStr     = (string)($row[$colMap['monto_pago']]      ?? '');
             $comisionStr      = (string)($row[$colMap['comision']]        ?? '');
             $ivaStr           = (string)($row[$colMap['iva']]             ?? '');
+            $numeroFacturaRaw = (string)($row[$colMap['numero_factura']]  ?? '');
 
             if ($establecimiento === '') { $errors++; continue; }
+            $numeroFactura = $normalizeFactura($numeroFacturaRaw);
+            if ($numeroFactura === '') { $errors++; continue; }
 
             $fechaTrans = $parseFecha($fechaTransStr);
             $fechaPago  = $parseFecha($fechaPagoStr);
@@ -8679,14 +8816,14 @@ public function stamped_invoices_detail(): void
             $comision = $parseMonto($comisionStr);
             $iva      = $parseMonto($ivaStr);
 
-            if ($cargos <= 0) { $errors++; continue; }
+            if ($cargos <= 0 && $comision <= 0 && $iva <= 0) { $skipped++; continue; } // fila vacía sin valores monetarios
 
             // Antiduplicado
-            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos]);
+            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos, $numeroFactura]);
             if ((int)$stmtCheck->fetchColumn() > 0) { $skipped++; continue; }
 
             try {
-                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva]);
+                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva, $numeroFactura]);
                 $inserted++;
             } catch (\Exception $e) {
                 // Violación de índice único (race condition) — tratar como duplicado

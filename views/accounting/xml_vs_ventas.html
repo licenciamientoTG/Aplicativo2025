@@ -59,6 +59,12 @@
                         </select>
                     </div>
                 </div>
+                <div class="mb-2">
+                    <span class="badge bg-primary fs-6" id="badge_estaciones_diarias">
+                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span
+                            id="count_estaciones_diarias">—</span>
+                    </span>
+                </div>
                 <div class="table-responsive">
                     <table id="xml_ventas_table" class="table table-striped table-bordered table-sm w-100">
                         <thead class="table-light">
@@ -72,6 +78,8 @@
                                 <th class="text-end">Volumen Ventas</th>
                                 <th class="text-end">Dif. Volumen</th>
                                 <th class="text-end">Dif. %</th>
+                                <th class="text-end">Transacciones XML</th>
+                                <th class="text-end">Transacciones Despachos</th>
                                 <th>Archivo</th>
                             </tr>
                         </thead>
@@ -87,6 +95,8 @@
                                 <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
+                                <th class="text-end"></th>
+                                <th class="text-end"></th>
                                 <th></th>
                             </tr>
                         </tfoot>
@@ -116,6 +126,12 @@
                         </select>
                     </div>
                 </div>
+                <div class="mb-2">
+                    <span class="badge bg-primary fs-6" id="badge_estaciones_mensuales">
+                        <i class="fas fa-gas-pump me-1"></i> Estaciones procesadas: <span
+                            id="count_estaciones_mensuales">—</span>
+                    </span>
+                </div>
                 <div class="table-responsive">
                     <table id="xml_ventas_mensuales_table" class="table table-striped table-bordered table-sm w-100">
                         <thead class="table-light">
@@ -128,6 +144,8 @@
                                 <th class="text-end">Volumen Ventas</th>
                                 <th class="text-end">Dif. Volumen</th>
                                 <th class="text-end">Dif. %</th>
+                                <th class="text-end">Transacciones XML</th>
+                                <th class="text-end">Transacciones Despachos</th>
                                 <th>Archivo</th>
                             </tr>
                         </thead>
@@ -142,6 +160,8 @@
                                 <th class="text-end"></th>
                                 <th class="text-end"></th>
                                 <th></th>
+                                <th class="text-end"></th>
+                                <th class="text-end"></th>
                                 <th></th>
                             </tr>
                         </tfoot>
@@ -281,6 +301,16 @@
                         return data;
                     }
                 },
+                {
+                    data: 'transacciones_validas',
+                    className: 'text-end',
+                    render: $.fn.dataTable.render.number(',', '.', 0)
+                },
+                {
+                    data: 'transacciones_despachos',
+                    className: 'text-end',
+                    render: $.fn.dataTable.render.number(',', '.', 0)
+                },
                 { data: 'archivo' }
             ],
             order: [[0, 'asc'], [2, 'asc']],
@@ -291,6 +321,10 @@
                 { extend: 'copyHtml5', text: '<i class="fas fa-copy"></i> Copiar', className: 'btn btn-secondary btn-sm' },
                 { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' }
             ],
+            drawCallback: function () {
+                let count = this.api().column(0, { search: 'applied' }).data().unique().length;
+                $('#count_estaciones_diarias').text(count);
+            },
             footerCallback: function (row, data, start, end, display) {
                 let api = this.api();
                 let numVal = val => parseFloat(val) || 0;
@@ -303,6 +337,13 @@
                     );
                 });
                 $(api.column(8).footer()).html('');
+                [9, 10].forEach(function (colIdx) {
+                    let total = api.column(colIdx, { search: 'applied' }).data()
+                        .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
+                    $(api.column(colIdx).footer()).html(
+                        `<span>${new Intl.NumberFormat('es-MX').format(total)}</span>`
+                    );
+                });
             },
             initComplete: function () {
                 let api = this.api();
@@ -413,11 +454,25 @@
                             return data;
                         }
                     },
+                    {
+                        data: 'transacciones_validas',
+                        className: 'text-end',
+                        render: $.fn.dataTable.render.number(',', '.', 0)
+                    },
+                    {
+                        data: 'transacciones_despachos',
+                        className: 'text-end',
+                        render: $.fn.dataTable.render.number(',', '.', 0)
+                    },
                     { data: 'archivo' }
                 ],
                 order: [[0, 'asc']],
                 pageLength: 100,
                 dom: '<"top"Bf>rt<"bottom"lip><"clear">',
+                drawCallback: function () {
+                    let count = this.api().column(0, { search: 'applied' }).data().unique().length;
+                    $('#count_estaciones_mensuales').text(count);
+                },
                 buttons: [
                     { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' },
                     { extend: 'copyHtml5', text: '<i class="fas fa-copy"></i> Copiar', className: 'btn btn-secondary btn-sm' },
@@ -442,6 +497,13 @@
                         );
                     });
                     $(api.column(7).footer()).html('');
+                    [8, 9].forEach(function (colIdx) {
+                        let total = api.column(colIdx, { search: 'applied' }).data()
+                            .reduce((a, b) => (parseInt(a) || 0) + (parseInt(b) || 0), 0);
+                        $(api.column(colIdx).footer()).html(
+                            `<span>${new Intl.NumberFormat('es-MX').format(total)}</span>`
+                        );
+                    });
                 },
                 initComplete: function () {
                     let api = this.api();

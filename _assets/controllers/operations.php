@@ -2330,9 +2330,19 @@ class Operations{
     
     function print_ballot($id) {
         $ballot = $this->ballotModel->get_ballot_by_id($id);
+
+        if (empty($ballot)) {
+            die('Error: No se encontró la papeleta con Id ' . htmlspecialchars($id));
+        }
+
         $datosEstacion = $this->ballotModel->get_station_data($ballot[0]['CodEstacion']);
+
+        if (empty($datosEstacion)) {
+            die('Error: No se encontraron datos bancarios para la estación ' . htmlspecialchars($ballot[0]['CodEstacion']) . '. Verifique que exista un registro en BancoEstacion para esa estación.');
+        }
+
         $tabulator = $this->tabulatorModel->get_tabulator($ballot[0]['IdTabulador']);
-        $date = $ballot[0]['FechaCreacion'];
+        $date = $tabulator['FechaTabular'];
         $formatDate = (new DateTime($date))->format('Y-m-d');
         $formatDate2 = (new DateTime($tabulator['FechaTabular']))->format('Ymd');
         $turno = strval($ballot[0]['Turno'])[0];
@@ -2345,6 +2355,7 @@ class Operations{
             $formatter = new NumberFormatter("es", NumberFormatter::SPELLOUT);
             return ucfirst($formatter->format($numero));
         }
+
 
         $monto = $moneda['Monto'];
         $tipoCambio = $ballot[0]['TipoCambio'];
@@ -2383,11 +2394,11 @@ class Operations{
         $pdf->setxy(11, 18);
         $pdf->Cell(65.5, 10, $formatDate, 0, 0, 'L');
         $pdf->setxy(40, 18);
-        $pdf->Cell(65.5, 10, substr($ballot[0]['FechaCreacion'], 11, 5), 0, 0, 'L');
+        $pdf->Cell(65.5, 10, substr($tabulator['FechaTabular'], 11, 5), 0, 0, 'L');
         $pdf->setxy(18, 36);
         $pdf->Cell(65.5,10,$datosEstacion[0]['EstacionNombre'], 0, 0, 'L');
         $pdf->setxy(17, 44);
-        $pdf->Cell(65.5,10, utf8_decode($datosEstacion[0]['Domicilio']), 0, 0, 'L');
+        $pdf->Cell(65.5,10, mb_convert_encoding($datosEstacion[0]['Domicilio'], 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
 
         if ($ballot[0]['Moneda'] == 'MXN') {
             $pdf->setxy(58, 54);
@@ -2418,7 +2429,7 @@ class Operations{
             $pdf->Cell(65.5, 10,"$" . number_format($montoDolares, 2) . "USD", 0, 0, 'L');
         }
         $pdf->setxy(15, 62);
-        $pdf->Cell(65.5, 10, utf8_decode($montoLetra), 0, 0, 'L');
+        $pdf->Cell(65.5, 10, mb_convert_encoding($montoLetra, 'ISO-8859-1', 'UTF-8'), 0, 0, 'L');
         $pdf->setxy(15, 133);
         $pdf->Cell(65.5,10,$_SESSION['tg_user']['Nombre'], 0, 0, 'L');
         $pdf->setxy(15, 137);
