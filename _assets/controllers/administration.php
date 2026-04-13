@@ -699,13 +699,13 @@ function filtered_statistics($action, $period, $ticket_form_id, $agent_id = 0) {
     }
 
     /**
-     * @param $codgas
-     * @param $from
-     * @param $until
+     * @param int|string $codgas
+     * @param string $from
+     * @param string $until
      * @return void
      * @throws Exception
      */
-    public function datatables_monthly_dispatches($codgas = null, $from, $until) : void {
+    public function datatables_monthly_dispatches($codgas, $from, $until) : void {
         $dispatchesModel = new DespachosModel();
         // Convertir el arreglo de datos a formato JSON
             $data = [];

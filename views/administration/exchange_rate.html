@@ -49,7 +49,7 @@
         <table id="datatable_exchange_rate" class="table table-striped table-sm w-100">
             <thead>
             <tr>
-                <th class="w-5">CHECK</th>
+                <th class="w-5"><input type="checkbox" id="checkAll" title="Seleccionar todos"></th>
                 <th>DESCRIPCIÓN</th>
                 <th>NO. ESTACIÓN</th>
                 <th>ESTACIÓN</th>
@@ -63,7 +63,7 @@
             </tbody>
             <tfoot>
             <tr>
-                <th>CHECK</th>
+                <th><input type="checkbox" id="checkAllFoot" title="Seleccionar todos"></th>
                 <th>DESCRIPCIÓN</th>
                 <th>NO. ESTACIÓN</th>
                 <th>ESTACIÓN</th>
@@ -100,6 +100,21 @@
             var regex = /^([01]\d|2[0-3]):([0-5]\d)$/;
             return regex.test(timeString);
         }
+
+        // Seleccionar / deseleccionar todos los checkboxes de la tabla
+        $(document).on('change', '#checkAll, #checkAllFoot', function() {
+            var checked = $(this).prop('checked');
+            $('input[name="check"]').prop('checked', checked);
+            // Mantener ambos checkboxes sincronizados
+            $('#checkAll, #checkAllFoot').prop('checked', checked);
+        });
+
+        // Si se desmarca alguno individualmente, desmarcar el "seleccionar todos"
+        $(document).on('change', 'input[name="check"]', function() {
+            var total = $('input[name="check"]').length;
+            var checked = $('input[name="check"]:checked').length;
+            $('#checkAll, #checkAllFoot').prop('checked', total === checked);
+        });
 
         $('#submitButton').click(function() {
 
