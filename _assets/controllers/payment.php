@@ -1137,10 +1137,12 @@ class Payment
                 return;
             }
 
-            if (!$documents || count($documents) === 0) {
+            $indep_notes = array_filter($pending_notes ?? [], fn($n) => ($n['invoice_temp_key'] ?? null) === null);
+            if ((!$documents || count($documents) === 0) && count($indep_notes) === 0) {
                 json_output(['success' => false, 'detail' => 'No hay documentos para procesar']);
                 return;
             }
+            if (!$documents) $documents = [];
             if (!$provider_cod) {
                 json_output(['success' => false, 'detail' => 'Código de proveedor requerido']);
                 return;
