@@ -24,6 +24,24 @@
     #tabla_anticipos thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
     #tabla_facturas_autorizadas thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
 
+    /* Evitar que overflow del contenedor corte el dropdown colvis */
+    div.dt-button-collection { z-index: 9999 !important; }
+
+    /* Fila de filtros de cabecera para payment_list_table */
+    #payment_list_table thead tr.filter th {
+        background-color: #e2e8f0 !important;
+        padding: 3px 6px !important;
+    }
+    #payment_list_table thead tr.filter th input {
+        font-size: 0.7rem;
+        padding: 2px 5px;
+        height: 22px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
     .auth-box { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 12px; transition: all .2s; }
     .auth-box.bg-success { background-color: #dcfce7 !important; color: #16a34a !important; }
     .auth-box.bg-warning { background-color: #fef9c3 !important; color: #ca8a04 !important; }
@@ -36,7 +54,7 @@
     .pipeline-card.locked-level { background: #fff; border-color: #e2e8f0; opacity: .7; }
     .pipeline-icon { width: 2.2rem; height: 2.2rem; border-radius: .4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
-    .table-responsive { padding: 0 .75rem .75rem; }
+    .table-responsive { padding: 1rem .75rem .75rem; }
     .table tbody tr:hover { background-color: #f8fafc; }
     .table tbody tr td { font-size: .82rem; vertical-align: middle; color: #334155; border-color: #f1f5f9; }
     .table tbody tr td, .table thead th { padding: .55rem .75rem; }

@@ -1218,6 +1218,7 @@ async function generatePayment() {
 function loadPaymentList() {
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
+    $("#payment_list_table thead tr.filter").remove();
   }
   const status = $("#status_filter").val();
 
@@ -1225,6 +1226,12 @@ function loadPaymentList() {
     responsive: true,
     dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
     buttons: [
+      {
+        extend: "excel",
+        text: '<i class="fas fa-file-excel"></i> Excel',
+        className: "btn btn-sm btn-success",
+        exportOptions: { columns: ":visible:not(:last-child)" },
+      },
       {
         extend: "colvis",
         text: '<i class="fas fa-columns"></i> Columnas',
@@ -1325,7 +1332,7 @@ function loadPaymentList() {
     ],
     order: [[0, "desc"]],
     columnDefs: [
-      { targets: [5, 6, 8, 9], visible: false },
+      { targets: [5, 6,7, 8, 9], visible: false },
     ],
 
     drawCallback: function () {
@@ -1333,6 +1340,37 @@ function loadPaymentList() {
       var tooltipEls = document.querySelectorAll('#payment_list_table [data-bs-toggle="tooltip"]');
       tooltipEls.forEach(function (el) {
         bootstrap.Tooltip.getOrCreateInstance(el);
+      });
+    },
+    initComplete: function () {
+      var api = this.api();
+
+      function rebuildFilterRow() {
+        $("#payment_list_table thead tr.filter").remove();
+        var $filterRow = $('<tr class="filter"></tr>');
+        api.columns(':visible').every(function() {
+          var colIdx = this.index();
+          var title = $(this.header()).text().trim();
+          var isLast = colIdx === api.columns().count() - 1;
+          if (isLast) {
+            $filterRow.append('<th data-col-idx="' + colIdx + '"></th>');
+          } else {
+            $filterRow.append('<th data-col-idx="' + colIdx + '"><input type="text" placeholder="' + title + '" /></th>');
+          }
+        });
+        $("#payment_list_table thead").append($filterRow);
+
+        $("#payment_list_table thead tr.filter th input").on("keyup change", function () {
+          var colIdx = $(this).closest("th").data("col-idx");
+          api.column(colIdx).search(this.value).draw();
+        });
+      }
+
+      rebuildFilterRow();
+
+      // Reconstruir filtros cada vez que cambia visibilidad de columnas
+      api.on('column-visibility.dt', function () {
+        rebuildFilterRow();
       });
     },
   });
