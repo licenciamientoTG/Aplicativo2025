@@ -56,7 +56,7 @@
                 <div class="card-body text-center d-flex flex-column align-items-center justify-content-center">
                     <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Logo_de_Banorte.svg/1280px-Logo_de_Banorte.svg.png" alt="Banorte" class="bank-logo" onerror="this.src='/_assets/images/logos/Logo.png'">
                     <h5 class="font-weight-bold">BANORTE</h5>
-                    <p class="small text-muted">Carga manual de reportes .XLSX</p>
+                    <p class="small text-muted">Carga manual de reportes .XLS</p>
                     <button class="btn btn-danger btn-sm rounded-pill px-4">Subir Reporte</button>
                 </div>
             </div>
@@ -332,6 +332,11 @@
         $('#modalBankName').text(bank);
         $('#inputBankType').val(bank);
         $('#reportFile').val('');
+        if (bank === 'BANORTE') {
+            $('#reportFile').attr('accept', '.xls');
+        } else {
+            $('#reportFile').attr('accept', '.csv, .xlsx, .xls');
+        }
         $('#uploadProgress').hide();
         $('#modalUpload').modal('show');
     }
@@ -345,6 +350,12 @@
         }
 
         const bankType = $('#inputBankType').val();
+        const fileName = (file.name || '').toLowerCase();
+        if (bankType === 'BANORTE' && !fileName.endsWith('.xls')) {
+            alert("Para BANORTE solo se permite archivo .xls. El formato .csv no es compatible con la deduplicación.");
+            return;
+        }
+
         $('#uploadProgress').show();
         $('.modal-footer button').attr('disabled', true);
 
