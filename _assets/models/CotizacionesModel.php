@@ -320,58 +320,34 @@ class CotizacionesModel extends Model{
     }
 
     function insert_remote($codmda, $codgas, $from, $hour, $cot, $tg_user) : bool {
-        $codmda   = intval($codmda);
-        $codgas   = intval($codgas);
-        $from     = intval($from);
-        $hour     = intval($hour);
-        $cot      = floatval($cot);
-        $tg_user_safe = str_replace("'", "''", $tg_user);
+        $codmda = intval($codmda);
+        $codgas = intval($codgas);
+        $from   = intval($from);
+        $hour   = intval($hour);
+        $cot    = floatval($cot);
+        $db     = $this->databases[$codgas];
 
-        // SQL Server does not allow MERGE with a linked server as the target.
-        // For remote stations (codgas != 0) we push the MERGE to the remote server
-        // via EXEC('...') AT [linked_server], which runs the statement locally there.
-        if ($codgas !== 0) {
-            $short_db = $this->short_databases[$codgas]; // e.g. [SG12_41882020].[dbo]
-            $linked   = $this->linked_server[$codgas];   // e.g. [192.168.7.101]
+        // SQL Server forbids MERGE when the target is a linked server.
+        // Use INSERT WHERE NOT EXISTS + UPDATE instead — both work across linked servers.
 
-            $merge_sql = "MERGE INTO {$short_db}.[Cotizaciones] AS target "
-                . "USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,''{$tg_user_safe}'',GETDATE(),GETDATE())) "
-                . "AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew]) "
-                . "ON target.[codmda] = source.[codmda] "
-                . "AND target.[codgas] = source.[codgas] "
-                . "AND target.[fch] = source.[fch] "
-                . "AND target.[hra] = source.[hra] "
-                . "WHEN MATCHED THEN "
-                . "UPDATE SET [ctz]=source.[ctz],[ctzcom]=source.[ctzcom],[ctzven]=source.[ctzven],"
-                . "[logusu]=source.[logusu],[logfch]=GETDATE(),[lognew]=GETDATE() "
-                . "WHEN NOT MATCHED THEN "
-                . "INSERT ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew]) "
-                . "VALUES (source.[codmda],source.[codgas],source.[fch],source.[hra],source.[ctz],source.[ctzcom],source.[ctzven],source.[codpza],source.[codcpo],source.[logusu],source.[logfch],source.[lognew]);";
+        // Step 1: insert the row only if it doesn't already exist.
+        $insert_query = "INSERT INTO {$db}.[Cotizaciones]
+            ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
+            SELECT {$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE()
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {$db}.[Cotizaciones]
+                WHERE [codmda] = {$codmda} AND [codgas] = {$codgas}
+                  AND [fch] = {$from} AND [hra] = {$hour}
+            )";
+        $this->sql->insert($insert_query, [$tg_user]);
 
-            $query = "EXEC('{$merge_sql}') AT {$linked}";
-            return (bool)$this->sql->insert($query, []);
-        }
-
-        // Local SG12 (codgas = 0): MERGE directly — no linked server restriction applies.
-        $query = "MERGE INTO [SG12].[dbo].[Cotizaciones] AS target
-                USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE()))
-                    AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
-                ON target.[codmda] = source.[codmda]
-                    AND target.[codgas] = source.[codgas]
-                    AND target.[fch] = source.[fch]
-                    AND target.[hra] = source.[hra]
-                WHEN MATCHED THEN
-                    UPDATE SET
-                        [ctz] = source.[ctz],
-                        [ctzcom] = source.[ctzcom],
-                        [ctzven] = source.[ctzven],
-                        [logusu] = source.[logusu],
-                        [logfch] = GETDATE(),
-                        [lognew] = GETDATE()
-                WHEN NOT MATCHED THEN
-                    INSERT ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
-                    VALUES (source.[codmda],source.[codgas],source.[fch],source.[hra],source.[ctz],source.[ctzcom],source.[ctzven],source.[codpza],source.[codcpo],source.[logusu],source.[logfch],source.[lognew]);";
-        return (bool)$this->sql->insert($query, [$tg_user]);
+        // Step 2: update the row (covers both new and pre-existing records).
+        $update_query = "UPDATE {$db}.[Cotizaciones]
+            SET [ctz] = {$cot}, [ctzcom] = {$cot}, [ctzven] = {$cot},
+                [logusu] = ?, [logfch] = GETDATE(), [lognew] = GETDATE()
+            WHERE [codmda] = {$codmda} AND [codgas] = {$codgas}
+              AND [fch] = {$from} AND [hra] = {$hour}";
+        return (bool)$this->sql->update($update_query, [$tg_user]);
     }
 
     function update($codmda, $codgas, $fch, $hra, $value) : bool {
