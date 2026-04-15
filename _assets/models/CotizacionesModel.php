@@ -320,15 +320,48 @@ class CotizacionesModel extends Model{
     }
 
     function insert_remote($codmda, $codgas, $from, $hour, $cot, $tg_user) : bool {
-        $query = "MERGE INTO {$this->databases[$codgas]}.[Cotizaciones] AS target
-                USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE())) 
+        $codmda   = intval($codmda);
+        $codgas   = intval($codgas);
+        $from     = intval($from);
+        $hour     = intval($hour);
+        $cot      = floatval($cot);
+        $tg_user_safe = str_replace("'", "''", $tg_user);
+
+        // SQL Server does not allow MERGE with a linked server as the target.
+        // For remote stations (codgas != 0) we push the MERGE to the remote server
+        // via EXEC('...') AT [linked_server], which runs the statement locally there.
+        if ($codgas !== 0) {
+            $short_db = $this->short_databases[$codgas]; // e.g. [SG12_41882020].[dbo]
+            $linked   = $this->linked_server[$codgas];   // e.g. [192.168.7.101]
+
+            $merge_sql = "MERGE INTO {$short_db}.[Cotizaciones] AS target "
+                . "USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,''{$tg_user_safe}'',GETDATE(),GETDATE())) "
+                . "AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew]) "
+                . "ON target.[codmda] = source.[codmda] "
+                . "AND target.[codgas] = source.[codgas] "
+                . "AND target.[fch] = source.[fch] "
+                . "AND target.[hra] = source.[hra] "
+                . "WHEN MATCHED THEN "
+                . "UPDATE SET [ctz]=source.[ctz],[ctzcom]=source.[ctzcom],[ctzven]=source.[ctzven],"
+                . "[logusu]=source.[logusu],[logfch]=GETDATE(),[lognew]=GETDATE() "
+                . "WHEN NOT MATCHED THEN "
+                . "INSERT ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew]) "
+                . "VALUES (source.[codmda],source.[codgas],source.[fch],source.[hra],source.[ctz],source.[ctzcom],source.[ctzven],source.[codpza],source.[codcpo],source.[logusu],source.[logfch],source.[lognew]);";
+
+            $query = "EXEC('{$merge_sql}') AT {$linked}";
+            return (bool)$this->sql->insert($query, []);
+        }
+
+        // Local SG12 (codgas = 0): MERGE directly — no linked server restriction applies.
+        $query = "MERGE INTO [SG12].[dbo].[Cotizaciones] AS target
+                USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE()))
                     AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
                 ON target.[codmda] = source.[codmda]
                     AND target.[codgas] = source.[codgas]
                     AND target.[fch] = source.[fch]
                     AND target.[hra] = source.[hra]
                 WHEN MATCHED THEN
-                    UPDATE SET 
+                    UPDATE SET
                         [ctz] = source.[ctz],
                         [ctzcom] = source.[ctzcom],
                         [ctzven] = source.[ctzven],

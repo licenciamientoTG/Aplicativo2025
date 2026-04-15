@@ -1,0 +1,583 @@
+{% extends 'views/layouts/base.html' %}
+
+{% block title %}Remisiones Petrotal{% endblock %}
+
+{% block menutitle %}Remisiones Petrotal{% endblock %}
+
+{% block mycss %}
+<style>
+    td {
+        padding: 4px !important;
+    }
+
+    #drop-zone {
+        border: 2px dashed #adb5bd;
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        color: #6c757d;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+    }
+
+    #drop-zone.dragover {
+        border-color: #0d6efd;
+        background-color: #e8f0fe;
+        color: #0d6efd;
+    }
+
+    #drop-zone i {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    #tabla-section {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h5 class="mb-0"><i class="fas fa-file-upload me-2"></i> Cargar archivo Excel</h5>
+        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#modalAyuda" title="Ayuda">
+            <i class="fas fa-question-circle me-1"></i> Ayuda
+        </button>
+    </div>
+    <div class="card-body">
+        <div id="drop-zone" onclick="document.getElementById('input-excel').click()">
+            <i class="fas fa-file-excel d-block"></i>
+            <p class="mb-1 fw-semibold">Arrastra tu archivo aquí o haz clic para seleccionarlo</p>
+            <p class="mb-0 small">Formatos aceptados: .xlsx, .xls</p>
+        </div>
+        <input type="file" id="input-excel" accept=".xlsx,.xls" class="d-none">
+
+        <div id="file-info" class="mt-3 d-none">
+            <span class="badge bg-success fs-6">
+                <i class="fas fa-check-circle me-1"></i>
+                <span id="file-name-label"></span>
+            </span>
+            <button class="btn btn-sm btn-outline-danger ms-2" id="btn-limpiar">
+                <i class="fas fa-times me-1"></i> Limpiar
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="tabla-section">
+    <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h5 class="mb-0"><i class="fas fa-table me-2"></i> Remisiones</h5>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary" id="badge-total">0 registros</span>
+                <button class="btn btn-sm btn-warning" id="btn-generar">
+                    <i class="fas fa-file-alt me-1"></i> Generar remisiones
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table id="tabla-remisiones" class="table table-striped table-bordered table-sm w-100">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Lugar</th>
+                            <th>Fecha</th>
+                            <th>Razón Social</th>
+                            <th>RFC</th>
+                            <th>Dirección Fiscal</th>
+                            <th>Cantidad</th>
+                            <th>Descripción</th>
+                            <th>Lugar físico de entrega</th>
+                            <th>Fecha deseada de entrega</th>
+                            <th>Domicilio estación</th>
+                            <th>Permiso de estación</th>
+                            <th>Razón Social estación</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Modal de Ayuda -->
+<div class="modal fade" id="modalAyuda" tabindex="-1" aria-labelledby="modalAyudaLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#0067B0;">
+                <h5 class="modal-title text-white" id="modalAyudaLabel">
+                    <i class="fas fa-question-circle me-2"></i> ¿Cómo usar Remisiones Petrotal?
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Paso 1 -->
+                <h6 class="fw-bold text-primary"><i class="fas fa-file-excel me-2"></i>1. Preparar el archivo Excel</h6>
+                <p>El archivo debe ser <strong>.xlsx</strong> o <strong>.xls</strong>. Puede tener filas de título o filas vacías al inicio — el sistema las ignora automáticamente buscando la fila que contenga los encabezados reales.</p>
+                <p>La fila de encabezados <strong>debe contener exactamente</strong> las siguientes columnas <strong>en este orden</strong>:</p>
+                <div class="table-responsive mb-3">
+                    <table class="table table-bordered table-sm">
+                        <thead class="table-dark">
+                            <tr><th>#</th><th>Nombre de la columna</th><th>Descripción</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>1</td><td>Lugar</td><td>Ciudad o lugar de origen de la remisión</td></tr>
+                            <tr><td>2</td><td>Fecha</td><td>Fecha del documento</td></tr>
+                            <tr><td>3</td><td>Razón Social</td><td>Nombre fiscal del cliente</td></tr>
+                            <tr><td>4</td><td>RFC</td><td>RFC del cliente</td></tr>
+                            <tr><td>5</td><td>Dirección Fiscal</td><td>Domicilio fiscal del cliente</td></tr>
+                            <tr><td>6</td><td>Cantidad</td><td>Volumen en litros del producto (se formateará con miles y 3 decimales)</td></tr>
+                            <tr><td>7</td><td>Descripción</td><td>Descripción del producto petrolífero</td></tr>
+                            <tr><td>8</td><td>Lugar fisico de entrega de los petroliferos</td><td>Lugar donde se entregará físicamente el producto</td></tr>
+                            <tr><td>9</td><td>Fecha en que se desea la entrega de los de los petroliferos</td><td>Fecha deseada de entrega</td></tr>
+                            <tr><td>10</td><td>Domicilio estación</td><td>Dirección de la estación receptora</td></tr>
+                            <tr><td>11</td><td>Permiso de estación</td><td>Número de permiso de la estación</td></tr>
+                            <tr><td>12</td><td>Razón Social de estación</td><td>Nombre fiscal de la estación</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-warning py-2">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    <strong>Importante:</strong> El sistema detecta la fila de encabezados buscando la celda que diga <code>Lugar</code> en la primera columna. Las filas anteriores a esa fila (títulos, logos, etc.) se ignoran automáticamente.
+                </div>
+
+                <!-- Paso 2 -->
+                <h6 class="fw-bold text-primary mt-3"><i class="fas fa-upload me-2"></i>2. Cargar el archivo</h6>
+                <p>Haz clic en la zona punteada o <strong>arrastra y suelta</strong> el archivo directamente sobre ella. Una vez cargado, verás el nombre del archivo en verde y la tabla con todos los registros.</p>
+                <ul>
+                    <li>Usa la barra de búsqueda del DataTable para <strong>filtrar registros</strong> antes de generar las remisiones.</li>
+                    <li>El botón <strong>Limpiar</strong> borra los datos y permite cargar otro archivo.</li>
+                </ul>
+
+                <!-- Paso 3 -->
+                <h6 class="fw-bold text-primary mt-3"><i class="fas fa-file-alt me-2"></i>3. Generar remisiones</h6>
+                <p>Una vez cargados los datos, haz clic en el botón <span class="badge bg-warning text-dark"><i class="fas fa-file-alt me-1"></i>Generar remisiones</span> en la esquina superior derecha de la tabla.</p>
+                <ul>
+                    <li>Se abrirá una <strong>nueva pestaña</strong> con todos los documentos generados.</li>
+                    <li>Si aplicaste un filtro en la tabla, <strong>solo se generarán los registros visibles</strong>.</li>
+                    <li>Cada registro genera un documento independiente con el formato oficial de <strong>PETROTAL, S.A. DE C.V.</strong></li>
+                </ul>
+
+                <!-- Paso 4 -->
+                <h6 class="fw-bold text-primary mt-3"><i class="fas fa-print me-2"></i>4. Revisar e imprimir</h6>
+                <p>En la nueva pestaña puedes revisar cada documento en pantalla. Para imprimir:</p>
+                <ul>
+                    <li>Usa el botón <strong>Imprimir todo</strong> de la barra superior, o presiona <kbd>Ctrl</kbd> + <kbd>P</kbd>.</li>
+                    <li>En el diálogo de impresión, asegúrate de activar la opción <strong>"Gráficos de fondo"</strong> (o <em>Background graphics</em>) para que los colores de los encabezados se impriman correctamente.</li>
+                    <li>Cada remisión ocupa <strong>una página</strong>.</li>
+                </ul>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script>
+    $(document).ready(function () {
+
+        const COLUMNAS = [
+            'lugar',
+            'fecha',
+            'razon_social',
+            'rfc',
+            'direccion_fiscal',
+            'cantidad',
+            'descripcion',
+            'lugar_entrega',
+            'fecha_entrega',
+            'domicilio_estacion',
+            'permiso_estacion',
+            'razon_social_estacion'
+        ];
+
+        let tabla = null;
+        let registrosCargados = [];
+
+        function inicializarTabla() {
+            if (tabla) {
+                tabla.destroy();
+                $('#tabla-remisiones tbody').empty();
+            }
+            tabla = $('#tabla-remisiones').DataTable({
+                data: [],
+                columns: [
+                    { data: 'rownum', width: '40px', className: 'text-center text-muted small' },
+                    { data: 'lugar' },
+                    { data: 'fecha' },
+                    { data: 'razon_social' },
+                    { data: 'rfc' },
+                    { data: 'direccion_fiscal' },
+                    { data: 'cantidad', className: 'text-end' },
+                    { data: 'descripcion' },
+                    { data: 'lugar_entrega' },
+                    { data: 'fecha_entrega' },
+                    { data: 'domicilio_estacion' },
+                    { data: 'permiso_estacion' },
+                    { data: 'razon_social_estacion' }
+                ],
+                pageLength: 25,
+                dom: '<"top"Bf>rt<"bottom"lip><"clear">',
+                buttons: [
+                    { extend: 'excelHtml5', text: '<i class="fas fa-file-excel"></i> Excel', className: 'btn btn-success btn-sm' },
+                    { extend: 'copyHtml5', text: '<i class="fas fa-copy"></i> Copiar', className: 'btn btn-secondary btn-sm' },
+                    { extend: 'pdfHtml5', text: '<i class="fas fa-file-pdf"></i> PDF', className: 'btn btn-danger btn-sm' }
+                ],
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json'
+                }
+            });
+        }
+
+        function procesarArchivo(file) {
+            if (!file) return;
+
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!['xlsx', 'xls'].includes(ext)) {
+                toastr.error('Por favor selecciona un archivo .xlsx o .xls');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+                    if (rows.length < 2) {
+                        toastr.warning('El archivo no contiene datos suficientes.');
+                        return;
+                    }
+
+                    // Buscar la fila que contiene los encabezados reales (la que tiene "Lugar" en la primera celda)
+                    // y tomar los datos a partir de la fila siguiente
+                    const headerIdx = rows.findIndex(r =>
+                        String(r[0] ?? '').trim().toLowerCase() === 'lugar'
+                    );
+                    if (headerIdx < 0) {
+                        toastr.error('No se encontró la fila de encabezados en el archivo.');
+                        return;
+                    }
+                    const dataRows = rows.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c !== null));
+
+                    const registros = dataRows.map(function (row, idx) {
+                        const obj = { rownum: idx + 1 };
+                        COLUMNAS.forEach(function (col, i) {
+                            let val = row[i] !== undefined ? row[i] : '';
+                            // Formatear fechas que lleguen como objeto Date
+                            if (val instanceof Date) {
+                                val = val.toLocaleDateString('es-MX');
+                            }
+                            obj[col] = val;
+                        });
+                        return obj;
+                    });
+
+                    registrosCargados = registros;
+                    inicializarTabla();
+                    tabla.rows.add(registros).draw();
+
+                    $('#badge-total').text(registros.length + ' registro' + (registros.length !== 1 ? 's' : ''));
+                    $('#file-name-label').text(file.name);
+                    $('#file-info').removeClass('d-none');
+                    $('#tabla-section').show();
+
+                    toastr.success(registros.length + ' registros cargados correctamente.');
+                } catch (err) {
+                    toastr.error('Error al leer el archivo: ' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Input file
+        $('#input-excel').on('change', function () {
+            procesarArchivo(this.files[0]);
+        });
+
+        // Drag & drop
+        const dropZone = document.getElementById('drop-zone');
+
+        dropZone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', function () {
+            dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            procesarArchivo(e.dataTransfer.files[0]);
+        });
+
+        // Limpiar
+        $('#btn-limpiar').on('click', function () {
+            $('#input-excel').val('');
+            $('#file-info').addClass('d-none');
+            $('#tabla-section').hide();
+            registrosCargados = [];
+            if (tabla) { tabla.destroy(); tabla = null; $('#tabla-remisiones tbody').empty(); }
+        });
+
+        // Generar remisiones
+        $('#btn-generar').on('click', function () {
+            // Usar sólo los registros visibles (filtrados) de la datatable
+            const datos = tabla
+                ? tabla.rows({ search: 'applied' }).data().toArray()
+                : registrosCargados;
+
+            if (!datos.length) {
+                toastr.warning('No hay registros para generar.');
+                return;
+            }
+
+            const logoUrl = window.location.origin + '/_assets/images/LogoPetrotal.png';
+
+            function esc(v) {
+                return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            function fmtCantidad(v) {
+                const n = parseFloat(String(v ?? '').replace(/,/g, ''));
+                if (isNaN(n)) return esc(v) + ' Litros';
+                return n.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' Litros';
+            }
+
+            function fila(label, value, label2, value2) {
+                if (label2 !== undefined) {
+                    return `<tr>
+                        <td class="lbl">${label}</td><td>${esc(value)}</td>
+                        <td class="lbl">${label2}</td><td>${esc(value2)}</td>
+                    </tr>`;
+                }
+                return `<tr><td class="lbl">${label}</td><td colspan="3">${esc(value)}</td></tr>`;
+            }
+
+            const remisionesHTML = datos.map(function (r, idx) {
+                return `
+                <div class="remision">
+                    <div class="doc-header">
+                        <div class="empresa">
+                            <div class="empresa-nombre">PETROTAL, S.A. DE C.V.</div>
+                            <div class="empresa-rfc">RFC: PET180213L66</div>
+                            <div class="doc-titulo">REMISION DE ENTREGA DE PRODUCTOS PETROLÍFEROS</div>
+                        </div>
+                        <img src="${logoUrl}" class="logo" alt="Petrotal">
+                    </div>
+
+                    <table class="info">
+                        ${fila('Lugar:', r.lugar, 'Fecha:', r.fecha)}
+                    </table>
+
+                    <div class="seccion">Datos del Cliente</div>
+                    <table class="info">
+                        ${fila('Razón Social:', r.razon_social)}
+                        ${fila('RFC:', r.rfc)}
+                        ${fila('Dirección Fiscal:', r.direccion_fiscal)}
+                    </table>
+
+                    <div class="seccion">Descripción del Producto</div>
+                    <table class="info producto">
+                        <thead><tr><th>Cantidad</th><th>Descripción</th></tr></thead>
+                        <tbody><tr><td>${fmtCantidad(r.cantidad)}</td><td>${esc(r.descripcion)}</td></tr></tbody>
+                    </table>
+
+                    <div class="seccion">Lugar de entrega del producto</div>
+                    <table class="info">
+                        ${fila('Lugar físico de entrega:', r.lugar_entrega)}
+                        ${fila('Fecha deseada de entrega:', r.fecha_entrega)}
+                        ${fila('Domicilio estación:', r.domicilio_estacion)}
+                        ${fila('Permiso estación:', r.permiso_estacion)}
+                        ${fila('Razón Social estación:', r.razon_social_estacion)}
+                    </table>
+
+                    <div class="seccion">Información de Recepción</div>
+                    <table class="info">
+                        <tr><td class="lbl">Nombre:</td><td></td></tr>
+                        <tr><td class="lbl">Cargo:</td><td></td></tr>
+                        <tr>
+                            <td class="lbl lbl-top">Firma y/o sello de recepción:</td>
+                            <td class="celda-firma"></td>
+                        </tr>
+                        <tr>
+                            <td class="lbl">Litros de incremento:</td>
+                            <td></td>
+                        </tr>
+                    </table>
+
+                    <div class="spacer"></div>
+                    <div class="pie">
+                        <div class="doc-footer">
+                            Av. Rafael Pérez Serna 755 Col. Parque Industrial Omega &nbsp;|&nbsp; 32410 Ciudad Juárez, Chihuahua<br>
+                            Teléfono: + (656) 2896600
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <title>Remisiones Petrotal</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 11px; background: #e9ecef; color: #212529; }
+
+        /* ── Barra de herramientas (solo pantalla) ── */
+        #toolbar {
+            position: sticky; top: 0; z-index: 100;
+            background: #212529; color: #fff;
+            padding: 10px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 6px rgba(0,0,0,.4);
+        }
+        #toolbar span { font-size: 13px; }
+        #toolbar button {
+            background: #ffc107; border: none; color: #212529;
+            font-weight: bold; padding: 7px 18px; border-radius: 4px;
+            cursor: pointer; font-size: 13px;
+        }
+        #toolbar button:hover { background: #e0a800; }
+
+        /* ── Contenedor de páginas ── */
+        #paginas { padding: 24px; }
+
+        /* ── Documento individual ── */
+        .remision {
+            background: #fff;
+            width: 210mm;
+            min-height: 270mm;
+            margin: 0 auto 24px;
+            padding: 18mm 15mm;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.12);
+            display: flex; flex-direction: column; gap: 10px;
+            page-break-after: always;
+        }
+
+        /* Cabecera del documento */
+        .doc-header {
+            position: relative;
+            display: flex; align-items: center; justify-content: center;
+            border-bottom: 2px solid #212529; padding-bottom: 10px; margin-bottom: 4px;
+        }
+        .logo {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 70px;
+            object-fit: contain;
+        }
+        .empresa { text-align: center; flex: 1; padding: 0 12px; }
+        .empresa-nombre {
+            font-size: 17px; font-weight: bold;
+            color: #0d3f8f; letter-spacing: .5px;
+        }
+        .empresa-rfc { font-size: 11px; color: #0d3f8f; margin-top: 2px; }
+        .doc-titulo {
+            font-size: 18px; font-weight: bold;
+            text-transform: uppercase; letter-spacing: .4px;
+            margin-top: 50px; color: #212529;
+        }
+
+        /* Secciones */
+        .seccion {
+            background: #0067B0; color: #fff;
+            padding: 3px 8px; font-weight: bold;
+            font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+            border-radius: 2px;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* Tablas de información */
+        table.info { width: 100%; border-collapse: collapse; }
+        table.info td, table.info th {
+            border: 1px solid #dee2e6; padding: 4px 7px; vertical-align: top;
+        }
+        table.info td.lbl {
+            background: #f8f9fa; font-weight: bold; white-space: nowrap; width: 160px;
+        }
+        table.info.producto thead th {
+            background: #f8f9fa; font-weight: bold; text-align: center;
+        }
+        table.info.producto tbody td { text-align: center; }
+
+        /* Empuja el footer al fondo del flex */
+        .spacer { flex: 1; }
+
+
+        /* Fila alta para firma/sello */
+        table.info td.celda-firma {
+            height: 120px; vertical-align: top;
+        }
+        table.info td.lbl-top { vertical-align: top; }
+
+        /* Footer del documento */
+        .doc-footer {
+            border-top: 2px solid #0067B0;
+            margin-top: 10px;
+            padding-top: 6px;
+            text-align: center;
+            font-size: 9px;
+            color: #495057;
+            line-height: 1.6;
+        }
+
+        /* ── Estilos de impresión ── */
+        @media print {
+            body {
+                background: #fff;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #toolbar { display: none; }
+            #paginas { padding: 0; }
+            .remision {
+                box-shadow: none; border: none; border-radius: 0;
+                margin: 0; width: 100%;
+                padding: 12mm 10mm;
+                position: relative;
+                height: 257mm; /* 297mm - 20mm top - 20mm bottom */
+            }
+            .spacer { display: none; }
+            .pie {
+                position: absolute;
+                bottom: 12mm;
+                left: 10mm;
+                right: 10mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <span>&#128196; <strong>${datos.length}</strong> remisión${datos.length !== 1 ? 'es' : ''} generada${datos.length !== 1 ? 's' : ''}</span>
+        <button onclick="window.print()">&#128438; Imprimir todo</button>
+    </div>
+    <div id="paginas">
+        ${remisionesHTML}
+    </div>
+</body>
+</html>`;
+
+            const win = window.open('', '_blank');
+            win.document.write(html);
+            win.document.close();
+        });
+
+    });
+</script>
+{% endblock %}

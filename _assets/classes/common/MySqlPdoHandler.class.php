@@ -152,10 +152,10 @@ class MySqlPdoHandler{
 	public function insert($query, $params) {
 		$pk=0;
 		//Make sure query contains the word "insert", connection is valid, and params is valid
-		if(stristr($query,"insert") && !empty($this->_connection) && !empty($params)) {
+		if(stristr($query,"insert") && !empty($this->_connection)) {
 			try{
 				$stmt = $this->_connection->prepare($query);
-				$status=$stmt->execute($params);
+				$status = !empty($params) ? $stmt->execute($params) : $stmt->execute();
 				$pk=$this->_connection->lastInsertId();
 				$stmt->closeCursor();	//Release database resources before issuing next call
 				if(is_numeric($pk) && $pk>0)

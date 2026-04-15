@@ -2125,4 +2125,10 @@ class Accounting{
         header('Content-Type: application/json');
         echo json_encode(['data' => $data]);
     }
+
+    function remisiones_petrotal() {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            echo $this->twig->render($this->route . 'remisiones_petrotal.html');
+        }
+    }
 }
