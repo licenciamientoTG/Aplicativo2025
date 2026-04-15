@@ -8718,28 +8718,26 @@ public function stamped_invoices_detail(): void
         foreach ($headers as $idx => $h) {
             $h = trim((string)$h);
             $h = function_exists('mb_strtolower') ? mb_strtolower($h) : strtolower($h);
-            if (stripos($h, 'establecimiento') !== false)                                 $colMap['establecimiento'] = $idx;
+            if (stripos($h, 'factura') !== false)                                         $colMap['numero_factura']  = $idx;
+            elseif (stripos($h, 'establecimiento') !== false)                             $colMap['establecimiento'] = $idx;
             elseif (stripos($h, 'transac') !== false)                                     $colMap['fecha_trans']     = $idx;
             elseif (stripos($h, 'cargos') !== false)                                      $colMap['cargos']          = $idx;
             elseif (stripos($h, 'monto') !== false && stripos($h, 'pago') !== false)      $colMap['monto_pago']      = $idx;
             elseif (stripos($h, 'pago') !== false)                                        $colMap['fecha_pago']      = $idx;
             elseif (stripos($h, 'descuento') !== false || stripos($h, 'comisi') !== false) $colMap['comision']       = $idx;
             elseif (stripos($h, 'iva') !== false)                                         $colMap['iva']             = $idx;
-            elseif (stripos($h, 'factura') !== false)                                     $colMap['numero_factura']  = $idx;
         }
-        // Si no se detectaron encabezados, usar posiciones fijas como fallback
-        $useColMap = !in_array(null, $colMap, true);
-        if (!$useColMap) {
-            $colMap = [
-                'establecimiento' => 0,
-                'fecha_trans'     => 1,
-                'cargos'          => 2,
-                'fecha_pago'      => 3,
-                'monto_pago'      => 4,
-                'comision'        => 5,
-                'iva'             => 6,
-                'numero_factura'  => 7,
-            ];
+        // Para AMEX Comisiones exigimos encabezados reales (sin fallback por posición)
+        if (in_array(null, $colMap, true)) {
+            $faltantes = [];
+            foreach ($colMap as $k => $v) {
+                if ($v === null) $faltantes[] = $k;
+            }
+            echo json_encode([
+                'status'  => 'error',
+                'message' => 'No se detectaron columnas requeridas en el archivo AMEX: ' . implode(', ', $faltantes)
+            ]);
+            exit;
         }
 
         // ── Helper: parsear montos AMEX ─────────────────────────────────────
