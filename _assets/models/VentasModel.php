@@ -1433,6 +1433,105 @@ class VentasModel extends Model
         return $this->sql->select($query, []);
     }
 
+    function getLubricantsDay($from, $until)
+    {
+        $fromDate  = DateTime::createFromFormat('Y-m-d', $from);
+        $untilDate = DateTime::createFromFormat('Y-m-d', $until);
+        $fromInt   = dateToInt($from);
+        $untilInt  = dateToInt($until);
+        $currentDate = clone $fromDate;
+
+        $days = [];
+        while ($currentDate <= $untilDate) {
+            $days[] = $currentDate->format('Y-m-d');
+            $currentDate->modify('+1 day');
+        }
+
+        $columns = [];
+        foreach ($days as $day) {
+            $columns[] = "[{$day}_monto]";
+            $columns[] = "[{$day}_cantidad]";
+        }
+        $columnsList = implode(',', $columns);
+
+        $query = "
+        WITH DatosDiario AS (
+            SELECT
+                CONVERT(VARCHAR(10), CONVERT(SMALLDATETIME, fch - 1, 103), 23) AS Fecha,
+                isd.codgas AS codigo,
+                g.abr AS Estacion,
+                T3.den AS producto,
+                [codprd] AS CodProducto,
+                SUM(canven) AS VentasCantidad,
+                SUM(mtoven) AS MontoVentas
+            FROM [SG12].[dbo].[Ventas] v
+            INNER JOIN [SG12].[dbo].ISLAS isd ON v.codisl = isd.cod
+            INNER JOIN [SG12].[dbo].Gasolineras g ON isd.codgas = g.cod
+            INNER JOIN [SG12].[dbo].Productos T3 ON V.codprd = T3.cod
+            WHERE
+                fch BETWEEN $fromInt AND $untilInt
+                AND codprd NOT IN (179, 180, 181, 1, 2, 3, 192, 193)
+            GROUP BY
+                g.abr, T3.den, fch, isd.codgas, codprd
+        )
+        SELECT
+            codigo,
+            Estacion,
+            producto,
+            {$columnsList}
+        FROM (
+            SELECT
+                codigo, Estacion, producto,
+                CONCAT(Fecha, '_monto') AS TipoDia,
+                MontoVentas AS Valor
+            FROM DatosDiario
+            UNION ALL
+            SELECT
+                codigo, Estacion, producto,
+                CONCAT(Fecha, '_cantidad') AS TipoDia,
+                VentasCantidad AS Valor
+            FROM DatosDiario
+        ) AS SourceTable
+        PIVOT (
+            SUM(Valor)
+            FOR TipoDia IN (
+                {$columnsList}
+            )
+        ) AS PivotTable
+        ORDER BY codigo;
+        ";
+
+        return $this->sql->select($query, []);
+    }
+
+    function getLubricantsBase($from, $until)
+    {
+        $fromInt  = dateToInt($from);
+        $untilInt = dateToInt($until);
+
+        $query = "
+        SELECT
+            isd.codgas AS codigo,
+            g.abr AS Estacion,
+            T3.den AS producto,
+            CONVERT(VARCHAR(10), CONVERT(SMALLDATETIME, fch - 1, 103), 23) AS fecha,
+            SUM(canven) AS cantidad,
+            SUM(mtoven) AS monto
+        FROM [SG12].[dbo].[Ventas] v
+        INNER JOIN [SG12].[dbo].ISLAS isd ON v.codisl = isd.cod
+        INNER JOIN [SG12].[dbo].Gasolineras g ON isd.codgas = g.cod
+        INNER JOIN [SG12].[dbo].Productos T3 ON V.codprd = T3.cod
+        WHERE
+            fch BETWEEN $fromInt AND $untilInt
+            AND codprd NOT IN (179, 180, 181, 1, 2, 3, 192, 193)
+        GROUP BY
+            isd.codgas, g.abr, T3.den, fch, codprd
+        ORDER BY fecha, codigo;
+        ";
+
+        return $this->sql->select($query, []);
+    }
+
     function getSaleWeekZone($from, $until)
     {
         $fromDate = DateTime::createFromFormat('Y-m-d', $from);

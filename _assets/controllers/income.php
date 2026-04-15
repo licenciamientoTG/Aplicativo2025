@@ -8612,7 +8612,13 @@ public function stamped_invoices_detail(): void
         $targetDir = __DIR__ . '/../uploads/AMEX_COMISIONES/' . date('Y') . '/' . date('m') . '/';
         if (!file_exists($targetDir)) mkdir($targetDir, 0777, true);
 
-        $safeName  = date('His') . '_' . basename($originalName);
+        $baseName = basename((string)$originalName);
+        // Normaliza nombre para evitar problemas con caracteres especiales en filesystem/IIS
+        $baseName = preg_replace('/[^A-Za-z0-9._-]/', '_', $baseName);
+        if ($baseName === '' || $baseName === null) {
+            $baseName = 'amex_comisiones.' . ($extension ?: 'csv');
+        }
+        $safeName  = date('His') . '_' . $baseName;
         $filePath  = $targetDir . $safeName;
 
         if (!empty($_POST['file_data'])) {
@@ -8710,29 +8716,28 @@ public function stamped_invoices_detail(): void
             'numero_factura'  => null,
         ];
         foreach ($headers as $idx => $h) {
-            $h = mb_strtolower(trim((string)$h));
-            if (stripos($h, 'establecimiento') !== false)                                 $colMap['establecimiento'] = $idx;
+            $h = trim((string)$h);
+            $h = function_exists('mb_strtolower') ? mb_strtolower($h) : strtolower($h);
+            if (stripos($h, 'factura') !== false)                                         $colMap['numero_factura']  = $idx;
+            elseif (stripos($h, 'establecimiento') !== false)                             $colMap['establecimiento'] = $idx;
             elseif (stripos($h, 'transac') !== false)                                     $colMap['fecha_trans']     = $idx;
             elseif (stripos($h, 'cargos') !== false)                                      $colMap['cargos']          = $idx;
             elseif (stripos($h, 'monto') !== false && stripos($h, 'pago') !== false)      $colMap['monto_pago']      = $idx;
             elseif (stripos($h, 'pago') !== false)                                        $colMap['fecha_pago']      = $idx;
             elseif (stripos($h, 'descuento') !== false || stripos($h, 'comisi') !== false) $colMap['comision']       = $idx;
             elseif (stripos($h, 'iva') !== false)                                         $colMap['iva']             = $idx;
-            elseif (stripos($h, 'factura') !== false)                                     $colMap['numero_factura']  = $idx;
         }
-        // Si no se detectaron encabezados, usar posiciones fijas como fallback
-        $useColMap = !in_array(null, $colMap, true);
-        if (!$useColMap) {
-            $colMap = [
-                'establecimiento' => 0,
-                'fecha_trans'     => 1,
-                'cargos'          => 2,
-                'fecha_pago'      => 3,
-                'monto_pago'      => 4,
-                'comision'        => 5,
-                'iva'             => 6,
-                'numero_factura'  => 7,
-            ];
+        // Para AMEX Comisiones exigimos encabezados reales (sin fallback por posición)
+        if (in_array(null, $colMap, true)) {
+            $faltantes = [];
+            foreach ($colMap as $k => $v) {
+                if ($v === null) $faltantes[] = $k;
+            }
+            echo json_encode([
+                'status'  => 'error',
+                'message' => 'No se detectaron columnas requeridas en el archivo AMEX: ' . implode(', ', $faltantes)
+            ]);
+            exit;
         }
 
         // ── Helper: parsear montos AMEX ─────────────────────────────────────
@@ -8770,80 +8775,85 @@ public function stamped_invoices_detail(): void
             echo json_encode(['status' => 'error', 'message' => 'Error de conexión a BD: ' . $e->getMessage()]); exit;
         }
 
-        // ── Insertar log de upload ───────────────────────────────────────────
-        $uploadedBy = $_SESSION['tg_user']['Id'] ?? null;
-        $conn->prepare("INSERT INTO AMEX_Envios_Uploads (nombre_archivo, anio, mes, total_filas, uploaded_by)
-                        VALUES (?, ?, ?, 0, ?)")
-             ->execute([$originalName, date('Y'), date('m'), $uploadedBy]);
-        $uploadId = (int)$conn->lastInsertId();
+        try {
+            // ── Insertar log de upload ───────────────────────────────────────
+            $uploadedBy = $_SESSION['tg_user']['Id'] ?? null;
+            $conn->prepare("INSERT INTO AMEX_Envios_Uploads (nombre_archivo, anio, mes, total_filas, uploaded_by)
+                            VALUES (?, ?, ?, 0, ?)")
+                 ->execute([$originalName, date('Y'), date('m'), $uploadedBy]);
+            $uploadId = (int)$conn->lastInsertId();
 
-        // ── Procesar e insertar filas ────────────────────────────────────────
-        $stmtCheck = $conn->prepare(
-            "SELECT COUNT(*) FROM AMEX_Envios
-             WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ? AND numero_factura = ?"
-        );
-        $stmtIns = $conn->prepare(
-            "INSERT INTO AMEX_Envios
-                (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva, numero_factura)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        );
+            // ── Procesar e insertar filas ────────────────────────────────────
+            $stmtCheck = $conn->prepare(
+                "SELECT COUNT(*) FROM AMEX_Envios
+                 WHERE establecimiento = ? AND fecha_transaccion = ? AND fecha_pago = ? AND cargos_totales = ? AND numero_factura = ?"
+            );
+            $stmtIns = $conn->prepare(
+                "INSERT INTO AMEX_Envios
+                    (upload_id, establecimiento, fecha_transaccion, fecha_pago, cargos_totales, monto_pago, comision, iva, numero_factura)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            );
 
-        $inserted = 0;
-        $skipped  = 0;
-        $errors   = 0;
+            $inserted = 0;
+            $skipped  = 0;
+            $errors   = 0;
 
-        foreach ($rows as $row) {
-            // Columnas leídas por nombre de encabezado (orden flexible, columnas extra ignoradas)
-            $establecimiento  = $normalizeAfil((string)($row[$colMap['establecimiento']] ?? ''));
-            $fechaTransStr    = (string)($row[$colMap['fecha_trans']]     ?? '');
-            $cargosStr        = (string)($row[$colMap['cargos']]          ?? '');
-            $fechaPagoStr     = (string)($row[$colMap['fecha_pago']]      ?? '');
-            $montoPagoStr     = (string)($row[$colMap['monto_pago']]      ?? '');
-            $comisionStr      = (string)($row[$colMap['comision']]        ?? '');
-            $ivaStr           = (string)($row[$colMap['iva']]             ?? '');
-            $numeroFacturaRaw = (string)($row[$colMap['numero_factura']]  ?? '');
+            foreach ($rows as $row) {
+                // Columnas leídas por nombre de encabezado (orden flexible, columnas extra ignoradas)
+                $establecimiento  = $normalizeAfil((string)($row[$colMap['establecimiento']] ?? ''));
+                $fechaTransStr    = (string)($row[$colMap['fecha_trans']]     ?? '');
+                $cargosStr        = (string)($row[$colMap['cargos']]          ?? '');
+                $fechaPagoStr     = (string)($row[$colMap['fecha_pago']]      ?? '');
+                $montoPagoStr     = (string)($row[$colMap['monto_pago']]      ?? '');
+                $comisionStr      = (string)($row[$colMap['comision']]        ?? '');
+                $ivaStr           = (string)($row[$colMap['iva']]             ?? '');
+                $numeroFacturaRaw = (string)($row[$colMap['numero_factura']]  ?? '');
 
-            if ($establecimiento === '') { $errors++; continue; }
-            $numeroFactura = $normalizeFactura($numeroFacturaRaw);
-            if ($numeroFactura === '') { $errors++; continue; }
+                if ($establecimiento === '') { $errors++; continue; }
+                $numeroFactura = $normalizeFactura($numeroFacturaRaw);
+                if ($numeroFactura === '') { $errors++; continue; }
 
-            $fechaTrans = $parseFecha($fechaTransStr);
-            $fechaPago  = $parseFecha($fechaPagoStr);
-            if (!$fechaTrans || !$fechaPago) { $errors++; continue; }
+                $fechaTrans = $parseFecha($fechaTransStr);
+                $fechaPago  = $parseFecha($fechaPagoStr);
+                if (!$fechaTrans || !$fechaPago) { $errors++; continue; }
 
-            $cargos   = $parseMonto($cargosStr);
-            $montoPago = $parseMonto($montoPagoStr);
-            $comision = $parseMonto($comisionStr);
-            $iva      = $parseMonto($ivaStr);
+                $cargos   = $parseMonto($cargosStr);
+                $montoPago = $parseMonto($montoPagoStr);
+                $comision = $parseMonto($comisionStr);
+                $iva      = $parseMonto($ivaStr);
 
-            if ($cargos <= 0 && $comision <= 0 && $iva <= 0) { $skipped++; continue; } // fila vacía sin valores monetarios
+                if ($cargos <= 0 && $comision <= 0 && $iva <= 0) { $skipped++; continue; } // fila vacía sin valores monetarios
 
-            // Antiduplicado
-            $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos, $numeroFactura]);
-            if ((int)$stmtCheck->fetchColumn() > 0) { $skipped++; continue; }
+                // Antiduplicado
+                $stmtCheck->execute([$establecimiento, $fechaTrans, $fechaPago, $cargos, $numeroFactura]);
+                if ((int)$stmtCheck->fetchColumn() > 0) { $skipped++; continue; }
 
-            try {
-                $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva, $numeroFactura]);
-                $inserted++;
-            } catch (\Exception $e) {
-                // Violación de índice único (race condition) — tratar como duplicado
-                $skipped++;
+                try {
+                    $stmtIns->execute([$uploadId, $establecimiento, $fechaTrans, $fechaPago, $cargos, $montoPago, $comision, $iva, $numeroFactura]);
+                    $inserted++;
+                } catch (\Exception $e) {
+                    // Violación de índice único (race condition) — tratar como duplicado
+                    $skipped++;
+                }
             }
+
+            // Actualizar total_filas en el log
+            $conn->prepare("UPDATE AMEX_Envios_Uploads SET total_filas = ? WHERE id = ?")
+                 ->execute([$inserted, $uploadId]);
+
+            echo json_encode([
+                'status'   => 'success',
+                'inserted' => $inserted,
+                'skipped'  => $skipped,
+                'errors'   => $errors,
+                'message'  => "$inserted registros nuevos insertados. $skipped duplicados omitidos."
+                            . ($errors > 0 ? " $errors filas con errores de formato." : '')
+            ]);
+            exit;
+        } catch (\Throwable $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error AMEX comisiones: ' . $e->getMessage()]);
+            exit;
         }
-
-        // Actualizar total_filas en el log
-        $conn->prepare("UPDATE AMEX_Envios_Uploads SET total_filas = ? WHERE id = ?")
-             ->execute([$inserted, $uploadId]);
-
-        echo json_encode([
-            'status'   => 'success',
-            'inserted' => $inserted,
-            'skipped'  => $skipped,
-            'errors'   => $errors,
-            'message'  => "$inserted registros nuevos insertados. $skipped duplicados omitidos."
-                        . ($errors > 0 ? " $errors filas con errores de formato." : '')
-        ]);
-        exit;
     }
 
     // =========================================================================

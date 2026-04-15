@@ -299,6 +299,37 @@ class Commercial{
         }
         echo json_encode(array("data" => $data));
     }
+
+    function lubricants_table_day(){
+        $dinamicColumns = $_POST['dinamicColumns'];
+        $rows = $this->ventas->getLubricantsDay($_POST['fromDate'], $_POST['untilDate']);
+        $data=[];
+        foreach ($rows as $row) {
+            $entry=[];
+            foreach ($dinamicColumns as $column) {
+                $colun_name = $column['data'];
+                $entry[$colun_name] = $row[$colun_name] ?? null;
+            }
+            $data[] = $entry;
+        }
+        echo json_encode(array("data" => $data));
+    }
+
+    function lubricants_table_base(){
+        $rows = $this->ventas->getLubricantsBase($_POST['fromDate'], $_POST['untilDate']);
+        $data=[];
+        foreach ($rows as $row) {
+            $data[] = array(
+                'codigo'   => $row['codigo'],
+                'Estacion' => $row['Estacion'],
+                'producto' => $row['producto'],
+                'fecha'    => $row['fecha'],
+                'cantidad' => $row['cantidad'],
+                'monto'    => number_format($row['monto'], 2),
+            );
+        }
+        echo json_encode(array("data" => $data));
+    }
     function mistery_shopper_table(){
 
         $dinamicColumns = $_POST['dinamicColumns'];
