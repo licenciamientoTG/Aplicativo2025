@@ -296,15 +296,48 @@ class CotizacionesModel extends Model{
     }
 
     function insert($codmda, $codgas, $from, $hour, $cot, $tg_user) : bool {
-        $query = "INSERT INTO [SG12].[dbo].[Cotizaciones] ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew]) VALUES (?,?,?,?,?,?,?,0,0,?,GETDATE(),GETDATE());";
+        $query = "MERGE INTO [SG12].[dbo].[Cotizaciones] AS target
+                USING (VALUES (?,?,?,?,?,?,?,0,0,?,GETDATE(),GETDATE())) 
+                    AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
+                ON target.[codmda] = source.[codmda]
+                    AND target.[codgas] = source.[codgas]
+                    AND target.[fch] = source.[fch]
+                    AND target.[hra] = source.[hra]
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        [ctz] = source.[ctz],
+                        [ctzcom] = source.[ctzcom],
+                        [ctzven] = source.[ctzven],
+                        [logusu] = source.[logusu],
+                        [logfch] = GETDATE(),
+                        [lognew] = GETDATE()
+                WHEN NOT MATCHED THEN
+                    INSERT ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
+                    VALUES (source.[codmda],source.[codgas],source.[fch],source.[hra],source.[ctz],source.[ctzcom],source.[ctzven],source.[codpza],source.[codcpo],source.[logusu],source.[logfch],source.[lognew]);";
+        
         $params = [$codmda, $codgas, $from, $hour, $cot, $cot, $cot, $tg_user];
-
         return (bool)$this->sql->insert($query, $params);
     }
 
     function insert_remote($codmda, $codgas, $from, $hour, $cot, $tg_user) : bool {
-        $query = "INSERT INTO {$this->databases[$codgas]}.[Cotizaciones] ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
-                  VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE());";
+        $query = "MERGE INTO {$this->databases[$codgas]}.[Cotizaciones] AS target
+                USING (VALUES ({$codmda},{$codgas},{$from},{$hour},{$cot},{$cot},{$cot},0,0,?,GETDATE(),GETDATE())) 
+                    AS source([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
+                ON target.[codmda] = source.[codmda]
+                    AND target.[codgas] = source.[codgas]
+                    AND target.[fch] = source.[fch]
+                    AND target.[hra] = source.[hra]
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        [ctz] = source.[ctz],
+                        [ctzcom] = source.[ctzcom],
+                        [ctzven] = source.[ctzven],
+                        [logusu] = source.[logusu],
+                        [logfch] = GETDATE(),
+                        [lognew] = GETDATE()
+                WHEN NOT MATCHED THEN
+                    INSERT ([codmda],[codgas],[fch],[hra],[ctz],[ctzcom],[ctzven],[codpza],[codcpo],[logusu],[logfch],[lognew])
+                    VALUES (source.[codmda],source.[codgas],source.[fch],source.[hra],source.[ctz],source.[ctzcom],source.[ctzven],source.[codpza],source.[codcpo],source.[logusu],source.[logfch],source.[lognew]);";
         return (bool)$this->sql->insert($query, [$tg_user]);
     }
 
