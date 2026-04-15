@@ -2047,6 +2047,191 @@ function generateSaleWeekZoneColumns(fromDate, untilDate) {
         
         return columns;
     }
+
+    async function lubricants_table_day(){
+        if ($.fn.DataTable.isDataTable('#lubricants_table_day')) {
+            $('#lubricants_table_day').DataTable().destroy();
+            $('#lubricants_table_day thead').empty();
+            $('#lubricants_table_day tbody').empty();
+            $('#lubricants_table_day tfoot').empty();
+        }
+        var fromDate  = document.getElementById('from_day').value;
+        var untilDate = document.getElementById('until_day').value;
+
+        var dynamicColumns = generateDayColumns(fromDate, untilDate);
+
+        $('#lubricants_table_day').DataTable({
+            order: [0, 'asc'],
+            colReorder: false,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 150,
+            fixedColumns: {
+                leftColumns: 3
+            },
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-sm btn-success',
+                    text: '<i class="fa fa-file-excel"></i> Excel',
+                }
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate': fromDate,
+                    'untilDate': untilDate,
+                    'dinamicColumns': dynamicColumns
+                },
+                url: '/commercial/lubricants_table_day',
+                error: function() {
+                    $('#lubricants_table_day').waitMe('hide');
+                    $('.table-responsive').removeClass('loading');
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                        </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                complete: function() {
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: dynamicColumns,
+            destroy: true,
+            initComplete: function() {
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+    }
+
+    function generateDayColumns(fromDate, untilDate) {
+        const startDate = new Date(fromDate + 'T00:00:00');
+        const endDate   = new Date(untilDate + 'T00:00:00');
+        const columns   = [];
+        let current     = new Date(startDate);
+
+        columns.push(
+            { data: 'codigo',   title: 'Código' },
+            { data: 'Estacion', title: 'Estación', className: 'text-left text-nowrap' },
+            { data: 'producto', title: 'Producto',  className: 'text-left text-nowrap' }
+        );
+
+        while (current <= endDate) {
+            let year  = current.getFullYear();
+            let month = String(current.getMonth() + 1).padStart(2, '0');
+            let day   = String(current.getDate()).padStart(2, '0');
+            let dateStr = `${year}-${month}-${day}`;
+
+            columns.push(
+                {
+                    data: `${dateStr}_monto`,
+                    title: `${dateStr} Monto`,
+                    render: $.fn.dataTable.render.number(',', '.', 2, '$'),
+                    className: 'text-end text-nowrap table-info',
+                    defaultContent: ''
+                },
+                {
+                    data: `${dateStr}_cantidad`,
+                    title: `${dateStr} Cant`,
+                    className: 'text-end text-nowrap',
+                    defaultContent: ''
+                }
+            );
+
+            current.setDate(current.getDate() + 1);
+        }
+
+        return columns;
+    }
+
+    async function lubricants_table_base(){
+        if ($.fn.DataTable.isDataTable('#lubricants_table_base')) {
+            $('#lubricants_table_base').DataTable().destroy();
+            $('#lubricants_table_base thead .filter').remove();
+            $('#lubricants_table_base tbody').empty();
+            $('#lubricants_table_base tfoot').empty();
+        }
+        var fromDate  = document.getElementById('from_base').value;
+        var untilDate = document.getElementById('until_base').value;
+
+        // Agregar fila de filtros en cabecera
+        $('#lubricants_table_base thead').prepend($('#lubricants_table_base thead tr').clone().addClass('filter'));
+        $('#lubricants_table_base thead tr.filter th').each(function (index) {
+            col = $('#lubricants_table_base thead th').length/2;
+            if (index < col ) {
+                var title = $(this).text(); // Obtiene el nombre de la columna
+                $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+            }
+        });
+        $('#lubricants_table_base thead tr.filter th input').on('keyup change', function () {
+            var index = $(this).parent().index(); // Obtiene el índice de la columna
+            var table = $('#lubricants_table_base').DataTable(); // Obtiene la instancia de DataTable
+            table
+                .column(index)
+                .search(this.value) // Busca el valor del input
+                .draw(); // Redibuja la tabla
+        });
+
+        let lubricants_table_base = $('#lubricants_table_base').DataTable({
+            order: [3, 'asc'],
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            pageLength: 150,
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-sm btn-success',
+                    text: '<i class="fa fa-file-excel"></i> Excel',
+                }
+            ],
+            ajax: {
+                method: 'POST',
+                data: {
+                    'fromDate': fromDate,
+                    'untilDate': untilDate
+                },
+                url: '/commercial/lubricants_table_base',
+                error: function() {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Error!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parámetros dados. Inténtelo nuevamente.</p>
+                        </div>`
+                    );
+                },
+                beforeSend: function() {
+                    $('.table-responsive').addClass('loading');
+                },
+                complete: function() {
+                    $('.table-responsive').removeClass('loading');
+                }
+            },
+            deferRender: true,
+            columns: [
+                { data: 'codigo',   title: 'Código' },
+                { data: 'Estacion', title: 'Estación', className: 'text-left text-nowrap' },
+                { data: 'producto', title: 'Producto',  className: 'text-left text-nowrap' },
+                { data: 'fecha',    title: 'Fecha',     className: 'text-center text-nowrap' },
+                { data: 'cantidad', title: 'Cantidad',  className: 'text-end text-nowrap' },
+                { data: 'monto',    title: 'Monto',     className: 'text-end text-nowrap table-info',
+                  render: $.fn.dataTable.render.number(',', '.', 2, '$') }
+            ],
+            // destroy: true,
+            // orderCellsTop: true,
+            initComplete: function() {
+                $('.table-responsive').removeClass('loading');
+            }
+        });
+    }
+
     async function mounth_company_table(){
         if ($.fn.DataTable.isDataTable('#mounth_company_table')) {
             $('#mounth_company_table').DataTable().destroy();  // Destruye la tabla existente
