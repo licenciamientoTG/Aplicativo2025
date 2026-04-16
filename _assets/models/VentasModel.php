@@ -1673,6 +1673,7 @@ class VentasModel extends Model
 						when T3.den ='   T-Super Premium' then 'T-Super Premium'
 						when T3.den =' Gasolina Premium Mayor o Igual a 91 Octanos' then 'T-Super Premium'
 						when T3.den ='   Diesel Automotriz' then 'Diesel Automotriz'
+                        when T3.den ='Diesel Automotriz' then 'Diesel Automotriz'
 						else 'Total Turno'
 						end
 						as 'product',
