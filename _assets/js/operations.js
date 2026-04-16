@@ -2487,7 +2487,7 @@ async function sale_day_base_table(){
         columns: [
             {'data': 'Fecha'},
             {'data': 'year'},
-            {'data': 'mounth'},
+            {'data': 'month'},
             {'data': 'day'},
             {'data': 'CodGasolinera'},
             {'data': 'turn'},
@@ -2506,6 +2506,18 @@ async function sale_day_base_table(){
 
         },
         footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            // Suma solo las filas filtradas (search aplicado)
+            var total = api
+                .column(6, { search: 'applied' })
+                .data()
+                .reduce(function (acc, val) {
+                    var num = parseFloat(String(val).replace(/,/g, '')) || 0;
+                    return acc + num;
+                }, 0);
+            $('#sale_day_base_total').text(
+                total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            );
         }
     });
 }
