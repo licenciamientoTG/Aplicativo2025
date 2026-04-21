@@ -36,6 +36,9 @@ class Accounting{
     public GasolinerasModel $gasolinerasModel;
     public ProveedoresModel $proveedores;
     public XmlVsVentasModel $xmlVsVentasModel;
+    public RenegociacionModel $RenegociacionModel;
+    public RenegContactosModel $RenegContactosModel;
+    public RenegEmailLogModel $RenegEmailLogModel;
     /**
      * @param $twig
      */
@@ -53,6 +56,9 @@ class Accounting{
         $this->gasolinerasModel       = new GasolinerasModel;
         $this->proveedores            = new ProveedoresModel();
         $this->xmlVsVentasModel       = new XmlVsVentasModel();
+        $this->RenegociacionModel     = new RenegociacionModel();
+        $this->RenegContactosModel    = new RenegContactosModel();
+        $this->RenegEmailLogModel     = new RenegEmailLogModel();
     }
 
     /**
@@ -2130,5 +2136,392 @@ class Accounting{
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'remisiones_petrotal.html');
         }
+    }
+
+    // =========================================================
+    // RENEGOCIACION DE PROVEEDORES
+    // =========================================================
+
+    public function renegociacion(): void {
+        if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
+            $latest_upload = $this->RenegociacionModel->get_latest_upload();
+            $uploads       = $this->RenegociacionModel->get_uploads_history();
+            echo $this->twig->render($this->route . 'renegociacion.html',
+                compact('latest_upload', 'uploads'));
+        }
+    }
+
+    public function reneg_import_excel(): void {
+        header('Content-Type: application/json');
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            echo json_encode(['success' => false, 'message' => 'Método no permitido']); return;
+        }
+
+        if (!isset($_FILES['excel_file']) || $_FILES['excel_file']['error'] !== UPLOAD_ERR_OK) {
+            echo json_encode(['success' => false, 'message' => 'No se recibió ningún archivo']); return;
+        }
+
+        $ext = strtolower(pathinfo($_FILES['excel_file']['name'], PATHINFO_EXTENSION));
+        if ($ext !== 'xlsx') {
+            echo json_encode(['success' => false, 'message' => 'Solo se permiten archivos .xlsx']); return;
+        }
+
+        try {
+            $spreadsheet = IOFactory::load($_FILES['excel_file']['tmp_name']);
+
+            // Buscar la hoja PENDIENTE PAGO
+            $sheet = null;
+            foreach ($spreadsheet->getAllSheets() as $s) {
+                if (stripos($s->getTitle(), 'PENDIENTE') !== false) {
+                    $sheet = $s; break;
+                }
+            }
+            if (!$sheet) $sheet = $spreadsheet->getActiveSheet();
+
+            $allRows = $sheet->toArray(null, true, true, false);
+
+            // Detectar fila de headers buscando "OC" en cualquier columna de las primeras 10 filas
+            $headerRow  = -1;
+            $colOffset  = 0; // columna donde empieza OC
+            foreach (array_slice($allRows, 0, 10, true) as $idx => $row) {
+                foreach ($row as $colIdx => $cell) {
+                    if (strtoupper(trim((string)$cell)) === 'OC') {
+                        $headerRow = $idx;
+                        $colOffset = $colIdx;
+                        break 2;
+                    }
+                }
+            }
+            if ($headerRow === -1) {
+                echo json_encode(['success' => false, 'message' => 'No se encontró la fila de encabezados (columna OC). Verifica que la hoja se llame "PENDIENTE PAGO" y tenga los headers en las primeras 10 filas.']); return;
+            }
+
+            $parseDate = function($val): ?string {
+                if (empty($val) || $val === '-' || $val === '$ -') return null;
+                if (is_numeric($val)) {
+                    try {
+                        return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject((float)$val)
+                            ->format('Y-m-d');
+                    } catch (\Exception $e) { return null; }
+                }
+                foreach (['d/m/Y', 'Y-m-d', 'd-m-Y', 'm/d/Y'] as $fmt) {
+                    $d = \DateTime::createFromFormat($fmt, trim((string)$val));
+                    if ($d) return $d->format('Y-m-d');
+                }
+                return null;
+            };
+
+            $parseMoney = function($val): ?float {
+                if ($val === null || $val === '' || $val === '-' || $val === '$ -') return null;
+                $clean = preg_replace('/[^0-9.\-]/', '', str_replace(',', '', (string)$val));
+                return $clean !== '' ? (float)$clean : null;
+            };
+
+            $c = $colOffset; // alias para legibilidad
+            $rows = [];
+            for ($i = $headerRow + 1; $i < count($allRows); $i++) {
+                $r = $allRows[$i];
+                // Saltar filas completamente vacías
+                $vals = array_filter(array_map('trim', array_map('strval', $r)));
+                if (empty($vals)) continue;
+
+                $rows[] = [
+                    'oc'               => isset($r[$c])    ? trim((string)$r[$c])    : null,
+                    'req'              => isset($r[$c+1])  ? trim((string)$r[$c+1])  : null,
+                    'fecha_aut'        => $parseDate($r[$c+2]  ?? null),
+                    'rfc'              => isset($r[$c+3])  ? trim((string)$r[$c+3])  : null,
+                    'proveedor'        => isset($r[$c+4])  ? trim((string)$r[$c+4])  : null,
+                    'responsable'      => isset($r[$c+5])  ? trim((string)$r[$c+5])  : null,
+                    'razon_social'     => isset($r[$c+6])  ? trim((string)$r[$c+6])  : null,
+                    'factura'          => isset($r[$c+7])  ? trim((string)$r[$c+7])  : null,
+                    'fecha_factura'    => $parseDate($r[$c+8]  ?? null),
+                    'iva'              => (function($v) use ($parseMoney) {
+                                             $n = $parseMoney($v);
+                                             if ($n === null) return null;
+                                             return $n > 1 ? round($n / 100, 4) : $n;
+                                         })($r[$c+9]  ?? null),
+                    'subtotal'         => $parseMoney($r[$c+10] ?? null),
+                    'impt_iva'         => $parseMoney($r[$c+11] ?? null),
+                    'descuento'        => $parseMoney($r[$c+12] ?? null),
+                    'ret_4pct'         => $parseMoney($r[$c+13] ?? null),
+                    'iva_ret'          => $parseMoney($r[$c+14] ?? null),
+                    'isr_ret'          => $parseMoney($r[$c+15] ?? null),
+                    'total'            => $parseMoney($r[$c+16] ?? null),
+                    'importe_dlls'     => $parseMoney($r[$c+17] ?? null),
+                    'cc'               => isset($r[$c+18]) && is_numeric($r[$c+18]) ? (int)$r[$c+18] : null,
+                    'concepto'         => isset($r[$c+19]) ? trim((string)$r[$c+19]) : null,
+                    'prov'             => isset($r[$c+20]) ? trim((string)$r[$c+20]) : null,
+                    'autoriza_oc'      => isset($r[$c+21]) ? trim((string)$r[$c+21]) : null,
+                    'metodo_pago'      => isset($r[$c+22]) ? trim((string)$r[$c+22]) : null,
+                    'fecha_vencimiento'=> $parseDate($r[$c+23] ?? null),
+                    'dias_vencimiento' => isset($r[$c+24]) && is_numeric($r[$c+24]) ? (int)$r[$c+24] : null,
+                    'fecha_pago_real'  => $parseDate($r[$c+25] ?? null),
+                ];
+            }
+
+            if (empty($rows)) {
+                echo json_encode(['success' => false, 'message' => 'El archivo no contiene datos']); return;
+            }
+
+            $user_id   = $_SESSION['tg_user']['id'] ?? null;
+            $upload_id = $this->RenegociacionModel->create_upload(
+                $_FILES['excel_file']['name'], count($rows), $user_id
+            );
+            $total = $this->RenegociacionModel->insert_batch($rows, $upload_id);
+
+            echo json_encode(['success' => true, 'total' => $total, 'upload_id' => $upload_id]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'message' => 'Error al procesar el archivo: ' . $e->getMessage()]);
+        }
+    }
+
+    public function reneg_get_pendientes(): void {
+        header('Content-Type: application/json');
+        $upload_id   = isset($_GET['upload_id'])   ? (int)$_GET['upload_id'] : 0;
+        $responsable = $_GET['responsable']         ?? null;
+        $renegociado = $_GET['renegociado']         ?? null;
+
+        if (!$upload_id) {
+            $latest    = $this->RenegociacionModel->get_latest_upload();
+            $upload_id = $latest ? (int)$latest['id'] : 0;
+        }
+        if (!$upload_id) {
+            echo json_encode(['success' => true, 'data' => [], 'upload_id' => 0]); return;
+        }
+
+        $data = $this->RenegociacionModel->get_all($upload_id, $responsable ?: null, $renegociado);
+        echo json_encode(['success' => true, 'data' => $data ?: [], 'upload_id' => $upload_id]);
+    }
+
+    public function reneg_toggle_renegociado(): void {
+        header('Content-Type: application/json');
+        $id    = (int)($_POST['id']    ?? 0);
+        $valor = (int)($_POST['valor'] ?? 0);
+        if (!$id) { echo json_encode(['success' => false]); return; }
+        $this->RenegociacionModel->toggle_renegociado($id, $valor);
+        echo json_encode(['success' => true]);
+    }
+
+    public function reneg_get_responsables(): void {
+        header('Content-Type: application/json');
+        $upload_id = isset($_GET['upload_id']) ? (int)$_GET['upload_id'] : 0;
+        if (!$upload_id) {
+            $latest = $this->RenegociacionModel->get_latest_upload();
+            $upload_id = $latest ? (int)$latest['id'] : 0;
+        }
+        $data = $upload_id ? $this->RenegociacionModel->get_responsables($upload_id) : [];
+        echo json_encode(['success' => true, 'data' => $data ?: []]);
+    }
+
+    public function reneg_get_contactos(): void {
+        header('Content-Type: application/json');
+        $data = $this->RenegContactosModel->get_all();
+        echo json_encode(['success' => true, 'data' => $data ?: []]);
+    }
+
+    public function reneg_save_contacto(): void {
+        header('Content-Type: application/json');
+        $responsable = trim($_POST['responsable'] ?? '');
+        $correo      = trim($_POST['correo']      ?? '');
+
+        if (!$responsable || !$correo) {
+            echo json_encode(['success' => false, 'message' => 'Nombre y correo son requeridos']); return;
+        }
+        if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
+            echo json_encode(['success' => false, 'message' => 'Correo electrónico inválido']); return;
+        }
+
+        $this->RenegContactosModel->upsert($responsable, $correo);
+        echo json_encode(['success' => true, 'message' => 'Contacto guardado']);
+    }
+
+    public function reneg_delete_contacto(): void {
+        header('Content-Type: application/json');
+        $id = (int)($_POST['id'] ?? 0);
+        if (!$id) {
+            echo json_encode(['success' => false, 'message' => 'ID inválido']); return;
+        }
+        $this->RenegContactosModel->delete($id);
+        echo json_encode(['success' => true]);
+    }
+
+    public function reneg_send_emails(): void {
+        header('Content-Type: application/json');
+        $upload_id    = (int)($_POST['upload_id']    ?? 0);
+        $responsables = $_POST['responsables']        ?? [];
+
+        if (!$upload_id || empty($responsables)) {
+            echo json_encode(['success' => false, 'message' => 'Datos incompletos']); return;
+        }
+
+        $user_id  = $_SESSION['tg_user']['id']     ?? null;
+        $user_name= $_SESSION['tg_user']['usuario'] ?? 'Sistema';
+        $from     = 'no-reply@totalgas.com';
+
+        $enviados  = 0;
+        $errores   = 0;
+        $sin_correo= 0;
+        $detalle   = [];
+
+        foreach ($responsables as $resp) {
+            $resp = trim($resp);
+            $contacto = $this->RenegContactosModel->get_by_responsable($resp);
+            if (!$contacto || !$contacto['activo']) {
+                $sin_correo++;
+                $detalle[] = ['responsable' => $resp, 'status' => 'sin_correo'];
+                continue;
+            }
+
+            $facturas = $this->RenegociacionModel->get_facturas_responsable($upload_id, $resp);
+            if (!$facturas) {
+                $detalle[] = ['responsable' => $resp, 'status' => 'sin_facturas'];
+                continue;
+            }
+
+            $monto_total = array_sum(array_column($facturas, 'total'));
+
+            // Construir tabla HTML de facturas
+            $filas_html = '';
+            foreach ($facturas as $f) {
+                $fecha_f = $f['fecha_factura'] ? date('d/m/Y', strtotime($f['fecha_factura'])) : '-';
+                $total_f = $f['total'] !== null ? '$' . number_format((float)$f['total'], 2) : '-';
+                $dlls_f  = $f['importe_dlls'] ? '$' . number_format((float)$f['importe_dlls'], 2) : '-';
+                $filas_html .= "
+                <tr>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars((string)($f['oc'] ?? '-')) . "</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars((string)($f['proveedor'] ?? '-')) . "</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars((string)($f['razon_social'] ?? '-')) . "</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;'>" . htmlspecialchars((string)($f['factura'] ?? '-')) . "</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:center;'>{$fecha_f}</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;'>{$total_f}</td>
+                    <td style='padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:right;'>{$dlls_f}</td>
+                </tr>";
+            }
+
+            $nombre    = htmlspecialchars($resp);
+            $subtotal_fmt = '$' . number_format($monto_total, 2);
+
+            $body = "
+<!DOCTYPE html>
+<html lang='es'>
+<head><meta charset='UTF-8'></head>
+<body style='font-family:Arial,sans-serif;color:#333;max-width:800px;margin:0 auto;padding:20px;'>
+  <div style='background:#1e3a5f;padding:16px 24px;border-radius:6px 6px 0 0;'>
+    <h2 style='color:#fff;margin:0;font-size:18px;'>TotalGas &mdash; Solicitud de Renegociaci&oacute;n con Proveedores</h2>
+  </div>
+  <div style='border:1px solid #e5e7eb;border-top:none;border-radius:0 0 6px 6px;padding:24px;'>
+    <p>Buenos d&iacute;as <strong>{$nombre}</strong>,</p>
+    <p>Kuwait solicita tu apoyo en la conclusi&oacute;n del proceso de configuraci&oacute;n del
+    <strong>&ldquo;Archivo de renegociaci&oacute;n&rdquo;</strong>, cuyo requerimiento inicial fue enviado
+    el jueves 16 de abril.</p>
+    <p>La finalidad de este proyecto es habilitar el env&iacute;o autom&aacute;tico de pagos de forma
+    semanal. Para ello es necesario que te acerques a la <strong>Jefatura de Contabilidad</strong> y
+    lleves a cabo la renegociaci&oacute;n formal con tus proveedores.</p>
+    <p>A continuaci&oacute;n encontrar&aacute;s el detalle de las facturas pendientes a tu cargo:</p>
+    <table style='width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;'>
+      <thead>
+        <tr style='background:#1e3a5f;color:#fff;'>
+          <th style='padding:8px 10px;text-align:left;'>OC</th>
+          <th style='padding:8px 10px;text-align:left;'>PROVEEDOR</th>
+          <th style='padding:8px 10px;text-align:left;'>RAZ&Oacute;N SOCIAL</th>
+          <th style='padding:8px 10px;text-align:left;'>FACTURA</th>
+          <th style='padding:8px 10px;text-align:center;'>FECHA FACTURA</th>
+          <th style='padding:8px 10px;text-align:right;'>TOTAL</th>
+          <th style='padding:8px 10px;text-align:right;'>IMPORTE DLLS</th>
+        </tr>
+      </thead>
+      <tbody>
+        {$filas_html}
+      </tbody>
+      <tfoot>
+        <tr style='background:#f3f4f6;font-weight:bold;'>
+          <td colspan='5' style='padding:8px 10px;text-align:right;border-top:2px solid #1e3a5f;'>Total:</td>
+          <td style='padding:8px 10px;text-align:right;border-top:2px solid #1e3a5f;'>{$subtotal_fmt}</td>
+          <td style='padding:8px 10px;border-top:2px solid #1e3a5f;'></td>
+        </tr>
+      </tfoot>
+    </table>
+    <p style='margin-top:24px;color:#555;font-size:12px;'>
+      Agradecemos tu atenci&oacute;n y apoyo.<br>
+      <strong>Atentamente, &Aacute;rea de Contabilidad &mdash; TotalGas</strong>
+    </p>
+  </div>
+</body>
+</html>";
+
+            $subject = 'Solicitud de Renegociación con Proveedores — TotalGas';
+            // MODO PRUEBA: todos los correos van a alejandro.martinez@totalgas.com
+            $ok = send_mail($subject, $body, ['alejandro.martinez@totalgas.com'], $from);
+
+            $this->RenegEmailLogModel->log_send([
+                'upload_id'      => $upload_id,
+                'responsable'    => $resp,
+                'correo'         => $contacto['correo'],
+                'total_facturas' => count($facturas),
+                'monto_total'    => $monto_total,
+                'enviado_por'    => $user_id,
+                'status'         => $ok ? 'sent' : 'error',
+                'error_msg'      => $ok ? null : 'Error al enviar',
+            ]);
+
+            if ($ok) {
+                $enviados++;
+                $detalle[] = ['responsable' => $resp, 'correo' => $contacto['correo'], 'status' => 'sent'];
+            } else {
+                $errores++;
+                $detalle[] = ['responsable' => $resp, 'correo' => $contacto['correo'], 'status' => 'error'];
+            }
+        }
+
+        echo json_encode([
+            'success'    => true,
+            'enviados'   => $enviados,
+            'errores'    => $errores,
+            'sin_correo' => $sin_correo,
+            'detalle'    => $detalle,
+        ]);
+    }
+
+    public function reneg_get_resumen(): void {
+        header('Content-Type: application/json');
+        $upload_id = isset($_GET['upload_id']) ? (int)$_GET['upload_id'] : 0;
+        if (!$upload_id) {
+            $latest = $this->RenegociacionModel->get_latest_upload();
+            $upload_id = $latest ? (int)$latest['id'] : 0;
+        }
+        if (!$upload_id) {
+            echo json_encode(['success' => true, 'data' => [], 'upload_id' => 0]); return;
+        }
+
+        $resumen    = $this->RenegociacionModel->get_by_responsable($upload_id);
+        $contactos  = $this->RenegContactosModel->get_all();
+        $correos_map = [];
+        foreach (($contactos ?: []) as $c) {
+            $correos_map[strtoupper(trim($c['responsable']))] = $c;
+        }
+
+        $data = [];
+        foreach (($resumen ?: []) as $r) {
+            $key      = strtoupper(trim($r['responsable']));
+            $contacto = $correos_map[$key] ?? null;
+            $data[] = [
+                'responsable'    => $r['responsable'],
+                'total_facturas' => $r['total_facturas'],
+                'monto_total'    => $r['monto_total'],
+                'monto_dlls'     => $r['monto_dlls'],
+                'correo'         => $contacto ? $contacto['correo'] : null,
+                'tiene_correo'   => $contacto ? (bool)$contacto['activo'] : false,
+                'contacto_id'    => $contacto ? $contacto['id'] : null,
+            ];
+        }
+
+        echo json_encode(['success' => true, 'data' => $data, 'upload_id' => $upload_id]);
+    }
+
+    public function reneg_get_email_log(): void {
+        header('Content-Type: application/json');
+        $upload_id = isset($_GET['upload_id']) ? (int)$_GET['upload_id'] : null;
+        $data = $this->RenegEmailLogModel->get_log($upload_id);
+        echo json_encode(['success' => true, 'data' => $data ?: []]);
     }
 }

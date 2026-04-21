@@ -1,0 +1,328 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Renegociación Proveedores{% endblock %}
+{% block menutitle %}Renegociación Proveedores{% endblock %}
+
+{% block mycss %}
+<style>
+.reneg-tab-link {
+    background: none; border: none; border-bottom: 3px solid transparent;
+    padding: 10px 18px; font-size: 14px; font-weight: 500; color: #6b7280;
+    cursor: pointer; white-space: nowrap;
+}
+.reneg-tab-link.active { color: #1e3a5f; border-bottom-color: #1e3a5f; }
+.reneg-tab-content { display: none; }
+.reneg-tab-content.active { display: block; }
+.stat-card { background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px 20px; }
+.stat-card .val { font-size:22px; font-weight:700; color:#1e3a5f; }
+.stat-card .lbl { font-size:12px; color:#6b7280; margin-top:2px; }
+.badge-correo-ok  { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+.badge-correo-no  { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+tr.reneg-done td { text-decoration: line-through; color: #9ca3af !important; }
+tr.reneg-done td .badge { opacity:.6; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# ── Encabezado ── #}
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+    <div>
+      <h4 class="mb-0 fw-bold" style="color:#1e3a5f;">Renegociación de Proveedores</h4>
+      <small class="text-muted">Importa el listado de pagos pendientes y envía notificaciones a los responsables.</small>
+    </div>
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      {# Selector de carga #}
+      <select id="sel_upload" class="form-select form-select-sm" style="min-width:220px;"
+              onchange="onUploadChange()">
+        {% if uploads %}
+          {% for u in uploads %}
+          <option value="{{ u.id }}" {% if latest_upload and u.id == latest_upload.id %}selected{% endif %}>
+            {{ u.nombre_archivo }} — {{ u.total_filas }} registros ({{ u.created_at|date('d/m/Y H:i') }})
+          </option>
+          {% endfor %}
+        {% else %}
+          <option value="">— Sin importaciones —</option>
+        {% endif %}
+      </select>
+      <button class="btn btn-sm fw-medium text-white" style="background:#1e3a5f;"
+              data-bs-toggle="modal" data-bs-target="#modalImport">
+        <i class="fas fa-file-excel me-1"></i> Importar Excel
+      </button>
+    </div>
+  </div>
+
+  {# ── Tarjetas resumen ── #}
+  <div class="row g-3 mb-3" id="cards_resumen">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="val" id="card_total_facturas">—</div>
+        <div class="lbl">Total Facturas</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="val" id="card_monto_mxn">—</div>
+        <div class="lbl">Monto Total MXN</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="val" id="card_responsables">—</div>
+        <div class="lbl">Responsables</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="val" id="card_con_correo">—</div>
+        <div class="lbl">Con Correo Registrado</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Tabs ── #}
+  <div class="bg-white border rounded-top px-3 d-flex gap-2" style="overflow-x:auto;">
+    <button class="reneg-tab-link active" onclick="renegTab(this,'tab-pendientes')">
+      <i class="fas fa-list me-1"></i> Pendientes de Pago
+    </button>
+    <button class="reneg-tab-link" onclick="renegTab(this,'tab-correos')">
+      <i class="fas fa-envelope me-1"></i> Correos
+    </button>
+  </div>
+
+  {# ── Tab 1: Pendientes ── #}
+  <div id="tab-pendientes" class="reneg-tab-content active bg-white border border-top-0 rounded-bottom">
+    <div class="d-flex flex-wrap gap-2 align-items-center p-3 border-bottom">
+      <select id="filtro_responsable" class="form-select form-select-sm" style="max-width:220px;"
+              onchange="loadPendientes()">
+        <option value="">Todos los responsables</option>
+      </select>
+      <select id="filtro_reneg" class="form-select form-select-sm" style="max-width:190px;"
+              onchange="loadPendientes()">
+        <option value="">Todos</option>
+        <option value="0">Pendientes de renegociar</option>
+        <option value="1">Ya renegociados</option>
+      </select>
+      <button class="btn btn-sm border" onclick="loadPendientes()">
+        <i class="fas fa-sync-alt"></i>
+      </button>
+      <span class="ms-auto text-muted small" id="lbl_total_pendientes"></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 w-100" id="tbl_pendientes">
+        <thead style="background:#f8fafc;">
+          <tr>
+            <th class="text-center" style="width:42px;">✓</th>
+            <th>OC</th>
+            <th>PROVEEDOR</th>
+            <th>RAZÓN SOCIAL</th>
+            <th>FACTURA</th>
+            <th>FECHA FACTURA</th>
+            <th class="text-end">TOTAL</th>
+            <th class="text-end">IMPORTE DLLS</th>
+            <th>RESPONSABLE</th>
+          </tr>
+        </thead>
+        <tbody id="tbody_pendientes"></tbody>
+        <tfoot style="background:#f1f5f9;">
+          <tr>
+            <th></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="OC"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Proveedor"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Razón social"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Factura"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Fecha"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Total"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Dlls"></th>
+            <th><input type="text" class="form-control form-control-sm" placeholder="Responsable"></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {# ── Tab 2: Correos ── #}
+  <div id="tab-correos" class="reneg-tab-content bg-white border border-top-0 rounded-bottom">
+
+    {# Sub-panel izquierdo: tabla de contactos #}
+    <div class="row g-0">
+      <div class="col-12 col-lg-5 border-end">
+        <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+          <span class="fw-semibold" style="color:#1e3a5f;">Contactos</span>
+          <button class="btn btn-sm text-white" style="background:#1e3a5f;"
+                  onclick="abrirModalContacto()">
+            <i class="fas fa-plus me-1"></i> Nuevo
+          </button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead style="background:#f8fafc;">
+              <tr>
+                <th>RESPONSABLE</th>
+                <th>CORREO</th>
+                <th class="text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tbody_contactos">
+              <tr><td colspan="3" class="text-center py-3 text-muted">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {# Sub-panel derecho: resumen y envío #}
+      <div class="col-12 col-lg-7">
+        <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+          <span class="fw-semibold" style="color:#1e3a5f;">Envío de Correos</span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm border" onclick="toggleSelectAll()">
+              <i class="fas fa-check-square me-1"></i> Sel. todos
+            </button>
+            <button class="btn btn-sm text-white" style="background:#16a34a;"
+                    onclick="enviarCorreos()">
+              <i class="fas fa-paper-plane me-1"></i> Enviar seleccionados
+            </button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead style="background:#f8fafc;">
+              <tr>
+                <th style="width:36px;"><input type="checkbox" id="chk_all" onclick="toggleSelectAll()"></th>
+                <th>RESPONSABLE</th>
+                <th class="text-center">FACTURAS</th>
+                <th class="text-end">TOTAL MXN</th>
+                <th class="text-center">CORREO</th>
+              </tr>
+            </thead>
+            <tbody id="tbody_resumen">
+              <tr><td colspan="5" class="text-center py-3 text-muted">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        {# Log de envíos #}
+        <div class="border-top p-3">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="fw-semibold small" style="color:#1e3a5f;">Historial de Envíos</span>
+            <button class="btn btn-sm border" onclick="loadEmailLog()">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+          </div>
+          <div class="table-responsive" style="max-height:220px;overflow-y:auto;">
+            <table class="table table-sm mb-0" id="tbl_log">
+              <thead style="background:#f8fafc;position:sticky;top:0;">
+                <tr>
+                  <th>Fecha</th>
+                  <th>Responsable</th>
+                  <th>Correo</th>
+                  <th class="text-center">Facturas</th>
+                  <th class="text-center">Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tbody_log">
+                <tr><td colspan="5" class="text-center text-muted py-2">Sin envíos registrados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{# ── Modal Importar Excel ── #}
+<div class="modal fade" id="modalImport" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1e3a5f;">
+        <h5 class="modal-title text-white"><i class="fas fa-file-excel me-2"></i>Importar Excel</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Selecciona el archivo <strong>.xlsx</strong> de pagos pendientes.<br>
+          Se leerá la hoja <strong>PENDIENTE PAGO</strong> (headers en fila 4, columna OC).
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-medium">Archivo Excel (.xlsx)</label>
+          <input type="file" class="form-control" id="inp_excel" accept=".xlsx">
+        </div>
+        <div id="import_result" class="d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm text-white" style="background:#1e3a5f;"
+                onclick="importarExcel()">
+          <i class="fas fa-upload me-1"></i> Importar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Modal Contacto ── #}
+<div class="modal fade" id="modalContacto" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1e3a5f;">
+        <h5 class="modal-title text-white" id="modalContactoTitle">Agregar Contacto</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="contacto_id_edit">
+        <div class="mb-3">
+          <label class="form-label fw-medium">Responsable</label>
+          <input type="text" class="form-control" id="inp_responsable"
+                 placeholder="Nombre del responsable">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-medium">Correo electrónico</label>
+          <input type="email" class="form-control" id="inp_correo"
+                 placeholder="nombre@totalgas.com">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-sm text-white" style="background:#1e3a5f;"
+                onclick="guardarContacto()">
+          <i class="fas fa-save me-1"></i> Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Modal resultado envío ── #}
+<div class="modal fade" id="modalEnvioResult" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Resultado de Envío</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="envio_result_body"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block myjs %}
+<script src="{{ JS }}renegociacion.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const uploadId = document.getElementById('sel_upload')?.value;
+    if (uploadId) {
+        loadPendientes();
+        loadResumen();
+        loadResponsablesFiltro();
+    }
+    loadContactos();
+    loadEmailLog();
+});
+</script>
+{% endblock %}

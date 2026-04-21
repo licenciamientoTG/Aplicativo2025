@@ -13,12 +13,9 @@ class PaymentRequestAuthorizationsModel extends Model
     const PERM_TESORERIA = 68;
     const PERM_CONTABILIDAD = 70;
 
-    // Orden secuencial de autorizaciones
+    // Orden secuencial de autorizaciones — solo Tesorería
     const AUTHORIZATION_SEQUENCE = [
-        1 => self::PERM_ABASTOS,
-        2 => self::PERM_CONTABILIDAD,
-        3 => self::PERM_ADMIN_FINANZAS,
-        4 => self::PERM_TESORERIA
+        1 => self::PERM_TESORERIA
     ];
 
     /**

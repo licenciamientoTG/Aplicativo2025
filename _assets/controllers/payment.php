@@ -1002,8 +1002,15 @@ class Payment
                 $totalND = floatval($row['total_notas_cargo']);
                 $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
 
+                $pdfStatus = $row['pdf_status'] ?? 'no_invoices';
+                $pdfDot = match($pdfStatus) {
+                    'complete'    => '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-left:4px;vertical-align:middle;" title="Todas las facturas tienen PDF"></span>',
+                    'missing'     => '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-left:4px;vertical-align:middle;" title="Faltan PDFs de facturas"></span>',
+                    default       => '',
+                };
+
                 $data[] = [
-                    'id'             => $row['id'],
+                    'id'             => $row['id'] . $pdfDot,
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
                     'scheduled_payment_date' => $row['scheduled_payment_date'] ? date('d/m/Y', strtotime($row['scheduled_payment_date'])) : null,
                     'usuario'        => $row['usuario_nombre'],
@@ -1394,9 +1401,6 @@ class Payment
 
                 // Aún faltan autorizaciones
                 $department_name = match ($next_level) {
-                    66 => 'Abastos',
-                    70 => 'Contabilidad',
-                    67 => 'Administración y Finanzas',
                     68 => 'Tesorería',
                     default => 'Desconocido'
                 };
@@ -3399,6 +3403,39 @@ class Payment
 
 
     /**
+     * Agrupación automática de requisiciones por fecha.
+     * Puede recibir ?date=YYYY-MM-DD (opcional, default = hoy).
+     * Protegido por permiso 70 (Contabilidad) o token de cron.
+     */
+    public function auto_group_accounting()
+    {
+        header('Content-Type: application/json');
+        try {
+            // Permitir acceso por token de cron o por usuario con permiso 70
+            $cronToken = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+
+            $isAuthorized = ($validToken && $cronToken === $validToken)
+                || authorized(70);
+
+            if (!$isAuthorized) {
+                json_output(['success' => false, 'message' => 'No autorizado']);
+                return;
+            }
+
+            $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+
+            $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
+            json_output($result);
+        } catch (Exception $e) {
+            error_log('Error en auto_group_accounting: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+
+    /**
      * JSON para el DataTable del tab "Archivos Contabilidad".
      */
     public function get_accounting_groups_table()
@@ -5208,87 +5245,21 @@ class Payment
         $admin_date,
         $tesoreria_date
     ) {
-
         $html = '<div class="d-flex gap-1 align-items-center justify-content-center">';
 
-        // Determinar el estado de cada nivel
-        $nextLevel = null;
-        if (!$abastos) {
-            $nextLevel = 1;
-        } elseif (!$contabilidad) {
-            $nextLevel = 2;
-        } elseif (!$admin) {
-            $nextLevel = 3;
-        } elseif (!$tesoreria) {
-            $nextLevel = 4;
-        }
-
-        // NIVEL 1 - ABASTOS
-        if ($abastos) {
-            $tooltip = "Abastos ✓\n" . ($abastos_user ?: 'N/A') . "\n" . ($abastos_date ? date('d/m/Y H:i', strtotime($abastos_date)) : '');
-            $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
-                        <i class="fas fa-check text-white"></i>
-                    </div>';
-        } elseif ($nextLevel === 1) {
-            $html .= '<div class="auth-box bg-warning" title="Esperando: Abastos" data-bs-toggle="tooltip">
-                        <i class="fas fa-clock text-white"></i>
-                    </div>';
-        } else {
-            $html .= '<div class="auth-box bg-secondary" title="Pendiente: Abastos" data-bs-toggle="tooltip">
-                        <i class="fas fa-lock text-white"></i>
-                    </div>';
-        }
-
-        // NIVEL 2 - CONTABILIDAD
-        if ($contabilidad) {
-            $tooltip = "Contabilidad ✓\n" . ($contabilidad_user ?: 'N/A') . "\n" . ($contabilidad_date ? date('d/m/Y H:i', strtotime($contabilidad_date)) : '');
-            $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
-                        <i class="fas fa-check text-white"></i>
-                    </div>';
-        } elseif ($nextLevel === 2) {
-            $html .= '<div class="auth-box bg-warning" title="Esperando: Contabilidad" data-bs-toggle="tooltip">
-                        <i class="fas fa-clock text-white"></i>
-                    </div>';
-        } else {
-            $html .= '<div class="auth-box bg-secondary" title="Pendiente: Contabilidad" data-bs-toggle="tooltip">
-                        <i class="fas fa-lock text-white"></i>
-                    </div>';
-        }
-
-        // NIVEL 3 - ADMIN Y FINANZAS
-        if ($admin) {
-            $tooltip = "Admin y Finanzas ✓\n" . ($admin_user ?: 'N/A') . "\n" . ($admin_date ? date('d/m/Y H:i', strtotime($admin_date)) : '');
-            $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
-                        <i class="fas fa-check text-white"></i>
-                    </div>';
-        } elseif ($nextLevel === 3) {
-            $html .= '<div class="auth-box bg-warning" title="Esperando: Admin y Finanzas" data-bs-toggle="tooltip">
-                        <i class="fas fa-clock text-white"></i>
-                    </div>';
-        } else {
-            $html .= '<div class="auth-box bg-secondary" title="Pendiente: Admin y Finanzas" data-bs-toggle="tooltip">
-                        <i class="fas fa-lock text-white"></i>
-                    </div>';
-        }
-
-        // NIVEL 4 - TESORERÍA
+        // Solo Tesorería
         if ($tesoreria) {
             $tooltip = "Tesorería ✓\n" . ($tesoreria_user ?: 'N/A') . "\n" . ($tesoreria_date ? date('d/m/Y H:i', strtotime($tesoreria_date)) : '');
             $html .= '<div class="auth-box bg-success" title="' . htmlspecialchars($tooltip) . '" data-bs-toggle="tooltip">
                         <i class="fas fa-check text-white"></i>
                     </div>';
-        } elseif ($nextLevel === 4) {
-            $html .= '<div class="auth-box bg-info" title="Esperando: Tesorería" data-bs-toggle="tooltip">
-                        <i class="fas fa-clock text-white"></i>
-                    </div>';
         } else {
-            $html .= '<div class="auth-box bg-secondary" title="Pendiente: Tesorería" data-bs-toggle="tooltip">
-                        <i class="fas fa-lock text-white"></i>
+            $html .= '<div class="auth-box bg-warning" title="Esperando: Tesorería" data-bs-toggle="tooltip">
+                        <i class="fas fa-clock text-white"></i>
                     </div>';
         }
 
         $html .= '</div>';
-
         return $html;
     }
 

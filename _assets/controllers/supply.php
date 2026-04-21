@@ -1303,6 +1303,71 @@ class Supply
         echo $this->twig->render($this->route . 'providers.html');
     }
 
+    function invoices_due_today()
+    {
+        $stations    = $this->gasolinerasModel->get_active_stations();
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'invoices_due_today.html', compact('stations', 'proveedores'));
+    }
+
+    public function invoices_due_today_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+        $from_int = dateToInt( $_POST['from_due']);
+        $until_int = dateToInt( $_POST['from_due']);
+
+        $postData = [
+            'codgas'    => !empty($_POST['codgas'])    ? $_POST['codgas']    : '0',
+            'proveedor' => !empty($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'from_due'  => $_POST['from_due']  ?? '',
+            'from_int' => $from_int ?? '',
+            'until_int' => $until_int ?? '',
+
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/facturas_vencen_hoy/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $apiData = json_decode($response, true);
+        $data = [];
+
+        if (isset($apiData) && is_array($apiData)) {
+            foreach ($apiData as $row) {
+                if (empty($row['satuid'])) {
+                    continue;
+                }
+
+                $data[] = [
+                    'nro'                       => $row['nro'],
+                    'Factura'                   => $row['Factura'],
+                    'fecha'                     => $row['fecha'],
+                    'fecha_vencimiento_credito' => $row['fecha_vencimiento_credito'] ?? null,
+                    'dias_credito'              => $row['dias_credito'] ?? 0,
+                    'proveedor'                 => $row['proveedor'],
+                    'proveedor_codigo'          => $row['proveedor_codigo'],
+                    'producto'                  => $row['producto'],
+                    'can'                       => $row['can'],
+                    'total_fac'                 => $row['total_fac'],
+                    'satuid'                    => $row['satuid'],
+                    'gasolinera'                => $row['gasolinera'],
+                    'codgas'                    => $row['codgas'],
+                    'codigo_empresa'            => $row['codigo_empresa'],
+                ];
+            }
+        }
+
+        json_output(['data' => $data]);
+    }
+
 
     public function purchase_analysis()
     {

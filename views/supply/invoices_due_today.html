@@ -1,0 +1,237 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas Vencidas{% endblock %}
+{% block mycss %}
+<style>
+    table.dataTable thead th,
+    table.dataTable thead td {
+        padding: 8px 12px;
+        border-bottom: 1px solid #dee2e6;
+        background-color: #212529 !important;
+        color: #ffffff !important;
+        white-space: nowrap;
+    }
+    table.dataTable thead tr.filter th {
+        background-color: #343a40 !important;
+        padding: 4px 6px !important;
+    }
+    table.dataTable thead tr.filter th input {
+        font-size: 0.72rem;
+        padding: 2px 5px;
+        height: 24px;
+        color: #212529;
+    }
+    .badge { font-size: 0.73rem; }
+    .kpi-strip { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .kpi-card {
+        flex: 1; min-width: 140px;
+        background: #fff; border: 1px solid #dee2e6; border-radius: 8px;
+        padding: 10px 14px; text-align: center;
+    }
+    .kpi-card .kpi-value { font-size: 1.3rem; font-weight: 700; line-height: 1.2; }
+    .kpi-card .kpi-label { font-size: 0.72rem; color: #6c757d; }
+</style>
+{% endblock %}
+{% block menutitle %}Facturas Vencidas{% endblock %}
+{% block content %}
+
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <!-- Desde -->
+            <div class="col-md-2">
+                <label class="col-form-label-sm">Vencimiento desde:</label>
+                <input type="date" class="form-control form-control-sm" id="vhoy_from"
+                    value="{{ 'first day of this month'|date('Y-m-d') }}">
+            </div>
+            <!-- Hasta -->
+            <div class="col-md-2">
+                <label class="col-form-label-sm">Hasta:</label>
+                <input type="date" class="form-control form-control-sm" id="vhoy_until"
+                    value="{{ 'now'|date('Y-m-d') }}">
+            </div>
+            <!-- Estación -->
+            <div class="col-md-3">
+                <label class="col-form-label-sm">Estación:</label>
+                <select class="selectpicker w-100" data-live-search="true" id="vhoy_codgas">
+                    <option value="0" selected>Todas las estaciones</option>
+                    {% for station in stations %}
+                    <option value="{{ station.cod }}" data-content="<span class='text-muted'>{{ station.codgas }}</span> {{ station.abr }}">{{ station.nomre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <!-- Proveedor -->
+            <div class="col-md-2">
+                <label class="col-form-label-sm">Proveedor:</label>
+                <select class="selectpicker w-100" data-live-search="true" id="vhoy_proveedor">
+                    <option value="0" selected>Todos los proveedores</option>
+                    {% for proveedor in proveedores %}
+                    <option value="{{ proveedor.id_control_gas }}">{{ proveedor.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <!-- Botón -->
+            <div class="col-md-1">
+                <button onclick="loadInvoicesDueToday()" class="btn btn-sm btn-primary w-100">
+                    <i class="fas fa-search"></i> Buscar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-strip" id="kpi_strip" style="display:none;">
+    <div class="kpi-card">
+        <div class="kpi-value text-primary" id="kpi_total">0</div>
+        <div class="kpi-label">Total Facturas</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-danger" id="kpi_proveedores">0</div>
+        <div class="kpi-label">Proveedores</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-warning" id="kpi_estaciones">0</div>
+        <div class="kpi-label">Estaciones</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-value text-info" id="kpi_monto">$0</div>
+        <div class="kpi-label">Monto Total</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-exclamation-circle me-2 text-danger"></i>
+            Facturas Vencidas sin Orden de Pago
+        </h5>
+        <small class="text-muted" id="fecha_consulta"></small>
+    </div>
+    <div class="card-body table-responsive p-0">
+        <table id="invoices_due_today_table" class="table table-hover table-sm w-100">
+            <thead>
+                <tr>
+                    <th>Proveedor</th>
+                    <th>Estación</th>
+                    <th>Factura</th>
+                    <th>Fecha Emisión</th>
+                    <th>Días Crédito</th>
+                    <th>Fecha Vencimiento</th>
+                    <th>Producto</th>
+                    <th>Litros</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}supply.js"></script>
+<script>
+let invoicesDueTodayTable = null;
+
+function loadInvoicesDueToday() {
+    const from_due  = $('#vhoy_from').val();
+    const until_due = $('#vhoy_until').val();
+
+    if (!from_due || !until_due) {
+        alertify.error('Selecciona el rango de fechas');
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#invoices_due_today_table')) {
+        $('#invoices_due_today_table').DataTable().destroy();
+        $('#invoices_due_today_table thead tr.filter').remove();
+    }
+
+    const codgas    = $('#vhoy_codgas').val()    || '0';
+    const proveedor = $('#vhoy_proveedor').val() || '0';
+
+    invoicesDueTodayTable = $('#invoices_due_today_table').DataTable({
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-sm btn-success',
+                title: 'Facturas Vencidas ' + from_due + ' al ' + until_due,
+                exportOptions: { columns: ':visible' }
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-sm btn-outline-secondary'
+            }
+        ],
+        processing: true,
+        ajax: {
+            url: '/supply/invoices_due_today_table',
+            type: 'POST',
+            data: { codgas: codgas, proveedor: proveedor, from_due: from_due, until_due: until_due },
+            timeout: 300000,
+            dataSrc: function(json) {
+                const rows = json.data || [];
+                const proveedoresUnicos = new Set(rows.map(r => r.proveedor)).size;
+                const estacionesUnicas  = new Set(rows.map(r => r.gasolinera)).size;
+                const monto = rows.reduce((s, r) => s + (parseFloat(r.total_fac) || 0), 0);
+
+                $('#kpi_total').text(rows.length);
+                $('#kpi_proveedores').text(proveedoresUnicos);
+                $('#kpi_estaciones').text(estacionesUnicas);
+                $('#kpi_monto').text('$' + monto.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+                $('#fecha_consulta').text(from_due + ' al ' + until_due);
+                $('#kpi_strip').show();
+
+                return rows;
+            },
+            error: function() {
+                alertify.error('Error al consultar la API');
+            }
+        },
+        columns: [
+            { data: 'proveedor' },
+            { data: 'gasolinera' },
+            { data: 'Factura' },
+            { data: 'fecha' },
+            { data: 'dias_credito', className: 'text-center' },
+            { data: 'fecha_vencimiento_credito' },
+            { data: 'producto' },
+            {
+                data: 'can',
+                render: $.fn.dataTable.render.number(',', '.', 3),
+                className: 'text-end text-nowrap'
+            },
+            {
+                data: 'total_fac',
+                render: $.fn.dataTable.render.number(',', '.', 2),
+                className: 'text-end text-nowrap'
+            }
+        ],
+        order: [[5, 'asc'], [0, 'asc']],
+        pageLength: 100,
+        initComplete: function() {
+            var api = this.api();
+            function rebuildFilterRow() {
+                $('#invoices_due_today_table thead tr.filter').remove();
+                var $filterRow = $('<tr class="filter"></tr>');
+                api.columns(':visible').every(function() {
+                    var colIdx = this.index();
+                    var title  = $(this.header()).text().trim();
+                    $filterRow.append('<th data-col-idx="' + colIdx + '"><input type="text" class="form-control form-control-sm" placeholder="' + title + '" /></th>');
+                });
+                $('#invoices_due_today_table thead').append($filterRow);
+                $('#invoices_due_today_table thead tr.filter th input').on('keyup change', function() {
+                    var colIdx = $(this).closest('th').data('col-idx');
+                    api.column(colIdx).search(this.value).draw();
+                });
+            }
+            rebuildFilterRow();
+            api.on('column-visibility.dt', function() { rebuildFilterRow(); });
+        }
+    });
+}
+</script>
+{% endblock %}

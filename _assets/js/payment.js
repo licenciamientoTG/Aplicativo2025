@@ -5633,6 +5633,47 @@ function loadAccountingGroupsTable() {
 
 
 /**
+ * Agrupa automáticamente las requisiciones autorizadas por Tesorería para hoy.
+ */
+async function autoGroupToday() {
+  const today = new Date().toISOString().split('T')[0];
+  const confirm = await Swal.fire({
+    title: '¿Agrupar requisiciones de hoy?',
+    html: `Se agruparán todas las requisiciones autorizadas por Tesorería con fecha de pago <strong>${today}</strong>, por empresa.`,
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, agrupar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#16a34a'
+  });
+
+  if (!confirm.isConfirmed) return;
+
+  Swal.fire({ title: 'Agrupando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+  try {
+    const resp = await fetch('/payment/auto_group_accounting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'date=' + encodeURIComponent(today)
+    });
+    const data = await resp.json();
+    Swal.close();
+
+    if (data.success) {
+      Swal.fire({ icon: 'success', title: 'Listo', text: data.message, timer: 3000 })
+        .then(() => loadAccountingGroupsTable());
+    } else {
+      Swal.fire({ icon: 'warning', title: 'Resultado', text: data.message });
+    }
+  } catch (e) {
+    Swal.close();
+    Swal.fire({ icon: 'error', title: 'Error', text: 'Error de conexión' });
+  }
+}
+
+
+/**
  * Abre el modal con el detalle de facturas de un grupo de contabilidad.
  */
 async function abrirModalDetalleFacturasGrupo(groupId, accountingId, empName) {
