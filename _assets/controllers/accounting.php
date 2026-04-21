@@ -212,6 +212,7 @@ class Accounting{
                     'UUID'                      => $uuid,
                     'Descripcion'               => $invoice['Descripcion'],
                     'FormaPago'               => $invoice['FormaPago'],
+                    'TotalLitros'             => $invoice['TotalLitros'],
                 );
             }
         }

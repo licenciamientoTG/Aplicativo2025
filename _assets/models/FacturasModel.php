@@ -83,18 +83,25 @@ class FacturasModel extends Model {
                         t1.FechaTimbrado,
                         t1.UUID,
                         t1.TotalImpuestosTrasladados,
-                        c.Descripcion
+                        c.Descripcion,
+                        c.TotalLitros
                     FROM [TGV2].[dbo].[Facturas] t1
                     OUTER APPLY (
-                        SELECT TOP 1
-                            CASE
-                                WHEN CHARINDEX('(', t2.Descripcion) > 0
-                                    THEN RTRIM(LEFT(t2.Descripcion, CHARINDEX('(', t2.Descripcion) - 1))
-                                ELSE t2.Descripcion
-                            END AS Descripcion
-                        FROM TGV2.dbo.FacturasConceptos t2
-                        WHERE t2.FacturaId = t1.Id
-                        ORDER BY t2.Id ASC   -- Ajusta si tienes otro campo de orden (Linea, Orden, etc.)
+                        SELECT
+                            MAX(CASE WHEN rn = 1 THEN desc_clean END) AS Descripcion,
+                            SUM(Cantidad) AS TotalLitros
+                        FROM (
+                            SELECT
+                                ROW_NUMBER() OVER (ORDER BY t2.Id ASC) AS rn,
+                                CASE
+                                    WHEN CHARINDEX('(', t2.Descripcion) > 0
+                                        THEN RTRIM(LEFT(t2.Descripcion, CHARINDEX('(', t2.Descripcion) - 1))
+                                    ELSE t2.Descripcion
+                                END AS desc_clean,
+                                t2.Cantidad
+                            FROM TGV2.dbo.FacturasConceptos t2
+                            WHERE t2.FacturaId = t1.Id
+                        ) x
                     ) c
                     WHERE t1.EmisorRfc = ?
                     AND t1.Fecha BETWEEN CONVERT(datetime, '{$startDate}', 102) AND CONVERT(datetime, '{$endDate}', 102)
