@@ -411,7 +411,7 @@
 
             const logoUrl = window.location.origin + '/_assets/images/LogoPetrotal.png';
             const sellosBase = window.location.origin + '/_assets/images/logos/SellosSinFondo/';
-            const totalSellos = 6;
+            const totalSellos = 3;
 
             function esc(v) {
                 return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -479,7 +479,7 @@
                         <tr><td class="lbl">Nombre:</td><td></td></tr>
                         <tr>
                             <td class="lbl lbl-top">Firma y/o sello de recepción:</td>
-                            <td class="celda-firma" style="text-align:center;vertical-align:middle;"><img src="${selloUrl}" style="max-height:225px;max-width:360px;object-fit:contain;position:relative;left:${selloOffset}px;transform:rotate(${selloRotate}deg);" alt="Sello"></td>
+                            <td class="celda-firma" style="text-align:center;vertical-align:middle;"><img src="${selloUrl}" style="max-height:225px;max-width:360px;object-fit:contain;position:relative;left:${selloOffset}px;transform:rotate(${selloRotate}deg);mix-blend-mode:multiply;opacity:0.82;filter:contrast(1.15) saturate(0.85);" alt="Sello"></td>
                         </tr>
                         <tr>
                             <td class="lbl">Litros de incremento:</td>
