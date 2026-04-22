@@ -94,15 +94,15 @@ class ProveedoresModel extends Model{
                             t1.satuid,
                             t1.codgas,
                             t9.abr as [gasolinera]
-                        FROM DocumentosC t1
-                        LEFT JOIN Documentos t2 ON t1.nro = t2.nro and t1.codgas = t2.codgas and t2.codcpt in(1,2,3)
-                        LEFT JOIN Documentos t5 ON t1.nro = t5.nro and t1.codgas = t5.codgas and t5.codcpt in(21,22,23)
-                        LEFT JOIN Documentos t6 ON t1.nro = t6.nro and t1.codgas = t6.codgas and t6.codcpt in(18,19,20)
-                        LEFT JOIN Documentos t7 ON t1.nro = t7.nro and t1.codgas = t7.codgas and t7.codcpt in(24,25,26)
-                        LEFT JOIN Productos t3 ON t2.codprd = t3.cod
-                        LEFT JOIN Proveedores t4 on t1.codopr = t4.cod
-                        LEFT JOIN Gasolineras t9 on t1.codgas = t9.cod
-                        LEFT JOIN (SELECT sum(volrec) as volrec, nrodoc FROM [MovimientosTan] where tiptrn = 4 group by nrodoc) t8 on t1.nro = t8.nrodoc 
+                        FROM [SG12].[dbo].[DocumentosC] t1
+                        LEFT JOIN [SG12].[dbo].[Documentos] t2 ON t1.nro = t2.nro and t1.codgas = t2.codgas and t2.codcpt in(1,2,3)
+                        LEFT JOIN [SG12].[dbo].[Documentos] t5 ON t1.nro = t5.nro and t1.codgas = t5.codgas and t5.codcpt in(21,22,23)
+                        LEFT JOIN [SG12].[dbo].[Documentos] t6 ON t1.nro = t6.nro and t1.codgas = t6.codgas and t6.codcpt in(18,19,20)
+                        LEFT JOIN [SG12].[dbo].[Documentos] t7 ON t1.nro = t7.nro and t1.codgas = t7.codgas and t7.codcpt in(24,25,26)
+                        LEFT JOIN [SG12].[dbo].[Productos] t3 ON t2.codprd = t3.cod
+                        LEFT JOIN [SG12].[dbo].[Proveedores] t4 on t1.codopr = t4.cod
+                        LEFT JOIN [SG12].[dbo].[Gasolineras] t9 on t1.codgas = t9.cod
+                        LEFT JOIN (SELECT sum(volrec) as volrec, nrodoc FROM [SG12].[dbo].[MovimientosTan] where tiptrn = 4 group by nrodoc) t8 on t1.nro = t8.nrodoc 
                         WHERE 
                             t1.tip = 1 
                             AND t1.subope = 2 
