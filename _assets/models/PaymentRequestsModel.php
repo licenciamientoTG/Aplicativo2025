@@ -258,6 +258,18 @@ class PaymentRequestsModel extends Model
                 -- Notas de crédito y cargo
                 ISNULL(t1.total_notas_credito, 0) AS total_notas_credito,
                 ISNULL(t1.total_notas_cargo, 0)   AS total_notas_cargo,
+                -- Indicador PDF: 'complete' si todas las facturas tienen PDF, 'missing' si falta alguna, 'no_invoices' si no hay
+                CASE
+                    WHEN ISNULL(t2.total_invoices, 0) = 0 THEN 'no_invoices'
+                    WHEN EXISTS (
+                        SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
+                        LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
+                            ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
+                            AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
+                        WHERE pri.payment_request_id = t1.id AND fr.UUID IS NULL
+                    ) THEN 'missing'
+                    ELSE 'complete'
+                END AS pdf_status,
                 -- Autorizaciones por nivel
                 ISNULL(t4.auth_abastos, 0)       AS auth_abastos,
                 ISNULL(t4.auth_contabilidad, 0)  AS auth_contabilidad,

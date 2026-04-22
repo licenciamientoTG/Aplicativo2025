@@ -1191,39 +1191,38 @@ class VentasModel extends Model
     }
     function GetSalesDayTurnBase($from, $until, $zona)
     {
+        ///////query_base
         $fromint = dateToInt($from);
         $untilint = dateToInt($until);
         $query = "
-                  WITH SalesData AS (
-                        SELECT
-                            CONVERT(VARCHAR, DATEADD(day, fch - 1, '1899-12-30'), 103) AS 'Fecha',
-        
-                            -- Usar la fecha convertida para extraer componentes
-                            YEAR(DATEADD(day, fch - 1, '1899-12-30')) as 'year',
-                            DATENAME(month, DATEADD(day, fch - 1, '1899-12-30')) as 'mounth',
-                            DAY(DATEADD(day, fch - 1, '1899-12-30')) as 'day',
-                            isd.codgas AS CodGasolinera,
-                            LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
-                            sum(canven) AS VentasReales,
-                            fch,
-                            T3.den as Producto,
-                            g.abr as Estacion
-                        FROM [SG12].[dbo].[Ventas] v
-                        INNER JOIN ISLAS isd on v.codisl = isd.cod 
-                        INNER JOIN Gasolineras g ON codgas = g.cod 
-                        INNER JOIN Productos T3 ON V.codprd = T3.cod
-                        WHERE 
-                            fch BETWEEN $fromint AND $untilint
-                            AND codprd IN (179, 180, 181, 2, 3, 1, 192, 193)
-                            AND nrotur IN (11, 21, 31, 41)
-                        GROUP BY
-                            fch,
-                            isd.codgas,
-                            T3.den,
-                            nrotur,
-                            codprd,g.abr
-                    )
-                    select * from SalesData order by  Fecha desc ,CodGasolinera desc, turn desc";
+                WITH SalesData AS (
+                    SELECT
+                        CONVERT(DATE, CONVERT(SMALLDATETIME, fch - 1)) AS Fecha,
+                        YEAR(CONVERT(SMALLDATETIME, fch - 1))  AS [year],
+                        MONTH(CONVERT(SMALLDATETIME, fch - 1)) AS [month],
+                        DAY(CONVERT(SMALLDATETIME, fch - 1))   AS [day],
+                        isd.codgas AS CodGasolinera,
+                        LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
+                        sum(canven) AS VentasReales,
+                        fch,
+                        T3.den as Producto,
+                        g.abr as Estacion
+                    FROM [SG12].[dbo].[Ventas] v
+                    INNER JOIN ISLAS isd on v.codisl = isd.cod 
+                    INNER JOIN Gasolineras g ON codgas = g.cod 
+                    INNER JOIN Productos T3 ON V.codprd = T3.cod
+                    WHERE 
+                        fch BETWEEN $fromint AND $untilint
+                        AND codprd IN (179, 180, 181, 2, 3, 1, 192, 193)
+                        AND nrotur IN (11, 21, 31, 41)
+                    GROUP BY
+                        fch,
+                        isd.codgas,
+                        T3.den,
+                        nrotur,
+                        codprd,g.abr
+                )
+                select * from SalesData order by  Fecha desc ,CodGasolinera desc, turn desc";
         return $this->sql->select($query, []);
     }
 
@@ -1674,6 +1673,7 @@ class VentasModel extends Model
 						when T3.den ='   T-Super Premium' then 'T-Super Premium'
 						when T3.den =' Gasolina Premium Mayor o Igual a 91 Octanos' then 'T-Super Premium'
 						when T3.den ='   Diesel Automotriz' then 'Diesel Automotriz'
+                        when T3.den ='Diesel Automotriz' then 'Diesel Automotriz'
 						else 'Total Turno'
 						end
 						as 'product',
@@ -1855,15 +1855,18 @@ class VentasModel extends Model
 
 
         $query = "
-                DECLARE @fecha_inicial_int INT = DATEDIFF(dd, 0, '{$from}') + 1;
-                DECLARE @fecha_fin_int INT = DATEDIFF(dd, 0, '{$until}') + 1;
+                DECLARE @fecha_inicio DATE = '{$from}';
+                DECLARE @fecha_fin     DATE = '{$until}';
+
+                DECLARE @fecha_inicial_int INT = DATEDIFF(DAY, 0, @fecha_inicio) + 1;
+                DECLARE @fecha_fin_int     INT = DATEDIFF(DAY, 0, @fecha_fin) + 1;
 
                 WITH SalesData AS (
                     SELECT
-                        CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103) AS 'Fecha',
-                        Year(CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'year', 
-                        datename(month, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'mounth',
-                        datename(day, CONVERT(VARCHAR, CONVERT(SMALLDATETIME, fch - 1, 103), 103)) as 'day1',
+                        CONVERT(DATE, CONVERT(SMALLDATETIME, fch - 1)) AS Fecha,
+                        YEAR(CONVERT(SMALLDATETIME, fch - 1))  AS [year],
+                        DATENAME(MONTH, CONVERT(SMALLDATETIME, fch - 1)) AS [mounth],
+                        DAY(CONVERT(SMALLDATETIME, fch - 1))   AS [day1],
                         isd.codgas AS CodGasolinera,
                         LEFT(CAST(nrotur AS VARCHAR), 1)  AS turn,
                         sum(canven) AS VentasReales,

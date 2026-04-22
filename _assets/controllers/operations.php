@@ -2218,7 +2218,7 @@ class Operations{
                 $data[] = array(
                     'Fecha'         => $row['Fecha'],
                     'year'          => $row['year'],
-                    'mounth'        => $row['mounth'],
+                    'month'        => $row['month'],
                     'day'           => $row['day'],
                     'CodGasolinera' => $row['CodGasolinera'],
                     'turn'          => $row['turn'],

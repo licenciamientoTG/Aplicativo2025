@@ -253,9 +253,6 @@ class PaymentAccountingGroupsModel extends Model
                 pv.den AS provider_name,
                 e.den AS emp_name
             FROM [TG].[dbo].[payment_requests] pr
-            INNER JOIN [TG].[dbo].[payment_request_authorizations] auth
-                ON auth.payment_request_id = pr.id
-                AND auth.permission_number = 66
             LEFT JOIN (
                 SELECT payment_request_id, COUNT(*) AS total_invoices
                 FROM [TG].[dbo].[payment_request_invoices]
@@ -270,5 +267,86 @@ class PaymentAccountingGroupsModel extends Model
         ";
 
         return $this->sql->select($query, []) ?: [];
+    }
+
+    /**
+     * Obtiene requisiciones sin agrupar con fecha de pago = $date y autorizadas por Tesorería.
+     */
+    public function get_ungrouped_by_date(string $date): array
+    {
+        $query = "
+            SELECT
+                pr.id,
+                pr.request_date,
+                pr.scheduled_payment_date,
+                pr.monto_total,
+                pr.emp_cod,
+                e.den AS emp_name
+            FROM [TG].[dbo].[payment_requests] pr
+            INNER JOIN [TG].[dbo].[payment_request_authorizations] auth
+                ON auth.payment_request_id = pr.id
+                AND auth.permission_number = 68
+            LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = pr.emp_cod
+            WHERE CAST(pr.scheduled_payment_date AS DATE) = ?
+              AND pr.accounting_group_id IS NULL
+              AND pr.tipo = 0
+            ORDER BY pr.emp_cod, pr.id
+        ";
+        return $this->sql->select($query, [$date]) ?: [];
+    }
+
+    /**
+     * Agrupa automáticamente las requisiciones de una fecha dada por empresa.
+     * Retorna array con resultado.
+     */
+    public function auto_group_by_date(string $date, int $user_id): array
+    {
+        $requisiciones = $this->get_ungrouped_by_date($date);
+
+        if (empty($requisiciones)) {
+            return ['success' => true, 'message' => 'No hay requisiciones pendientes para agrupar en esa fecha', 'grupos' => 0];
+        }
+
+        // Agrupar por empresa
+        $byEmpresa = [];
+        foreach ($requisiciones as $req) {
+            $key = $req['emp_cod'] ?: 'SIN_EMPRESA';
+            $byEmpresa[$key]['emp_name'] = $req['emp_name'] ?: 'Sin empresa';
+            $byEmpresa[$key]['emp_cod']  = $req['emp_cod'] ?: '';
+            $byEmpresa[$key]['ids'][]    = $req['id'];
+        }
+
+        $gruposCreados = 0;
+        $errors = [];
+
+        foreach ($byEmpresa as $emp_cod => $grupo) {
+            $next_id       = $this->get_next_accounting_id();
+            $razon_social  = $grupo['emp_name'];
+
+            $result = $this->create_group(
+                $next_id,
+                null,
+                $grupo['emp_cod'],
+                $razon_social,
+                $user_id,
+                $grupo['ids']
+            );
+
+            if ($result['success']) {
+                $gruposCreados++;
+            } else {
+                $errors[] = $result['message'];
+            }
+        }
+
+        return [
+            'success'       => empty($errors),
+            'grupos'        => $gruposCreados,
+            'total_reqs'    => count($requisiciones),
+            'message'       => $gruposCreados > 0
+                ? "Se crearon $gruposCreados grupo(s) con " . count($requisiciones) . " requisición(es)"
+                : 'No se pudo crear ningún grupo',
+            'errors'        => $errors
+        ];
     }
 }

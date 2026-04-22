@@ -2183,31 +2183,84 @@ async function sales_day_table(dynamicColumns){
         },
         deferRender: true,
         columns: dynamicColumns,
-        destroy: true, 
+        destroy: true,
         rowId: 'year',
         createdRow: function (row, data, dataIndex) {
-            if (data['codprd']=='0') {
+            if (data['codprd'] == '0') {
+                $('td', row).addClass('total_bg2');
                 $('td:eq(0)', row).addClass('total_bg');
                 $('td:eq(1)', row).addClass('total_bg');
-
-                // Aplicar la clase 'total_bg2' al resto de las columnas
-                $('td:gt(1)', row).addClass('total_bg2');
+            } else {
+                var product = (data['product'] || '').toLowerCase();
+                if (product.includes('regular'))        $(row).addClass('row-regular');
+                else if (product.includes('premium'))   $(row).addClass('row-premium');
+                else if (product.includes('diesel'))    $(row).addClass('row-diesel');
             }
-
         },
         initComplete: function (settings, json) {
-            console.log('DataTable initialization complete');
-            // $('.dt-buttons').addClass('d-none');
-
             $('.table-responsive').removeClass('loading');
-            
+
+            // Badges de filtros activos
+            var turnoLabel = {
+                '0': 'Todos', '11': 'Turno 1', '21': 'Turno 2', '31': 'Turno 3', '41': 'Turno 4'
+            };
+            var productoLabel = {
+                '0': 'Todos', '1': 'T-Maxima Regular', '2': 'T-Super Premium', '3': 'Diesel'
+            };
+            var desde   = document.getElementById('from').value;
+            var hasta   = document.getElementById('until').value;
+            var turno   = document.getElementById('shift').value;
+            var prod    = document.getElementById('id_producto').value;
+            $('#filtros_activos_product').html(
+                `<span class="badge bg-secondary">Período: ${desde} – ${hasta}</span>` +
+                `<span class="badge bg-info text-dark">Turno: ${turnoLabel[turno] || turno}</span>` +
+                `<span class="badge bg-warning text-dark">Producto: ${productoLabel[prod] || prod}</span>`
+            );
         },
         footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            var tfoot = $(api.table().footer());
+            if (!tfoot.length) return;
 
+            // Reconstruir la fila de totales si no existe
+            if (!tfoot.find('tr').length) {
+                var headerCells = $(api.table().header()).find('tr:first th');
+                var footRow = $('<tr class="total_bg fw-bold"></tr>');
+                headerCells.each(function(i) {
+                    footRow.append($('<th class="text-end"></th>'));
+                });
+                tfoot.append(footRow);
+            }
+
+            var footCells = tfoot.find('tr th');
+
+            // Índice de inicio de columnas de estaciones (4 fijas + Producto = 5)
+            var fixedCols = 5;
+            footCells.each(function(colIdx) {
+                if (colIdx === 0) {
+                    $(this).text('TOTAL').addClass('text-start');
+                    return;
+                }
+                if (colIdx < fixedCols) {
+                    $(this).text('');
+                    return;
+                }
+                // Sumar solo filas que NO sean fila de totales (codprd != '0')
+                var total = api.column(colIdx, { page: 'all' }).data().reduce(function(acc, val, idx) {
+                    var rowData = api.row(idx).data();
+                    if (!rowData || rowData['codprd'] == '0') return acc;
+                    var num = parseFloat(String(val).replace(/,/g, '')) || 0;
+                    return acc + num;
+                }, 0);
+                $(this).text(
+                    total > 0
+                        ? total.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+                        : '—'
+                );
+            });
         },
-      
     });
-    
+
     $('.sales_day_table').on('click', function () {
         sales_day_table.clear().draw();
         sales_day_table.ajax.reload();
@@ -2267,7 +2320,12 @@ async function sales_day_table(dynamicColumns){
         columns.push({
             data: `${cod}`,
             title: `${station_name}`,
-            className: 'text-end text-nowrap'
+            className: 'text-end text-nowrap',
+            render: function(data) {
+                var num = parseFloat(data);
+                if (!data || isNaN(num) || num === 0) return '<span class="text-muted">—</span>';
+                return num.toLocaleString('es-MX', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+            }
         });
         rowContent += `<th class="header_small">${station_name}</th>`;
     });
@@ -2487,7 +2545,7 @@ async function sale_day_base_table(){
         columns: [
             {'data': 'Fecha'},
             {'data': 'year'},
-            {'data': 'mounth'},
+            {'data': 'month'},
             {'data': 'day'},
             {'data': 'CodGasolinera'},
             {'data': 'turn'},
@@ -2506,6 +2564,18 @@ async function sale_day_base_table(){
 
         },
         footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            // Suma solo las filas filtradas (search aplicado)
+            var total = api
+                .column(6, { search: 'applied' })
+                .data()
+                .reduce(function (acc, val) {
+                    var num = parseFloat(String(val).replace(/,/g, '')) || 0;
+                    return acc + num;
+                }, 0);
+            $('#sale_day_base_total').text(
+                total.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            );
         }
     });
 }

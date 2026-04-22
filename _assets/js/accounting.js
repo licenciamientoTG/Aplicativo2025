@@ -299,6 +299,7 @@ let isTableInitialized = false; // Bandera para saber si la tabla ya está inici
                 {'data': 'UUID'},
                 {'data': 'Descripcion'},
                 {'data': 'FormaPago'},
+                {'data': 'TotalLitros', 'render': $.fn.dataTable.render.number(',', '.', 3)},
             ],
             rowId: 'Folio',
             createdRow: function (row, data, dataIndex) {
