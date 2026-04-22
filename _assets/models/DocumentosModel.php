@@ -1444,9 +1444,9 @@ class DocumentosModel extends Model{
             NULLIF(t1.can, 0) AS Cantidad,
             NULLIF(t1.pre, 0) AS Precio,
             (t1.mto / 100) AS Monto
-        FROM Documentos t1
-        LEFT JOIN (SELECT * FROM Efectos WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
-        LEFT JOIN Productos t3 ON t1.codprd = t3.cod
+        FROM [SG12].[dbo].[Documentos] t1
+        LEFT JOIN (SELECT * FROM [SG12].[dbo].[Efectos] WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
+        LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
         WHERE t1.codgas = {$codgas} AND t1.nro = {$nro} AND t1.satdat IN ('@e:7','@e:2','@e:4') AND t1.codcpt NOT IN (4) AND t1.codcpt > 0
         ";
 
@@ -1456,8 +1456,8 @@ class DocumentosModel extends Model{
     function get_receptions($codgas, $nro) {
         $query = "
         SELECT t1.nrotrn,
-        t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM MovimientosTan t1
-        LEFT JOIN Tanques t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 3
+        t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM [SG12].[dbo].[MovimientosTan] t1
+        LEFT JOIN [SG12].[dbo].[Tanques] t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 3
         ";
         
         if ($rs=$this->sql->select($query, [])) {
@@ -1465,8 +1465,8 @@ class DocumentosModel extends Model{
         } else {
             $query = "
             SELECT t1.nrotrn,
-            t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM MovimientosTan t1
-            LEFT JOIN Tanques t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 4
+            t2.nrotf1 AS Tanque, CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha, t1.hratrn, t1.volrec AS VolumenRecibido FROM [SG12].[dbo].[MovimientosTan] t1
+            LEFT JOIN [SG12].[dbo].[Tanques] t2 ON t1.codtan = t2.cod WHERE t1.nrodoc = {$nro} AND t1.codgas = {$codgas} AND t1.tiptrn = 4
             ";
             return ($rs=$this->sql->select($query, [])) ? $rs : false ;
         }
@@ -1490,9 +1490,9 @@ class DocumentosModel extends Model{
             NULLIF(t1.can, 0) AS Cantidad,
             NULLIF(t1.pre, 0) AS Precio,
             (t1.mto / 100) AS Monto
-        FROM Documentos t1
-        LEFT JOIN (SELECT * FROM Efectos WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
-        LEFT JOIN Productos t3 ON t1.codprd = t3.cod
+        FROM [SG12].[dbo].[Documentos] t1
+        LEFT JOIN (SELECT * FROM [SG12].[dbo].[Efectos] WHERE subope = 2) t2 ON t1.codcpt = t2.nrocpt
+        LEFT JOIN [SG12].[dbo].[Productos] t3 ON t1.codprd = t3.cod
         INNER JOIN (VALUES {$values}) AS f(codgas, nro)
             ON t1.codgas = f.codgas AND t1.nro = f.nro
         WHERE t1.satdat IN ('@e:7','@e:2','@e:4')
@@ -1522,8 +1522,8 @@ class DocumentosModel extends Model{
             CONVERT(date, DATEADD(DAY, t1.fchtrn, '1899-12-31')) AS Fecha,
             t1.hratrn,
             t1.volrec AS VolumenRecibido
-        FROM MovimientosTan t1
-        LEFT JOIN Tanques t2 ON t1.codtan = t2.cod
+        FROM [SG12].[dbo].[MovimientosTan] t1
+        LEFT JOIN [SG12].[dbo].[Tanques] t2 ON t1.codtan = t2.cod
         INNER JOIN (VALUES {$values}) AS f(codgas, nro)
             ON t1.codgas = f.codgas AND t1.nrodoc = f.nro
         WHERE t1.tiptrn IN (3, 4)
