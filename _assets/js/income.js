@@ -2266,6 +2266,11 @@ async function clients_dispatches_table(tipo) {
     var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
     var tipval   = tipo === 'debit' ? 4 : 3;
 
+    if (!codcli) {
+        alertify.myAlert('<div class="text-center text-warning"><h5>Selecciona un cliente</h5><p>Debes elegir un cliente antes de consultar.</p></div>');
+        return;
+    }
+
     if ($.fn.DataTable.isDataTable('#' + tableId)) {
         $('#' + tableId).DataTable().destroy();
         $('#' + tableId + ' thead .filter').remove();
