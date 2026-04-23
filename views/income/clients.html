@@ -2,138 +2,264 @@
 {% block title %}Clientes Reporte{% endblock %}
 {% block mycss %}
 <style>
-    tr.group,
-tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.1) !important;
-}
- 
-:root.dark tr.group,
-:root.dark tr.group:hover {
-    background-color: rgba(0, 0, 0, 0.75) !important;
-}
-.column_estation{
-    background-color: #add5e6 !important;
-    color: white !important;
-}
-.total_bg{
-    background-color: #48A1C7 !important;
-    color: white !important;
-}
-.total_bg2{
-    background-color:#48A1C7 !important;
-    color: white !important;
-
-}
-
-.border_center{
-    border-top: 1px dotted  #358f92 !important;
-    border-bottom: 1px dotted  #358f92 !important;
-    border-left: 1px dotted #358f92 !important;
-    border-right: 1px dotted  #358f92 !important;
-}
-
-
+tr.group, tr.group:hover { background-color: rgba(0,0,0,.1) !important; }
+:root.dark tr.group, :root.dark tr.group:hover { background-color: rgba(0,0,0,.75) !important; }
 table.dataTable thead th, table.dataTable thead td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
+    padding: 10px 18px; border-bottom: 1px solid #dee2e6;
+    background-color: #3485a8 !important; color: #fff !important;
 }
-
 table.dataTable tfoot th, table.dataTable tfoot td {
-    padding: 10px 18px;
-    border-bottom: 1px solid #dee2e6;
-    background-color:  #3485a8 !important;
-    color: #ffffff !important;
-
-}
-.border_OG{
-    border: 0.5px solid #0c202091 !important;
-    background-color: #6d7277e8;
+    padding: 10px 18px; border-bottom: 1px solid #dee2e6;
+    background-color: #3485a8 !important; color: #fff !important;
 }
 </style>
 {% endblock %}
-{% block menutitle %}Clientes Debito{% endblock %}
+{% block menutitle %}Clientes{% endblock %}
 {% block content %}
+
 <ul class="nav nav-tabs" id="myTab" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="debit_clients-tab" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button" role="tab" aria-controls="debit_clients" aria-selected="true">Debito</button>
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#debit_clients" type="button">Débito</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link " id="credit_clients-tab" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button" role="tab" aria-controls="credit_clients" aria-selected="true">Credito</button>
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_clients" type="button">Crédito</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#debit_consumos" type="button">Consumos Débito</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#credit_consumos" type="button">Consumos Crédito</button>
     </li>
 </ul>
 
 <div class="tab-content">
-    <div class="tab-pane active" id="debit_clients" role="tabpanel" aria-labelledby="debit_clients-tab">
-         <div class="card">
+
+    {# ── TAB 1: DÉBITO ── #}
+    <div class="tab-pane active" id="debit_clients" role="tabpanel">
+        <div class="card">
             <div class="card-body">
                 <div class="row">
-
-                    <div class="col-2 ">
-                        <label class="col-form-label-sm" for="">Estatus </label>
-                        <select class="form-control form-control-sm" name="status" id="status" required>
+                    <div class="col-2">
+                        <label class="col-form-label-sm">Estatus</label>
+                        <select class="form-control form-control-sm" id="status_debit">
                             <option value="0">Todos</option>
                             <option value="1">Suspendido</option>
                             <option value="2">Activos</option>
                         </select>
                     </div>
-                    <div class="col-2 " >
-                        <button id="seach_clients_debit" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 15px;">Generar Reporte</button>
+                    <div class="col-2">
+                        <button id="seach_clients_debit" class="btn btn-sm btn-primary" style="width:100%;margin-top:15px;">
+                            Generar Reporte
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
         <div class="card">
-            <div class="card-header">
-                <h5 class="card-title">Clientes Debito </h5>
-            </div>
-            <div class="card-body table-responsive" >
+            <div class="card-header"><h5 class="card-title">Clientes Débito</h5></div>
+            <div class="card-body table-responsive">
                 <table id="clients_debit_table" class="table table-hover table-sm w-100">
                     <thead>
                         <tr>
-                            <th>Codigo</th>
-                            <th>Nombre</th>
-                            <th>Saldo</th>
-                            <th>Estatus</th>
-                            <th>Domicilio</th>
-                            <th>RFC</th>
+                            <th>Código</th><th>Nombre</th><th>Saldo</th>
+                            <th>Estatus</th><th>Domicilio</th><th>RFC</th>
                         </tr>
                     </thead>
-                    <tbody>
-                    </tbody>
+                    <tbody></tbody>
                     <tfoot>
                         <tr>
-                            <th>Codigo</th>
-                            <th>Nombre</th>
-                            <th>Saldo</th>
-                            <th>Estatus</th>
-                            <th>Domicilio</th>
-                            <th>RFC</th>
+                            <th>Código</th><th>Nombre</th><th>Saldo</th>
+                            <th>Estatus</th><th>Domicilio</th><th>RFC</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div> 
+
+    {# ── TAB 2: CRÉDITO ── #}
+    <div class="tab-pane" id="credit_clients" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-2">
+                        <label class="col-form-label-sm">Estatus</label>
+                        <select class="form-control form-control-sm" id="status_credit">
+                            <option value="0">Todos</option>
+                            <option value="1">Suspendido</option>
+                            <option value="2">Activos</option>
+                        </select>
+                    </div>
+                    <div class="col-2">
+                        <button id="seach_clients_credit" class="btn btn-sm btn-primary" style="width:100%;margin-top:15px;">
+                            Generar Reporte
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h5 class="card-title">Clientes Crédito</h5></div>
+            <div class="card-body table-responsive">
+                <table id="clients_credit_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>Nombre</th><th>Saldo</th><th>Límite Crédito</th>
+                            <th>Cond. Pago</th><th>Estatus</th><th>Domicilio</th><th>RFC</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Código</th><th>Nombre</th><th>Saldo</th><th>Límite Crédito</th>
+                            <th>Cond. Pago</th><th>Estatus</th><th>Domicilio</th><th>RFC</th>
                         </tr>
                     </tfoot>
                 </table>
             </div>
         </div>
     </div>
-    <div class="tab-pane " id="credit_clients" role="tabpanel" aria-labelledby="credit_clients-tab">
-       
+
+    {# ── TAB 3: CONSUMOS DÉBITO ── #}
+    <div class="tab-pane" id="debit_consumos" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                    <div class="col-4" >
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_debit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            {% for c in clientes_debit %}
+                            <option value="{{ c.cod }}">{{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Desde</label>
+                        <input type="date" class="form-control form-control-sm" id="from_debit" value="{{ 'now'|date('Y-m-01') }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" id="until_debit" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                    
+                </div>
+                <div class="row">
+                    <div class="col-auto">
+                        <button id="btn_debit_consumos" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h5 class="card-title">Consumos por Cliente Débito</h5></div>
+            <div class="card-body table-responsive">
+                <table id="debit_consumos_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Nro. Despacho</th><th>Estación</th>
+                            <th>Litros</th><th>Monto</th><th>producto</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Nro. Despacho</th><th>Estación</th>
+                            <th>Litros</th><th>Monto</th><th>producto</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── TAB 4: CONSUMOS CRÉDITO ── #}
+    <div class="tab-pane" id="credit_consumos" role="tabpanel">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-2 mb-2">
+                     <div class="col-4" >
+                        <label class="col-form-label-sm">Cliente</label>
+                        <select class="selectpicker" id="cliente_credit" data-live-search="true" data-size="10" data-width="100%" title="Seleccionar cliente...">
+                            {% for c in clientes_credit %}
+                            <option value="{{ c.cod }}">{{ c.den }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Desde</label>
+                        <input type="date" class="form-control form-control-sm" id="from_credit" value="{{ 'now'|date('Y-m-01') }}">
+                    </div>
+                    <div class="col-auto">
+                        <label class="col-form-label-sm">Hasta</label>
+                        <input type="date" class="form-control form-control-sm" id="until_credit" value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                    
+                </div>
+                <div class="row">
+                    <div class="col-auto">
+                        <button id="btn_credit_consumos" class="btn btn-sm btn-primary">
+                            <i class="fas fa-search"></i> Consultar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header"><h5 class="card-title">Consumos por Cliente Crédito</h5></div>
+            <div class="card-body table-responsive">
+                <table id="credit_consumos_table" class="table table-hover table-sm w-100">
+                    <thead>
+                        <tr>
+                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Nro. Despacho</th><th>Estación</th>
+                            <th>Litros</th><th>Monto</th> 
+                            <th>producto</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <th>Cliente</th><th>Cód.</th><th>Fecha</th><th>Hora</th>
+                            <th>Nro. Despacho</th><th>Estación</th>
+                            <th>Litros</th><th>Monto</th><th>producto</th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
     </div>
 
 </div>
-
 {% endblock %}
-{% block myjs %}
 
-<!-- <script src="{{ JS }}income.js"></script> -->
+{% block myjs %}
 <script src="{{ JS }}income.js"></script>
 <script>
-$('#seach_clients_debit').on('click', function() {
+// ── Débito list ──
+$('#seach_clients_debit').on('click', function () {
     clients_debit_table();
 });
 
+// ── Crédito list ──
+$('#seach_clients_credit').on('click', function () {
+    clients_credit_table();
+});
+
+// ── Consumos Débito ──
+$('#btn_debit_consumos').on('click', function () {
+    // $('#cliente_debit').selectpicker('hide');
+    clients_dispatches_table('debit');
+});
+
+// ── Consumos Crédito ──
+$('#btn_credit_consumos').on('click', function () {
+    // $('#cliente_credit').selectpicker('hide');
+    clients_dispatches_table('credit');
+});
+
 </script>
-
-
 {% endblock %}

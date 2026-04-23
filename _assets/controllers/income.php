@@ -66,7 +66,10 @@ class Income{
 
     public function clients(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
-            echo $this->twig->render($this->route . 'clients.html');
+            // $gasolineras    = $this->clientesModel->get_gasolineras();
+            $clientes_debit = $this->clientesModel->get_debit_clients_list();
+            $clientes_credit = $this->clientesModel->get_credit_clients_list();
+            echo $this->twig->render($this->route . 'clients.html', compact('clientes_debit','clientes_credit'));
         }
     }
 
@@ -240,7 +243,7 @@ public function balance_age()
                 );
             }
         }
-    
+     
         json_output(array("data" => $data));
     }
 
@@ -252,16 +255,67 @@ public function balance_age()
                     'cod'    => $client['cod'],
                     'den'    => $client['den'],
                     'status' => $client['status'],
-                    'status' => $client['status'],
                     'dom'    => $client['dom'],
                     'rfc'    => $client['rfc'],
-                    'debsdo'    => $client['debsdo'],
-                   
+                    'debsdo' => $client['debsdo'],
                 );
             }
         }
-    
         json_output(array("data" => $data));
+    }
+
+    public function clients_credit_table() : void {
+        $data = [];
+        if ($clients = $this->clientesModel->get_clients_credit($_POST['status'] ?? 0)) {
+            foreach ($clients as $client) {
+                $data[] = [
+                    'cod'     => $client['cod'],
+                    'den'     => $client['den'],
+                    'status'  => $client['status'],
+                    'dom'     => $client['dom'],
+                    'rfc'     => $client['rfc'],
+                    'cresdo'  => $client['cresdo'],
+                    'mtoasg'  => $client['mtoasg'],
+                    'cndpag'  => $client['cndpag'],
+                ];
+            }
+        }
+        json_output(["data" => $data]);
+    }
+
+    public function clients_list() : void {
+        $rows = $this->clientesModel->search_credit_and_debits_clients();
+        json_output($rows ?: []);
+    }
+
+    public function clients_dispatches_table() : void {
+        $from   = $this->createDateTime($_POST['from']  ?? date('Y-m-d', strtotime('-30 days')));
+        $until  = $this->createDateTime($_POST['until'] ?? date('Y-m-d'));
+        $tipval = (int)($_POST['tipval']  ?? 4);
+        $codcli = (int)($_POST['codcli']  ?? 0);
+
+        $data = [];
+        if ($rows = $this->clientesModel->get_dispatches_by_client(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d')),
+            $tipval,
+            $codcli
+        )) {
+            foreach ($rows as $r) {
+                $data[] = [
+                    'Cliente'  => $r['Cliente'],
+                    'codcli'   => $r['codcli'],
+                    'Fecha'    => $r['Fecha'],
+                    'hratrn'   => $r['hratrn'],
+                    'nrotrn'   => $r['nrotrn'],
+                    'Litros'   => $r['Litros'],
+                    'Monto'    => $r['Monto'],
+                    'Estacion' => $r['Estacion'],
+                    'producto' => $r['producto'],
+                ];
+            }
+        }
+        json_output(["data" => $data]);
     }
    
 
@@ -2193,7 +2247,6 @@ public function anomalies_client_tickets()
             $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
             $tabla = ($banco == 'BANORTE') ? 'banco_banorte' : 'banco_getnet';
-            
             // Obtener huellas existentes
             $stmt = $conn->query("SELECT Afiliacion, ID_Externo, Fecha_Transaccion, Monto, Hora, Codigo_Autorizacion, Referencia, Terminal FROM $tabla");
             $huellas = [];
@@ -2206,7 +2259,7 @@ public function anomalies_client_tickets()
                 $auth_db   = trim((string)$row['Codigo_Autorizacion']);
                 $ref_db    = trim((string)$row['Referencia']);
                 $term_db   = trim((string)$row['Terminal']);
-                
+
                 $key = "$afil_db|$id_ext_db|$fch_db|$monto_db|$hora_db|$auth_db|$ref_db|$term_db";
                 $huellas[$key] = true;
             }
@@ -2230,7 +2283,7 @@ public function anomalies_client_tickets()
                 $term = trim((string)$row['Terminal']);
 
                 $key = "$afil|$id_ext|$fch|$monto|$hora|$auth|$ref|$term";
-                
+
                 if (isset($huellas[$key])) {
                     continue; // Skip duplicate
                 }

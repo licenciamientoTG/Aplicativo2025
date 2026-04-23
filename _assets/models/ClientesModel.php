@@ -46,7 +46,7 @@ class ClientesModel extends Model{
     public $pai;
     public $correo;
     public $dattik;
-    public $ptodebacu;
+    public $ptodebacu; 
     public $ptodebfch;
     public $ptocreacu;
     public $ptocrefch;
@@ -117,7 +117,7 @@ class ClientesModel extends Model{
                     t1.cod,
                     t1.den,
                     t1.tipval,
-                    case 
+                    case
                         When t1.codest = 1  then \'suspendido\'
                         When t1.codest =  0 then \'Activo\'
                         else \'NA\'
@@ -125,10 +125,65 @@ class ClientesModel extends Model{
                     t1.dom,
                     t1.rfc, t1.debsdo
                     FROM [SG12].[dbo].[Clientes] t1
-                    where 
+                    where
                     tipval = 4 '. $query_status;
         $params = [];
         return $this->sql->select($query, $params) ?: false ;
+    }
+
+    public function get_clients_credit($status) : array|false {
+        $query_status = '';
+        if ($status == 0) {
+            $query_status = ' ';
+        } elseif ($status == 1) {
+            $query_status = ' AND t1.codest = 1';
+        } elseif ($status == 2) {
+            $query_status = ' AND t1.codest = 0';
+        } else {
+            return false;
+        }
+        $query = 'SELECT
+                    t1.cod,
+                    t1.den,
+                    t1.tipval,
+                    CASE
+                        WHEN t1.codest = 1 THEN \'Suspendido\'
+                        WHEN t1.codest = 0 THEN \'Activo\'
+                        ELSE \'NA\'
+                    END AS [status],
+                    t1.dom,
+                    t1.rfc,
+                    t1.cresdo,
+                    t1.mtoasg,
+                    t1.cndpag
+                FROM [SG12].[dbo].[Clientes] t1
+                WHERE tipval = 3' . $query_status . '
+                ORDER BY t1.den';
+        return $this->sql->select($query, []) ?: false;
+    }
+
+    public function get_dispatches_by_client(int $from, int $until, int $tipval, int $codcli = 0) : array|false {
+        $cli_filter = $codcli > 0 ? "AND t1.codcli = {$codcli}" : '';
+        $query = "SELECT
+                    t2.den AS Cliente,
+                    t1.codcli,
+                    CAST(CONVERT(VARCHAR(10), CAST(t1.fchtrn AS DATETIME) - 1, 23) AS VARCHAR(10)) AS Fecha,
+                    t1.hratrn,
+                    t1.nrotrn,
+                    t1.can   AS Litros,
+                    t1.mto   AS Monto,
+                    t4.abr   AS Estacion,
+                    t3.den as producto
+                FROM [SG12].[dbo].[Despachos] t1 WITH (NOLOCK)
+                LEFT JOIN [SG12].[dbo].[Clientes]    t2 ON t1.codcli = t2.cod
+                LEFT JOIN [SG12].[dbo].[Gasolineras] t4 ON t1.codgas = t4.cod
+                LEFT JOIn [SG12].[dbo].[Productos] t3 on t1.codprd = t3.cod
+                WHERE t1.fchtrn BETWEEN {$from} AND {$until}
+                    AND t1.codcli > 0
+                    AND t2.tipval = {$tipval}
+                    {$cli_filter}
+                ORDER BY t2.den, t1.fchtrn, t1.hratrn";
+        return $this->sql->select($query) ?: false;
     }
 
     /**
@@ -177,14 +232,23 @@ class ClientesModel extends Model{
         return $this->sql->select($query);
     }
 
+    function get_debit_clients_list() : array {
+        $query = "SELECT cod, den FROM [SG12].[dbo].[Clientes] WHERE tipval = 4 and codest =0  ORDER BY den;";
+        return $this->sql->select($query) ?: [];
+    }
+    function get_credit_clients_list() : array {
+        $query = "SELECT cod, den FROM [SG12].[dbo].[Clientes] WHERE tipval = 3 and codest =0  ORDER BY den;";
+        return $this->sql->select($query) ?: [];
+    }
+
 // Para el reporte de antiguedad de saldos
 
 // Obtiene opciones para el <select> de estaciones
-public function get_gasolineras(): array
-{
-    $sql = "SELECT cod, den FROM [SG12].dbo.Gasolineras WHERE ISNULL(codest,0) <> -1 and cod not in (0,4,20) ORDER BY den";
-    return $this->sql->select($sql, []) ?: [];
-}
+    public function get_gasolineras(): array
+    {
+        $query = "SELECT cod, den FROM [SG12].dbo.Gasolineras WHERE ISNULL(codest,0) <> -1 and cod not in (0,4,20) ORDER BY den";
+        return $this->sql->select($query, []) ?: [];
+    }
 
 // Reporte estricto: CtaDde=CtaHta y GasDde=GasHta (SIN rangos)
 public function get_balance_age(int $cta, int $gas): array|false

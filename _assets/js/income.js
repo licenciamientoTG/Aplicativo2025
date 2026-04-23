@@ -1803,7 +1803,9 @@ async function clients_debit_table(){
         $('#clients_debit_table thead .filter').remove();
 
     }
-    var status = document.getElementById('status').value;
+    var status = document.getElementById('status_debit')
+        ? document.getElementById('status_debit').value
+        : document.getElementById('status').value;
 
     $('#clients_debit_table thead').prepend($('#clients_debit_table thead tr').clone().addClass('filter'));
     $('#clients_debit_table thead tr.filter th').each(function (index) {
@@ -1835,7 +1837,7 @@ async function clients_debit_table(){
                 className: 'btn btn-success',
                 text: ' Excel'
             },
-        ],
+        ], 
         ajax: {
             method: 'POST',
             data: {
@@ -2197,6 +2199,138 @@ async function cargarGraficaDesdeController() {
       }
     }
   });
+}
+
+// ── Clientes Crédito ────────────────────────────────────────────────────────
+
+async function clients_credit_table() {
+    if ($.fn.DataTable.isDataTable('#clients_credit_table')) {
+        $('#clients_credit_table').DataTable().destroy();
+        $('#clients_credit_table thead .filter').remove();
+    }
+    var status = document.getElementById('status_credit').value;
+
+    $('#clients_credit_table thead').prepend($('#clients_credit_table thead tr').clone().addClass('filter'));
+    $('#clients_credit_table thead tr.filter th').each(function (index) {
+        var col = $('#clients_credit_table thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#clients_credit_table thead tr.filter th input').on('keyup change', function () {
+        $('#clients_credit_table').DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    $('#clients_credit_table').DataTable({
+        order: [[1, 'asc']],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            data: { 'status': status },
+            url: '/income/clients_credit_table',
+            timeout: 600000,
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'cod' },
+            { data: 'den', className: 'text-nowrap' },
+            { data: 'cresdo', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+            { data: 'mtoasg', render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-nowrap text-end' },
+            { data: 'cndpag', className: 'text-center' },
+            { data: 'status', className: 'text-center' },
+            { data: 'dom' },
+            { data: 'rfc' },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); }
+    });
+}
+
+// ── Consumos por Cliente (Débito tipval=4 / Crédito tipval=3) ───────────────
+
+async function clients_dispatches_table(tipo) {
+    var tableId  = tipo === 'debit' ? 'debit_consumos_table' : 'credit_consumos_table';
+    var from     = tipo === 'debit' ? $('#from_debit').val()     : $('#from_credit').val();
+    var until    = tipo === 'debit' ? $('#until_debit').val()    : $('#until_credit').val();
+    var codcli   = tipo === 'debit' ? $('#cliente_debit').val()  : $('#cliente_credit').val();
+    var tipval   = tipo === 'debit' ? 4 : 3;
+
+    if ($.fn.DataTable.isDataTable('#' + tableId)) {
+        $('#' + tableId).DataTable().destroy();
+        $('#' + tableId + ' thead .filter').remove();
+    }
+
+    $('#' + tableId + ' thead').prepend($('#' + tableId + ' thead tr').clone().addClass('filter'));
+    $('#' + tableId + ' thead tr.filter th').each(function (index) {
+        var col = $('#' + tableId + ' thead th').length / 2;
+        if (index < col) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="form-control form-control-sm" placeholder=" ' + title + '" />');
+        }
+    });
+    $('#' + tableId + ' thead tr.filter th input').on('keyup change', function () {
+        $('#' + tableId).DataTable()
+            .column($(this).parent().index())
+            .search(this.value).draw();
+    });
+
+    $('#' + tableId).DataTable({
+        order: [[0, 'asc'], [2, 'asc']],
+        colReorder: true,
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        paging: true,
+        pageLength: 100,
+        buttons: [{ extend: 'excel', className: 'btn btn-success', text: ' Excel' }],
+        ajax: {
+            method: 'POST',
+            data: { 'from': from, 'until': until, 'codcli': codcli, 'tipval': tipval },
+            url: '/income/clients_dispatches_table',
+            timeout: 600000,
+            error: function () {
+                $('.table-responsive').removeClass('loading');
+                alertify.myAlert('<div class="text-center text-danger"><h4>¡Error!</h4><p>No existen registros con los parámetros dados.</p></div>');
+            },
+            beforeSend: function () { $('.table-responsive').addClass('loading'); }
+        },
+        columns: [
+            { data: 'Cliente',  className: 'text-nowrap' },
+            { data: 'codcli' },
+            { data: 'Fecha',    className: 'text-center' },
+            { data: 'hratrn',   className: 'text-center', render: function(d) {
+                if (!d) return '';
+                var n = parseInt(d, 10);
+                if (isNaN(n)) return d;
+                var h = Math.floor(n / 100), m = n % 100, ap = h >= 12 ? 'PM' : 'AM';
+                h = h % 12 || 12;
+                return h.toString().padStart(2,'0') + ':' + m.toString().padStart(2,'0') + ' ' + ap;
+            }},
+            { data: 'nrotrn',   className: 'text-center' },
+            { data: 'Estacion', className: 'text-nowrap' },
+            { data: 'Litros',   render: $.fn.dataTable.render.number(',', '.', 3, ''), className: 'text-end' },
+            { data: 'Monto',    render: $.fn.dataTable.render.number(',', '.', 2, '$'), className: 'text-end' },
+            { data: 'producto' },
+        ],
+        deferRender: true,
+        initComplete: function () { $('.table-responsive').removeClass('loading'); },
+        footerCallback: function (row, data, start, end, display) {
+            var api = this.api();
+            var litrosTotal = api.column(6, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            var montoTotal  = api.column(7, { page: 'current' }).data().reduce(function (a, b) { return (parseFloat(a)||0) + (parseFloat(b)||0); }, 0);
+            $(api.column(6).footer()).html(litrosTotal.toLocaleString('es-MX', {minimumFractionDigits:3}));
+            $(api.column(7).footer()).html('$' + montoTotal.toLocaleString('es-MX', {minimumFractionDigits:2}));
+        }
+    });
 }
 
 // cargarGraficaDesdeController();
