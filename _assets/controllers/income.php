@@ -317,7 +317,7 @@ public function balance_age()
         }
         json_output(["data" => $data]);
     }
-   
+
 
     /**
      * @return void
@@ -412,7 +412,6 @@ public function balance_age()
         $data = [];
         $from = dateToInt($_POST['from']);
         $until = dateToInt($_POST['until']);
-    
         if ($facturas = $this->documentosModel->relation_invoice_advance($from, $until)) {
 
             foreach ($facturas as $factura) {
