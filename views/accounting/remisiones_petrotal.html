@@ -110,63 +110,131 @@
                 <h5 class="modal-title text-white" id="modalAyudaLabel">
                     <i class="fas fa-question-circle me-2"></i> ¿Cómo usar Remisiones Petrotal?
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Cerrar"></button>
             </div>
             <div class="modal-body">
 
                 <!-- Paso 1 -->
                 <h6 class="fw-bold text-primary"><i class="fas fa-file-excel me-2"></i>1. Preparar el archivo Excel</h6>
-                <p>El archivo debe ser <strong>.xlsx</strong> o <strong>.xls</strong>. Puede tener filas de título o filas vacías al inicio — el sistema las ignora automáticamente buscando la fila que contenga los encabezados reales.</p>
-                <p>La fila de encabezados <strong>debe contener exactamente</strong> las siguientes columnas <strong>en este orden</strong>:</p>
+                <p>El archivo debe ser <strong>.xlsx</strong> o <strong>.xls</strong>. Puede tener filas de título o
+                    filas vacías al inicio — el sistema las ignora automáticamente buscando la fila que contenga los
+                    encabezados reales.</p>
+                <p>La fila de encabezados <strong>debe contener exactamente</strong> las siguientes columnas <strong>en
+                        este orden</strong>:</p>
                 <div class="table-responsive mb-3">
                     <table class="table table-bordered table-sm">
                         <thead class="table-dark">
-                            <tr><th>#</th><th>Nombre de la columna</th><th>Descripción</th></tr>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre de la columna</th>
+                                <th>Descripción</th>
+                            </tr>
                         </thead>
                         <tbody>
-                            <tr><td>1</td><td>Lugar</td><td>Ciudad o lugar de origen de la remisión</td></tr>
-                            <tr><td>2</td><td>Fecha</td><td>Fecha del documento</td></tr>
-                            <tr><td>3</td><td>Razón Social</td><td>Nombre fiscal del cliente</td></tr>
-                            <tr><td>4</td><td>RFC</td><td>RFC del cliente</td></tr>
-                            <tr><td>5</td><td>Dirección Fiscal</td><td>Domicilio fiscal del cliente</td></tr>
-                            <tr><td>6</td><td>Cantidad</td><td>Volumen en litros del producto (se formateará con miles y 3 decimales)</td></tr>
-                            <tr><td>7</td><td>Descripción</td><td>Descripción del producto petrolífero</td></tr>
-                            <tr><td>8</td><td>Lugar fisico de entrega de los petroliferos</td><td>Lugar donde se entregará físicamente el producto</td></tr>
-                            <tr><td>9</td><td>Fecha en que se desea la entrega de los de los petroliferos</td><td>Fecha deseada de entrega</td></tr>
-                            <tr><td>10</td><td>Domicilio estación</td><td>Dirección de la estación receptora</td></tr>
-                            <tr><td>11</td><td>Permiso de estación</td><td>Número de permiso de la estación</td></tr>
-                            <tr><td>12</td><td>Razón Social de estación</td><td>Nombre fiscal de la estación</td></tr>
+                            <tr>
+                                <td>1</td>
+                                <td>Lugar</td>
+                                <td>Ciudad o lugar de origen de la remisión</td>
+                            </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>Fecha</td>
+                                <td>Fecha del documento</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td>Razón Social</td>
+                                <td>Nombre fiscal del cliente</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td>RFC</td>
+                                <td>RFC del cliente</td>
+                            </tr>
+                            <tr>
+                                <td>5</td>
+                                <td>Dirección Fiscal</td>
+                                <td>Domicilio fiscal del cliente</td>
+                            </tr>
+                            <tr>
+                                <td>6</td>
+                                <td>Cantidad</td>
+                                <td>Volumen en litros del producto (se formateará con miles y 3 decimales)</td>
+                            </tr>
+                            <tr>
+                                <td>7</td>
+                                <td>Descripción</td>
+                                <td>Descripción del producto petrolífero</td>
+                            </tr>
+                            <tr>
+                                <td>8</td>
+                                <td>Lugar fisico de entrega de los petroliferos</td>
+                                <td>Lugar donde se entregará físicamente el producto</td>
+                            </tr>
+                            <tr>
+                                <td>9</td>
+                                <td>Fecha en que se desea la entrega de los de los petroliferos</td>
+                                <td>Fecha deseada de entrega</td>
+                            </tr>
+                            <tr>
+                                <td>10</td>
+                                <td>Domicilio estación</td>
+                                <td>Dirección de la estación receptora</td>
+                            </tr>
+                            <tr>
+                                <td>11</td>
+                                <td>Permiso de estación</td>
+                                <td>Número de permiso de la estación</td>
+                            </tr>
+                            <tr>
+                                <td>12</td>
+                                <td>Razón Social de estación</td>
+                                <td>Nombre fiscal de la estación</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
                 <div class="alert alert-warning py-2">
                     <i class="fas fa-exclamation-triangle me-1"></i>
-                    <strong>Importante:</strong> El sistema detecta la fila de encabezados buscando la celda que diga <code>Lugar</code> en la primera columna. Las filas anteriores a esa fila (títulos, logos, etc.) se ignoran automáticamente.
+                    <strong>Importante:</strong> El sistema detecta la fila de encabezados buscando la celda que diga
+                    <code>Lugar</code> en la primera columna. Las filas anteriores a esa fila (títulos, logos, etc.) se
+                    ignoran automáticamente.
                 </div>
 
                 <!-- Paso 2 -->
                 <h6 class="fw-bold text-primary mt-3"><i class="fas fa-upload me-2"></i>2. Cargar el archivo</h6>
-                <p>Haz clic en la zona punteada o <strong>arrastra y suelta</strong> el archivo directamente sobre ella. Una vez cargado, verás el nombre del archivo en verde y la tabla con todos los registros.</p>
+                <p>Haz clic en la zona punteada o <strong>arrastra y suelta</strong> el archivo directamente sobre ella.
+                    Una vez cargado, verás el nombre del archivo en verde y la tabla con todos los registros.</p>
                 <ul>
-                    <li>Usa la barra de búsqueda del DataTable para <strong>filtrar registros</strong> antes de generar las remisiones.</li>
+                    <li>Usa la barra de búsqueda del DataTable para <strong>filtrar registros</strong> antes de generar
+                        las remisiones.</li>
                     <li>El botón <strong>Limpiar</strong> borra los datos y permite cargar otro archivo.</li>
                 </ul>
 
                 <!-- Paso 3 -->
                 <h6 class="fw-bold text-primary mt-3"><i class="fas fa-file-alt me-2"></i>3. Generar remisiones</h6>
-                <p>Una vez cargados los datos, haz clic en el botón <span class="badge bg-warning text-dark"><i class="fas fa-file-alt me-1"></i>Generar remisiones</span> en la esquina superior derecha de la tabla.</p>
+                <p>Una vez cargados los datos, haz clic en el botón <span class="badge bg-warning text-dark"><i
+                            class="fas fa-file-alt me-1"></i>Generar remisiones</span> en la esquina superior derecha de
+                    la tabla.</p>
                 <ul>
                     <li>Se abrirá una <strong>nueva pestaña</strong> con todos los documentos generados.</li>
-                    <li>Si aplicaste un filtro en la tabla, <strong>solo se generarán los registros visibles</strong>.</li>
-                    <li>Cada registro genera un documento independiente con el formato oficial de <strong>PETROTAL, S.A. DE C.V.</strong></li>
+                    <li>Si aplicaste un filtro en la tabla, <strong>solo se generarán los registros visibles</strong>.
+                    </li>
+                    <li>Cada registro genera un documento independiente con el formato oficial de <strong>PETROTAL, S.A.
+                            DE C.V.</strong></li>
                 </ul>
 
                 <!-- Paso 4 -->
                 <h6 class="fw-bold text-primary mt-3"><i class="fas fa-print me-2"></i>4. Revisar e imprimir</h6>
                 <p>En la nueva pestaña puedes revisar cada documento en pantalla. Para imprimir:</p>
                 <ul>
-                    <li>Usa el botón <strong>Imprimir todo</strong> de la barra superior, o presiona <kbd>Ctrl</kbd> + <kbd>P</kbd>.</li>
-                    <li>En el diálogo de impresión, asegúrate de activar la opción <strong>"Gráficos de fondo"</strong> (o <em>Background graphics</em>) para que los colores de los encabezados se impriman correctamente.</li>
+                    <li>Usa el botón <strong>Imprimir todo</strong> de la barra superior, o presiona <kbd>Ctrl</kbd> +
+                        <kbd>P</kbd>.
+                    </li>
+                    <li>En el diálogo de impresión, asegúrate de activar la opción <strong>"Gráficos de fondo"</strong>
+                        (o <em>Background graphics</em>) para que los colores de los encabezados se impriman
+                        correctamente.</li>
                     <li>Cada remisión ocupa <strong>una página</strong>.</li>
                 </ul>
 
@@ -342,6 +410,8 @@
             }
 
             const logoUrl = window.location.origin + '/_assets/images/LogoPetrotal.png';
+            const sellosBase = window.location.origin + '/_assets/images/logos/SellosSinFondo/';
+            const totalSellos = 3;
 
             function esc(v) {
                 return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -364,6 +434,9 @@
             }
 
             const remisionesHTML = datos.map(function (r, idx) {
+                const selloUrl = sellosBase + (Math.floor(Math.random() * totalSellos) + 1) + '.png';
+                const selloOffset = (Math.random() * 120 - 70).toFixed(1);
+                const selloRotate = (Math.random() * 50 - 25).toFixed(1);
                 return `
                 <div class="remision">
                     <div class="doc-header">
@@ -398,16 +471,15 @@
                         ${fila('Fecha deseada de entrega:', r.fecha_entrega)}
                         ${fila('Domicilio estación:', r.domicilio_estacion)}
                         ${fila('Permiso estación:', r.permiso_estacion)}
-                        ${fila('Razón Social estación:', r.razon_social_estacion)}
+                        ${fila('Razón Social estación:', r.razon_social_estacion || r.razon_social)}
                     </table>
 
                     <div class="seccion">Información de Recepción</div>
                     <table class="info">
                         <tr><td class="lbl">Nombre:</td><td></td></tr>
-                        <tr><td class="lbl">Cargo:</td><td></td></tr>
                         <tr>
                             <td class="lbl lbl-top">Firma y/o sello de recepción:</td>
-                            <td class="celda-firma"></td>
+                            <td class="celda-firma" style="text-align:center;vertical-align:middle;"><img src="${selloUrl}" style="max-height:225px;max-width:360px;object-fit:contain;position:relative;left:${selloOffset}px;transform:rotate(${selloRotate}deg);mix-blend-mode:multiply;opacity:0.82;filter:contrast(1.15) saturate(0.85);" alt="Sello"></td>
                         </tr>
                         <tr>
                             <td class="lbl">Litros de incremento:</td>
