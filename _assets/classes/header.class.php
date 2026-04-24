@@ -50,7 +50,6 @@ require_once $_SERVER['DOCUMENT_ROOT'] . '/vendor/autoload.php';
 $loader = new \Twig\Loader\FilesystemLoader(ROOT);
 
 require_once __DIR__ . '/TgTwig.class.php';
-require_once __DIR__ . '/../models/PageVisitsModel.php';
 $twig = new TgTwig($loader, [
     'debug' => true,
 ]);
