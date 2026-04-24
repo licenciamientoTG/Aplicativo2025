@@ -88,6 +88,6 @@ class PageVisitsModel extends Model {
             GROUP BY controller, method
             ORDER BY days_inactive DESC;
         ";
-        return $this->sql->select($query, [$from, $to, $from, $to]) ?? [];
+        return $this->sql->select($query, [$from, $to]) ?? [];
     }
 }
