@@ -1,0 +1,206 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Dashboard de Uso{% endblock %}
+{% block menutitle %}Dashboard de Uso del Sistema{% endblock %}
+
+{% block mycss %}
+<style>
+    .stat-card { border-left: 4px solid; }
+    .stat-card.blue  { border-color: #3B7DDD; }
+    .stat-card.green { border-color: #28a745; }
+    .stat-card.orange{ border-color: #fd7e14; }
+    .stat-card.red   { border-color: #dc3545; }
+    .table th { font-size: 0.82rem; }
+    .table td { font-size: 0.85rem; }
+    .badge-page { font-family: monospace; font-size: 0.78rem; background: #e9ecef; color: #495057; padding: 2px 6px; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Filtro de fechas ── #}
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="/it/page_visits_dashboard" class="row g-3 align-items-end">
+            <div class="col-auto">
+                <label class="form-label fw-semibold">Desde</label>
+                <input type="date" name="from" class="form-control" value="{{ from }}">
+            </div>
+            <div class="col-auto">
+                <label class="form-label fw-semibold">Hasta</label>
+                <input type="date" name="to" class="form-control" value="{{ to }}">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+            </div>
+            <div class="col-auto text-muted small align-self-center">
+                Mostrando del <strong>{{ from }}</strong> al <strong>{{ to }}</strong>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── Tarjetas de resumen ── #}
+<div class="row mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card blue">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0"><h5 class="card-title text-muted">Páginas únicas visitadas</h5></div>
+                    <div class="col-auto"><i data-feather="bar-chart-2" class="text-primary" style="width:32px;height:32px"></i></div>
+                </div>
+                <h1 class="display-5 fw-normal mt-1 mb-3">{{ top_pages | length }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card green">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0"><h5 class="card-title text-muted">Usuarios activos</h5></div>
+                    <div class="col-auto"><i data-feather="users" class="text-success" style="width:32px;height:32px"></i></div>
+                </div>
+                <h1 class="display-5 fw-normal mt-1 mb-3">{{ top_users | length }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card orange">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0"><h5 class="card-title text-muted">Total de visitas</h5></div>
+                    <div class="col-auto"><i data-feather="activity" class="text-warning" style="width:32px;height:32px"></i></div>
+                </div>
+                {% set total = namespace(v=0) %}
+                {% for p in top_pages %}{% set total.v = total.v + p.total_visits %}{% endfor %}
+                <h1 class="display-5 fw-normal mt-1 mb-3">{{ total.v | number_format(0, '.', ',') }}</h1>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <div class="card stat-card red">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col mt-0"><h5 class="card-title text-muted">Páginas sin uso en período</h5></div>
+                    <div class="col-auto"><i data-feather="alert-circle" class="text-danger" style="width:32px;height:32px"></i></div>
+                </div>
+                <h1 class="display-5 fw-normal mt-1 mb-3">{{ unused_pages | length }}</h1>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+
+    {# ── Panel 1: Top páginas ── #}
+    <div class="col-xl-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="card-title mb-0"><i data-feather="bar-chart-2" class="me-2"></i>Páginas más visitadas</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>#</th><th>Página</th><th class="text-end">Visitas</th><th class="text-end">Usuarios únicos</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in top_pages %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
+                            <td class="text-end fw-semibold">{{ p.total_visits | number_format(0, '.', ',') }}</td>
+                            <td class="text-end">{{ p.unique_users }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Panel 2: Usuarios más activos ── #}
+    <div class="col-xl-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="card-title mb-0"><i data-feather="users" class="me-2"></i>Usuarios más activos</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>#</th><th>Usuario</th><th class="text-end">Visitas totales</th><th class="text-end">Páginas distintas</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for u in top_users %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ u.username }}</td>
+                            <td class="text-end fw-semibold">{{ u.total_visits | number_format(0, '.', ',') }}</td>
+                            <td class="text-end">{{ u.pages_visited }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Panel 3: Páginas con más alcance ── #}
+    <div class="col-xl-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="card-title mb-0"><i data-feather="globe" class="me-2"></i>Páginas con más alcance (usuarios únicos)</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>#</th><th>Página</th><th class="text-end">Usuarios únicos</th><th class="text-end">Visitas totales</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pages_reach %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
+                            <td class="text-end fw-semibold">{{ p.unique_users }}</td>
+                            <td class="text-end">{{ p.total_visits | number_format(0, '.', ',') }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {# ── Panel 4: Páginas sin uso en el período ── #}
+    <div class="col-xl-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="card-title mb-0"><i data-feather="alert-circle" class="me-2"></i>Páginas sin uso en el período seleccionado</h5></div>
+            <div class="card-body p-0">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr><th>#</th><th>Página</th><th class="text-end">Última visita</th><th class="text-end">Días inactiva</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in unused_pages %}
+                        <tr>
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
+                            <td class="text-end">{{ p.last_visit }}</td>
+                            <td class="text-end">
+                                <span class="badge {% if p.days_inactive > 30 %}bg-danger{% elseif p.days_inactive > 7 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ p.days_inactive }} días
+                                </span>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">¡Todas las páginas fueron visitadas en este período!</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block myjs %}
+{% endblock %}
