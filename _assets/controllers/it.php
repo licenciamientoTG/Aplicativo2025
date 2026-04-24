@@ -992,4 +992,27 @@ class It{
             'top_pages', 'top_users', 'pages_reach', 'unused_pages', 'from', 'to', 'total_visits'
         ));
     }
+
+    public function page_visits_user(int $user_id): void {
+        $allowed = [6382, 6371, 6177, 6296, 6274];
+        if (!in_array((int)$_SESSION['tg_user']['Id'], $allowed)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $to   = $_GET['to']   ?? date('Y-m-d');
+        $from = $_GET['from'] ?? date('Y-m-d', strtotime('-30 days'));
+
+        $user  = $this->pageVisitsModel->getUserInfo($user_id);
+        $pages = $this->pageVisitsModel->getUserPages($user_id, $from, $to);
+
+        if (!$user) {
+            (new Errors())->get404();
+            return;
+        }
+
+        echo $this->twig->render($this->route . 'page_visits_user.html', compact(
+            'user', 'pages', 'from', 'to'
+        ));
+    }
 }

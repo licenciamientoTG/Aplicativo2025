@@ -172,7 +172,7 @@
                         {% for u in top_users %}
                         <tr>
                             <td>{{ loop.index }}</td>
-                            <td>{{ u.username }}</td>
+                            <td><a href="/it/page_visits_user/{{ u.user_id }}?from={{ from }}&to={{ to }}">{{ u.username }}</a></td>
                             <td>{{ u.total_visits }}</td>
                             <td>{{ u.pages_visited }}</td>
                         </tr>

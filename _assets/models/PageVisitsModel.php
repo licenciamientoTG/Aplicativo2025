@@ -73,6 +73,35 @@ class PageVisitsModel extends Model {
         return $this->sql->select($query, [$from, $to]) ?? [];
     }
 
+    public function getUserPages(int $user_id, string $from, string $to): array {
+        $query = "
+            SELECT controller, method,
+                   SUM(visit_count)  AS total_visits,
+                   MIN(visit_date)   AS first_visit,
+                   MAX(visit_date)   AS last_visit
+            FROM [TG].[dbo].[tg_page_visits]
+            WHERE user_id = ? AND visit_date BETWEEN ? AND ?
+            GROUP BY controller, method
+            ORDER BY total_visits DESC;
+        ";
+        return $this->sql->select($query, [$user_id, $from, $to]) ?? [];
+    }
+
+    public function getUserInfo(int $user_id): array|false {
+        $query = "
+            SELECT TOP 1 user_id, username,
+                   SUM(visit_count) AS total_visits,
+                   COUNT(DISTINCT CONCAT(controller, '/', method)) AS pages_visited,
+                   MIN(visit_date) AS first_seen,
+                   MAX(visit_date) AS last_seen
+            FROM [TG].[dbo].[tg_page_visits]
+            WHERE user_id = ?
+            GROUP BY user_id, username;
+        ";
+        $rs = $this->sql->select($query, [$user_id]);
+        return $rs ? $rs[0] : false;
+    }
+
     public function getUnusedInPeriod(string $from, string $to): array {
         $query = "
             SELECT controller, method,
