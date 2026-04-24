@@ -9,8 +9,6 @@
     .stat-card.green { border-color: #28a745; }
     .stat-card.orange{ border-color: #fd7e14; }
     .stat-card.red   { border-color: #dc3545; }
-    .table th { font-size: 0.82rem; }
-    .table td { font-size: 0.85rem; }
     .badge-page { font-family: monospace; font-size: 0.78rem; background: #e9ecef; color: #495057; padding: 2px 6px; border-radius: 4px; }
 </style>
 {% endblock %}
@@ -93,21 +91,24 @@
     <div class="col-xl-6 mb-4">
         <div class="card h-100">
             <div class="card-header"><h5 class="card-title mb-0"><i data-feather="bar-chart-2" class="me-2"></i>Páginas más visitadas</h5></div>
-            <div class="card-body p-0">
-                <table class="table table-hover table-sm mb-0">
+            <div class="card-body p-3">
+                <table id="dt_top_pages" class="table table-hover table-sm w-100">
                     <thead class="table-light">
-                        <tr><th>#</th><th>Página</th><th class="text-end">Visitas</th><th class="text-end">Usuarios únicos</th></tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Página</th>
+                            <th>Visitas</th>
+                            <th>Usuarios únicos</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for p in top_pages %}
                         <tr>
-                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ loop.index }}</td>
                             <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
-                            <td class="text-end fw-semibold">{{ p.total_visits | number_format(0, '.', ',') }}</td>
-                            <td class="text-end">{{ p.unique_users }}</td>
+                            <td>{{ p.total_visits }}</td>
+                            <td>{{ p.unique_users }}</td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -119,21 +120,24 @@
     <div class="col-xl-6 mb-4">
         <div class="card h-100">
             <div class="card-header"><h5 class="card-title mb-0"><i data-feather="users" class="me-2"></i>Usuarios más activos</h5></div>
-            <div class="card-body p-0">
-                <table class="table table-hover table-sm mb-0">
+            <div class="card-body p-3">
+                <table id="dt_top_users" class="table table-hover table-sm w-100">
                     <thead class="table-light">
-                        <tr><th>#</th><th>Usuario</th><th class="text-end">Visitas totales</th><th class="text-end">Páginas distintas</th></tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Usuario</th>
+                            <th>Visitas totales</th>
+                            <th>Páginas distintas</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for u in top_users %}
                         <tr>
-                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ loop.index }}</td>
                             <td>{{ u.username }}</td>
-                            <td class="text-end fw-semibold">{{ u.total_visits | number_format(0, '.', ',') }}</td>
-                            <td class="text-end">{{ u.pages_visited }}</td>
+                            <td>{{ u.total_visits }}</td>
+                            <td>{{ u.pages_visited }}</td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -145,21 +149,24 @@
     <div class="col-xl-6 mb-4">
         <div class="card h-100">
             <div class="card-header"><h5 class="card-title mb-0"><i data-feather="globe" class="me-2"></i>Páginas con más alcance (usuarios únicos)</h5></div>
-            <div class="card-body p-0">
-                <table class="table table-hover table-sm mb-0">
+            <div class="card-body p-3">
+                <table id="dt_pages_reach" class="table table-hover table-sm w-100">
                     <thead class="table-light">
-                        <tr><th>#</th><th>Página</th><th class="text-end">Usuarios únicos</th><th class="text-end">Visitas totales</th></tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Página</th>
+                            <th>Usuarios únicos</th>
+                            <th>Visitas totales</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for p in pages_reach %}
                         <tr>
-                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ loop.index }}</td>
                             <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
-                            <td class="text-end fw-semibold">{{ p.unique_users }}</td>
-                            <td class="text-end">{{ p.total_visits | number_format(0, '.', ',') }}</td>
+                            <td>{{ p.unique_users }}</td>
+                            <td>{{ p.total_visits }}</td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">Sin datos para el período</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -171,25 +178,24 @@
     <div class="col-xl-6 mb-4">
         <div class="card h-100">
             <div class="card-header"><h5 class="card-title mb-0"><i data-feather="alert-circle" class="me-2"></i>Páginas sin uso en el período seleccionado</h5></div>
-            <div class="card-body p-0">
-                <table class="table table-hover table-sm mb-0">
+            <div class="card-body p-3">
+                <table id="dt_unused" class="table table-hover table-sm w-100">
                     <thead class="table-light">
-                        <tr><th>#</th><th>Página</th><th class="text-end">Última visita</th><th class="text-end">Días inactiva</th></tr>
+                        <tr>
+                            <th>#</th>
+                            <th>Página</th>
+                            <th>Última visita</th>
+                            <th>Días inactiva</th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for p in unused_pages %}
                         <tr>
-                            <td class="text-muted">{{ loop.index }}</td>
+                            <td>{{ loop.index }}</td>
                             <td><span class="badge-page">{{ p.controller }}/{{ p.method }}</span></td>
-                            <td class="text-end">{{ p.last_visit }}</td>
-                            <td class="text-end">
-                                <span class="badge {% if p.days_inactive > 30 %}bg-danger{% elseif p.days_inactive > 7 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                                    {{ p.days_inactive }} días
-                                </span>
-                            </td>
+                            <td>{{ p.last_visit }}</td>
+                            <td>{{ p.days_inactive }}</td>
                         </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">¡Todas las páginas fueron visitadas en este período!</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -201,4 +207,30 @@
 {% endblock %}
 
 {% block myjs %}
+<script>
+$(document).ready(function () {
+    const dtConfig = {
+        language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json' },
+        order: [],
+        columnDefs: [{ orderable: false, targets: 0 }],
+        pageLength: 10
+    };
+
+    $('#dt_top_pages').DataTable($.extend(true, {}, dtConfig, {
+        order: [[2, 'desc']]
+    }));
+
+    $('#dt_top_users').DataTable($.extend(true, {}, dtConfig, {
+        order: [[2, 'desc']]
+    }));
+
+    $('#dt_pages_reach').DataTable($.extend(true, {}, dtConfig, {
+        order: [[2, 'desc']]
+    }));
+
+    $('#dt_unused').DataTable($.extend(true, {}, dtConfig, {
+        order: [[3, 'desc']]
+    }));
+});
+</script>
 {% endblock %}
