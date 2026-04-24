@@ -623,34 +623,6 @@
         </ul>
         {% endif %}
       </li>
-      {% endif %} {% if authorized(25) %}
-      <li class="sidebar-item">
-        <a data-bs-target="#marketing_reports" data-bs-toggle="collapse" class="sidebar-link collapsed"
-          aria-expanded="false">
-          <i data-feather="clipboard"></i>
-          <span class="align-middle">Reportes</span>
-        </a>
-        <ul id="marketing_reports" class="sidebar-dropdown list-unstyled collapse" data-bs-parent="#sidebar">
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r01">R01 Reporte de Sergio Martínez</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r02">R02 Despachos pendientes facturar</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r03">R03 Depósitos (Pagos C/Tarjeta)</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r04">R04 Estímulo fiscal IEPS</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r05">R05 Facturas vencidad</a>
-          </li>
-          <li class="sidebar-item">
-            <a class="sidebar-link" href="/marketing/r06">R06 Tarjeta a cliente</a>
-          </li>
-        </ul>
-      </li>
       {% endif %} {% endif %} {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
