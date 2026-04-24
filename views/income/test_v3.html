@@ -366,6 +366,10 @@
                             <div class="text-muted small text-uppercase font-weight-bold">Transacciones</div>
                             <div class="h5 font-numeric mb-0 text-secondary" id="tx-resumen-total">$0.00</div>
                         </div>
+                        <div class="text-center px-4 border-right flex-fill">
+                            <div class="text-muted small text-uppercase font-weight-bold">A Tránsito</div>
+                            <div class="h5 font-numeric mb-0 text-warning" id="transito-resumen-total">$0.00</div>
+                        </div>
                         <div class="text-center px-4 flex-fill" id="diff-panel-top">
                             <div class="text-muted small text-uppercase font-weight-bold">Diferencias (<span id="diff-counter">0</span>)</div>
                             <div class="h5 font-numeric mb-0" id="diff-total-top">$0.00</div>
@@ -2777,10 +2781,14 @@ function actualizarResumenSuperior() {
         return a + neto;
     }, 0);
     const totalTX  = txData.reduce((a,b)  => a + parseFloat(b.Total||0), 0);
+    const totalTransito = Object.values(transitosCG.enTransito || {}).reduce((acc, item) => {
+        return acc + parseFloat(item.monto_transito || 0);
+    }, 0);
 
     $('#cg-resumen-total').text(fmt.format(totalCG));
     $('#tes-resumen-total').text(fmt.format(totalTES));
     $('#tx-resumen-total').text(fmt.format(totalTX));
+    $('#transito-resumen-total').text(fmt.format(totalTransito));
 
     // Calcular diferencias de grupos conciliados
     const difMap = {};
