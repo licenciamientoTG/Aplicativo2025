@@ -72,6 +72,8 @@ spl_autoload_register(function($class) {
 if (file_exists(CONTROLLERS . $controller . '.php')) {
     define('CONTROLLER', $controller . DS);
     $twig->addGlobal('CONTROLLER', $controller);
+    $twig->trackController = $controller;
+    $twig->trackMethod     = $method;
 
     require CONTROLLERS . $controller . '.php';
     $controllerInstance = new $controller($twig);
