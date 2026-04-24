@@ -92,6 +92,7 @@
                 <tbody>
                     {% set ventasreales = 0 %}
                     {% set compras = 0 %}
+                    {% set merma = 0 %}
                     {% for row in data %}
                     <tr>
                         <td>{{ row.Fecha | date('d-m-Y') }}</td>
@@ -109,6 +110,7 @@
 
                     {% set ventasreales = ventasreales + row.VentasReales %}
                     {% set compras = compras + row.CantidadCompra %}
+                    {% set merma = merma + row.Diferencia %}
                     {% endfor %}
                 </tbody>
                 <tfoot>
@@ -119,6 +121,7 @@
                         <th>{{ ventasreales | number_format(2, '.', ',') }}</th>
                         <th></th>
                         <th></th>
+                        <th>{{ merma | number_format(2, '.', ',') }}</th>
                         <th></th>
                         <th></th>
                     </tr>
