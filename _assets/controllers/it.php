@@ -14,6 +14,7 @@ class It{
     public EstacionesModel $estacionesModel;
     public DespachosLealtadModel $despachosLealtadModel;
     public BinnacleActivitiesModel $binnacleActivitiesModel;
+    public PageVisitsModel $pageVisitsModel;
 
     /**
      * @param $twig
@@ -31,6 +32,7 @@ class It{
         $this->profileModel            = new PerfilModel;
         $this->despachosLealtadModel   = new DespachosLealtadModel();
         $this->binnacleActivitiesModel = new BinnacleActivitiesModel();
+        $this->pageVisitsModel = new PageVisitsModel;
     }
 
     /**
@@ -968,5 +970,25 @@ class It{
         }
         
         json_output(array("data" => $data));
+    }
+
+    public function page_visits_dashboard(): void {
+        $allowed = [6382, 6371, 6177, 6296, 6274];
+        if (!in_array((int)$_SESSION['tg_user']['Id'], $allowed)) {
+            (new Errors())->get404();
+            return;
+        }
+
+        $to   = $_GET['to']   ?? date('Y-m-d');
+        $from = $_GET['from'] ?? date('Y-m-d', strtotime('-30 days'));
+
+        $top_pages    = $this->pageVisitsModel->getTopPages($from, $to);
+        $top_users    = $this->pageVisitsModel->getTopUsers($from, $to);
+        $pages_reach  = $this->pageVisitsModel->getPagesReach($from, $to);
+        $unused_pages = $this->pageVisitsModel->getUnusedInPeriod($from, $to);
+
+        echo $this->twig->render($this->route . 'page_visits_dashboard.html', compact(
+            'top_pages', 'top_users', 'pages_reach', 'unused_pages', 'from', 'to'
+        ));
     }
 }
