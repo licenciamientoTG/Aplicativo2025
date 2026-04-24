@@ -986,9 +986,10 @@ class It{
         $top_users    = $this->pageVisitsModel->getTopUsers($from, $to);
         $pages_reach  = $this->pageVisitsModel->getPagesReach($from, $to);
         $unused_pages = $this->pageVisitsModel->getUnusedInPeriod($from, $to);
+        $total_visits = (int) array_sum(array_column($top_pages, 'total_visits'));
 
         echo $this->twig->render($this->route . 'page_visits_dashboard.html', compact(
-            'top_pages', 'top_users', 'pages_reach', 'unused_pages', 'from', 'to'
+            'top_pages', 'top_users', 'pages_reach', 'unused_pages', 'from', 'to', 'total_visits'
         ));
     }
 }
