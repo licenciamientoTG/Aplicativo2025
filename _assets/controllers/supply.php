@@ -576,7 +576,7 @@ class Supply
         $companyRfc = $_GET['company'] ?? '';
 
         // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
-        $data = $this->gasolinerasModel->get_active_station_TG();
+        $data = $this->gasolinerasModel->get_active_station_TG() ?: [];
 
         $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
         $stations = array_values($dataFiltered);
