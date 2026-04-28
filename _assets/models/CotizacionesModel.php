@@ -273,13 +273,13 @@ class CotizacionesModel extends Model{
                 WHERE codgas = 35 ORDER BY lognew DESC
             ')
             
-            UNION ALL
+            -- UNION ALL
             
-            SELECT TOP (1) [codmda], [codgas], [fch], CONCAT(RIGHT('00' + CAST(FLOOR(hra / 100) AS VARCHAR(2)), 2), ':', RIGHT('00' + CAST(hra % 100 AS VARCHAR(2)), 2)) AS hra_format, [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew], N'San Rafael' AS station_name, N'14946' AS no_station, N'Foranea' AS description
-            FROM OPENQUERY([192.168.36.101], '
-                SELECT TOP (1) [codmda], [codgas], [fch], [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew] FROM [CG_14946].[dbo].[Cotizaciones]
-                WHERE codgas = 36 ORDER BY lognew DESC
-            ')
+            -- SELECT TOP (1) [codmda], [codgas], [fch], CONCAT(RIGHT('00' + CAST(FLOOR(hra / 100) AS VARCHAR(2)), 2), ':', RIGHT('00' + CAST(hra % 100 AS VARCHAR(2)), 2)) AS hra_format, [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew], N'San Rafael' AS station_name, N'14946' AS no_station, N'Foranea' AS description
+            -- FROM OPENQUERY([192.168.36.101], '
+            --    SELECT TOP (1) [codmda], [codgas], [fch], [hra], [ctz], [ctzcom], [ctzven], [codpza], [codcpo], [logusu], [logfch], [lognew] FROM [CG_14946].[dbo].[Cotizaciones]
+            --    WHERE codgas = 36 ORDER BY lognew DESC
+            --')
             
             UNION ALL
             
