@@ -575,11 +575,9 @@ class Supply
         $from       = $_GET['from'] ?? date('Y-m-d', strtotime('-1 day'));
         $companyRfc = $_GET['company'] ?? '';
 
-        // Obtiene gasolineras activas y filtra las que tengan "Codigo" == "38"
+        // Obtiene gasolineras activas
         $data = $this->gasolinerasModel->get_active_station_TG() ?: [];
-
-        $dataFiltered = array_filter($data, fn($item) => $item["Codigo"] !== "38");
-        $stations = array_values($dataFiltered);
+        $stations = array_values($data);
 
         // Arreglo común para renderizar la vista
         $twigVars = compact('from', 'yesterday', 'tenDaysAgo', 'companies', 'companyRfc', 'stations', 'suppliers', 'carriers');
