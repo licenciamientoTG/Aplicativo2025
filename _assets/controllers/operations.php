@@ -253,16 +253,23 @@ class Operations{
                     break;
 
                 case 'addDeposit': // Si la acción es agregar depósito
+                    $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
                     $total = $this->tabulatorDatailsModel->getPendingWads($tabId, $_POST['currency']);
 
                     // Verificamos si existe un depósito pendiente de cerrar o mas bien activo
                     if ($total == 1) {
+                        if ($isAjax) {
+                            json_output(['result' => 0, 'message' => 'Actualmente existe un deposito pendiente de cerrar']);
+                        }
                         setFlashMessage('warning', 'Actualmente existe un depósito pendiente de cerrar');
                         redirect();
                     }
 
                     // Verificamos si existen fajillas pendientes en el tabulador
                     if ($total == 0) {
+                        if ($isAjax) {
+                            json_output(['result' => 0, 'message' => 'No existen fajillas pendientes en el tabulador']);
+                        }
                         setFlashMessage('error', 'No existen fajillas pendientes en el tabulador');
                         redirect();
                     }
@@ -277,6 +284,9 @@ class Operations{
                         'CodigoValor'   => ($_POST['currency'] == 'MXN') ? 6 : ($_POST['currency'] == 'USD' ? 5 : 0),
                     ];
                     if (!$this->tabuladorRecolectasModel->add($params)) {
+                        if ($isAjax) {
+                            json_output(['result' => 0, 'message' => 'No fue posible realizar el deposito']);
+                        }
                         setFlashMessage('error', 'No fue posible realizar el depósito');
                         redirect();
                     }
@@ -604,18 +614,77 @@ class Operations{
 
         $island = $_GET['island'] ?? false;
 
-        $islands_wads = $this->tabulatorDatailsModel->get_wads_by_island($_GET['tabId']);
-
         $exchange_now = $tabulator['TipoCambio']; // Para obtener el tipo de cambio más reciente
         // Estas lineas son para obtener las fajillas pendientes de depositar
         $totalMXN = $tabulator['TotalPendingMXN'];
         $totalUSD = ($tabulator['TotalPendingUSD'] / $exchange_now);
 
         $json = [
-            'html'  => $this->twig->render($this->route . 'wadsTab.html', compact('tabulator', 'islands', 'exchange_now', 'island', 'islands_wads', 'totalMXN', 'totalUSD'))
+            'html'  => $this->twig->render($this->route . 'wadsTab.html', compact('tabulator', 'islands', 'exchange_now', 'island', 'totalMXN', 'totalUSD'))
         ];
 
         json_output($json);
+    }
+
+    function wads_tab_data() : void {
+        $tabId = $_GET['tabId'];
+        $rows = $this->tabulatorDatailsModel->get_wads_tab_data($tabId) ?: [];
+        $wads = [];
+        $summary = [];
+        $sec = 1;
+
+        foreach ($rows as $row) {
+            if ($row['TipoRegistro'] === 'DETAIL') {
+                $actions = "
+                    <div class='dropdown'>
+                        <button class='btn btn-primary btn-sm dropdown-toggle' type='button' data-bs-toggle='dropdown' aria-expanded='false'> Acciones</button>
+                        <ul class='dropdown-menu' data-container='body'>";
+
+                if (intval($row['IdRecolecta']) > 0) {
+                    $actions .= '
+                        <li><a class="dropdown-item" href="javascript:void(0);" onclick="toastr.warning(\'Esta fajilla ya fue depositada. No puede editar informacion\', \'Atencion\', { timeOut: 2000 });">Editar</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0);" onclick="toastr.warning(\'Esta fajilla ya fue depositada. No puede eliminarla\', \'Atencion\', { timeOut: 2000 });">Eliminar</a></li>
+                    ';
+                } else {
+                    $actions .= '
+                        <li><a class="dropdown-item" href="javascript:void(0);" data-bs-toggle="modal" data-bs-target="#editWadModal" data-tabId="'. $tabId .'" data-secuencial="'. $row['Secuencial'] .'">Editar</a></li>
+                        <li><a class="dropdown-item" href="javascript:void(0);" onclick="confirmDelete(\'' .$row['Id'] . '\' , \'' . $row['Secuencial'] . '\')">Eliminar</a></li>
+                    ';
+                }
+
+                $actions .= "    </ul>
+                    </div>
+                ";
+
+                $wads[] = [
+                    'SEC'         => $sec++,
+                    'RESPONSABLE' => $row['Responsable'],
+                    'ISLA'        => $row['Isla'],
+                    'MONEDA'      => ($row['Moneda'] == 'MRL' ? 'MORRALLA' : $row['Moneda']),
+                    'MONTO'       => $row['Monto'],
+                    'CAMBIO'      => $row['TipoCambio'],
+                    'TOTAL'       => $row['Valor'],
+                    'ESTATUS'     => (intval($row['IdRecolecta']) > 0 ? '<span class="badge bg-success">Deposito #'. $row['IdRecolecta'] .'</span>' : '<span class="badge bg-warning">Pendiente</span>' ),
+                    'HORA'        => $row['Hora'],
+                    'ACCIONES'    => $actions
+                ];
+            }
+
+            if ($row['TipoRegistro'] === 'SUMMARY') {
+                $summary[] = [
+                    'ISLA' => $row['Isla'],
+                    'FAJILLAS' => $row['hits'],
+                    'Monto_MXN' => $row['Monto_MXN'],
+                    'Monto_USD' => $row['Monto_USD'],
+                    'Monto_MRL' => $row['Monto_MRL'],
+                ];
+            }
+        }
+
+        json_output([
+            'wads' => $wads,
+            'summary' => $summary,
+        ]);
     }
 
     function datatables_wads_tab() : void {
@@ -746,7 +815,40 @@ class Operations{
      * @return void
      * @throws Exception
      */
+    function add_deposit_ajax() : void {
+        if (!preg_match('/POST/i', $_SERVER['REQUEST_METHOD'])) {
+            json_output(['result' => 0, 'message' => 'Metodo no permitido']);
+        }
+
+        $tabId = intval($_POST['tabId']);
+        $currency = $_POST['currency'];
+        $total = $this->tabulatorDatailsModel->getPendingWads($tabId, $currency);
+
+        if ($total == 1) {
+            json_output(['result' => 0, 'message' => 'Actualmente existe un deposito pendiente de cerrar']);
+        }
+
+        if ($total == 0) {
+            json_output(['result' => 0, 'message' => 'No existen fajillas pendientes en el tabulador']);
+        }
+
+        $params = [
+            'IdRecolecta' => intval($total['consecutive']),
+            'IdTabulador' => $tabId,
+            'Descripcion' => "Deposito #{$total['consecutive']}",
+            'Total' => $total['TotalValor'],
+            'CodigoValor' => ($currency == 'MXN') ? 6 : ($currency == 'USD' ? 5 : 0),
+        ];
+
+        if (!$this->tabuladorRecolectasModel->add($params)) {
+            json_output(['result' => 0, 'message' => 'No fue posible realizar el deposito']);
+        }
+
+        json_output(['result' => 1, 'message' => 'El deposito se abrio correctamente']);
+    }
+
     function delete_wad($tabId, $secuencial, $codgas) : void {
+        $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
 
         $wad = $this->tabulatorDatailsModel->get_wad($tabId, $secuencial);
         if ($this->tabulatorDatailsModel->delete_wad($tabId, $secuencial)) {
@@ -755,8 +857,24 @@ class Operations{
                 // Si existe, entonces eliminamos el registro de Anticipos
                 $this->anticiposModel->deleteAnticipo($codgas, dateToInt($wad['Fecha']), $wad['Turno'], $wad["IdIsla"], $wad['secuencialAnticipo'], $wad['Valor']);
             }
+            if ($isAjax) {
+                $totalMXN = $this->tabulatorDatailsModel->getPendingWads($tabId, 'MXN');
+                $totalUSD = $this->tabulatorDatailsModel->getPendingWads($tabId, 'USD');
+                json_output([
+                    'result' => 1,
+                    'message' => 'Fajilla eliminada correctamente',
+                    'island' => $wad['IdIsla'],
+                    'totalMXN' => (isset($totalMXN['TotalMonto']) ? floatval($totalMXN['TotalMonto']) : 0.00),
+                    'totalUSD' => (isset($totalUSD['TotalMonto']) ? floatval($totalUSD['TotalMonto']) : 0.00),
+                    'totalPendingMXN' => (isset($totalMXN['TotalValor']) ? floatval($totalMXN['TotalValor']) : 0.00),
+                    'totalPendingUSD' => (isset($totalUSD['TotalValor']) ? floatval($totalUSD['TotalValor']) : 0.00)
+                ]);
+            }
             setFlashMessage('success','Fajilla eliminada correctamente');
         } else {
+            if ($isAjax) {
+                json_output(['result' => 0, 'message' => 'No se pudo eliminar la fajilla']);
+            }
             setFlashMessage('error','No se pudo eliminar la fajilla');
         }
         redirect();
