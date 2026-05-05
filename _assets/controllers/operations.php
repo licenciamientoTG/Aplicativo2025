@@ -355,11 +355,59 @@ class Operations{
     function get_sales_in_isle($isle, $tabId, $turno, $fechatabular, $codigoestacion, $limiteFajilla, $islands) {
         $totals = $this->tabulatorModel->get_totals_comparison($tabId, $codigoestacion, dateToInt($fechatabular), $turno, $islands);
 
-        $ventas = "";
-        $valores  = $this->movimientosTarModel->get_total_islands(dateToInt($fechatabular), $codigoestacion, $isle, intval($turno), $tabId);
-        $readings = $this->getInitialReadingsByIslands($codigoestacion, dateToInt($fechatabular), $turno, $isle);
+        $salesDetail = $this->tabulatorModel->get_sales_tab_detail(
+            intval($tabId),
+            intval($codigoestacion),
+            dateToInt($fechatabular),
+            intval($turno),
+            strval($isle)
+        ) ?: [];
 
-        $ventas .= "<h5 class=\"card-title\">Ventas totales - {$valores[0]['Isla']}</h5>";
+        $summary = [
+            'Isla' => 'Isla ' . $isle,
+            'TotalVentasReportadas' => 0,
+            'TotalVentas' => 0,
+            'Diferencia' => 0
+        ];
+        $valores = [];
+        $readings = [];
+
+        foreach ($salesDetail as $row) {
+            switch ($row['TipoRegistro']) {
+                case 'SUMMARY':
+                    $summary = [
+                        'Isla' => $row['Isla'],
+                        'TotalVentasReportadas' => floatval($row['TotalVentasReportadas']),
+                        'TotalVentas' => floatval($row['TotalVentas']),
+                        'Diferencia' => floatval($row['Diferencia'])
+                    ];
+                    break;
+
+                case 'PAYMENT':
+                    $valores[] = [
+                        'ValorDescripcion' => $row['ValorDescripcion'],
+                        'Total' => floatval($row['Total']),
+                        'codisl' => $row['codisl'],
+                        'Isla' => $row['Isla']
+                    ];
+                    break;
+
+                case 'READING':
+                    $readings[] = [
+                        'nrobom' => $row['nrobom'],
+                        'Producto' => $row['Producto'],
+                        'initialElectronicReading' => floatval($row['initialElectronicReading']),
+                        'finalElectronicReading' => floatval($row['finalElectronicReading']),
+                        'finalAmount' => floatval($row['finalAmount'])
+                    ];
+                    break;
+            }
+        }
+
+        $ventas = "";
+        $islandName = $summary['Isla'];
+
+        $ventas .= "<h5 class=\"card-title\">Ventas totales - {$islandName}</h5>";
         $ventas .= "<table class=\"table table-sm table-striped table-hover table-values\" style=\"font-size: x-small\">";
         $ventas .= "<thead><tr><th>BOMBA</th><th>PRODUCTO</th><th>INICIAL</th><th>FINAL</th><th>VENDIDO</th><th>IMPORTE</th></tr></thead><tbody>";
         $total_sales = 0;
@@ -376,13 +424,13 @@ class Operations{
         }
         $ventas .= "</tbody><tfoot><tr><th colspan=\"5\" class=\"text-end\">TOTAL</th><th class=\"text-nowrap\">$ ". number_format($total_sales, 2, '.', ',')."</th></tr></tfoot></table>";
 
-        $total_amounts = 0;
-        $sales = "<h5 class=\"card-title\">Formas de pago - {$valores[0]['Isla']}</h5><table class=\"table table-sm table-striped table-hover table-payments table1\" style=\"font-size: x-small\"><thead><tr><th>FORMA PAGO</th><th>MONTO</th></tr></thead><tbody>";
+        $total_amounts = floatval($summary['TotalVentasReportadas']);
+        $sales = "<h5 class=\"card-title\">Formas de pago - {$islandName}</h5><table class=\"table table-sm table-striped table-hover table-payments table1\" style=\"font-size: x-small\"><thead><tr><th>FORMA PAGO</th><th>MONTO</th></tr></thead><tbody>";
         foreach ($valores as $row) {
-            $total_amounts = ($total_amounts + $row['Total']);
-            $sales .= "<tr><td class=\"text-nowrap\">{$row['ValorDescripcion']}</td><td class=\"text-nowrap\">$ " . number_format($row['Total'], 2) . "</td></tr>";
+            $description = $row['ValorDescripcion'] ?: 'Sin descripcion';
+            $sales .= "<tr><td class=\"text-nowrap\">{$description}</td><td class=\"text-nowrap\">$ " . number_format($row['Total'], 2) . "</td></tr>";
         }
-        $diff = $total_amounts - $total_sales;
+        $diff = floatval($summary['Diferencia']);
 
         $sales .= "</tbody>";
         $sales .= "<tfoot
@@ -396,9 +444,20 @@ class Operations{
                         </tr>
                     </tfoot></table>";
 
-        $calculo = number_format(($totals['total_ventas'] - $totals['total_ingresado']), 2, '.', ',');
+        $totalVentas = floatval($totals['total_ventas'] ?? 0);
+        $totalIngresado = floatval($totals['total_ingresado'] ?? 0);
+        $calculo = number_format(($totalVentas - $totalIngresado), 2, '.', ',');
         $diff_tab_span = "Diferencia: $" . $calculo;
-        json_output(['sales' => $sales, 'ventas' => $ventas, 'diff_tab_span' => $diff_tab_span, 'difference' => $diff, 'limiteFajilla' => $limiteFajilla]);
+        json_output([
+            'sales' => $sales,
+            'ventas' => $ventas,
+            'diff_tab_span' => $diff_tab_span,
+            'difference' => $diff,
+            'limiteFajilla' => $limiteFajilla,
+            'island' => $isle,
+            'total_amounts' => $total_amounts,
+            'total_sales' => $total_sales
+        ]);
     }
 
     function sales_tab() : void {
@@ -415,33 +474,60 @@ class Operations{
         $TotalPending   = $_GET['TotalPending'];
         $DBString       = $_GET['DBString'];
 
-        $valores  = $this->movimientosTarModel->get_total_islands(dateToInt($fechatabular), $codigoestacion, $islands, $turno, $_GET['tabId']);
+        $salesDetail = $this->tabulatorModel->get_sales_tab_detail(
+            intval($tabId),
+            intval($codigoestacion),
+            dateToInt($fechatabular),
+            intval($turno),
+            $islands
+        ) ?: [];
 
+        $salesSummary = [];
+        $valoresPorIsla = [];
+        $lecturasPorIsla = [];
 
-        $valoresPorIsla = array_reduce($valores, function($grupos, $resultado) {
-            $codisl = $resultado['codisl'];
-            $grupos[$codisl][] = $resultado;
-            return $grupos;
-        }, []);
-        
-        if ($readings = $this->getInitialReadingsByIslands($codigoestacion, dateToInt($fechatabular), $turno, $islands)) {
-            // if ($_SESSION['tg_user']['Id'] == "6296") {
-            //     echo '<pre>';
-            //     var_dump($readings);
-            //     die();
-            // }
+        foreach ($salesDetail as $row) {
+            switch ($row['TipoRegistro']) {
+                case 'SUMMARY':
+                    $salesSummary[] = [
+                        'codisl' => $row['codisl'],
+                        'Isla' => $row['Isla'],
+                        'TotalVentasReportadas' => $row['TotalVentasReportadas'],
+                        'TotalVentas' => $row['TotalVentas'],
+                        'Diferencia' => $row['Diferencia'],
+                    ];
+                    break;
 
-            $lecturasPorIsla = array_reduce($readings, function($grupos, $resultado) {
-                $codisl = $resultado['codisl'];
-                $grupos[$codisl][] = $resultado;
-                return $grupos;
-            }, []);
-           
+                case 'PAYMENT':
+                    $valoresPorIsla[$row['codisl']][] = [
+                        'ValorDescripcion' => $row['ValorDescripcion'],
+                        'Total' => $row['Total'],
+                        'codisl' => $row['codisl'],
+                        'Isla' => $row['Isla'],
+                    ];
+                    break;
 
-            $json = [
-                'html'  => $this->twig->render($this->route . 'salesTab.html', compact('tabId', 'codigoestacion', 'status', 'fechatabular', 'valoresPorIsla', 'lecturasPorIsla', 'LimiteFajilla', 'Total', 'turno', 'exchange_now', 'TotalPending', 'DBString', 'islands'))
-            ];
+                case 'READING':
+                    $lecturasPorIsla[$row['codisl']][] = [
+                        'nrobom' => $row['nrobom'],
+                        'Producto' => $row['Producto'],
+                        'codprd' => $row['codprd'],
+                        'initialElectronicReading' => $row['initialElectronicReading'],
+                        'amount' => $row['amount'],
+                        'finalElectronicReading' => $row['finalElectronicReading'],
+                        'finalAmount' => $row['finalAmount'],
+                        'difference' => $row['difference'],
+                        'amountDifference' => $row['amountDifference'],
+                        'codisl' => $row['codisl'],
+                        'Isla' => $row['Isla'],
+                    ];
+                    break;
+            }
         }
+
+        $json = [
+            'html'  => $this->twig->render($this->route . 'salesTab.html', compact('tabId', 'codigoestacion', 'status', 'fechatabular', 'salesSummary', 'valoresPorIsla', 'lecturasPorIsla', 'LimiteFajilla', 'Total', 'turno', 'exchange_now', 'TotalPending', 'DBString', 'islands'))
+        ];
        
         json_output($json);
 
