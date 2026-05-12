@@ -3,6 +3,14 @@
 {% block title %}Detalle de Pago #{{ payment.id }}{% endblock %}
 {% block content %}
 	<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+	<script>
+		document.addEventListener('DOMContentLoaded', function () {
+			var sidebar = document.getElementById('sidebar');
+			if (sidebar && !sidebar.classList.contains('collapsed')) {
+				sidebar.classList.add('collapsed');
+			}
+		});
+	</script>
 
 	<style>
 		.pd-tab-link { border-bottom: 2px solid transparent; color: #6c757d; background: none; border-top:none; border-left:none; border-right:none; padding: 0.75rem 0; font-size: 0.875rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: color .15s, border-color .15s; }

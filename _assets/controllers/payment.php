@@ -1163,7 +1163,7 @@ class Payment
             $result = $this->PaymentRequestsModel->create_payment_with_invoices($user, $documents, $comment, $provider_cod, $empresa_cod, $total_reques, $scheduled_payment_date, $pending_notes);
 
             if ($result['success']) {
-                $this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
+                //$this->enviar_notificacion_nuevo_pago($result['payment_id'],$provider_name ?? 'Proveedor',$result['total_documents'],$payment,$comment,$_SESSION['tg_user']['Nombre'] ?? 'Usuario');
                 //se cambiara a uno pro dia
 
                 json_output([
@@ -3407,32 +3407,32 @@ class Payment
      * Puede recibir ?date=YYYY-MM-DD (opcional, default = hoy).
      * Protegido por permiso 70 (Contabilidad) o token de cron.
      */
-    public function auto_group_accounting()
-    {
-        header('Content-Type: application/json');
-        try {
-            // Permitir acceso por token de cron o por usuario con permiso 70
-            $cronToken = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
-            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+    // public function auto_group_accounting()
+    // {
+    //     header('Content-Type: application/json');
+    //     try {
+    //         // Permitir acceso por token de cron o por usuario con permiso 70
+    //         $cronToken = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+    //         $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
 
-            $isAuthorized = ($validToken && $cronToken === $validToken)
-                || authorized(70);
+    //         $isAuthorized = ($validToken && $cronToken === $validToken)
+    //             || authorized(70);
 
-            if (!$isAuthorized) {
-                json_output(['success' => false, 'message' => 'No autorizado']);
-                return;
-            }
+    //         if (!$isAuthorized) {
+    //             json_output(['success' => false, 'message' => 'No autorizado']);
+    //             return;
+    //         }
 
-            $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
-            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+    //         $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+    //         $user_id = $_SESSION['tg_user']['Id'] ?? 0;
 
-            $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
-            json_output($result);
-        } catch (Exception $e) {
-            error_log('Error en auto_group_accounting: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-        }
-    }
+    //         $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
+    //         json_output($result);
+    //     } catch (Exception $e) {
+    //         error_log('Error en auto_group_accounting: ' . $e->getMessage());
+    //         json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    //     }
+    // }
 
 
     /**
