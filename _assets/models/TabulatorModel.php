@@ -418,4 +418,22 @@ class TabulatorModel extends Model{
         $query = "SELECT * FROM [TG].[dbo].[TabuladorEncabezado] WHERE FechaTabular = '{$fecha}' AND Turno = {$turno} AND CodigoEstacion = {$codgas} AND Estatus = ?";
         return (bool)$this->sql->select($query, [1]);
     }
+
+    function get_sales_tab_detail(int $tabId, int $codigoEstacion, int $fechaTabular, int $turno, string $islands) : array|false {
+        if (!isset($this->linked_server[$codigoEstacion], $this->short_databases[$codigoEstacion])) {
+            return false;
+        }
+
+        $params = [
+            $tabId,
+            $codigoEstacion,
+            $fechaTabular,
+            $turno,
+            $islands,
+            $this->linked_server[$codigoEstacion],
+            $this->short_databases[$codigoEstacion]
+        ];
+
+        return $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_ventas_tabulador_detalle]', $params) ?: false;
+    }
 }

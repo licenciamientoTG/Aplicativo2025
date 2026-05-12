@@ -407,7 +407,7 @@ public function balance_age()
         }
     }
     function relation_invoice_advance_table(){
-         ini_set('memory_limit', '512M');
+        ini_set('memory_limit', '512M');
         set_time_limit(300);
         $data = [];
         $from = dateToInt($_POST['from']);
@@ -446,25 +446,25 @@ public function balance_age()
     }
 
     function cash_invoices_table(){
-    ini_set('memory_limit', '512M');
-    set_time_limit(300);
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
 
-    $data  = [];
-    $from  = dateToInt($_POST['from']);
-    $until = dateToInt($_POST['until']);
+        $data  = [];
+        $from  = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
 
-    if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
-        foreach ($rows as $r) {
-            $data[] = [
-                'codcli'       => $r['codcli'],
-                'cliente'      => $r['den'],
-                'n_despachos'  => (int)$r['n_despachos'],
-                'monto'        => (float)$r['monto'],
-            ];
+        if ($rows = $this->despachosModel->cash_invoices_advance($from, $until)) {
+            foreach ($rows as $r) {
+                $data[] = [
+                    'codcli'       => $r['codcli'],
+                    'cliente'      => $r['den'],
+                    'n_despachos'  => (int)$r['n_despachos'],
+                    'monto'        => (float)$r['monto'],
+                ];
+            }
         }
+        json_output(['data' => $data]);
     }
-    json_output(['data' => $data]);
-}
 
 function invoice_client_desp(){
     ini_set('memory_limit', '512M');

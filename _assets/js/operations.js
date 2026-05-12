@@ -125,6 +125,46 @@ $('.refresh_datatables_top_tabulators').on('click', function () {
 });
 
 // Manejar el evento de clic en los botones de píldora
+const processTabTargets = {
+    wads: '#v-pills-wads',
+    deposit: '#v-pills-deposit',
+    sales_tab: '#v-pills-sales',
+    finish: '#v-pills-finish',
+    ballot: '#v-pills-ballot'
+};
+
+function activateProcessTab(selectedTabId) {
+    $('.tab-pane.show.active').removeClass('show active');
+    $(selectedTabId).addClass('show active');
+    $(selectedTabId).removeClass('loading');
+    $(selectedTabId).find('.loading').removeClass('loading');
+
+    if ($.fn.DataTable) {
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    }
+}
+
+function markProcessTabsDirty(actions) {
+    actions.forEach(function(action) {
+        let target = processTabTargets[action];
+        if (target) {
+            $(target).data('dirty', true);
+        }
+    });
+}
+
+function clearProcessTabDataTables(selectedTabId) {
+    if (!$.fn.DataTable) {
+        return;
+    }
+
+    $(selectedTabId).find('table').each(function() {
+        if ($.fn.DataTable.isDataTable(this)) {
+            $(this).DataTable().destroy();
+        }
+    });
+}
+
 $('.pill').on('click', function () {
     // Obtener el identificador de la píldora seleccionada
     let selectedTabId = $(this).attr('data-bs-target');
@@ -142,14 +182,20 @@ $('.pill').on('click', function () {
     let LimiteFajilla = $('input#LimiteFajilla').val();
     let exchange_now   = $('input#exchange_now').val();
     let TotalPending   = $('input#TotalPending').val();
+    let $selectedTab = $(selectedTabId);
 
+    if ($selectedTab.data('loaded') && !$selectedTab.data('dirty')) {
+        activateProcessTab(selectedTabId);
+        return;
+    }
 
-    $(selectedTabId).html('');
 
     // Realizar una solicitud AJAX para cargar el contenido de la píldora
     $.ajax({
         url: '/operations/' + action, // Ruta del archivo AJAX para cargar contenido
         method: 'GET', // Método de la solicitud (GET, POST, etc.)
+        dataType: 'json',
+        timeout: 120000,
         data: {
             'tabId': tabid,
             'action': action,
@@ -168,15 +214,27 @@ $('.pill').on('click', function () {
         }, // Puedes enviar datos adicionales si es necesario
         success: function (data) {
             // Actualizar el contenido de la píldora activa actualmente
-            $('.tab-pane.show.active').removeClass('show active');
-            $(selectedTabId).addClass('show active');
-            $(selectedTabId).html(data.html); // Actualizar el contenido con la respuesta del servidor
+            clearProcessTabDataTables(selectedTabId);
+            activateProcessTab(selectedTabId);
+            $selectedTab.html(data.html); // Actualizar el contenido con la respuesta del servidor
+            $selectedTab.data('loaded', true);
+            $selectedTab.data('dirty', false);
 
             // Actualizar los selectpickers
             $('.selectpicker').selectpicker();
+            if (typeof feather !== 'undefined') {
+                feather.replace();
+            }
         },
         error: function (error) {
             console.error('Error en la solicitud AJAX: ', error);
+            $selectedTab.removeClass('loading');
+            if (!$selectedTab.data('loaded')) {
+                $selectedTab.html('<div class="alert alert-danger mb-0">No fue posible cargar esta pestaña. Intenta nuevamente.</div>');
+            }
+        },
+        complete: function() {
+            $selectedTab.removeClass('loading');
         }
     });
 });
@@ -208,12 +266,67 @@ function confirmDelete(id, secuencial) {
         function(){
             $('.table-responsive').addClass('loading');
             // Si el usuario confirma, redirige al enlace de eliminación
-            window.location.href = "/operations/delete_wad/" + id + "/" + secuencial + "/" + $('input#CodigoEstacion').val();
+            $.ajax({
+                url: "/operations/delete_wad/" + id + "/" + secuencial + "/" + $('input#CodigoEstacion').val(),
+                method: 'POST',
+                dataType: 'json',
+                success: function(data) {
+                    if (data.result == 1) {
+                        toastr.success(data.message, 'Exito', { timeOut: 1000 });
+
+                        if (typeof window.reloadWadsTabTables === 'function') {
+                            window.reloadWadsTabTables();
+                        }
+
+                        let totalMXN = new Intl.NumberFormat('es-MX', {style: 'currency', currency: 'MXN'}).format(data.totalMXN || 0);
+                        let totalUSD = new Intl.NumberFormat('es-MX', {style: 'currency', currency: 'USD'}).format(data.totalUSD || 0);
+                        $('#acumulated_mxn').text(totalMXN);
+                        $('#acumulated_usd').text(totalUSD);
+                        $('#TotalPendingMXN').val(parseFloat(data.totalPendingMXN || 0));
+                        $('#TotalPendingUSD').val(parseFloat(data.totalPendingUSD || 0));
+                        $('#TotalPending').val(parseFloat(data.totalPendingMXN || 0) + parseFloat(data.totalPendingUSD || 0));
+
+                        if (data.island) {
+                            refreshIslandCard(data.island);
+                        }
+
+                        markProcessTabsDirty(['deposit', 'sales_tab', 'finish', 'ballot']);
+                        $('#v-pills-wads').data('loaded', true).data('dirty', false);
+                    } else {
+                        toastr.error(data.message, 'Error', { timeOut: 2000 });
+                    }
+                },
+                error: function(xhr) {
+                    console.error(xhr.responseText);
+                    toastr.error('No fue posible eliminar la fajilla', 'Error', { timeOut: 2000 });
+                },
+                complete: function() {
+                    $('.table-responsive').removeClass('loading');
+                }
+            });
         },
         function(){
             toastr.info('Operación cancelada', '¡Atención!', { timeOut: 3000 });
         }
     );
+}
+
+function refreshIslandCard(islandId) {
+    let tabId = $('input#inputTabId').val() || $('input#tabId').val();
+    let codigoEstacion = $('input#CodigoEstacion').val();
+    let fechaTabular = $('input#FechaTabular').val();
+    let turno = $('input#Turno').val();
+
+    $('#' + islandId).html(`<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>`);
+
+    $.get("/operations/getInitialReadingsByIslandsAjax/" + codigoEstacion + '/' + fechaTabular + '/' + turno + '/' + islandId + '/' + tabId)
+        .done(function(data) {
+            data = (typeof data === 'string') ? JSON.parse(data) : data;
+            $('#' + islandId).html(`${data.Isla}<br>$ ${data.Diferencia}`);
+        })
+        .fail(function() {
+            $('#' + islandId).html('Isla ' + islandId + '<br>$ --');
+        });
 }
 
 $(document).on('click', '.denomination_input', function(e) {
@@ -399,7 +512,9 @@ $(document).on('submit', '#save_denominations_form', function(e) {
       data: formData,
       success: function() {
         // Maneja la respuesta del servidor aquí
-        location.reload();
+        $('#detailsDepositModal').modal('hide');
+        markProcessTabsDirty(['wads', 'deposit', 'sales_tab', 'finish', 'ballot']);
+        $('#v-pills-deposit-tab').trigger('click');
       },
       error: function(xhr) {
         // Maneja errores aquí
@@ -845,7 +960,8 @@ function delete_deposit(IdTabulador, IdRecolecta) {
                     if (data === 1) {
                         toastr.success('El depósito fue eliminado correctamente', '¡Éxito!', { timeOut: 1000 });
                         // Ahora refrescamos la página
-                        location.reload();
+                        markProcessTabsDirty(['wads', 'deposit', 'sales_tab', 'finish', 'ballot']);
+                        $('#v-pills-deposit-tab').trigger('click');
                     } else {
                         toastr.error('No fue posible eliminar el depósito', '¡Error!', { timeOut: 1000 });
                     }
@@ -1605,15 +1721,9 @@ $(document).on('submit', '#wadForm', function(e) {
         success: function(data) { // Maneja la respuesta del servidor aquí
             if (data.result == 1) {
                 toastr.success(data.message, '¡Éxito!', { timeOut: 1000 });
-                // Vamos a refrescar la tabla de fajillas con el Id datatables_wads_tab
-                let datatables_wads_tab = $('#datatables_wads_tab').DataTable();
-                datatables_wads_tab.clear().draw();
-                datatables_wads_tab.ajax.reload();
-
-                // Camos a refrescar la tabla wads_table_total
-                let wads_table_total = $('#wads_table_total').DataTable();
-                wads_table_total.clear().draw();
-                wads_table_total.ajax.reload();
+                if (typeof window.reloadWadsTabTables === 'function') {
+                    window.reloadWadsTabTables();
+                }
 
                 // Vamos a formatear como moneda el dato de data.totalMXN, data.totalUSD, data.totalTab y data.TotalPending
                 let totalMXN = new Intl.NumberFormat('es-MX', {style: 'currency', currency: 'MXN'}).format(data.totalMXN);
@@ -1634,23 +1744,14 @@ $(document).on('submit', '#wadForm', function(e) {
                 $('#TotalPendingUSD').val(parseFloat(data.totalUSD) * parseFloat($('#exchange_now').val()));
                 $('#TotalPendingMXN').val(parseFloat(data.totalMXN));
                 $('#TotalPendingMRL').val(parseFloat(data.totalMXN));
+                markProcessTabsDirty(['deposit', 'sales_tab', 'finish', 'ballot']);
+                $('#v-pills-wads').data('loaded', true).data('dirty', false);
 
                 // Vamos a vaciar el input llamado amount y a dejarle el focus
                 $('#amount').val('');
                 $('#amount').focus();
 
-                // Ahora vamos a aghregar la clase loading al boton con el id island_id
-                $('#' + island_id).html(`<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>`);
-
-                // Ahora vamos a cargar los datos del boton
-                $.get("/operations/getInitialReadingsByIslandsAjax/" + formData.get('CodigoEstacion') + '/' + formData.get('FechaTabular') + '/' + formData.get('Turno') + '/' + formData.get('island_id') + '/' + formData.get('tabId'))
-                    .done(function( data ) {
-                        // Vamos a convertir a json el dato data
-                        data = JSON.parse(data);
-                        // Ahora vamos a aghregar la clase loading al boton con el id island_id
-                        $('#' + island_id).html(`${data.Isla}<br>$ ${data.Diferencia}`);
-                    }
-                );
+                refreshIslandCard(island_id);
 
                 // Ahora vamos a obtener el contenido de #diff_tab_span
                 var diff_tab_span = $('#diff_tab_span').html();
@@ -1730,6 +1831,8 @@ $(document).on('submit', '.formulario-ajax', function(e) {
                         var pair_of_tables = form.closest('.pair-of-tables');
                         // Encuentra el .card-body.table-responsive en el otro col y cambia su contenido
                         pair_of_tables.find('.col-sm-7 .card-body.table-responsive').html(data.ventas);
+                        markProcessTabsDirty(['wads', 'deposit', 'finish', 'ballot']);
+                        $('#v-pills-sales').data('loaded', true).data('dirty', false);
 
                         // Vamos a modificar el atributo max del input amount
                         form.find('#amount').attr('max', data.limiteFajilla);
@@ -1828,6 +1931,8 @@ $(document).on('submit', '.formulario-ajax', function(e) {
                                     var pair_of_tables = form.closest('.pair-of-tables');
                                     // Encuentra el .card-body.table-responsive en el otro col y cambia su contenido
                                     pair_of_tables.find('.col-sm-7 .card-body.table-responsive').html(data.ventas);
+                                    markProcessTabsDirty(['wads', 'deposit', 'finish', 'ballot']);
+                                    $('#v-pills-sales').data('loaded', true).data('dirty', false);
 
                                     // Vamos a modificar el atributo max del input amount
                                     form.find('#amount').attr('max', data.limiteFajilla);

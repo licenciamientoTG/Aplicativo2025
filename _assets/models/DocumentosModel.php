@@ -1743,10 +1743,10 @@ class DocumentosModel extends Model{
     CASE WHEN d.start_digits IS NOT NULL AND f.len_digits IS NOT NULL
          THEN SUBSTRING(r.ref, d.start_digits, f.len_digits) END
   ) AS mov_n
-                   from DocumentosC t1 
-                    LEFT JOIN DocumentosA t2 on t1.codgas = t2.codgas  and t1.nro = t2.nro and t2.tip = 4
-                    LEFT JOIN Gasolineras t3 on t1.codgas = t3.cod
-                    LEFT JOiN Clientes t4 on t1.codopr = t4.cod
+                   from [SG12].[dbo].DocumentosC t1 
+                    LEFT JOIN [SG12].[dbo].DocumentosA t2 on t1.codgas = t2.codgas  and t1.nro = t2.nro and t2.tip = 4
+                    LEFT JOIN [SG12].[dbo].Gasolineras t3 on t1.codgas = t3.cod
+                    LEFT JOiN [SG12].[dbo].Clientes t4 on t1.codopr = t4.cod
                     OUTER APPLY (SELECT TRY_CAST(t1.txtref AS NVARCHAR(MAX)) AS ref) r
                     OUTER APPLY (SELECT pos_tag = NULLIF(CHARINDEX('@N:MOV', r.ref), 0)) a
                     OUTER APPLY (SELECT after_tag = CASE WHEN a.pos_tag IS NOT NULL

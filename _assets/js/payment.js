@@ -1118,9 +1118,9 @@ function hidePaymentLoader() {
 
 // Mejorar generate_payment() existente
 async function generatePayment() {
-  if (paymentItems.length === 0) {
+    if (paymentItems.length === 0) {
     alertify.myAlert(
-      `<div class="container text-center text-warning">
+        `<div class="container text-center text-warning">
                 <h4 class="mt-2 text-warning">¡Advertencia!</h4>
             </div>
             <div class="text-dark">
@@ -1128,90 +1128,90 @@ async function generatePayment() {
             </div>`,
     );
     return;
-  }
+    }
 
-  const primerItem = paymentItems[0];
-  const proveedorCodigo =
+    const primerItem = paymentItems[0];
+    const proveedorCodigo =
     primerItem.proveedor_codigo || primerItem.id_control_gas || null;
-  var codigo_empresa = primerItem.codigo_empresa || null;
+    var codigo_empresa = primerItem.codigo_empresa || null;
 
-  if (!proveedorCodigo) {
+    if (!proveedorCodigo) {
     alertify.error("Error: No se pudo obtener el código del proveedor");
     return;
-  }
+    }
 
-  // Solicitar comentario
-  alertify.prompt(
+    // Solicitar comentario
+    alertify.prompt(
     "Comentario del Pago",
     "Ingrese un comentario o descripción para este pago:",
     "",
     async function (evt, comment) {
-      showPaymentLoader("Creando pago...", "Procesando documentos");
+        showPaymentLoader("Creando pago...", "Procesando documentos");
 
-      const scheduledDate = $("#scheduled_payment_date").val() || new Date().toISOString().split("T")[0];
-      const paymentData = {
+        const scheduledDate = $("#scheduled_payment_date").val() || new Date().toISOString().split("T")[0];
+        const paymentData = {
         documentos: paymentItems,
         total_documentos: paymentItems.length,
         total_amount: paymentItems.reduce(
-          (sum, item) => sum + (parseFloat(item.total_fac) || 0),
-          0,
+            (sum, item) => sum + (parseFloat(item.total_fac) || 0),
+            0,
         ),
         fecha_pago: scheduledDate,
         comment: comment || "Pago programado",
         provider_cod: proveedorCodigo, // ✅ AGREGADO
         provider_name: currentProvider, // ✅ OPCIONAL
         empresa_cod: codigo_empresa, // ✅ AGREGADO
-      };
+        };
 
-      console.log("📤 Datos enviados:", paymentData); // Debug
+        console.log("📤 Datos enviados:", paymentData); // Debug
 
-      try {
+        try {
         const response = await fetch("/payment/generate_payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(paymentData),
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(paymentData),
         });
 
         const data = await response.json();
         hidePaymentLoader();
         if (data.success) {
-          alertify.success("Pago creado exitosamente: ID #" + data.payment_id);
+            alertify.success("Pago creado exitosamente: ID #" + data.payment_id);
 
-          // Limpiar carrito
-          paymentItems = [];
-          currentProvider = null; // ✅ Resetear proveedor
-          renderPaymentItems();
-          updatePaymentSummary();
+            // Limpiar carrito
+            paymentItems = [];
+            currentProvider = null; // ✅ Resetear proveedor
+            renderPaymentItems();
+            updatePaymentSummary();
 
-          // Preguntar si desea ver el detalle
-          alertify.confirm(
+            // Preguntar si desea ver el detalle
+            alertify.confirm(
             "¿Ver detalle del pago?",
             "¿Desea ver el detalle del pago creado?",
             function () {
-              window.location.href =
+                window.location.href =
                 "/payment/payment_detail/" + data.payment_id;
             },
             function () {
-              // Recargar tabla
-              if ($.fn.DataTable.isDataTable("#payment_create_table")) {
+                // Recargar tabla
+                if ($.fn.DataTable.isDataTable("#payment_create_table")) {
                 $("#payment_create_table").DataTable().ajax.reload();
-              }
+                }
             },
-          );
+            );
         } else {
-          alertify.error("Error: " + data.detail);
+            alertify.error("Error: " + data.detail);
         }
-      } catch (error) {
+        } catch (error) {
         hidePaymentLoader();
         alertify.error("Error de conexión");
 
         console.error(error);
-      }
+        }
     },
     function () {
-      alertify.message("Operación cancelada");
+        alertify.message("Operación cancelada");
     },
-  );
+    );
 }
 
 
