@@ -48,7 +48,14 @@
       "Bash(unzip -q \"/c/Users/alejandro.martinez/Desktop/2025-10-30 Pago a proveedores/1-FRU_Pagos a proveedores de combustible.docx\" -d doc1_extracted)",
       "Bash(unzip -q \"/c/Users/alejandro.martinez/Desktop/2025-10-30 Pago a proveedores/2-Arquitectura de software \\(corregido\\).html.docx\" -d doc2_extracted)",
       "Bash(document)",
-      "Bash(sqlcmd:*)"
+      "Bash(sqlcmd:*)",
+      "mcp__notionApi__API-post-search",
+      "mcp__notionApi__API-post-page",
+      "mcp__notionApi__API-patch-block-children",
+      "mcp__notionApi__API-move-page",
+      "mcp__notionApi__API-patch-page",
+      "mcp__notionApi__API-get-block-children",
+      "mcp__notionApi__API-delete-a-block"
     ],
     "deny": [],
     "ask": []
