@@ -505,12 +505,38 @@
   $(document).ready(function() {
     // Cuando el formuario formDeposit se envía
     $('#formDeposit').on('submit', function(e) {
+      e.preventDefault();
+      const form = $(this);
+      const submitButton = form.find('button[type="submit"]');
       // Deshabilitar el botón de submit
-      $('#save_denominations').prop('disabled', true);
+      submitButton.prop('disabled', true);
       // Mostrar el spinner
       $('#save_denominations').val('Registrando depósito...');
       // Mostrar loader
       $('#card_deposit').addClass('loading');
+
+      $.ajax({
+        type: 'POST',
+        url: '/operations/add_deposit_ajax',
+        data: form.serialize(),
+        dataType: 'json',
+        success: function(data) {
+          if (data.result == 1) {
+            toastr.success(data.message, 'Exito', { timeOut: 1000 });
+            markProcessTabsDirty(['wads', 'deposit', 'sales_tab', 'finish', 'ballot']);
+            $('#v-pills-deposit-tab').trigger('click');
+          } else {
+            toastr.error(data.message, 'Error', { timeOut: 2000 });
+          }
+        },
+        error: function(xhr) {
+          console.error(xhr.responseText);
+        },
+        complete: function() {
+          submitButton.prop('disabled', false);
+          $('#card_deposit').removeClass('loading');
+        }
+      });
     });
 
     // Deseleccionar cualquier elemento seleccionado

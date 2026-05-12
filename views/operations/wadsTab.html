@@ -165,7 +165,7 @@
         $('.selectpicker').selectpicker();
 
         // Table de Fajillas en el Tab
-        let datatables_wads_tab = $('#datatables_wads_tab').DataTable({ // Tabla de fajillas en el tabulador
+        window.wadsTabDetailTable = $('#datatables_wads_tab').DataTable({ // Tabla de fajillas en el tabulador
             order: [0, "desc"],
             dom: '<"top"Bf>rt<"bottom"lip>',
             pageLength: 100,
@@ -187,10 +187,7 @@
                 $('.table-responsive').removeClass('loading');
             },
 
-            ajax: {
-                data: {'tabId': $('input#inputTabId').val(), 'CodigoEstacion': $('input#CodigoEstacion').val()},
-                url: '/operations/datatables_wads_tab'
-            },
+            data: [],
             columns: [
                 {'data': 'SEC'},
                 {'data': 'RESPONSABLE'},
@@ -236,21 +233,11 @@
                         currency: 'MXN'
                     })
                 );
-                // Evento draw para recalcular el total cuando se redibuja la tabla
-                api.on('draw', function () {
-                    var total = calculateTotal();
-                    $(api.column(6).footer()).html(
-                        total.toLocaleString('es-MX', {
-                            style: 'currency',
-                            currency: 'MXN'
-                        })
-                    );
-                });
             }
         });
 
 
-        let wads_table_total = $('#wads_table_total').DataTable({
+        window.wadsTabSummaryTable = $('#wads_table_total').DataTable({
             colReorder: true,
             dom: '<"top"Bf>rt<"bottom"lip>',
             pageLength: 100,
@@ -267,10 +254,7 @@
                 $('.dt-buttons').addClass('d-none');
                 $('.table-responsive').removeClass('loading');
             },
-            ajax: {
-                data: {'tabId': $('input#inputTabId').val()},
-                url: '/operations/wads_table_total'
-            },
+            data: [],
             columns: [
                 {'data': 'ISLA'},
                 {'data': 'FAJILLAS'},
@@ -330,25 +314,24 @@
                         currency: 'MXN'
                     })
                 );
-                // Evento draw para recalcular el total cuando se redibuja la tabla
-                api.on('draw', function () {
-                    var totalColumn2 = calculateTotal(2);
-                    var totalColumn3 = calculateTotal(3);
-                    $(api.column(2).footer()).html(
-                        totalColumn2.toLocaleString('es-MX', {
-                            style: 'currency',
-                            currency: 'MXN'
-                        }) + ' MXN'
-                    );
-                    $(api.column(3).footer()).html(
-                        totalColumn3.toLocaleString('es-MX', {
-                            style: 'currency',
-                            currency: 'MXN'
-                        }) + ' USD'
-                    );
-                });
             }
         });
+
+        window.reloadWadsTabTables = function() {
+            $('.table-responsive').addClass('loading');
+            return $.ajax({
+                data: {'tabId': $('input#inputTabId').val()},
+                url: '/operations/wads_tab_data',
+                dataType: 'json'
+            }).done(function(data) {
+                window.wadsTabDetailTable.clear().rows.add(data.wads || []).draw();
+                window.wadsTabSummaryTable.clear().rows.add(data.summary || []).draw();
+            }).always(function() {
+                $('.table-responsive').removeClass('loading');
+            });
+        };
+
+        window.reloadWadsTabTables();
     });
 
 

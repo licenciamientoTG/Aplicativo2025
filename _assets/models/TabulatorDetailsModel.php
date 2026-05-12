@@ -68,6 +68,138 @@ class TabulatorDetailsModel extends Model{
         return $this->sql->select($query, [$tabId]) ?: false;
     }
 
+    function get_wads_tab_data($tabId) : array|false {
+        $query = "
+            WITH Wads AS (
+                SELECT
+                    t1.Id,
+                    t1.Secuencial,
+                    t1.Isla AS IdIsla,
+                    t1.CodigoValor,
+                    t1.Cantidad,
+                    t1.Monto,
+                    t1.Moneda,
+                    t1.TipoCambio,
+                    t1.Fecha,
+                    t1.Estatus,
+                    t1.Usuario,
+                    t1.FechaCambio,
+                    t1.UsuarioCambio,
+                    t1.Valor,
+                    t1.Efectivo,
+                    ISNULL(t1.IdRecolecta, 0) AS IdRecolecta,
+                    t1.Despacho,
+                    t1.Turno,
+                    t1.secuencialAnticipo,
+                    CONVERT(varchar, t1.LogReg, 108) AS Hora,
+                    t2.den AS Isla,
+                    LTRIM(t3.den) AS CodigoValorDescripcion,
+                    t4.Nombre AS Responsable
+                FROM [TG].[dbo].[TabuladorDetalle] t1 WITH (NOLOCK)
+                    LEFT JOIN [SG12].[dbo].[Islas] t2 WITH (NOLOCK) ON t1.Isla = t2.cod
+                    LEFT JOIN [SG12].[dbo].[Valores] t3 WITH (NOLOCK) ON t3.cod = t1.CodigoValor
+                    LEFT JOIN [TG].[dbo].[Asignaciones] t4 WITH (NOLOCK) ON t1.Id = t4.IdTabulador AND t2.cod = t4.Isla
+                WHERE
+                    t1.Id = ?
+                    AND t1.Estatus = 1
+                    AND t1.CodigoValor IN (5, 6, 192)
+            ),
+            Summary AS (
+                SELECT
+                    t1.cod,
+                    t1.den,
+                    t2.Id,
+                    t2.hits,
+                    t2.Monto_MXN,
+                    t2.Monto_USD,
+                    t2.Monto_MRL,
+                    t2.Isla
+                FROM [SG12].[dbo].[Islas] t1 WITH (NOLOCK)
+                    LEFT JOIN (
+                        SELECT
+                            Id,
+                            COUNT(*) AS hits,
+                            SUM(CASE WHEN CodigoValor = 6 THEN COALESCE(Valor, 0) ELSE 0 END) AS Monto_MXN,
+                            SUM(CASE WHEN CodigoValor = 5 THEN COALESCE(Monto, 0) ELSE 0 END) AS Monto_USD,
+                            SUM(CASE WHEN CodigoValor = 192 THEN COALESCE(Monto, 0) ELSE 0 END) AS Monto_MRL,
+                            Isla
+                        FROM [TG].[dbo].[TabuladorDetalle] WITH (NOLOCK)
+                        WHERE
+                            CodigoValor IN (5, 6, 192)
+                            AND Id = ?
+                        GROUP BY Isla, Id
+                    ) t2 ON t1.cod = t2.Isla
+                WHERE t2.Id = ?
+            )
+            SELECT
+                'DETAIL' AS TipoRegistro,
+                1 AS Orden,
+                Id,
+                Secuencial,
+                IdIsla,
+                CodigoValor,
+                Cantidad,
+                Monto,
+                Moneda,
+                TipoCambio,
+                Fecha,
+                Estatus,
+                Usuario,
+                FechaCambio,
+                UsuarioCambio,
+                Valor,
+                Efectivo,
+                IdRecolecta,
+                Despacho,
+                Turno,
+                secuencialAnticipo,
+                Hora,
+                Isla,
+                CodigoValorDescripcion,
+                Responsable,
+                CAST(NULL AS INT) AS hits,
+                CAST(NULL AS FLOAT) AS Monto_MXN,
+                CAST(NULL AS FLOAT) AS Monto_USD,
+                CAST(NULL AS FLOAT) AS Monto_MRL
+            FROM Wads
+            UNION ALL
+            SELECT
+                'SUMMARY' AS TipoRegistro,
+                2 AS Orden,
+                Id,
+                CAST(NULL AS INT) AS Secuencial,
+                cod AS IdIsla,
+                CAST(NULL AS INT) AS CodigoValor,
+                CAST(NULL AS FLOAT) AS Cantidad,
+                CAST(NULL AS FLOAT) AS Monto,
+                CAST(NULL AS VARCHAR(10)) AS Moneda,
+                CAST(NULL AS FLOAT) AS TipoCambio,
+                CAST(NULL AS DATETIME) AS Fecha,
+                CAST(NULL AS INT) AS Estatus,
+                CAST(NULL AS VARCHAR(100)) AS Usuario,
+                CAST(NULL AS DATETIME) AS FechaCambio,
+                CAST(NULL AS VARCHAR(100)) AS UsuarioCambio,
+                CAST(NULL AS FLOAT) AS Valor,
+                CAST(NULL AS INT) AS Efectivo,
+                CAST(NULL AS INT) AS IdRecolecta,
+                CAST(NULL AS INT) AS Despacho,
+                CAST(NULL AS INT) AS Turno,
+                CAST(NULL AS INT) AS secuencialAnticipo,
+                CAST(NULL AS VARCHAR(8)) AS Hora,
+                den AS Isla,
+                CAST(NULL AS VARCHAR(100)) AS CodigoValorDescripcion,
+                CAST(NULL AS VARCHAR(150)) AS Responsable,
+                hits,
+                Monto_MXN,
+                Monto_USD,
+                Monto_MRL
+            FROM Summary
+            ORDER BY Orden, Secuencial, IdIsla;
+        ";
+
+        return $this->sql->select($query, [$tabId, $tabId, $tabId]) ?: false;
+    }
+
     function get_wads_by_responsable($Responsable, $IdTabulador) : bool {
         // Verificamos si el responsable tiene fajillas a su nombre
         $query = "SELECT *, CONVERT(varchar, logreg, 108) AS Hora FROM [TG].[dbo].[TabuladorDetalle] WHERE Id = ? AND responsable_id = ?;";
