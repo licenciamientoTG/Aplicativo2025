@@ -1015,4 +1015,45 @@ class It{
             'user', 'pages', 'from', 'to'
         ));
     }
+
+    public function controlgas_users(): void {
+        echo $this->twig->render($this->route . 'controlgas_users.html');
+    }
+
+    public function disable_controlgas_user(): void {
+        $cod = (int)($_POST['cod'] ?? 0);
+        if (!$cod) {
+            json_output(['success' => false, 'message' => 'Código inválido']);
+            return;
+        }
+        $model = new ControlgasUsersModel();
+        json_output($model->disable_user($cod));
+    }
+
+    public function datatables_controlgas_users(): void {
+        $model = new ControlgasUsersModel();
+        $data  = [];
+        foreach ($model->get_users() as $row) {
+            $cod = (int)$row['cod'];
+            $data[] = [
+                'COD'     => $cod,
+                'DEN'     => $row['den'],
+                'CLV'     => $row['clv'],
+                'ACC'     => $row['acc'],
+                'ACCX'    => $row['accx'],
+                'TIPOPR'  => $row['tipopr'],
+                'TIPUSU'  => $row['tipusu'],
+                'CODROL'  => $row['codrol'],
+                'CODEST'  => $row['codest'],
+                'LOGUSU'  => $row['logusu'],
+                'LOGFCH'  => $row['logfch'],
+                'LOGNEW'  => $row['lognew'],
+                'USERID'  => $row['userid'],
+                'CLVFCH'  => $row['clvfch'],
+                'CLVEXP'  => $row['clvexp'],
+                'ACCIONES' => "<button class='btn btn-warning btn-sm' onclick='disableControlgasUser({$cod}, " . json_encode($row['den']) . ")' title='Deshabilitar'><svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></button>",
+            ];
+        }
+        json_output(['data' => $data]);
+    }
 }

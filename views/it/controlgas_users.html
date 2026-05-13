@@ -1,0 +1,187 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Usuarios ControlGas{% endblock %}
+{% block mycss %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+{% endblock %}
+{% block menutitle %}Usuarios ControlGas{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-header pb-0">
+        <div class="card-actions float-end">
+            <div class="dropdown position-relative">
+                <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    </svg>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end">
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
+                    <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
+                    <a class="dropdown-item" href="#" id="btnRefresh"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                </div>
+            </div>
+        </div>
+        <h5 class="card-title mb-0">Usuarios ControlGas (SG12)</h5>
+    </div>
+    <div class="card-body table-responsive">
+        <div id="filtro-controlgas_users" class="mb-1">
+            <div class="row g-1">
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="0" placeholder="Cód"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="1" placeholder="Nombre"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="3" placeholder="Acc"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="6" placeholder="Tipo Usu"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="7" placeholder="Rol"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="8" placeholder="Est"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm col-filter" data-col="9" placeholder="Log Usu"></div>
+                <div class="col-auto p-1">
+                    <button type="button" class="btn btn-sm btn-success" id="btnRefreshFilter"><i data-feather="refresh-ccw"></i></button>
+                </div>
+            </div>
+        </div>
+        <table id="datatables_controlgas_users" class="table table-sm w-100" style="font-size:x-small;">
+            <thead>
+                <tr>
+                    <th>COD</th>
+                    <th>NOMBRE</th>
+                    <th>CLV</th>
+                    <th>ACC</th>
+                    <th>ACCX</th>
+                    <th>TIPO PR</th>
+                    <th>TIPO USU</th>
+                    <th>ROL</th>
+                    <th>EST</th>
+                    <th>LOG USU</th>
+                    <th>LOG FCH</th>
+                    <th>LOG NEW</th>
+                    <th>USER ID</th>
+                    <th>CLV FCH</th>
+                    <th>CLV EXP</th>
+                    <th class="text-center">ACCIONES</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+                <tr>
+                    <th>COD</th>
+                    <th>NOMBRE</th>
+                    <th>CLV</th>
+                    <th>ACC</th>
+                    <th>ACCX</th>
+                    <th>TIPO PR</th>
+                    <th>TIPO USU</th>
+                    <th>ROL</th>
+                    <th>EST</th>
+                    <th>LOG USU</th>
+                    <th>LOG FCH</th>
+                    <th>LOG NEW</th>
+                    <th>USER ID</th>
+                    <th>CLV FCH</th>
+                    <th>CLV EXP</th>
+                    <th class="text-center">ACCIONES</th>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}it.js"></script>
+<script>
+$(document).ready(function () {
+    var table = $('#datatables_controlgas_users').DataTable({
+        ajax: {
+            url: '/it/datatables_controlgas_users',
+            type: 'GET',
+            dataSrc: 'data'
+        },
+        columns: [
+            { data: 'COD' },
+            { data: 'DEN' },
+            { data: 'CLV' },
+            { data: 'ACC' },
+            { data: 'ACCX' },
+            { data: 'TIPOPR' },
+            { data: 'TIPUSU' },
+            { data: 'CODROL' },
+            { data: 'CODEST' },
+            { data: 'LOGUSU' },
+            { data: 'LOGFCH' },
+            { data: 'LOGNEW' },
+            { data: 'USERID' },
+            { data: 'CLVFCH' },
+            { data: 'CLVEXP' },
+            { data: 'ACCIONES', orderable: false, searchable: false, className: 'text-center' }
+        ],
+        createdRow: function (row, data) {
+            if (data.CLV === 'O5fz43Stf5x2C5W7j3CcCrWGjcWHCdMB') {
+                $(row).addClass('table-warning');
+                $('td', row).css({ 'font-weight': 'bold', 'color': '#856404' });
+            }
+        },
+        order: [[0, 'asc']],
+        pageLength: 25,
+        language: {
+            url: 'https://cdn.datatables.net/plug-ins/2.1.8/i18n/es-ES.json'
+        },
+        dom: 'Bfrtip',
+        buttons: [
+            { extend: 'excel', text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
+            { extend: 'pdf',   text: '<i data-feather="file-text"></i>', className: 'd-none', exportOptions: { columns: ':not(:last-child)' } },
+            { extend: 'print', text: '<i data-feather="printer"></i>',   className: 'd-none', exportOptions: { columns: ':not(:last-child)' } }
+        ]
+    });
+
+    // Column filters
+    $('.col-filter').on('keyup change', function () {
+        var colIdx = $(this).data('col');
+        table.column(colIdx).search(this.value).draw();
+    });
+
+    // Toolbar buttons
+    $('#exportExcel').on('click', function (e) { e.preventDefault(); table.button(0).trigger(); });
+    $('#exportPDF').on('click',   function (e) { e.preventDefault(); table.button(1).trigger(); });
+    $('#exportPrinter').on('click', function (e) { e.preventDefault(); table.button(2).trigger(); });
+    $('#btnRefresh, #btnRefreshFilter').on('click', function () { table.ajax.reload(); });
+
+    feather.replace();
+});
+
+async function disableControlgasUser(cod, nombre) {
+    const result = await Swal.fire({
+        title: '¿Deshabilitar usuario?',
+        html: `<b>${nombre}</b> (COD: ${cod}) perderá acceso al sistema.<br><small class="text-muted">Se asignará la contraseña: <code>51nP4ssw0rd!</code></small>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, deshabilitar',
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            confirmButton: 'btn btn-danger',
+            cancelButton: 'btn btn-secondary'
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const response = await fetch('/it/disable_controlgas_user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: `cod=${encodeURIComponent(cod)}`
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            Swal.fire('Deshabilitado', 'El usuario fue deshabilitado correctamente.', 'success');
+            $('#datatables_controlgas_users').DataTable().ajax.reload(null, false);
+        } else {
+            Swal.fire('Error', data.message || 'No se pudo deshabilitar el usuario.', 'error');
+        }
+    } catch (e) {
+        Swal.fire('Error', 'Problema de conexión con el servidor.', 'error');
+    }
+}
+</script>
+{% endblock %}
