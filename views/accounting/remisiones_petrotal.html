@@ -71,6 +71,12 @@
             <h5 class="mb-0"><i class="fas fa-table me-2"></i> Remisiones</h5>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-primary" id="badge-total">0 registros</span>
+                <div class="form-check form-switch mb-0 d-flex align-items-center gap-2" title="Mostrar u ocultar imágenes de sellos en las remisiones">
+                    <input class="form-check-input" type="checkbox" id="toggle-sellos" checked>
+                    <label class="form-check-label small mb-0" for="toggle-sellos">
+                        <i class="fas fa-stamp me-1"></i> Sellos
+                    </label>
+                </div>
                 <button class="btn btn-sm btn-warning" id="btn-generar">
                     <i class="fas fa-file-alt me-1"></i> Generar remisiones
                 </button>
@@ -409,6 +415,7 @@
                 return;
             }
 
+            const mostrarSellos = $('#toggle-sellos').is(':checked');
             const logoUrl = window.location.origin + '/_assets/images/LogoPetrotal.png';
             const sellosBase = window.location.origin + '/_assets/images/logos/SellosSinFondo/';
             const totalSellos = 3;
@@ -437,6 +444,9 @@
                 const selloUrl = sellosBase + (Math.floor(Math.random() * totalSellos) + 1) + '.png';
                 const selloOffset = (Math.random() * 120 - 70).toFixed(1);
                 const selloRotate = (Math.random() * 50 - 25).toFixed(1);
+                const selloImg = mostrarSellos
+                    ? `<img src="${selloUrl}" style="max-height:225px;max-width:360px;object-fit:contain;position:relative;left:${selloOffset}px;transform:rotate(${selloRotate}deg);mix-blend-mode:multiply;opacity:0.82;filter:contrast(1.15) saturate(0.85);" alt="Sello">`
+                    : '';
                 return `
                 <div class="remision">
                     <div class="doc-header">
@@ -479,7 +489,7 @@
                         <tr><td class="lbl">Nombre:</td><td></td></tr>
                         <tr>
                             <td class="lbl lbl-top">Firma y/o sello de recepción:</td>
-                            <td class="celda-firma" style="text-align:center;vertical-align:middle;"><img src="${selloUrl}" style="max-height:225px;max-width:360px;object-fit:contain;position:relative;left:${selloOffset}px;transform:rotate(${selloRotate}deg);mix-blend-mode:multiply;opacity:0.82;filter:contrast(1.15) saturate(0.85);" alt="Sello"></td>
+                            <td class="celda-firma" style="text-align:center;vertical-align:middle;">${selloImg}</td>
                         </tr>
                         <tr>
                             <td class="lbl">Litros de incremento:</td>
