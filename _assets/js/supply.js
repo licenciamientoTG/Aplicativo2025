@@ -2843,4 +2843,88 @@ async function analisis_compras_table() {
 // ARCHIVOS DE CONTABILIDAD (PDP-38 / PDP-39)
 // ============================================================
 
+// ============================================================
+// LISTA DE PRECIOS POR ESTACIÓN
+// ============================================================
+async function price_list_table() {
+  if ($.fn.DataTable.isDataTable("#price_list_table")) {
+    $("#price_list_table").DataTable().destroy();
+    $("#price_list_table thead .filter").remove();
+  }
+
+  $("#price_list_table thead").prepend(
+    $("#price_list_table thead tr").clone().addClass("filter"),
+  );
+  $("#price_list_table thead tr.filter th").each(function (index) {
+    const col = $("#price_list_table thead th").length / 2;
+    if (index < col) {
+      const title = $(this).text();
+      $(this).html(
+        '<input type="text" class="form-control form-control-sm" placeholder=" ' +
+          title +
+          '" />',
+      );
+    }
+  });
+  $("#price_list_table thead tr.filter th input").on("keyup change", function () {
+    const index = $(this).parent().index();
+    const table = $("#price_list_table").DataTable();
+    table.column(index).search(this.value).draw();
+  });
+
+  $("#price_list_table").DataTable({
+    order: [[7, "desc"]],
+    colReorder: true,
+    dom: '<"top"Bf>rt<"bottom"lip>',
+    paging: true,
+    pageLength: 100,
+    buttons: [
+      {
+        extend: "excel",
+        className: "btn btn-success",
+        text: " Excel",
+      },
+    ],
+    ajax: {
+      method: "POST",
+      url: "/supply/price_list_data",
+      timeout: 60000,
+      error: function () {
+        alertify.error("Error al cargar la lista de precios.");
+      },
+      beforeSend: function () {
+        $(".table-responsive").addClass("loading");
+      },
+      complete: function () {
+        $(".table-responsive").removeClass("loading");
+      },
+    },
+    columns: [
+      { data: "id", className: "text-nowrap" },
+      { data: "empresa" },
+      { data: "permiso_cre" },
+      { data: "ubicacion" },
+      {
+        data: "precio_regular",
+        render: $.fn.dataTable.render.number(",", ".", 2),
+        className: "text-nowrap text-end",
+      },
+      {
+        data: "precio_premium",
+        render: $.fn.dataTable.render.number(",", ".", 2),
+        className: "text-nowrap text-end",
+      },
+      {
+        data: "precio_diesel",
+        render: $.fn.dataTable.render.number(",", ".", 2),
+        className: "text-nowrap text-end",
+      },
+      { data: "fecha", className: "text-nowrap" },
+    ],
+    language: {
+      url: "https://cdn.datatables.net/plug-ins/2.1.2/i18n/es-MX.json",
+    },
+  });
+}
+
 

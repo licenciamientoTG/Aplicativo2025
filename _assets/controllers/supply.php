@@ -52,6 +52,8 @@ class Supply
     public MovimientosTanModel $movimientosTanModel;
     public ProveedoresModel $proveedores;
     public FacturasMovimientosTanquesModel $facturasMovimientosTanquesModel;
+    public CrePlacesModel $crePlacesModel;
+    public CrePricesModel $crePricesModel;
     /**
      * @param $twig
      */
@@ -80,6 +82,8 @@ class Supply
         $this->proveedores                                       = new ProveedoresModel();
         $this->facturasRecibidasModel                            = new FacturasRecibidasModel();
         $this->facturasMovimientosTanquesModel                   = new FacturasMovimientosTanquesModel();
+        $this->crePlacesModel                                    = new CrePlacesModel();
+        $this->crePricesModel                                    = new CrePricesModel();
     }
 
     /**
@@ -260,6 +264,29 @@ class Supply
         }
 
         echo $this->twig->render($this->route . 'fuel_prices.html', compact('stations', 'mensajeFinal', 'mensajeFinal2', 'prices'));
+    }
+
+    function price_list() {
+        echo $this->twig->render($this->route . 'price_list.html');
+    }
+
+    function price_list_data() {
+        $data = [];
+        if ($rows = $this->crePricesModel->getLatest()) {
+            foreach ($rows as $row) {
+                $data[] = [
+                    'id'             => $row['place_id'],
+                    'empresa'        => $row['name'],
+                    'permiso_cre'    => $row['cre_id'],
+                    'ubicacion'      => $row['location_y'] . ', ' . $row['location_x'],
+                    'precio_regular' => $row['regular'],
+                    'precio_premium' => $row['premium'],
+                    'precio_diesel'  => $row['diesel'],
+                    'fecha'          => $row['fetched_at'],
+                ];
+            }
+        }
+        json_output(['data' => $data]);
     }
 
     function datatable_product_prices()
