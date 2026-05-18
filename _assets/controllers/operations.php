@@ -189,11 +189,8 @@ class Operations{
                 if ($_SESSION['tg_user']['Id'] == "6177" || $_SESSION['tg_user']['Id'] == "6296") {
                     $blocked_tab = 0;
                 }
-                $t0 = microtime(true);
                 $tabulator = $this->tabulatorModel->get_tabulator($tabId);
-                $t1 = microtime(true);
                 $tab_data  = $this->despachosModel->get_tab_process_data($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
-                $t2 = microtime(true);
                 $all_islands = $tab_data['saldos'];
                 $samplings   = $tab_data['samplings'];
                 $islands     = $tab_data['islands'];
@@ -205,17 +202,7 @@ class Operations{
                 $tabulator['TotalProductos']  = round($all_islands ? ($all_islands[0]['TotalProductos'] ?? 0) : 0, 2);
 
                 $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
-                $t3 = microtime(true);
-                $assignments = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
-                $t4 = microtime(true);
-
-                $log = sprintf(
-                    "[%s] tab=%d estacion=%s fecha=%s turno=%s | get_tabulator=%.3fs | get_tab_process_data=%.3fs | get_responsables=%.3fs | get_assignations=%.3fs | TOTAL=%.3fs\n",
-                    date('Y-m-d H:i:s'), $tabId,
-                    $tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno'],
-                    $t1 - $t0, $t2 - $t1, $t3 - $t2, $t4 - $t3, $t4 - $t0
-                );
-                file_put_contents($_SERVER['DOCUMENT_ROOT'] . '/_logs/tab_process_timing.log', $log, FILE_APPEND | LOCK_EX);
+                $assignments  = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
                 echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'blocked_tab'));
             } catch (\Throwable $th) {
                 setFlashMessage('error', $th->getMessage()); // Mostramos un mensaje de error
