@@ -189,12 +189,33 @@ class Operations{
                 if ($_SESSION['tg_user']['Id'] == "6177" || $_SESSION['tg_user']['Id'] == "6296") {
                     $blocked_tab = 0;
                 }
+                $t0 = microtime(true);
                 $tabulator = $this->tabulatorModel->get_tabulator($tabId);
-                $all_islands = $this->getInitialReadingsByIslands3($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
-                $samplings = $this->despachosModel->get_jarreos($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno']);
-                $islands = $this->islandModel->get_available_islands_by_tab($tabulator['CodigoEstacion'], $tabulator['Id']);
+                $t1 = microtime(true);
+                $tab_data  = $this->despachosModel->get_tab_process_data($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
+                $t2 = microtime(true);
+                $all_islands = $tab_data['saldos'];
+                $samplings   = $tab_data['samplings'];
+                $islands     = $tab_data['islands'];
+
+                // Calcular totales desde los datos por isla — el SP ya no golpea el servidor remoto
+                $tabulator['total_ingresado'] = round(array_sum(array_column($all_islands ?: [], 'TotalVentasReportadas')), 2);
+                $tabulator['total_ventas']    = round(array_sum(array_column($all_islands ?: [], 'TotalVentas')), 2);
+                $tabulator['saldo']           = round($tabulator['total_ventas'] - $tabulator['total_ingresado'], 2);
+                $tabulator['TotalProductos']  = round($all_islands ? ($all_islands[0]['TotalProductos'] ?? 0) : 0, 2);
+
                 $responsables = $this->responsablesModel->get_responsables_by_station($tabulator['CodigoEstacion']);
+                $t3 = microtime(true);
                 $assignments = $this->assignacionesModel->get_assignations_by_tabulator($tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno']);
+                $t4 = microtime(true);
+
+                $log = sprintf(
+                    "[%s] tab=%d estacion=%s fecha=%s turno=%s | get_tabulator=%.3fs | get_tab_process_data=%.3fs | get_responsables=%.3fs | get_assignations=%.3fs | TOTAL=%.3fs\n",
+                    date('Y-m-d H:i:s'), $tabId,
+                    $tabulator['CodigoEstacion'], $tabulator['FechaTabular'], $tabulator['Turno'],
+                    $t1 - $t0, $t2 - $t1, $t3 - $t2, $t4 - $t3, $t4 - $t0
+                );
+                file_put_contents($_SERVER['DOCUMENT_ROOT'] . '/_logs/tab_process_timing.log', $log, FILE_APPEND | LOCK_EX);
                 echo $this->twig->render($this->route . 'tab_process.html', compact('tabulator', 'islands', 'responsables', 'assignments', 'samplings', 'island', 'all_islands', 'blocked_tab'));
             } catch (\Throwable $th) {
                 setFlashMessage('error', $th->getMessage()); // Mostramos un mensaje de error
@@ -548,6 +569,25 @@ class Operations{
      * @return void
      * @throws Exception
      */
+    function tab_check_status(int $tabId) : void {
+        header('Content-Type: application/json');
+        try {
+            $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+            if ($tabulator) {
+                $this->tabulatorModel->check_tabulator_closure(
+                    $tabId,
+                    $tabulator['station_server'],
+                    $tabulator['BaseDatos'],
+                    $tabulator['fechaTabularInt'],
+                    $tabulator['Turno']
+                );
+            }
+            echo json_encode(['ok' => true]);
+        } catch (\Throwable $th) {
+            echo json_encode(['ok' => false, 'error' => $th->getMessage()]);
+        }
+    }
+
     function tab_delete($tabId) : void {
         $tabulator = $this->tabulatorModel->get_tabulator($tabId);
         // Primero verificamos que el tabulador no tenga asignaciones
@@ -1193,21 +1233,6 @@ class Operations{
             $previous_date = $FechaTabular;
         }
         return $this->medicionModel->getInitialReadingsByIslands2($CodigoEstacion, $previous_date, $previous_shift, $Islands);
-    }
-
-    function getInitialReadingsByIslands3($CodigoEstacion, $FechaTabular, $Turno, $Islands, $tabId) {
-
-        $shifts = [11, 21, 31, 41];
-        $index = array_search($Turno, $shifts);
-
-        $previous_shift = $shifts[($index + count($shifts) - 1) % count($shifts)];
-
-        if ($previous_shift == 41) {
-            $previous_date = ($FechaTabular - 1);
-        } else {
-            $previous_date = $FechaTabular;
-        }
-        return $this->despachosModel->get_saldos_islas($CodigoEstacion, $previous_date, $previous_shift, $Islands, $FechaTabular, $Turno, $tabId);
     }
 
     function get_totals_tab($tabId, $codgas, $fecha, $turno, $islands) {

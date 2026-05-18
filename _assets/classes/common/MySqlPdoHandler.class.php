@@ -277,6 +277,31 @@ class MySqlPdoHandler{
 
 
 
+    public function selectMultiple($query, $params = NULL) {
+        $results = [];
+        if (!empty($this->_connection)) {
+            try {
+                $stmt = $this->_connection->prepare($query);
+                $stmt->execute($params ?: []);
+                do {
+                    $rows = [];
+                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                        $rows[] = $row;
+                    }
+                    $results[] = $rows ?: false;
+                } while ($stmt->nextRowset());
+                $stmt->closeCursor();
+            } catch (Exception $e) {
+                $errorMessage = 'Error en la consulta: ' . $e->getMessage();
+                $errorMessage .= "\nQuery: " . $query;
+                $errorMessage .= "\nParams: " . print_r($params, true);
+                echo $errorMessage;
+                die();
+            }
+        }
+        return $results;
+    }
+
 	 /**
      * Inicia una transacción.
      * @return void

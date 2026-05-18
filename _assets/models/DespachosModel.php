@@ -1144,18 +1144,22 @@ class DespachosModel extends Model{
         return ($this->sql->select($query, [])) ?: false ;
     }
 
-    function get_saldos_islas($CodigoEstacion, $fch, $nrotur, $Islands, $FechaTabular, $Turno, $tabId) {
+    function get_saldos_islas($CodigoEstacion, $FechaTabular, $Turno, $Islands, $tabId) {
 
         $shifts = [11, 21, 31, 41];
-        $index = array_search($nrotur, $shifts);
+        $index = array_search($Turno, $shifts);
 
-        $next_shift = $shifts[($index + count($shifts) + 1) % count($shifts)];
+        $previous_shift = $shifts[($index + count($shifts) - 1) % count($shifts)];
 
-        if ($next_shift == 11) {
-            $next_date = ($fch + 1);
+        if ($previous_shift == 41) {
+            $fch = $FechaTabular - 1;
         } else {
-            $next_date = $fch;
+            $fch = $FechaTabular;
         }
+
+        $nrotur = $previous_shift;
+        $next_date = $FechaTabular;
+        $next_shift = $Turno;
 
         $query = "
             WITH IslasRemotas AS ( -- Paso 1: Obtener Islas del Servidor Remoto y Ventas Reportadas
@@ -1264,6 +1268,132 @@ class DespachosModel extends Model{
             ORDER BY ir.codisl;
         ";
         return ($this->sql->select($query, [])) ?: false ;
+    }
+
+    function get_tab_process_data($CodigoEstacion, $FechaTabular, $Turno, $Islands, $tabId) {
+        $shifts = [11, 21, 31, 41];
+        $index = array_search($Turno, $shifts);
+        $previous_shift = $shifts[($index + count($shifts) - 1) % count($shifts)];
+        $fch = ($previous_shift == 41) ? $FechaTabular - 1 : $FechaTabular;
+        $nrotur = $previous_shift;
+
+        $query = "
+            -- Resultado 1: saldos por isla
+            WITH IslasRemotas AS (
+                SELECT den, cod AS codisl
+                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT den, cod FROM {$this->short_databases[$CodigoEstacion]}.[Islas] WHERE codgas = {$CodigoEstacion};')
+            ),
+            DatosRemotos AS (
+                SELECT codisl, Amount, Tipo
+                FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, '
+                    SELECT codisl, CAST(SUM(mto) AS FLOAT) AS Amount, ''reportadas'' AS Tipo
+                    FROM {$this->short_databases[$CodigoEstacion]}.[MovimientosTar]
+                    WHERE fchmov = {$FechaTabular} AND codgas = {$CodigoEstacion} AND nrotur = {$Turno}
+                        AND codisl IN ({$Islands})
+                        AND NOT (codbco = 0 AND tiptar IN (84, 68, 67, 72))
+                    GROUP BY codisl
+
+                    UNION ALL
+
+                    SELECT t1.codisl, CAST(SUM(t1.mto) AS FLOAT) AS Amount, ''reportadas'' AS Tipo
+                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos] t1
+                    INNER JOIN {$this->short_databases[$CodigoEstacion]}.[Clientes] t2 ON t1.codcli = t2.cod
+                    WHERE t1.fchtrn = {$FechaTabular} AND t1.codgas = {$CodigoEstacion} AND t1.nrotur = {$Turno}
+                        AND t1.codisl IN ({$Islands})
+                        AND t2.tipval IN (3, 4)
+                    GROUP BY t1.codisl
+
+                    UNION ALL
+
+                    SELECT t2.codisl, COALESCE(t2.amount, 0) AS Amount, ''totales'' AS Tipo
+                    FROM {$this->short_databases[$CodigoEstacion]}.[Medicion] t1
+                    LEFT JOIN (
+                        SELECT nrobom, COALESCE(SUM(CASE WHEN tiptrn NOT IN (74, 65) THEN mto ELSE 0 END), 0) AS amount, codprd, codisl
+                        FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                        WHERE fchcor = {$FechaTabular} AND nrotur = {$Turno}
+                            AND codprd IN (1,2,3,179,180,181,192,193) AND codisl IN ({$Islands})
+                        GROUP BY nrobom, codprd, codisl
+                    ) t2 ON t1.nrobom = t2.nrobom AND t1.codprd = t2.codprd
+                    WHERE t1.fch = {$fch} AND t1.nrotur = {$nrotur} AND t1.codisl IN ({$Islands})
+
+                    UNION ALL
+
+                    SELECT codisl, COALESCE(mto, 0) AS Amount, ''totales'' AS Tipo
+                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                    WHERE fchcor = {$FechaTabular} AND nrotur = {$Turno}
+                        AND codisl IN ({$Islands}) AND codprd NOT IN (0,179,180,181,192,193)
+
+                    UNION ALL
+
+                    SELECT 0 AS codisl, CAST(SUM(mto) AS FLOAT) AS Amount, ''productos'' AS Tipo
+                    FROM {$this->short_databases[$CodigoEstacion]}.[Despachos]
+                    WHERE fchtrn = {$FechaTabular} AND codgas = {$CodigoEstacion} AND nrotur = {$Turno}
+                        AND codprd NOT IN (0, 179, 180, 181)
+                ') AS RemoteRows
+            ),
+            VentasReportadas AS (
+                SELECT codisl, SUM(Amount) AS TotalVentasReportadas
+                FROM (
+                    SELECT codisl, Amount FROM DatosRemotos WHERE Tipo = 'reportadas'
+                    UNION ALL
+                    SELECT t1.Isla AS codisl, COALESCE(SUM(t1.Monto), 0) AS Amount
+                    FROM [TG].[dbo].[TabuladorDetalle] t1
+                    WHERE t1.Id = {$tabId} AND t1.CodigoValor IN (6, 192) AND t1.Isla IN ({$Islands})
+                    GROUP BY t1.Isla
+                ) AS combined
+                GROUP BY codisl
+            ),
+            VentasTotales AS (
+                SELECT codisl, SUM(Amount) AS TotalVentas
+                FROM DatosRemotos
+                WHERE Tipo = 'totales' AND codisl IS NOT NULL
+                GROUP BY codisl
+            ),
+            TotalProductos AS (
+                SELECT COALESCE(SUM(Amount), 0) AS TotalProductos
+                FROM DatosRemotos WHERE Tipo = 'productos'
+            )
+            SELECT ir.codisl, ir.den Isla,
+                COALESCE(vr.TotalVentasReportadas, 0) AS TotalVentasReportadas,
+                COALESCE(vt.TotalVentas, 0) AS TotalVentas,
+                COALESCE(vr.TotalVentasReportadas, 0) - COALESCE(vt.TotalVentas, 0) AS Diferencia,
+                tp.TotalProductos
+            FROM IslasRemotas ir
+            LEFT JOIN VentasReportadas vr ON ir.codisl = vr.codisl
+            LEFT JOIN VentasTotales vt ON ir.codisl = vt.codisl
+            CROSS JOIN TotalProductos tp
+            ORDER BY ir.codisl;
+
+            -- Resultado 2: jarreos (muestras de turno)
+            SELECT * FROM OPENQUERY({$this->linked_server[$CodigoEstacion]}, 'SELECT TOP 100 d.nrotrn AS Transaccion
+                , d.codgas AS Gasolinera
+                , CONVERT(VARCHAR, CAST(d.fchcor as DATETIME) -1, 23) AS Fecha
+                , SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 2, 2) + '':'' + SUBSTRING(CONVERT(CHAR(5), d.hratrn + 10000), 4, 2) Hora
+                , d.nrotur AS Turno
+                , d.nrobom AS Bomba
+                , d.codprd AS Producto
+                , LTRIM(p.den) AS Descripcion
+                , ROUND(d.can, 3) AS Cantidad
+                , d.mto AS Total
+            FROM {$this->short_databases[$CodigoEstacion]}.Despachos d(NOLOCK)
+                INNER JOIN {$this->short_databases[$CodigoEstacion]}.Productos p(NOLOCK) ON d.codprd = p.cod
+            WHERE d.codgas = {$CodigoEstacion} AND d.fchcor = {$FechaTabular}
+                AND d.tiptrn IN(65, 74) AND d.nrotur = {$Turno}
+            ORDER BY nrotrn DESC;');
+
+            -- Resultado 3: islas disponibles (sin asignación en este tabulador)
+            SELECT t1.cod, t1.den Isla, t1.codgas
+            FROM {$this->databases[$CodigoEstacion]}.[Islas] t1
+            LEFT JOIN (SELECT Isla FROM [TG].[dbo].[Asignaciones] WHERE IdTabulador = {$tabId}) t2 ON t1.cod = t2.Isla
+            WHERE t1.codgas = {$CodigoEstacion} AND t2.Isla IS NULL;
+        ";
+
+        $results = $this->sql->selectMultiple($query, []);
+        return [
+            'saldos'    => $results[0] ?: false,
+            'samplings' => $results[1] ?: false,
+            'islands'   => $results[2] ?: false,
+        ];
     }
 
     function get_saldos_isla($CodigoEstacion, $fch, $nrotur, $Island, $FechaTabular, $Turno, $tabId) {

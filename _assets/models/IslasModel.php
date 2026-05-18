@@ -57,15 +57,10 @@ class IslasModel extends Model{
      * @throws Exception
      */
     function get_available_islands_by_tab($codgas, $tabId) : array|false {
-        $query = "SELECT
-                        t1.cod, t1.den Isla, t1.codgas
-                    FROM
-                        {$this->databases[$codgas]}.[Islas] t1
-                        LEFT JOIN (SELECT * FROM [TG].[dbo].[Asignaciones] WHERE IdTabulador = ?) t2 ON t1.cod = t2.Isla
-                        LEFT JOIN {$this->databases[$codgas]}.[Gasolineras] t3 ON t1.codgas = t3.cod
-                    WHERE
-                        t1.codgas = ?
-                        AND t2.Isla IS NULL;";
+        $query = "SELECT t1.cod, t1.den Isla, t1.codgas
+                    FROM {$this->databases[$codgas]}.[Islas] t1
+                    LEFT JOIN (SELECT Isla FROM [TG].[dbo].[Asignaciones] WHERE IdTabulador = ?) t2 ON t1.cod = t2.Isla
+                    WHERE t1.codgas = ? AND t2.Isla IS NULL;";
         $params = [$tabId, $codgas];
         return ($this->sql->select($query,$params)) ?: false ;
     }

@@ -33,6 +33,17 @@ class TabulatorModel extends Model{
         return (($rs = $this->sql->executeStoredProcedure('[TG].[dbo].[sp_obtener_info_tabulador_completo]', [$tab_id])) ? $rs[0] : false );
     }
 
+    public function check_tabulator_closure(int $tabId, string $servidor, string $baseDatos, int $intDate, int $turno) : void {
+        if ($turno < 20 || $turno > 40) return;
+        $ventasC = "[$servidor].[$baseDatos].[dbo].[VentasC]";
+        $this->sql->query("
+            IF EXISTS (SELECT 1 FROM $ventasC WHERE fch = $intDate AND nrotur = $turno)
+                UPDATE [TG].[dbo].[TabuladorEncabezado]
+                SET Estatus = 2, FechaCierre = GETDATE()
+                WHERE Id = $tabId AND Estatus != 2;
+        ", []);
+    }
+
     /**
      * @param int $limit
      * @return array|false
