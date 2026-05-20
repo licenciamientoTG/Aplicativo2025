@@ -8,15 +8,21 @@
         <div class="card-actions float-end">
             <div class="dropdown position-relative">
                 <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
-                        <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-more-horizontal align-middle">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="19" cy="12" r="1"></circle>
+                        <circle cx="5" cy="12" r="1"></circle>
                     </svg>
                 </a>
                 <div class="dropdown-menu dropdown-menu-end">
-                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a Excel</a>
+                    <a class="dropdown-item" href="#" id="exportExcel"><i data-feather="file-text"></i> Exportar a
+                        Excel</a>
                     <a class="dropdown-item" href="#" id="exportPDF"><i data-feather="file-text"></i> Exportar a PDF</a>
                     <a class="dropdown-item" href="#" id="exportPrinter"><i data-feather="printer"></i> Imprimir</a>
-                    <a class="dropdown-item refresh_datatables_users" href="#"><i data-feather="refresh-ccw"></i> Actualizar</a>
+                    <a class="dropdown-item refresh_datatables_users" href="#"><i data-feather="refresh-ccw"></i>
+                        Actualizar</a>
                 </div>
             </div>
         </div>
@@ -26,21 +32,32 @@
         <div id="filtro-datatables_users" class="mb-1">
             <div class="row">
                 <!-- Agrega tus elementos de filtrado aquí -->
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ID" placeholder="Id"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="USUARIO" placeholder="Usuario"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="NOMBRE" placeholder="Nombre"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="STATUS" placeholder="Status"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PERFIL" placeholder="Perfil"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="CORREO" placeholder="Correo"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="ESTACION" placeholder="Estación"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="FECHA" placeholder="Fecha"></div>
-                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px" id="PERMISOS" placeholder="Permisos"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="ID" placeholder="Id"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="USUARIO" placeholder="Usuario"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="NOMBRE" placeholder="Nombre"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="STATUS" placeholder="Status"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="PERFIL" placeholder="Perfil"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="CORREO" placeholder="Correo"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="ESTACION" placeholder="Estación"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="FECHA" placeholder="Fecha"></div>
+                <div class="col p-1"><input type="text" class="form-control form-control-sm" style="margin-left: 3px"
+                        id="PERMISOS" placeholder="Permisos"></div>
                 <div class="col p-1 text-center">
-                    <button type="button" class="btn btn-sm btn-success refresh"><i data-feather="refresh-ccw"></i></button>
-                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#userModal"><i data-feather="plus"></i></button>
+                    <button type="button" class="btn btn-sm btn-success refresh"><i
+                            data-feather="refresh-ccw"></i></button>
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                        data-bs-target="#userModal"><i data-feather="plus"></i></button>
                 </div>
             </div>
-        <!-- Puedes agregar más filtros según tus necesidades -->
+            <!-- Puedes agregar más filtros según tus necesidades -->
         </div>
         <table id="datatables_users" class="table table-sm w-100" style="font-size:x-small;">
             <thead>
@@ -106,7 +123,8 @@
 </div>
 
 <!-- Modal -->
-<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel" aria-hidden="true">
+<div class="modal fade" id="changePasswordModal" tabindex="-1" aria-labelledby="changePasswordModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">

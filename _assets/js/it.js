@@ -81,7 +81,17 @@ let datatables_users = $('#datatables_users').DataTable({
         {'data': 'ID'},
         {'data': 'USUARIO'},
         {'data': 'NOMBRE'},
-        {'data': 'STATUS'},
+        {
+            'data': 'STATUS',
+            'render': function(data, type) {
+                if (type === 'display') {
+                    return data == 1
+                        ? '<span class="badge bg-success">Activo</span>'
+                        : '<span class="badge bg-danger">Inactivo</span>';
+                }
+                return data == 1 ? 'Activo' : 'Inactivo';
+            }
+        },
         {'data': 'PERFIL'},
         {'data': 'CORREO'},
         {'data': 'ESTACION'},
@@ -260,6 +270,22 @@ $('.refresh_datatables_permissions_users').on('click', function () {
     datatables_permissions_users.clear().draw();
     datatables_permissions_users.ajax.reload();
     $('#datatables_permissions_users').waitMe('hide');
+});
+
+// Aplicar perfil Encargado de estación: marca los permisos IDs 13,14,15,19,20,21,37,38
+$('#applyProfileEncargado').on('click', function (e) {
+    e.preventDefault();
+    const profileIds = [13, 14, 15, 19, 20, 21, 37, 38];
+    profileIds.forEach(function (id) {
+        const rowNode = datatables_permissions_users.row('#' + id).node();
+        if (!rowNode) return;
+        const checkbox = $(rowNode).find('input[type="checkbox"]');
+        if (checkbox.length && !checkbox.prop('checked')) {
+            checkbox.prop('checked', true);
+            assignPermission(checkbox[0]);
+        }
+    });
+    toastr.info('Perfil Encargado de estación aplicado', '', { timeOut: 3000 });
 });
 
 
