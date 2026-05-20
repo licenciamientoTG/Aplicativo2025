@@ -92,6 +92,8 @@ class GeneradorXMLPrecios {
             "TrustServerCertificate" => true,
             "Encrypt" => false
         ];
+
+        sqlsrv_configure('WarningsReturnAsErrors', 0);
         
         $conn = sqlsrv_connect($serverName, $connectionOptions);
         
@@ -229,7 +231,8 @@ class GeneradorXMLPrecios {
                     rfc = ?,
                     creProductId = ?,
                     creSubProductId = ?,
-                    creSubProductBrandId = ?
+                    creSubProductBrandId = ?,
+                    created_at = GETDATE()
                 WHERE codgas = ? AND codprd = ? AND price_date = ?
             ";
             $updateParams = [

@@ -1231,6 +1231,9 @@ class Supply
     function generar_xml_precios()
     {
         try {
+            ini_set('max_execution_time', 0);
+            set_time_limit(0);
+
             // Verificar que sea una petición POST
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 $this->responderJSON(false, 'Método no permitido. Use POST.');
@@ -1268,6 +1271,7 @@ class Supply
             }
 
             $resultado = $generador->generarYEnviarXML($hora);
+            $estadisticas = $generador->getEstadisticas();
 
             if ($resultado) {
                 // Contar archivos generados
@@ -1280,7 +1284,8 @@ class Supply
                     [
                         'archivos_generados' => $totalArchivos,
                         'hora_aplicacion' => $hora,
-                        'archivos' => array_map('basename', $archivosXML)
+                        'archivos' => array_map('basename', $archivosXML),
+                        'estadisticas' => $estadisticas
                     ]
                 );
             } else {
@@ -1288,7 +1293,7 @@ class Supply
                 $this->responderJSON(
                     false,
                     'Error al generar o enviar los XMLs',
-                    ['errores' => $errores]
+                    ['errores' => $errores, 'estadisticas' => $estadisticas]
                 );
             }
         } catch (Exception $e) {
