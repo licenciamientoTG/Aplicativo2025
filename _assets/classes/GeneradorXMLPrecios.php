@@ -31,6 +31,14 @@ class GeneradorXMLPrecios {
     private $errores = [];
     private $outputDir = 'xml_output';
     private $eliminarDespuesDeEnviar = true; // Por defecto elimina
+    private $estadisticasActualizacion = [
+        'estaciones_consultadas' => 0,
+        'estaciones_disponibles' => 0,
+        'estaciones_sin_conexion' => 0,
+        'estaciones_sin_precios' => 0,
+        'precios_insertados' => 0,
+        'precios_actualizados' => 0
+    ];
     
     /**
      * Constructor
@@ -92,6 +100,242 @@ class GeneradorXMLPrecios {
         }
         
         return $conn;
+    }
+
+    /**
+     * Convierte errores de sqlsrv en texto legible.
+     */
+    private function formatSqlsrvErrors() {
+        $errors = sqlsrv_errors();
+        if (empty($errors)) {
+            return 'Error SQL desconocido';
+        }
+
+        $messages = [];
+        foreach ($errors as $error) {
+            $messages[] = "[SQLSTATE {$error['SQLSTATE']}] {$error['message']}";
+        }
+
+        return implode(' | ', $messages);
+    }
+
+    /**
+     * Verifica conectividad básica al puerto SQL Server de una estación.
+     */
+    private function puertoAbierto($host, $port = 1433, $timeout = 1) {
+        $conn = @fsockopen($host, $port, $errno, $errstr, $timeout);
+        if ($conn) {
+            fclose($conn);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Obtiene estaciones activas que participan en el XML de precios CRE.
+     */
+    private function obtenerEstacionesActivasParaPrecios($conn) {
+        $sql = "
+            SELECT Codigo, Servidor, BaseDatos
+            FROM [TG].[dbo].[Estaciones]
+            WHERE activa = 1
+              AND Codigo NOT IN (0, 11, 17)
+            ORDER BY Codigo ASC
+        ";
+
+        $stmt = sqlsrv_query($conn, $sql);
+        if ($stmt === false) {
+            throw new Exception("Error al obtener estaciones activas: " . $this->formatSqlsrvErrors());
+        }
+
+        $estaciones = [];
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $estaciones[] = $row;
+        }
+
+        sqlsrv_free_stmt($stmt);
+
+        return $estaciones;
+    }
+
+    /**
+     * Consulta los precios CRE actuales de una estación mediante el SP central.
+     */
+    private function obtenerPreciosEstacion($conn, $station) {
+        $sql = "EXEC [TG].[dbo].[sp_obtener_precios_CRE] @LinkedServer = ?, @Database = ?, @CodGas = ?";
+        $params = [$station['Servidor'], $station['BaseDatos'], $station['Codigo']];
+        $stmt = sqlsrv_query($conn, $sql, $params);
+
+        if ($stmt === false) {
+            throw new Exception("Error al ejecutar SP de precios: " . $this->formatSqlsrvErrors());
+        }
+
+        $precios = [];
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $precios[] = $row;
+        }
+
+        sqlsrv_free_stmt($stmt);
+
+        return $precios;
+    }
+
+    /**
+     * Inserta o actualiza un precio en FuelPrices usando codgas/codprd/price_date.
+     */
+    private function guardarPrecioFuelPrice($conn, $precio) {
+        $requiredKeys = [
+            'codgas',
+            'codprd',
+            'pre',
+            'Fecha',
+            'Hora',
+            'Permiso CRE',
+            'RFC',
+            'creProductId',
+            'creSubProductId',
+            'creSubProductBrandId'
+        ];
+
+        foreach ($requiredKeys as $key) {
+            if (!array_key_exists($key, $precio)) {
+                throw new Exception("El precio recibido no contiene el campo requerido: {$key}");
+            }
+        }
+
+        $selectSql = "
+            SELECT COUNT(*) AS total
+            FROM [TG].[dbo].[FuelPrices]
+            WHERE codgas = ? AND codprd = ? AND price_date = ?
+        ";
+        $selectParams = [$precio['codgas'], $precio['codprd'], $precio['Fecha']];
+        $selectStmt = sqlsrv_query($conn, $selectSql, $selectParams);
+
+        if ($selectStmt === false) {
+            throw new Exception("Error al verificar FuelPrices: " . $this->formatSqlsrvErrors());
+        }
+
+        $row = sqlsrv_fetch_array($selectStmt, SQLSRV_FETCH_ASSOC);
+        sqlsrv_free_stmt($selectStmt);
+        $existe = !empty($row) && intval($row['total']) > 0;
+
+        if ($existe) {
+            $updateSql = "
+                UPDATE [TG].[dbo].[FuelPrices]
+                SET precio = ?,
+                    hour = ?,
+                    cre_permission = ?,
+                    rfc = ?,
+                    creProductId = ?,
+                    creSubProductId = ?,
+                    creSubProductBrandId = ?
+                WHERE codgas = ? AND codprd = ? AND price_date = ?
+            ";
+            $updateParams = [
+                $precio['pre'],
+                $precio['Hora'],
+                $precio['Permiso CRE'],
+                $precio['RFC'],
+                $precio['creProductId'],
+                $precio['creSubProductId'],
+                $precio['creSubProductBrandId'],
+                $precio['codgas'],
+                $precio['codprd'],
+                $precio['Fecha']
+            ];
+            $updateStmt = sqlsrv_query($conn, $updateSql, $updateParams);
+
+            if ($updateStmt === false) {
+                throw new Exception("Error al actualizar FuelPrices: " . $this->formatSqlsrvErrors());
+            }
+
+            sqlsrv_free_stmt($updateStmt);
+            $this->estadisticasActualizacion['precios_actualizados']++;
+            return;
+        }
+
+        $insertSql = "
+            INSERT INTO [TG].[dbo].[FuelPrices] (
+                codgas,
+                codprd,
+                precio,
+                price_date,
+                hour,
+                cre_permission,
+                rfc,
+                creProductId,
+                creSubProductId,
+                creSubProductBrandId
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ";
+        $insertParams = [
+            $precio['codgas'],
+            $precio['codprd'],
+            $precio['pre'],
+            $precio['Fecha'],
+            $precio['Hora'],
+            $precio['Permiso CRE'],
+            $precio['RFC'],
+            $precio['creProductId'],
+            $precio['creSubProductId'],
+            $precio['creSubProductBrandId']
+        ];
+        $insertStmt = sqlsrv_query($conn, $insertSql, $insertParams);
+
+        if ($insertStmt === false) {
+            throw new Exception("Error al insertar FuelPrices: " . $this->formatSqlsrvErrors());
+        }
+
+        sqlsrv_free_stmt($insertStmt);
+        $this->estadisticasActualizacion['precios_insertados']++;
+    }
+
+    /**
+     * Refresca FuelPrices desde estaciones antes de generar XMLs.
+     */
+    private function actualizarFuelPricesAntesDeGenerarXML() {
+        $this->errores[] = "La estacion de Anapra ha sido excluida por cuestiones administrativas.";
+
+        $conn = $this->getConnection();
+
+        try {
+            $estaciones = $this->obtenerEstacionesActivasParaPrecios($conn);
+            $this->estadisticasActualizacion['estaciones_consultadas'] = count($estaciones);
+
+            foreach ($estaciones as $station) {
+                $descripcion = "{$station['Servidor']}/{$station['BaseDatos']}";
+
+                if (!$this->puertoAbierto($station['Servidor'], 1433, 1)) {
+                    $this->estadisticasActualizacion['estaciones_sin_conexion']++;
+                    $this->errores[] = "La estación {$descripcion} no está disponible. Deberá llevarse la carga manualmente.";
+                    continue;
+                }
+
+                $this->estadisticasActualizacion['estaciones_disponibles']++;
+
+                try {
+                    $precios = $this->obtenerPreciosEstacion($conn, $station);
+
+                    if (empty($precios)) {
+                        $this->estadisticasActualizacion['estaciones_sin_precios']++;
+                        $this->errores[] = "No se obtuvieron precios para {$descripcion}.";
+                        continue;
+                    }
+
+                    foreach ($precios as $precio) {
+                        $this->guardarPrecioFuelPrice($conn, $precio);
+                    }
+                } catch (Exception $e) {
+                    $this->errores[] = "No se pudieron actualizar precios para {$descripcion}: " . $e->getMessage();
+                }
+            }
+
+            $this->errores[] = "El Diesel de la estación Puerto de Palos ha sido excluido por cuestiones operativas.";
+        } finally {
+            sqlsrv_close($conn);
+        }
     }
     
     /**
@@ -335,7 +579,8 @@ class GeneradorXMLPrecios {
             'directorio' => $this->outputDir,
             'archivos_restantes' => count($archivosRestantes),
             'limpieza_automatica' => $this->eliminarDespuesDeEnviar,
-            'errores_count' => count($this->errores)
+            'errores_count' => count($this->errores),
+            'actualizacion_fuel_prices' => $this->estadisticasActualizacion
         ];
     }
     
@@ -359,6 +604,9 @@ class GeneradorXMLPrecios {
                 throw new Exception("Formato de hora inválido. Use HH:MM (ej: 14:00)");
             }
             
+            // Actualizar FuelPrices antes de generar los XMLs.
+            $this->actualizarFuelPricesAntesDeGenerarXML();
+
             // Obtener datos
             $datosAgrupados = $this->obtenerPreciosAgrupadosPorRFC();
             
