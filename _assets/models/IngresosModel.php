@@ -29,40 +29,96 @@ class IngresosModel extends Model{
     }
 
     function get_cash_sales($from, $until, $codgas = null) : array | false {
-        $codgas_query = '';
-        if ($codgas != 0) {
-            $codgas_query = ' AND i.codgas ='.$codgas;
+
+        $codgas_filter_base   = '';
+        $codgas_filter_ventas = '';
+
+        if (!empty($codgas) && $codgas !== 0) {
+            $codgas_filter_base   = ' WHERE g.cod = ' . (int)$codgas;
+            $codgas_filter_ventas = ' AND i.codgas = ' . (int)$codgas;
         }
-        $query = 'SELECT
-                        g.cod AS CodigoGasolinera,
-                            CONVERT(VARCHAR(10), DATEADD(day, -1, i.fch), 23) as Fecha, 
-                        g.abr AS Gasolinera,
-                        CASE
-                            WHEN i.nrotur >= 11 AND i.nrotur < 21 THEN 1
-                            WHEN i.nrotur >= 21 AND i.nrotur < 31 THEN 2
-                            WHEN i.nrotur >= 31 AND i.nrotur < 41 THEN 3
-                            WHEN i.nrotur >= 41 AND i.nrotur <= 51 THEN 4
-                            ELSE i.nrotur
-                        END AS Turno,
-                        ISNULL(SUM(CASE WHEN v.cod = 6 THEN i.mto END), 0) AS Mn,
-                        ISNULL(SUM(CASE WHEN v.cod = 5 THEN i.mto END), 0) AS Dolares2,
-                        ISNULL(SUM(CASE WHEN v.cod = 192 THEN i.mto END), 0) AS Morralla,
-                        ISNULL(SUM(CASE WHEN v.cod = 53 THEN i.mto END), 0) AS Cheques,
-                        ISNULL(SUM(CASE WHEN v.cod = -1128 THEN i.mto END), 0) AS Dolares,
-                        ISNULL(SUM(CASE WHEN v.cod = -3501 THEN i.mto END), 0) AS  [INTERL - Efectivo]
-                    FROM SG12.dbo.Valores v
-                    INNER JOIN SG12.dbo.Ingresos i ON v.cod = i.codval
-                    INNER JOIN SG12.dbo.Gasolineras g ON i.codgas = g.cod
-                    WHERE i.fch BETWEEN ? AND  ?
-                    AND v.cod IN (5, 6, 192, 53, -1128,-3501) '.$codgas_query.'
-                    GROUP BY 
-                        CONVERT(VARCHAR(10), DATEADD(day, -1, i.fch), 23),
-                        i.nrotur,
-                        g.cod,
-                        g.abr
-                    ORDER BY g.cod, i.nrotur;';
-        $params = [$from, $until];
-        return $this->sql->select($query,$params) ?: false;
+
+        $query = "
+            WITH Fechas AS (
+                SELECT CAST(? AS INT) AS fch   -- <-- CAST explícito
+                UNION ALL
+                SELECT fch + 1
+                FROM Fechas
+                WHERE fch < CAST(? AS INT)     -- <-- también aquí por consistencia
+            ),
+            Turnos AS (
+                SELECT 1 AS Turno UNION ALL
+                SELECT 2          UNION ALL
+                SELECT 3          UNION ALL
+                SELECT 4
+            ),
+            Base AS (
+                SELECT
+                    g.cod  AS CodigoGasolinera,
+                    g.abr  AS Gasolinera,
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, f.fch), 23) AS Fecha,
+                    t.Turno
+                FROM SG12.dbo.Gasolineras g
+                CROSS JOIN Fechas f
+                CROSS JOIN Turnos t
+                {$codgas_filter_base}
+            ),
+            Ventas AS (
+                SELECT
+                    i.codgas,
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, i.fch), 23) AS Fecha,
+                    CASE
+                        WHEN i.nrotur >= 11 AND i.nrotur < 21 THEN 1
+                        WHEN i.nrotur >= 21 AND i.nrotur < 31 THEN 2
+                        WHEN i.nrotur >= 31 AND i.nrotur < 41 THEN 3
+                        WHEN i.nrotur >= 41 AND i.nrotur <= 51 THEN 4
+                        ELSE i.nrotur
+                    END AS Turno,
+                    ISNULL(SUM(CASE WHEN v.cod = 6     THEN i.mto END), 0) AS Mn,
+                    ISNULL(SUM(CASE WHEN v.cod = 5     THEN i.mto END), 0) AS Dolares2,
+                    ISNULL(SUM(CASE WHEN v.cod = 192   THEN i.mto END), 0) AS Morralla,
+                    ISNULL(SUM(CASE WHEN v.cod = 53    THEN i.mto END), 0) AS Cheques,
+                    ISNULL(SUM(CASE WHEN v.cod = -1128 THEN i.mto END), 0) AS Dolares,
+                    ISNULL(SUM(CASE WHEN v.cod = -3501 THEN i.mto END), 0) AS [INTERL - Efectivo]
+                FROM SG12.dbo.Ingresos i
+                INNER JOIN SG12.dbo.Valores v ON v.cod = i.codval
+                WHERE i.fch BETWEEN ? AND ?
+                AND v.cod IN (5, 6, 192, 53, -1128, -3501)
+                {$codgas_filter_ventas}
+                GROUP BY
+                    i.codgas,
+                    CONVERT(VARCHAR(10), DATEADD(day, -1, i.fch), 23),
+                    CASE
+                        WHEN i.nrotur >= 11 AND i.nrotur < 21 THEN 1
+                        WHEN i.nrotur >= 21 AND i.nrotur < 31 THEN 2
+                        WHEN i.nrotur >= 31 AND i.nrotur < 41 THEN 3
+                        WHEN i.nrotur >= 41 AND i.nrotur <= 51 THEN 4
+                        ELSE i.nrotur
+                    END
+            )
+            SELECT
+                b.CodigoGasolinera,
+                b.Fecha,
+                b.Gasolinera,
+                b.Turno,
+                ISNULL(ve.Mn,                  0) AS Mn,
+                ISNULL(ve.Dolares2,            0) AS Dolares2,
+                ISNULL(ve.Morralla,            0) AS Morralla,
+                ISNULL(ve.Cheques,             0) AS Cheques,
+                ISNULL(ve.Dolares,             0) AS Dolares,
+                ISNULL(ve.[INTERL - Efectivo], 0) AS [INTERL - Efectivo]
+            FROM Base b
+            LEFT JOIN Ventas ve
+                ON  ve.codgas = b.CodigoGasolinera
+                AND ve.Fecha  = b.Fecha
+                AND ve.Turno  = b.Turno
+            ORDER BY b.CodigoGasolinera, b.Fecha, b.Turno
+            OPTION (MAXRECURSION 0);
+        ";
+
+        $params = [$from, $until, $from, $until];
+
+        return $this->sql->select($query, $params) ?: false;
     }
 
     function get_dolar_sales_table($from, $until) : array|false {
