@@ -238,7 +238,8 @@ class Operations{
             }
         } else { // Si el método de envío es POST
             $tabulator = $this->syncTabulatorClosureFromControlGas($tabId);
-            if ($tabulator && intval($tabulator['Estatus']) === 2) {
+            $action = $_POST['action'] ?? '';
+            if ($tabulator && intval($tabulator['Estatus']) === 2 && $action !== 'assignation') {
                 $message = 'El tabulador fue cerrado en ControlGas. No es posible ingresar más registros.';
                 $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
                 if ($isAjax) {
