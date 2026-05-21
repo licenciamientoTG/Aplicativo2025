@@ -62,6 +62,31 @@ class Operations{
 
     }
 
+    private function syncTabulatorClosureFromControlGas(int $tabId) : array|false {
+        $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+        if (!$tabulator) {
+            return false;
+        }
+
+        if (intval($tabulator['Estatus']) === 2) {
+            return $tabulator;
+        }
+
+        if (!empty($tabulator['station_server']) && !empty($tabulator['BaseDatos']) && !empty($tabulator['fechaTabularInt'])) {
+            $this->tabulatorModel->check_tabulator_closure(
+                $tabId,
+                $tabulator['station_server'],
+                $tabulator['BaseDatos'],
+                intval($tabulator['fechaTabularInt']),
+                intval($tabulator['Turno'])
+            );
+        } elseif (!empty($tabulator['DBString']) && $this->tabulatorModel->is_closed_controlgas($tabulator['Turno'], dateToInt($tabulator['FechaTabular']), $tabulator['DBString'])) {
+            $this->tabulatorModel->close_tabulator($tabId);
+        }
+
+        return $this->tabulatorModel->get_tabulator($tabId) ?: $tabulator;
+    }
+
     /**
      * @return void
      */
@@ -189,7 +214,10 @@ class Operations{
                 if ($_SESSION['tg_user']['Id'] == "6177" || $_SESSION['tg_user']['Id'] == "6296") {
                     $blocked_tab = 0;
                 }
-                $tabulator = $this->tabulatorModel->get_tabulator($tabId);
+                $tabulator = $this->syncTabulatorClosureFromControlGas($tabId);
+                if (!$tabulator) {
+                    throw new Exception('No existe un tabulador que coincida con este folio.');
+                }
                 $tab_data  = $this->despachosModel->get_tab_process_data($tabulator['CodigoEstacion'], dateToInt($tabulator['FechaTabular']), $tabulator['Turno'], $tabulator['Islands'], $tabId);
                 $all_islands = $tab_data['saldos'];
                 $samplings   = $tab_data['samplings'];
@@ -209,6 +237,16 @@ class Operations{
                 redirect(); // Redireccionamos a la misma página
             }
         } else { // Si el método de envío es POST
+            $tabulator = $this->syncTabulatorClosureFromControlGas($tabId);
+            if ($tabulator && intval($tabulator['Estatus']) === 2) {
+                $message = 'El tabulador fue cerrado en ControlGas. No es posible ingresar más registros.';
+                $isAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+                if ($isAjax) {
+                    json_output(['result' => 0, 'success' => false, 'message' => $message]);
+                }
+                setFlashMessage('warning', $message);
+                redirect("/operations/tab_process/$tabId");
+            }
             switch ($_POST['action']) { // Dependiendo de la acción que se haya enviado
                 case 'assignation': // Si la acción es asignación
                     if ($this->assignacionesModel->assignation($tabId, $_POST['CodigoEstacion'], $_POST['FechaTabular'], $_POST['Turno'], $_POST['island'], $_POST['responsable_id'])) { // Si logramos crear la asignación
