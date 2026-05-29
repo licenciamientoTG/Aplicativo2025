@@ -14,6 +14,11 @@
             Reporte Consolidado
         </button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="bulk-tab" data-bs-toggle="tab" data-bs-target="#bulk" type="button">
+            Consulta Masiva
+        </button>
+    </li>
 </ul>
 
 <div class="tab-content" id="tankTabContent">
@@ -308,6 +313,108 @@
                             <th>CAP. MÁXIMA</th>
                             <th>CAP. MÍNIMA</th>
                             <th>ESTADO</th>
+                        </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: Consulta Masiva -->
+    <div class="tab-pane fade" id="bulk" role="tabpanel">
+        <div class="row mt-3">
+            <div class="card flex-fill w-100">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="col-form-label col-form-label-sm mb-0">Estaciones:</label>
+                                <div>
+                                    <a href="#" class="text-sm me-2" id="bulk_select_all">Seleccionar todas</a>
+                                    <a href="#" class="text-sm" id="bulk_deselect_all">Limpiar</a>
+                                </div>
+                            </div>
+                            <div class="border rounded p-2" style="max-height: 160px; overflow-y: auto; font-size: small;" id="bulk_station_checkboxes">
+                                {% for station in stations %}
+                                <div class="form-check form-check-inline" style="min-width: 180px;">
+                                    <input class="form-check-input bulk-station-cb" type="checkbox" value="{{ station.Codigo }}" id="cb_station_{{ station.Codigo }}">
+                                    <label class="form-check-label" for="cb_station_{{ station.Codigo }}">{{ station.Nombre }}</label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="bulk_from_date" class="col-form-label col-form-label-sm">Desde: </label>
+                                    <input type="date" class="form-control" name="bulk_from_date" id="bulk_from_date" value="{{ 'first day of this month'|date('Y-m-d') }}">
+                                </div>
+                                <div class="col-6">
+                                    <label for="bulk_until_date" class="col-form-label col-form-label-sm">Hasta: </label>
+                                    <input type="date" class="form-control" name="bulk_until_date" id="bulk_until_date" value="{{ 'now'|date('Y-m-d') }}">
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col">
+                                    <button type="button" class="btn btn-success btn-block w-100" id="btn_consultar_masivo">
+                                        <i data-feather="layers"></i> Consultar Masivo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col">
+                            <div id="progress_container_bulk" class="d-none">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" id="progress_bar_bulk" style="width: 0%"></div>
+                                </div>
+                                <p class="text-center mt-2" id="progress_text_bulk">Consultando estaciones...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabla Masiva -->
+        <div class="row mt-3">
+            <div class="card shadow">
+                <div class="card-header">
+                    <div class="card-actions float-end">
+                        <div class="dropdown position-relative">
+                            <a href="#" data-bs-toggle="dropdown" data-bs-display="static">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-more-horizontal align-middle">
+                                    <circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle>
+                                </svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a class="dropdown-item" href="#" id="exportExcelBulk"><i data-feather="file-text"></i> Exportar a Excel</a>
+                                <a class="dropdown-item" href="#" id="refresh_bulk_table"><i data-feather="refresh-ccw"></i> Limpiar</a>
+                            </div>
+                        </div>
+                    </div>
+                    <h5 class="card-title mb-0">Historial de Volumen — Consulta Masiva</h5>
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-borderless my-0 w-100 table-striped table-sm" style="font-size: small" id="bulk_volume_table">
+                        <thead>
+                        <tr>
+                            <th>ESTACIÓN</th>
+                            <th>TANQUE</th>
+                            <th>FECHA</th>
+                            <th>HORA</th>
+                            <th>PRODUCTO</th>
+                            <th>VOLUMEN</th>
+                            <th>VOLUMEN CxT</th>
+                            <th>AGUA</th>
+                            <th>CAP. MÁXIMA</th>
+                            <th>CAP. OPERATIVA</th>
+                            <th>ÚTIL</th>
+                            <th>FONDAJE</th>
+                            <th>VOL. MÍNIMO</th>
                         </tr>
                         </thead>
                         <tbody></tbody>

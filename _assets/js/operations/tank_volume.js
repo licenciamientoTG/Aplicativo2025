@@ -1,5 +1,7 @@
 let tank_volume_table;
 let consolidated_table;
+let bulk_volume_table;
+let bulk_filter_initialized = false;
 let volumeChart;
 
 $(document).ready(function() {
@@ -76,6 +78,53 @@ $(document).ready(function() {
                     }
                 }
             }
+        ],
+        initComplete: function () {
+            $('.dt-buttons').addClass('d-none');
+        }
+    });
+
+    // Inicializar DataTable consulta masiva
+    bulk_volume_table = $('#bulk_volume_table').DataTable({
+        colReorder: true,
+        order: [[0, "asc"], [1, "asc"], [2, "desc"], [3, "desc"]],
+        dom: '<"top"Bf>rt<"bottom"lip>',
+        pageLength: 50,
+        data: [],
+        buttons: [
+            {
+                extend: 'excel',
+                className: 'd-none',
+                title: 'Volumen_Masivo_Tanques',
+                exportOptions: {
+                    columns: ':visible'
+                }
+            }
+        ],
+        columns: [
+            {'data': 'ESTACION'},
+            {'data': 'TANQUE'},
+            {'data': 'FECHA'},
+            {
+                'data': 'HORA',
+                'render': function(data, type) {
+                    if (type === 'sort' || type === 'type') {
+                        if (!data) return 0;
+                        const parts = data.split(':');
+                        return parseInt(parts[0]) * 3600 + parseInt(parts[1] || 0) * 60 + parseInt(parts[2] || 0);
+                    }
+                    return data;
+                }
+            },
+            {'data': 'PRODUCTO'},
+            {'data': 'VOLUMEN',       'render': $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'VOLUMEN_CXT',   'render': $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'AGUA',          'render': $.fn.dataTable.render.number(',', '.', 2)},
+            {'data': 'CAP_MAXIMA',    'render': $.fn.dataTable.render.number(',', '.', 0)},
+            {'data': 'CAP_OPERATIVA', 'render': $.fn.dataTable.render.number(',', '.', 0)},
+            {'data': 'UTIL',          'render': $.fn.dataTable.render.number(',', '.', 0)},
+            {'data': 'FONDAJE',       'render': $.fn.dataTable.render.number(',', '.', 0)},
+            {'data': 'VOL_MINIMO',    'render': $.fn.dataTable.render.number(',', '.', 0)}
         ],
         initComplete: function () {
             $('.dt-buttons').addClass('d-none');
@@ -503,4 +552,118 @@ function prepararDatosGrafica(datos) {
     }
     return datos;
 }
+
+// =================== TAB 3: CONSULTA MASIVA ===================
+
+$('#bulk_select_all').on('click', function(e) {
+    e.preventDefault();
+    $('.bulk-station-cb').prop('checked', true);
+});
+
+$('#bulk_deselect_all').on('click', function(e) {
+    e.preventDefault();
+    $('.bulk-station-cb').prop('checked', false);
+});
+
+$('#btn_consultar_masivo').on('click', function() {
+    const selectedStations = $('.bulk-station-cb:checked').map(function() {
+        return $(this).val();
+    }).get();
+    const fromDate = $('#bulk_from_date').val();
+    const untilDate = $('#bulk_until_date').val();
+
+    if (selectedStations.length === 0) {
+        alertify.error('Por favor seleccione al menos una estación');
+        return;
+    }
+    if (!fromDate || !untilDate) {
+        alertify.error('Por favor seleccione ambas fechas');
+        return;
+    }
+    if (new Date(fromDate) > new Date(untilDate)) {
+        alertify.error('La fecha inicial debe ser menor a la fecha final');
+        return;
+    }
+
+    $('#progress_container_bulk').removeClass('d-none');
+    $('#progress_bar_bulk').css('width', '30%');
+    $('#progress_text_bulk').text(`Consultando ${selectedStations.length} estación(es)...`);
+
+    $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Consultando...');
+
+    bulk_volume_table.clear().draw();
+
+    $.ajax({
+        url: '/operations/tank_volume_bulk_table',
+        method: 'POST',
+        traditional: true,
+        data: {
+            'codgas_list[]': selectedStations,
+            from_date: fromDate,
+            until_date: untilDate
+        },
+        beforeSend: function() {
+            $('#progress_bar_bulk').css('width', '50%');
+        },
+        success: function(response) {
+            $('#progress_bar_bulk').css('width', '100%').removeClass('progress-bar-animated');
+            $('#progress_text_bulk').text('¡Consulta completada!');
+
+            if (response.data && response.data.length > 0) {
+                bulk_volume_table.rows.add(response.data).draw();
+                if (!bulk_filter_initialized) {
+                    $('#bulk_volume_table thead').prepend(
+                        $('#bulk_volume_table thead tr').clone().addClass('filter')
+                    );
+                    $('#bulk_volume_table thead tr.filter th').each(function(index) {
+                        var col = $('#bulk_volume_table thead th').length / 2;
+                        if (index < col) {
+                            var title = $(this).text();
+                            $(this).html('<input type="text" class="form-control form-control-sm" placeholder="' + title + '" />');
+                        }
+                    });
+                    $('#bulk_volume_table thead tr.filter th input').on('keyup change', function() {
+                        var index = $(this).parent().index();
+                        bulk_volume_table.column(index).search(this.value).draw();
+                    });
+                    bulk_filter_initialized = true;
+                }
+                alertify.success(`Se cargaron ${response.data.length} registros`);
+            } else {
+                alertify.warning('No se encontraron registros para los parámetros especificados');
+            }
+
+            setTimeout(() => {
+                $('#progress_container_bulk').addClass('d-none');
+            }, 2000);
+        },
+        error: function(xhr, status, error) {
+            $('#progress_container_bulk').addClass('d-none');
+            alertify.error('Error al consultar: ' + error);
+            console.error('Error:', xhr.responseText);
+        },
+        complete: function() {
+            $('#btn_consultar_masivo').prop('disabled', false).html('<i data-feather="layers"></i> Consultar Masivo');
+            feather.replace();
+        }
+    });
+});
+
+// Exportar Excel masivo
+$('#exportExcelBulk').on('click', function(e) {
+    e.preventDefault();
+    bulk_volume_table.button('.buttons-excel').trigger();
+});
+
+// Limpiar tabla masiva
+$('#refresh_bulk_table').on('click', function(e) {
+    e.preventDefault();
+    bulk_volume_table.clear().draw();
+    $('#bulk_volume_table thead tr.filter').remove();
+    bulk_filter_initialized = false;
+    $('.bulk-station-cb').prop('checked', false);
+    $('#bulk_from_date').val('');
+    $('#bulk_until_date').val('');
+    alertify.success('Datos limpiados');
+});
 
