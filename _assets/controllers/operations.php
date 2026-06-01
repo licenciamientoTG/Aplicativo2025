@@ -2813,6 +2813,80 @@ class Operations{
         }
     }
 
+    public function tank_volume_bulk_table() {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $data = [];
+
+        try {
+            $codgas_list = isset($_POST['codgas_list']) ? (array) $_POST['codgas_list'] : [];
+            if (empty($codgas_list)) {
+                echo json_encode(["data" => [], "error" => "Debe seleccionar al menos una estación"]);
+                return;
+            }
+
+            $postData = [
+                'codgas_list' => array_map('intval', $codgas_list),
+                'from_date'   => dateToInt($_POST['from_date']),
+                'until_date'  => dateToInt($_POST['until_date']),
+            ];
+
+            $ch = curl_init('http://192.168.0.109:82/api/tanques/volumen_masivo/');
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($postData));
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json'
+            ]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode !== 200) {
+                throw new Exception("Error en API Python: HTTP {$httpCode}");
+            }
+
+            $apiData = json_decode($response, true);
+
+            if (!$apiData || !isset($apiData['Resultados'])) {
+                throw new Exception("Respuesta inválida de la API");
+            }
+
+            foreach ($apiData['Resultados'] as $row) {
+                $data[] = [
+                    'ESTACION'      => $row['nombre_estacion'] ?? '',
+                    'TANQUE'        => $row['numero_tan'] ?? '',
+                    'FECHA'         => $row['fecha'] ?? '',
+                    'HORA'          => $row['hora'] ?? '',
+                    'PRODUCTO'      => $row['producto'] ?? '',
+                    'VOLUMEN'       => floatval($row['vol'] ?? 0),
+                    'VOLUMEN_CXT'   => floatval($row['volCxT'] ?? 0),
+                    'AGUA'          => floatval($row['volh2o'] ?? 0),
+                    'CAP_MAXIMA'    => floatval($row['capacidad_maxima'] ?? 0),
+                    'CAP_OPERATIVA' => floatval($row['capacidad_operativa'] ?? 0),
+                    'UTIL'          => floatval($row['util'] ?? 0),
+                    'FONDAJE'       => floatval($row['fondage'] ?? 0),
+                    'VOL_MINIMO'    => floatval($row['volumen_min'] ?? 0),
+                ];
+            }
+
+            echo json_encode(["data" => $data]);
+
+        } catch (Exception $e) {
+            error_log("Error en tank_volume_bulk_table: " . $e->getMessage());
+            echo json_encode([
+                "data"  => [],
+                "error" => $e->getMessage()
+            ]);
+        }
+    }
+
     public function tank_consolidated_report() {
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');

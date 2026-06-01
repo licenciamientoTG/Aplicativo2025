@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -400,7 +400,7 @@ public function balance_age()
         $stations = $this->gasolinerasModel->get_stations();
         $clientName = $_GET['clientName'] ?? false;
         echo $this->twig->render($this->route . 'credit_debit_dispatches.html', compact('stations', 'from', 'until', 'codgas', 'clientName', 'client_type'));
-    }
+    }  
     function relation_invoice_advance(){
         if (preg_match('/GET/i', $_SERVER['REQUEST_METHOD'])) {
             echo $this->twig->render($this->route . 'relation_invoice_advance.html');
