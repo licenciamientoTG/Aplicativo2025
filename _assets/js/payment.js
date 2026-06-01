@@ -1377,6 +1377,101 @@ function loadPaymentList() {
 }
 
 
+// ===== Panel expandible (child row) con las facturas de cada pago =====
+function formatPaymentInvoicesChild(invoices) {
+  if (!invoices || invoices.length === 0) {
+    return '<div class="p-3 text-center text-muted"><i class="fas fa-inbox"></i> Esta requisición no tiene facturas.</div>';
+  }
+
+  function fmtMoney(v) {
+    return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+  }
+  function statusBadge(s) {
+    if (s === 2) return '<span class="badge" style="background:#d1e7dd;color:#0a3622;">Pagado</span>';
+    if (s === 3) return '<span class="badge bg-secondary">Pago Parcial</span>';
+    return '<span class="badge bg-secondary">Pendiente</span>';
+  }
+  function archivoBadge(inv) {
+    if (inv.tiene_archivo && inv.fr_id) {
+      return (
+        '<button type="button" class="btn btn-sm btn-success" ' +
+        'title="' + (inv.nombre_archivo || "Ver factura") + '" ' +
+        "onclick='ModalinvoicePdf(" + inv.fr_id + ", {})'>" +
+        '<i class="fas fa-file-pdf"></i> Ver' +
+        "</button>"
+      );
+    }
+    return '<span class="badge bg-danger" title="No se ha recibido el archivo de esta factura"><i class="fas fa-exclamation-triangle"></i> Sin archivo</span>';
+  }
+
+  var rows = invoices.map(function (inv) {
+    var venc = inv.expiration_date ? new Date(inv.expiration_date).toLocaleDateString("es-MX") : '<span class="text-muted">-</span>';
+    var autorizada = inv.payment_authorized === 1;
+    return (
+      "<tr" + (autorizada ? ' class="table-success"' : "") + ">" +
+        "<td class='text-center'>" + (autorizada ? '<i class="fas fa-check-circle text-success" title="Autorizada"></i>' : '<i class="fas fa-circle fa-sm text-muted"></i>') + "</td>" +
+        "<td><strong>" + (inv.folio || "") + "</strong><br><small class='text-muted'>" + (inv.invoice_number || "") + "</small></td>" +
+        "<td class='text-truncate' style='max-width:160px;' title='" + (inv.proveedor_nombre || "") + "'>" + (inv.proveedor_nombre || "") + "</td>" +
+        "<td>" + (inv.estacion_nombre || "") + "</td>" +
+        "<td class='text-end'>" + fmtMoney(inv.amount) + "</td>" +
+        "<td class='text-end'>" + (inv.saldo > 0 ? "<strong class='text-danger'>" + fmtMoney(inv.saldo) + "</strong>" : "<span class='text-success'>$0.00</span>") + "</td>" +
+        "<td>" + statusBadge(inv.status) + "</td>" +
+        "<td class='text-center'>" + venc + "</td>" +
+        "<td class='text-center'>" + archivoBadge(inv) + "</td>" +
+      "</tr>"
+    );
+  }).join("");
+
+  return (
+    "<div class='p-2' style='background:#f8fafc;'>" +
+      "<table class='table table-sm table-hover mb-0' style='font-size:.8rem;'>" +
+        "<thead class='table-light'><tr>" +
+          "<th width='32'></th><th>Folio / Factura</th><th>Proveedor</th><th>Estación</th>" +
+          "<th class='text-end'>Monto</th><th class='text-end'>Saldo</th><th>Estado</th>" +
+          "<th class='text-center'>Vencimiento</th><th class='text-center'>Archivo</th>" +
+        "</tr></thead>" +
+        "<tbody>" + rows + "</tbody>" +
+      "</table>" +
+    "</div>"
+  );
+}
+
+// Delegación de evento: toggle del panel de facturas al presionar el botón ℹ️
+$(document).on("click", "#payment_list_table .btn-toggle-invoices", function () {
+  var $btn = $(this);
+  var table = $("#payment_list_table").DataTable();
+  var $tr = $btn.closest("tr");
+  var row = table.row($tr);
+  var $icon = $btn.find("i");
+
+  if (row.child.isShown()) {
+    // Ya está abierto → retraer
+    row.child.hide();
+    $tr.removeClass("shown");
+    $icon.removeClass("fa-chevron-up").addClass("fa-info-circle");
+    return;
+  }
+
+  // Abrir: mostrar loader y pedir las facturas
+  row.child('<div class="p-3 text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Cargando facturas...</div>').show();
+  $tr.addClass("shown");
+  $icon.removeClass("fa-info-circle").addClass("fa-chevron-up");
+
+  var paymentId = $btn.data("payment-id");
+  $.getJSON("/payment/payment_invoices_json/" + paymentId)
+    .done(function (resp) {
+      if (resp && resp.success) {
+        row.child(formatPaymentInvoicesChild(resp.data)).show();
+      } else {
+        row.child('<div class="p-3 text-danger">Error: ' + (resp.message || "No se pudieron cargar las facturas") + "</div>").show();
+      }
+    })
+    .fail(function () {
+      row.child('<div class="p-3 text-danger">Error de conexión al cargar las facturas.</div>').show();
+    });
+});
+
+
 function loadAnticiposList() {
   if ($.fn.DataTable.isDataTable("#tabla_anticipos")) {
     $("#tabla_anticipos").DataTable().destroy();

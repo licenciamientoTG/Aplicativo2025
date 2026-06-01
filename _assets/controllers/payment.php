@@ -992,6 +992,7 @@ class Payment
                     : '';
                 $actions = '
                     <div class="d-flex align-items-center justify-content-center gap-1">
+                        <button class="btn btn-sm btn-toggle-invoices" data-payment-id="' . $row['id'] . '" style="color:#0891b2;background:#ecfeff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver facturas"><i class="fas fa-info-circle" style="font-size:.8rem;"></i></button>
                         <a href="/payment/payment_detail/' . $row['id'] . '" class="btn btn-sm" style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;" title="Ver detalle"><i class="fas fa-eye" style="font-size:.8rem;"></i></a>
                         ' . $deleteBtn . '
                     </div>
@@ -1185,6 +1186,77 @@ class Payment
                 'success' => false,
                 'detail' => 'Error al procesar el pago: ' . $e->getMessage()
             ]);
+        }
+    }
+
+
+    /**
+     * JSON: facturas de una requisición para el panel expandible (child row)
+     * de la tabla de pagos. Incluye indicador de si el archivo (PDF/XML) está
+     * recibido, cruzando el UUID contra FacturasRecibidas.
+     */
+    function payment_invoices_json($payment_id)
+    {
+        header('Content-Type: application/json');
+        try {
+            $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+            if (!$payment) {
+                json_output(['success' => false, 'message' => 'Pago no encontrado', 'data' => []]);
+                return;
+            }
+
+            $invoices = $this->paymentRequestInvoicesModel->get_by_payment_request_with_transactions($payment_id);
+            if (!$invoices) {
+                json_output(['success' => true, 'data' => []]);
+                return;
+            }
+
+            // Determinar qué facturas tienen archivo recibido (RutaArchivo no vacío)
+            $uuids = array_values(array_filter(array_map(fn($i) => $i['uuid'] ?? null, $invoices)));
+            $archivos_por_uuid = [];
+            if (!empty($uuids)) {
+                foreach ($this->facturasRecibidasModel->buscarPorUUIDs($uuids) as $fr) {
+                    $archivos_por_uuid[strtoupper(trim($fr['UUID']))] = [
+                        'fr_id'          => $fr['Id'],
+                        'nombre_archivo' => $fr['NombreArchivo'],
+                    ];
+                }
+            }
+
+            $data = [];
+            foreach ($invoices as $inv) {
+                $uuidKey       = strtoupper(trim($inv['uuid'] ?? ''));
+                $archivo       = $archivos_por_uuid[$uuidKey] ?? null;
+                $nombreArchivo = $archivo['nombre_archivo'] ?? null;
+                $frId          = $archivo['fr_id'] ?? null;
+                $paid_amount   = (float)($inv['paid_amount'] ?? 0);
+                $saldo         = (float)$inv['amount'] - $paid_amount;
+                $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
+
+                $data[] = [
+                    'id'                => $inv['id'],
+                    'folio'             => $inv['folio'],
+                    'invoice_number'    => $inv['invoice_number'],
+                    'proveedor_nombre'  => $inv['proveedor_nombre'],
+                    'estacion_nombre'   => $inv['estacion_nombre'],
+                    'amount'            => (float)$inv['amount'],
+                    'saldo'             => $saldo,
+                    'saldo_neto'        => $saldo + $neto_notas,
+                    'status'            => (int)$inv['status'],
+                    'payment_authorized'=> (int)($inv['payment_authorized'] ?? 0),
+                    'authorized_amount' => (float)($inv['authorized_amount'] ?? 0),
+                    'expiration_date'   => $inv['expiration_date'],
+                    'uuid'              => $inv['uuid'],
+                    'fr_id'             => $frId,
+                    'nombre_archivo'    => $nombreArchivo,
+                    'tiene_archivo'     => !empty($frId),
+                ];
+            }
+
+            json_output(['success' => true, 'data' => $data]);
+        } catch (Exception $e) {
+            error_log('Error en payment_invoices_json: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => $e->getMessage(), 'data' => []]);
         }
     }
 
