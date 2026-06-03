@@ -332,6 +332,48 @@ class PaymentRequestsModel extends Model
     }
 
 
+    /**
+     * Pagos listos para SOLICITAR su pago: status Pendiente (0), tipo pago (0),
+     * con TODAS sus facturas con PDF recibido (equivalente al "dot verde").
+     * Usado por el botón "Mandar pagos" y la futura tarea programada.
+     */
+    public function get_payments_ready_for_request(): array
+    {
+        $query = "
+            SELECT
+                t1.id,
+                t1.request_date,
+                t1.scheduled_payment_date,
+                t1.comment,
+                ISNULL(t2.total_invoices, 0) AS total_invoices,
+                ISNULL(t2.total_amount, 0)   AS total_amount,
+                t5.den AS provider_name,
+                t6.den AS emp_name
+            FROM [TG].[dbo].[payment_requests] t1
+            LEFT JOIN (
+                SELECT payment_request_id, COUNT(*) AS total_invoices, SUM(amount) AS total_amount
+                FROM [TG].[dbo].[payment_request_invoices]
+                GROUP BY payment_request_id
+            ) t2 ON t1.id = t2.payment_request_id
+            LEFT JOIN [SG12].[dbo].Proveedores t5 ON t1.provider_cod = t5.cod
+            LEFT JOIN [SG12].[dbo].Empresas    t6 ON t1.emp_cod = t6.cod
+            WHERE t1.tipo IN (0)
+              AND t1.status = " . self::STATUS_PENDING . "
+              AND ISNULL(t2.total_invoices, 0) > 0
+              -- Que NO exista ninguna factura sin archivo (todas con PDF => dot verde)
+              AND NOT EXISTS (
+                    SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
+                    LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
+                        ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
+                        AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
+                    WHERE pri.payment_request_id = t1.id AND fr.UUID IS NULL
+              )
+            ORDER BY t1.request_date ASC";
+
+        return $this->sql->select($query, []) ?: [];
+    }
+
+
     public function create_anticipo($data): array
     {
         // Validar datos requeridos

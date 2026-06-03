@@ -1472,6 +1472,42 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
 });
 
 
+// ===== Botón "Mandar pagos": envía correo con los pagos listos (dot verde) =====
+function sendReadyPayments(btn) {
+  alertify.confirm(
+    "Mandar pagos a solicitud",
+    "Se enviará un correo con todos los pagos que tienen <strong>todas sus facturas en PDF</strong> y están pendientes. ¿Continuar?",
+    function () {
+      var $btn = $(btn);
+      var htmlOriginal = $btn.html();
+      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Enviando...');
+
+      $.ajax({
+        url: "/payment/send_ready_payments",
+        type: "POST",
+        dataType: "json",
+      })
+        .done(function (resp) {
+          if (resp && resp.success) {
+            alertify.success(resp.message || "Correo enviado correctamente");
+          } else {
+            alertify.error((resp && resp.message) || "No se pudo enviar el correo");
+          }
+        })
+        .fail(function () {
+          alertify.error("Error de conexión al mandar los pagos");
+        })
+        .always(function () {
+          $btn.prop("disabled", false).html(htmlOriginal);
+        });
+    },
+    function () {
+      /* cancelado */
+    }
+  ).set("labels", { ok: "Sí, enviar", cancel: "Cancelar" });
+}
+
+
 function loadAnticiposList() {
   if ($.fn.DataTable.isDataTable("#tabla_anticipos")) {
     $("#tabla_anticipos").DataTable().destroy();

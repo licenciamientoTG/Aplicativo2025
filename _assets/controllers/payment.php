@@ -24,6 +24,11 @@ class Payment
     public InvoiceCreditDebitNotesDocModel $InvoiceCreditDebitNotesDocModel;
     public CreditNoteApplicationsModel $CreditNoteApplicationsModel;
     public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
+    public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
+
+    // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
+    private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
+    private const TEST_MODE = true;
 
     public function __construct($twig)
     {
@@ -44,6 +49,7 @@ class Payment
         $this->InvoiceCreditDebitNotesDocModel     = new InvoiceCreditDebitNotesDocModel();
         $this->CreditNoteApplicationsModel        = new CreditNoteApplicationsModel();
         $this->PaymentAccountingGroupsModel       = new PaymentAccountingGroupsModel();
+        $this->PaymentNotificationRecipientsModel = new PaymentNotificationRecipientsModel();
     }
 
     function fuel_payments()
@@ -1460,30 +1466,17 @@ class Payment
             // Verificar si ya están todas las autorizaciones
             $next_level = $this->paymentRequestAuthorizationsModel->get_next_authorization_level($payment_id);
 
-            if ($next_level === null) {
-                // Todas las autorizaciones completadas - cambiar estado a AUTHORIZED
-                $this->PaymentRequestsModel->update_request_status(
-                    $payment_id,
-                    PaymentRequestsModel::STATUS_AUTHORIZED
-                );
-                $message = '✅ Pago completamente autorizado. Tesorería puede proceder al pago.';
-            } else {
-                // $this->enviar_notificacion_autorizacion_pendiente($payment_id, $next_level, $permission,$user_id);
-                //se mandara una diaria
-
-                // Aún faltan autorizaciones
-                $department_name = match ($next_level) {
-                    68 => 'Tesorería',
-                    default => 'Desconocido'
-                };
-                $message = "✅ Autorización registrada exitosamente. Esperando autorización de: $department_name";
-            }
+            // Con un solo nivel (Tesorería), next_level siempre será null tras autorizar
+            $this->PaymentRequestsModel->update_request_status(
+                $payment_id,
+                PaymentRequestsModel::STATUS_AUTHORIZED
+            );
+            $message = '✅ Pago autorizado por Tesorería. Puede proceder al pago.';
 
             json_output([
-                'success' => true,
-                'message' => $message,
-                'next_level' => $next_level,
-                'all_authorized' => $next_level === null
+                'success'      => true,
+                'message'      => $message,
+                'all_authorized' => true
             ]);
         } catch (Exception $e) {
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
@@ -1534,7 +1527,7 @@ class Payment
             if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
                 json_output([
                     'success' => false,
-                    'message' => 'El pago debe estar completamente autorizado por los 3 niveles antes de autorizar facturas individuales'
+                    'message' => 'El pago debe estar autorizado por Tesorería antes de autorizar facturas individuales'
                 ]);
                 return;
             }
@@ -1975,6 +1968,123 @@ class Payment
     }
 
 
+    /**
+     * Botón "Mandar pagos": envía un correo con todos los pagos LISTOS para
+     * solicitar su pago (status Pendiente + todas sus facturas con PDF = dot verde).
+     *
+     * - Destinatarios: tabla payment_notification_recipients (evento 'solicitud_pago').
+     * - En MODO PRUEBAS se fuerza el envío únicamente a TEST_MODE_EMAIL.
+     * - Disparo manual ahora; a futuro lo invocará una tarea programada.
+     */
+    public function send_ready_payments()
+    {
+        header('Content-Type: application/json');
+        try {
+            // Solo Tesorería (68) puede solicitar el pago
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede mandar pagos a solicitud']);
+                return;
+            }
+
+            $pagos = $this->PaymentRequestsModel->get_payments_ready_for_request();
+
+            if (empty($pagos)) {
+                json_output(['success' => false, 'message' => 'No hay pagos listos (con todas sus facturas en PDF) para solicitar.']);
+                return;
+            }
+
+            // Destinatarios
+            if (self::TEST_MODE) {
+                $emails = [self::TEST_MODE_EMAIL];
+            } else {
+                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
+            }
+
+            if (empty($emails)) {
+                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
+
+            $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) listos - ' . date('d/m/Y');
+            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
+            $from    = 'totalgasdesarrollo@gmail.com';
+
+            $ok = send_mail($subject, $body, $emails, $from);
+
+            if ($ok) {
+                error_log('send_ready_payments: enviado ' . count($pagos) . ' pagos a ' . implode(', ', $emails));
+                json_output([
+                    'success'      => true,
+                    'message'      => 'Correo enviado con ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS: solo a ' . self::TEST_MODE_EMAIL . ']' : ''),
+                    'total_pagos'  => count($pagos),
+                    'total_monto'  => $total_general,
+                    'destinatarios' => $emails
+                ]);
+            } else {
+                json_output(['success' => false, 'message' => 'No se pudo enviar el correo.']);
+            }
+        } catch (Exception $e) {
+            error_log('Error en send_ready_payments: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * HTML del correo de solicitud de pagos listos.
+     */
+    private function generar_html_solicitud_pagos(array $pagos, float $total_general): string
+    {
+        $filas = '';
+        foreach ($pagos as $p) {
+            $fechaPago = !empty($p['scheduled_payment_date'])
+                ? date('d/m/Y', strtotime($p['scheduled_payment_date']))
+                : '-';
+            $filas .= '<tr>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;">#' . htmlspecialchars($p['id']) . '</td>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;">' . htmlspecialchars($p['emp_name'] ?? '-') . '</td>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;">' . htmlspecialchars($p['provider_name'] ?? '-') . '</td>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">' . (int)$p['total_invoices'] . '</td>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">' . $fechaPago . '</td>'
+                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">$' . number_format((float)$p['total_amount'], 2) . '</td>'
+                . '</tr>';
+        }
+
+        return '
+        <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#1e293b;">
+            <div style="background:#16a34a;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;">
+                <h2 style="margin:0;font-size:18px;">Solicitud de pago a proveedores</h2>
+                <p style="margin:4px 0 0;font-size:13px;">' . date('d/m/Y H:i') . ' &middot; ' . count($pagos) . ' pago(s) listos para su pago</p>
+            </div>
+            <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
+                <p style="font-size:14px;">Los siguientes pagos tienen <strong>todas sus facturas con PDF recibido</strong> y están listos para solicitar su pago a Tesorería:</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">ID</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Empresa</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Proveedor</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center;">Facturas</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center;">Fecha pago esp.</th>
+                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:right;">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>' . $filas . '</tbody>
+                    <tfoot>
+                        <tr style="background:#f8fafc;font-weight:bold;">
+                            <td colspan="5" style="padding:8px;border:1px solid #e2e8f0;text-align:right;">TOTAL</td>
+                            <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">$' . number_format($total_general, 2) . '</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <p style="font-size:12px;color:#64748b;margin-top:16px;">Este correo se generó desde el Sistema de Gestión TotalGas.</p>
+            </div>
+        </div>';
+    }
+
+
     private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         try {
@@ -1998,9 +2108,7 @@ class Payment
             $from = 'totalgasdesarrollo@gmail.com';
 
             // Capturar salida para evitar problemas con JSON
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de pago #{$payment_id} enviada a: " . implode(', ', $emails));
@@ -2037,9 +2145,7 @@ class Payment
 
             $from = 'totalgasdesarrollo@gmail.com';
 
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de anticipo #{$anticipo_id} enviada a: " . implode(', ', $emails));
@@ -2070,14 +2176,7 @@ class Payment
             $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
             $provider_name = $proveedor ? $proveedor['den'] : 'Proveedor';
 
-            // Obtener nombre del siguiente nivel
-            $next_department = match ($next_level_permission) {
-                66 => 'Abastos',
-                70 => 'Contabilidad',
-                67 => 'Administración y Finanzas',
-                68 => 'Tesorería',
-                default => 'Desconocido'
-            };
+            $next_department = $next_level_permission === 68 ? 'Tesorería' : 'Desconocido';
 
             // Crear el cuerpo del correo
             $subject = "Pago #{$payment_id} requiere tu autorización - {$next_department}";
@@ -2094,9 +2193,7 @@ class Payment
             // Enviar correo
             $from = 'totalgasdesarrollo@gmail.com';
 
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de autorización pendiente para pago #{$payment_id} enviada a {$next_department}: " . implode(', ', $emails));
@@ -2685,16 +2782,9 @@ class Payment
                 $userPermissions = array_map('intval', $userPermissions);
             }
 
-            // Obtener contadores para cada nivel
-            $countAbastos     = $this->PaymentRequestsModel->getPendingAuthorizationCount(66);
-            $countContabilidad = $this->PaymentRequestsModel->getPendingAuthorizationCount(70);
-            $countAdmin       = $this->PaymentRequestsModel->getPendingAuthorizationCount(67);
-            $countTesoreria   = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
+            $countTesoreria = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
             echo json_encode([
                 'success'          => true,
-                'abastos'          => $countAbastos,
-                'contabilidad'     => $countContabilidad,
-                'admin'            => $countAdmin,
                 'tesoreria'        => $countTesoreria,
                 'user_permissions' => $userPermissions
             ]);
@@ -2716,7 +2806,7 @@ class Payment
             // Obtener el nivel solicitado desde la petición
             $permissionNumber = isset($_GET['permission']) ? intval($_GET['permission']) : null;
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber !== 68) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
@@ -2724,14 +2814,7 @@ class Payment
                 return;
             }
 
-            // Verificar que el usuario tiene ese permiso
-            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
-            if (is_string($userPermissions)) {
-                $userPermissions = explode(',', $userPermissions);
-                $userPermissions = array_map('trim', $userPermissions);
-                $userPermissions = array_map('intval', $userPermissions);
-            }
-            if (!in_array($permissionNumber, $userPermissions)) {
+            if (!authorized(68)) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'No tienes permisos para este nivel de autorización'
@@ -2774,10 +2857,18 @@ class Payment
                 return;
             }
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber !== 68) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
+                ]);
+                return;
+            }
+
+            if (!authorized(68)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No tienes permisos para autorizar en este nivel'
                 ]);
                 return;
             }
@@ -2796,27 +2887,8 @@ class Payment
                 return;
             }
 
-
-            // Obtener información del usuario
-            $userId = $_SESSION['tg_user']['Id'] ?? 0;
+            $userId   = $_SESSION['tg_user']['Id'] ?? 0;
             $userName = $_SESSION['tg_user']['name'] ?? 'Unknown';
-            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
-
-            // Convertir a array si es string
-            if (is_string($userPermissions)) {
-                $userPermissions = explode(',', $userPermissions);
-                $userPermissions = array_map('trim', $userPermissions);
-                $userPermissions = array_map('intval', $userPermissions);
-            }
-
-            // Verificar que el usuario tiene el permiso solicitado
-            if (!in_array($permissionNumber, $userPermissions)) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'No tienes permisos para autorizar en este nivel'
-                ]);
-                return;
-            }
 
             // Procesar aprobación masiva
             $resultado = $this->PaymentRequestsModel->processBulkAuthorization(
@@ -2866,13 +2938,7 @@ class Payment
      */
     private function getNombrePermiso($permissionNumber)
     {
-        $permisos = [
-            66 => 'Abastos',
-            70 => 'Contabilidad',
-            67 => 'Administración y Finanzas',
-            68 => 'Tesorería'
-        ];
-        return $permisos[$permissionNumber] ?? 'Desconocido';
+        return $permissionNumber === 68 ? 'Tesorería' : 'Desconocido';
     }
 
 
@@ -2881,79 +2947,9 @@ class Payment
      */
     private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber)
     {
-        try {
-            $detalles = $this->PaymentRequestsModel->getBulkAuthorizationDetails($bulkId);
-
-            if (!$detalles) {
-                error_log("Aprobación masiva #{$bulkId}: no se encontraron detalles para notificar");
-                return;
-            }
-
-            error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: {$detalles['user_name']}, Nivel: {$detalles['nivel_nombre']}, Pagos: " . count($paymentIds));
-
-            // Nivel siguiente al que se aprobó
-            $nextLevel = match ((int)$permissionNumber) {
-                66 => 67, // Abastos aprobó → notificar a Finanzas
-                67 => 68, // Finanzas aprobó → notificar a Tesorería
-                default => null
-            };
-
-            if ($nextLevel === null) {
-                // Tesorería aprobó: no hay siguiente nivel, no se envía correo
-                return;
-            }
-
-            $emails = $this->UsuariosModel->get_emails_by_permission($nextLevel);
-
-            if (empty($emails)) {
-                error_log("Aprobación masiva #{$bulkId}: no hay usuarios con permiso {$nextLevel} para notificar");
-                return;
-            }
-
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
-            $emails = array_values($emails);
-
-            if (empty($emails)) {
-                error_log("Aprobación masiva #{$bulkId}: no hay correos disponibles después del filtro");
-                return;
-            }
-
-            $pagosDetalle = $this->PaymentRequestsModel->getBulkPaymentsDetail($paymentIds);
-
-            $authorized_department = $detalles['nivel_nombre'];
-            $next_department = match ($nextLevel) {
-                67 => 'Administración y Finanzas',
-                68 => 'Tesorería',
-                default => 'Desconocido'
-            };
-
-            $subject = "Aprobación Masiva - {$detalles['approved_count']} pago(s) requieren tu autorización - {$next_department}";
-            $body = $this->generar_html_notificacion_aprobacion_masiva(
-                $bulkId,
-                $detalles['user_name'],
-                $authorized_department,
-                $next_department,
-                $detalles['approved_count'],
-                $detalles['total_amount'],
-                $pagosDetalle
-            );
-
-            $from = 'totalgasdesarrollo@gmail.com';
-
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
-
-            if ($resultado) {
-                error_log("Notificación de aprobación masiva #{$bulkId} enviada a {$next_department}: " . implode(', ', $emails));
-            } else {
-                error_log("Error al enviar notificación de aprobación masiva #{$bulkId}");
-            }
-        } catch (Exception $e) {
-            error_log("Error al enviar notificaciones de aprobación masiva: " . $e->getMessage());
-        }
+        // Tesorería es el único y último nivel — no hay siguiente nivel al que notificar.
+        $detalles = $this->PaymentRequestsModel->getBulkAuthorizationDetails($bulkId);
+        error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: " . ($detalles['user_name'] ?? 'N/A') . ", Pagos: " . count($paymentIds));
     }
 
 
@@ -3126,20 +3122,16 @@ class Payment
             $whereClause = "ba.user_id = ?";
             $params = [$userId];
 
-            // Filtrar por nivel si se especifica
-            if ($permissionNumber && in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber === 68) {
                 $whereClause .= " AND ba.authorization_level = ?";
                 $params[] = $permissionNumber;
             }
 
             $query = "
-            SELECT 
+            SELECT
                 ba.*,
                 u.Nombre as user_name,
                 CASE
-                    WHEN ba.authorization_level = 66 THEN 'Abastos'
-                    WHEN ba.authorization_level = 70 THEN 'Contabilidad'
-                    WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
                     WHEN ba.authorization_level = 68 THEN 'Tesorería'
                     ELSE 'Desconocido'
                 END as nivel_nombre,
@@ -4359,13 +4351,7 @@ class Payment
      */
     public function get_department_name($permission_number)
     {
-        return match ($permission_number) {
-            66 => 'Abastos',
-            70 => 'Contabilidad',
-            67 => 'Administración y Finanzas',
-            68 => 'Tesorería',
-            default => 'Desconocido'
-        };
+        return $permission_number === 68 ? 'Tesorería' : 'Desconocido';
     }
 
 

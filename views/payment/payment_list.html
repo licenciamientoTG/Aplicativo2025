@@ -171,9 +171,16 @@
                     </button>
                 </div>
             </div>
-            <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
-                <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
-            </a>
+            <div class="d-flex align-items-center gap-2">
+                {% if authorized(68) %}
+                <button type="button" onclick="sendReadyPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Enviar correo con los pagos listos (todas sus facturas en PDF)">
+                    <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Mandar pagos
+                </button>
+                {% endif %}
+                <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                    <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
+                </a>
+            </div>
         </div>
 
         <!-- Tabla -->
