@@ -127,11 +127,11 @@
                 <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
                     <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
                 </button>
-                {# DEV-ONLY #}
+                {# DEV-ONLY (comentado — descomentar si se necesita)
                 <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
                     <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
                 </button>
-                {# /DEV-ONLY #}
+                /DEV-ONLY #}
                 {% endif %}
                 {% if authorized(68) %}
                 <button type="button" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')" id="btn-aprobar-tesoreria" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#2563eb;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Aprobar requisiciones pendientes">

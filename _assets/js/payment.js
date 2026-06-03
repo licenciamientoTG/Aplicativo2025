@@ -1530,6 +1530,7 @@ function sendToPayments(btn) {
         url: "/payment/send_to_payments",
         type: "POST",
         dataType: "json",
+        timeout: 120000,
       })
         .done(function (resp) {
           if (resp && resp.success) {
