@@ -1,0 +1,281 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Facturas Vencidas{% endblock %}
+{% block menutitle %}Facturas Vencidas{% endblock %}
+{% block mycss %}
+<style>
+    .inv-due-thead th {
+        background: #f8fafc !important;
+        color: #475569 !important;
+        font-size: .7rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        font-weight: 700;
+        border-bottom: 1px solid #e2e8f0 !important;
+        white-space: nowrap;
+    }
+    .inv-due-thead tr.filter th {
+        background: #e2e8f0 !important;
+        padding: 3px 6px !important;
+    }
+    .inv-due-thead tr.filter th input {
+        font-size: .7rem;
+        padding: 2px 5px;
+        height: 22px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .kpi-card {
+        border-radius: .6rem;
+        padding: .9rem 1.1rem;
+        border: 1px solid;
+        display: flex;
+        flex-direction: column;
+        gap: .1rem;
+    }
+    .kpi-card .kc-label { font-size: .62rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+    .kpi-card .kc-value { font-size: 1.2rem; font-weight: 700; line-height: 1.2; }
+    .kpi-card .kc-sub   { font-size: .72rem; }
+</style>
+{% endblock %}
+{% block content %}
+
+<!-- Filtros -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Vencimiento desde</label>
+                <input type="date" class="form-control form-control-sm" id="vhoy_from"
+                    value="{{ 'first day of this month'|date('Y-m-d') }}">
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Hasta</label>
+                <input type="date" class="form-control form-control-sm" id="vhoy_until"
+                    value="{{ 'now'|date('Y-m-d') }}">
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Estación</label>
+                <select class="selectpicker w-100" data-live-search="true" id="vhoy_codgas">
+                    <option value="0">Todas las estaciones</option>
+                    {% for station in stations %}
+                    <option value="{{ station.cod }}" data-content="<span class='text-muted'>{{ station.codgas }}</span> {{ station.abr }}">{{ station.nomre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label form-label-sm mb-1" style="font-size:.75rem;color:#64748b;">Proveedor</label>
+                <select class="selectpicker w-100" data-live-search="true" id="vhoy_proveedor">
+                    <option value="0">Todos</option>
+                    {% for proveedor in proveedores %}
+                    <option value="{{ proveedor.id_control_gas }}">{{ proveedor.den }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 col-md-1">
+                <button onclick="loadInvoicesDue()" class="btn btn-sm btn-primary w-100 d-flex align-items-center justify-content-center gap-1">
+                    <i class="fas fa-search" style="font-size:.75rem;"></i> Buscar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="row g-3 mb-3" id="kpi_strip" style="display:none;">
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fef2f2;border-color:#fecaca;">
+            <div class="kc-label" style="color:#b91c1c;"><i class="fas fa-file-invoice me-1"></i>Facturas</div>
+            <div class="kc-value" style="color:#991b1b;" id="kpi_total">0</div>
+            <div class="kc-sub" style="color:#dc2626;" id="fecha_consulta"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#fffbeb;border-color:#fcd34d;">
+            <div class="kc-label" style="color:#92400e;"><i class="fas fa-truck me-1"></i>Proveedores</div>
+            <div class="kc-value" style="color:#78350f;" id="kpi_proveedores">0</div>
+            <div class="kc-sub" style="color:#b45309;">únicos</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#f0fdf4;border-color:#86efac;">
+            <div class="kc-label" style="color:#166534;"><i class="fas fa-gas-pump me-1"></i>Estaciones</div>
+            <div class="kc-value" style="color:#14532d;" id="kpi_estaciones">0</div>
+            <div class="kc-sub" style="color:#166534;">únicas</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="kpi-card" style="background:#eff6ff;border-color:#93c5fd;">
+            <div class="kc-label" style="color:#1e40af;"><i class="fas fa-dollar-sign me-1"></i>Monto Total</div>
+            <div class="kc-value" style="color:#1e3a8a;font-size:1rem;" id="kpi_monto">$0</div>
+            <div class="kc-sub" style="color:#2563eb;">sin orden de pago</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="padding:.75rem;">
+            <table id="invoices_due_table" class="table table-hover table-sm w-100 mb-0">
+                <thead class="inv-due-thead">
+                    <tr>
+                        <th>Proveedor</th>
+                        <th>Estación</th>
+                        <th>Razón Social</th>
+                        <th>Factura</th>
+                        <th>Fecha Emisión</th>
+                        <th class="text-center">Días Cred.</th>
+                        <th>Vencimiento</th>
+                        <th>Producto</th>
+                        <th class="text-end">Litros</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-center">Factura</th>
+                        <th>UUID</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal PDF Factura -->
+<div class="modal fade" id="ModalinvoicePdf" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Factura</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div id="ModalinvoicePdfContent"></div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script>
+let invoicesDueTable = null;
+
+async function ModalinvoicePdf(id, data) {
+    try {
+        $('#ModalinvoicePdf').modal('show');
+        $('#ModalinvoicePdfContent').html('<div class="modal-body text-center py-4"><i class="fas fa-spinner fa-spin fa-2x text-muted"></i></div>');
+        const response = await fetch('/payment/ModalinvoicePdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            credentials: 'include',
+            body: 'FacturaId=' + id + '&data=' + encodeURIComponent(JSON.stringify(data))
+        });
+        const content = await response.text();
+        $('#ModalinvoicePdfContent').html(content);
+    } catch (error) {
+        $('#ModalinvoicePdfContent').html('<div class="modal-body text-danger">Error al cargar la factura.</div>');
+    }
+}
+
+function loadInvoicesDue() {
+    const from_due  = $('#vhoy_from').val();
+    const until_due = $('#vhoy_until').val();
+
+    if (!from_due || !until_due) {
+        alertify.error('Selecciona el rango de fechas');
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#invoices_due_table')) {
+        $('#invoices_due_table').DataTable().destroy();
+        $('#invoices_due_table thead tr.filter').remove();
+    }
+
+    const codgas    = $('#vhoy_codgas').val()    || '0';
+    const proveedor = $('#vhoy_proveedor').val() || '0';
+
+    invoicesDueTable = $('#invoices_due_table').DataTable({
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-sm btn-success',
+                title: 'Facturas Vencidas ' + from_due + ' al ' + until_due,
+                exportOptions: { columns: ':visible' }
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-sm btn-outline-secondary'
+            }
+        ],
+        processing: true,
+        ajax: {
+            url: '/payment/invoices_due_table',
+            type: 'POST',
+            data: { codgas: codgas, proveedor: proveedor, from_due: from_due, until_due: until_due },
+            timeout: 300000,
+            dataSrc: function(json) {
+                const rows = json.data || [];
+                const provUnicos = new Set(rows.map(r => r.proveedor)).size;
+                const estUnicos  = new Set(rows.map(r => r.gasolinera)).size;
+                const monto = rows.reduce((s, r) => s + (parseFloat(r.total_fac) || 0), 0);
+
+                $('#kpi_total').text(rows.length);
+                $('#kpi_proveedores').text(provUnicos);
+                $('#kpi_estaciones').text(estUnicos);
+                $('#kpi_monto').text('$' + monto.toLocaleString('es-MX', { minimumFractionDigits: 2 }));
+                $('#fecha_consulta').text(from_due + ' al ' + until_due);
+                $('#kpi_strip').show();
+                return rows;
+            },
+            error: function() { alertify.error('Error al consultar la API'); }
+        },
+        columns: [
+            { data: 'proveedor' },
+            { data: 'gasolinera' },
+            { data: 'razon_social_estacion', defaultContent: '-' },
+            { data: 'Factura' },
+            { data: 'fecha' },
+            { data: 'dias_credito', className: 'text-center' },
+            { data: 'fecha_vencimiento_credito' },
+            { data: 'producto' },
+            { data: 'can',       render: $.fn.dataTable.render.number(',', '.', 3), className: 'text-end text-nowrap' },
+            { data: 'total_fac', render: $.fn.dataTable.render.number(',', '.', 2), className: 'text-end text-nowrap' },
+            {
+                data: 'fr_id', className: 'text-center', orderable: false,
+                render: function(data) {
+                    if (!data) return '<span class="text-muted" style="font-size:.75rem;">Sin PDF</span>';
+                    return '<button class="btn btn-sm btn-success" onclick="ModalinvoicePdf(' + data + ', {})" title="Ver factura PDF">'
+                         + '<i class="fas fa-file-pdf"></i> Ver</button>';
+                }
+            },
+            { data: 'satuid', defaultContent: '-', render: function(data) {
+                if (!data) return '<span class="text-muted">—</span>';
+                return '<small class="text-muted font-monospace">' + data + '</small>';
+            }}
+        ],
+        order: [[5, 'asc'], [0, 'asc']],
+        pageLength: 100,
+        initComplete: function() {
+            var api = this.api();
+            function rebuildFilterRow() {
+                $('#invoices_due_table thead tr.filter').remove();
+                var $fr = $('<tr class="filter"></tr>');
+                api.columns(':visible').every(function() {
+                    var idx   = this.index();
+                    var title = $(this.header()).text().trim();
+                    $fr.append('<th data-col-idx="' + idx + '"><input type="text" placeholder="' + title + '" /></th>');
+                });
+                $('#invoices_due_table thead').append($fr);
+                $('#invoices_due_table thead tr.filter th input').on('keyup change', function() {
+                    api.column($(this).closest('th').data('col-idx')).search(this.value).draw();
+                });
+            }
+            rebuildFilterRow();
+            api.on('column-visibility.dt', function() { rebuildFilterRow(); });
+        }
+    });
+}
+</script>
+{% endblock %}

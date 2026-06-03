@@ -1346,8 +1346,8 @@ class Supply
         ini_set('memory_limit', '1024M');
         set_time_limit(0);
         header('Content-Type: application/json');
-        $from_int = dateToInt( $_POST['from_due']);
-        $until_int = dateToInt( $_POST['from_due']);
+        $from_int  = dateToInt($_POST['from_due']  ?? '');
+        $until_int = dateToInt($_POST['until_due'] ?? '');
 
         $postData = [
             'codgas'    => !empty($_POST['codgas'])    ? $_POST['codgas']    : '0',
@@ -1372,9 +1372,6 @@ class Supply
 
         if (isset($apiData) && is_array($apiData)) {
             foreach ($apiData as $row) {
-                if (empty($row['satuid'])) {
-                    continue;
-                }
 
                 $data[] = [
                     'nro'                       => $row['nro'],

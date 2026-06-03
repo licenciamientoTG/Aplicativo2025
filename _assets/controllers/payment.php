@@ -1759,17 +1759,16 @@ class Payment
 
 
             if (empty($invoice_ids)) {
-                return $this->responderJSON(false, 'No se proporcionaron facturas');
+                json_output(['success' => false, 'message' => 'No se proporcionaron facturas']); return;
             }
             if (!$fecha_pago || !$referencia_bancaria) {
-                return $this->responderJSON(false, 'Faltan datos obligatorios: fecha y referencia bancaria');
+                json_output(['success' => false, 'message' => 'Faltan datos obligatorios: fecha y referencia bancaria']); return;
             }
-
             if (!$user_id) {
-                return $this->responderJSON(false, 'Usuario no identificado');
+                json_output(['success' => false, 'message' => 'Usuario no identificado']); return;
             }
             if (!authorized(68)) {
-                return $this->responderJSON(false, 'Solo Tesorería puede ejecutar pagos');
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede ejecutar pagos']); return;
             }
 
             // $facturas_autorizadas = $this->paymentRequestInvoicesModel->get_authorized_pending_payment($payment_id);
@@ -1786,7 +1785,7 @@ class Payment
             $payment_request_ids_unicos = [];
             foreach ($facturas_data as $factura) {
                 if ($factura['payment_authorized'] != 1) {
-                    return $this->responderJSON(false, "La factura {$factura['folio']} no está autorizada");
+                    json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
                 }
                 $facturas_procesar[] = [
                     'invoice_id' => $factura['id'],
@@ -1845,7 +1844,9 @@ class Payment
                     }
                 }
 
-                return $this->responderJSON(true, $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''), [
+                json_output([
+                    'success'                 => true,
+                    'message'                 => $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''),
                     'facturas_procesadas'     => $result['facturas_procesadas'],
                     'total_pagado'            => $result['total_pagado'],
                     'fecha_pago'              => date('d/m/Y', strtotime($fecha_pago)),
@@ -1854,7 +1855,7 @@ class Payment
                     'total_solicitudes'       => count($payment_request_ids_unicos)
                 ]);
             } else {
-                return $this->responderJSON(false, $result['message']);
+                json_output(['success' => false, 'message' => $result['message']]);
             }
         } catch (Exception $e) {
             error_log("Error en execute_authorized_payments: " . $e->getMessage());
@@ -5410,6 +5411,79 @@ class Payment
         header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
         header('Content-Length: ' . filesize($fullPath));
         readfile($fullPath);
+    }
+
+
+    public function invoices_due()
+    {
+        $stations    = $this->gasolinerasModel->get_active_stations();
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'invoices_due.html', compact('stations', 'proveedores'));
+    }
+
+
+    public function invoices_due_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $from_due  = $_POST['from_due']  ?? '';
+        $until_due = $_POST['until_due'] ?? '';
+
+        if (!$from_due || !$until_due) {
+            json_output(['data' => [], 'error' => 'Faltan fechas']);
+            return;
+        }
+
+        $from_int  = dateToInt($from_due);
+        $until_int = dateToInt($until_due);
+
+        $postData = [
+            'codgas'    => !empty($_POST['codgas'])    ? $_POST['codgas']    : '0',
+            'proveedor' => !empty($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'from_due'  => $from_due,
+            'until_due' => $until_due,
+            'from_int'  => $from_int,
+            'until_int' => $until_int,
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/facturas_vencen_hoy/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $apiData = json_decode($response, true);
+        $data    = [];
+
+        if (is_array($apiData)) {
+            foreach ($apiData as $row) {
+                $data[] = [
+                    'nro'                       => $row['nro'],
+                    'Factura'                   => $row['Factura'],
+                    'fecha'                     => $row['fecha'],
+                    'fecha_vencimiento_credito' => $row['fecha_vencimiento_credito'] ?? null,
+                    'dias_credito'              => $row['dias_credito'] ?? 0,
+                    'proveedor'                 => $row['proveedor'],
+                    'proveedor_codigo'          => $row['proveedor_codigo'],
+                    'producto'                  => $row['producto'],
+                    'can'                       => $row['can'],
+                    'total_fac'                 => $row['total_fac'],
+                    'satuid'                  => $row['satuid'] ?? null,
+                    'fr_id'                   => $row['fr_id'] ?? null,
+                    'gasolinera'              => $row['gasolinera'],
+                    'razon_social_estacion'   => $row['razon_social_estacion'] ?? null,
+                    'codgas'                  => $row['codgas'],
+                    'codigo_empresa'          => $row['codigo_empresa'],
+                ];
+            }
+        }
+
+        json_output(['data' => $data]);
     }
 
 }
