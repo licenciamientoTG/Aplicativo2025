@@ -29,7 +29,7 @@ class Payment
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
-    private const TEST_MODE = true;
+    private const TEST_MODE = false;
 
     public function __construct($twig)
     {
