@@ -1488,6 +1488,34 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
 
 
 
+// DEV-ONLY: eliminar antes de producción ↓
+function devResetPiloto(btn) {
+  alertify.confirm(
+    "⚠️ [DEV] Reset Piloto",
+    "Se eliminarán <strong>TODOS</strong> los pagos, anticipos, autorizaciones, notas de crédito/cargo, grupos de contabilidad y archivos subidos.<br><br>¿Continuar?",
+    function () {
+      var $btn = $(btn), orig = $btn.html();
+      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i>');
+      $.post("/payment/dev_reset_piloto", {}, function (resp) {
+        if (resp.success) {
+          alertify.success(resp.message);
+          loadPaymentList();
+          loadAnticiposList();
+          loadAuthorizedPendingInvoices();
+          if (typeof tablaArchivosContabilidad !== "undefined" && tablaArchivosContabilidad) {
+            tablaArchivosContabilidad.ajax.reload(null, false);
+          }
+        } else {
+          alertify.error(resp.message || "Error al resetear");
+        }
+      }, "json").always(function () { $btn.prop("disabled", false).html(orig); });
+    },
+    function () {}
+  ).set("labels", { ok: "Sí, resetear todo", cancel: "Cancelar" });
+}
+// /DEV-ONLY ↑
+
+
 // ===== Botón "Mandar a pagos" (Abastos): agrupa requisiciones del día + notifica =====
 function sendToPayments(btn) {
   alertify.confirm(
