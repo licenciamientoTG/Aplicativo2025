@@ -11,27 +11,35 @@
         transition: background 0.2s, border-color 0.2s;
         background: #f8f9fa;
     }
-    .drop-zone.dragover {
-        background: #e8f4fd;
-        border-color: #0d6efd;
-    }
+    .drop-zone.dragover { background: #e8f4fd; border-color: #0d6efd; }
+    .drop-zone.has-files { border-color: #198754; background: #f0fdf4; }
     .drop-zone i { font-size: 2.5rem; color: #adb5bd; }
-    .drop-zone.dragover i { color: #0d6efd; }
-    #file-name { margin-top: 10px; font-size: 0.9rem; color: #6c757d; }
+    .drop-zone.dragover i, .drop-zone.has-files i { color: #198754; }
+
+    .result-row td { font-size: .82rem; vertical-align: middle; }
+    .estado-badge { font-size: .72rem; padding: .25rem .5rem; border-radius: .3rem; font-weight: 600; }
+    .estado-exitosa   { background:#d1fae5; color:#065f46; }
+    .estado-duplicada { background:#fef3c7; color:#92400e; }
+    .estado-cancelada, .estado-nota_credito, .estado-complemento_pago { background:#f1f5f9; color:#475569; }
+    .estado-error     { background:#fee2e2; color:#991b1b; }
+    .estado-pendiente { background:#dbeafe; color:#1e40af; }
+
+    .progress-bar-sm { height: 4px; border-radius: 2px; transition: width .3s; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="container-fluid p-4">
     <div class="row">
-        <div class="col-12 col-md-6 col-lg-5 mx-auto">
-            <div class="card shadow-sm">
-                <div class="card-header bg-dark text-white">
-                    <i class="fas fa-file-invoice"></i> Importar Factura PDF
+        <div class="col-12 col-lg-8 mx-auto">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-dark text-white d-flex align-items-center gap-2">
+                    <i class="fas fa-file-invoice"></i>
+                    <span>Importar Facturas PDF</span>
                 </div>
                 <div class="card-body">
                     <form id="import-form">
                         <div class="mb-3">
-                            <label class="form-label">Proveedor</label>
+                            <label class="form-label fw-semibold">Proveedor <span class="text-danger">*</span></label>
                             <select class="form-select" id="proveedor" name="proveedor" required>
                                 <option value="">Selecciona un proveedor...</option>
                                 <option value="aemsa">AEMSA</option>
@@ -43,22 +51,51 @@
                                 <option value="premiergas">PREMIERGAS</option>
                                 <option value="tesoro">TESORO</option>
                             </select>
+                            <small class="text-muted">Todos los archivos seleccionados deben ser del mismo proveedor.</small>
                         </div>
+
                         <div class="mb-3">
-                            <label class="form-label">Archivo PDF</label>
+                            <label class="form-label fw-semibold">Archivos PDF</label>
                             <div class="drop-zone" id="drop-zone">
                                 <i class="fas fa-cloud-upload-alt"></i>
-                                <p class="mb-0 mt-2">Arrastra el PDF aquí o haz clic para seleccionar</p>
-                                <div id="file-name">Ningún archivo seleccionado</div>
+                                <p class="mb-0 mt-2">Arrastra uno o varios PDF aquí, o haz clic para seleccionar</p>
+                                <div id="file-name" class="mt-2 text-muted" style="font-size:.85rem;">Ningún archivo seleccionado</div>
                             </div>
-                            <input type="file" id="pdf-input" accept="application/pdf" class="d-none">
+                            <input type="file" id="pdf-input" accept="application/pdf" multiple class="d-none">
                         </div>
+
                         <button type="submit" class="btn btn-primary w-100" id="btn-import">
-                            <i class="fas fa-upload"></i> Importar Factura
+                            <i class="fas fa-upload"></i> Importar
                         </button>
                     </form>
+                </div>
+            </div>
 
-                    <div id="result-box" class="mt-3 d-none"></div>
+            <!-- Tabla de resultados -->
+            <div id="results-section" class="d-none">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <span class="fw-semibold" style="font-size:.85rem;">
+                            <i class="fas fa-list-check me-1"></i> Resultados
+                        </span>
+                        <span id="progress-label" class="text-muted" style="font-size:.78rem;"></span>
+                    </div>
+                    <div class="progress mx-3 mt-2 mb-0" style="height:4px;">
+                        <div id="progress-bar" class="progress-bar bg-success progress-bar-sm" style="width:0%"></div>
+                    </div>
+                    <div class="table-responsive" style="padding:.75rem;">
+                        <table class="table table-sm table-hover w-100 mb-0">
+                            <thead style="background:#f8fafc;">
+                                <tr style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#475569;">
+                                    <th>Archivo</th>
+                                    <th class="text-center">Estado</th>
+                                    <th>UUID / Detalle</th>
+                                    <th class="text-center">ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -67,90 +104,136 @@
 {% endblock %}
 {% block myjs %}
 <script>
-    const dropZone  = document.getElementById('drop-zone');
-    const pdfInput  = document.getElementById('pdf-input');
-    const fileLabel = document.getElementById('file-name');
-    let selectedFile = null;
+const dropZone  = document.getElementById('drop-zone');
+const pdfInput  = document.getElementById('pdf-input');
+const fileLabel = document.getElementById('file-name');
+let selectedFiles = [];
 
-    dropZone.addEventListener('click', () => pdfInput.click());
+// Drop zone — click
+dropZone.addEventListener('click', () => pdfInput.click());
 
-    dropZone.addEventListener('dragover', e => {
-        e.preventDefault();
-        dropZone.classList.add('dragover');
-    });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('dragover');
-        const file = e.dataTransfer.files[0];
-        if (file && file.type === 'application/pdf') setFile(file);
-    });
+// Drag & drop
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
+    if (files.length) setFiles(files);
+});
 
-    pdfInput.addEventListener('change', () => {
-        if (pdfInput.files[0]) setFile(pdfInput.files[0]);
-    });
+// Input change
+pdfInput.addEventListener('change', () => {
+    const files = Array.from(pdfInput.files).filter(f => f.type === 'application/pdf');
+    if (files.length) setFiles(files);
+});
 
-    function setFile(file) {
-        selectedFile = file;
-        fileLabel.textContent = file.name;
-        dropZone.style.borderColor = '#198754';
+function setFiles(files) {
+    selectedFiles = files;
+    dropZone.classList.add('has-files');
+    if (files.length === 1) {
+        fileLabel.textContent = files[0].name;
+    } else {
+        fileLabel.textContent = `${files.length} archivos seleccionados: ${files.map(f => f.name).join(', ')}`;
+    }
+}
+
+// Submit
+document.getElementById('import-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const proveedor = document.getElementById('proveedor').value;
+    if (!proveedor)       return alertify.error('Selecciona un proveedor.');
+    if (!selectedFiles.length) return alertify.error('Selecciona al menos un archivo PDF.');
+
+    const btn = document.getElementById('btn-import');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
+
+    // Mostrar sección de resultados
+    document.getElementById('results-section').classList.remove('d-none');
+    const tbody = document.getElementById('results-body');
+    tbody.innerHTML = '';
+
+    const total = selectedFiles.length;
+    let procesados = 0;
+
+    for (const file of selectedFiles) {
+        // Agregar fila en estado pendiente
+        const rowId = 'row-' + Math.random().toString(36).substr(2, 8);
+        tbody.insertAdjacentHTML('beforeend', `
+            <tr id="${rowId}" class="result-row">
+                <td class="text-truncate" style="max-width:180px;" title="${file.name}">${file.name}</td>
+                <td class="text-center"><span class="estado-badge estado-pendiente">Procesando...</span></td>
+                <td><span class="text-muted">—</span></td>
+                <td class="text-center"><span class="text-muted">—</span></td>
+            </tr>
+        `);
+
+        // Scroll a la fila
+        document.getElementById(rowId).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        try {
+            const formData = new FormData();
+            formData.append('pdf', file);
+            formData.append('proveedor', proveedor);
+
+            const resp = await fetch('/payment/import_invoice_pdf', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include'
+            });
+            const res = await resp.json();
+            actualizarFila(rowId, file.name, res);
+        } catch (err) {
+            actualizarFila(rowId, file.name, { success: false, estado: 'error', message: 'Error de conexión' });
+        }
+
+        procesados++;
+        const pct = Math.round((procesados / total) * 100);
+        document.getElementById('progress-bar').style.width = pct + '%';
+        document.getElementById('progress-label').textContent = `${procesados} de ${total}`;
     }
 
-    document.getElementById('import-form').addEventListener('submit', function (e) {
-        e.preventDefault();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-upload"></i> Importar';
+    alertify.success(`Proceso completado: ${procesados} archivo(s) procesado(s).`);
+});
 
-        const proveedor = document.getElementById('proveedor').value;
-        if (!proveedor) return showResult('warning', 'Selecciona un proveedor.');
-        if (!selectedFile) return showResult('warning', 'Selecciona un archivo PDF.');
+function actualizarFila(rowId, filename, res) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
 
-        const btn = document.getElementById('btn-import');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Importando...';
+    const estadoMap = {
+        exitosa:           ['exitosa',   '✓ Importada'],
+        duplicada:         ['duplicada', '⚠ Duplicada'],
+        cancelada:         ['cancelada', '✗ Cancelada'],
+        nota_credito:      ['nota_credito', 'Nota crédito'],
+        complemento_pago:  ['complemento_pago', 'Complemento pago'],
+        error:             ['error', '✗ Error'],
+    };
 
-        const formData = new FormData();
-        formData.append('pdf', selectedFile);
-        formData.append('proveedor', proveedor);
+    let estadoKey, estadoLabel, uuid = '—', facturaId = '—', detalle = '';
 
-        $.ajax({
-            url: '/payment/import_invoice_pdf',
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function (res) {
-                if (res.success) {
-                    let html = `<strong>ID:</strong> ${res.factura_id}<br>
-                                <strong>UUID:</strong> ${res.uuid}<br>
-                                <strong>Ruta:</strong> ${res.ruta || '—'}<br>
-                                <small>${res.mensaje}</small>`;
-                    if (res.advertencia) html += `<br><small class="text-warning"><i class="fas fa-exclamation-triangle"></i> ${res.advertencia}</small>`;
-                    showResult('success', html);
-                } else {
-                    const estadoLabel = {
-                        duplicada: 'Factura duplicada',
-                        cancelada: 'Factura cancelada',
-                        nota_credito: 'Nota de crédito (no se importa)',
-                        complemento_pago: 'Complemento de pago (no se importa)',
-                    };
-                    const titulo = estadoLabel[res.estado] || 'No importada';
-                    showResult('warning', `<strong>${titulo}:</strong> ${res.message}`);
-                }
-            },
-            error: function () {
-                showResult('danger', 'Error de comunicación con el servidor.');
-            },
-            complete: function () {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-upload"></i> Importar Factura';
-            }
-        });
-    });
-
-    function showResult(type, html) {
-        const box = document.getElementById('result-box');
-        box.className = `alert alert-${type}`;
-        box.innerHTML = html;
-        box.classList.remove('d-none');
+    if (res.success) {
+        estadoKey   = 'exitosa';
+        estadoLabel = '✓ Importada';
+        uuid        = `<small class="font-monospace text-muted">${res.uuid || '—'}</small>`;
+        facturaId   = res.factura_id || '—';
+        if (res.advertencia) detalle = `<br><small class="text-warning">${res.advertencia}</small>`;
+    } else {
+        const mapped = estadoMap[res.estado] || ['error', res.estado || 'Error'];
+        estadoKey   = mapped[0];
+        estadoLabel = mapped[1];
+        detalle     = `<small class="text-muted">${res.message || ''}</small>`;
     }
+
+    row.innerHTML = `
+        <td class="text-truncate" style="max-width:180px;" title="${filename}">${filename}</td>
+        <td class="text-center"><span class="estado-badge estado-${estadoKey}">${estadoLabel}</span></td>
+        <td>${uuid}${detalle}</td>
+        <td class="text-center">${facturaId}</td>
+    `;
+}
 </script>
 {% endblock %}
