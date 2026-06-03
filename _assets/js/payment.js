@@ -1472,6 +1472,43 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
 });
 
 
+// ===== Botón "Mandar a pagos" (Abastos): agrupa requisiciones del día + notifica =====
+function sendToPayments(btn) {
+  alertify.confirm(
+    "Mandar requisiciones a pagos",
+    "Se agruparán las requisiciones de hoy por empresa y se enviará un correo de solicitud a los destinatarios. ¿Continuar?",
+    function () {
+      var $btn = $(btn);
+      var htmlOriginal = $btn.html();
+      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+
+      $.ajax({
+        url: "/payment/send_to_payments",
+        type: "POST",
+        dataType: "json",
+      })
+        .done(function (resp) {
+          if (resp && resp.success) {
+            alertify.success(resp.message || "Requisiciones enviadas a pagos");
+            if (typeof tablaArchivosContabilidad !== "undefined") {
+              tablaArchivosContabilidad.ajax.reload(null, false);
+            }
+          } else {
+            alertify.error((resp && resp.message) || "No se pudo completar la operación");
+          }
+        })
+        .fail(function () {
+          alertify.error("Error de conexión");
+        })
+        .always(function () {
+          $btn.prop("disabled", false).html(htmlOriginal);
+        });
+    },
+    function () { /* cancelado */ }
+  ).set("labels", { ok: "Sí, mandar", cancel: "Cancelar" });
+}
+
+
 // ===== Botón "Mandar pagos": envía correo con los pagos listos (dot verde) =====
 function sendReadyPayments(btn) {
   alertify.confirm(

@@ -1969,12 +1969,91 @@ class Payment
 
 
     /**
-     * Botón "Mandar pagos": envía un correo con todos los pagos LISTOS para
-     * solicitar su pago (status Pendiente + todas sus facturas con PDF = dot verde).
+     * Botón "Mandar a pagos" (Abastos): agrupa las requisiciones del día por empresa
+     * y envía el correo de solicitud a los destinatarios configurados.
+     * También lo ejecuta el cron a las 11am si Abastos no lo hizo antes.
      *
-     * - Destinatarios: tabla payment_notification_recipients (evento 'solicitud_pago').
-     * - En MODO PRUEBAS se fuerza el envío únicamente a TEST_MODE_EMAIL.
-     * - Disparo manual ahora; a futuro lo invocará una tarea programada.
+     * Puede llamarse:
+     *   - Por POST desde la UI (usuario con permiso 66)
+     *   - Por el cron vía token: POST cron_token=CRON_SECRET
+     */
+    public function send_to_payments()
+    {
+        header('Content-Type: application/json');
+        try {
+            $cronToken  = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+
+            $isAuthorized = ($validToken && $cronToken === $validToken)
+                || authorized(66);
+
+            if (!$isAuthorized) {
+                json_output(['success' => false, 'message' => 'No autorizado']);
+                return;
+            }
+
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+            $today   = date('Y-m-d');
+
+            // 1. Agrupar requisiciones del día por empresa
+            $group_result = $this->PaymentAccountingGroupsModel->auto_group_by_date($today, $user_id);
+
+            // 2. Obtener pagos pendientes con PDF completo para el correo
+            $pagos = $this->PaymentRequestsModel->get_payments_ready_for_request();
+
+            if (empty($pagos)) {
+                json_output([
+                    'success'        => true,
+                    'message'        => 'Requisiciones agrupadas pero no hay pagos con PDF completo para notificar.' . ($group_result['grupos'] > 0 ? " Se crearon {$group_result['grupos']} grupo(s)." : ''),
+                    'grupos_creados' => $group_result['grupos'] ?? 0
+                ]);
+                return;
+            }
+
+            // 3. Destinatarios
+            if (self::TEST_MODE) {
+                $emails = [self::TEST_MODE_EMAIL];
+            } else {
+                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
+            }
+
+            if (empty($emails)) {
+                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
+
+            $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
+            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
+            $from    = 'totalgasdesarrollo@gmail.com';
+
+            $ok = send_mail($subject, $body, $emails, $from);
+
+            if ($ok) {
+                error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
+                json_output([
+                    'success'        => true,
+                    'message'        => 'Listo. Se crearon ' . ($group_result['grupos'] ?? 0) . ' grupo(s) y se notificaron ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS]' : ''),
+                    'grupos_creados' => $group_result['grupos'] ?? 0,
+                    'total_pagos'    => count($pagos),
+                    'total_monto'    => $total_general,
+                    'destinatarios'  => $emails
+                ]);
+            } else {
+                json_output(['success' => false, 'message' => 'Se agruparon las requisiciones pero no se pudo enviar el correo.']);
+            }
+        } catch (Exception $e) {
+            error_log('Error en send_to_payments: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * Botón "Mandar pagos" (Tesorería): envía correo con pagos listos para solicitar pago.
+     * No tiene relación con la agrupación — Tesorería usa este botón cuando quiere
+     * notificar manualmente qué pagos están listos (con PDF completo).
      */
     public function send_ready_payments()
     {
@@ -2016,10 +2095,10 @@ class Payment
             if ($ok) {
                 error_log('send_ready_payments: enviado ' . count($pagos) . ' pagos a ' . implode(', ', $emails));
                 json_output([
-                    'success'      => true,
-                    'message'      => 'Correo enviado con ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS: solo a ' . self::TEST_MODE_EMAIL . ']' : ''),
-                    'total_pagos'  => count($pagos),
-                    'total_monto'  => $total_general,
+                    'success'       => true,
+                    'message'       => 'Correo enviado con ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS: solo a ' . self::TEST_MODE_EMAIL . ']' : ''),
+                    'total_pagos'   => count($pagos),
+                    'total_monto'   => $total_general,
                     'destinatarios' => $emails
                 ]);
             } else {
@@ -3471,32 +3550,31 @@ class Payment
      * Puede recibir ?date=YYYY-MM-DD (opcional, default = hoy).
      * Protegido por permiso 70 (Contabilidad) o token de cron.
      */
-    // public function auto_group_accounting()
-    // {
-    //     header('Content-Type: application/json');
-    //     try {
-    //         // Permitir acceso por token de cron o por usuario con permiso 70
-    //         $cronToken = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
-    //         $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+    public function auto_group_accounting()
+    {
+        header('Content-Type: application/json');
+        try {
+            $cronToken  = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
 
-    //         $isAuthorized = ($validToken && $cronToken === $validToken)
-    //             || authorized(70);
+            $isAuthorized = ($validToken && $cronToken === $validToken)
+                || authorized(70);
 
-    //         if (!$isAuthorized) {
-    //             json_output(['success' => false, 'message' => 'No autorizado']);
-    //             return;
-    //         }
+            if (!$isAuthorized) {
+                json_output(['success' => false, 'message' => 'No autorizado']);
+                return;
+            }
 
-    //         $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
-    //         $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+            $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
 
-    //         $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
-    //         json_output($result);
-    //     } catch (Exception $e) {
-    //         error_log('Error en auto_group_accounting: ' . $e->getMessage());
-    //         json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-    //     }
-    // }
+            $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
+            json_output($result);
+        } catch (Exception $e) {
+            error_log('Error en auto_group_accounting: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
 
 
     /**
