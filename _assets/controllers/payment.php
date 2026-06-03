@@ -1369,46 +1369,96 @@ class Payment
 
 
     /**
-     * API JSON: tabla de todos los pagos (transacciones) con filtros
+     * API JSON: lotes de pago agrupados (nivel 1 de la tabla)
      */
     public function all_payments_table()
     {
         header('Content-Type: application/json');
         try {
-            $rows = $this->paymentTransactionsModel->get_all_with_filters(
+            $rows = $this->paymentTransactionsModel->get_lotes_with_filters(
                 $_POST['from']     ?? null,
                 $_POST['until']    ?? null,
                 $_POST['provider'] ?? null,
-                $_POST['company']  ?? null,
-                $_POST['status']   ?? null
+                $_POST['company']  ?? null
             );
 
             $statusLabels = [
-                0 => '<span class="badge bg-warning text-dark">Pendiente</span>',
-                1 => '<span class="badge bg-info">Procesado</span>',
-                2 => '<span class="badge bg-success">Confirmado</span>',
-                3 => '<span class="badge bg-danger">Rechazado</span>',
+                0 => '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">Pendiente</span>',
+                1 => '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;">Procesado</span>',
+                2 => '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">Confirmado</span>',
+                3 => '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;">Rechazado</span>',
             ];
 
             $data = [];
             foreach ($rows as $r) {
                 $data[] = [
+                    'id'               => $r['id'],
+                    'transaction_ids'  => $r['transaction_ids'],
+                    'payment_date'     => $r['payment_date']      ? date('d/m/Y', strtotime($r['payment_date'])) : '-',
+                    'payment_reference'=> $r['payment_reference'] ?? '-',
+                    'payment_method'   => $r['payment_method']    ?? '-',
+                    'proveedor'        => $r['proveedor']         ?? '-',
+                    'empresa'          => $r['empresa']           ?? '-',
+                    'beneficiary_name' => $r['beneficiary_name']  ?? '-',
+                    'total_facturas'   => (int)$r['total_facturas'],
+                    'total_monto'      => '$' . number_format(floatval($r['total_monto']), 2, '.', ','),
+                    'status'           => $statusLabels[$r['status']] ?? '<span class="badge bg-secondary">-</span>',
+                    'notes'            => $r['notes']             ?? '-',
+                    'created_at'       => $r['created_at']        ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
+                    'creado_por'       => $r['creado_por']        ?? '-',
+                ];
+            }
+
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * API JSON: detalle de facturas de un lote (child row)
+     */
+    public function all_payments_lote_detail()
+    {
+        header('Content-Type: application/json');
+        try {
+            $ids_raw = $_POST['transaction_ids'] ?? '';
+            $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
+
+            if (empty($ids)) {
+                echo json_encode(['data' => []]);
+                return;
+            }
+
+            $rows = $this->paymentTransactionsModel->get_lote_detail($ids);
+
+            $statusLabels = [
+                0 => '<span class="badge" style="background:#fef3c7;color:#92400e;">Pendiente</span>',
+                1 => '<span class="badge" style="background:#dbeafe;color:#1e40af;">Procesado</span>',
+                2 => '<span class="badge" style="background:#d1fae5;color:#065f46;">Confirmado</span>',
+                3 => '<span class="badge" style="background:#fee2e2;color:#991b1b;">Rechazado</span>',
+            ];
+
+            $data = [];
+            foreach ($rows as $r) {
+                $doc_id = $r['doc_id'] ?? null;
+                $doc_ext = $r['doc_ext'] ?? null;
+                $docBtn = $doc_id
+                    ? '<button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;" onclick="abrirComprobanteModal(' . $doc_id . ',\'' . $doc_ext . '\')" title="Ver comprobante"><i class="fas fa-' . ($doc_ext === 'pdf' ? 'file-pdf' : 'file-image') . '" style="font-size:.8rem;"></i></button>'
+                    : '<span style="color:#cbd5e1;font-size:.75rem;">—</span>';
+
+                $data[] = [
                     'id'                 => $r['id'],
-                    'payment_request_id' => '<a href="/payment/payment_detail/' . $r['payment_request_id'] . '" class="text-decoration-none">#' . $r['payment_request_id'] . '</a>',
-                    'folio'              => $r['folio'],
-                    'invoice_number'     => $r['invoice_number'],
-                    'proveedor'          => $r['proveedor']         ?? '-',
-                    'empresa'            => $r['empresa']           ?? '-',
-                    'estacion'           => $r['estacion']          ?? '-',
+                    'payment_request_id' => '<a href="/payment/payment_detail/' . $r['payment_request_id'] . '" class="text-primary text-decoration-none fw-semibold">#' . $r['payment_request_id'] . '</a>',
+                    'folio'              => $r['folio']          ?? '-',
+                    'invoice_number'     => $r['invoice_number'] ?? '-',
+                    'estacion'           => $r['estacion']       ?? '-',
                     'payment_amount'     => '$' . number_format(floatval($r['payment_amount']), 2, '.', ','),
-                    'payment_date'       => $r['payment_date']      ? date('d/m/Y', strtotime($r['payment_date'])) : '-',
-                    'payment_method'     => $r['payment_method']    ?? '-',
-                    'payment_reference'  => $r['payment_reference'] ?? '-',
-                    'beneficiary_name'   => $r['beneficiary_name']  ?? '-',
-                    'status'             => $statusLabels[$r['status']] ?? '<span class="badge bg-secondary">-</span>',
-                    'notes'              => $r['notes']             ?? '-',
-                    'created_at'         => $r['created_at']        ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
-                    'creado_por'         => $r['creado_por']        ?? '-',
+                    'status'             => $statusLabels[$r['status']] ?? '-',
+                    'notes'              => $r['notes']          ?? '-',
+                    'created_at'         => $r['created_at']     ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
+                    'comprobante'        => $docBtn,
                 ];
             }
 
