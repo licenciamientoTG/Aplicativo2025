@@ -1328,11 +1328,12 @@ function loadPaymentList() {
       { data: "status", className: "text-center" },
       { data: "authorizations", className: "text-center" },
       { data: "comment" },
+      { data: "pdf_status", name: "pdf_status", visible: false },
       { data: "actions", orderable: false, className: "text-center" },
     ],
     order: [[0, "desc"]],
     columnDefs: [
-      { targets: [5, 6,7, 8, 9], visible: false },
+      { targets: [5, 6, 7, 8, 9], visible: false },
     ],
 
     drawCallback: function () {
@@ -1344,6 +1345,20 @@ function loadPaymentList() {
     },
     initComplete: function () {
       var api = this.api();
+
+      // Select de filtro por estado de PDF junto a los botones de DataTables
+      var pdfColIdx = api.column('pdf_status:name').index();
+      var $select = $(
+        '<select id="pdf_status_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por PDF">' +
+        '<option value="">🔵 Todos</option>' +
+        '<option value="complete">🟢 Completos</option>' +
+        '<option value="missing">🔴 Incompletos</option>' +
+        '</select>'
+      );
+      $(".dt-buttons").append($select);
+      $select.on("change", function () {
+        api.column(pdfColIdx).search(this.value).draw();
+      });
 
       function rebuildFilterRow() {
         $("#payment_list_table thead tr.filter").remove();
@@ -1472,6 +1487,7 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
 });
 
 
+
 // ===== Botón "Mandar a pagos" (Abastos): agrupa requisiciones del día + notifica =====
 function sendToPayments(btn) {
   alertify.confirm(
@@ -1490,7 +1506,7 @@ function sendToPayments(btn) {
         .done(function (resp) {
           if (resp && resp.success) {
             alertify.success(resp.message || "Requisiciones enviadas a pagos");
-            if (typeof tablaArchivosContabilidad !== "undefined") {
+            if (typeof tablaArchivosContabilidad !== "undefined" && tablaArchivosContabilidad) {
               tablaArchivosContabilidad.ajax.reload(null, false);
             }
           } else {
@@ -4474,7 +4490,7 @@ function generarLayoutSantander(
 ) {
   const todosLosInvoiceIds = [];
   gruposFacturas.forEach((grupo) => {
-    const ids = grupo.invoice_ids.split(",").map((id) => parseInt(id.trim()));
+    const ids = String(grupo.invoice_ids).split(",").map((id) => parseInt(id.trim()));
     todosLosInvoiceIds.push(...ids);
   });
 
@@ -4737,7 +4753,7 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
   // Extraer todos los invoice_ids
   const todosLosIds = [];
   gruposSeleccionados.forEach((grupo) => {
-    const ids = grupo.invoice_ids.split(",").map((id) => parseInt(id.trim()));
+    const ids = String(grupo.invoice_ids).split(",").map((id) => parseInt(id.trim()));
     todosLosIds.push(...ids);
   });
 
@@ -4823,6 +4839,15 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
                               placeholder="Notas adicionales (opcional)"></textarea>
                 </div>
 
+                <div class="mb-2">
+                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <i class="fas fa-paperclip me-1 text-primary"></i> Comprobante
+                        <span class="text-muted fw-normal">(opcional — PDF, JPG, PNG · máx 10 MB)</span>
+                    </label>
+                    <input type="file" class="form-control form-control-sm" id="comprobante_pago"
+                           accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+
                 <input type="hidden" id="invoice_ids_pago" value='${JSON.stringify(todosLosIds)}'>
             </form>
         </div>
@@ -4857,19 +4882,21 @@ function ejecutarRegistroPago() {
   const referenciaBancaria = $("#referencia_bancaria").val().trim();
   const invoiceIds = JSON.parse($("#invoice_ids_pago").val());
   const observaciones = $("#observaciones_pago").val().trim();
-  // const comprobante = $('#comprobante_pago')[0].files[0];
+  const comprobante = $("#comprobante_pago")[0]?.files[0];
 
   if (!fechaPago || !referenciaBancaria) {
     alertify.error("Complete todos los campos obligatorios");
     return;
   }
 
-  // ✅ Preparar FormData (para el archivo)
   const formData = new FormData();
   formData.append("invoice_ids", JSON.stringify(invoiceIds));
   formData.append("fecha_pago", fechaPago);
   formData.append("referencia_bancaria", referenciaBancaria);
   formData.append("observaciones", observaciones);
+  if (comprobante) {
+    formData.append("comprobante", comprobante);
+  }
 
   // ✅ Enviar al servidor
   alertify.message(
@@ -4952,7 +4979,7 @@ function generarLayoutBanorte(
 ) {
   const todosLosInvoiceIds = [];
   gruposFacturas.forEach((grupo) => {
-    const ids = grupo.invoice_ids.split(",").map((id) => parseInt(id.trim()));
+    const ids = String(grupo.invoice_ids).split(",").map((id) => parseInt(id.trim()));
     todosLosInvoiceIds.push(...ids);
   });
 

@@ -1066,19 +1066,11 @@ class PaymentRequestsModel extends Model
 
             WHERE
                 pr.status = ?  -- Solo pendientes (STATUS_PENDING = 0)
-                AND (
-                    -- Nivel 66 (Abastos): sin ninguna autorización
-                    (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
-                    OR
-                    -- Nivel 70 (Contabilidad): con abastos pero sin contabilidad
-                    (? = 70 AND auth_summary.auth_abastos = 1 AND ISNULL(auth_summary.auth_contabilidad, 0) = 0)
-                    OR
-                    -- Nivel 67 (Admin): con abastos y contabilidad pero sin admin
-                    (? = 67 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND ISNULL(auth_summary.auth_admin, 0) = 0)
-                    OR
-                    -- Nivel 68 (Tesorería): con abastos, contabilidad y admin pero sin tesorería
-                    (? = 68 AND auth_summary.auth_abastos = 1 AND auth_summary.auth_contabilidad = 1 AND auth_summary.auth_admin = 1 AND ISNULL(auth_summary.auth_tesoreria, 0) = 0)
-                )
+                AND pr.tipo = 0
+                -- Tesorería (68): ya agrupados en contabilidad y sin autorización de Tesorería aún
+                AND ? = 68
+                AND pr.accounting_group_id IS NOT NULL
+                AND ISNULL(auth_summary.auth_tesoreria, 0) = 0
 
             ORDER BY
                 CASE WHEN pr.monto_total > 100000 THEN 0 ELSE 1 END,
@@ -1088,9 +1080,6 @@ class PaymentRequestsModel extends Model
 
             $params = [
                 self::STATUS_PENDING,
-                $permission_number,
-                $permission_number,
-                $permission_number,
                 $permission_number
             ];
             return $this->sql->select($query, $params) ?: [];

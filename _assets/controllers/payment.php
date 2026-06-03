@@ -25,6 +25,7 @@ class Payment
     public CreditNoteApplicationsModel $CreditNoteApplicationsModel;
     public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
     public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
+    public PaymentTransactionDocumentsModel $PaymentTransactionDocumentsModel;
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
@@ -49,7 +50,8 @@ class Payment
         $this->InvoiceCreditDebitNotesDocModel     = new InvoiceCreditDebitNotesDocModel();
         $this->CreditNoteApplicationsModel        = new CreditNoteApplicationsModel();
         $this->PaymentAccountingGroupsModel       = new PaymentAccountingGroupsModel();
-        $this->PaymentNotificationRecipientsModel = new PaymentNotificationRecipientsModel();
+        $this->PaymentNotificationRecipientsModel   = new PaymentNotificationRecipientsModel();
+        $this->PaymentTransactionDocumentsModel     = new PaymentTransactionDocumentsModel();
     }
 
     function fuel_payments()
@@ -1018,6 +1020,7 @@ class Payment
 
                 $data[] = [
                     'id'             => $row['id'] . $pdfDot,
+                    'pdf_status'     => $pdfStatus,
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
                     'scheduled_payment_date' => $row['scheduled_payment_date'] ? date('d/m/Y', strtotime($row['scheduled_payment_date'])) : null,
                     'usuario'        => $row['usuario_nombre'],
@@ -1813,11 +1816,10 @@ class Payment
 
             // ✅ PROCESAR RESULTADO
             if ($result['success']) {
-                // ✅ REVISAR CADA PAYMENT_REQUEST_ID ÚNICO
+                // Revisar cada payment_request y marcarlo como pagado si aplica
                 $solicitudes_completadas = 0;
                 foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
                     $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
-
                     if ($all_paid) {
                         $this->PaymentRequestsModel->update_request_status(
                             $payment_request_id,
@@ -1828,13 +1830,28 @@ class Payment
                     }
                 }
 
-                return $this->responderJSON(true, $result['message'], [
-                    'facturas_procesadas' => $result['facturas_procesadas'],
-                    'total_pagado' => $result['total_pagado'],
-                    'fecha_pago' => date('d/m/Y', strtotime($fecha_pago)),
-                    'referencia_bancaria' => $referencia_bancaria,
+                // Subir comprobante si se adjuntó
+                $comprobante_msg = null;
+                if (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK) {
+                    // Obtener el transaction_id más reciente creado para estas facturas
+                    $last_transaction_id = $result['last_transaction_id'] ?? null;
+                    if ($last_transaction_id) {
+                        $upload = $this->PaymentTransactionDocumentsModel->upload(
+                            $last_transaction_id,
+                            $_FILES['comprobante'],
+                            $user_id
+                        );
+                        $comprobante_msg = $upload['success'] ? 'Comprobante subido.' : 'Pago registrado pero falló el comprobante: ' . $upload['message'];
+                    }
+                }
+
+                return $this->responderJSON(true, $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''), [
+                    'facturas_procesadas'     => $result['facturas_procesadas'],
+                    'total_pagado'            => $result['total_pagado'],
+                    'fecha_pago'              => date('d/m/Y', strtotime($fecha_pago)),
+                    'referencia_bancaria'     => $referencia_bancaria,
                     'solicitudes_completadas' => $solicitudes_completadas,
-                    'total_solicitudes' => count($payment_request_ids_unicos)
+                    'total_solicitudes'       => count($payment_request_ids_unicos)
                 ]);
             } else {
                 return $this->responderJSON(false, $result['message']);
@@ -2050,65 +2067,8 @@ class Payment
     }
 
 
-    /**
-     * Botón "Mandar pagos" (Tesorería): envía correo con pagos listos para solicitar pago.
-     * No tiene relación con la agrupación — Tesorería usa este botón cuando quiere
-     * notificar manualmente qué pagos están listos (con PDF completo).
-     */
-    public function send_ready_payments()
-    {
-        header('Content-Type: application/json');
-        try {
-            // Solo Tesorería (68) puede solicitar el pago
-            if (!authorized(68)) {
-                json_output(['success' => false, 'message' => 'Solo Tesorería puede mandar pagos a solicitud']);
-                return;
-            }
+    // send_ready_payments() eliminado — reemplazado por send_to_payments() (Abastos)
 
-            $pagos = $this->PaymentRequestsModel->get_payments_ready_for_request();
-
-            if (empty($pagos)) {
-                json_output(['success' => false, 'message' => 'No hay pagos listos (con todas sus facturas en PDF) para solicitar.']);
-                return;
-            }
-
-            // Destinatarios
-            if (self::TEST_MODE) {
-                $emails = [self::TEST_MODE_EMAIL];
-            } else {
-                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
-            }
-
-            if (empty($emails)) {
-                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
-                return;
-            }
-
-            $total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
-
-            $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) listos - ' . date('d/m/Y');
-            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'totalgasdesarrollo@gmail.com';
-
-            $ok = send_mail($subject, $body, $emails, $from);
-
-            if ($ok) {
-                error_log('send_ready_payments: enviado ' . count($pagos) . ' pagos a ' . implode(', ', $emails));
-                json_output([
-                    'success'       => true,
-                    'message'       => 'Correo enviado con ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS: solo a ' . self::TEST_MODE_EMAIL . ']' : ''),
-                    'total_pagos'   => count($pagos),
-                    'total_monto'   => $total_general,
-                    'destinatarios' => $emails
-                ]);
-            } else {
-                json_output(['success' => false, 'message' => 'No se pudo enviar el correo.']);
-            }
-        } catch (Exception $e) {
-            error_log('Error en send_ready_payments: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-        }
-    }
 
 
     /**
@@ -5397,6 +5357,59 @@ class Payment
 
         $html .= '</div>';
         return $html;
+    }
+
+
+    /**
+     * JSON: documentos adjuntos de una transacción.
+     * GET /payment/get_transaction_documents?transaction_id=X
+     */
+    public function get_transaction_documents()
+    {
+        header('Content-Type: application/json');
+        $transaction_id = (int)($_GET['transaction_id'] ?? 0);
+        if (!$transaction_id) {
+            json_output(['success' => false, 'message' => 'transaction_id requerido']);
+            return;
+        }
+        $docs = $this->PaymentTransactionDocumentsModel->get_by_transaction($transaction_id);
+        json_output(['success' => true, 'data' => $docs]);
+    }
+
+
+    /**
+     * Sirve el archivo de un comprobante de pago.
+     * GET /payment/view_payment_document/ID
+     */
+    public function view_payment_document($doc_id)
+    {
+        $doc = $this->PaymentTransactionDocumentsModel->get_by_id((int)$doc_id);
+        if (!$doc) {
+            http_response_code(404);
+            echo 'Documento no encontrado';
+            return;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../../_assets/uploads/payment_documents/');
+
+        if (!$fullPath || !str_starts_with($fullPath, $base) || !file_exists($fullPath)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $mime = match($doc['file_extension']) {
+            'pdf'        => 'application/pdf',
+            'jpg','jpeg' => 'image/jpeg',
+            'png'        => 'image/png',
+            default      => 'application/octet-stream'
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
     }
 
 }

@@ -58,7 +58,10 @@
       "mcp__notionApi__API-delete-a-block",
       "PowerShell(New-Item *)",
       "Bash(ls docs *)",
-      "Bash(ls docs/sql)"
+      "Bash(ls docs/sql)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(PowerShell *)"
     ],
     "deny": [],
     "ask": []

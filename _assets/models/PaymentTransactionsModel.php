@@ -99,18 +99,14 @@ class PaymentTransactionsModel extends Model
                 $facturas_procesadas++;
             }
 
-            // 6. Verificar si todas las facturas están pagadas
-            // $all_paid = $this->check_all_invoices_paid($payment_request_id);
-
-            // Commit
             $this->sql->commit();
 
             return [
-                'success' => true,
-                'message' => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
-                'total_pagado' => $total_pagado,
-                'facturas_procesadas' => $facturas_procesadas,
-                // 'all_paid' => $all_paid
+                'success'            => true,
+                'message'            => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
+                'total_pagado'       => $total_pagado,
+                'facturas_procesadas'=> $facturas_procesadas,
+                'last_transaction_id'=> $transaction_id ?? null,
             ];
 
         } catch (Exception $e) {

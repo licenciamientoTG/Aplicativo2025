@@ -1051,6 +1051,7 @@ class PaymentRequestInvoicesModel extends Model
             ) notas ON pri.id = notas.invoice_id
 
             WHERE pr.status = ?
+                AND pr.accounting_group_id IS NOT NULL
                 AND pri.payment_authorized = 0
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
