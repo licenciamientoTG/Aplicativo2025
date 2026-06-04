@@ -1188,16 +1188,12 @@ async function generatePayment() {
             "¿Ver detalle del pago?",
             "¿Desea ver el detalle del pago creado?",
             function () {
-                window.location.href =
-                "/payment/payment_detail/" + data.payment_id;
+                window.location.href = "/payment/payment_detail/" + data.payment_id;
             },
             function () {
-                // Recargar tabla
-                if ($.fn.DataTable.isDataTable("#payment_create_table")) {
-                $("#payment_create_table").DataTable().ajax.reload();
-                }
+                window.location.href = "/payment/payment_list";
             },
-            );
+            ).set("labels", { ok: "Ver Detalle", cancel: "Ir a Lista" });
         } else {
             alertify.error("Error: " + data.detail);
         }
@@ -1244,14 +1240,20 @@ function loadPaymentList() {
       type: "POST",
       data: {
         status: status,
-        type: "payment",
+        type: "all",
       },
       error: function (xhr, error, thrown) {
         alertify.error("Error al cargar datos: " + thrown);
       },
     },
     columns: [
-      { data: "id" },
+      {
+        data: "id",
+        render: function(data, type) {
+          if (type === 'display') return data;
+          return parseInt(data) || 0;
+        }
+      },
       { data: "request_date" },
       {
         data: "scheduled_payment_date",
@@ -1293,6 +1295,10 @@ function loadPaymentList() {
         data: null,
         className: "text-center",
         render: function (data, type, row) {
+          // Anticipos no tienen facturas individuales autorizadas
+          if (parseInt(row.tipo) === 1) {
+            return '<span class="text-muted" style="font-size:.8rem;">—</span>';
+          }
           var count = parseInt(row.authorized_invoices_count) || 0;
           var rawAmount = row.authorized_amount_total || "0";
           rawAmount = rawAmount.replace(/[$,]/g, "");
@@ -1468,22 +1474,53 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
   }
 
   // Abrir: mostrar loader y pedir las facturas
-  row.child('<div class="p-3 text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Cargando facturas...</div>').show();
+  row.child('<div class="p-3 text-center text-muted"><i class="fas fa-spinner fa-spin"></i> Cargando...</div>').show();
   $tr.addClass("shown");
   $icon.removeClass("fa-info-circle").addClass("fa-chevron-up");
 
   var paymentId = $btn.data("payment-id");
-  $.getJSON("/payment/payment_invoices_json/" + paymentId)
-    .done(function (resp) {
-      if (resp && resp.success) {
-        row.child(formatPaymentInvoicesChild(resp.data)).show();
-      } else {
-        row.child('<div class="p-3 text-danger">Error: ' + (resp.message || "No se pudieron cargar las facturas") + "</div>").show();
-      }
-    })
-    .fail(function () {
-      row.child('<div class="p-3 text-danger">Error de conexión al cargar las facturas.</div>').show();
-    });
+  var rowData   = table.row($tr).data();
+  var esAnticipo = parseInt(rowData.tipo) === 1;
+
+  if (esAnticipo) {
+    // Child row para anticipos: mostrar resumen de saldo
+    $.getJSON("/payment/anticipo_summary_json/" + paymentId)
+      .done(function(resp) {
+        if (resp && resp.success) {
+          var d = resp.data;
+          var fmt = function(v) { return '$' + parseFloat(v||0).toLocaleString('es-MX', {minimumFractionDigits:2}); };
+          var html =
+            "<div class='p-3' style='background:#fffbeb;border-top:2px solid #fcd34d;'>" +
+            "<div class='d-flex flex-wrap gap-4 align-items-center'>" +
+            "<span style='font-size:.7rem;font-weight:700;text-transform:uppercase;color:#92400e;letter-spacing:.06em;'><i class='fas fa-hand-holding-usd me-1'></i>Anticipo</span>" +
+            "<span style='font-size:.8rem;color:#334155;'><strong>Monto original:</strong> " + fmt(d.monto_original) + "</span>" +
+            "<span style='font-size:.8rem;color:#334155;'><strong>Aplicado:</strong> <span class='text-danger'>" + fmt(d.total_aplicado) + "</span></span>" +
+            "<span style='font-size:.8rem;color:#334155;'><strong>Saldo disponible:</strong> <span class='fw-bold text-success'>" + fmt(d.saldo_disponible) + "</span></span>" +
+            "<span style='font-size:.8rem;color:#64748b;'><i class='fas fa-layer-group me-1'></i>" + (d.total_aplicaciones || 0) + " aplicación(es)</span>" +
+            "<a href='/payment/anticipo_detail/" + paymentId + "' class='btn btn-sm ms-auto' style='background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:.75rem;'><i class='fas fa-eye me-1'></i>Ver detalle</a>" +
+            "</div></div>";
+          row.child(html).show();
+        } else {
+          row.child('<div class="p-3 text-danger">Error al cargar datos del anticipo.</div>').show();
+        }
+      })
+      .fail(function() {
+        row.child('<div class="p-3 text-danger">Error de conexión.</div>').show();
+      });
+  } else {
+    // Child row para pagos normales: lista de facturas
+    $.getJSON("/payment/payment_invoices_json/" + paymentId)
+      .done(function (resp) {
+        if (resp && resp.success) {
+          row.child(formatPaymentInvoicesChild(resp.data)).show();
+        } else {
+          row.child('<div class="p-3 text-danger">Error: ' + (resp.message || "No se pudieron cargar las facturas") + "</div>").show();
+        }
+      })
+      .fail(function () {
+        row.child('<div class="p-3 text-danger">Error de conexión al cargar las facturas.</div>').show();
+      });
+  }
 });
 
 
@@ -1839,10 +1876,8 @@ async function ejecutarCreacionAnticipo(
         "✓ Anticipo creado exitosamente: ID #" + data.anticipo_id,
       );
 
-      // Recargar tabla de anticipos si existe
-      if ($.fn.DataTable.isDataTable("#tabla_anticipos")) {
-        $("#tabla_anticipos").DataTable().ajax.reload(null, false);
-      }
+      // Recargar tabla unificada de pagos
+      loadPaymentList();
 
       // Preguntar si desea ver el detalle
       setTimeout(() => {
@@ -1876,34 +1911,6 @@ async function ejecutarCreacionAnticipo(
 }
 
 
-function deletePayment(paymentId) {
-  // alertify.confirm(
-  //     'Eliminar Pago',
-  //     '¿Está seguro de eliminar este pago programado? Esta acción no se puede deshacer.',
-  //     function() {
-  //         $.ajax({
-  //             url: '/payment/delete_payment',
-  //             type: 'POST',
-  //             data: { payment_id: paymentId },
-  //             success: function(response) {
-  //                 if (response.success) {
-  //                     alertify.success(response.message);
-  //                     loadPaymentList();
-  //                 } else {
-  //                     alertify.error(response.message);
-  //                 }
-  //             },
-  //             error: function() {
-  //                 alertify.error('Error al eliminar el pago');
-  //             }
-  //         });
-  //     },
-  //     function() {
-  //         alertify.message('Operación cancelada');
-  //     }
-  // );
-  alertify.error("Funcionalidad de eliminación pendiente de implementación");
-}
 
 
 function toggleSelectAll() {

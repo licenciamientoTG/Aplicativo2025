@@ -468,7 +468,7 @@
                             <div class="col">
                                 <label class="col-form-label-sm fw-bold">DESDE:</label>
                                 <input type="date" class="form-control form-control-sm" name="from1" id="from1"
-                                    value="{{ 'first day of this month'|date('Y-m-d') }}" required>
+                                    value="{{ '-1 month'|date('Y-m-d') }}" required>
                             </div>
                             <div class="col">
                                 <label class="col-form-label-sm fw-bold">HASTA:</label>
@@ -1357,12 +1357,8 @@
                             '¿Ver detalle del pago?',
                             '¿Desea ver el detalle del pago creado?',
                             function () { window.location.href = '/payment/payment_detail/' + data.payment_id; },
-                            function () {
-                                if ($.fn.DataTable.isDataTable('#payment_create_table')) {
-                                    $('#payment_create_table').DataTable().ajax.reload();
-                                }
-                            }
-                        );
+                            function () { window.location.href = '/payment/payment_list'; }
+                        ).set('labels', { ok: 'Ver Detalle', cancel: 'Ir a Lista' });
                     } else {
                         alertify.error('Error: ' + data.detail);
                     }
