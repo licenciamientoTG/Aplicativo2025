@@ -262,6 +262,7 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 let state = { vista: 'semana', fecha: null, data: null, loading: false };
 let hoSoundPlayed = false;
 let hoSoundPendingInteraction = false;
+let hoSoundBlockedNoticeShown = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   state.data  = INITIAL_DATA;
@@ -270,11 +271,22 @@ document.addEventListener('DOMContentLoaded', () => {
   render();
 });
 
-['click', 'keydown'].forEach(eventName => {
+['click', 'keydown', 'pointerdown', 'touchstart'].forEach(eventName => {
   document.addEventListener(eventName, () => {
     if (!hoSoundPendingInteraction || hoSoundPlayed) return;
     playHomeOfficeSound();
   }, { passive: true });
+});
+
+window.addEventListener('focus', () => {
+  if (!hoSoundPendingInteraction || hoSoundPlayed) return;
+  playHomeOfficeSound();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!hoSoundPendingInteraction || hoSoundPlayed) return;
+  playHomeOfficeSound();
 });
 
 /* ─── Navegación ─────────────────────────────────────── */
@@ -363,15 +375,30 @@ function playHomeOfficeSound() {
       .then(() => {
         hoSoundPlayed = true;
         hoSoundPendingInteraction = false;
+        hoSoundBlockedNoticeShown = false;
       })
       .catch(() => {
         hoSoundPendingInteraction = true;
+        showHomeOfficePendingNotice();
       });
     return;
   }
 
   hoSoundPlayed = true;
   hoSoundPendingInteraction = false;
+  hoSoundBlockedNoticeShown = false;
+}
+
+function showHomeOfficePendingNotice() {
+  if (hoSoundBlockedNoticeShown || !currentUserHasEarnedUnscheduledHO()) return;
+  hoSoundBlockedNoticeShown = true;
+
+  if (typeof toastr !== 'undefined') {
+    toastr.info('Tienes un home office ganado pendiente por programar. El sonido se reproducira al interactuar con la pagina.', 'Home Office');
+    return;
+  }
+
+  alert('Tienes un home office ganado pendiente por programar. El sonido se reproducira al interactuar con la pagina.');
 }
 
 function updatePeriodoLabel() {
