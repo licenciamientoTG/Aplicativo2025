@@ -965,7 +965,7 @@ class Payment
         header('Content-Type: application/json');
 
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
-        $type = isset($_POST['type']) ? $_POST['type'] : 'payment';
+        $type = isset($_POST['type']) ? $_POST['type'] : 'all';
 
         try {
             // Obtener datos del modelo
@@ -1011,6 +1011,8 @@ class Payment
                 $totalND = floatval($row['total_notas_cargo']);
                 $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
 
+                $esAnticipo = intval($row['tipo'] ?? 0) === 1;
+
                 $pdfStatus = $row['pdf_status'] ?? 'no_invoices';
                 $pdfDot = match($pdfStatus) {
                     'complete'    => '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-left:4px;vertical-align:middle;" title="Todas las facturas tienen PDF"></span>',
@@ -1018,22 +1020,31 @@ class Payment
                     default       => '',
                 };
 
+                $anticipoBadge = $esAnticipo
+                    ? '<span style="display:inline-block;font-size:.6rem;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;letter-spacing:.03em;">ANT</span>'
+                    : '';
+
+                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas
+                $montoAnticipo = $esAnticipo ? floatval($row['monto_total'] ?? 0) : $totalFacturas;
+                $montoNetoFinal = $esAnticipo ? $montoAnticipo : $montoNeto;
+
                 $data[] = [
-                    'id'             => $row['id'] . $pdfDot,
+                    'id'             => $row['id'] . $pdfDot . $anticipoBadge,
+                    'tipo'           => $esAnticipo ? 1 : 0,
                     'pdf_status'     => $pdfStatus,
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
                     'scheduled_payment_date' => $row['scheduled_payment_date'] ? date('d/m/Y', strtotime($row['scheduled_payment_date'])) : null,
                     'usuario'        => $row['usuario_nombre'],
                     'provider_name'  => $row['provider_name'],
                     'emp_name'       => $row['emp_name'],
-                    'total_invoices' => $row['total_invoices'],
-                    'total_amount'   => '$' . number_format($totalFacturas, 2),
-                    'total_notas_credito' => $totalNC,
-                    'total_notas_cargo'   => $totalND,
-                    'monto_neto'     => '$' . number_format($montoNeto, 2),
+                    'total_invoices' => $esAnticipo ? '—' : $row['total_invoices'],
+                    'total_amount'   => '$' . number_format($montoAnticipo, 2),
+                    'total_notas_credito' => $esAnticipo ? 0 : $totalNC,
+                    'total_notas_cargo'   => $esAnticipo ? 0 : $totalND,
+                    'monto_neto'     => '$' . number_format($montoNetoFinal, 2),
                     'total_paid'     => '$' . number_format($row['total_paid'], 2),
-                    'authorized_invoices_count' => $row['authorized_invoices_count'],
-                    'authorized_amount_total' => '$' . number_format($row['authorized_amount_total'], 2),
+                    'authorized_invoices_count' => $esAnticipo ? '—' : $row['authorized_invoices_count'],
+                    'authorized_amount_total' => $esAnticipo ? '—' : '$' . number_format($row['authorized_amount_total'], 2),
                     'status'         => $statusBadge,
                     'authorizations' => $authIndicator,
                     'comment'        => $row['comment'] ?: '-',
@@ -4546,14 +4557,6 @@ class Payment
                 // Log de auditoría
                 error_log("ANTICIPO CREADO: ID={$result['anticipo_id']}, Provider=$provider_cod, Empresa=$empresa_cod, Monto=$monto, User=$user_id");
 
-                // Notificación por correo
-                $this->enviar_notificacion_nuevo_anticipo(
-                    $result['anticipo_id'],
-                    $proveedor['den'] ?? 'Proveedor',
-                    $monto,
-                    $comentario,
-                    $_SESSION['tg_user']['Nombre'] ?? 'Usuario'
-                );
             }
 
             // Retornar resultado
@@ -4625,6 +4628,18 @@ class Payment
                 'Error al cargar la configuración: ' . htmlspecialchars($e->getMessage()) .
                 '</div>';
         }
+    }
+
+
+    public function anticipo_summary_json($anticipo_id)
+    {
+        header('Content-Type: application/json');
+        $summary = $this->PaymentRequestsModel->get_anticipo_summary((int)$anticipo_id);
+        if (!$summary) {
+            json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
+            return;
+        }
+        json_output(['success' => true, 'data' => $summary]);
     }
 
 

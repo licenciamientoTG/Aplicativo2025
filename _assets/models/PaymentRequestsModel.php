@@ -235,6 +235,7 @@ class PaymentRequestsModel extends Model
         } elseif ($type === 'anticipos') {
             $whereClauses[] = "t1.tipo NOT IN (0)";
         }
+        // type === 'all' → sin filtro de tipo, devuelve pagos y anticipos
 
         $whereSQL = !empty($whereClauses)
             ? "WHERE " . implode(" AND ", $whereClauses)
