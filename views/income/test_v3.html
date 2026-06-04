@@ -1087,6 +1087,20 @@ let openGroupsCG  = new Set();
 let openGroupsTES = new Set();
 let openGroupsTX  = new Set();
 
+function getCGRef(item) {
+    return item && item.ID_Unico ? String(item.ID_Unico) : '';
+}
+
+function isConciliatedCGRef(ref) {
+    return !!(ref && conciliadasSet.CG && conciliadasSet.CG.has(String(ref)));
+}
+
+function shouldKeepCGItemVisible(item) {
+    const monto = parseFloat(item.Total || 0);
+    if (monto > 0) return true;
+    return isConciliatedCGRef(getCGRef(item));
+}
+
 // ── INIT ────────────────────────────────────────────────────
 $(document).ready(function() {
     initWidget();
@@ -1559,8 +1573,7 @@ function renderCG() {
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
     const filtered = cgData.filter(item => {
-        const monto = parseFloat(item.Total || 0);
-        if (monto <= 0) return false;
+        if (!shouldKeepCGItemVisible(item)) return false;
         // Excluir día en curso
         const fItem = item.FechaVisual
             ? (() => { const p = item.FechaVisual.split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual; })()
@@ -3178,7 +3191,7 @@ function abrirModoTransacciones() {
     const cgGroups = {};
     cgData.forEach(item => {
         const monto = parseFloat(item.Total || 0);
-        if (monto <= 0) return;
+        if (!shouldKeepCGItemVisible(item)) return;
         if (keywords.length) {
             const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
             if (!keywords.some(k => c.includes(k))) return;
