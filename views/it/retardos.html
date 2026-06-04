@@ -242,12 +242,16 @@
     </div>
   </div>
 </div>
+<audio id="home-office-sound" preload="auto">
+  <source src="/_assets/uploads/song.ogg" type="audio/ogg">
+</audio>
 {% endblock %}
 
 {% block myjs %}
 <script>
 const CAN_EDIT     = {{ can_edit ? 'true' : 'false' }};
 const TODAY        = '{{ today }}';
+const CURRENT_USER_ID = {{ tg_user.Id|default(0) }};
 const INITIAL_DATA = {{ initial_data | raw }};
 
 const DIAS  = ['Lun','Mar','Mié','Jue','Vie'];
@@ -256,12 +260,21 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 
 /* ─── Estado ─────────────────────────────────────────── */
 let state = { vista: 'semana', fecha: null, data: null, loading: false };
+let hoSoundPlayed = false;
+let hoSoundPendingInteraction = false;
 
 document.addEventListener('DOMContentLoaded', () => {
   state.data  = INITIAL_DATA;
   state.vista = 'semana';
   state.fecha = TODAY;
   render();
+});
+
+['click', 'keydown'].forEach(eventName => {
+  document.addEventListener(eventName, () => {
+    if (!hoSoundPendingInteraction || hoSoundPlayed) return;
+    playHomeOfficeSound();
+  }, { passive: true });
 });
 
 /* ─── Navegación ─────────────────────────────────────── */
@@ -324,6 +337,41 @@ function render() {
   updateVistaButtons();
   if (state.vista === 'semana') renderWeekView(state.data);
   else renderMonthView(state.data);
+  maybePlayHomeOfficeSound();
+}
+
+function currentUserHasEarnedUnscheduledHO() {
+  if (!state.data || !Array.isArray(state.data.usuarios)) return false;
+  const currentUser = state.data.usuarios.find(u => Number(u.id) === Number(CURRENT_USER_ID));
+  return !!(currentUser && currentUser.ho && currentUser.ho.earned && !currentUser.ho_pendiente);
+}
+
+function maybePlayHomeOfficeSound() {
+  if (hoSoundPlayed || !currentUserHasEarnedUnscheduledHO()) return;
+  playHomeOfficeSound();
+}
+
+function playHomeOfficeSound() {
+  const audio = document.getElementById('home-office-sound');
+  if (!audio) return;
+
+  audio.currentTime = 0;
+  const playPromise = audio.play();
+
+  if (playPromise && typeof playPromise.then === 'function') {
+    playPromise
+      .then(() => {
+        hoSoundPlayed = true;
+        hoSoundPendingInteraction = false;
+      })
+      .catch(() => {
+        hoSoundPendingInteraction = true;
+      });
+    return;
+  }
+
+  hoSoundPlayed = true;
+  hoSoundPendingInteraction = false;
 }
 
 function updatePeriodoLabel() {
