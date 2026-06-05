@@ -1395,6 +1395,8 @@ class Payment
     }
 
 
+
+
     function addNoteModal()
     {
         $provider_id = $_POST['provider_id'] ?? null;
@@ -4332,6 +4334,11 @@ class Payment
     {
         header('Content-Type: application/json');
         try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso para aplicar notas']);
+                return;
+            }
+
             $requiredFields = ['credit_note_id', 'payment_request_id', 'applied_amount'];
             foreach ($requiredFields as $field) {
                 if (empty($_POST[$field])) {
