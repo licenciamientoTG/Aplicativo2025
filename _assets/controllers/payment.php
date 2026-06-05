@@ -29,7 +29,7 @@ class Payment
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
-    private const TEST_MODE = false;
+    private const TEST_MODE = True;
 
     public function __construct($twig)
     {
@@ -1278,6 +1278,41 @@ class Payment
             error_log('Error en payment_invoices_json: ' . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage(), 'data' => []]);
         }
+    }
+
+
+    public function update_payment_fields()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $payment_id = intval($_POST['payment_id'] ?? 0);
+        $comment    = trim($_POST['comment'] ?? '');
+        $fecha_pago = $_POST['scheduled_payment_date'] ?? null;
+
+        if (!$payment_id) {
+            json_output(['success' => false, 'message' => 'ID inválido']);
+            return;
+        }
+
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        if (!$payment || $payment['status'] > 1) {
+            json_output(['success' => false, 'message' => 'Pago no editable']);
+            return;
+        }
+
+        $query = "UPDATE [TG].[dbo].[payment_requests] SET comment = ?, scheduled_payment_date = ? WHERE id = ?";
+        $ok = $this->PaymentRequestsModel->sql->update($query, [
+            $comment ?: null,
+            $fecha_pago ?: null,
+            $payment_id
+        ]);
+
+        json_output(['success' => (bool)$ok]);
     }
 
 

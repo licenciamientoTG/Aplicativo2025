@@ -90,11 +90,9 @@
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-facturas-auth')">
             <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas
         </button>
-        {% if authorized(70) %}
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-archivos'); loadAccountingGroupsTable();" id="tab_archivos_contabilidad_link">
             <i class="fas fa-folder-open"></i> Archivos Contabilidad
         </button>
-        {% endif %}
     </div>
 
     <!-- ===== TAB: PAGOS ===== -->
@@ -140,12 +138,14 @@
                     <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
                 </button>
                 {% endif %}
+                {% if authorized(66) %}
                 <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
                     <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
                 </a>
                 <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#d97706;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
                     <i class="fas fa-hand-holding-usd" style="font-size:.75rem;"></i> Nuevo Anticipo
                 </button>
+                {% endif %}
             </div>
         </div>
 
@@ -302,7 +302,6 @@
         </div>
     </div>
 
-    {% if authorized(70) %}
     <!-- ===== TAB: ARCHIVOS CONTABILIDAD ===== -->
     <div id="pl-tab-archivos" class="pl-tab-content">
 
@@ -337,7 +336,6 @@
             </table>
         </div>
     </div>
-    {% endif %}
 
 </div>
 
@@ -930,9 +928,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Actualizar contadores con animación puntual
                     function updateBadgeCount(id, value) {
                         var $el = $(id);
+                        if (!$el.length) return;
                         $el.text(value || 0);
                         $el.removeClass('badge-updated');
-                        void $el[0].offsetWidth; // reflow para reiniciar animación
+                        void $el[0].offsetWidth;
                         $el.addClass('badge-updated');
                         setTimeout(function() { $el.removeClass('badge-updated'); }, 400);
                     }

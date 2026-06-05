@@ -66,12 +66,28 @@
 						<p class="mb-0 fw-medium text-dark" style="font-size:.82rem;">{{ payment.usuario_nombre ?? 'N/A' }}</p>
 						<p class="mb-0" style="font-size:.75rem;color:#64748b;"><i class="fas fa-clock fa-xs me-1"></i>{{ payment.request_date|date('d/m/Y H:i') }}</p>
 					</div>
-					{% if payment.comment %}
 					<div>
 						<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#94a3b8;letter-spacing:.06em;">Comentario</p>
-						<p class="mb-0 text-dark" style="font-size:.82rem;background:#f8fafc;padding:.4rem .6rem;border-radius:6px;border:1px solid #e2e8f0;">{{ payment.comment }}</p>
+						{% if authorized(66) and payment.status in [0,1] %}
+						<div class="d-flex gap-1 align-items-center">
+							<input type="text" id="edit_comment" class="form-control form-control-sm" value="{{ payment.comment }}" style="font-size:.82rem;" placeholder="Sin comentario">
+							<button class="btn btn-sm btn-outline-secondary" onclick="guardarCamposEdicion()" title="Guardar"><i class="fas fa-save"></i></button>
+						</div>
+						{% else %}
+						<p class="mb-0 text-dark" style="font-size:.82rem;background:#f8fafc;padding:.4rem .6rem;border-radius:6px;border:1px solid #e2e8f0;">{{ payment.comment ?: '—' }}</p>
+						{% endif %}
 					</div>
-					{% endif %}
+					<div>
+						<p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#94a3b8;letter-spacing:.06em;">Fecha de Pago</p>
+						{% if authorized(66) and payment.status in [0,1] %}
+						<div class="d-flex gap-1 align-items-center">
+							<input type="date" id="edit_fecha_pago" class="form-control form-control-sm" value="{{ payment.scheduled_payment_date ? payment.scheduled_payment_date|date('Y-m-d') : '' }}" style="font-size:.82rem;">
+							<button class="btn btn-sm btn-outline-secondary" onclick="guardarCamposEdicion()" title="Guardar"><i class="fas fa-save"></i></button>
+						</div>
+						{% else %}
+						<p class="mb-0 text-dark" style="font-size:.82rem;background:#f8fafc;padding:.4rem .6rem;border-radius:6px;border:1px solid #e2e8f0;">{{ payment.scheduled_payment_date ? payment.scheduled_payment_date|date('d/m/Y') : '—' }}</p>
+						{% endif %}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -166,7 +182,7 @@
 					<span class="badge" style="background:#d1e7dd;color:#0a3622;">Autorizadas: {{ facturas_autorizadas }}</span>
 					<span class="badge" style="background:#fff3cd;color:#856404;">Pendientes: {{ total_facturas - facturas_autorizadas }}</span>
 				</div>
-				{% if payment.status == 0 or payment.status == 1 %}
+				{% if (payment.status == 0 or payment.status == 1) and authorized(66) %}
 				<button class="btn btn-sm btn-outline-secondary" onclick="window.location.href='/payment/add_more_invoices_to_payment?payment_id={{ payment.id }}'">
 					<i class="fas fa-plus"></i> Agregar Factura
 				</button>
@@ -234,7 +250,7 @@
 							</td>
 							<td class="text-center" style="white-space:nowrap;">
 								<button class="btn btn-sm btn-outline-secondary" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Historial"><i class="fas fa-history"></i></button>
-								{% if payment.status == 0 or payment.status == 1 and invoice.paid_amount == 0 %}
+								{% if (payment.status == 0 or payment.status == 1) and invoice.paid_amount == 0 and authorized(66) %}
 								<button class="btn btn-sm btn-outline-danger" onclick="removeInvoiceFromPayment({{ invoice.id }}, '{{ invoice.folio }}')" title="Quitar"><i class="fas fa-times"></i></button>
 								{% endif %}
 							</td>
@@ -566,20 +582,9 @@
 					{% endif %}
 					<span class="text-muted">Autorizado: <strong class="text-success">${{ total_autorizado_tabla|number_format(2) }}</strong> <small class="text-muted">({{ facturas_autorizadas }}/{{ total_facturas }})</small></span>
 				</div>
-				<div class="d-flex align-items-center gap-3">
-					<div class="text-end">
-						<p class="mb-0 text-muted" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Total a Pagar</p>
-						<p class="mb-0 fw-bold" style="font-size:1.3rem;color:#4a3f8f;">${{ payment_calculation.final_amount|number_format(2) }}</p>
-					</div>
-					{% if payment.status == 1 and authorized(68) %}
-					<button class="btn btn-dark px-4" onclick="autorizarPago()">
-						<i class="fas fa-check-circle me-1"></i> Autorizar Pago
-					</button>
-					{% elseif payment.status == 0 and authorized(66) and not authorization_status.abastos %}
-					<button class="btn btn-dark px-4" onclick="openAuthModal(66, 'Abastos')">
-						<i class="fas fa-check me-1"></i> Autorizar
-					</button>
-					{% endif %}
+				<div class="text-end">
+					<p class="mb-0 text-muted" style="font-size:.65rem;text-transform:uppercase;letter-spacing:.05em;font-weight:700;">Total a Pagar</p>
+					<p class="mb-0 fw-bold" style="font-size:1.3rem;color:#4a3f8f;">${{ payment_calculation.final_amount|number_format(2) }}</p>
 				</div>
 			</div>
 		</div>
@@ -1170,6 +1175,25 @@
 	<script>
 		var paymentId = document.getElementById('paymentId').value;
 		let currentPermission = null;
+
+		function guardarCamposEdicion() {
+			const comment    = $('#edit_comment').val();
+			const fecha_pago = $('#edit_fecha_pago').val();
+
+			$.post('/payment/update_payment_fields', {
+				payment_id:            paymentId,
+				comment:               comment,
+				scheduled_payment_date: fecha_pago
+			}, function(res) {
+				if (res.success) {
+					alertify.success('Cambios guardados');
+				} else {
+					alertify.error(res.message || 'Error al guardar');
+				}
+			}, 'json').fail(function() {
+				alertify.error('Error de conexión');
+			});
+		}
 
 
 		// Limpiar cuando se cierra el modal
