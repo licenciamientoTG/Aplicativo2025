@@ -3917,8 +3917,7 @@ class Payment
                 }
 
                 // PASO 4: Renombrar archivo con el ID del documento y subirlo
-                $subDir = date('Y') . '/' . date('m') . '/';
-                $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/' . $subDir;
+                $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
                 if (!is_dir($uploadDir)) {
                     mkdir($uploadDir, 0755, true);
                 }
@@ -3932,7 +3931,7 @@ class Payment
                 }
 
                 // Ruta relativa para guardar en BD
-                $filePath = 'uploads/credit_debit_notes/' . $subDir . $newFilename;
+                $filePath = 'uploads/credit_debit_notes/' . $newFilename;
 
                 // PASO 5: Actualizar ruta en el registro del documento
                 if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
