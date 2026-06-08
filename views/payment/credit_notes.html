@@ -250,7 +250,14 @@ function initNotesTable() {
         scrollY: 'calc(100vh - 320px)',
         scrollCollapse: true,
         paging: false,
-        language: { url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/es-MX.json' },
+        language: {
+            search: "Buscar:",
+            lengthMenu: "Mostrar _MENU_ registros",
+            info: "Mostrando _START_ a _END_ de _TOTAL_ registros",
+            infoEmpty: "Sin registros",
+            zeroRecords: "No se encontraron resultados",
+            paginate: { first: "Primero", last: "Último", next: "Siguiente", previous: "Anterior" }
+        },
         buttons: [
             {
                 extend: 'excel',
@@ -424,12 +431,12 @@ document.addEventListener('click', function(e) {
     if (!btn) return;
 
     const noteId = btn.dataset.noteId;
-    document.getElementById('noteDocsModalNoteId').textContent = '#' + noteId;
-    document.getElementById('noteDocsList').innerHTML =
+    document.getElementById('noteDocsModalPDNoteId').textContent = '#' + noteId;
+    document.getElementById('noteDocsListPD').innerHTML =
         '<span class="text-muted small"><i class="fas fa-spinner fa-spin"></i> Cargando...</span>';
-    document.getElementById('noteDocsViewer').src = '';
-    document.getElementById('noteDocsDownloadBtn').href = '#';
-    $('#noteDocsModal').modal('show');
+    document.getElementById('noteDocsViewerPD').src = '';
+    document.getElementById('noteDocsDownloadBtnPD').href = '#';
+    $('#noteDocsModalPD').modal('show');
 
     fetch('/payment/getNoteDocuments', {
         method: 'POST',
@@ -439,7 +446,7 @@ document.addEventListener('click', function(e) {
     })
     .then(r => r.json())
     .then(data => {
-        const list = document.getElementById('noteDocsList');
+        const list = document.getElementById('noteDocsListPD');
         if (!data.success || !data.docs || data.docs.length === 0) {
             list.innerHTML = '<span class="text-muted small">Sin documentos</span>';
             return;
@@ -451,19 +458,18 @@ document.addEventListener('click', function(e) {
                 <i class="fas fa-file-pdf"></i> Doc ${i+1}
              </button>`
         ).join('');
-        // Abrir el primero automáticamente
         openNoteDocViewer(data.docs[0].id);
     })
     .catch(() => {
-        document.getElementById('noteDocsList').innerHTML =
+        document.getElementById('noteDocsListPD').innerHTML =
             '<span class="text-danger small">Error al cargar documentos</span>';
     });
 });
 
 function openNoteDocViewer(docId) {
     const pdfUrl = '/payment/viewNoteDocument/' + docId;
-    document.getElementById('noteDocsViewer').src = pdfUrl;
-    document.getElementById('noteDocsDownloadBtn').href = pdfUrl;
+    document.getElementById('noteDocsViewerPD').src = pdfUrl;
+    document.getElementById('noteDocsDownloadBtnPD').href = pdfUrl;
     // Marcar botón activo
     document.querySelectorAll('.note-doc-item').forEach(b => {
         b.classList.toggle('btn-danger', b.dataset.docId == docId);
