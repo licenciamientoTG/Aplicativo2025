@@ -547,6 +547,27 @@
                             </div>
                             <span id="selected-count" class="badge bg-info">0 seleccionadas</span>
                         </div>
+                        <!-- Filtro masivo por folio -->
+                        <div class="mb-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                onclick="toggleFolioFilter()"
+                                style="font-size:0.8rem;">
+                                <i class="fas fa-list me-1"></i> Filtrar por folios
+                                <span id="folio-count-badge" class="badge bg-primary ms-1" style="display:none;"></span>
+                            </button>
+                            <div id="folio-filter-collapse" style="display:none;" class="mt-2">
+                                <div class="d-flex align-items-start gap-2">
+                                    <textarea id="folio-filter-input" class="form-control form-control-sm"
+                                        rows="3"
+                                        placeholder="Pega folios de Excel (uno por línea)..."
+                                        style="font-size:0.82rem; font-family:monospace; resize:vertical;"></textarea>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0" id="btn-clear-folios"
+                                        onclick="clearFolioFilter()" style="display:none; font-size:0.8rem; white-space:nowrap;">
+                                        <i class="fas fa-times-circle"></i> Limpiar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         <table id="payment_create_table" class="table table-sm table-striped table-hover w-100">
                             <thead>
                                 <tr>
@@ -1526,6 +1547,77 @@
             }
         );
     }
+
+    // ── Filtro masivo por lista de folios ─────────────────────────────────────
+    let folioFilterSet = new Set();
+
+    // Normaliza: quita guiones, espacios y pasa a mayúsculas
+    function normalizeFolio(str) {
+        return (str || '').replace(/[-\s]/g, '').toUpperCase().trim();
+    }
+
+    // Registrar filtro custom ANTES de que la tabla exista (aplica en cada draw)
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+        if (settings.nTable.id !== 'payment_create_table') return true;
+        if (folioFilterSet.size === 0) return true;
+
+        // Obtener el valor real del objeto row (no el HTML renderizado)
+        const table = $(settings.nTable).DataTable();
+        const rowData = table.row(dataIndex).data();
+        const facturaNorm = normalizeFolio(rowData ? rowData.Factura : data[2]);
+
+        for (const folio of folioFilterSet) {
+            const folioNorm = normalizeFolio(folio);
+            if (!folioNorm) continue;
+            if (facturaNorm === folioNorm || facturaNorm.includes(folioNorm) || folioNorm.includes(facturaNorm)) {
+                return true;
+            }
+        }
+        return false;
+    });
+
+    function parseFolioFilter(raw) {
+        const lines = raw.split(/[\n\r]+/)
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+
+        folioFilterSet = new Set(lines);
+
+        const badge    = document.getElementById('folio-count-badge');
+        const btnClear = document.getElementById('btn-clear-folios');
+
+        if (folioFilterSet.size > 0) {
+            badge.textContent  = folioFilterSet.size + ' folios';
+            badge.style.display = '';
+            btnClear.style.display = '';
+        } else {
+            badge.style.display    = 'none';
+            btnClear.style.display = 'none';
+        }
+
+        // Redibujar usando el elemento DOM — funciona aunque paymentTable sea variable local
+        const tbl = $('#payment_create_table');
+        if ($.fn.DataTable.isDataTable(tbl)) {
+            tbl.DataTable().draw();
+        }
+    }
+
+    function toggleFolioFilter() {
+        const collapse = document.getElementById('folio-filter-collapse');
+        collapse.style.display = collapse.style.display === 'none' ? '' : 'none';
+        if (collapse.style.display === 'none') {
+            clearFolioFilter();
+        }
+    }
+
+    function clearFolioFilter() {
+        document.getElementById('folio-filter-input').value = '';
+        parseFolioFilter('');
+    }
+
+    document.getElementById('folio-filter-input').addEventListener('input', function () {
+        parseFolioFilter(this.value);
+    });
 
     function toggleFilterVencidas() {
         const btn = $('#filter-vencidas');

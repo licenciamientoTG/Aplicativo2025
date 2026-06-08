@@ -265,6 +265,9 @@ class Payment
                     continue; // Skip rows with empty 'nro'
                 }
                 $fechaVencimiento = !empty($row['fecha_vencimiento_credito']) ? $row['fecha_vencimiento_credito'] : ($row['fechaVto'] ?? null);
+                if (!empty($fechaVencimiento) && $fechaVencimiento < '2026-05-01') {
+                    continue;
+                }
                 $estaVencida = !empty($fechaVencimiento) && $fechaVencimiento < $hoy;
                 $statusLabel = 'Pendiente';
                 if ($row['payment_status'] == '0') {

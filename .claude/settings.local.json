@@ -64,7 +64,14 @@
       "Bash(PowerShell *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\" -Recurse -Directory -Name)",
       "Bash(Select-Object -First 30)",
-      "Bash(Select-String *)"
+      "Bash(Select-String *)",
+      "Bash(Get-ChildItem \"C:\\\\Users\\\\alejandro.martinez\\\\Downloads\\\\manual\")",
+      "Bash(Sort-Object Name)",
+      "Bash(Select-Object Name, Length, LastWriteTime)",
+      "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64.json\" -Force)",
+      "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/gen_manual.py\" -Force)",
+      "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64_images.json\" -ErrorAction SilentlyContinue -Force)",
+      "Bash(Write-Host \"Limpio\")"
     ],
     "deny": [],
     "ask": []

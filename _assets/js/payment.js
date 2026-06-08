@@ -273,14 +273,13 @@ function filtrarEstacionesPorEmpresa() {
     console.error("No se encontraron opciones originales");
   }
 
-  // Seleccionar "Todas las estaciones" por defecto
-  $station.val("0");
-
   // Reinicializar selectpicker
   $station.selectpicker({
     liveSearch: true,
-    title: "Seleccione una estación",
   });
+
+  // Seleccionar "Todas las estaciones" por defecto
+  $station.selectpicker("val", "0");
 
   // $station.find('option').each(function() {
   //     console.log('Opción:', $(this).text(), 'Valor:', $(this).val());
@@ -3179,6 +3178,13 @@ function renderTablaPagoMasivo(facturas) {
     totalSaldoNeto = 0;
   const totalCols = 11;
 
+  // Ordenar facturas de cada grupo por folio
+  ordenGrupos.forEach(function (pid) {
+    grupos[pid].facturas.sort(function(a, b) {
+      return (a.folio || '').localeCompare(b.folio || '', 'es', { numeric: true });
+    });
+  });
+
   ordenGrupos.forEach(function (pid) {
     const grupo = grupos[pid];
     const numFacturas = grupo.facturas.length;
@@ -3342,6 +3348,51 @@ function toggleAllGroupsMasivo() {
     $("#btnToggleAllGroups")
       .html('<i class="fas fa-expand-alt"></i> Expandir Todos');
   }
+}
+
+
+function filtrarTablaPagoMasivo(term) {
+  const q = term.trim().toLowerCase();
+
+  // Sin texto → mostrar todo, colapsar facturas
+  if (!q) {
+    $(".group-header-row").show();
+    $("[class*='group-row-']").hide();
+    $(".group-toggle-icon").css("transform", "rotate(0deg)");
+    return;
+  }
+
+  // Recorrer cada grupo
+  $(".group-header-row").each(function() {
+    const pid      = $(this).data("group-id");
+    const headerTxt = $(this).text().toLowerCase();
+    const factRows  = $(".group-row-" + pid);
+
+    // Buscar en el header (empresa/proveedor/fecha)
+    let headerMatch = headerTxt.includes(q);
+
+    // Buscar en filas de facturas (folio, factura, estación)
+    let matchingRows = factRows.filter(function() {
+      return $(this).text().toLowerCase().includes(q);
+    });
+
+    if (headerMatch) {
+      // Mostrar grupo completo con todas sus facturas
+      $(this).show();
+      factRows.show();
+      $(".group-toggle-icon[data-group='" + pid + "']").css("transform", "rotate(90deg)");
+    } else if (matchingRows.length > 0) {
+      // Mostrar solo el grupo y las filas que coinciden
+      $(this).show();
+      factRows.hide();
+      matchingRows.show();
+      $(".group-toggle-icon[data-group='" + pid + "']").css("transform", "rotate(90deg)");
+    } else {
+      // Ocultar grupo completo
+      $(this).hide();
+      factRows.hide();
+    }
+  });
 }
 
 
@@ -3550,6 +3601,7 @@ function ejecutarAutorizacionPagoMasivo(facturasAutorizar) {
 
 $("#modalAutorizarPagoMasivo").on("hidden.bs.modal", function () {
   $("#tablaAutorizarPagoMasivo tbody").empty();
+  $("#buscadorPagoMasivo").val("");
   $("#selectAllFacturasMasivo").prop("checked", false);
   $("#btnConfirmarAutorizacionMasiva")
     .prop("disabled", true)
