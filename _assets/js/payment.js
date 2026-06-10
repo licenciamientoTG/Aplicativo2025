@@ -1424,17 +1424,37 @@ function formatPaymentInvoicesChild(invoices) {
     return '<span class="badge bg-danger" title="No se ha recibido el archivo de esta factura"><i class="fas fa-exclamation-triangle"></i> Sin archivo</span>';
   }
 
+  function ncBadge(v) {
+    v = parseFloat(v) || 0;
+    if (v <= 0) return '<span class="text-muted" style="font-size:.75rem;">—</span>';
+    return '<span style="color:#16a34a;font-size:.78rem;">-' + fmtMoney(v) + '</span>';
+  }
+  function ndBadge(v) {
+    v = parseFloat(v) || 0;
+    if (v <= 0) return '<span class="text-muted" style="font-size:.75rem;">—</span>';
+    return '<span style="color:#dc2626;font-size:.78rem;">+' + fmtMoney(v) + '</span>';
+  }
+
   var rows = invoices.map(function (inv) {
     var venc = inv.expiration_date ? new Date(inv.expiration_date).toLocaleDateString("es-MX") : '<span class="text-muted">-</span>';
     var autorizada = inv.payment_authorized === 1;
+    var nc = parseFloat(inv.total_notas_credito) || 0;
+    var nd = parseFloat(inv.total_notas_cargo) || 0;
+    var tieneNotas = nc > 0 || nd > 0;
+    var saldoNeto = parseFloat(inv.saldo_neto);
     return (
       "<tr" + (autorizada ? ' class="table-success"' : "") + ">" +
         "<td class='text-center'>" + (autorizada ? '<i class="fas fa-check-circle text-success" title="Autorizada"></i>' : '<i class="fas fa-circle fa-sm text-muted"></i>') + "</td>" +
         "<td><strong>" + (inv.folio || "") + "</strong><br><small class='text-muted'>" + (inv.invoice_number || "") + "</small></td>" +
-        "<td class='text-truncate' style='max-width:160px;' title='" + (inv.proveedor_nombre || "") + "'>" + (inv.proveedor_nombre || "") + "</td>" +
+        "<td class='text-truncate' style='max-width:140px;' title='" + (inv.proveedor_nombre || "") + "'>" + (inv.proveedor_nombre || "") + "</td>" +
         "<td>" + (inv.estacion_nombre || "") + "</td>" +
         "<td class='text-end'>" + fmtMoney(inv.amount) + "</td>" +
-        "<td class='text-end'>" + (inv.saldo > 0 ? "<strong class='text-danger'>" + fmtMoney(inv.saldo) + "</strong>" : "<span class='text-success'>$0.00</span>") + "</td>" +
+        "<td class='text-end'>" + ncBadge(nc) + "</td>" +
+        "<td class='text-end'>" + ndBadge(nd) + "</td>" +
+        "<td class='text-end fw-bold'>" + (tieneNotas
+          ? "<span style='color:#2563eb;'>" + fmtMoney(saldoNeto) + "</span>"
+          : (inv.saldo > 0 ? "<strong class='text-danger'>" + fmtMoney(inv.saldo) + "</strong>" : "<span class='text-success'>$0.00</span>")
+        ) + "</td>" +
         "<td>" + statusBadge(inv.status) + "</td>" +
         "<td class='text-center'>" + venc + "</td>" +
         "<td class='text-center'>" + archivoBadge(inv) + "</td>" +
@@ -1447,8 +1467,11 @@ function formatPaymentInvoicesChild(invoices) {
       "<table class='table table-sm table-hover mb-0' style='font-size:.8rem;'>" +
         "<thead class='table-light'><tr>" +
           "<th width='32'></th><th>Folio / Factura</th><th>Proveedor</th><th>Estación</th>" +
-          "<th class='text-end'>Monto</th><th class='text-end'>Saldo</th><th>Estado</th>" +
-          "<th class='text-center'>Vencimiento</th><th class='text-center'>Archivo</th>" +
+          "<th class='text-end'>Monto</th>" +
+          "<th class='text-end' title='Notas de Crédito' style='color:#16a34a;'>NC</th>" +
+          "<th class='text-end' title='Notas de Cargo' style='color:#dc2626;'>ND</th>" +
+          "<th class='text-end'>Saldo Neto</th>" +
+          "<th>Estado</th><th class='text-center'>Vencimiento</th><th class='text-center'>Archivo</th>" +
         "</tr></thead>" +
         "<tbody>" + rows + "</tbody>" +
       "</table>" +
@@ -3836,31 +3859,47 @@ function loadAuthorizedPendingInvoices() {
         },
       },
       {
-        // Monto Total Autorizado
+        // Monto Total Autorizado (bruto)
         data: "total_autorizado",
         className: "text-end",
         render: function (data) {
           return (
-            '<strong style="font-size: 1.1rem;">$' +
-            parseFloat(data).toLocaleString("es-MX", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }) +
-            "</strong>"
+            '<span style="font-size:.9rem;">$' +
+            parseFloat(data).toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
+            "</span>"
           );
         },
       },
       {
-        // Saldo Total
+        // Notas de Crédito
+        data: "total_notas_credito",
+        className: "text-end",
+        render: function (data) {
+          var v = parseFloat(data) || 0;
+          if (v <= 0) return '<span class="text-muted" style="font-size:.78rem;">—</span>';
+          return '<span style="color:#16a34a;font-size:.82rem;">-$' +
+            v.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + '</span>';
+        },
+      },
+      {
+        // Notas de Cargo
+        data: "total_notas_cargo",
+        className: "text-end",
+        render: function (data) {
+          var v = parseFloat(data) || 0;
+          if (v <= 0) return '<span class="text-muted" style="font-size:.78rem;">—</span>';
+          return '<span style="color:#dc2626;font-size:.82rem;">+$' +
+            v.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + '</span>';
+        },
+      },
+      {
+        // Saldo Neto (ya calculado por el modelo con NC/ND)
         data: "total_saldo",
         className: "text-end",
         render: function (data) {
           return (
-            '<strong class="text-danger">$' +
-            parseFloat(data).toLocaleString("es-MX", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }) +
+            '<strong class="text-danger" style="font-size:1rem;">$' +
+            parseFloat(data).toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
             "</strong>"
           );
         },
@@ -3930,15 +3969,26 @@ function loadAuthorizedPendingInvoices() {
         },
       },
       {
+        // Requisición
+        data: null,
+        render: function (data, type, row) {
+          if (row.tipo_registro === "ANTICIPO") return "-";
+          const fechaPago = row.scheduled_payment_date
+            ? new Date(row.scheduled_payment_date).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" })
+            : null;
+          return `<a href="/payment/payment_detail/${row.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none" style="font-size:.82rem;">#${row.payment_request_id}</a>`
+            + (fechaPago ? `<br><small style="color:#16a34a;font-size:.7rem;"><i class="fas fa-calendar-check"></i> ${fechaPago}</small>` : "");
+        },
+      },
+      {
         // Acciones
         data: null,
         orderable: false,
         className: "text-center",
         render: function (data, type, row) {
-          // ✅ Para anticipos, mostrar botón diferente o deshabilitado
           if (row.tipo_registro === "ANTICIPO") {
             return `
-                            <button class="btn btn-sm btn-outline-secondary" 
+                            <button class="btn btn-sm btn-outline-secondary"
                                     onclick="verDetalleAnticipo(${row.payment_request_id})"
                                     title="Ver detalle del anticipo">
                                 <i class="fas fa-eye"></i> Ver Anticipo
@@ -3947,7 +3997,7 @@ function loadAuthorizedPendingInvoices() {
           }
 
           return `
-                        <button class="btn btn-sm btn-outline-info" 
+                        <button class="btn btn-sm btn-outline-info"
                                 onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
                                 title="Ver facturas individuales">
                             <i class="fas fa-eye"></i> Ver Desglose
@@ -3985,10 +4035,10 @@ function loadAuthorizedPendingInvoices() {
         });
 
         return $("<tr/>").addClass("group-header bg-light")
-          .append(`<td colspan="11">
-                        <strong><i class="fas fa-university"></i> ${group}</strong> - 
-                        Total: <strong>$${total.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong> - 
-                        ${totalFacturas} factura(s)${totalAnticipos > 0 ? " + " + totalAnticipos + " anticipo(s)" : ""} en ${rows.count()} grupo(s)
+          .append(`<td colspan="12">
+                        <strong><i class="fas fa-university"></i> ${group}</strong> -
+                        Total: <strong>$${total.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong> -
+                        ${totalFacturas} factura(s)${totalAnticipos > 0 ? " + " + totalAnticipos + " anticipo(s)" : ""} en ${rows.count()} requisición(es)
                     </td>`);
       },
     },
@@ -4103,8 +4153,7 @@ function updateBankSummaryFromTable(table) {
     .rows({ search: "applied" })
     .data()
     .each(function (row) {
-      // ✅ FIX: Usar total_autorizado en lugar de authorized_amount
-      const monto = parseFloat(row.total_autorizado) || 0;
+      const monto = parseFloat(row.total_saldo) || 0;
 
       if (row.banco_asignado === "Banorte") {
         banorte.count++;

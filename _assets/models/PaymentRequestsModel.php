@@ -346,8 +346,13 @@ class PaymentRequestsModel extends Model
                 t1.request_date,
                 t1.scheduled_payment_date,
                 t1.comment,
-                ISNULL(t2.total_invoices, 0) AS total_invoices,
-                ISNULL(t2.total_amount, 0)   AS total_amount,
+                ISNULL(t2.total_invoices, 0)  AS total_invoices,
+                ISNULL(t2.total_amount, 0)    AS total_amount,
+                ISNULL(t3.total_credito, 0)   AS total_notas_credito,
+                ISNULL(t3.total_cargo, 0)     AS total_notas_cargo,
+                ISNULL(t2.total_amount, 0)
+                    - ISNULL(t3.total_credito, 0)
+                    + ISNULL(t3.total_cargo, 0) AS monto_neto,
                 t5.den AS provider_name,
                 t6.den AS emp_name
             FROM [TG].[dbo].[payment_requests] t1
@@ -356,6 +361,15 @@ class PaymentRequestsModel extends Model
                 FROM [TG].[dbo].[payment_request_invoices]
                 GROUP BY payment_request_id
             ) t2 ON t1.id = t2.payment_request_id
+            LEFT JOIN (
+                SELECT
+                    cna.payment_request_id,
+                    SUM(CASE WHEN n.note_type = 'CREDIT' THEN cna.applied_amount ELSE 0 END) AS total_credito,
+                    SUM(CASE WHEN n.note_type = 'DEBIT'  THEN cna.applied_amount ELSE 0 END) AS total_cargo
+                FROM [TG].[dbo].[credit_note_applications] cna
+                JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON cna.credit_note_id = n.id
+                GROUP BY cna.payment_request_id
+            ) t3 ON t1.id = t3.payment_request_id
             LEFT JOIN [SG12].[dbo].Proveedores t5 ON t1.provider_cod = t5.cod
             LEFT JOIN [SG12].[dbo].Empresas    t6 ON t1.emp_cod = t6.cod
             WHERE t1.tipo IN (0)

@@ -652,16 +652,16 @@ class PaymentRequestInvoicesModel extends Model
                 emp.rfc as empresa_rfc,
                 
                 -- Determinar banco según emp_cod
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                
+
                 -- Color para agrupar visualmente
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color
                 
@@ -708,8 +708,8 @@ class PaymentRequestInvoicesModel extends Model
         $query = "
             SELECT 
                 CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16) THEN 'Santander'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco,
                 
@@ -726,10 +726,10 @@ class PaymentRequestInvoicesModel extends Model
             AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
             AND pr.status = ?
             
-            GROUP BY 
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+            GROUP BY
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END
             
@@ -757,17 +757,22 @@ class PaymentRequestInvoicesModel extends Model
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
                 CASE
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
                 CASE
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
+                pr.id as payment_request_id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 COUNT(DISTINCT pri.id) as total_facturas,
                 SUM(pri.authorized_amount) as total_autorizado,
+                SUM(ISNULL(notas.total_credito, 0)) as total_notas_credito,
+                SUM(ISNULL(notas.total_cargo, 0))   as total_notas_cargo,
                 SUM(
                     (pri.amount - ISNULL(pri.paid_amount, 0))
                     - ISNULL(notas.total_credito, 0)
@@ -779,8 +784,7 @@ class PaymentRequestInvoicesModel extends Model
                 STRING_AGG(pri.folio, ', ') as folios_list,
                 MAX(u_auth.Nombre) as authorized_by_name,
                 MAX(pri.authorized_at) as ultima_autorizacion,
-                'FACTURAS' as tipo_registro,
-                NULL as payment_request_id
+                'FACTURAS' as tipo_registro
             FROM [TG].[dbo].[payment_request_invoices] pri
             INNER JOIN [TG].[dbo].[payment_requests] pr
                 ON pri.payment_request_id = pr.id
@@ -805,6 +809,9 @@ class PaymentRequestInvoicesModel extends Model
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
             GROUP BY
+                pr.id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den,
@@ -815,25 +822,30 @@ class PaymentRequestInvoicesModel extends Model
             UNION ALL
             
             -- PARTE 2: Anticipos pendientes
-            SELECT 
+            SELECT
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den as empresa_nombre,
                 emp.rfc as empresa_rfc,
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
+                pr.id as payment_request_id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 0 as total_facturas,
                 pr.monto_total as total_autorizado,
+                0 as total_notas_credito,
+                0 as total_notas_cargo,
                 pr.monto_total as total_saldo,
                 pr.request_date as vencimiento_mas_proximo,
                 pr.request_date as vencimiento_mas_lejano,
@@ -841,14 +853,13 @@ class PaymentRequestInvoicesModel extends Model
                 'ANTICIPO #' + CAST(pr.id AS VARCHAR) as folios_list,
                 u.Nombre as authorized_by_name,
                 pr.date_added as ultima_autorizacion,
-                'ANTICIPO' as tipo_registro,
-                pr.id as payment_request_id
+                'ANTICIPO' as tipo_registro
             FROM [TG].[dbo].[payment_requests] pr
-            LEFT JOIN [TG].[dbo].[Usuario] u 
+            LEFT JOIN [TG].[dbo].[Usuario] u
                 ON pr.user_id = u.Id
-            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov
                 ON pr.provider_cod = prov.cod
-            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+            LEFT JOIN [SG12].[dbo].[Empresas] emp
                 ON pr.emp_cod = emp.cod
             WHERE pr.tipo = 1
                 AND pr.status = ?  -- Autorizados

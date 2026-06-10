@@ -1257,22 +1257,24 @@ class Payment
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
 
                 $data[] = [
-                    'id'                => $inv['id'],
-                    'folio'             => $inv['folio'],
-                    'invoice_number'    => $inv['invoice_number'],
-                    'proveedor_nombre'  => $inv['proveedor_nombre'],
-                    'estacion_nombre'   => $inv['estacion_nombre'],
-                    'amount'            => (float)$inv['amount'],
-                    'saldo'             => $saldo,
-                    'saldo_neto'        => $saldo + $neto_notas,
-                    'status'            => (int)$inv['status'],
-                    'payment_authorized'=> (int)($inv['payment_authorized'] ?? 0),
-                    'authorized_amount' => (float)($inv['authorized_amount'] ?? 0),
-                    'expiration_date'   => $inv['expiration_date'],
-                    'uuid'              => $inv['uuid'],
-                    'fr_id'             => $frId,
-                    'nombre_archivo'    => $nombreArchivo,
-                    'tiene_archivo'     => !empty($frId),
+                    'id'                    => $inv['id'],
+                    'folio'                 => $inv['folio'],
+                    'invoice_number'        => $inv['invoice_number'],
+                    'proveedor_nombre'      => $inv['proveedor_nombre'],
+                    'estacion_nombre'       => $inv['estacion_nombre'],
+                    'amount'                => (float)$inv['amount'],
+                    'saldo'                 => $saldo,
+                    'total_notas_credito'   => (float)($inv['total_notas_credito'] ?? 0),
+                    'total_notas_cargo'     => (float)($inv['total_notas_cargo'] ?? 0),
+                    'saldo_neto'            => $saldo + $neto_notas,
+                    'status'                => (int)$inv['status'],
+                    'payment_authorized'    => (int)($inv['payment_authorized'] ?? 0),
+                    'authorized_amount'     => (float)($inv['authorized_amount'] ?? 0),
+                    'expiration_date'       => $inv['expiration_date'],
+                    'uuid'                  => $inv['uuid'],
+                    'fr_id'                 => $frId,
+                    'nombre_archivo'        => $nombreArchivo,
+                    'tiene_archivo'         => !empty($frId),
                 ];
             }
 
@@ -2141,7 +2143,7 @@ class Payment
                 return;
             }
 
-            $total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto_neto'], $pagos));
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
@@ -2178,23 +2180,39 @@ class Payment
      */
     private function generar_html_solicitud_pagos(array $pagos, float $total_general): string
     {
+        $td  = 'style="padding:8px;border:1px solid #e2e8f0;"';
+        $tdr = 'style="padding:8px;border:1px solid #e2e8f0;text-align:right;"';
+        $tdc = 'style="padding:8px;border:1px solid #e2e8f0;text-align:center;"';
+
         $filas = '';
         foreach ($pagos as $p) {
-            $fechaPago = !empty($p['scheduled_payment_date'])
+            $fechaPago   = !empty($p['scheduled_payment_date'])
                 ? date('d/m/Y', strtotime($p['scheduled_payment_date']))
                 : '-';
+            $nc          = (float)$p['total_notas_credito'];
+            $nd          = (float)$p['total_notas_cargo'];
+            $neto        = (float)$p['monto_neto'];
+            $ncStr       = $nc > 0 ? '<span style="color:#16a34a;">-$' . number_format($nc, 2) . '</span>' : '<span style="color:#94a3b8;">$0.00</span>';
+            $ndStr       = $nd > 0 ? '<span style="color:#dc2626;">+$' . number_format($nd, 2) . '</span>' : '<span style="color:#94a3b8;">$0.00</span>';
             $filas .= '<tr>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;">#' . htmlspecialchars($p['id']) . '</td>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;">' . htmlspecialchars($p['emp_name'] ?? '-') . '</td>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;">' . htmlspecialchars($p['provider_name'] ?? '-') . '</td>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">' . (int)$p['total_invoices'] . '</td>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:center;">' . $fechaPago . '</td>'
-                . '<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">$' . number_format((float)$p['total_amount'], 2) . '</td>'
+                . '<td ' . $td  . '>#' . htmlspecialchars($p['id']) . '</td>'
+                . '<td ' . $td  . '>' . htmlspecialchars($p['emp_name'] ?? '-') . '</td>'
+                . '<td ' . $td  . '>' . htmlspecialchars($p['provider_name'] ?? '-') . '</td>'
+                . '<td ' . $tdc . '>' . (int)$p['total_invoices'] . '</td>'
+                . '<td ' . $tdc . '>' . $fechaPago . '</td>'
+                . '<td ' . $tdr . '>$' . number_format((float)$p['total_amount'], 2) . '</td>'
+                . '<td ' . $tdr . '>' . $ncStr . '</td>'
+                . '<td ' . $tdr . '>' . $ndStr . '</td>'
+                . '<td ' . $tdr . ' style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#1e293b;"><strong>$' . number_format($neto, 2) . '</strong></td>'
                 . '</tr>';
         }
 
+        $th = 'style="padding:8px;border:1px solid #e2e8f0;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+        $thc = 'style="padding:8px;border:1px solid #e2e8f0;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+        $thr = 'style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+
         return '
-        <div style="font-family:Arial,sans-serif;max-width:720px;margin:0 auto;color:#1e293b;">
+        <div style="font-family:Arial,sans-serif;max-width:820px;margin:0 auto;color:#1e293b;">
             <div style="background:#16a34a;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;">
                 <h2 style="margin:0;font-size:18px;">Solicitud de pago a proveedores</h2>
                 <p style="margin:4px 0 0;font-size:13px;">' . date('d/m/Y H:i') . ' &middot; ' . count($pagos) . ' pago(s) listos para su pago</p>
@@ -2204,19 +2222,22 @@ class Payment
                 <table style="width:100%;border-collapse:collapse;font-size:13px;">
                     <thead>
                         <tr style="background:#f1f5f9;">
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">ID</th>
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Empresa</th>
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:left;">Proveedor</th>
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center;">Facturas</th>
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:center;">Fecha pago esp.</th>
-                            <th style="padding:8px;border:1px solid #e2e8f0;text-align:right;">Monto</th>
+                            <th ' . $th  . '>ID</th>
+                            <th ' . $th  . '>Empresa</th>
+                            <th ' . $th  . '>Proveedor</th>
+                            <th ' . $thc . '>Facturas</th>
+                            <th ' . $thc . '>Fecha pago esp.</th>
+                            <th ' . $thr . '>Total Facturas</th>
+                            <th ' . $thr . '>N. Crédito</th>
+                            <th ' . $thr . '>N. Cargo</th>
+                            <th ' . $thr . '>Monto Neto</th>
                         </tr>
                     </thead>
                     <tbody>' . $filas . '</tbody>
                     <tfoot>
-                        <tr style="background:#f8fafc;font-weight:bold;">
-                            <td colspan="5" style="padding:8px;border:1px solid #e2e8f0;text-align:right;">TOTAL</td>
-                            <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">$' . number_format($total_general, 2) . '</td>
+                        <tr style="background:#f0fdf4;font-weight:bold;">
+                            <td colspan="8" style="padding:8px;border:1px solid #e2e8f0;text-align:right;color:#475569;">TOTAL A PAGAR</td>
+                            <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-size:15px;color:#16a34a;"><strong>$' . number_format($total_general, 2) . '</strong></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -2390,17 +2411,21 @@ class Payment
                     'proveedor_rfc' => $invoice['proveedor_rfc'] ?? 'N/A',
                     'banco_asignado' => $invoice['banco_asignado'],
                     'banco_color' => $invoice['banco_color'],
-                    'total_facturas' => $invoice['total_facturas'],
-                    'total_autorizado' => $invoice['total_autorizado'],
-                    'total_saldo' => $invoice['total_saldo'],
+                    'total_facturas'        => $invoice['total_facturas'],
+                    'total_autorizado'      => $invoice['total_autorizado'],
+                    'total_notas_credito'   => $invoice['total_notas_credito'] ?? 0,
+                    'total_notas_cargo'     => $invoice['total_notas_cargo'] ?? 0,
+                    'total_saldo'           => $invoice['total_saldo'],
                     'vencimiento_mas_proximo' => $invoice['vencimiento_mas_proximo'],
                     'vencimiento_mas_lejano' => $invoice['vencimiento_mas_lejano'],
                     'invoice_ids' => $invoice['invoice_ids'],
                     'folios_list' => $invoice['folios_list'],
                     'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
                     'ultima_autorizacion' => $invoice['ultima_autorizacion'],
-                    'tipo_registro' => $invoice['tipo_registro'],  // NUEVO
-                    'payment_request_id' => $invoice['payment_request_id']  // NUEVO (solo para anticipos)
+                    'tipo_registro' => $invoice['tipo_registro'],
+                    'payment_request_id' => $invoice['payment_request_id'],
+                    'request_date' => $invoice['request_date'] ?? null,
+                    'scheduled_payment_date' => $invoice['scheduled_payment_date'] ?? null
                 ];
             }
 
@@ -4321,7 +4346,11 @@ class Payment
         try {
             $provider_id = $_POST['provider_id'] ?? null;
             $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
-            echo json_encode(['success' => true, 'notes' => $notes ?: []]);
+            echo json_encode([
+                'success'    => true,
+                'notes'      => $notes ?: [],
+                'can_manage' => authorized(66),
+            ]);
         } catch (Exception $e) {
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
