@@ -1117,8 +1117,8 @@
 
     // ── Cargar notas disponibles del proveedor ────────────────────────────────
     function loadAvailableNotes(provider_cod) {
-        if (!provider_cod) return;
-        fetch('/payment/getProviderNotes', {
+        if (!provider_cod) return Promise.resolve();
+        return fetch('/payment/getProviderNotes', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             credentials: 'include',
@@ -1132,11 +1132,19 @@
     }
 
     // ── Abrir modal de asignación (nota ligada a factura) ─────────────────────
-    function openAssignNoteModal(tempKey) {
+    async function openAssignNoteModal(tempKey) {
         const item = paymentItems.find(i => getInvoiceTempKey(i) === tempKey);
         if (!item) return;
 
         assignNoteInvoiceTempKey = tempKey;
+
+        // Cargar notas bajo demanda: las facturas agregadas por checkbox no pasan
+        // por el hook de addToPayment, así que availableNotes puede estar vacío
+        if (availableNotes.length === 0) {
+            const cod = item.proveedor_codigo || item.id_control_gas
+                || paymentItems[0].proveedor_codigo || paymentItems[0].id_control_gas || null;
+            if (cod) await loadAvailableNotes(cod);
+        }
 
         const totalFac = parseFloat(item.total_fac) || 0;
         document.getElementById('assignNoteInvoiceInfo').innerHTML =

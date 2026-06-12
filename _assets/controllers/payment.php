@@ -1594,6 +1594,41 @@ class Payment
     }
 
 
+    /**
+     * Aprobación implícita de Tesorería: al autorizar facturas de un pago
+     * Pendiente se registra la autorización (auditoría) y se sube el status,
+     * sin requerir el paso previo de "Aprobar".
+     */
+    private function ensure_tesoreria_approval($payment_id, $current_status, $user_id)
+    {
+        if ($current_status == PaymentRequestsModel::STATUS_AUTHORIZED) {
+            return ['success' => true];
+        }
+
+        if ($current_status != PaymentRequestsModel::STATUS_PENDING) {
+            return [
+                'success' => false,
+                'message' => 'El pago no puede autorizarse, su estado es: ' . PaymentRequestsModel::getStatusText($current_status)
+            ];
+        }
+
+        if (!$this->paymentRequestAuthorizationsModel->is_authorized_by_permission($payment_id, PaymentRequestAuthorizationsModel::PERM_TESORERIA)) {
+            $auth_id = $this->paymentRequestAuthorizationsModel->insert_authorization(
+                $payment_id,
+                $user_id,
+                PaymentRequestAuthorizationsModel::PERM_TESORERIA
+            );
+            if (!$auth_id) {
+                return ['success' => false, 'message' => 'Error al registrar la autorización de Tesorería'];
+            }
+        }
+
+        $this->PaymentRequestsModel->update_request_status($payment_id, PaymentRequestsModel::STATUS_AUTHORIZED);
+
+        return ['success' => true];
+    }
+
+
     function authorize_payment_execution()
     {
         header('Content-Type: application/json');
@@ -1634,17 +1669,17 @@ class Payment
                 return;
             }
 
-            if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                json_output([
-                    'success' => false,
-                    'message' => 'El pago debe estar autorizado por Tesorería antes de autorizar facturas individuales'
-                ]);
-                return;
-            }
-
             // Verificar que el usuario tenga permiso de Tesorería (68)
             if (!authorized(68)) {
                 json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+                return;
+            }
+
+            // Aprobación implícita: si el pago sigue Pendiente, se registra la
+            // autorización de Tesorería y se sube el status en este mismo paso
+            $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+            if (!$approval['success']) {
+                json_output(['success' => false, 'message' => $approval['message']]);
                 return;
             }
 
@@ -1798,8 +1833,10 @@ class Payment
                     continue;
                 }
 
-                if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                    $todos_errores[] = "Pago #{$payment_id}: no está autorizado";
+                // Aprobación implícita de Tesorería si el pago sigue Pendiente
+                $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+                if (!$approval['success']) {
+                    $todos_errores[] = "Pago #{$payment_id}: " . $approval['message'];
                     continue;
                 }
 

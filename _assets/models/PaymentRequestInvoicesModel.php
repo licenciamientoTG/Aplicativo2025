@@ -1070,7 +1070,7 @@ class PaymentRequestInvoicesModel extends Model
                 GROUP BY a.invoice_id
             ) notas ON pri.id = notas.invoice_id
 
-            WHERE pr.status = ?
+            WHERE pr.status IN (?, ?)
                 AND pr.accounting_group_id IS NOT NULL
                 AND pri.payment_authorized = 0
                 AND pri.status != ?
@@ -1080,6 +1080,7 @@ class PaymentRequestInvoicesModel extends Model
         ";
 
         return $this->sql->select($query, [
+            0,  // STATUS_PENDING (aprobación de Tesorería implícita al autorizar)
             1,  // STATUS_AUTHORIZED
             4   // STATUS_CANCELLED
         ]) ?: false;
