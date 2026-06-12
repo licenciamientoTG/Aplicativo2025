@@ -71,7 +71,8 @@
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64.json\" -Force)",
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/gen_manual.py\" -Force)",
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64_images.json\" -ErrorAction SilentlyContinue -Force)",
-      "Bash(Write-Host \"Limpio\")"
+      "Bash(Write-Host \"Limpio\")",
+      "Bash(dir *)"
     ],
     "deny": [],
     "ask": []

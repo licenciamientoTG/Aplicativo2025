@@ -34,11 +34,9 @@ async function graph_week(ctx,product) {
         }
         var data = await response.json();
         var datasets = data.map(grupo => {
-            // Filtrar los valores cero en el conjunto de datos actual
             const filteredData = grupo.precios.map((precio, index) => {
                 return precio === 0 ? null : { x: grupo.fechas[index], y: precio };
-            }).filter(point => point !== null); // Eliminar puntos nulos (ceros)
-
+            }).filter(point => point !== null);
             return {
                 label: grupo.label,
                 data: filteredData,
@@ -155,13 +153,13 @@ async function graph_month(ctx,product) {
         var datasets = filteredData.map(grupo => ({
             label: grupo.label,
             data: grupo.precios,
-            borderColor: getColorByLabel(grupo.label), // Genera un color aleatorio para cada grupo
+            borderColor: getColorByLabel(grupo.label),
             fill: false,
             tension: 0.1,
             pointStyle: 'rectRot',
             pointRadius: 5,
             spanGaps: true,
-            borderWidth:grupo.label === 'TOTALGAS' ? 4 : 1.25 ,////ancho de la linea
+            borderWidth: grupo.label === 'TOTALGAS' ? 4 : 1.25,
         }));
         new Chart(ctx, {
             type: 'line',

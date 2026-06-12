@@ -135,7 +135,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_semanal">T-Máxima  (Semanal)</h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="week_graph_maxima"></canvas></div>
+                     <div style="width:100%;height:420px;" id="week_graph_maxima"></div>
                     </div>
                 </div>
             </div>
@@ -152,7 +152,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_mensual">T-Máxima  (Mensual)</h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="month_graph_maxima"></canvas></div>
+                     <div style="width:100%;height:420px;" id="month_graph_maxima"></div>
                     </div>
                 </div>
             </div>
@@ -209,7 +209,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_semanal_super"></h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="week_graph_super"></canvas></div>
+                     <div style="width:100%;height:420px;" id="week_graph_super"></div>
                     </div>
                 </div>
             </div>
@@ -226,7 +226,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_mensual_super">T-Super (Mensual)</h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="month_graph_super"></canvas></div>
+                     <div style="width:100%;height:420px;" id="month_graph_super"></div>
                     </div>
                 </div>
             </div>
@@ -284,7 +284,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_semanal_diesel">Diesel  (Semanal)</h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="week_graph_diesel"></canvas></div>
+                     <div style="width:100%;height:420px;" id="week_graph_diesel"></div>
                     </div>
                 </div>
             </div>
@@ -301,7 +301,7 @@
                             </div>
                             <h5 class="card-title mb-0 title_mensual_diesel">Diesel  (Mensual)</h5>
                         </div>
-                     <div style="width: 80%;"><canvas id="month_graph_diesel"></canvas></div>
+                     <div style="width:100%;height:420px;" id="month_graph_diesel"></div>
                     </div>
                 </div>
             </div>
@@ -317,166 +317,142 @@
 
 {% endblock %}
 {% block myjs %}
-<script src="{{ JS }}/direction/graph_historic_prices.js"></script>
 
 <script>
-    // var months = {{ months|json_encode()|raw }};
-    // var labels = {{ ticket_users_labels|raw }};
-    // var values = {{ ticket_users_values|raw }};
+    var fromDatepost = "{{ from | raw }}";
+    var untilDatepost = "{{ until | raw }}";
+    var plazaIdpost = "{{ plaza_id | raw }}";
 
-    var fromDatepost = "{{ from | raw }}";   // El valor de 'from' desde PHP
-    var untilDatepost = "{{ until | raw }}";  // El valor de 'until' desde PHP
-    var plazaIdpost = "{{ plaza_id | raw }}";  // El valor de 'plaza_id' desde PHP
+    // ── SWITCH DE MOTOR DE GRÁFICAS ──────────────────────────────────────────
+    // true  → ECharts (nuevo)
+    // false → Chart.js v2 (original, sin tocar)
+    var USE_ECHARTS = false;
+    // ─────────────────────────────────────────────────────────────────────────
+</script>
 
-    console.log(fromDatepost);
-    console.log(untilDatepost);
-    console.log(plazaIdpost);
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script src="{{ JS }}/direction/graph_historic_prices.js"></script>
+<script src="{{ JS }}/direction/graph_historic_prices_echarts.js"></script>
 
-    var week_graph_maxima = document.getElementById('week_graph_maxima').getContext('2d');
-    var month_graph_maxima = document.getElementById('month_graph_maxima').getContext('2d');
+<script>
+    function makeCanvas(divId) {
+        var div = document.getElementById(divId);
+        div.innerHTML = '';
+        var c = document.createElement('canvas');
+        div.appendChild(c);
+        return c.getContext('2d');
+    }
 
-    var week_graph_super= document.getElementById('week_graph_super').getContext('2d');
-    var month_graph_super = document.getElementById('month_graph_super').getContext('2d');
-
-
-    var week_graph_diesel= document.getElementById('week_graph_diesel').getContext('2d');
-    var month_graph_diesel = document.getElementById('month_graph_diesel').getContext('2d');
+    function capitalizeWords(str) {
+        return str.trim().toLowerCase().split(' ')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
 
 document.addEventListener('DOMContentLoaded', async function() {
+    if (plazaIdpost == 0 || fromDatepost == '' || untilDatepost == '') return;
 
-    if (plazaIdpost != 0 && fromDatepost != '' && untilDatepost != '') {
-        toggleVisibility();
-        var fromDate = document.getElementById('from').value;
-        var untilDate = document.getElementById('until').value;
-        var plaza_id = document.getElementById('plaza_id').value;
-        var title_semanal = document.querySelector('.title_semanal');
-        var title_mensual = document.querySelector('.title_mensual');
-
-        var title_semanal_super = document.querySelector('.title_semanal_super');
-        var title_mensual_super = document.querySelector('.title_mensual_super');
-
-        var title_semanal_diesel = document.querySelector('.title_semanal_diesel');
-        var title_mensual_diesel = document.querySelector('.title_mensual_diesel');
-
-        var plazaSelect = document.getElementById('plaza_id'); // Selección del elemento select
-
-        function capitalizeWords(str) {
-            return str
-                .trim() // Eliminar espacios al principio y al final
-                .toLowerCase() // Convertir todo a minúsculas
-                .split(' ') // Dividir la cadena en palabras
-                .map(word => {
-                    // Capitalizar solo la primera letra de cada palabra
-                    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-                })
-                .join(' '); // Volver a unir las palabras
-        }
-
-        var plazaNombre = plazaSelect.options[plazaSelect.selectedIndex].text;
-        var plazaNombreCapitalizado = capitalizeWords(plazaNombre);
-
-        title_semanal.innerHTML = `T-Máxima (Semanal) - ${plazaNombreCapitalizado}`;
-        title_mensual.innerHTML = `T-Máxima (Mensual) - ${plazaNombreCapitalizado}`;
-
-        title_semanal_super.innerHTML = `T-Super (Semanal) - ${plazaNombreCapitalizado}`;
-        title_mensual_super.innerHTML = `T-Super (Mensual) - ${plazaNombreCapitalizado}`;
-
-        title_semanal_diesel.innerHTML = `Diesel (Semanal) - ${plazaNombreCapitalizado}`;
-        title_mensual_diesel.innerHTML = `Diesel (Mensual) - ${plazaNombreCapitalizado}`;
-
-        var currentYear = new Date().getFullYear();
-        
-        // Obtener el año de fromDate y untilDate
-        var fromYear = new Date(fromDate).getFullYear();
-        var untilYear = new Date(untilDate).getFullYear();
-        toggleVisibility();
-
-        if (fromYear === currentYear && untilYear === currentYear) {
-
-            await historic_price_table_pivot();
-            await historic_price_super_table_pivot();
-            
-            if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
-                await historic_price_diesel_table_pivot();
-            }
-        }
-
-        await graph_week(week_graph_maxima,1);
-        await graph_month(month_graph_maxima,1);
-
-        await graph_week(week_graph_super,2);
-        await graph_month(month_graph_super,2);
-
-        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8){
-            console.log('entro');
-            await graph_week(week_graph_diesel,3);
-            await graph_month(month_graph_diesel,3);
-        }else{
-
-        
-        }
-        
-    }
-});
-
-$('#search_graph').on('click', async function () {
-    var fromDate = document.getElementById('from').value;
+    toggleVisibility();
+    var fromDate  = document.getElementById('from').value;
     var untilDate = document.getElementById('until').value;
-    var plaza_id = document.getElementById('plaza_id').value;
-    console.log(plaza_id);
+    var plaza_id  = document.getElementById('plaza_id').value;
+
+    var plazaSelect = document.getElementById('plaza_id');
+    var plazaNombre = capitalizeWords(plazaSelect.options[plazaSelect.selectedIndex].text);
+
+    document.querySelector('.title_semanal').innerHTML       = `T-Máxima (Semanal) - ${plazaNombre}`;
+    document.querySelector('.title_mensual').innerHTML       = `T-Máxima (Mensual) - ${plazaNombre}`;
+    document.querySelector('.title_semanal_super').innerHTML = `T-Super (Semanal) - ${plazaNombre}`;
+    document.querySelector('.title_mensual_super').innerHTML = `T-Super (Mensual) - ${plazaNombre}`;
+    document.querySelector('.title_semanal_diesel').innerHTML= `Diesel (Semanal) - ${plazaNombre}`;
+    document.querySelector('.title_mensual_diesel').innerHTML= `Diesel (Mensual) - ${plazaNombre}`;
 
     var currentYear = new Date().getFullYear();
-    
-    // Obtener el año de fromDate y untilDate
-    var fromYear = new Date(fromDate).getFullYear();
-    var untilYear = new Date(untilDate).getFullYear();
+    var fromYear    = new Date(fromDate).getFullYear();
+    var untilYear   = new Date(untilDate).getFullYear();
     toggleVisibility();
 
     if (fromYear === currentYear && untilYear === currentYear) {
-
         await historic_price_table_pivot();
         await historic_price_super_table_pivot();
-        
         if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
             await historic_price_diesel_table_pivot();
         }
     }
 
-    await graph_week(week_graph_maxima,1);
-    await graph_month(month_graph_maxima,1);
+    if (USE_ECHARTS) {
+        await graph_week_echarts('week_graph_maxima', 1);
+        await graph_month_echarts('month_graph_maxima', 1);
+        await graph_week_echarts('week_graph_super', 2);
+        await graph_month_echarts('month_graph_super', 2);
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await graph_week_echarts('week_graph_diesel', 3);
+            await graph_month_echarts('month_graph_diesel', 3);
+        }
+    } else {
+        var week_graph_maxima  = makeCanvas('week_graph_maxima');
+        var month_graph_maxima = makeCanvas('month_graph_maxima');
+        var week_graph_super   = makeCanvas('week_graph_super');
+        var month_graph_super  = makeCanvas('month_graph_super');
+        var week_graph_diesel  = makeCanvas('week_graph_diesel');
+        var month_graph_diesel = makeCanvas('month_graph_diesel');
 
-    await graph_week(week_graph_super,2);
-    await graph_month(month_graph_super,2);
-
-    if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8){
-        console.log('entro');
-        await graph_week(week_graph_diesel,3);
-        await graph_month(month_graph_diesel,3);
-    }else{
-
-      
+        await graph_week(week_graph_maxima, 1);
+        await graph_month(month_graph_maxima, 1);
+        await graph_week(week_graph_super, 2);
+        await graph_month(month_graph_super, 2);
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await graph_week(week_graph_diesel, 3);
+            await graph_month(month_graph_diesel, 3);
+        }
     }
-
-
 });
 
+$('#search_graph').on('click', async function () {
+    var fromDate  = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var plaza_id  = document.getElementById('plaza_id').value;
 
+    var currentYear = new Date().getFullYear();
+    var fromYear    = new Date(fromDate).getFullYear();
+    var untilYear   = new Date(untilDate).getFullYear();
+    toggleVisibility();
 
+    if (fromYear === currentYear && untilYear === currentYear) {
+        await historic_price_table_pivot();
+        await historic_price_super_table_pivot();
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await historic_price_diesel_table_pivot();
+        }
+    }
 
-////////////////////////////////////////////////////////////////////////////////////////////////
-// var day_months = {{ daysArray|json_encode()|raw }};
-// var Id_plaza = {{ Id_plaza|json_encode()|raw }};
-// var product = {{ product|json_encode()|raw }};
-// const dynamicColumns = [
-//     { 'data': 'grupo' },
-// ];
-// day_months.forEach(function(process) {
-//     dynamicColumns.push({ 'data': process.formatted });
-// });
-// dynamicColumns.push({ 'data': 'average' });
+    if (USE_ECHARTS) {
+        await graph_week_echarts('week_graph_maxima', 1);
+        await graph_month_echarts('month_graph_maxima', 1);
+        await graph_week_echarts('week_graph_super', 2);
+        await graph_month_echarts('month_graph_super', 2);
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await graph_week_echarts('week_graph_diesel', 3);
+            await graph_month_echarts('month_graph_diesel', 3);
+        }
+    } else {
+        var week_graph_maxima  = makeCanvas('week_graph_maxima');
+        var month_graph_maxima = makeCanvas('month_graph_maxima');
+        var week_graph_super   = makeCanvas('week_graph_super');
+        var month_graph_super  = makeCanvas('month_graph_super');
+        var week_graph_diesel  = makeCanvas('week_graph_diesel');
+        var month_graph_diesel = makeCanvas('month_graph_diesel');
 
-
- </script>
+        await graph_week(week_graph_maxima, 1);
+        await graph_month(month_graph_maxima, 1);
+        await graph_week(week_graph_super, 2);
+        await graph_month(month_graph_super, 2);
+        if (plaza_id != 2 && plaza_id != 5 && plaza_id != 8) {
+            await graph_week(week_graph_diesel, 3);
+            await graph_month(month_graph_diesel, 3);
+        }
+    }
+});
+</script>
 
 {% endblock %}
 

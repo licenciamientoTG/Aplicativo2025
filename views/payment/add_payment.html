@@ -1318,7 +1318,8 @@
         } else {
             proveedorCodigo = currentDebitProvider;
             proveedorNombre = currentProvider;
-            codigoEmpresa   = null;
+            const empVal = parseInt($('#company').val());
+            codigoEmpresa = (empVal && empVal > 0) ? empVal : null;
         }
 
         if (!proveedorCodigo) {

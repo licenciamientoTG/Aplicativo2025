@@ -302,6 +302,10 @@ class MySqlPdoHandler{
         return $results;
     }
 
+    public function getConnection() {
+        return $this->_connection;
+    }
+
 	 /**
      * Inicia una transacción.
      * @return void
