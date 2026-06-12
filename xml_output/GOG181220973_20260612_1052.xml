@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ReportePrecios xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://xsd.cne.gob.mx/Produccion/2641/v1/Esquema.xsd">
+  <Permiso Numero="PL/24816/EXP/ES/2023" RFC="GOG181220973" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="26.99" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="23.83" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="28.43" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/25627/EXP/ES/2024" RFC="GOG181220973" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="23.99" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="28.99" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/25891/EXP/ES/2024" RFC="GOG181220973" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="23.99" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="28.99" FechaAplicacion="12/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+</ReportePrecios>
