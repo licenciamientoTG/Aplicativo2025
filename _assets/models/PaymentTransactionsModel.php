@@ -99,18 +99,14 @@ class PaymentTransactionsModel extends Model
                 $facturas_procesadas++;
             }
 
-            // 6. Verificar si todas las facturas están pagadas
-            // $all_paid = $this->check_all_invoices_paid($payment_request_id);
-
-            // Commit
             $this->sql->commit();
 
             return [
-                'success' => true,
-                'message' => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
-                'total_pagado' => $total_pagado,
-                'facturas_procesadas' => $facturas_procesadas,
-                // 'all_paid' => $all_paid
+                'success'            => true,
+                'message'            => "Pago procesado exitosamente: $facturas_procesadas factura(s) por $" . number_format($total_pagado, 2),
+                'total_pagado'       => $total_pagado,
+                'facturas_procesadas'=> $facturas_procesadas,
+                'last_transaction_id'=> $transaction_id ?? null,
             ];
 
         } catch (Exception $e) {
@@ -214,7 +210,7 @@ class PaymentTransactionsModel extends Model
                 u.Nombre as created_by_name
             FROM [TG].[dbo].[payment_transactions] pt
             INNER JOIN [TG].[dbo].[payment_request_invoices] pri ON pt.invoice_id = pri.id
-            LEFT JOIN [SG12].[dbo].[Estaciones] est ON pri.codgas = est.codgas
+            LEFT JOIN [TG].[dbo].[Estaciones] est ON pri.codgas = est.Codigo
             LEFT JOIN [TG].[dbo].[Usuario] u ON pt.created_by = u.Id
             WHERE pt.payment_request_id = ?
             ORDER BY pt.payment_date DESC, pt.created_at DESC
@@ -383,14 +379,119 @@ class PaymentTransactionsModel extends Model
             INNER JOIN [TG].[dbo].[payment_request_invoices] pri  ON pt.invoice_id          = pri.id
             INNER JOIN [TG].[dbo].[payment_requests]         pr   ON pt.payment_request_id  = pr.id
             LEFT  JOIN [SG12].[dbo].[Proveedores]            prov ON pr.provider_cod        = prov.cod
-            LEFT  JOIN [SG12].[dbo].[Empresas]               emp  ON pr.emp_cod             = emp.codemp
-            LEFT  JOIN [SG12].[dbo].[Estaciones]             est  ON pri.codgas             = est.codgas
+            LEFT  JOIN [SG12].[dbo].[Empresas]               emp  ON pr.emp_cod             = emp.cod
+            LEFT  JOIN [TG].[dbo].[Estaciones]               est  ON pri.codgas             = est.Codigo
             LEFT  JOIN [TG].[dbo].[Usuario]                  usr  ON pt.created_by          = usr.Id
             $where
             ORDER BY pt.payment_date DESC, pt.created_at DESC
         ";
 
         return $this->sql->select($query, $params ?: null) ?: [];
+    }
+
+    /**
+     * Pagos agrupados por lote (payment_date + payment_reference + proveedor + empresa)
+     * para la vista "Todos los Pagos" nivel 1 (fila padre).
+     */
+    public function get_lotes_with_filters($from = null, $until = null, $provider = null, $company = null) : array
+    {
+        $where  = "WHERE 1=1";
+        $params = [];
+
+        if ($from) {
+            $where .= " AND CAST(pt.payment_date AS DATE) >= ?";
+            $params[] = $from;
+        }
+        if ($until) {
+            $where .= " AND CAST(pt.payment_date AS DATE) <= ?";
+            $params[] = $until;
+        }
+        if ($provider && $provider !== '0') {
+            $where .= " AND pr.provider_cod = ?";
+            $params[] = intval($provider);
+        }
+        if ($company && $company !== '0') {
+            $where .= " AND pr.emp_cod = ?";
+            $params[] = intval($company);
+        }
+
+        $query = "
+            SELECT
+                MIN(pt.id)                               AS id,
+                CAST(pt.payment_date AS DATE)            AS payment_date,
+                pt.payment_reference,
+                pt.payment_method,
+                prov.den                                 AS proveedor,
+                emp.den                                  AS empresa,
+                pt.beneficiary_name,
+                COUNT(*)                                 AS total_facturas,
+                SUM(pt.payment_amount)                   AS total_monto,
+                MIN(pt.status)                           AS status,
+                MAX(CAST(pt.notes AS VARCHAR(MAX)))      AS notes,
+                MIN(pt.created_at)                       AS created_at,
+                usr.Nombre                               AS creado_por,
+                -- IDs de las transacciones del lote para el child row
+                STRING_AGG(CAST(pt.id AS VARCHAR), ',')  AS transaction_ids
+            FROM  [TG].[dbo].[payment_transactions]          pt
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri  ON pt.invoice_id         = pri.id
+            INNER JOIN [TG].[dbo].[payment_requests]         pr   ON pt.payment_request_id = pr.id
+            LEFT  JOIN [SG12].[dbo].[Proveedores]            prov ON pr.provider_cod       = prov.cod
+            LEFT  JOIN [SG12].[dbo].[Empresas]               emp  ON pr.emp_cod            = emp.cod
+            LEFT  JOIN [TG].[dbo].[Usuario]                  usr  ON pt.created_by         = usr.Id
+            $where
+            GROUP BY
+                CAST(pt.payment_date AS DATE),
+                pt.payment_reference,
+                pt.payment_method,
+                prov.den,
+                emp.den,
+                pt.beneficiary_name,
+                usr.Nombre
+            ORDER BY payment_date DESC, MIN(pt.created_at) DESC
+        ";
+
+        return $this->sql->select($query, $params ?: null) ?: [];
+    }
+
+    /**
+     * Detalle de facturas de un lote (por lista de transaction IDs).
+     * Incluye si la transacción tiene comprobante adjunto.
+     */
+    public function get_lote_detail(array $transaction_ids) : array
+    {
+        if (empty($transaction_ids)) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($transaction_ids), '?'));
+
+        $query = "
+            SELECT
+                pt.id,
+                pt.payment_request_id,
+                pri.folio,
+                pri.invoice_number,
+                est.Nombre          AS estacion,
+                pt.payment_amount,
+                pt.status,
+                pt.notes,
+                pt.created_at,
+                doc.id              AS doc_id,
+                doc.file_extension  AS doc_ext
+            FROM  [TG].[dbo].[payment_transactions]          pt
+            INNER JOIN [TG].[dbo].[payment_request_invoices] pri ON pt.invoice_id = pri.id
+            LEFT  JOIN [TG].[dbo].[Estaciones]               est ON pri.codgas    = est.Codigo
+            OUTER APPLY (
+                SELECT TOP 1 id, file_extension
+                FROM [TG].[dbo].[payment_transaction_documents]
+                WHERE transaction_id = pt.id
+                ORDER BY created_at ASC
+            ) doc
+            WHERE pt.id IN ($placeholders)
+            ORDER BY pt.created_at ASC
+        ";
+
+        return $this->sql->select($query, $transaction_ids) ?: [];
     }
 
     /**

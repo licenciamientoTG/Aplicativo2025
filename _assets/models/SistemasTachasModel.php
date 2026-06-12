@@ -144,6 +144,7 @@ class SistemasTachasModel extends Model {
         $deuda_raw   = $this->get_deudas();
         $ajuste_raw  = $this->get_ajustes();
         $ho_data     = $this->get_ho_data();
+        $ho_records  = $this->get_ho_records();
 
         // Construir maps manualmente en lugar de usar array_column
         $last_map = [];
@@ -161,8 +162,8 @@ class SistemasTachasModel extends Model {
             $ajuste_map[(int)$row['usuario_id']] = (int)$row['ajuste_total'];
         }
 
-        $consumed_map  = $ho_data['consumed'];
         $pendiente_map = $ho_data['pendientes'];
+        $records_map   = $ho_records['records'];
 
         $stats = [];
         foreach (self::ALLOWED_USERS as $uid) {
@@ -170,8 +171,8 @@ class SistemasTachasModel extends Model {
             $deuda_ajuste = $ajuste_map[$uid] ?? 0;
             $stats[$uid] = [
                 'home_office'  => $this->calc_home_office(
-                                      $last_map[$uid]     ?? null,
-                                      $consumed_map[$uid] ?? null
+                                      $last_map[$uid]   ?? null,
+                                      $records_map[$uid] ?? []
                                   ),
                 'deuda'        => $deuda_tachas + $deuda_ajuste,
                 'ho_pendiente' => $pendiente_map[$uid] ?? null,
@@ -180,42 +181,46 @@ class SistemasTachasModel extends Model {
         return $stats;
     }
 
-    public function calc_home_office(?string $ultima_tacha, ?string $ultimo_ho_consumido = null): array {
+    public function calc_home_office(?string $ultima_tacha, array $ho_records = []): array {
         // Si hay tacha: la racha limpia empieza el día hábil siguiente, sin importar la fecha
         // Si no hay tacha: empieza desde el inicio del sistema
-        $start = $ultima_tacha !== null
+        $base_start = $ultima_tacha !== null
             ? $this->next_business_day($ultima_tacha)
             : self::SISTEMA_START;
 
         // Un HO consumido empuja el inicio hacia adelante si es más reciente
-        if ($ultimo_ho_consumido !== null) {
-            $next = $this->next_business_day($ultimo_ho_consumido);
-            if ($next > $start) $start = $next;
-        }
 
         $today = date('Y-m-d');
 
-        if ($start > $today) {
-            return ['elapsed' => 0, 'remaining' => self::TARGET_DAYS, 'earned' => false, 'start' => $start];
+        if ($base_start > $today) {
+            return ['elapsed' => 0, 'remaining' => self::TARGET_DAYS, 'earned' => false, 'start' => $base_start];
         }
 
-        $elapsed = $this->business_days_between($start, $today);
+        $elapsed_total = $this->business_days_between($base_start, $today);
+        $earned_total  = intdiv($elapsed_total, self::TARGET_DAYS);
+        $start         = $base_start;
+
+        if ($earned_total > 0) {
+            $start = $this->add_business_days($base_start, $earned_total * self::TARGET_DAYS);
+        }
+
+        $elapsed = ($start > $today) ? 0 : $this->business_days_between($start, $today);
 
         // Rollover: cada vez que se cumplen TARGET_DAYS días limpios se gana 1 HO.
         // El contador continúa inmediatamente hacia el siguiente.
-        $unclaimed = 0;
-        while ($elapsed >= self::TARGET_DAYS) {
-            $unclaimed++;
-            $start   = $this->add_business_days($start, self::TARGET_DAYS);
-            $elapsed = ($start > $today) ? 0 : $this->business_days_between($start, $today);
-        }
-
         $remaining = max(0, self::TARGET_DAYS - $elapsed);
+        $claimed_total = 0;
+
+        foreach ($ho_records as $fecha_programada) {
+            if ($fecha_programada >= $base_start) {
+                $claimed_total++;
+            }
+        }
 
         return [
             'elapsed'   => $elapsed,
             'remaining' => $remaining,
-            'earned'    => $unclaimed > 0,
+            'earned'    => $earned_total > $claimed_total,
             'start'     => $start,
         ];
     }
@@ -388,6 +393,27 @@ class SistemasTachasModel extends Model {
             'consumed'   => $consumed_map,
             'pendientes' => $pendiente_map,
         ];
+    }
+
+    private function get_ho_records(): array {
+        $rows = $this->sql->select("
+            SELECT usuario_id, CONVERT(VARCHAR(10), fecha_programada, 23) AS fecha_programada
+            FROM [TG].[dbo].[sistemas_home_office]
+            WHERE usuario_id IN (" . $this->ids() . ")
+              AND cancelado = 0
+            ORDER BY fecha_programada ASC
+        ", []) ?: [];
+
+        $records_map = [];
+        foreach ($rows as $row) {
+            $uid = (int)$row['usuario_id'];
+            if (!isset($records_map[$uid])) {
+                $records_map[$uid] = [];
+            }
+            $records_map[$uid][] = $row['fecha_programada'];
+        }
+
+        return ['records' => $records_map];
     }
 
     private function add_business_days(string $date, int $days): string {

@@ -89,7 +89,7 @@
                         </div>
                         <h5 class="card-title mb-0">T-Máxima {{name_plaza}} (Semanal)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="week_graph_maxima"></canvas></div>
+                 <div style="width:100%;height:420px;" id="week_graph_maxima"></div>
                 </div>
             </div>
         </div>
@@ -106,7 +106,7 @@
                         </div>
                         <h5 class="card-title mb-0">T-Máxima {{name_plaza}} (Mensual)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="month_graph_maxima"></canvas></div>
+                 <div style="width:100%;height:420px;" id="month_graph_maxima"></div>
                 </div>
             </div>
         </div>
@@ -170,7 +170,7 @@
                         </div>
                         <h5 class="card-title mb-0">T-Super {{name_plaza}} (Semanal)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="week_graph_super"></canvas></div>
+                 <div style="width:100%;height:420px;" id="week_graph_super"></div>
                 </div>
             </div>
         </div>
@@ -187,7 +187,7 @@
                         </div>
                         <h5 class="card-title mb-0">T-Super {{name_plaza}} (Mensual)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="month_graph_super"></canvas></div>
+                 <div style="width:100%;height:420px;" id="month_graph_super"></div>
                 </div>
             </div>
         </div>
@@ -254,7 +254,7 @@
                         </div>
                         <h5 class="card-title mb-0">Diesel {{name_plaza}} (Semanal)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="week_graph_diesel"></canvas></div>
+                 <div style="width:100%;height:420px;" id="week_graph_diesel"></div>
                 </div>
             </div>
         </div>
@@ -271,7 +271,7 @@
                         </div>
                         <h5 class="card-title mb-0">Diesel {{name_plaza}} (Mensual)</h5>
                     </div>
-                 <div style="width: 80%;"><canvas id="month_graph_diesel"></canvas></div>
+                 <div style="width:100%;height:420px;" id="month_graph_diesel"></div>
                 </div>
             </div>
         </div>
@@ -287,41 +287,63 @@
 {% block myjs %}
 
 <script>
-////////////////////////////////////////////////////////////////////////////////////////////////
 var day_months = {{ daysArray|json_encode()|raw }};
 var Id_plaza = {{ Id_plaza|json_encode()|raw }};
 var product = {{ product|json_encode()|raw }};
-const dynamicColumns = [
-    { 'data': 'grupo' },
-];
-day_months.forEach(function(process) {
-    dynamicColumns.push({ 'data': process.formatted });
-});
+const dynamicColumns = [{ 'data': 'grupo' }];
+day_months.forEach(function(process) { dynamicColumns.push({ 'data': process.formatted }); });
 dynamicColumns.push({ 'data': 'average' });
 
+// ── SWITCH DE MOTOR DE GRÁFICAS ──────────────────────────────────────────────
+// true  → ECharts (nuevo)
+// false → Chart.js v2 (original, sin tocar)
+var USE_ECHARTS = true;
+// ─────────────────────────────────────────────────────────────────────────────
+</script>
 
- </script>
+{% if true %}{# ECharts CDN — solo se carga, no interfiere con Chart.js #}
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+{% endif %}
+
 <script src="{{ JS }}/direction/graph_historic_prices.js"></script>
+<script src="{{ JS }}/direction/graph_historic_prices_echarts.js"></script>
 
 <script>
-    const week_graph_maxima = document.getElementById('week_graph_maxima').getContext('2d');
-    const month_graph_maxima = document.getElementById('month_graph_maxima').getContext('2d');
+if (USE_ECHARTS) {
+    // ── ECharts ──────────────────────────────────────────────────────────────
+    graph_week_echarts('week_graph_maxima', 1);
+    graph_month_echarts('month_graph_maxima', 1);
 
-    const week_graph_super= document.getElementById('week_graph_super').getContext('2d');
-    const month_graph_super = document.getElementById('month_graph_super').getContext('2d');
+    graph_week_echarts('week_graph_super', 2);
+    graph_month_echarts('month_graph_super', 2);
 
+    graph_week_echarts('week_graph_diesel', 3);
+    graph_month_echarts('month_graph_diesel', 3);
 
-    const week_graph_diesel= document.getElementById('week_graph_diesel').getContext('2d');
-    const month_graph_diesel = document.getElementById('month_graph_diesel').getContext('2d');
+} else {
+    // ── Chart.js original (sin cambios) ──────────────────────────────────────
+    // Chart.js v2 necesita <canvas>; los reemplazamos dentro de cada div
+    function makeCanvas(divId) {
+        var div = document.getElementById(divId);
+        div.innerHTML = '';
+        var c = document.createElement('canvas');
+        div.appendChild(c);
+        return c.getContext('2d');
+    }
+    const week_graph_maxima  = makeCanvas('week_graph_maxima');
+    const month_graph_maxima = makeCanvas('month_graph_maxima');
+    const week_graph_super   = makeCanvas('week_graph_super');
+    const month_graph_super  = makeCanvas('month_graph_super');
+    const week_graph_diesel  = makeCanvas('week_graph_diesel');
+    const month_graph_diesel = makeCanvas('month_graph_diesel');
 
-    graph_week(Id_plaza,week_graph_maxima,1);
-    graph_month(Id_plaza,month_graph_maxima,1);
-
-    graph_week(Id_plaza,week_graph_super,2);
-    graph_month(Id_plaza,month_graph_super,2);
-
-    graph_week(Id_plaza,week_graph_diesel,3);
-    graph_month(Id_plaza,month_graph_diesel,3);
+    graph_week(Id_plaza, week_graph_maxima, 1);
+    graph_month(Id_plaza, month_graph_maxima, 1);
+    graph_week(Id_plaza, week_graph_super, 2);
+    graph_month(Id_plaza, month_graph_super, 2);
+    graph_week(Id_plaza, week_graph_diesel, 3);
+    graph_month(Id_plaza, month_graph_diesel, 3);
+}
 </script>
 {% endblock %}
 

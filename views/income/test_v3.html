@@ -88,9 +88,9 @@
     .row-pendiente            { background:#f9fafb!important;border-left:5px solid #9ca3af!important; }
     .row-pendiente:not(.active):hover { background:#f1f3f5!important; }
     .row-pendiente .font-numeric { color:#374151!important; }
-    .row-concil-ok            { background:#f0fdf4!important;border-left:5px solid #22c55e!important;pointer-events:none; }
+    .row-concil-ok            { background:#f0fdf4!important;border-left:5px solid #22c55e!important;cursor:default; }
     .row-concil-ok .font-numeric { color:#15803d!important; }
-    .row-concil-diff          { background:#eff6ff!important;border-left:5px solid #3b82f6!important;pointer-events:none; }
+    .row-concil-diff          { background:#eff6ff!important;border-left:5px solid #3b82f6!important;cursor:default; }
     .row-concil-diff .font-numeric { color:#1d4ed8!important; }
 
     /* GHOST PANEL (TX - informativo) */
@@ -1087,6 +1087,20 @@ let openGroupsCG  = new Set();
 let openGroupsTES = new Set();
 let openGroupsTX  = new Set();
 
+function getCGRef(item) {
+    return item && item.ID_Unico ? String(item.ID_Unico) : '';
+}
+
+function isConciliatedCGRef(ref) {
+    return !!(ref && conciliadasSet.CG && conciliadasSet.CG.has(String(ref)));
+}
+
+function shouldKeepCGItemVisible(item) {
+    const monto = parseFloat(item.Total || 0);
+    if (monto > 0) return true;
+    return isConciliatedCGRef(getCGRef(item));
+}
+
 // ── INIT ────────────────────────────────────────────────────
 $(document).ready(function() {
     initWidget();
@@ -1559,8 +1573,7 @@ function renderCG() {
     const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
     const filtered = cgData.filter(item => {
-        const monto = parseFloat(item.Total || 0);
-        if (monto <= 0) return false;
+        if (!shouldKeepCGItemVisible(item)) return false;
         // Excluir día en curso
         const fItem = item.FechaVisual
             ? (() => { const p = item.FechaVisual.split('/'); return p.length===3 ? `${p[2]}-${p[1]}-${p[0]}` : item.FechaVisual; })()
@@ -1619,6 +1632,7 @@ function renderCG() {
         let itemsTransitables = [];   // pendientes sin tránsito activo
         let itemsEnTransitoDia = [];  // ids de tránsitos PENDIENTE del día
         let itemsDiferibles = [];     // pendientes sin tránsito ni diferido completo
+        let itemsSyncDia = [];        // conciliados con monto desfasado
         items.forEach(item => {
             const ref    = item.ID_Unico || '';
             const montoOrig = parseFloat(item.Total || 0);
@@ -1631,6 +1645,9 @@ function renderCG() {
                 if (h && !gruposVistosDay.has(h.grupo_id)) {
                     diffDia += parseFloat(h.diferencia) || 0;
                     gruposVistosDay.add(h.grupo_id);
+                }
+                if (!mesCerrado && h && Math.abs(montoEfec - (parseFloat(h.monto) || 0)) > 0.1) {
+                    itemsSyncDia.push({ id_detalle: h.id, nuevo_monto: montoEfec });
                 }
             } else if (transitosCG.enTransito[ref]) {
                 const tr = transitosCG.enTransito[ref];
@@ -1875,6 +1892,12 @@ function renderCG() {
                </button>`
             : '';
 
+        const diaSyncBtn = (!mesCerrado && itemsSyncDia.length > 0)
+            ? `<button class="btn-action-mini btn-action-sync ml-2" onclick="event.stopPropagation();sincronizarDiaCG('${escHtml(fecha)}',${JSON.stringify(itemsSyncDia).replace(/"/g,'&quot;')})" title="Actualizar todos los montos desfasados de este día">
+                   <i class="fas fa-sync-alt"></i> Actualizar${itemsSyncDia.length > 1 ? ` (${itemsSyncDia.length})` : ''}
+               </button>`
+            : '';
+
         const groupId = `cg-${fecha.replace(/-/g,'')}`;
         $c.append(`
             <div class="tx-group-header" style="${headerStyle}" id="cg-header-${fecha.replace(/-/g,'')}" onclick="seleccionarDiaCG('${fecha}')">
@@ -1884,6 +1907,7 @@ function renderCG() {
                     </button>
                     <span class="mr-2"><i class="far fa-calendar-alt mr-1"></i>${dateFmt}</span>
                     <span class="badge" style="${badgeStyle}">${iconExcl}${nConcil}/${nTotal}</span>
+                    ${diaSyncBtn}
                     ${diaTransitBtn}
                     ${diaCancelTransitBtn}
                     ${diaDiferirBtn}
@@ -2491,6 +2515,40 @@ function sincronizarMontoV3(idDetalle, nuevoMonto) {
 }
 
 // ── DESHACER MES COMPLETO ─────────────────────────────────────
+async function sincronizarDiaCG(fecha, items) {
+    if (!Array.isArray(items) || !items.length) {
+        alert('No hay montos pendientes por sincronizar en este dÃ­a.');
+        return;
+    }
+
+    const etiqueta = items.length === 1 ? '1 entrada' : `${items.length} entradas`;
+    if (!confirm(`Se actualizarÃ¡n ${etiqueta} con desfase del dÃ­a ${fecha.split('-').reverse().join('/')}.\n\nÂ¿Continuar?`)) return;
+
+    body_loading(true);
+    try {
+        const results = await Promise.all(items.map(item =>
+            fetch(URLS_V3.actualizar_det, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id_detalle: parseInt(item.id_detalle),
+                    nuevo_monto: parseFloat(item.nuevo_monto)
+                })
+            }).then(r => r.json()).catch(() => ({ status: 'error', message: 'Error de conexiÃ³n' }))
+        ));
+
+        const failed = results.filter(r => r.status !== 'success');
+        if (failed.length) {
+            alert('No se pudieron sincronizar todos los montos.\n' + failed.map(f => f.message || 'Error desconocido').join('\n'));
+            return;
+        }
+
+        actualizarTodo();
+    } finally {
+        body_loading(false);
+    }
+}
+
 function deshacerMes() {
     if (!currentRule) { alert('Selecciona estación y banco primero.'); return; }
     const year  = $('#hiddenYear').val();
@@ -3178,7 +3236,7 @@ function abrirModoTransacciones() {
     const cgGroups = {};
     cgData.forEach(item => {
         const monto = parseFloat(item.Total || 0);
-        if (monto <= 0) return;
+        if (!shouldKeepCGItemVisible(item)) return;
         if (keywords.length) {
             const c = (item.Concepto || item.concepto || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
             if (!keywords.some(k => c.includes(k))) return;

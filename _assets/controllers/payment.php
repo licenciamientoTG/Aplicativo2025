@@ -24,6 +24,12 @@ class Payment
     public InvoiceCreditDebitNotesDocModel $InvoiceCreditDebitNotesDocModel;
     public CreditNoteApplicationsModel $CreditNoteApplicationsModel;
     public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
+    public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
+    public PaymentTransactionDocumentsModel $PaymentTransactionDocumentsModel;
+
+    // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
+    private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
+    private const TEST_MODE = false;
 
     public function __construct($twig)
     {
@@ -44,6 +50,8 @@ class Payment
         $this->InvoiceCreditDebitNotesDocModel     = new InvoiceCreditDebitNotesDocModel();
         $this->CreditNoteApplicationsModel        = new CreditNoteApplicationsModel();
         $this->PaymentAccountingGroupsModel       = new PaymentAccountingGroupsModel();
+        $this->PaymentNotificationRecipientsModel   = new PaymentNotificationRecipientsModel();
+        $this->PaymentTransactionDocumentsModel     = new PaymentTransactionDocumentsModel();
     }
 
     function fuel_payments()
@@ -257,6 +265,9 @@ class Payment
                     continue; // Skip rows with empty 'nro'
                 }
                 $fechaVencimiento = !empty($row['fecha_vencimiento_credito']) ? $row['fecha_vencimiento_credito'] : ($row['fechaVto'] ?? null);
+                if (!empty($fechaVencimiento) && $fechaVencimiento < '2026-05-01') {
+                    continue;
+                }
                 $estaVencida = !empty($fechaVencimiento) && $fechaVencimiento < $hoy;
                 $statusLabel = 'Pendiente';
                 if ($row['payment_status'] == '0') {
@@ -957,7 +968,7 @@ class Payment
         header('Content-Type: application/json');
 
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
-        $type = isset($_POST['type']) ? $_POST['type'] : 'payment';
+        $type = isset($_POST['type']) ? $_POST['type'] : 'all';
 
         try {
             // Obtener datos del modelo
@@ -1003,6 +1014,8 @@ class Payment
                 $totalND = floatval($row['total_notas_cargo']);
                 $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
 
+                $esAnticipo = intval($row['tipo'] ?? 0) === 1;
+
                 $pdfStatus = $row['pdf_status'] ?? 'no_invoices';
                 $pdfDot = match($pdfStatus) {
                     'complete'    => '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-left:4px;vertical-align:middle;" title="Todas las facturas tienen PDF"></span>',
@@ -1010,21 +1023,31 @@ class Payment
                     default       => '',
                 };
 
+                $anticipoBadge = $esAnticipo
+                    ? '<span style="display:inline-block;font-size:.6rem;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;letter-spacing:.03em;">ANT</span>'
+                    : '';
+
+                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas
+                $montoAnticipo = $esAnticipo ? floatval($row['monto_total'] ?? 0) : $totalFacturas;
+                $montoNetoFinal = $esAnticipo ? $montoAnticipo : $montoNeto;
+
                 $data[] = [
-                    'id'             => $row['id'] . $pdfDot,
+                    'id'             => $row['id'] . $pdfDot . $anticipoBadge,
+                    'tipo'           => $esAnticipo ? 1 : 0,
+                    'pdf_status'     => $pdfStatus,
                     'request_date'   => date('d/m/Y H:i', strtotime($row['request_date'])),
                     'scheduled_payment_date' => $row['scheduled_payment_date'] ? date('d/m/Y', strtotime($row['scheduled_payment_date'])) : null,
                     'usuario'        => $row['usuario_nombre'],
                     'provider_name'  => $row['provider_name'],
                     'emp_name'       => $row['emp_name'],
-                    'total_invoices' => $row['total_invoices'],
-                    'total_amount'   => '$' . number_format($totalFacturas, 2),
-                    'total_notas_credito' => $totalNC,
-                    'total_notas_cargo'   => $totalND,
-                    'monto_neto'     => '$' . number_format($montoNeto, 2),
+                    'total_invoices' => $esAnticipo ? '—' : $row['total_invoices'],
+                    'total_amount'   => '$' . number_format($montoAnticipo, 2),
+                    'total_notas_credito' => $esAnticipo ? 0 : $totalNC,
+                    'total_notas_cargo'   => $esAnticipo ? 0 : $totalND,
+                    'monto_neto'     => '$' . number_format($montoNetoFinal, 2),
                     'total_paid'     => '$' . number_format($row['total_paid'], 2),
-                    'authorized_invoices_count' => $row['authorized_invoices_count'],
-                    'authorized_amount_total' => '$' . number_format($row['authorized_amount_total'], 2),
+                    'authorized_invoices_count' => $esAnticipo ? '—' : $row['authorized_invoices_count'],
+                    'authorized_amount_total' => $esAnticipo ? '—' : '$' . number_format($row['authorized_amount_total'], 2),
                     'status'         => $statusBadge,
                     'authorizations' => $authIndicator,
                     'comment'        => $row['comment'] ?: '-',
@@ -1233,23 +1256,29 @@ class Payment
                 $saldo         = (float)$inv['amount'] - $paid_amount;
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
 
+                $esNotaCargo = (int)($inv['is_debit_note'] ?? 0) === 1;
                 $data[] = [
-                    'id'                => $inv['id'],
-                    'folio'             => $inv['folio'],
-                    'invoice_number'    => $inv['invoice_number'],
-                    'proveedor_nombre'  => $inv['proveedor_nombre'],
-                    'estacion_nombre'   => $inv['estacion_nombre'],
-                    'amount'            => (float)$inv['amount'],
-                    'saldo'             => $saldo,
-                    'saldo_neto'        => $saldo + $neto_notas,
-                    'status'            => (int)$inv['status'],
-                    'payment_authorized'=> (int)($inv['payment_authorized'] ?? 0),
-                    'authorized_amount' => (float)($inv['authorized_amount'] ?? 0),
-                    'expiration_date'   => $inv['expiration_date'],
-                    'uuid'              => $inv['uuid'],
-                    'fr_id'             => $frId,
-                    'nombre_archivo'    => $nombreArchivo,
-                    'tiene_archivo'     => !empty($frId),
+                    'id'                    => $inv['id'],
+                    'folio'                 => $inv['folio'],
+                    'invoice_number'        => $inv['invoice_number'],
+                    'proveedor_nombre'      => $inv['proveedor_nombre'],
+                    'estacion_nombre'       => $inv['estacion_nombre'],
+                    'amount'                => (float)$inv['amount'],
+                    'saldo'                 => $esNotaCargo ? 0 : $saldo,
+                    'total_notas_credito'   => $esNotaCargo ? 0 : (float)($inv['total_notas_credito'] ?? 0),
+                    'total_notas_cargo'     => $esNotaCargo ? 0 : (float)($inv['total_notas_cargo'] ?? 0),
+                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas),
+                    'status'                => (int)$inv['status'],
+                    'payment_authorized'    => (int)($inv['payment_authorized'] ?? 0),
+                    'authorized_amount'     => (float)($inv['authorized_amount'] ?? 0),
+                    'expiration_date'       => $inv['expiration_date'],
+                    'uuid'                  => $inv['uuid'],
+                    'fr_id'                 => $frId,
+                    'nombre_archivo'        => $nombreArchivo,
+                    'tiene_archivo'         => !empty($frId),
+                    'is_debit_note'         => (int)($inv['is_debit_note'] ?? 0),
+                    'nota_id'               => $inv['nota_id'] ?? null,
+                    'nota_doc_path'         => !empty($inv['nota_id']) ? true : null,
                 ];
             }
 
@@ -1258,6 +1287,41 @@ class Payment
             error_log('Error en payment_invoices_json: ' . $e->getMessage());
             json_output(['success' => false, 'message' => $e->getMessage(), 'data' => []]);
         }
+    }
+
+
+    public function update_payment_fields()
+    {
+        header('Content-Type: application/json');
+
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $payment_id = intval($_POST['payment_id'] ?? 0);
+        $comment    = trim($_POST['comment'] ?? '');
+        $fecha_pago = $_POST['scheduled_payment_date'] ?? null;
+
+        if (!$payment_id) {
+            json_output(['success' => false, 'message' => 'ID inválido']);
+            return;
+        }
+
+        $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+        if (!$payment || $payment['status'] > 1) {
+            json_output(['success' => false, 'message' => 'Pago no editable']);
+            return;
+        }
+
+        $query = "UPDATE [TG].[dbo].[payment_requests] SET comment = ?, scheduled_payment_date = ? WHERE id = ?";
+        $ok = $this->PaymentRequestsModel->sql->update($query, [
+            $comment ?: null,
+            $fecha_pago ?: null,
+            $payment_id
+        ]);
+
+        json_output(['success' => (bool)$ok]);
     }
 
 
@@ -1340,6 +1404,8 @@ class Payment
     }
 
 
+
+
     function addNoteModal()
     {
         $provider_id = $_POST['provider_id'] ?? null;
@@ -1360,46 +1426,96 @@ class Payment
 
 
     /**
-     * API JSON: tabla de todos los pagos (transacciones) con filtros
+     * API JSON: lotes de pago agrupados (nivel 1 de la tabla)
      */
     public function all_payments_table()
     {
         header('Content-Type: application/json');
         try {
-            $rows = $this->paymentTransactionsModel->get_all_with_filters(
+            $rows = $this->paymentTransactionsModel->get_lotes_with_filters(
                 $_POST['from']     ?? null,
                 $_POST['until']    ?? null,
                 $_POST['provider'] ?? null,
-                $_POST['company']  ?? null,
-                $_POST['status']   ?? null
+                $_POST['company']  ?? null
             );
 
             $statusLabels = [
-                0 => '<span class="badge bg-warning text-dark">Pendiente</span>',
-                1 => '<span class="badge bg-info">Procesado</span>',
-                2 => '<span class="badge bg-success">Confirmado</span>',
-                3 => '<span class="badge bg-danger">Rechazado</span>',
+                0 => '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">Pendiente</span>',
+                1 => '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;">Procesado</span>',
+                2 => '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;">Confirmado</span>',
+                3 => '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;">Rechazado</span>',
             ];
 
             $data = [];
             foreach ($rows as $r) {
                 $data[] = [
+                    'id'               => $r['id'],
+                    'transaction_ids'  => $r['transaction_ids'],
+                    'payment_date'     => $r['payment_date']      ? date('d/m/Y', strtotime($r['payment_date'])) : '-',
+                    'payment_reference'=> $r['payment_reference'] ?? '-',
+                    'payment_method'   => $r['payment_method']    ?? '-',
+                    'proveedor'        => $r['proveedor']         ?? '-',
+                    'empresa'          => $r['empresa']           ?? '-',
+                    'beneficiary_name' => $r['beneficiary_name']  ?? '-',
+                    'total_facturas'   => (int)$r['total_facturas'],
+                    'total_monto'      => '$' . number_format(floatval($r['total_monto']), 2, '.', ','),
+                    'status'           => $statusLabels[$r['status']] ?? '<span class="badge bg-secondary">-</span>',
+                    'notes'            => $r['notes']             ?? '-',
+                    'created_at'       => $r['created_at']        ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
+                    'creado_por'       => $r['creado_por']        ?? '-',
+                ];
+            }
+
+            echo json_encode(['data' => $data]);
+        } catch (Exception $e) {
+            echo json_encode(['data' => [], 'error' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
+     * API JSON: detalle de facturas de un lote (child row)
+     */
+    public function all_payments_lote_detail()
+    {
+        header('Content-Type: application/json');
+        try {
+            $ids_raw = $_POST['transaction_ids'] ?? '';
+            $ids = array_filter(array_map('intval', explode(',', $ids_raw)));
+
+            if (empty($ids)) {
+                echo json_encode(['data' => []]);
+                return;
+            }
+
+            $rows = $this->paymentTransactionsModel->get_lote_detail($ids);
+
+            $statusLabels = [
+                0 => '<span class="badge" style="background:#fef3c7;color:#92400e;">Pendiente</span>',
+                1 => '<span class="badge" style="background:#dbeafe;color:#1e40af;">Procesado</span>',
+                2 => '<span class="badge" style="background:#d1fae5;color:#065f46;">Confirmado</span>',
+                3 => '<span class="badge" style="background:#fee2e2;color:#991b1b;">Rechazado</span>',
+            ];
+
+            $data = [];
+            foreach ($rows as $r) {
+                $doc_id = $r['doc_id'] ?? null;
+                $doc_ext = $r['doc_ext'] ?? null;
+                $docBtn = $doc_id
+                    ? '<button class="btn btn-sm" style="background:#eff6ff;color:#2563eb;border:none;border-radius:4px;padding:2px 7px;" onclick="abrirComprobanteModal(' . $doc_id . ',\'' . $doc_ext . '\')" title="Ver comprobante"><i class="fas fa-' . ($doc_ext === 'pdf' ? 'file-pdf' : 'file-image') . '" style="font-size:.8rem;"></i></button>'
+                    : '<span style="color:#cbd5e1;font-size:.75rem;">—</span>';
+
+                $data[] = [
                     'id'                 => $r['id'],
-                    'payment_request_id' => '<a href="/payment/payment_detail/' . $r['payment_request_id'] . '" class="text-decoration-none">#' . $r['payment_request_id'] . '</a>',
-                    'folio'              => $r['folio'],
-                    'invoice_number'     => $r['invoice_number'],
-                    'proveedor'          => $r['proveedor']         ?? '-',
-                    'empresa'            => $r['empresa']           ?? '-',
-                    'estacion'           => $r['estacion']          ?? '-',
+                    'payment_request_id' => '<a href="/payment/payment_detail/' . $r['payment_request_id'] . '" class="text-primary text-decoration-none fw-semibold">#' . $r['payment_request_id'] . '</a>',
+                    'folio'              => $r['folio']          ?? '-',
+                    'invoice_number'     => $r['invoice_number'] ?? '-',
+                    'estacion'           => $r['estacion']       ?? '-',
                     'payment_amount'     => '$' . number_format(floatval($r['payment_amount']), 2, '.', ','),
-                    'payment_date'       => $r['payment_date']      ? date('d/m/Y', strtotime($r['payment_date'])) : '-',
-                    'payment_method'     => $r['payment_method']    ?? '-',
-                    'payment_reference'  => $r['payment_reference'] ?? '-',
-                    'beneficiary_name'   => $r['beneficiary_name']  ?? '-',
-                    'status'             => $statusLabels[$r['status']] ?? '<span class="badge bg-secondary">-</span>',
-                    'notes'              => $r['notes']             ?? '-',
-                    'created_at'         => $r['created_at']        ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
-                    'creado_por'         => $r['creado_por']        ?? '-',
+                    'status'             => $statusLabels[$r['status']] ?? '-',
+                    'notes'              => $r['notes']          ?? '-',
+                    'created_at'         => $r['created_at']     ? date('d/m/Y H:i', strtotime($r['created_at'])) : '-',
+                    'comprobante'        => $docBtn,
                 ];
             }
 
@@ -1460,34 +1576,56 @@ class Payment
             // Verificar si ya están todas las autorizaciones
             $next_level = $this->paymentRequestAuthorizationsModel->get_next_authorization_level($payment_id);
 
-            if ($next_level === null) {
-                // Todas las autorizaciones completadas - cambiar estado a AUTHORIZED
-                $this->PaymentRequestsModel->update_request_status(
-                    $payment_id,
-                    PaymentRequestsModel::STATUS_AUTHORIZED
-                );
-                $message = '✅ Pago completamente autorizado. Tesorería puede proceder al pago.';
-            } else {
-                // $this->enviar_notificacion_autorizacion_pendiente($payment_id, $next_level, $permission,$user_id);
-                //se mandara una diaria
-
-                // Aún faltan autorizaciones
-                $department_name = match ($next_level) {
-                    68 => 'Tesorería',
-                    default => 'Desconocido'
-                };
-                $message = "✅ Autorización registrada exitosamente. Esperando autorización de: $department_name";
-            }
+            // Con un solo nivel (Tesorería), next_level siempre será null tras autorizar
+            $this->PaymentRequestsModel->update_request_status(
+                $payment_id,
+                PaymentRequestsModel::STATUS_AUTHORIZED
+            );
+            $message = '✅ Pago autorizado por Tesorería. Puede proceder al pago.';
 
             json_output([
-                'success' => true,
-                'message' => $message,
-                'next_level' => $next_level,
-                'all_authorized' => $next_level === null
+                'success'      => true,
+                'message'      => $message,
+                'all_authorized' => true
             ]);
         } catch (Exception $e) {
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
         }
+    }
+
+
+    /**
+     * Aprobación implícita de Tesorería: al autorizar facturas de un pago
+     * Pendiente se registra la autorización (auditoría) y se sube el status,
+     * sin requerir el paso previo de "Aprobar".
+     */
+    private function ensure_tesoreria_approval($payment_id, $current_status, $user_id)
+    {
+        if ($current_status == PaymentRequestsModel::STATUS_AUTHORIZED) {
+            return ['success' => true];
+        }
+
+        if ($current_status != PaymentRequestsModel::STATUS_PENDING) {
+            return [
+                'success' => false,
+                'message' => 'El pago no puede autorizarse, su estado es: ' . PaymentRequestsModel::getStatusText($current_status)
+            ];
+        }
+
+        if (!$this->paymentRequestAuthorizationsModel->is_authorized_by_permission($payment_id, PaymentRequestAuthorizationsModel::PERM_TESORERIA)) {
+            $auth_id = $this->paymentRequestAuthorizationsModel->insert_authorization(
+                $payment_id,
+                $user_id,
+                PaymentRequestAuthorizationsModel::PERM_TESORERIA
+            );
+            if (!$auth_id) {
+                return ['success' => false, 'message' => 'Error al registrar la autorización de Tesorería'];
+            }
+        }
+
+        $this->PaymentRequestsModel->update_request_status($payment_id, PaymentRequestsModel::STATUS_AUTHORIZED);
+
+        return ['success' => true];
     }
 
 
@@ -1531,17 +1669,17 @@ class Payment
                 return;
             }
 
-            if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                json_output([
-                    'success' => false,
-                    'message' => 'El pago debe estar completamente autorizado por los 3 niveles antes de autorizar facturas individuales'
-                ]);
-                return;
-            }
-
             // Verificar que el usuario tenga permiso de Tesorería (68)
             if (!authorized(68)) {
                 json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+                return;
+            }
+
+            // Aprobación implícita: si el pago sigue Pendiente, se registra la
+            // autorización de Tesorería y se sube el status en este mismo paso
+            $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+            if (!$approval['success']) {
+                json_output(['success' => false, 'message' => $approval['message']]);
                 return;
             }
 
@@ -1695,8 +1833,10 @@ class Payment
                     continue;
                 }
 
-                if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                    $todos_errores[] = "Pago #{$payment_id}: no está autorizado";
+                // Aprobación implícita de Tesorería si el pago sigue Pendiente
+                $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+                if (!$approval['success']) {
+                    $todos_errores[] = "Pago #{$payment_id}: " . $approval['message'];
                     continue;
                 }
 
@@ -1763,17 +1903,16 @@ class Payment
 
 
             if (empty($invoice_ids)) {
-                return $this->responderJSON(false, 'No se proporcionaron facturas');
+                json_output(['success' => false, 'message' => 'No se proporcionaron facturas']); return;
             }
             if (!$fecha_pago || !$referencia_bancaria) {
-                return $this->responderJSON(false, 'Faltan datos obligatorios: fecha y referencia bancaria');
+                json_output(['success' => false, 'message' => 'Faltan datos obligatorios: fecha y referencia bancaria']); return;
             }
-
             if (!$user_id) {
-                return $this->responderJSON(false, 'Usuario no identificado');
+                json_output(['success' => false, 'message' => 'Usuario no identificado']); return;
             }
             if (!authorized(68)) {
-                return $this->responderJSON(false, 'Solo Tesorería puede ejecutar pagos');
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede ejecutar pagos']); return;
             }
 
             // $facturas_autorizadas = $this->paymentRequestInvoicesModel->get_authorized_pending_payment($payment_id);
@@ -1790,7 +1929,7 @@ class Payment
             $payment_request_ids_unicos = [];
             foreach ($facturas_data as $factura) {
                 if ($factura['payment_authorized'] != 1) {
-                    return $this->responderJSON(false, "La factura {$factura['folio']} no está autorizada");
+                    json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
                 }
                 $facturas_procesar[] = [
                     'invoice_id' => $factura['id'],
@@ -1820,11 +1959,10 @@ class Payment
 
             // ✅ PROCESAR RESULTADO
             if ($result['success']) {
-                // ✅ REVISAR CADA PAYMENT_REQUEST_ID ÚNICO
+                // Revisar cada payment_request y marcarlo como pagado si aplica
                 $solicitudes_completadas = 0;
                 foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
                     $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
-
                     if ($all_paid) {
                         $this->PaymentRequestsModel->update_request_status(
                             $payment_request_id,
@@ -1835,16 +1973,33 @@ class Payment
                     }
                 }
 
-                return $this->responderJSON(true, $result['message'], [
-                    'facturas_procesadas' => $result['facturas_procesadas'],
-                    'total_pagado' => $result['total_pagado'],
-                    'fecha_pago' => date('d/m/Y', strtotime($fecha_pago)),
-                    'referencia_bancaria' => $referencia_bancaria,
+                // Subir comprobante si se adjuntó
+                $comprobante_msg = null;
+                if (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK) {
+                    // Obtener el transaction_id más reciente creado para estas facturas
+                    $last_transaction_id = $result['last_transaction_id'] ?? null;
+                    if ($last_transaction_id) {
+                        $upload = $this->PaymentTransactionDocumentsModel->upload(
+                            $last_transaction_id,
+                            $_FILES['comprobante'],
+                            $user_id
+                        );
+                        $comprobante_msg = $upload['success'] ? 'Comprobante subido.' : 'Pago registrado pero falló el comprobante: ' . $upload['message'];
+                    }
+                }
+
+                json_output([
+                    'success'                 => true,
+                    'message'                 => $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''),
+                    'facturas_procesadas'     => $result['facturas_procesadas'],
+                    'total_pagado'            => $result['total_pagado'],
+                    'fecha_pago'              => date('d/m/Y', strtotime($fecha_pago)),
+                    'referencia_bancaria'     => $referencia_bancaria,
                     'solicitudes_completadas' => $solicitudes_completadas,
-                    'total_solicitudes' => count($payment_request_ids_unicos)
+                    'total_solicitudes'       => count($payment_request_ids_unicos)
                 ]);
             } else {
-                return $this->responderJSON(false, $result['message']);
+                json_output(['success' => false, 'message' => $result['message']]);
             }
         } catch (Exception $e) {
             error_log("Error en execute_authorized_payments: " . $e->getMessage());
@@ -1975,6 +2130,164 @@ class Payment
     }
 
 
+    /**
+     * Botón "Mandar a pagos" (Abastos): agrupa las requisiciones del día por empresa
+     * y envía el correo de solicitud a los destinatarios configurados.
+     * También lo ejecuta el cron a las 11am si Abastos no lo hizo antes.
+     *
+     * Puede llamarse:
+     *   - Por POST desde la UI (usuario con permiso 66)
+     *   - Por el cron vía token: POST cron_token=CRON_SECRET
+     */
+    public function send_to_payments()
+    {
+        header('Content-Type: application/json');
+        try {
+            $cronToken  = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+
+            $isAuthorized = ($validToken && $cronToken === $validToken)
+                || authorized(66);
+
+            if (!$isAuthorized) {
+                json_output(['success' => false, 'message' => 'No autorizado']);
+                return;
+            }
+
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+            $today   = date('Y-m-d');
+
+            // 1. Agrupar requisiciones del día por empresa
+            $group_result = $this->PaymentAccountingGroupsModel->auto_group_by_date($today, $user_id);
+
+            // 2. Obtener pagos pendientes con PDF completo para el correo
+            $pagos = $this->PaymentRequestsModel->get_payments_ready_for_request();
+
+            if (empty($pagos)) {
+                json_output([
+                    'success'        => true,
+                    'message'        => 'Requisiciones agrupadas pero no hay pagos con PDF completo para notificar.' . ($group_result['grupos'] > 0 ? " Se crearon {$group_result['grupos']} grupo(s)." : ''),
+                    'grupos_creados' => $group_result['grupos'] ?? 0
+                ]);
+                return;
+            }
+
+            // 3. Destinatarios
+            if (self::TEST_MODE) {
+                $emails = [self::TEST_MODE_EMAIL];
+            } else {
+                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
+            }
+
+            if (empty($emails)) {
+                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto_neto'], $pagos));
+
+            $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
+            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
+            $from    = 'totalgasdesarrollo@gmail.com';
+
+            $ok = send_mail($subject, $body, $emails, $from);
+
+            if ($ok) {
+                error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
+                json_output([
+                    'success'        => true,
+                    'message'        => 'Listo. Se crearon ' . ($group_result['grupos'] ?? 0) . ' grupo(s) y se notificaron ' . count($pagos) . ' pago(s).' . (self::TEST_MODE ? ' [MODO PRUEBAS]' : ''),
+                    'grupos_creados' => $group_result['grupos'] ?? 0,
+                    'total_pagos'    => count($pagos),
+                    'total_monto'    => $total_general,
+                    'destinatarios'  => $emails
+                ]);
+            } else {
+                json_output(['success' => false, 'message' => 'Se agruparon las requisiciones pero no se pudo enviar el correo.']);
+            }
+        } catch (Exception $e) {
+            error_log('Error en send_to_payments: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+
+    // send_ready_payments() eliminado — reemplazado por send_to_payments() (Abastos)
+
+
+
+    /**
+     * HTML del correo de solicitud de pagos listos.
+     */
+    private function generar_html_solicitud_pagos(array $pagos, float $total_general): string
+    {
+        $td  = 'style="padding:8px;border:1px solid #e2e8f0;"';
+        $tdr = 'style="padding:8px;border:1px solid #e2e8f0;text-align:right;"';
+        $tdc = 'style="padding:8px;border:1px solid #e2e8f0;text-align:center;"';
+
+        $filas = '';
+        foreach ($pagos as $p) {
+            $fechaPago   = !empty($p['scheduled_payment_date'])
+                ? date('d/m/Y', strtotime($p['scheduled_payment_date']))
+                : '-';
+            $nc          = (float)$p['total_notas_credito'];
+            $nd          = (float)$p['total_notas_cargo'];
+            $neto        = (float)$p['monto_neto'];
+            $ncStr       = $nc > 0 ? '<span style="color:#16a34a;">-$' . number_format($nc, 2) . '</span>' : '<span style="color:#94a3b8;">$0.00</span>';
+            $ndStr       = $nd > 0 ? '<span style="color:#dc2626;">+$' . number_format($nd, 2) . '</span>' : '<span style="color:#94a3b8;">$0.00</span>';
+            $filas .= '<tr>'
+                . '<td ' . $td  . '>#' . htmlspecialchars($p['id']) . '</td>'
+                . '<td ' . $td  . '>' . htmlspecialchars($p['emp_name'] ?? '-') . '</td>'
+                . '<td ' . $td  . '>' . htmlspecialchars($p['provider_name'] ?? '-') . '</td>'
+                . '<td ' . $tdc . '>' . (int)$p['total_invoices'] . '</td>'
+                . '<td ' . $tdc . '>' . $fechaPago . '</td>'
+                . '<td ' . $tdr . '>$' . number_format((float)$p['total_amount'], 2) . '</td>'
+                . '<td ' . $tdr . '>' . $ncStr . '</td>'
+                . '<td ' . $tdr . '>' . $ndStr . '</td>'
+                . '<td ' . $tdr . ' style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-weight:700;color:#1e293b;"><strong>$' . number_format($neto, 2) . '</strong></td>'
+                . '</tr>';
+        }
+
+        $th = 'style="padding:8px;border:1px solid #e2e8f0;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+        $thc = 'style="padding:8px;border:1px solid #e2e8f0;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+        $thr = 'style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#475569;"';
+
+        return '
+        <div style="font-family:Arial,sans-serif;max-width:820px;margin:0 auto;color:#1e293b;">
+            <div style="background:#16a34a;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;">
+                <h2 style="margin:0;font-size:18px;">Solicitud de pago a proveedores</h2>
+                <p style="margin:4px 0 0;font-size:13px;">' . date('d/m/Y H:i') . ' &middot; ' . count($pagos) . ' pago(s) listos para su pago</p>
+            </div>
+            <div style="border:1px solid #e2e8f0;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
+                <p style="font-size:14px;">Los siguientes pagos tienen <strong>todas sus facturas con PDF recibido</strong> y están listos para solicitar su pago a Tesorería:</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th ' . $th  . '>ID</th>
+                            <th ' . $th  . '>Empresa</th>
+                            <th ' . $th  . '>Proveedor</th>
+                            <th ' . $thc . '>Facturas</th>
+                            <th ' . $thc . '>Fecha pago esp.</th>
+                            <th ' . $thr . '>Total Facturas</th>
+                            <th ' . $thr . '>N. Crédito</th>
+                            <th ' . $thr . '>N. Cargo</th>
+                            <th ' . $thr . '>Monto Neto</th>
+                        </tr>
+                    </thead>
+                    <tbody>' . $filas . '</tbody>
+                    <tfoot>
+                        <tr style="background:#f0fdf4;font-weight:bold;">
+                            <td colspan="8" style="padding:8px;border:1px solid #e2e8f0;text-align:right;color:#475569;">TOTAL A PAGAR</td>
+                            <td style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-size:15px;color:#16a34a;"><strong>$' . number_format($total_general, 2) . '</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <p style="font-size:12px;color:#64748b;margin-top:16px;">Este correo se generó desde el Sistema de Gestión TotalGas.</p>
+            </div>
+        </div>';
+    }
+
+
     private function enviar_notificacion_nuevo_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         try {
@@ -1998,9 +2311,7 @@ class Payment
             $from = 'totalgasdesarrollo@gmail.com';
 
             // Capturar salida para evitar problemas con JSON
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de pago #{$payment_id} enviada a: " . implode(', ', $emails));
@@ -2037,9 +2348,7 @@ class Payment
 
             $from = 'totalgasdesarrollo@gmail.com';
 
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de anticipo #{$anticipo_id} enviada a: " . implode(', ', $emails));
@@ -2070,14 +2379,7 @@ class Payment
             $proveedor = $this->proveedores->get_by_id($payment['provider_cod']);
             $provider_name = $proveedor ? $proveedor['den'] : 'Proveedor';
 
-            // Obtener nombre del siguiente nivel
-            $next_department = match ($next_level_permission) {
-                66 => 'Abastos',
-                70 => 'Contabilidad',
-                67 => 'Administración y Finanzas',
-                68 => 'Tesorería',
-                default => 'Desconocido'
-            };
+            $next_department = $next_level_permission === 68 ? 'Tesorería' : 'Desconocido';
 
             // Crear el cuerpo del correo
             $subject = "Pago #{$payment_id} requiere tu autorización - {$next_department}";
@@ -2094,9 +2396,7 @@ class Payment
             // Enviar correo
             $from = 'totalgasdesarrollo@gmail.com';
 
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
+            $resultado = send_mail($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de autorización pendiente para pago #{$payment_id} enviada a {$next_department}: " . implode(', ', $emails));
@@ -2152,17 +2452,21 @@ class Payment
                     'proveedor_rfc' => $invoice['proveedor_rfc'] ?? 'N/A',
                     'banco_asignado' => $invoice['banco_asignado'],
                     'banco_color' => $invoice['banco_color'],
-                    'total_facturas' => $invoice['total_facturas'],
-                    'total_autorizado' => $invoice['total_autorizado'],
-                    'total_saldo' => $invoice['total_saldo'],
+                    'total_facturas'        => $invoice['total_facturas'],
+                    'total_autorizado'      => $invoice['total_autorizado'],
+                    'total_notas_credito'   => $invoice['total_notas_credito'] ?? 0,
+                    'total_notas_cargo'     => $invoice['total_notas_cargo'] ?? 0,
+                    'total_saldo'           => $invoice['total_saldo'],
                     'vencimiento_mas_proximo' => $invoice['vencimiento_mas_proximo'],
                     'vencimiento_mas_lejano' => $invoice['vencimiento_mas_lejano'],
                     'invoice_ids' => $invoice['invoice_ids'],
                     'folios_list' => $invoice['folios_list'],
                     'authorized_by_name' => $invoice['authorized_by_name'] ?? 'N/A',
                     'ultima_autorizacion' => $invoice['ultima_autorizacion'],
-                    'tipo_registro' => $invoice['tipo_registro'],  // NUEVO
-                    'payment_request_id' => $invoice['payment_request_id']  // NUEVO (solo para anticipos)
+                    'tipo_registro' => $invoice['tipo_registro'],
+                    'payment_request_id' => $invoice['payment_request_id'],
+                    'request_date' => $invoice['request_date'] ?? null,
+                    'scheduled_payment_date' => $invoice['scheduled_payment_date'] ?? null
                 ];
             }
 
@@ -2685,16 +2989,9 @@ class Payment
                 $userPermissions = array_map('intval', $userPermissions);
             }
 
-            // Obtener contadores para cada nivel
-            $countAbastos     = $this->PaymentRequestsModel->getPendingAuthorizationCount(66);
-            $countContabilidad = $this->PaymentRequestsModel->getPendingAuthorizationCount(70);
-            $countAdmin       = $this->PaymentRequestsModel->getPendingAuthorizationCount(67);
-            $countTesoreria   = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
+            $countTesoreria = $this->PaymentRequestsModel->getPendingAuthorizationCount(68);
             echo json_encode([
                 'success'          => true,
-                'abastos'          => $countAbastos,
-                'contabilidad'     => $countContabilidad,
-                'admin'            => $countAdmin,
                 'tesoreria'        => $countTesoreria,
                 'user_permissions' => $userPermissions
             ]);
@@ -2716,7 +3013,7 @@ class Payment
             // Obtener el nivel solicitado desde la petición
             $permissionNumber = isset($_GET['permission']) ? intval($_GET['permission']) : null;
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber !== 68) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
@@ -2724,14 +3021,7 @@ class Payment
                 return;
             }
 
-            // Verificar que el usuario tiene ese permiso
-            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
-            if (is_string($userPermissions)) {
-                $userPermissions = explode(',', $userPermissions);
-                $userPermissions = array_map('trim', $userPermissions);
-                $userPermissions = array_map('intval', $userPermissions);
-            }
-            if (!in_array($permissionNumber, $userPermissions)) {
+            if (!authorized(68)) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'No tienes permisos para este nivel de autorización'
@@ -2774,10 +3064,18 @@ class Payment
                 return;
             }
 
-            if (!$permissionNumber || !in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber !== 68) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Nivel de autorización inválido'
+                ]);
+                return;
+            }
+
+            if (!authorized(68)) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No tienes permisos para autorizar en este nivel'
                 ]);
                 return;
             }
@@ -2796,27 +3094,8 @@ class Payment
                 return;
             }
 
-
-            // Obtener información del usuario
-            $userId = $_SESSION['tg_user']['Id'] ?? 0;
+            $userId   = $_SESSION['tg_user']['Id'] ?? 0;
             $userName = $_SESSION['tg_user']['name'] ?? 'Unknown';
-            $userPermissions = $_SESSION['tg_user']['permissions'] ?? '';
-
-            // Convertir a array si es string
-            if (is_string($userPermissions)) {
-                $userPermissions = explode(',', $userPermissions);
-                $userPermissions = array_map('trim', $userPermissions);
-                $userPermissions = array_map('intval', $userPermissions);
-            }
-
-            // Verificar que el usuario tiene el permiso solicitado
-            if (!in_array($permissionNumber, $userPermissions)) {
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'No tienes permisos para autorizar en este nivel'
-                ]);
-                return;
-            }
 
             // Procesar aprobación masiva
             $resultado = $this->PaymentRequestsModel->processBulkAuthorization(
@@ -2866,13 +3145,7 @@ class Payment
      */
     private function getNombrePermiso($permissionNumber)
     {
-        $permisos = [
-            66 => 'Abastos',
-            70 => 'Contabilidad',
-            67 => 'Administración y Finanzas',
-            68 => 'Tesorería'
-        ];
-        return $permisos[$permissionNumber] ?? 'Desconocido';
+        return $permissionNumber === 68 ? 'Tesorería' : 'Desconocido';
     }
 
 
@@ -2881,79 +3154,9 @@ class Payment
      */
     private function enviarNotificacionesAprobacionMasiva($bulkId, $paymentIds, $permissionNumber)
     {
-        try {
-            $detalles = $this->PaymentRequestsModel->getBulkAuthorizationDetails($bulkId);
-
-            if (!$detalles) {
-                error_log("Aprobación masiva #{$bulkId}: no se encontraron detalles para notificar");
-                return;
-            }
-
-            error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: {$detalles['user_name']}, Nivel: {$detalles['nivel_nombre']}, Pagos: " . count($paymentIds));
-
-            // Nivel siguiente al que se aprobó
-            $nextLevel = match ((int)$permissionNumber) {
-                66 => 67, // Abastos aprobó → notificar a Finanzas
-                67 => 68, // Finanzas aprobó → notificar a Tesorería
-                default => null
-            };
-
-            if ($nextLevel === null) {
-                // Tesorería aprobó: no hay siguiente nivel, no se envía correo
-                return;
-            }
-
-            $emails = $this->UsuariosModel->get_emails_by_permission($nextLevel);
-
-            if (empty($emails)) {
-                error_log("Aprobación masiva #{$bulkId}: no hay usuarios con permiso {$nextLevel} para notificar");
-                return;
-            }
-
-            $emails = array_filter($emails, function ($email) {
-                return strtolower(trim($email)) !== 'kuwait.valenzuela@totalgas.com';
-            });
-            $emails = array_values($emails);
-
-            if (empty($emails)) {
-                error_log("Aprobación masiva #{$bulkId}: no hay correos disponibles después del filtro");
-                return;
-            }
-
-            $pagosDetalle = $this->PaymentRequestsModel->getBulkPaymentsDetail($paymentIds);
-
-            $authorized_department = $detalles['nivel_nombre'];
-            $next_department = match ($nextLevel) {
-                67 => 'Administración y Finanzas',
-                68 => 'Tesorería',
-                default => 'Desconocido'
-            };
-
-            $subject = "Aprobación Masiva - {$detalles['approved_count']} pago(s) requieren tu autorización - {$next_department}";
-            $body = $this->generar_html_notificacion_aprobacion_masiva(
-                $bulkId,
-                $detalles['user_name'],
-                $authorized_department,
-                $next_department,
-                $detalles['approved_count'],
-                $detalles['total_amount'],
-                $pagosDetalle
-            );
-
-            $from = 'totalgasdesarrollo@gmail.com';
-
-            ob_start();
-            $resultado = @send_mail2($subject, $body, $emails, $from);
-            ob_get_clean();
-
-            if ($resultado) {
-                error_log("Notificación de aprobación masiva #{$bulkId} enviada a {$next_department}: " . implode(', ', $emails));
-            } else {
-                error_log("Error al enviar notificación de aprobación masiva #{$bulkId}");
-            }
-        } catch (Exception $e) {
-            error_log("Error al enviar notificaciones de aprobación masiva: " . $e->getMessage());
-        }
+        // Tesorería es el único y último nivel — no hay siguiente nivel al que notificar.
+        $detalles = $this->PaymentRequestsModel->getBulkAuthorizationDetails($bulkId);
+        error_log("Aprobación masiva registrada - ID: {$bulkId}, Usuario: " . ($detalles['user_name'] ?? 'N/A') . ", Pagos: " . count($paymentIds));
     }
 
 
@@ -3126,20 +3329,16 @@ class Payment
             $whereClause = "ba.user_id = ?";
             $params = [$userId];
 
-            // Filtrar por nivel si se especifica
-            if ($permissionNumber && in_array($permissionNumber, [66, 70, 67, 68])) {
+            if ($permissionNumber === 68) {
                 $whereClause .= " AND ba.authorization_level = ?";
                 $params[] = $permissionNumber;
             }
 
             $query = "
-            SELECT 
+            SELECT
                 ba.*,
                 u.Nombre as user_name,
                 CASE
-                    WHEN ba.authorization_level = 66 THEN 'Abastos'
-                    WHEN ba.authorization_level = 70 THEN 'Contabilidad'
-                    WHEN ba.authorization_level = 67 THEN 'Administración y Finanzas'
                     WHEN ba.authorization_level = 68 THEN 'Tesorería'
                     ELSE 'Desconocido'
                 END as nivel_nombre,
@@ -3479,32 +3678,31 @@ class Payment
      * Puede recibir ?date=YYYY-MM-DD (opcional, default = hoy).
      * Protegido por permiso 70 (Contabilidad) o token de cron.
      */
-    // public function auto_group_accounting()
-    // {
-    //     header('Content-Type: application/json');
-    //     try {
-    //         // Permitir acceso por token de cron o por usuario con permiso 70
-    //         $cronToken = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
-    //         $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
+    public function auto_group_accounting()
+    {
+        header('Content-Type: application/json');
+        try {
+            $cronToken  = $_POST['cron_token'] ?? $_GET['cron_token'] ?? null;
+            $validToken = defined('CRON_SECRET') ? CRON_SECRET : null;
 
-    //         $isAuthorized = ($validToken && $cronToken === $validToken)
-    //             || authorized(70);
+            $isAuthorized = ($validToken && $cronToken === $validToken)
+                || authorized(70);
 
-    //         if (!$isAuthorized) {
-    //             json_output(['success' => false, 'message' => 'No autorizado']);
-    //             return;
-    //         }
+            if (!$isAuthorized) {
+                json_output(['success' => false, 'message' => 'No autorizado']);
+                return;
+            }
 
-    //         $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
-    //         $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+            $date    = $_POST['date'] ?? $_GET['date'] ?? date('Y-m-d');
+            $user_id = $_SESSION['tg_user']['Id'] ?? 0;
 
-    //         $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
-    //         json_output($result);
-    //     } catch (Exception $e) {
-    //         error_log('Error en auto_group_accounting: ' . $e->getMessage());
-    //         json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
-    //     }
-    // }
+            $result = $this->PaymentAccountingGroupsModel->auto_group_by_date($date, $user_id);
+            json_output($result);
+        } catch (Exception $e) {
+            error_log('Error en auto_group_accounting: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
 
 
     /**
@@ -3790,7 +3988,6 @@ class Payment
                     mkdir($uploadDir, 0755, true);
                 }
 
-                // Nombre del archivo: note_{noteId}_doc_{docId}.pdf
                 $newFilename = "{$docId}.{$extension}";
                 $fullPath = $uploadDir . $newFilename;
 
@@ -3800,7 +3997,7 @@ class Payment
                 }
 
                 // Ruta relativa para guardar en BD
-                $filePath = 'uploads/credit_debit_notes/' . date('Y') . '/' . date('m') . '/' . $newFilename;
+                $filePath = 'uploads/credit_debit_notes/' . $newFilename;
 
                 // PASO 5: Actualizar ruta en el registro del documento
                 if (!$this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, $filePath)) {
@@ -3863,6 +4060,39 @@ class Payment
             http_response_code(404);
             echo "Archivo no encontrado";
             exit;
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+        exit;
+    }
+
+
+    /**
+     * Sirve el PDF del primer documento de una nota de cargo dado su nota_id.
+     * Usado desde el child row de payment_list para filas is_debit_note=1.
+     */
+    public function view_note_doc($nota_id)
+    {
+        $nota_id = (int)$nota_id;
+        if (!$nota_id) { http_response_code(400); echo "nota_id requerido"; exit; }
+
+        $docs = $this->InvoiceCreditDebitNotesDocModel->getDocumentsByNoteId($nota_id);
+        if (empty($docs) || empty($docs[0]['file_path'])) {
+            http_response_code(404); echo "Sin documento"; exit;
+        }
+
+        $doc      = $docs[0];
+        $fullPath = realpath(__DIR__ . '/../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../uploads/credit_debit_notes');
+
+        if ($fullPath === false || $base === false || strpos($fullPath, $base) !== 0) {
+            http_response_code(403); echo "Acceso denegado"; exit;
+        }
+        if (!file_exists($fullPath) || !is_readable($fullPath)) {
+            http_response_code(404); echo "Archivo no encontrado"; exit;
         }
 
         header('Content-Type: application/pdf');
@@ -4190,7 +4420,11 @@ class Payment
         try {
             $provider_id = $_POST['provider_id'] ?? null;
             $notes = $this->InvoiceCreditDebitNotesModel->getNotesByProvider($provider_id);
-            echo json_encode(['success' => true, 'notes' => $notes ?: []]);
+            echo json_encode([
+                'success'    => true,
+                'notes'      => $notes ?: [],
+                'can_manage' => authorized(66),
+            ]);
         } catch (Exception $e) {
             http_response_code(400);
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -4205,6 +4439,11 @@ class Payment
     {
         header('Content-Type: application/json');
         try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'Sin permiso para aplicar notas']);
+                return;
+            }
+
             $requiredFields = ['credit_note_id', 'payment_request_id', 'applied_amount'];
             foreach ($requiredFields as $field) {
                 if (empty($_POST[$field])) {
@@ -4359,13 +4598,7 @@ class Payment
      */
     public function get_department_name($permission_number)
     {
-        return match ($permission_number) {
-            66 => 'Abastos',
-            70 => 'Contabilidad',
-            67 => 'Administración y Finanzas',
-            68 => 'Tesorería',
-            default => 'Desconocido'
-        };
+        return $permission_number === 68 ? 'Tesorería' : 'Desconocido';
     }
 
 
@@ -4471,14 +4704,6 @@ class Payment
                 // Log de auditoría
                 error_log("ANTICIPO CREADO: ID={$result['anticipo_id']}, Provider=$provider_cod, Empresa=$empresa_cod, Monto=$monto, User=$user_id");
 
-                // Notificación por correo
-                $this->enviar_notificacion_nuevo_anticipo(
-                    $result['anticipo_id'],
-                    $proveedor['den'] ?? 'Proveedor',
-                    $monto,
-                    $comentario,
-                    $_SESSION['tg_user']['Nombre'] ?? 'Usuario'
-                );
             }
 
             // Retornar resultado
@@ -4550,6 +4775,18 @@ class Payment
                 'Error al cargar la configuración: ' . htmlspecialchars($e->getMessage()) .
                 '</div>';
         }
+    }
+
+
+    public function anticipo_summary_json($anticipo_id)
+    {
+        header('Content-Type: application/json');
+        $summary = $this->PaymentRequestsModel->get_anticipo_summary((int)$anticipo_id);
+        if (!$summary) {
+            json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
+            return;
+        }
+        json_output(['success' => true, 'data' => $summary]);
     }
 
 
@@ -5334,5 +5571,177 @@ class Payment
         $html .= '</div>';
         return $html;
     }
+
+
+    /**
+     * JSON: documentos adjuntos de una transacción.
+     * GET /payment/get_transaction_documents?transaction_id=X
+     */
+    public function get_transaction_documents()
+    {
+        header('Content-Type: application/json');
+        $transaction_id = (int)($_GET['transaction_id'] ?? 0);
+        if (!$transaction_id) {
+            json_output(['success' => false, 'message' => 'transaction_id requerido']);
+            return;
+        }
+        $docs = $this->PaymentTransactionDocumentsModel->get_by_transaction($transaction_id);
+        json_output(['success' => true, 'data' => $docs]);
+    }
+
+
+    /**
+     * Sirve el archivo de un comprobante de pago.
+     * GET /payment/view_payment_document/ID
+     */
+    public function view_payment_document($doc_id)
+    {
+        $doc = $this->PaymentTransactionDocumentsModel->get_by_id((int)$doc_id);
+        if (!$doc) {
+            http_response_code(404);
+            echo 'Documento no encontrado';
+            return;
+        }
+
+        $fullPath = realpath(__DIR__ . '/../../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../../_assets/uploads/payment_documents/');
+
+        if (!$fullPath || !str_starts_with($fullPath, $base) || !file_exists($fullPath)) {
+            http_response_code(404);
+            echo 'Archivo no encontrado';
+            return;
+        }
+
+        $mime = match($doc['file_extension']) {
+            'pdf'        => 'application/pdf',
+            'jpg','jpeg' => 'image/jpeg',
+            'png'        => 'image/png',
+            default      => 'application/octet-stream'
+        };
+
+        header('Content-Type: ' . $mime);
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+    }
+
+
+    public function invoices_due()
+    {
+        $stations    = $this->gasolinerasModel->get_active_stations();
+        $proveedores = $this->proveedores->get_actives();
+        echo $this->twig->render($this->route . 'invoices_due.html', compact('stations', 'proveedores'));
+    }
+
+
+    public function invoices_due_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $from_due  = $_POST['from_due']  ?? '';
+        $until_due = $_POST['until_due'] ?? '';
+
+        if (!$from_due || !$until_due) {
+            json_output(['data' => [], 'error' => 'Faltan fechas']);
+            return;
+        }
+
+        $from_int  = dateToInt($from_due);
+        $until_int = dateToInt($until_due);
+
+        $postData = [
+            'codgas'    => !empty($_POST['codgas'])    ? $_POST['codgas']    : '0',
+            'proveedor' => !empty($_POST['proveedor']) ? $_POST['proveedor'] : '0',
+            'from_due'  => $from_due,
+            'until_due' => $until_due,
+            'from_int'  => $from_int,
+            'until_int' => $until_int,
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/facturas_vencen_hoy/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $apiData = json_decode($response, true);
+        $data    = [];
+
+        if (is_array($apiData)) {
+            foreach ($apiData as $row) {
+                $data[] = [
+                    'nro'                       => $row['nro'],
+                    'Factura'                   => $row['Factura'],
+                    'fecha'                     => $row['fecha'],
+                    'fecha_vencimiento_credito' => $row['fecha_vencimiento_credito'] ?? null,
+                    'dias_credito'              => $row['dias_credito'] ?? 0,
+                    'proveedor'                 => $row['proveedor'],
+                    'proveedor_codigo'          => $row['proveedor_codigo'],
+                    'producto'                  => $row['producto'],
+                    'can'                       => $row['can'],
+                    'total_fac'                 => $row['total_fac'],
+                    'satuid'                  => $row['satuid'] ?? null,
+                    'fr_id'                   => $row['fr_id'] ?? null,
+                    'gasolinera'              => $row['gasolinera'],
+                    'razon_social_estacion'   => $row['razon_social_estacion'] ?? null,
+                    'codgas'                  => $row['codgas'],
+                    'codigo_empresa'          => $row['codigo_empresa'],
+                ];
+            }
+        }
+
+        json_output(['data' => $data]);
+    }
+
+
+    // DEV-ONLY: eliminar antes de producción ↓
+    public function dev_reset_piloto()
+    {
+        header('Content-Type: application/json');
+        $db = $this->PaymentRequestsModel->sql;
+        $db->beginTransaction();
+        try {
+            $db->query("DELETE FROM [TG].[dbo].[payment_transaction_documents]");
+            $db->query("DELETE FROM [TG].[dbo].[payment_transactions]");
+            $db->query("DELETE FROM [TG].[dbo].[payment_request_authorizations]");
+            $db->query("DELETE FROM [TG].[dbo].[credit_note_applications]");
+            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes_doc]");
+            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes]");
+            $db->query("DELETE FROM [TG].[dbo].[payment_request_invoices]");
+            $db->query("UPDATE [TG].[dbo].[payment_requests] SET accounting_group_id = NULL");
+            $db->query("DELETE FROM [TG].[dbo].[payment_accounting_groups]");
+            $db->query("DELETE FROM [TG].[dbo].[payment_request_bulk_authorizations]");
+            $db->query("DELETE FROM [TG].[dbo].[payment_requests]");
+            $db->commit();
+
+            // Limpiar archivos físicos
+            $dirs = [
+                __DIR__ . '/../../_assets/uploads/payment_documents/',
+                __DIR__ . '/../../_assets/uploads/credit_debit_notes/',
+            ];
+            foreach ($dirs as $dir) {
+                if (is_dir($dir)) {
+                    $it = new RecursiveIteratorIterator(
+                        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+                        RecursiveIteratorIterator::CHILD_FIRST
+                    );
+                    foreach ($it as $file) {
+                        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
+                    }
+                }
+            }
+
+            json_output(['success' => true, 'message' => 'Datos de prueba eliminados correctamente']);
+        } catch (Exception $e) {
+            $db->rollBack();
+            json_output(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+    // /DEV-ONLY ↑
 
 }

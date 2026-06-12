@@ -236,13 +236,14 @@ class PaymentRequestInvoicesModel extends Model
 
     public function get_by_payment_request_with_transactions($payment_request_id) : array|false {
         $query = '
-           SELECT 
+           SELECT
                 t1.id,
                 t1.payment_request_id,
                 t1.folio,
                 t1.invoice_number,
                 t1.codgas,
                 t1.amount,
+                t1.is_debit_note,
                 --t1.[status],
                 t1.expiration_date,
                 t1.date_added,
@@ -251,8 +252,11 @@ class PaymentRequestInvoicesModel extends Model
                 t1.payment_authorized,
                 t1.authorized_by,
                 t1.authorized_at,
-                t4.den as proveedor_nombre,
+                -- Para facturas normales: proveedor via DocumentosC; para notas de cargo: via payment_requests
+                COALESCE(t4.den, prov_nd.den) as proveedor_nombre,
                 t2.abr as estacion_nombre,
+                -- Para filas is_debit_note=1: datos de la nota de cargo
+                nota_nd.id AS nota_id,
                 -- Calcular paid_amount desde payment_transactions
                  ISNULL((
                     SELECT SUM(payment_amount)
@@ -298,10 +302,15 @@ class PaymentRequestInvoicesModel extends Model
                 ), 0) as notas_count
                 FROM [TG].[dbo].[payment_request_invoices] t1
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
-                left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
-                LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
+                LEFT JOIN sg12.[dbo].DocumentosC t3 ON t1.is_debit_note = 0 AND t1.codgas = t3.codgas AND TRY_CAST(t1.folio AS int) = t3.nro AND t3.tip = 1
+                LEFT JOIN SG12.dbo.Proveedores t4 ON t1.is_debit_note = 0 AND t3.codopr = t4.cod
+                -- Para notas de cargo: proveedor desde payment_requests
+                LEFT JOIN [TG].[dbo].[payment_requests] pr_nd ON t1.is_debit_note = 1 AND pr_nd.id = t1.payment_request_id
+                LEFT JOIN SG12.dbo.Proveedores prov_nd ON t1.is_debit_note = 1 AND prov_nd.cod = pr_nd.provider_cod
+                -- Para notas de cargo: datos de invoice_credit_debit_notes (buscando por note_number = folio)
+                LEFT JOIN [TG].[dbo].[invoice_credit_debit_notes] nota_nd ON t1.is_debit_note = 1 AND nota_nd.note_number = t1.folio AND nota_nd.note_type = \'DEBIT\'
                 WHERE t1.payment_request_id = ?
-                ORDER BY t1.date_added DESC
+                ORDER BY t1.is_debit_note ASC, t1.date_added DESC
         ';
         return ($this->sql->select($query, [$payment_request_id])) ?: false;
     }
@@ -652,16 +661,16 @@ class PaymentRequestInvoicesModel extends Model
                 emp.rfc as empresa_rfc,
                 
                 -- Determinar banco según emp_cod
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                
+
                 -- Color para agrupar visualmente
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color
                 
@@ -708,8 +717,8 @@ class PaymentRequestInvoicesModel extends Model
         $query = "
             SELECT 
                 CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16) THEN 'Santander'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco,
                 
@@ -726,10 +735,10 @@ class PaymentRequestInvoicesModel extends Model
             AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
             AND pr.status = ?
             
-            GROUP BY 
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+            GROUP BY
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END
             
@@ -757,17 +766,22 @@ class PaymentRequestInvoicesModel extends Model
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
                 CASE
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
                 CASE
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
+                pr.id as payment_request_id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 COUNT(DISTINCT pri.id) as total_facturas,
                 SUM(pri.authorized_amount) as total_autorizado,
+                SUM(ISNULL(notas.total_credito, 0)) as total_notas_credito,
+                SUM(ISNULL(notas.total_cargo, 0))   as total_notas_cargo,
                 SUM(
                     (pri.amount - ISNULL(pri.paid_amount, 0))
                     - ISNULL(notas.total_credito, 0)
@@ -779,8 +793,7 @@ class PaymentRequestInvoicesModel extends Model
                 STRING_AGG(pri.folio, ', ') as folios_list,
                 MAX(u_auth.Nombre) as authorized_by_name,
                 MAX(pri.authorized_at) as ultima_autorizacion,
-                'FACTURAS' as tipo_registro,
-                NULL as payment_request_id
+                'FACTURAS' as tipo_registro
             FROM [TG].[dbo].[payment_request_invoices] pri
             INNER JOIN [TG].[dbo].[payment_requests] pr
                 ON pri.payment_request_id = pr.id
@@ -805,6 +818,9 @@ class PaymentRequestInvoicesModel extends Model
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
             GROUP BY
+                pr.id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den,
@@ -815,25 +831,30 @@ class PaymentRequestInvoicesModel extends Model
             UNION ALL
             
             -- PARTE 2: Anticipos pendientes
-            SELECT 
+            SELECT
                 pr.emp_cod,
                 pr.provider_cod,
                 emp.den as empresa_nombre,
                 emp.rfc as empresa_rfc,
                 prov.den as proveedor_nombre,
                 prov.rfc as proveedor_rfc,
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN 'Banorte'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN 'Santander'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN 'Santander'
                     ELSE 'Sin asignar'
                 END as banco_asignado,
-                CASE 
-                    WHEN pr.emp_cod IN (1, 23, 17, 18) THEN '#C9302C'
-                    WHEN pr.emp_cod IN (19, 20, 16, 10) THEN '#EC1C24'
+                CASE
+                    WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN '#C9302C'
+                    WHEN pr.emp_cod IN (11, 14, 15, 16, 19, 20) THEN '#EC1C24'
                     ELSE '#6c757d'
                 END as banco_color,
+                pr.id as payment_request_id,
+                pr.request_date,
+                pr.scheduled_payment_date,
                 0 as total_facturas,
                 pr.monto_total as total_autorizado,
+                0 as total_notas_credito,
+                0 as total_notas_cargo,
                 pr.monto_total as total_saldo,
                 pr.request_date as vencimiento_mas_proximo,
                 pr.request_date as vencimiento_mas_lejano,
@@ -841,14 +862,13 @@ class PaymentRequestInvoicesModel extends Model
                 'ANTICIPO #' + CAST(pr.id AS VARCHAR) as folios_list,
                 u.Nombre as authorized_by_name,
                 pr.date_added as ultima_autorizacion,
-                'ANTICIPO' as tipo_registro,
-                pr.id as payment_request_id
+                'ANTICIPO' as tipo_registro
             FROM [TG].[dbo].[payment_requests] pr
-            LEFT JOIN [TG].[dbo].[Usuario] u 
+            LEFT JOIN [TG].[dbo].[Usuario] u
                 ON pr.user_id = u.Id
-            LEFT JOIN [SG12].[dbo].[Proveedores] prov 
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov
                 ON pr.provider_cod = prov.cod
-            LEFT JOIN [SG12].[dbo].[Empresas] emp 
+            LEFT JOIN [SG12].[dbo].[Empresas] emp
                 ON pr.emp_cod = emp.cod
             WHERE pr.tipo = 1
                 AND pr.status = ?  -- Autorizados
@@ -1050,7 +1070,8 @@ class PaymentRequestInvoicesModel extends Model
                 GROUP BY a.invoice_id
             ) notas ON pri.id = notas.invoice_id
 
-            WHERE pr.status = ?
+            WHERE pr.status IN (?, ?)
+                AND pr.accounting_group_id IS NOT NULL
                 AND pri.payment_authorized = 0
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
@@ -1059,6 +1080,7 @@ class PaymentRequestInvoicesModel extends Model
         ";
 
         return $this->sql->select($query, [
+            0,  // STATUS_PENDING (aprobación de Tesorería implícita al autorizar)
             1,  // STATUS_AUTHORIZED
             4   // STATUS_CANCELLED
         ]) ?: false;
@@ -1136,11 +1158,12 @@ class PaymentRequestInvoicesModel extends Model
             inv.amount AS monto_original,
             inv.authorized_amount AS monto_autorizado,
             inv.uuid,
-            -- Datos del proveedor
-            prov.cod AS proveedor_codigo,
-            prov.den AS proveedor_nombre,
-            prov.rfc AS proveedor_rfc,
-            
+            -- Datos del proveedor (cg para facturas normales, pr para notas de cargo is_debit_note=1)
+            COALESCE(prov_cg.cod, prov_nd.cod) AS proveedor_codigo,
+            COALESCE(prov_cg.den, prov_nd.den) AS proveedor_nombre,
+            COALESCE(prov_cg.rfc, prov_nd.rfc) AS proveedor_rfc,
+            inv.is_debit_note,
+
             -- ✅ SANTANDER: CLABE del proveedor desde cuentas TERCEROS
             cb_tercero_sant.CuentaLocal AS clabe_beneficiario,
             cb_tercero_sant.Descripcion AS titular_beneficiario,
@@ -1150,7 +1173,7 @@ class PaymentRequestInvoicesModel extends Model
             -- Datos de la empresa
             emp.den AS empresa_nombre,
             emp.cod AS empresa_cod,
-            'FACTURA' as tipo_pago,
+            CASE WHEN inv.is_debit_note = 1 THEN 'NOTA_CARGO' ELSE 'FACTURA' END as tipo_pago,
 
             -- ✅ SANTANDER: Cuenta PROPIA de la empresa (CLABE)
             cb_propia_sant.CuentaLocal AS cuenta_cargo_empresa,
@@ -1161,19 +1184,22 @@ class PaymentRequestInvoicesModel extends Model
             cb_propia_banorte.TitularCuenta AS titular_cargo_banorte
 
         FROM [TG].[dbo].[payment_request_invoices] inv
-        INNER JOIN [SG12].[dbo].DocumentosC cg ON cg.nro = inv.folio and inv.codgas = cg.codgas and cg.tip = 1
-        INNER JOIN [SG12].[dbo].[Proveedores] prov ON prov.cod = cg.codopr
+        -- Para facturas normales: JOIN con DocumentosC y su proveedor
+        LEFT JOIN [SG12].[dbo].DocumentosC cg ON inv.is_debit_note = 0 AND cg.nro = inv.folio AND inv.codgas = cg.codgas AND cg.tip = 1
+        LEFT JOIN [SG12].[dbo].[Proveedores] prov_cg ON inv.is_debit_note = 0 AND prov_cg.cod = cg.codopr
+        LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id = pr.id
+        -- Para notas de cargo (is_debit_note=1): proveedor desde payment_requests.provider_cod
+        LEFT JOIN [SG12].[dbo].[Proveedores] prov_nd ON inv.is_debit_note = 1 AND prov_nd.cod = pr.provider_cod
 
-        -- ✅ JOIN con cuentas TERCEROS SANTANDER (beneficiarios)
+        -- ✅ JOIN con cuentas TERCEROS SANTANDER (beneficiarios) — usa proveedor resuelto
         LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
             ON cb_tercero_sant.Tipo = 'Terceros'
             AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
             AND cb_tercero_sant.Activo = 1
             AND (
-                cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
+                OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
             )
-        LEFT JOIN TG.dbo.payment_requests pr on inv.payment_request_id = pr.id
         INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
         -- ✅ JOIN con cuentas PROPIAS SANTANDER (ordenantes)
         LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant
@@ -1192,7 +1218,7 @@ class PaymentRequestInvoicesModel extends Model
         WHERE inv.id IN ($placeholders)
         AND inv.authorized_amount > 0
 
-        ORDER BY prov.den, inv.folio
+        ORDER BY COALESCE(prov_cg.den, prov_nd.den), inv.folio
     ";
 
  

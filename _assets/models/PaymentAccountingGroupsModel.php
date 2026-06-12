@@ -270,7 +270,9 @@ class PaymentAccountingGroupsModel extends Model
     }
 
     /**
-     * Obtiene requisiciones sin agrupar con fecha de pago = $date y autorizadas por Tesorería.
+     * Obtiene requisiciones listas para agrupar: status=0, sin grupo, tipo pago,
+     * con TODAS sus facturas con PDF (dot verde). Mismo criterio que el correo.
+     * El parámetro $date se reserva para uso futuro (filtrar por scheduled_payment_date).
      */
     public function get_ungrouped_by_date(string $date): array
     {
@@ -283,16 +285,24 @@ class PaymentAccountingGroupsModel extends Model
                 pr.emp_cod,
                 e.den AS emp_name
             FROM [TG].[dbo].[payment_requests] pr
-            INNER JOIN [TG].[dbo].[payment_request_authorizations] auth
-                ON auth.payment_request_id = pr.id
-                AND auth.permission_number = 68
             LEFT JOIN [SG12].[dbo].[Empresas] e ON e.cod = pr.emp_cod
-            WHERE CAST(pr.scheduled_payment_date AS DATE) = ?
-              AND pr.accounting_group_id IS NULL
+            WHERE pr.accounting_group_id IS NULL
+              AND pr.status = 0
               AND pr.tipo = 0
+              AND EXISTS (
+                  SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
+                  WHERE pri.payment_request_id = pr.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
+                  LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
+                      ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
+                      AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
+                  WHERE pri.payment_request_id = pr.id AND fr.UUID IS NULL
+              )
             ORDER BY pr.emp_cod, pr.id
         ";
-        return $this->sql->select($query, [$date]) ?: [];
+        return $this->sql->select($query, []) ?: [];
     }
 
     /**

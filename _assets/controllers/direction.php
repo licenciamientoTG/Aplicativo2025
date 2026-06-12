@@ -1111,7 +1111,12 @@ class Direction{
     public function import_file_historic_price_horizontal(){
         if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_FILES['file_to_upload'])) {
             $response = ['status' => 0, 'message' => ''];
-            
+
+            // Captura errores fatales que no atrapa el try/catch
+            set_error_handler(function($errno, $errstr, $errfile, $errline) {
+                throw new \ErrorException($errstr, $errno, $errno, $errfile, $errline);
+            });
+
             try {
                 $file = $_FILES['file_to_upload']['tmp_name'];
                 $spreadsheet = IOFactory::load($file);
@@ -1128,10 +1133,11 @@ class Direction{
                 $columnas_fechas = [];
                 for ($col = 7; $col <= $highestColumnIndex; $col += 4) {
                     $columnLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($col);
-                    $fecha_valor = $sheet->getCell("{$columnLetter}1")->getValue();
-                    
+                    $cell = $sheet->getCell("{$columnLetter}1");
+                    $fecha_valor = $cell->getCalculatedValue();
+
                     if (!empty($fecha_valor)) {
-                        if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($sheet->getCell("{$columnLetter}1"))) {
+                        if (\PhpOffice\PhpSpreadsheet\Shared\Date::isDateTime($cell) && is_numeric($fecha_valor)) {
                             $fecha = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($fecha_valor)->format('Y-m-d');
                         } else {
                             $fecha = date('Y-m-d', strtotime($fecha_valor));
@@ -1211,10 +1217,21 @@ class Direction{
                     throw new Exception("Error al guardar en base de datos");
                 }
                 
-            } catch (Exception $e) {
-                $response = ['status' => 0, 'message' => "✗ Error: " . $e->getMessage()];
+            } catch (\Throwable $e) {
+                $response = [
+                    'status' => 0,
+                    'message' => "✗ Error: " . $e->getMessage(),
+                    'debug'   => [
+                        'type'  => get_class($e),
+                        'file'  => $e->getFile(),
+                        'line'  => $e->getLine(),
+                        'trace' => substr($e->getTraceAsString(), 0, 800),
+                    ]
+                ];
+            } finally {
+                restore_error_handler();
             }
-            
+
             echo json_encode($response);
         }
     }

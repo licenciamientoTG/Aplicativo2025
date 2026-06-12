@@ -212,32 +212,26 @@ class HistoricoPreciosModel extends Model{
     }
 
     public function insert_prices_with_transaction(array $priceInserts) : bool {
+        $pdo = $this->sql->getConnection();
         try {
-            $this->sql->beginTransaction(); // Inicia la transacción
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare('INSERT INTO [TGV2].dbo.Historico_precios
+                                   (id_grupo, id_productos, Id_plaza, precios, fecha_precio)
+                                   VALUES (?, ?, ?, ?, ?)');
             foreach ($priceInserts as $insert) {
-                $query = 'INSERT INTO [TGV2].dbo.Historico_precios
-                          (id_grupo, id_productos, Id_plaza, precios, fecha_precio)
-                          VALUES (?, ?, ?, ?, ?)';
-                $params = [
+                $stmt->execute([
                     $insert['id_grupo'],
                     $insert['id_productos'],
                     $insert['Id_plaza'],
                     $insert['precios'],
                     $insert['fecha']
-                ];
-                // Ejecutar la consulta dentro de la transacción
-                if (!$this->sql->insert($query, $params)) {
-                    // Si algo falla, realizar un rollback y devolver false
-                    $this->sql->rollBack();
-                    return false;
-                }
+                ]);
             }
-            $this->sql->commit();// Confirmar la transacción
+            $pdo->commit();
             return true;
-        } catch (Exception $e) {
-            // En caso de error, realizar un rollback
-            $this->sql->rollBack();
-            echo "Error: " . $e->getMessage();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            error_log("insert_prices_with_transaction error: " . $e->getMessage());
             return false;
         }
     }

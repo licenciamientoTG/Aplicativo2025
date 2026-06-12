@@ -8615,13 +8615,13 @@ public function stamped_invoices_detail(): void
             $mail->SMTPAuth   = true;
             $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port       = 465;
-            $mail->Username   = 'no-reply@totalgas.com';
-            $mail->Password   = 'sysdhepknmlkigbs';
+            $mail->Username   = 'totalgasdesarrollo@gmail.com';
+            $mail->Password   = 'bdppgxrwzhmyfrmf';
             $mail->CharSet    = 'UTF-8';
             $mail->Encoding   = 'base64';
             $mail->isHTML(true);
             $mail->setLanguage('es');
-            $mail->setFrom('no-reply@totalgas.com', 'TotalGas | Bug Reporter');
+            $mail->setFrom('totalgasdesarrollo@gmail.com', 'TotalGas | Bug Reporter');
             $mail->addAddress('daniel.ramirez@totalgas.com');
             $mail->Subject = "Bug Report: {$titulo}";
             $mail->Body    = $body;

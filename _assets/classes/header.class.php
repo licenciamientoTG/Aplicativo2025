@@ -40,6 +40,7 @@ define('TEMPLATE', REL_ASSETS.'template'.DS);
 define('VIEWS', ROOT.'views'.DS);
 
 // Controlador por defecto / Metodo por defecto / Controlador de error por defecto
+define('CRON_SECRET', 'TG_CRON_2024');
 define('DEFAULT_CONTROLLER', 'home');
 define('DEFAULT_METHOD', 'index');
 define('DEFAULT_ERROR_CONTROLLER', 'error');

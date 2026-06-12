@@ -69,11 +69,8 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
         $mail->Port       = 465;
 
-       // $mail->Username   = 'totalgasdesarrollo@gmail.com';
-       // $mail->Password   = 'bdppgxrwzhmyfrmf';
-
-        $mail->Username   = 'no-reply@totalgas.com';
-        $mail->Password   = 'sysdhepknmlkigbs';
+        $mail->Username   = 'totalgasdesarrollo@gmail.com';
+        $mail->Password   = 'bdppgxrwzhmyfrmf';
 
         // --- Codificación y HTML ---
         $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
@@ -131,8 +128,8 @@ function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
         $mail->Port       = 465;
 
-        $mail->Username   = 'no-reply@totalgas.com';
-        $mail->Password   = 'sysdhepknmlkigbs';
+        $mail->Username   = 'totalgasdesarrollo@gmail.com';
+        $mail->Password   = 'bdppgxrwzhmyfrmf';
 
         // --- Codificación y HTML ---
         $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
@@ -169,11 +166,7 @@ function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, 
         return $mail->send();
 
     } catch (Exception $e) {
-
-        var_dump($mail->ErrorInfo);var_dump($e);
-        die();
-        // Si estás devolviendo JSON desde el endpoint, no hagas echo aquí.
-        error_log("Mailer Error: {$mail->ErrorInfo}");
+        error_log("Mailer Error (send_mail2): {$mail->ErrorInfo}");
         return false;
     }
 }

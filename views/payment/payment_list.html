@@ -48,11 +48,6 @@
     .auth-box.bg-info { background-color: #dbeafe !important; color: #2563eb !important; }
     .auth-box.bg-secondary { background-color: #f1f5f9 !important; color: #94a3b8 !important; }
 
-    #collapseAprobacionMasiva { transition: all .3s ease; }
-    .pipeline-card { display: flex; align-items: center; justify-content: space-between; padding: .75rem 1rem; border-radius: .5rem; border: 1px solid; }
-    .pipeline-card.active-level { background: #eff6ff; border-color: #bfdbfe; }
-    .pipeline-card.locked-level { background: #fff; border-color: #e2e8f0; opacity: .7; }
-    .pipeline-icon { width: 2.2rem; height: 2.2rem; border-radius: .4rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
     .table-responsive { padding: 1rem .75rem .75rem; }
     .table tbody tr:hover { background-color: #f8fafc; }
@@ -63,7 +58,18 @@
     .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
     .badge.status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
-    #tabla_facturas_autorizadas .group-header { background-color: #f8fafc !important; font-weight: 700; border-top: 2px solid #e2e8f0; }
+    #tabla_facturas_autorizadas thead th,
+    #tabla_archivos_contabilidad thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
+    #tabla_facturas_autorizadas .group-header { background-color: #f1f5f9 !important; font-weight: 700; border-top: 2px solid #e2e8f0; font-size:.78rem; color:#334155; }
+
+    .resumen-card { border-radius:.6rem; padding:1rem 1.2rem; display:flex; flex-direction:column; gap:.15rem; border:1px solid; height:100%; }
+    .resumen-card .rc-label { font-size:.62rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; display:flex; align-items:center; gap:.35rem; margin-bottom:.1rem; }
+    .resumen-card .rc-amount { font-size:1.15rem; font-weight:700; line-height:1.2; }
+    .resumen-card .rc-sub { font-size:.72rem; margin-top:.1rem; }
+
+    .tab-toolbar { display:flex; flex-direction:column; gap:.75rem; padding:.75rem 1rem; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
+    @media(min-width:576px){ .tab-toolbar { flex-direction:row; justify-content:space-between; align-items:center; } }
+
     .badge-updated { animation: pulse-badge .4s ease; }
     @keyframes pulse-badge { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
     .badge[style*="C9302C"] { background-color: #C9302C !important; }
@@ -71,61 +77,6 @@
     .table-warning { --bs-table-bg: #fffbeb !important; }
 </style>
 
-<!-- PIPELINE DE APROBACIÓN MASIVA -->
-<div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-white border-bottom px-3 py-2 d-flex justify-content-between align-items-center" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#collapseAprobacionMasiva" aria-expanded="false">
-        <span class="d-flex align-items-center gap-2 fw-medium" style="font-size:.85rem;color:#334155;">
-            <i class="fas fa-shield-alt text-warning"></i> Aprobación Masiva de Pagos
-        </span>
-        <i class="fas fa-chevron-down text-muted" style="font-size:.75rem;transition:transform .3s;"></i>
-    </div>
-    <div class="collapse" id="collapseAprobacionMasiva">
-        <div class="card-body p-3">
-            <div class="row g-3">
-
-                <!-- Tesorería -->
-                <div class="col-12 col-sm-6 col-lg-4">
-                    <div class="pipeline-card active-level" id="card-tesoreria">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="pipeline-icon" style="background:#dbeafe;color:#2563eb;"><i class="fas fa-landmark" style="font-size:.9rem;"></i></div>
-                            <div>
-                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Tesorería</p>
-                                <p class="mb-0 text-muted" style="font-size:.72rem;">Aprobación</p>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-column align-items-end gap-1">
-                            <span class="badge fw-bold px-2" style="background:#fbbf24;color:#1c1917;font-size:.72rem;" id="count-tesoreria">0</span>
-                            {% if authorized(68) %}
-                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#2563eb;" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')" id="btn-aprobar-tesoreria" disabled>Aprobar</button>
-                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#64748b;" onclick="abrirModalAutorizarPagoMasivo()">Autorizar Pago</button>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Contabilidad: Crear Archivo -->
-                {% if authorized(70) %}
-                <div class="col-12 col-sm-6 col-lg-4">
-                    <div class="pipeline-card locked-level" id="card-contabilidad">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="pipeline-icon" style="background:#f1f5f9;color:#64748b;"><i class="fas fa-calculator" style="font-size:.9rem;"></i></div>
-                            <div>
-                                <p class="mb-0 fw-semibold text-dark" style="font-size:.85rem;">Contabilidad</p>
-                                <p class="mb-0 text-muted" style="font-size:.72rem;">Archivos</p>
-                            </div>
-                        </div>
-                        <div class="d-flex flex-column align-items-end gap-1">
-                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#64748b;" onclick="abrirModalCrearArchivoContabilidad()">Crear Archivo</button>
-                            <button class="btn btn-link p-0 fw-medium" style="font-size:.72rem;color:#16a34a;" onclick="autoGroupToday()" id="btn-auto-group">Agrupar Hoy</button>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- CARD PRINCIPAL: Tabs + Toolbar + Tabla -->
 <div class="card border-0 shadow-sm">
@@ -135,17 +86,13 @@
         <button class="pl-tab-link active" onclick="plTab(this,'pl-tab-pagos')">
             <i class="fas fa-list"></i> Pagos
         </button>
-        <button class="pl-tab-link" onclick="plTab(this,'pl-tab-anticipos')">
-            <i class="fas fa-hand-holding-usd"></i> Anticipos
-        </button>
+        {# Tab Anticipos oculto — los anticipos aparecen unificados en la tabla de Pagos con badge ANT #}
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-facturas-auth')">
             <i class="fas fa-file-invoice-dollar"></i> Facturas Autorizadas
         </button>
-        {% if authorized(70) %}
         <button class="pl-tab-link" onclick="plTab(this,'pl-tab-archivos'); loadAccountingGroupsTable();" id="tab_archivos_contabilidad_link">
             <i class="fas fa-folder-open"></i> Archivos Contabilidad
         </button>
-        {% endif %}
     </div>
 
     <!-- ===== TAB: PAGOS ===== -->
@@ -171,9 +118,31 @@
                     </button>
                 </div>
             </div>
-            <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
-                <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
-            </a>
+            <div class="d-flex align-items-center gap-2">
+                {% if authorized(66) %}
+                <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
+                    <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
+                </button>
+                {# DEV-ONLY (comentado — descomentar si se necesita)
+                <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
+                    <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
+                </button>
+                /DEV-ONLY #}
+                {% endif %}
+                {% if authorized(68) %}
+                <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Autorizar facturas para ejecución de pago">
+                    <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
+                </button>
+                {% endif %}
+                {% if authorized(66) %}
+                <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                    <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
+                </a>
+                <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#d97706;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                    <i class="fas fa-hand-holding-usd" style="font-size:.75rem;"></i> Nuevo Anticipo
+                </button>
+                {% endif %}
+            </div>
         </div>
 
         <!-- Tabla -->
@@ -197,6 +166,7 @@
                         <th class="text-center">Estado</th>
                         <th class="text-center">Autorizaciones</th>
                         <th>Comentario</th>
+                        <th></th>
                         <th class="text-center">Acciones</th>
                         {% if authorized(999) %}<th></th>{% endif %}
                     </tr>
@@ -255,42 +225,58 @@
 
     <!-- ===== TAB: FACTURAS AUTORIZADAS ===== -->
     <div id="pl-tab-facturas-auth" class="pl-tab-content">
-        <div class="p-3">
 
-            <!-- Resumen por banco -->
-            <div class="row g-3 mb-3">
-                <div class="col-12 col-md-4">
-                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#fef2f2;border:1px solid #fecaca;">
-                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#dc2626;letter-spacing:.06em;"><i class="fas fa-university me-1"></i>Banorte</p>
-                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#b91c1c;" id="totalBanorte">$0.00</p>
-                        <small style="color:#ef4444;" id="facturasBanorte">0 facturas</small>
-                    </div>
-                </div>
-                <div class="col-12 col-md-4">
-                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#fef2f2;border:1px solid #fecaca;">
-                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#dc2626;letter-spacing:.06em;"><i class="fas fa-university me-1"></i>Santander</p>
-                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#b91c1c;" id="totalSantander">$0.00</p>
-                        <small style="color:#ef4444;" id="facturasSantander">0 facturas</small>
-                    </div>
-                </div>
-                <div class="col-12 col-md-4">
-                    <div class="d-flex flex-column justify-content-center p-3 rounded-3" style="background:#eff6ff;border:1px solid #bfdbfe;">
-                        <p class="mb-1 text-uppercase fw-semibold" style="font-size:.65rem;color:#2563eb;letter-spacing:.06em;"><i class="fas fa-check-double me-1"></i>Seleccionadas</p>
-                        <p class="mb-0 fw-bold" style="font-size:1.1rem;color:#1d4ed8;" id="totalSeleccionadas">$0.00</p>
-                        <small style="color:#3b82f6;" id="facturasSeleccionadas">0 facturas</small>
-                    </div>
+        <!-- Cards resumen -->
+        <div class="row g-0 border-bottom">
+            <div class="col-12 col-md-4 border-end p-3">
+                <div class="resumen-card" style="background:#fdf4f4;border-color:#fca5a5;">
+                    <div class="rc-label" style="color:#b91c1c;"><i class="fas fa-piggy-bank"></i> Banorte</div>
+                    <div class="rc-amount" style="color:#991b1b;" id="totalBanorte">$0.00</div>
+                    <div class="rc-sub" style="color:#dc2626;" id="facturasBanorte">0 facturas</div>
                 </div>
             </div>
-
-            <!-- Filtros y acciones (se mantiene igual, solo el card wrapper cambia) -->
-            <div id="cabecera_pagos_wrapper">
-
+            <div class="col-12 col-md-4 border-end p-3">
+                <div class="resumen-card" style="background:#fff1f0;border-color:#fda4a4;">
+                    <div class="rc-label" style="color:#ec1c24;"><i class="fas fa-landmark"></i> Santander</div>
+                    <div class="rc-amount" style="color:#c81e1e;" id="totalSantander">$0.00</div>
+                    <div class="rc-sub" style="color:#ec1c24;" id="facturasSantander">0 facturas</div>
+                </div>
             </div>
-
+            <div class="col-12 col-md-4 p-3">
+                <div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;">
+                    <div class="rc-label" style="color:#1d4ed8;"><i class="fas fa-check-square"></i> Seleccionadas</div>
+                    <div class="rc-amount" style="color:#1e40af;" id="totalSeleccionadas">$0.00</div>
+                    <div class="rc-sub" style="color:#3b82f6;" id="facturasSeleccionadas">listas para pagar</div>
+                </div>
+            </div>
         </div>
 
-        <!-- La tabla de facturas autorizadas se renderiza aquí por JS -->
-        <div class="table-responsive">
+        <!-- Toolbar -->
+        <div class="tab-toolbar">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <select id="filtroBanco" class="form-select form-select-sm" style="width:auto;border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;" onchange="aplicarFiltros()">
+                    <option value="all">Todos los bancos</option>
+                    <option value="Banorte">Banorte</option>
+                    <option value="Santander">Santander</option>
+                </select>
+                <select id="filtroEmpresa" class="form-select form-select-sm" style="width:auto;border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;" onchange="aplicarFiltros()">
+                    <option value="all">Todas las Empresas</option>
+                </select>
+            </div>
+            {% if authorized(68) %}
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" onclick="validarYGenerarLayout()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Generar archivo de layout bancario con los seleccionados">
+                    <i class="fas fa-file-alt" style="font-size:.75rem;"></i> Generar Layout
+                </button>
+                <button type="button" onclick="abrirModalRegistroPago()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Registrar pago ejecutado en el banco">
+                    <i class="fas fa-check-circle" style="font-size:.75rem;"></i> Registrar Pago
+                </button>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Tabla -->
+        <div class="table-responsive" style="padding:.75rem;">
             <table id="tabla_facturas_autorizadas" class="table table-hover table-sm w-100 mb-0">
                 <thead>
                     <tr>
@@ -300,10 +286,13 @@
                         <th>Proveedor</th>
                         <th class="text-center">Facturas / Tipo</th>
                         <th class="text-end">Monto Total</th>
-                        <th class="text-end">Saldo</th>
+                        <th class="text-end" title="Notas de Crédito" style="color:#16a34a;">NC</th>
+                        <th class="text-end" title="Notas de Cargo" style="color:#dc2626;">ND</th>
+                        <th class="text-end">Saldo Neto</th>
                         <th>Autorizado Por</th>
                         <th>Fecha Auth.</th>
                         <th>Vencimiento / Folio</th>
+                        <th>Requisición</th>
                         <th class="text-center">Acciones</th>
                     </tr>
                 </thead>
@@ -312,17 +301,30 @@
         </div>
     </div>
 
-    {% if authorized(70) %}
     <!-- ===== TAB: ARCHIVOS CONTABILIDAD ===== -->
     <div id="pl-tab-archivos" class="pl-tab-content">
-        <div class="table-responsive">
+
+        <!-- Toolbar -->
+        <div class="tab-toolbar">
+            <div>
+                <p class="mb-0 fw-semibold" style="font-size:.85rem;color:#1e293b;">Grupos de Contabilidad</p>
+                <p class="mb-0" style="font-size:.72rem;color:#64748b;">Requisiciones agrupadas por empresa para archivo contable</p>
+            </div>
+            {# Botón "Agrupar Hoy" deshabilitado temporalmente — se activará cuando se defina el flujo manual #}
+            {# <button type="button" onclick="autoGroupToday()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar automáticamente las requisiciones de hoy">
+                <i class="fas fa-layer-group" style="font-size:.75rem;"></i> Agrupar Hoy
+            </button> #}
+        </div>
+
+        <!-- Tabla -->
+        <div class="table-responsive" style="padding:.75rem;">
             <table id="tabla_archivos_contabilidad" class="table table-hover table-sm w-100 mb-0">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>ID Contable</th>
                         <th>Razón Social</th>
                         <th>Empresa</th>
-                        <th class="text-end">Requisiciones</th>
+                        <th class="text-center">Requisiciones</th>
                         <th class="text-end">Monto Total</th>
                         <th>Creado Por</th>
                         <th>Fecha</th>
@@ -333,7 +335,6 @@
             </table>
         </div>
     </div>
-    {% endif %}
 
 </div>
 
@@ -568,14 +569,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title">
                         <i class="fas fa-check-circle"></i>
-                        Autorizar Pago de Facturas - Todos los Pagos Autorizados
+                        Autorizar Pago de Facturas
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info" style="width: 60%">
                         <i class="fas fa-info-circle" style="margin: 5px"></i>
-                        Seleccione las facturas que autoriza para ejecución de pago. Se muestran todas las facturas de pagos ya autorizados por los 3 niveles.
+                        Seleccione las facturas que autoriza para ejecución de pago. Se muestran las facturas pendientes de pagos agrupados en contabilidad; al autorizarlas queda registrada la aprobación de Tesorería.
                     </div>
 
                     <!-- Resumen -->
@@ -630,10 +631,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
 
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="btnToggleAllGroups" onclick="toggleAllGroupsMasivo()">
-                            <i class="fas fa-expand-alt"></i> Expandir Todos
-                        </button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px; flex-wrap: wrap;">
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="btnToggleAllGroups" onclick="toggleAllGroupsMasivo()">
+                                <i class="fas fa-expand-alt"></i> Expandir Todos
+                            </button>
+                            <div class="position-relative" style="min-width:240px;">
+                                <i class="fas fa-search position-absolute" style="left:.65rem;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.75rem;pointer-events:none;"></i>
+                                <input type="text" id="buscadorPagoMasivo" class="form-control form-control-sm"
+                                    placeholder="Buscar proveedor, empresa, folio..."
+                                    style="padding-left:2rem;border-radius:.4rem;"
+                                    oninput="filtrarTablaPagoMasivo(this.value)">
+                            </div>
+                        </div>
                         <div style="display: flex; gap: 10px;">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                                 <i class="fas fa-times"></i> Cancelar
@@ -867,11 +877,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        cargarContadoresPendientes();
-
-        // Actualizar cada 2 minutos
-        // setInterval(cargarContadoresPendientes, 120000);
-
         // Restaurar botón de confirmación al cerrar el modal
         $('#modalConfirmacionAprobacion').on('hidden.bs.modal', function () {
             $('#btnSiAprobarAhora').prop('disabled', false).html('<i class="fas fa-check"></i> Sí, Aprobar Ahora');
@@ -926,24 +931,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Actualizar contadores con animación puntual
                     function updateBadgeCount(id, value) {
                         var $el = $(id);
+                        if (!$el.length) return;
                         $el.text(value || 0);
                         $el.removeClass('badge-updated');
-                        void $el[0].offsetWidth; // reflow para reiniciar animación
+                        void $el[0].offsetWidth;
                         $el.addClass('badge-updated');
                         setTimeout(function() { $el.removeClass('badge-updated'); }, 400);
                     }
                     updateBadgeCount('#count-tesoreria', response.tesoreria);
 
-                    // Habilitar/deshabilitar botones según permisos del usuario
-                    const userPermissions = response.user_permissions || [];
-
-                    // Tesorería (68)
-                    if (userPermissions.includes(68)) {
-                        $('#btn-aprobar-tesoreria').prop('disabled', response.tesoreria === 0);
-                        $('#card-tesoreria').removeClass('opacity-50');
-                    } else {
-                        $('#card-tesoreria').addClass('opacity-50');
-                    }
                 }
             },
             error: function () {
@@ -1266,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (response.resumen) {
                         setTimeout(() => {
-                            swal.fire({
+                            Swal.fire({
                                 icon: 'success',
                                 title: 'Aprobación Completada',
                                 text: `Pagos aprobados: ${response.resumen.aprobados}\nMonto total: $${response.resumen.monto_total}\nID de grupo: ${response.resumen.bulk_id}`,
