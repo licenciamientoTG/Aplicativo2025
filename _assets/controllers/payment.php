@@ -1256,6 +1256,7 @@ class Payment
                 $saldo         = (float)$inv['amount'] - $paid_amount;
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
 
+                $esNotaCargo = (int)($inv['is_debit_note'] ?? 0) === 1;
                 $data[] = [
                     'id'                    => $inv['id'],
                     'folio'                 => $inv['folio'],
@@ -1263,10 +1264,10 @@ class Payment
                     'proveedor_nombre'      => $inv['proveedor_nombre'],
                     'estacion_nombre'       => $inv['estacion_nombre'],
                     'amount'                => (float)$inv['amount'],
-                    'saldo'                 => $saldo,
-                    'total_notas_credito'   => (float)($inv['total_notas_credito'] ?? 0),
-                    'total_notas_cargo'     => (float)($inv['total_notas_cargo'] ?? 0),
-                    'saldo_neto'            => $saldo + $neto_notas,
+                    'saldo'                 => $esNotaCargo ? 0 : $saldo,
+                    'total_notas_credito'   => $esNotaCargo ? 0 : (float)($inv['total_notas_credito'] ?? 0),
+                    'total_notas_cargo'     => $esNotaCargo ? 0 : (float)($inv['total_notas_cargo'] ?? 0),
+                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas),
                     'status'                => (int)$inv['status'],
                     'payment_authorized'    => (int)($inv['payment_authorized'] ?? 0),
                     'authorized_amount'     => (float)($inv['authorized_amount'] ?? 0),
@@ -1275,6 +1276,9 @@ class Payment
                     'fr_id'                 => $frId,
                     'nombre_archivo'        => $nombreArchivo,
                     'tiene_archivo'         => !empty($frId),
+                    'is_debit_note'         => (int)($inv['is_debit_note'] ?? 0),
+                    'nota_id'               => $inv['nota_id'] ?? null,
+                    'nota_doc_path'         => !empty($inv['nota_id']) ? true : null,
                 ];
             }
 
@@ -1590,6 +1594,41 @@ class Payment
     }
 
 
+    /**
+     * Aprobación implícita de Tesorería: al autorizar facturas de un pago
+     * Pendiente se registra la autorización (auditoría) y se sube el status,
+     * sin requerir el paso previo de "Aprobar".
+     */
+    private function ensure_tesoreria_approval($payment_id, $current_status, $user_id)
+    {
+        if ($current_status == PaymentRequestsModel::STATUS_AUTHORIZED) {
+            return ['success' => true];
+        }
+
+        if ($current_status != PaymentRequestsModel::STATUS_PENDING) {
+            return [
+                'success' => false,
+                'message' => 'El pago no puede autorizarse, su estado es: ' . PaymentRequestsModel::getStatusText($current_status)
+            ];
+        }
+
+        if (!$this->paymentRequestAuthorizationsModel->is_authorized_by_permission($payment_id, PaymentRequestAuthorizationsModel::PERM_TESORERIA)) {
+            $auth_id = $this->paymentRequestAuthorizationsModel->insert_authorization(
+                $payment_id,
+                $user_id,
+                PaymentRequestAuthorizationsModel::PERM_TESORERIA
+            );
+            if (!$auth_id) {
+                return ['success' => false, 'message' => 'Error al registrar la autorización de Tesorería'];
+            }
+        }
+
+        $this->PaymentRequestsModel->update_request_status($payment_id, PaymentRequestsModel::STATUS_AUTHORIZED);
+
+        return ['success' => true];
+    }
+
+
     function authorize_payment_execution()
     {
         header('Content-Type: application/json');
@@ -1630,17 +1669,17 @@ class Payment
                 return;
             }
 
-            if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                json_output([
-                    'success' => false,
-                    'message' => 'El pago debe estar autorizado por Tesorería antes de autorizar facturas individuales'
-                ]);
-                return;
-            }
-
             // Verificar que el usuario tenga permiso de Tesorería (68)
             if (!authorized(68)) {
                 json_output(['success' => false, 'message' => 'Solo Tesorería puede autorizar facturas para ejecución de pago']);
+                return;
+            }
+
+            // Aprobación implícita: si el pago sigue Pendiente, se registra la
+            // autorización de Tesorería y se sube el status en este mismo paso
+            $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+            if (!$approval['success']) {
+                json_output(['success' => false, 'message' => $approval['message']]);
                 return;
             }
 
@@ -1794,8 +1833,10 @@ class Payment
                     continue;
                 }
 
-                if ($payment['status'] != PaymentRequestsModel::STATUS_AUTHORIZED) {
-                    $todos_errores[] = "Pago #{$payment_id}: no está autorizado";
+                // Aprobación implícita de Tesorería si el pago sigue Pendiente
+                $approval = $this->ensure_tesoreria_approval($payment_id, $payment['status'], $user_id);
+                if (!$approval['success']) {
+                    $todos_errores[] = "Pago #{$payment_id}: " . $approval['message'];
                     continue;
                 }
 
@@ -4019,6 +4060,39 @@ class Payment
             http_response_code(404);
             echo "Archivo no encontrado";
             exit;
+        }
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . basename($fullPath) . '"');
+        header('Content-Length: ' . filesize($fullPath));
+        readfile($fullPath);
+        exit;
+    }
+
+
+    /**
+     * Sirve el PDF del primer documento de una nota de cargo dado su nota_id.
+     * Usado desde el child row de payment_list para filas is_debit_note=1.
+     */
+    public function view_note_doc($nota_id)
+    {
+        $nota_id = (int)$nota_id;
+        if (!$nota_id) { http_response_code(400); echo "nota_id requerido"; exit; }
+
+        $docs = $this->InvoiceCreditDebitNotesDocModel->getDocumentsByNoteId($nota_id);
+        if (empty($docs) || empty($docs[0]['file_path'])) {
+            http_response_code(404); echo "Sin documento"; exit;
+        }
+
+        $doc      = $docs[0];
+        $fullPath = realpath(__DIR__ . '/../' . $doc['file_path']);
+        $base     = realpath(__DIR__ . '/../uploads/credit_debit_notes');
+
+        if ($fullPath === false || $base === false || strpos($fullPath, $base) !== 0) {
+            http_response_code(403); echo "Acceso denegado"; exit;
+        }
+        if (!file_exists($fullPath) || !is_readable($fullPath)) {
+            http_response_code(404); echo "Archivo no encontrado"; exit;
         }
 
         header('Content-Type: application/pdf');

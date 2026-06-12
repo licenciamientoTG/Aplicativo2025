@@ -378,45 +378,15 @@
 		<div id="tab-auth" class="pd-tab-content">
 			<div class="px-3 pt-3 pb-2">
 
-				{# ── PASO 1: Aprobación Tesorería ── #}
-				{% set tes_done = authorization_status.tesoreria %}
-				<div class="auth-step">
-					<div class="auth-step-icon" style="background:{% if tes_done %}#3a7d60{% elseif payment.status == 0 %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if tes_done %}#3a7d60{% elseif payment.status == 0 %}#343a40{% else %}#dee2e6{% endif %};color:{% if tes_done %}#fff{% else %}#6c757d{% endif %};">
-						<i class="fas {% if tes_done %}fa-check{% else %}fa-money-check-alt{% endif %}"></i>
-					</div>
-					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
-						<div>
-							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Paso 1 — Aprobación Tesorería</p>
-							{% if tes_done and auth_info.tesoreria is defined %}
-								<small class="text-muted">{{ auth_info.tesoreria.autorizador_nombre }} &middot; {{ auth_info.tesoreria.authorization_date|date('d/m/Y H:i') }}</small>
-							{% elseif payment.status == 0 %}
-								<small class="text-muted">Pendiente de aprobación</small>
-							{% else %}
-								<small class="text-muted">—</small>
-							{% endif %}
-						</div>
-						<div>
-							{% if tes_done %}
-								<span class="badge" style="background:#d1e7dd;color:#0a3622;"><i class="fas fa-check me-1"></i>Aprobado</span>
-							{% elseif payment.status == 0 and authorized(68) %}
-								<button class="btn btn-sm btn-dark" onclick="openAuthModal(68, 'Tesorería')"><i class="fas fa-check me-1"></i>Aprobar</button>
-							{% elseif payment.status == 0 %}
-								<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando Tesorería</span>
-							{% endif %}
-						</div>
-					</div>
-				</div>
-				<div style="width:2px;height:1.5rem;background:#e9ecef;margin-left:1.05rem;"></div>
-
-				{# ── PASO 2: Autorizar facturas para pago ── #}
-				{% set puede_autorizar_facturas = tes_done and payment.status == 1 %}
+				{# ── PASO 1: Autorizar facturas para pago (incluye aprobación implícita de Tesorería) ── #}
+				{% set puede_autorizar_facturas = payment.status == 0 or payment.status == 1 %}
 				<div class="auth-step">
 					<div class="auth-step-icon" style="background:{% if facturas_autorizadas == total_facturas and total_facturas > 0 %}#3a7d60{% elseif puede_autorizar_facturas %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if facturas_autorizadas == total_facturas and total_facturas > 0 %}#3a7d60{% elseif puede_autorizar_facturas %}#343a40{% else %}#dee2e6{% endif %};color:{% if facturas_autorizadas == total_facturas and total_facturas > 0 %}#fff{% else %}#6c757d{% endif %};">
 						<i class="fas {% if facturas_autorizadas == total_facturas and total_facturas > 0 %}fa-check{% else %}fa-file-invoice-dollar{% endif %}"></i>
 					</div>
 					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
 						<div>
-							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Paso 2 — Autorizar facturas para pago</p>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Paso 1 — Autorizar facturas para pago</p>
 							<small class="text-muted">{{ facturas_autorizadas }} de {{ total_facturas }} facturas autorizadas</small>
 						</div>
 						<div>
@@ -427,14 +397,14 @@
 							{% elseif puede_autorizar_facturas %}
 								<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando Tesorería</span>
 							{% else %}
-								<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Requiere paso 1</span>
+								<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>No disponible</span>
 							{% endif %}
 						</div>
 					</div>
 				</div>
 				<div style="width:2px;height:1.5rem;background:#e9ecef;margin-left:1.05rem;"></div>
 
-				{# ── PASO 3: Ejecutar pago ── #}
+				{# ── PASO 2: Ejecutar pago ── #}
 				{% set puede_pagar = facturas_autorizadas > 0 and payment.status == 1 %}
 				<div class="auth-step">
 					<div class="auth-step-icon" style="background:{% if payment.status == 2 %}#3a7d60{% elseif puede_pagar %}#e9ecef{% else %}#f8f9fa{% endif %};border:2px solid {% if payment.status == 2 %}#3a7d60{% elseif puede_pagar %}#343a40{% else %}#dee2e6{% endif %};color:{% if payment.status == 2 %}#fff{% else %}#6c757d{% endif %};">
@@ -442,7 +412,7 @@
 					</div>
 					<div class="flex-grow-1 d-flex justify-content-between align-items-center">
 						<div>
-							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Paso 3 — Ejecutar pago</p>
+							<p class="mb-0 fw-semibold" style="font-size:.9rem;">Paso 2 — Ejecutar pago</p>
 							{% if payment.status == 2 %}
 								<small class="text-muted">Pago ejecutado</small>
 							{% elseif puede_pagar %}
@@ -459,7 +429,7 @@
 							{% elseif puede_pagar %}
 								<span class="badge bg-secondary"><i class="fas fa-clock me-1"></i>Esperando Tesorería</span>
 							{% else %}
-								<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Requiere paso 2</span>
+								<span class="badge bg-light text-muted border"><i class="fas fa-lock me-1"></i>Requiere paso 1</span>
 							{% endif %}
 						</div>
 					</div>
@@ -671,48 +641,6 @@
 	</div>
 
 
-
-	<div class="modal fade" id="authModal" tabindex="-1">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title"><i class="fas fa-shield-alt"></i>Autorizar Pago</h5>
-					<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-				</div>
-				<div class="modal-body">
-					<div class="alert alert-info" style="display: flex; align-items: center; flex-direction: column">
-						<i class="fas fa-info-circle"></i>
-						<strong>Importante:</strong>
-						Al autorizar este pago, confirmas que has revisado:
-						<ul class="mb-0 mt-2">
-							<li>Las facturas incluidas son correctas</li>
-							<li>Los montos están verificados</li>
-							<li>La documentación está completa</li>
-						</ul>
-					</div>
-
-					<div class="text-center my-3">
-						<h6>Autorizando como:</h6>
-						<h4 class="text-primary" id="modalDepartamento"></h4>
-					</div>
-
-					<p class="text-center mb-0">
-						<strong>¿Confirmas la autorización de este pago?</strong>
-					</p>
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-						<i class="fas fa-times"></i>
-						Cancelar
-					</button>
-					<button type="button" class="btn btn-success" id="btnConfirmAuth" onclick="confirmAuthorization()">
-						<i class="fas fa-check"></i>
-						Confirmar Autorización
-					</button>
-				</div>
-			</div>
-		</div>
-	</div>
 
 	<!-- Modal de Autorizar Pago -->
 	<div class="modal fade" id="modalAutorizarPago" tabindex="-1">

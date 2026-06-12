@@ -53,33 +53,41 @@ class PaymentRequestsModel extends Model
 
             // 2. Insertar facturas asociadas directamente
             $query2 = '
-                INSERT INTO [TG].[dbo].[payment_request_invoices] 
-                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date,uuid)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO [TG].[dbo].[payment_request_invoices]
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date, uuid, is_debit_note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ';
 
             foreach ($documents as $doc) {
-                $folio = $doc['nro'] ?? null;
+                $folio          = $doc['nro'] ?? null;
                 $invoice_number = $doc['Factura'] ?? null;
-                $codgas = $doc['codgas'] ?? null;
-                $amount = $doc['total_fac'] ?? 0;
-                $expiration_date = $doc['fechaVto'] ?? null; // fechaVto ya viene resuelto como fecha_vencimiento_credito desde el controlador
-                $status = self::STATUS_PENDING; // 0
-                $uuid = $doc['satuid'] ?? null;
+                $codgas         = $doc['codgas'] ?? null;
+                $amount         = $doc['total_fac'] ?? 0;
+                $expiration_date = $doc['fechaVto'] ?? null;
+                $status         = self::STATUS_PENDING;
+                $uuid           = $doc['satuid'] ?? null;
 
-                $params = [
-                    $payment_id,
-                    $folio,
-                    $invoice_number,
-                    $codgas,
-                    $amount,
-                    $status,
-                    $expiration_date,
-                    $uuid
-                ];
-
-                if (!$this->sql->insert($query2, $params)) {
+                if (!$this->sql->insert($query2, [
+                    $payment_id, $folio, $invoice_number, $codgas,
+                    $amount, $status, $expiration_date, $uuid, 0
+                ])) {
                     throw new Exception('Error al insertar factura');
+                }
+            }
+
+            // 2b. Insertar notas de cargo independientes (DEBIT sin invoice_temp_key) como filas de pago
+            foreach ($pending_notes as $note) {
+                if (($note['note_type'] ?? '') !== 'DEBIT') continue;
+                if (($note['invoice_temp_key'] ?? null) !== null) continue;
+
+                $note_number = $note['note_number'] ?? ('ND-' . $note['credit_note_id']);
+                $amount      = (float)($note['applied_amount'] ?? 0);
+
+                if (!$this->sql->insert($query2, [
+                    $payment_id, $note_number, $note_number, null,
+                    $amount, self::STATUS_PENDING, null, null, 1
+                ])) {
+                    throw new Exception('Error al insertar nota de cargo como factura');
                 }
             }
 
@@ -114,7 +122,7 @@ class PaymentRequestsModel extends Model
                     ]);
                 }
 
-                // Actualizar totales de notas en el pago
+                // Actualizar totales de notas y monto_total en el pago
                 $totals_query = "
                     UPDATE [TG].[dbo].[payment_requests]
                     SET total_notas_credito = (
@@ -128,9 +136,14 @@ class PaymentRequestsModel extends Model
                         FROM [tg].[dbo].[credit_note_applications] a
                         INNER JOIN [tg].[dbo].[invoice_credit_debit_notes] n ON a.credit_note_id = n.id
                         WHERE a.payment_request_id = ? AND a.status = 1 AND n.note_type = 'DEBIT'
+                    ),
+                    monto_total = (
+                        SELECT ISNULL(SUM(pri.amount), 0)
+                        FROM [TG].[dbo].[payment_request_invoices] pri
+                        WHERE pri.payment_request_id = ?
                     )
                     WHERE id = ?";
-                $this->sql->update($totals_query, [$payment_id, $payment_id, $payment_id]);
+                $this->sql->update($totals_query, [$payment_id, $payment_id, $payment_id, $payment_id]);
             }
 
             // 4. Commit
@@ -259,7 +272,10 @@ class PaymentRequestsModel extends Model
                 -- Notas de crédito y cargo
                 ISNULL(t1.total_notas_credito, 0) AS total_notas_credito,
                 ISNULL(t1.total_notas_cargo, 0)   AS total_notas_cargo,
-                -- Indicador PDF: 'complete' si todas las facturas tienen PDF, 'missing' si falta alguna, 'no_invoices' si no hay
+                -- Indicador PDF:
+                -- 'complete' = todas las facturas normales tienen PDF (notas de cargo cuentan como OK)
+                -- 'missing'  = al menos una factura normal sin PDF
+                -- 'no_invoices' = sin filas en payment_request_invoices
                 CASE
                     WHEN ISNULL(t2.total_invoices, 0) = 0 THEN 'no_invoices'
                     WHEN EXISTS (
@@ -267,7 +283,9 @@ class PaymentRequestsModel extends Model
                         LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
                             ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
                             AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
-                        WHERE pri.payment_request_id = t1.id AND fr.UUID IS NULL
+                        WHERE pri.payment_request_id = t1.id
+                          AND pri.is_debit_note = 0
+                          AND fr.UUID IS NULL
                     ) THEN 'missing'
                     ELSE 'complete'
                 END AS pdf_status,
@@ -375,13 +393,15 @@ class PaymentRequestsModel extends Model
             WHERE t1.tipo IN (0)
               AND t1.status = " . self::STATUS_PENDING . "
               AND ISNULL(t2.total_invoices, 0) > 0
-              -- Que NO exista ninguna factura sin archivo (todas con PDF => dot verde)
+              -- Que NO exista ninguna factura normal sin archivo (notas de cargo is_debit_note=1 se omiten)
               AND NOT EXISTS (
                     SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
                     LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
                         ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
                         AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
-                    WHERE pri.payment_request_id = t1.id AND fr.UUID IS NULL
+                    WHERE pri.payment_request_id = t1.id
+                      AND pri.is_debit_note = 0
+                      AND fr.UUID IS NULL
               )
             ORDER BY t1.request_date ASC";
 

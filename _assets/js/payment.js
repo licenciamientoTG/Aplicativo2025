@@ -1219,7 +1219,15 @@ function loadPaymentList() {
 
   paymentListTable = $("#payment_list_table").DataTable({
     responsive: true,
-    dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+    dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rt<"d-flex justify-content-between align-items-center"<"d-flex align-items-center gap-3"li>p>',
+    pageLength: 50,
+    lengthMenu: [
+      [25, 50, 100, 200, -1],
+      [25, 50, 100, 200, "Todos"],
+    ],
+    language: {
+      lengthMenu: "Mostrar _MENU_ registros",
+    },
     buttons: [
       {
         extend: "excel",
@@ -1256,7 +1264,13 @@ function loadPaymentList() {
       { data: "request_date" },
       {
         data: "scheduled_payment_date",
-        render: function (data) {
+        render: function (data, type) {
+          // Para ordenar: convertir dd/mm/yyyy a yyyymmdd numérico
+          if (type === "sort" || type === "type") {
+            if (!data) return 0;
+            var p = data.split("/");
+            return parseInt(p[2] + p[1] + p[0], 10) || 0;
+          }
           if (!data) return '<span class="text-muted">-</span>';
           return '<span class="text-primary fw-semibold">' + data + "</span>";
         },
@@ -1336,7 +1350,7 @@ function loadPaymentList() {
       { data: "pdf_status", name: "pdf_status", visible: false },
       { data: "actions", orderable: false, className: "text-center" },
     ],
-    order: [[0, "desc"]],
+    order: [[2, "desc"]],
     columnDefs: [
       { targets: [5, 6, 7, 8, 9], visible: false },
     ],
@@ -1412,6 +1426,18 @@ function formatPaymentInvoicesChild(invoices) {
     return '<span class="badge bg-secondary">Pendiente</span>';
   }
   function archivoBadge(inv) {
+    if (parseInt(inv.is_debit_note) === 1) {
+      if (inv.nota_doc_path) {
+        return (
+          '<button type="button" class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;" ' +
+          'title="Ver documento nota de cargo" ' +
+          "onclick=\"window.open('/payment/view_note_doc/" + inv.nota_id + "', '_blank')\">" +
+          '<i class="fas fa-file-pdf"></i> Ver ND' +
+          "</button>"
+        );
+      }
+      return '<span class="badge" style="background:#fef9c3;color:#854d0e;" title="Sin documento adjunto para esta nota de cargo"><i class="fas fa-file"></i> Sin doc</span>';
+    }
     if (inv.tiene_archivo && inv.fr_id) {
       return (
         '<button type="button" class="btn btn-sm btn-success" ' +
@@ -1436,25 +1462,57 @@ function formatPaymentInvoicesChild(invoices) {
   }
 
   var rows = invoices.map(function (inv) {
+    var esNotaCargo = parseInt(inv.is_debit_note) === 1;
     var venc = inv.expiration_date ? new Date(inv.expiration_date).toLocaleDateString("es-MX") : '<span class="text-muted">-</span>';
     var autorizada = inv.payment_authorized === 1;
     var nc = parseFloat(inv.total_notas_credito) || 0;
     var nd = parseFloat(inv.total_notas_cargo) || 0;
     var tieneNotas = nc > 0 || nd > 0;
     var saldoNeto = parseFloat(inv.saldo_neto);
+
+    var rowStyle = esNotaCargo
+      ? ' style="background:#f0fdf4;"'
+      : (autorizada ? ' class="table-success"' : "");
+
+    var folioCell;
+    if (esNotaCargo) {
+      folioCell =
+        "<span class='badge' style='background:#dcfce7;color:#166534;font-size:.75rem;'>ND</span> " +
+        "<strong>" + (inv.folio || "") + "</strong>";
+    } else {
+      folioCell =
+        "<strong>" + (inv.folio || "") + "</strong><br>" +
+        "<small class='text-muted'>" + (inv.invoice_number || "") + "</small>";
+    }
+
+    var montoCell;
+    if (esNotaCargo) {
+      montoCell = "<span style='color:#16a34a;font-weight:600;'>+" + fmtMoney(inv.amount) + "</span>";
+    } else {
+      montoCell = fmtMoney(inv.amount);
+    }
+
+    var saldoCell;
+    if (esNotaCargo) {
+      saldoCell = "<span style='color:#16a34a;font-weight:600;'>+" + fmtMoney(inv.amount) + "</span>";
+    } else if (tieneNotas) {
+      saldoCell = "<span style='color:#2563eb;'>" + fmtMoney(saldoNeto) + "</span>";
+    } else {
+      saldoCell = inv.saldo > 0
+        ? "<strong class='text-danger'>" + fmtMoney(inv.saldo) + "</strong>"
+        : "<span class='text-success'>$0.00</span>";
+    }
+
     return (
-      "<tr" + (autorizada ? ' class="table-success"' : "") + ">" +
+      "<tr" + rowStyle + ">" +
         "<td class='text-center'>" + (autorizada ? '<i class="fas fa-check-circle text-success" title="Autorizada"></i>' : '<i class="fas fa-circle fa-sm text-muted"></i>') + "</td>" +
-        "<td><strong>" + (inv.folio || "") + "</strong><br><small class='text-muted'>" + (inv.invoice_number || "") + "</small></td>" +
+        "<td>" + folioCell + "</td>" +
         "<td class='text-truncate' style='max-width:140px;' title='" + (inv.proveedor_nombre || "") + "'>" + (inv.proveedor_nombre || "") + "</td>" +
         "<td>" + (inv.estacion_nombre || "") + "</td>" +
-        "<td class='text-end'>" + fmtMoney(inv.amount) + "</td>" +
-        "<td class='text-end'>" + ncBadge(nc) + "</td>" +
-        "<td class='text-end'>" + ndBadge(nd) + "</td>" +
-        "<td class='text-end fw-bold'>" + (tieneNotas
-          ? "<span style='color:#2563eb;'>" + fmtMoney(saldoNeto) + "</span>"
-          : (inv.saldo > 0 ? "<strong class='text-danger'>" + fmtMoney(inv.saldo) + "</strong>" : "<span class='text-success'>$0.00</span>")
-        ) + "</td>" +
+        "<td class='text-end'>" + montoCell + "</td>" +
+        "<td class='text-end'>" + (esNotaCargo ? '<span class="text-muted" style="font-size:.75rem;">—</span>' : ncBadge(nc)) + "</td>" +
+        "<td class='text-end'>" + (esNotaCargo ? '<span class="text-muted" style="font-size:.75rem;">—</span>' : ndBadge(nd)) + "</td>" +
+        "<td class='text-end fw-bold'>" + saldoCell + "</td>" +
         "<td>" + statusBadge(inv.status) + "</td>" +
         "<td class='text-center'>" + venc + "</td>" +
         "<td class='text-center'>" + archivoBadge(inv) + "</td>" +

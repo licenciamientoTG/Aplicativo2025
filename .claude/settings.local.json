@@ -71,7 +71,12 @@
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64.json\" -Force)",
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/gen_manual.py\" -Force)",
       "Bash(Remove-Item \"C:/Users/alejandro.martinez/Downloads/manual/b64_images.json\" -ErrorAction SilentlyContinue -Force)",
-      "Bash(Write-Host \"Limpio\")"
+      "Bash(Write-Host \"Limpio\")",
+      "Bash(dir *)",
+      "PowerShell(php -l _assets\\\\controllers\\\\payment.php; php -l _assets\\\\models\\\\PaymentRequestInvoicesModel.php)",
+      "PowerShell(php _tmp_dump_xlsx.php)",
+      "PowerShell(python \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\check_notas_credito.py\")",
+      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result.txt; Get-Content _tmp_dump_result.txt -TotalCount 10)"
     ],
     "deny": [],
     "ask": []

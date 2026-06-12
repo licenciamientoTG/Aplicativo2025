@@ -130,10 +130,6 @@
                 /DEV-ONLY #}
                 {% endif %}
                 {% if authorized(68) %}
-                <button type="button" onclick="abrirModalAprobacionMasiva(68, 'Tesorería')" id="btn-aprobar-tesoreria" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#2563eb;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Aprobar requisiciones pendientes">
-                    <i class="fas fa-check" style="font-size:.75rem;"></i> Aprobar
-                    <span id="count-tesoreria" class="badge ms-1 fw-bold" style="background:rgba(255,255,255,.25);color:#fff;font-size:.7rem;">0</span>
-                </button>
                 <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Autorizar facturas para ejecución de pago">
                     <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
                 </button>
@@ -573,14 +569,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title">
                         <i class="fas fa-check-circle"></i>
-                        Autorizar Pago de Facturas - Todos los Pagos Autorizados
+                        Autorizar Pago de Facturas
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="alert alert-info" style="width: 60%">
                         <i class="fas fa-info-circle" style="margin: 5px"></i>
-                        Seleccione las facturas que autoriza para ejecución de pago. Se muestran las facturas de pagos autorizados por Tesorería y agrupados en contabilidad.
+                        Seleccione las facturas que autoriza para ejecución de pago. Se muestran las facturas pendientes de pagos agrupados en contabilidad; al autorizarlas queda registrada la aprobación de Tesorería.
                     </div>
 
                     <!-- Resumen -->
@@ -880,11 +876,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 placement: 'top'
             });
         });
-
-        cargarContadoresPendientes();
-
-        // Actualizar cada 2 minutos
-        // setInterval(cargarContadoresPendientes, 120000);
 
         // Restaurar botón de confirmación al cerrar el modal
         $('#modalConfirmacionAprobacion').on('hidden.bs.modal', function () {
