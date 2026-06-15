@@ -138,6 +138,28 @@ class InvoiceCreditDebitNotesModel extends Model
     }
 
     /**
+     * Busca el proveedor (cod) por RFC en el catálogo de SG12.
+     */
+    public function getProviderByRfc($rfc) : array|false {
+        $query = "SELECT cod, den, rfc FROM SG12.dbo.Proveedores WHERE rfc = ?";
+        $result = $this->sql->select($query, [$rfc]);
+        return $result ? $result[0] : false;
+    }
+
+    /**
+     * Verifica si ya existe una nota activa para un proveedor con ese número.
+     * Sirve para detectar duplicados en la carga masiva.
+     */
+    public function existsNote($providerId, $noteNumber) : bool {
+        $query = "
+            SELECT TOP 1 id
+            FROM [tg].[dbo].invoice_credit_debit_notes
+            WHERE provider_id = ? AND note_number = ? AND status = 1";
+        $result = $this->sql->select($query, [$providerId, $noteNumber]);
+        return !empty($result);
+    }
+
+    /**
      * Obtener saldo disponible de una nota
      */
     public function getAvailableBalance($noteId) : float {

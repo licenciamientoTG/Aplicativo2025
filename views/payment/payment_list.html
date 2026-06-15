@@ -234,28 +234,54 @@
     <!-- ===== TAB: FACTURAS AUTORIZADAS ===== -->
     <div id="pl-tab-facturas-auth" class="pl-tab-content">
 
-        <!-- Cards resumen -->
-        <div class="row g-0 border-bottom">
-            <div class="col-12 col-md-4 border-end p-3">
-                <div class="resumen-card" style="background:#fdf4f4;border-color:#fca5a5;">
-                    <div class="rc-label" style="color:#b91c1c;"><i class="fas fa-piggy-bank"></i> Banorte</div>
-                    <div class="rc-amount" style="color:#991b1b;" id="totalBanorte">$0.00</div>
-                    <div class="rc-sub" style="color:#dc2626;" id="facturasBanorte">0 facturas</div>
+        <!-- ── Card colapsable 1: Totales por banco + seleccionadas ── -->
+        <div class="border-bottom">
+            <button class="d-flex align-items-center justify-content-between w-100 px-3 py-2 bg-transparent border-0 text-start"
+                    style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;"
+                    onclick="toggleResumenCard('resumenBancos','chevronBancos')">
+                <span><i class="fas fa-university me-1" style="color:#94a3b8;"></i> Totales por banco</span>
+                <i class="fas fa-chevron-down" id="chevronBancos" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
+            </button>
+            <div id="resumenBancos" style="display:none;">
+                <div class="row g-0 border-top">
+                    <div class="col-12 col-md-4 border-end p-3">
+                        <div class="resumen-card" style="background:#fdf4f4;border-color:#fca5a5;">
+                            <div class="rc-label" style="color:#b91c1c;"><i class="fas fa-piggy-bank"></i> Banorte</div>
+                            <div class="rc-amount" style="color:#991b1b;" id="totalBanorte">$0.00</div>
+                            <div class="rc-sub" style="color:#dc2626;" id="facturasBanorte">0 grupos</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4 border-end p-3">
+                        <div class="resumen-card" style="background:#fff1f0;border-color:#fda4a4;">
+                            <div class="rc-label" style="color:#ec1c24;"><i class="fas fa-landmark"></i> Santander</div>
+                            <div class="rc-amount" style="color:#c81e1e;" id="totalSantander">$0.00</div>
+                            <div class="rc-sub" style="color:#ec1c24;" id="facturasSantander">0 grupos</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4 p-3">
+                        <div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;">
+                            <div class="rc-label" style="color:#1d4ed8;"><i class="fas fa-check-square"></i> Seleccionadas</div>
+                            <div class="rc-amount" style="color:#1e40af;" id="totalSeleccionadas">$0.00</div>
+                            <div class="rc-sub" style="color:#3b82f6;" id="facturasSeleccionadas">listas para pagar</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="col-12 col-md-4 border-end p-3">
-                <div class="resumen-card" style="background:#fff1f0;border-color:#fda4a4;">
-                    <div class="rc-label" style="color:#ec1c24;"><i class="fas fa-landmark"></i> Santander</div>
-                    <div class="rc-amount" style="color:#c81e1e;" id="totalSantander">$0.00</div>
-                    <div class="rc-sub" style="color:#ec1c24;" id="facturasSantander">0 facturas</div>
-                </div>
-            </div>
-            <div class="col-12 col-md-4 p-3">
-                <div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;">
-                    <div class="rc-label" style="color:#1d4ed8;"><i class="fas fa-check-square"></i> Seleccionadas</div>
-                    <div class="rc-amount" style="color:#1e40af;" id="totalSeleccionadas">$0.00</div>
-                    <div class="rc-sub" style="color:#3b82f6;" id="facturasSeleccionadas">listas para pagar</div>
-                </div>
+        </div>
+
+        <!-- ── Card colapsable 2: Resumen por razón social → proveedor ── -->
+        <div class="border-bottom">
+            <button class="d-flex align-items-center justify-content-between w-100 px-3 py-2 bg-transparent border-0 text-start"
+                    style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;"
+                    onclick="toggleResumenCard('resumenDesglose','chevronDesglose')">
+                <span><i class="fas fa-chart-bar me-1" style="color:#94a3b8;"></i> Resumen</span>
+                <i class="fas fa-chevron-down" id="chevronDesglose" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
+            </button>
+            <div id="resumenDesglose" style="display:none;">
+                <div class="border-top p-3">
+                    <div id="resumenTablaContainer" style="font-size:.82rem;">
+                        <!-- Se rellena por JS -->
+                    </div>
             </div>
         </div>
 

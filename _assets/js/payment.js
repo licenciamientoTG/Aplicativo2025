@@ -4207,6 +4207,10 @@ function loadAuthorizedPendingInvoices() {
       const table = this.api();
       updateBankSummaryFromTable(table);
       updateSelectedSummary();
+      // Actualizar resumen de desglose solo si el card está abierto
+      if (document.getElementById('resumenDesglose') && document.getElementById('resumenDesglose').style.display !== 'none') {
+        updateResumenDesglose(table);
+      }
 
       // Tooltips de los botones de acciones (solo icono)
       $('#tabla_facturas_autorizadas [data-bs-toggle="tooltip"]').each(function () {
@@ -4300,6 +4304,107 @@ function updateSelectedSummary() {
   $("#btnGenerarLayout").prop("disabled", totalSeleccionado === 0);
 }
 
+
+// ── Toggle de cards colapsables ──────────────────────────────────────────────
+function toggleResumenCard(contentId, chevronId) {
+  var el = document.getElementById(contentId);
+  var ch = document.getElementById(chevronId);
+  if (!el) return;
+  var open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (ch) ch.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+  // Si se abre el resumen de desglose y la tabla ya tiene datos, recalcular
+  if (!open && contentId === 'resumenDesglose' && typeof tablaFacturasAutorizadas !== 'undefined' && tablaFacturasAutorizadas) {
+    updateResumenDesglose(tablaFacturasAutorizadas);
+  }
+}
+
+// ── Resumen: por razón social → qué le paga a cada proveedor ─────────────────
+function updateResumenDesglose(table) {
+  if (!table || !table.data().count()) return;
+
+  // estructura: { empresa: { banco, proveedores: { prov: monto }, subtotal } }
+  var grupos = {};
+  var totalGeneral = 0;
+
+  table.rows({ search: 'applied' }).data().each(function (row) {
+    var monto   = parseFloat(row.total_saldo) || 0;
+    var empresa = row.empresa_nombre   || 'Sin empresa';
+    var prov    = row.proveedor_nombre || 'Sin proveedor';
+    var banco   = row.banco_asignado   || '';
+
+    if (!grupos[empresa]) {
+      grupos[empresa] = { banco: banco, proveedores: {}, subtotal: 0 };
+    }
+    grupos[empresa].proveedores[prov] = (grupos[empresa].proveedores[prov] || 0) + monto;
+    grupos[empresa].subtotal += monto;
+    totalGeneral += monto;
+  });
+
+  var fmt = function(n) {
+    return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  var bancoColor = { Banorte: '#b91c1c', Santander: '#c81e1e' };
+  var bancoIcon  = { Banorte: 'fas fa-piggy-bank', Santander: 'fas fa-landmark' };
+
+  // Ordenar empresas por subtotal desc
+  var empresasOrdenadas = Object.keys(grupos).sort(function(a,b) {
+    return grupos[b].subtotal - grupos[a].subtotal;
+  });
+
+  var html = '';
+
+  // Encabezado con total general
+  html += '<div class="d-flex justify-content-between align-items-center mb-2">'
+        + '<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;">'
+        + '<i class="fas fa-building me-1"></i>Razón social / Proveedor</span>'
+        + '<span style="font-size:.78rem;font-weight:700;color:#1e293b;">Total: ' + fmt(totalGeneral) + '</span>'
+        + '</div>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:.35rem;width:100%;max-width:450px;">';
+
+  empresasOrdenadas.forEach(function(empresa) {
+    var g = grupos[empresa];
+    var bColor = bancoColor[g.banco] || '#475569';
+    var bIcon  = bancoIcon[g.banco]  || 'fas fa-university';
+
+    html += '<div style="border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;">';
+
+    // Cabecera empresa
+    html += '<div class="d-flex align-items-center justify-content-between px-2 py-1" '
+          +      'style="background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'
+          + '<span style="font-weight:700;color:#1e293b;font-size:.75rem;line-height:1.2;">' + empresa + '</span>'
+          + '<div class="d-flex align-items-center gap-1 ms-1 flex-shrink-0">'
+          + '<span style="font-size:.65rem;color:' + bColor + ';white-space:nowrap;">'
+          + '<i class="' + bIcon + '"></i> ' + (g.banco || '') + '</span>'
+          + '<span style="font-weight:700;color:#1e293b;font-size:.78rem;white-space:nowrap;">' + fmt(g.subtotal) + '</span>'
+          + '</div></div>';
+
+    // Filas de proveedores
+    var provsOrdenados = Object.entries(g.proveedores).sort(function(a,b){ return b[1]-a[1]; });
+    html += '<table style="width:100%;border-collapse:collapse;font-size:.75rem;"><tbody>';
+    provsOrdenados.forEach(function(entry, idx) {
+      var bg = idx % 2 === 0 ? '#fff' : '#f8fafc';
+      html += '<tr style="background:' + bg + ';">'
+            + '<td style="padding:3px 8px;color:#64748b;">'
+            + '<i class="fas fa-truck me-1" style="color:#cbd5e1;font-size:.65rem;"></i>' + entry[0]
+            + '</td>'
+            + '<td style="padding:3px 8px;text-align:right;font-weight:600;color:#334155;white-space:nowrap;">' + fmt(entry[1]) + '</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+
+  html += '</div>';
+
+  if (!empresasOrdenadas.length) {
+    html = '<p class="text-muted text-center py-2" style="font-size:.8rem;">Sin datos para mostrar.</p>';
+  }
+
+  var container = document.getElementById('resumenTablaContainer');
+  if (container) container.innerHTML = html;
+}
 
 function updateBankSummaryFromTable(table) {
   if (!table.data().count()) {

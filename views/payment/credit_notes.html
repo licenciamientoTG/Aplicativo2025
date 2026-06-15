@@ -95,9 +95,14 @@
                 <span class="fw-semibold text-secondary" style="font-size:.85rem;">Catálogo de Notas de Crédito / Cargo</span>
             </div>
             {% if authorized(66) %}
-            <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="openNewNoteModal()" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
-                <i class="fas fa-plus" style="font-size:.75rem;"></i> Nueva Nota
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="abrirModalNotasMasivas()" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Subir varias notas en PDF y leerlas automáticamente">
+                    <i class="fas fa-file-upload" style="font-size:.75rem;"></i> Carga masiva
+                </button>
+                <button class="btn btn-sm d-flex align-items-center gap-1 fw-medium" onclick="openNewNoteModal()" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                    <i class="fas fa-plus" style="font-size:.75rem;"></i> Nueva Nota
+                </button>
+            </div>
             {% endif %}
         </div>
         <div class="card-body p-3" >
@@ -287,6 +292,65 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== MODAL: Carga masiva de notas de crédito ===== -->
+<div class="modal fade" id="modalNotasMasivas" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header" style="background:#7c3aed;color:#fff;">
+                <h5 class="modal-title"><i class="fas fa-file-upload"></i> Carga masiva de notas de crédito (MGC)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="notasDropzone" style="border:2px dashed #c4b5fd;border-radius:.75rem;padding:1.75rem;text-align:center;background:#faf5ff;cursor:pointer;">
+                    <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#7c3aed;"></i>
+                    <p class="mb-1 mt-2 fw-semibold" style="color:#6d28d9;">Arrastra aquí los PDFs de notas o haz clic para seleccionar</p>
+                    <small class="text-muted">CFDI de notas de crédito · Máximo <strong>{{ max_uploads }}</strong> archivos por carga · No se guarda nada hasta que confirmes.</small>
+                </div>
+                <input type="file" id="inputNotas" accept="application/pdf" multiple style="display:none;">
+                <div id="notasArchivosSel" class="mt-2 small text-muted"></div>
+
+                <div id="notasResumen" class="row g-2 mt-2" style="display:none;">
+                    <div class="col"><div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#047857;text-transform:uppercase;font-weight:700;">Listas</div><div style="color:#065f46;font-size:1.2rem;font-weight:700;" id="notasOk">0</div></div></div>
+                    <div class="col"><div style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#475569;text-transform:uppercase;font-weight:700;">Duplicadas</div><div style="color:#334155;font-size:1.2rem;font-weight:700;" id="notasDup">0</div></div></div>
+                    <div class="col"><div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#b91c1c;text-transform:uppercase;font-weight:700;">Con error</div><div style="color:#991b1b;font-size:1.2rem;font-weight:700;" id="notasErr">0</div></div></div>
+                    <div class="col"><div style="background:#eff6ff;border:1px solid #93c5fd;border-radius:.5rem;padding:.5rem;text-align:center;"><div style="font-size:.65rem;color:#1d4ed8;text-transform:uppercase;font-weight:700;">Monto total</div><div style="color:#1e40af;font-size:1.2rem;font-weight:700;" id="notasMonto">$0.00</div></div></div>
+                </div>
+
+                <div id="notasLoading" class="text-center py-4" style="display:none;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:#7c3aed;"></i>
+                    <p class="text-muted mt-2 mb-0">Leyendo notas…</p>
+                </div>
+
+                <div class="table-responsive mt-3" id="notasTablaWrap" style="display:none;">
+                    <table class="table table-sm table-hover align-middle" id="tablaNotasMasivas">
+                        <thead style="background:#f8fafc;">
+                            <tr style="font-size:.72rem;text-transform:uppercase;color:#475569;">
+                                <th class="text-center" style="width:34px;"><input type="checkbox" id="notasSelectAll" title="Seleccionar todas las listas"></th>
+                                <th>Archivo</th>
+                                <th>Serie / Folio</th>
+                                <th>Fecha</th>
+                                <th>Emisor</th>
+                                <th>Empresa receptora</th>
+                                <th class="text-end">Total</th>
+                                <th>UUID</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span class="me-auto small text-muted" id="notasSeleccionInfo"></span>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                <button type="button" class="btn btn-sm" style="background:#16a34a;color:#fff;" id="btnGuardarNotas" onclick="guardarNotasMasivas()" disabled>
+                    <i class="fas fa-save"></i> Guardar seleccionadas
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -659,6 +723,176 @@ initDropzone('uploadDocFile', 'dropzoneUpload', 'dzUploadName', 'dzUploadSize', 
 $(document).ready(function() {
     loadProviderNotes();
 });
+
+// =====================================================================
+// CARGA MASIVA DE NOTAS DE CRÉDITO (leer PDF → preview → guardar)
+// =====================================================================
+let notasFiles = [];    // File objects originales (para reenviar al guardar)
+let notasPreview = [];  // resultado del preview por nota
+const NOTAS_MAX_UPLOADS = {{ max_uploads }}; // límite de PHP max_file_uploads
+
+function abrirModalNotasMasivas() {
+    $('#inputNotas').val('');
+    $('#notasArchivosSel').html('');
+    $('#notasResumen').hide();
+    $('#notasTablaWrap').hide();
+    $('#notasLoading').hide();
+    $('#tablaNotasMasivas tbody').empty();
+    $('#notasSelectAll').prop('checked', false);
+    $('#notasSeleccionInfo').text('');
+    $('#btnGuardarNotas').prop('disabled', true);
+    notasFiles = [];
+    notasPreview = [];
+    $('#modalNotasMasivas').modal('show');
+}
+
+$(document).on('click', '#notasDropzone', function () { $('#inputNotas').click(); });
+$(document).on('change', '#inputNotas', function () { if (this.files && this.files.length) subirNotasPreview(this.files); });
+$(document).on('dragover', '#notasDropzone', function (e) { e.preventDefault(); $(this).css('background', '#f3e8ff'); });
+$(document).on('dragleave drop', '#notasDropzone', function (e) { e.preventDefault(); $(this).css('background', '#faf5ff'); });
+$(document).on('drop', '#notasDropzone', function (e) {
+    const files = e.originalEvent.dataTransfer.files;
+    if (files && files.length) subirNotasPreview(files);
+});
+
+function fmtMonedaNota(v) {
+    return '$' + (parseFloat(v) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 });
+}
+
+function subirNotasPreview(fileList) {
+    const files = Array.from(fileList).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+    if (files.length === 0) { Swal.fire({ icon: 'warning', title: 'Selecciona PDFs' }); return; }
+
+    if (files.length > NOTAS_MAX_UPLOADS) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Demasiados archivos',
+            html: 'Seleccionaste <strong>' + files.length + '</strong> PDFs, pero el máximo por carga es <strong>' + NOTAS_MAX_UPLOADS + '</strong>.<br>Sube los archivos en grupos de hasta ' + NOTAS_MAX_UPLOADS + '.',
+        });
+        $('#inputNotas').val('');
+        return;
+    }
+
+    notasFiles = files;
+    $('#notasArchivosSel').html('<i class="fas fa-paperclip"></i> ' + files.length + ' archivo(s) seleccionado(s)');
+    $('#notasLoading').show();
+    $('#notasTablaWrap').hide();
+    $('#notasResumen').hide();
+
+    const fd = new FormData();
+    files.forEach(f => fd.append('notas[]', f));
+
+    fetch('/payment/preview_notas_credito', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(res => {
+            $('#notasLoading').hide();
+            if (!res.success) { Swal.fire({ icon: 'error', title: 'Error', text: res.message || 'Error al procesar' }); return; }
+            notasPreview = res.notas || [];
+            $('#notasOk').text(res.resumen.ok || 0);
+            $('#notasDup').text(res.resumen.duplicado || 0);
+            $('#notasErr').text(res.resumen.error || 0);
+            $('#notasMonto').text(fmtMonedaNota(res.resumen.monto_total));
+            $('#notasResumen').show();
+            renderNotasTabla(res.notas);
+            actualizarSeleccionNotas();
+        })
+        .catch(err => { $('#notasLoading').hide(); Swal.fire({ icon: 'error', title: 'Conexión', text: err.message }); });
+}
+
+function renderNotasTabla(notas) {
+    const estilos = {
+        ok:        { bg: '#ecfdf5', badge: 'bg-success',         txt: 'Lista' },
+        duplicado: { bg: '#f1f5f9', badge: 'bg-secondary',       txt: 'Duplicada' },
+        error:     { bg: '#fef2f2', badge: 'bg-danger',          txt: 'Error' },
+    };
+    let html = '';
+    notas.forEach((n, i) => {
+        const e = estilos[n.estado] || estilos.error;
+        const esOk = n.estado === 'ok';
+        html += `
+            <tr data-row="${i}" style="background:${e.bg};">
+                <td class="text-center"><input type="checkbox" class="nota-aplicar-check" data-row="${i}" ${esOk ? 'checked' : 'disabled'}></td>
+                <td><small class="fw-semibold">${n.archivo}</small></td>
+                <td><small>${n.note_number || '—'}</small></td>
+                <td><small>${n.fecha || '—'}</small></td>
+                <td><small>${n.nombre_emisor || '—'}<br><span class="text-muted">${n.rfc_emisor || ''}</span></small></td>
+                <td><small>${n.nombre_receptor || '—'}<br><span class="text-muted">${n.rfc_receptor || ''}</span></small></td>
+                <td class="text-end fw-semibold">${fmtMonedaNota(n.total)}</td>
+                <td><small class="text-muted" style="font-size:.68rem;">${n.uuid || '—'}</small></td>
+                <td><span class="badge ${e.badge}">${e.txt}</span>${n.mensaje && n.estado !== 'ok' ? '<br><small class="text-muted">' + n.mensaje + '</small>' : ''}</td>
+            </tr>`;
+    });
+    $('#tablaNotasMasivas tbody').html(html);
+    $('#notasTablaWrap').show();
+}
+
+$(document).on('change', '#notasSelectAll', function () {
+    $('.nota-aplicar-check:not(:disabled)').prop('checked', $(this).prop('checked'));
+    actualizarSeleccionNotas();
+});
+$(document).on('change', '.nota-aplicar-check', actualizarSeleccionNotas);
+
+function actualizarSeleccionNotas() {
+    let n = 0, total = 0;
+    $('.nota-aplicar-check:checked:not(:disabled)').each(function () {
+        const item = notasPreview[parseInt($(this).data('row'))];
+        if (item) { n++; total += parseFloat(item.total) || 0; }
+    });
+    if (n > 0) {
+        $('#notasSeleccionInfo').html('<strong>' + n + '</strong> nota(s) por guardar · <strong>' + fmtMonedaNota(total) + '</strong>');
+        $('#btnGuardarNotas').prop('disabled', false);
+    } else {
+        $('#notasSeleccionInfo').text('');
+        $('#btnGuardarNotas').prop('disabled', true);
+    }
+}
+
+function guardarNotasMasivas() {
+    const items = [];
+    $('.nota-aplicar-check:checked:not(:disabled)').each(function () {
+        const i = parseInt($(this).data('row'));
+        const n = notasPreview[i];
+        if (!n) return;
+        items.push({
+            archivo_idx: i, archivo: n.archivo, provider_id: n.provider_id,
+            note_type: n.note_type, note_number: n.note_number, fecha: n.fecha,
+            total: n.total, uuid: n.uuid,
+        });
+    });
+    if (items.length === 0) { Swal.fire({ icon: 'warning', title: 'Sin selección' }); return; }
+
+    Swal.fire({
+        icon: 'question', title: 'Confirmar',
+        html: 'Vas a guardar <strong>' + items.length + '</strong> nota(s) en el catálogo con su PDF.',
+        showCancelButton: true, confirmButtonText: 'Sí, guardar', cancelButtonText: 'Cancelar',
+    }).then(r => { if (r.isConfirmed) ejecutarGuardarNotas(items); });
+}
+
+function ejecutarGuardarNotas(items) {
+    const fd = new FormData();
+    notasFiles.forEach(f => fd.append('notas[]', f));
+    fd.append('notas', JSON.stringify(items));
+
+    $('#btnGuardarNotas').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+    fetch('/payment/guardar_notas_credito', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(res => {
+            $('#btnGuardarNotas').html('<i class="fas fa-save"></i> Guardar seleccionadas');
+            const detalle = (res.resultados || []).map(x =>
+                '<li>' + (x.success ? '✅' : '❌') + ' <strong>' + x.archivo + '</strong>: ' + x.message + '</li>').join('');
+            Swal.fire({
+                icon: res.guardadas > 0 ? 'success' : 'error',
+                title: 'Resultado',
+                html: '<div class="alert alert-' + (res.guardadas > 0 ? 'success' : 'danger') + '">' + res.guardadas + ' de ' + res.total + ' guardadas</div><ul style="text-align:left;font-size:.85rem;max-height:300px;overflow:auto;">' + detalle + '</ul>',
+            });
+            if (typeof loadProviderNotes === 'function') loadProviderNotes();
+            if (res.guardadas > 0) $('#modalNotasMasivas').modal('hide');
+        })
+        .catch(err => {
+            $('#btnGuardarNotas').prop('disabled', false).html('<i class="fas fa-save"></i> Guardar seleccionadas');
+            Swal.fire({ icon: 'error', title: 'Conexión', text: err.message });
+        });
+}
 
 </script>
 {% endblock %}
