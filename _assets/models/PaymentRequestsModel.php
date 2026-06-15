@@ -963,12 +963,14 @@ class PaymentRequestsModel extends Model
                     cb_tercero_sant.Descripcion AS titular_beneficiario,
                     cb_tercero_sant.Banco AS banco_beneficiario,
                     cb_tercero_sant.Id AS cuenta_beneficiario_id,
+                    cb_tercero_sant.IdBeneficiario AS clave_id_beneficiario,
                     
                     -- ✅ BANORTE
                     cb_propia_banorte.CuentaLocal AS cuenta_cargo_banorte,
                     cb_propia_banorte.TitularCuenta AS titular_cargo_banorte,
                     
                     prov.den as proveedor_nombre,
+                    prov.rfc as proveedor_rfc,
                     'ANTICIPO' as tipo_pago,
                     'ANTICIPO #' + CAST(t1.id AS VARCHAR) as folio,
                     NULL as invoice_number,
@@ -979,15 +981,30 @@ class PaymentRequestsModel extends Model
                 LEFT JOIN [SG12].[dbo].[Empresas] emp ON t1.emp_cod = emp.cod
                 LEFT JOIN [SG12].[dbo].[Proveedores] prov ON t1.provider_cod = prov.cod
                 
-                -- TERCEROS SANTANDER
-                LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
-                    ON cb_tercero_sant.Tipo = 'Terceros'
-                    AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
-                    AND cb_tercero_sant.Activo = 1
-                    AND (
-                        cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                        OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
-                    )
+                -- ✅ Cuenta del beneficiario: UNA sola cuenta por proveedor.
+                -- Prioridad: 1) vínculo exacto por proveedor_cod, 2) match por nombre (solo cuentas sin vincular).
+                -- Entre varias candidatas se prefiere la CLABE de 18 dígitos.
+                OUTER APPLY (
+                    SELECT TOP 1 cb.Id, cb.CuentaLocal, cb.Descripcion, cb.Banco, cb.IdBeneficiario
+                    FROM [TG].[dbo].[CatalogosCuentasBancarias] cb
+                    WHERE cb.Tipo = 'Terceros'
+                      AND cb.Divisa = 'NUEVO PESO MEXICANO'
+                      AND cb.Activo = 1
+                      AND (
+                            cb.proveedor_cod = prov.cod
+                            OR (
+                                cb.proveedor_cod IS NULL
+                                AND (
+                                    cb.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                                    OR cb.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(prov.den, 1, CHARINDEX(' ', prov.den + ' ')))) + '%'
+                                )
+                            )
+                      )
+                    ORDER BY
+                        CASE WHEN cb.proveedor_cod = prov.cod THEN 0 ELSE 1 END,
+                        CASE WHEN LEN(cb.CuentaLocal) = 18 THEN 0 ELSE 1 END,
+                        cb.Id DESC
+                ) cb_tercero_sant
 
                 -- PROPIAS SANTANDER
                 LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant

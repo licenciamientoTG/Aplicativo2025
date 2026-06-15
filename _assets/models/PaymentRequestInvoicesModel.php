@@ -1169,6 +1169,7 @@ class PaymentRequestInvoicesModel extends Model
             cb_tercero_sant.Descripcion AS titular_beneficiario,
             cb_tercero_sant.Banco AS banco_beneficiario,
             cb_tercero_sant.Id AS cuenta_beneficiario_id,
+            cb_tercero_sant.IdBeneficiario AS clave_id_beneficiario,
 
             -- Datos de la empresa
             emp.den AS empresa_nombre,
@@ -1191,15 +1192,30 @@ class PaymentRequestInvoicesModel extends Model
         -- Para notas de cargo (is_debit_note=1): proveedor desde payment_requests.provider_cod
         LEFT JOIN [SG12].[dbo].[Proveedores] prov_nd ON inv.is_debit_note = 1 AND prov_nd.cod = pr.provider_cod
 
-        -- ✅ JOIN con cuentas TERCEROS SANTANDER (beneficiarios) — usa proveedor resuelto
-        LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_tercero_sant
-            ON cb_tercero_sant.Tipo = 'Terceros'
-            AND cb_tercero_sant.Divisa = 'NUEVO PESO MEXICANO'
-            AND cb_tercero_sant.Activo = 1
-            AND (
-                cb_tercero_sant.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
-                OR cb_tercero_sant.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
-            )
+        -- ✅ Cuenta del beneficiario: UNA sola cuenta por proveedor.
+        -- Prioridad: 1) vínculo exacto por proveedor_cod, 2) match por nombre (solo cuentas sin vincular).
+        -- Entre varias candidatas se prefiere la CLABE de 18 dígitos.
+        OUTER APPLY (
+            SELECT TOP 1 cb.Id, cb.CuentaLocal, cb.Descripcion, cb.Banco, cb.IdBeneficiario
+            FROM [TG].[dbo].[CatalogosCuentasBancarias] cb
+            WHERE cb.Tipo = 'Terceros'
+              AND cb.Divisa = 'NUEVO PESO MEXICANO'
+              AND cb.Activo = 1
+              AND (
+                    cb.proveedor_cod = COALESCE(prov_cg.cod, prov_nd.cod)
+                    OR (
+                        cb.proveedor_cod IS NULL
+                        AND (
+                            cb.TitularCuenta LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
+                            OR cb.Descripcion LIKE '%' + RTRIM(LTRIM(SUBSTRING(COALESCE(prov_cg.den, prov_nd.den), 1, CHARINDEX(' ', COALESCE(prov_cg.den, prov_nd.den) + ' ')))) + '%'
+                        )
+                    )
+              )
+            ORDER BY
+                CASE WHEN cb.proveedor_cod = COALESCE(prov_cg.cod, prov_nd.cod) THEN 0 ELSE 1 END,
+                CASE WHEN LEN(cb.CuentaLocal) = 18 THEN 0 ELSE 1 END,
+                cb.Id DESC
+        ) cb_tercero_sant
         INNER JOIN sg12.[dbo].[Empresas] emp ON emp.cod = pr.emp_cod
         -- ✅ JOIN con cuentas PROPIAS SANTANDER (ordenantes)
         LEFT JOIN [TG].[dbo].[CatalogosCuentasBancarias] cb_propia_sant

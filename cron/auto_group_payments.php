@@ -70,7 +70,7 @@ if (empty($emails)) {
 $total_general = array_sum(array_map(fn($p) => (float)$p['total_amount'], $pagos));
 $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
 $body    = generar_html_solicitud_pagos_cron($pagos, $total_general);
-$from    = 'totalgasdesarrollo@gmail.com';
+$from    = 'no-reply@totalgas.com';
 
 $ok = send_mail($subject, $body, $emails, $from);
 
