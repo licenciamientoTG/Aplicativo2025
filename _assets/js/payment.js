@@ -4054,12 +4054,21 @@ function loadAuthorizedPendingInvoices() {
                         `;
           }
 
+          const btnPagar = window.PUEDE_TESORERIA
+            ? `<button class="btn btn-sm btn-success ms-1"
+                       onclick='pagarGrupoIndividual(${JSON.stringify(String(row.invoice_ids))}, ${JSON.stringify(row.banco_asignado)}, ${JSON.stringify(row.empresa_nombre)}, ${JSON.stringify(row.proveedor_nombre)}, ${parseFloat(row.total_autorizado) || 0})'
+                       title="Marcar como pagado este grupo">
+                   <i class="fas fa-dollar-sign"></i> Pagar
+               </button>`
+            : "";
+
           return `
                         <button class="btn btn-sm btn-outline-info"
                                 onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
                                 title="Ver facturas individuales">
                             <i class="fas fa-eye"></i> Ver Desglose
                         </button>
+                        ${btnPagar}
                     `;
         },
       },
@@ -5167,6 +5176,22 @@ function mostrarResumenPagoRegistrado(response) {
 }
 
 
+/**
+ * Pago individual de un solo grupo (botón "Pagar" por fila en Facturas autorizadas).
+ * Reutiliza el mismo modal y flujo del registro de pago, con un único grupo.
+ */
+function pagarGrupoIndividual(invoiceIds, banco, empresa, proveedor, monto) {
+  const grupo = {
+    banco: banco,
+    invoice_ids: invoiceIds,
+    empresa: empresa,
+    proveedor: proveedor,
+    monto: monto,
+  };
+  mostrarModalRegistroPago([grupo], banco);
+}
+
+
 function generarLayoutBanorte(
   gruposFacturas,
   gruposAnticipos,
@@ -6260,5 +6285,340 @@ async function toggleFacturasInline(btn, groupId) {
        </div>`
     );
   }
+}
+
+
+// =====================================================================
+// CONCILIACIÓN DE COMPROBANTES DE PAGO (carga masiva → preview)
+// =====================================================================
+let comprobantesGrupos = []; // grupos pendientes devueltos por el preview
+let comprobantesFiles = [];  // File objects originales (para reenviar al guardar)
+let comprobantesPreview = []; // resultado del preview por comprobante (para fecha/ref default)
+
+function abrirModalComprobantes() {
+  // Resetear estado del modal
+  $("#inputComprobantes").val("");
+  $("#comprobantesArchivosSel").html("");
+  $("#comprobantesResumen").hide();
+  $("#comprobantesTablaWrap").hide();
+  $("#comprobantesLoading").hide();
+  $("#tablaComprobantes tbody").empty();
+  $("#comprobanteSelectAll").prop("checked", false);
+  $("#comprobantesSeleccionInfo").text("");
+  $("#btnGuardarComprobantes").prop("disabled", true);
+  comprobantesGrupos = [];
+  comprobantesFiles = [];
+  comprobantesPreview = [];
+  $("#modalComprobantes").modal("show");
+}
+
+// Wiring de la zona de carga (una sola vez)
+$(document).on("click", "#comprobantesDropzone", function () {
+  $("#inputComprobantes").click();
+});
+$(document).on("change", "#inputComprobantes", function () {
+  if (this.files && this.files.length) {
+    subirComprobantesPreview(this.files);
+  }
+});
+$(document).on("dragover", "#comprobantesDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#f3e8ff");
+});
+$(document).on("dragleave drop", "#comprobantesDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#faf5ff");
+});
+$(document).on("drop", "#comprobantesDropzone", function (e) {
+  const files = e.originalEvent.dataTransfer.files;
+  if (files && files.length) subirComprobantesPreview(files);
+});
+
+function subirComprobantesPreview(fileList) {
+  const files = Array.from(fileList).filter(
+    (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+  );
+  if (files.length === 0) {
+    alertify.warning("Selecciona archivos PDF");
+    return;
+  }
+
+  // Conservar los File en el mismo orden en que se envían al backend,
+  // para poder reenviarlos al guardar (move_uploaded_file lo exige).
+  comprobantesFiles = files;
+
+  $("#comprobantesArchivosSel").html(
+    `<i class="fas fa-paperclip"></i> ${files.length} archivo(s) seleccionado(s)`
+  );
+  $("#comprobantesLoading").show();
+  $("#comprobantesTablaWrap").hide();
+  $("#comprobantesResumen").hide();
+
+  const fd = new FormData();
+  files.forEach((f) => fd.append("comprobantes[]", f));
+
+  fetch("/payment/preview_comprobantes_match", { method: "POST", body: fd })
+    .then((r) => r.json())
+    .then((res) => {
+      $("#comprobantesLoading").hide();
+      if (!res.success) {
+        alertify.error(res.message || "Error al procesar comprobantes");
+        return;
+      }
+      comprobantesGrupos = res.grupos || [];
+      comprobantesPreview = res.comprobantes || [];
+      renderComprobantesResumen(res.resumen);
+      renderComprobantesTabla(res.comprobantes);
+      actualizarSeleccionComprobantes();
+    })
+    .catch((err) => {
+      $("#comprobantesLoading").hide();
+      alertify.error("Error de conexión: " + err.message);
+    });
+}
+
+// Normaliza la fecha de un comprobante (dd/mm/aaaa [hh:mm]) a yyyy-mm-dd para el input date.
+function fechaComprobanteAInput(fecha) {
+  const m = (fecha || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return new Date().toISOString().split("T")[0];
+}
+
+function renderComprobantesResumen(r) {
+  $("#compMatched").text(r.matched || 0);
+  $("#compAmbiguo").text(r.ambiguo || 0);
+  $("#compUnmatched").text(r.unmatched || 0);
+  $("#compMontoTotal").text(
+    "$" + (r.monto_total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })
+  );
+  $("#comprobantesResumen").show();
+}
+
+function fmtMoneda(v) {
+  return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+}
+
+function opcionesGruposSelect(idxSeleccionado) {
+  let opts = '<option value="">— Sin relacionar —</option>';
+  comprobantesGrupos.forEach((g) => {
+    const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
+    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}</option>`;
+  });
+  return opts;
+}
+
+function renderComprobantesTabla(comprobantes) {
+  const colores = {
+    matched: { bg: "#ecfdf5", badge: "bg-success", txt: "Emparejado" },
+    ambiguo: { bg: "#fffbeb", badge: "bg-warning text-dark", txt: "Revisar" },
+    unmatched: { bg: "#fef2f2", badge: "bg-danger", txt: "Sin emparejar" },
+  };
+
+  const hoy = new Date().toISOString().split("T")[0];
+  let html = "";
+  comprobantes.forEach((item, i) => {
+    const c = item.comprobante;
+    const g = item.grupo_sugerido;
+    const estilo = colores[item.estado] || colores.unmatched;
+    const idxSel = g ? g.idx : null;
+    const tieneGrupo = g !== null && g !== undefined;
+    // Por defecto se marca lo que ya viene emparejado o ambiguo con grupo.
+    const checkDefault = tieneGrupo ? "checked" : "";
+
+    const proveedorPdf = c.rfc_beneficiario
+      ? `${c.nombre_beneficiario || ""}<br><small class="text-muted">${c.rfc_beneficiario}</small>`
+      : `${c.nombre_beneficiario || "—"}<br><small class="text-muted">RFC benef. no incluido · cuenta ${c.cuenta_abono || "—"}</small>`;
+
+    const errorPdf = c.error
+      ? `<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> ${c.error}</small>`
+      : "";
+
+    // Fecha/referencia pre-rellenadas desde el PDF (editables)
+    const fechaDefault = fechaComprobanteAInput(c.fecha);
+    const refDefault = (c.referencia || "").replace(/"/g, "");
+
+    html += `
+      <tr data-row="${i}" style="background:${estilo.bg};">
+        <td class="text-center">
+          <input type="checkbox" class="comprobante-aplicar-check" data-row="${i}" ${checkDefault} ${tieneGrupo ? "" : "disabled"}>
+        </td>
+        <td><small class="fw-semibold">${c.archivo}</small>${errorPdf}</td>
+        <td><small>${c.banco}</small></td>
+        <td><small>${c.nombre_ordenante || "—"}<br><span class="text-muted">${c.rfc_ordenante || ""}</span></small></td>
+        <td><small>${proveedorPdf}</small></td>
+        <td class="text-end fw-semibold">${fmtMoneda(c.importe)}</td>
+        <td style="min-width:260px;">
+          <select class="form-select form-select-sm comprobante-grupo-select" data-row="${i}">
+            ${opcionesGruposSelect(idxSel)}
+          </select>
+        </td>
+        <td><input type="date" class="form-control form-control-sm comprobante-fecha" data-row="${i}" value="${fechaDefault}" max="${hoy}" style="min-width:140px;"></td>
+        <td><input type="text" class="form-control form-control-sm comprobante-ref" data-row="${i}" value="${refDefault}" placeholder="Referencia" maxlength="50" style="min-width:140px;"></td>
+        <td><span class="badge ${estilo.badge}">${estilo.txt}</span></td>
+      </tr>`;
+  });
+
+  $("#tablaComprobantes tbody").html(html);
+  $("#comprobantesTablaWrap").show();
+}
+
+// Reasignación manual: al cambiar el grupo, recalcular estado/badge y habilitar el check.
+$(document).on("change", ".comprobante-grupo-select", function () {
+  const $row = $(this).closest("tr");
+  const val = $(this).val();
+  const $badge = $row.find("td:last-child .badge");
+  const $check = $row.find(".comprobante-aplicar-check");
+  if (val === "") {
+    $row.css("background", "#fef2f2");
+    $badge.attr("class", "badge bg-danger").text("Sin emparejar");
+    $check.prop("checked", false).prop("disabled", true);
+  } else {
+    $row.css("background", "#eff6ff");
+    $badge.attr("class", "badge bg-primary").text("Manual");
+    $check.prop("disabled", false).prop("checked", true);
+  }
+  actualizarSeleccionComprobantes();
+});
+
+// "Seleccionar todos": solo afecta filas con grupo asignado (checkbox habilitado).
+$(document).on("change", "#comprobanteSelectAll", function () {
+  const marcar = $(this).prop("checked");
+  $(".comprobante-aplicar-check:not(:disabled)").prop("checked", marcar);
+  actualizarSeleccionComprobantes();
+});
+
+$(document).on("change", ".comprobante-aplicar-check", function () {
+  actualizarSeleccionComprobantes();
+});
+
+// Recalcula contador, total y estado del botón Guardar.
+function actualizarSeleccionComprobantes() {
+  let n = 0;
+  let total = 0;
+  $(".comprobante-aplicar-check:checked:not(:disabled)").each(function () {
+    const i = parseInt($(this).data("row"));
+    const item = comprobantesPreview[i];
+    if (item) {
+      n++;
+      total += parseFloat(item.comprobante.importe) || 0;
+    }
+  });
+  if (n > 0) {
+    $("#comprobantesSeleccionInfo").html(
+      `<strong>${n}</strong> pago(s) por aplicar · <strong>${fmtMoneda(total)}</strong>`
+    );
+    $("#btnGuardarComprobantes").prop("disabled", false);
+  } else {
+    $("#comprobantesSeleccionInfo").text("");
+    $("#btnGuardarComprobantes").prop("disabled", true);
+  }
+}
+
+// Guardar = aplicar pagos + guardar PDFs de las filas marcadas.
+function guardarConciliacionComprobantes() {
+  const asignaciones = [];
+  let totalSel = 0;
+
+  $(".comprobante-aplicar-check:checked:not(:disabled)").each(function () {
+    const i = parseInt($(this).data("row"));
+    const $row = $(`#tablaComprobantes tbody tr[data-row="${i}"]`);
+    const grupoIdx = $row.find(".comprobante-grupo-select").val();
+    if (grupoIdx === "") return;
+
+    const grupo = comprobantesGrupos.find((g) => String(g.idx) === String(grupoIdx));
+    if (!grupo) return;
+
+    const invoiceIds = String(grupo.invoice_ids || "")
+      .split(",")
+      .map((x) => parseInt(x.trim()))
+      .filter((x) => x > 0);
+
+    asignaciones.push({
+      archivo_idx: i,
+      archivo: comprobantesPreview[i]?.comprobante?.archivo || `comprobante ${i}`,
+      invoice_ids: invoiceIds,
+      fecha_pago: $row.find(".comprobante-fecha").val(),
+      referencia: $row.find(".comprobante-ref").val().trim(),
+      observaciones: "Conciliación automática de comprobante",
+    });
+    totalSel += parseFloat(comprobantesPreview[i]?.comprobante?.importe) || 0;
+  });
+
+  if (asignaciones.length === 0) {
+    alertify.warning("No hay comprobantes seleccionados con grupo asignado");
+    return;
+  }
+
+  // Validar fecha/referencia en cada uno
+  const incompletos = asignaciones.filter((a) => !a.fecha_pago || !a.referencia);
+  if (incompletos.length > 0) {
+    alertify.error("Completa fecha y referencia en todas las filas seleccionadas");
+    return;
+  }
+
+  alertify.confirm(
+    '<i class="fas fa-check-circle text-success"></i> Confirmar conciliación',
+    `<div class="text-center">
+        <p>Vas a <strong>marcar como pagado</strong> y guardar el comprobante de:</p>
+        <div class="alert alert-info">
+          <strong>${asignaciones.length}</strong> pago(s) · Total <strong>${fmtMoneda(totalSel)}</strong>
+        </div>
+        <small class="text-muted">Esta acción registra las transacciones y no se puede deshacer fácilmente.</small>
+     </div>`,
+    function () {
+      ejecutarConciliacionComprobantes(asignaciones);
+    },
+    function () {
+      alertify.message("Conciliación cancelada");
+    }
+  ).set("labels", { ok: "Sí, aplicar", cancel: "Cancelar" });
+}
+
+function ejecutarConciliacionComprobantes(asignaciones) {
+  const fd = new FormData();
+  // Reenviar TODOS los PDFs en el mismo orden/índice que usa archivo_idx.
+  comprobantesFiles.forEach((f) => fd.append("comprobantes[]", f));
+  fd.append("asignaciones", JSON.stringify(asignaciones));
+
+  $("#btnGuardarComprobantes")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Aplicando...');
+
+  fetch("/payment/conciliar_comprobantes", { method: "POST", body: fd })
+    .then((r) => r.json())
+    .then((res) => {
+      $("#btnGuardarComprobantes").html('<i class="fas fa-save"></i> Aplicar y guardar');
+      if (!res.success && res.aplicados === 0) {
+        alertify.error(res.message || "No se aplicó ningún pago");
+        $("#btnGuardarComprobantes").prop("disabled", false);
+      }
+      // Mostrar resultado por comprobante
+      let detalle = (res.resultados || [])
+        .map(
+          (x) =>
+            `<li>${x.success ? '<i class="fas fa-check text-success"></i>' : '<i class="fas fa-times text-danger"></i>'} <strong>${x.archivo}</strong>: ${x.message}</li>`
+        )
+        .join("");
+      alertify.alert(
+        '<i class="fas fa-clipboard-check"></i> Resultado de la conciliación',
+        `<div>
+            <div class="alert alert-success">${res.aplicados} de ${res.total} aplicados · Total ${fmtMoneda(res.total_aplicado)}</div>
+            <ul style="font-size:.85rem;max-height:300px;overflow:auto;">${detalle}</ul>
+         </div>`
+      );
+      // Refrescar la tabla de facturas autorizadas (ya no estarán las pagadas)
+      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
+        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
+      }
+      if (res.aplicados > 0) {
+        $("#modalComprobantes").modal("hide");
+      }
+    })
+    .catch((err) => {
+      $("#btnGuardarComprobantes")
+        .prop("disabled", false)
+        .html('<i class="fas fa-save"></i> Aplicar y guardar');
+      alertify.error("Error de conexión: " + err.message);
+    });
 }
 

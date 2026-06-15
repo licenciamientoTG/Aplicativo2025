@@ -26,6 +26,7 @@ class Payment
     public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
     public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
     public PaymentTransactionDocumentsModel $PaymentTransactionDocumentsModel;
+    public PaymentBatchesModel $PaymentBatchesModel;
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
@@ -52,6 +53,90 @@ class Payment
         $this->PaymentAccountingGroupsModel       = new PaymentAccountingGroupsModel();
         $this->PaymentNotificationRecipientsModel   = new PaymentNotificationRecipientsModel();
         $this->PaymentTransactionDocumentsModel     = new PaymentTransactionDocumentsModel();
+        $this->PaymentBatchesModel                  = new PaymentBatchesModel();
+    }
+
+    /**
+     * Banco asignado por empresa (mismo criterio que los queries de pagos).
+     */
+    private function banco_por_emp_cod($emp_cod): string
+    {
+        if (in_array((int)$emp_cod, [1, 10, 17, 18, 21, 23], true)) return 'Banorte';
+        if (in_array((int)$emp_cod, [11, 14, 15, 16, 19, 20], true)) return 'Santander';
+        return 'Sin asignar';
+    }
+
+    /**
+     * Registra un lote de pago: crea la cabecera (payment_batches), ejecuta el
+     * pago de las facturas (process_bulk_payment) ligándolas al lote, marca las
+     * requisiciones saldadas como PAGADO y adjunta el comprobante al lote.
+     *
+     * @param array      $facturas_procesar Arreglo para process_bulk_payment
+     * @param array      $datos             fecha_pago, referencia, observaciones, emp_cod, provider_cod, monto_total
+     * @param array|null $file              Item de $_FILES (o null si no hay comprobante)
+     * @param int        $user_id
+     * @return array ['success','message','total_pagado','batch_id', ...]
+     */
+    private function registrar_lote_y_pago(array $facturas_procesar, array $datos, ?array $file, int $user_id): array
+    {
+        $batch_id = $this->PaymentBatchesModel->create([
+            'fecha_pago'    => $datos['fecha_pago'],
+            'referencia'    => $datos['referencia'] ?? null,
+            'banco'         => $datos['banco'] ?? $this->banco_por_emp_cod($datos['emp_cod'] ?? null),
+            'emp_cod'       => $datos['emp_cod'] ?? null,
+            'provider_cod'  => $datos['provider_cod'] ?? null,
+            'monto_total'   => $datos['monto_total'] ?? 0,
+            'observaciones' => $datos['observaciones'] ?? null,
+            'created_by'    => $user_id,
+        ]);
+
+        if (!$batch_id) {
+            return ['success' => false, 'message' => 'No se pudo crear el lote de pago'];
+        }
+
+        $result = $this->paymentTransactionsModel->process_bulk_payment(
+            $facturas_procesar,
+            $user_id,
+            $datos['fecha_pago'],
+            $datos['observaciones'] ?? '',
+            $datos['referencia'] ?? null,
+            'TRANSFERENCIA',
+            $batch_id
+        );
+
+        if (!$result['success']) {
+            return ['success' => false, 'message' => $result['message'], 'batch_id' => $batch_id];
+        }
+
+        // Marcar requisiciones completamente pagadas
+        $prids = array_unique(array_column($facturas_procesar, 'payment_request_id'));
+        foreach ($prids as $prid) {
+            if ($this->paymentTransactionsModel->check_all_invoices_paid($prid)) {
+                $this->PaymentRequestsModel->update_request_status(
+                    $prid,
+                    PaymentRequestsModel::STATUS_PAID,
+                    "Pago registrado el " . date('d/m/Y', strtotime($datos['fecha_pago'])) . " - Ref: " . ($datos['referencia'] ?? '')
+                );
+            }
+        }
+
+        // Adjuntar el comprobante al lote (un PDF por lote, visible para todas sus
+        // facturas). Se liga al batch_id y también a la primera transacción del
+        // lote (transaction_id es NOT NULL en la tabla y mantiene compatibilidad).
+        $comprobante_msg = '';
+        if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $primera_tx = $result['transaction_ids'][0] ?? $result['last_transaction_id'] ?? null;
+            $up = $this->PaymentTransactionDocumentsModel->upload($primera_tx, $file, $user_id, $batch_id);
+            $comprobante_msg = $up['success'] ? ' Comprobante guardado.' : ' (comprobante no guardado: ' . $up['message'] . ')';
+        }
+
+        return [
+            'success'      => true,
+            'message'      => $result['message'] . $comprobante_msg,
+            'total_pagado' => $result['total_pagado'],
+            'batch_id'     => $batch_id,
+            'facturas_procesadas' => $result['facturas_procesadas'],
+        ];
     }
 
     function fuel_payments()
@@ -1927,6 +2012,7 @@ class Payment
             // ✅ PREPARAR DATOS PARA PROCESAR (formato que espera el modelo)
             $facturas_procesar = [];
             $payment_request_ids_unicos = [];
+            $monto_total = 0.0;
             foreach ($facturas_data as $factura) {
                 if ($factura['payment_authorized'] != 1) {
                     json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
@@ -1941,56 +2027,43 @@ class Payment
                 ];
 
                 $payment_request_ids_unicos[$factura['payment_request_id']] = true;
+                $monto_total += (float)$factura['authorized_amount'];
             }
-            // ✅ EJECUTAR PAGO MASIVO=====================================
 
-            $result = $this->paymentTransactionsModel->process_bulk_payment(
+            // Derivar empresa/proveedor para la cabecera del lote
+            $primer_prid = $facturas_data[0]['payment_request_id'];
+            $req = $this->PaymentRequestsModel->get_request_by_id($primer_prid);
+
+            $comprobanteFile = (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK)
+                ? $_FILES['comprobante'] : null;
+
+            // ✅ Crear lote + ejecutar pago + marcar pagado + adjuntar comprobante al lote
+            $result = $this->registrar_lote_y_pago(
                 $facturas_procesar,
-                $user_id,
-                $fecha_pago,
-                $observaciones,
-                $referencia_bancaria,
-                'TRANSFERENCIA'
+                [
+                    'fecha_pago'    => $fecha_pago,
+                    'referencia'    => $referencia_bancaria,
+                    'observaciones' => $observaciones,
+                    'emp_cod'       => $req['emp_cod'] ?? null,
+                    'provider_cod'  => $req['provider_cod'] ?? null,
+                    'monto_total'   => $monto_total,
+                ],
+                $comprobanteFile,
+                $user_id
             );
 
-            // ========================================
-            // PROCESAR RESULTADO
-            // ========================================
-
-            // ✅ PROCESAR RESULTADO
             if ($result['success']) {
-                // Revisar cada payment_request y marcarlo como pagado si aplica
+                // Contar requisiciones completadas (para el resumen del front)
                 $solicitudes_completadas = 0;
                 foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
-                    $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
-                    if ($all_paid) {
-                        $this->PaymentRequestsModel->update_request_status(
-                            $payment_request_id,
-                            PaymentRequestsModel::STATUS_PAID,
-                            "Pago ejecutado el " . date('d/m/Y', strtotime($fecha_pago)) . " - Ref: $referencia_bancaria"
-                        );
+                    if ($this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id)) {
                         $solicitudes_completadas++;
-                    }
-                }
-
-                // Subir comprobante si se adjuntó
-                $comprobante_msg = null;
-                if (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK) {
-                    // Obtener el transaction_id más reciente creado para estas facturas
-                    $last_transaction_id = $result['last_transaction_id'] ?? null;
-                    if ($last_transaction_id) {
-                        $upload = $this->PaymentTransactionDocumentsModel->upload(
-                            $last_transaction_id,
-                            $_FILES['comprobante'],
-                            $user_id
-                        );
-                        $comprobante_msg = $upload['success'] ? 'Comprobante subido.' : 'Pago registrado pero falló el comprobante: ' . $upload['message'];
                     }
                 }
 
                 json_output([
                     'success'                 => true,
-                    'message'                 => $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''),
+                    'message'                 => $result['message'],
                     'facturas_procesadas'     => $result['facturas_procesadas'],
                     'total_pagado'            => $result['total_pagado'],
                     'fecha_pago'              => date('d/m/Y', strtotime($fecha_pago)),
@@ -4300,6 +4373,227 @@ class Payment
     {
         if (empty($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
             throw new Exception('No se recibió el archivo PDF correctamente.', 400);
+        }
+    }
+
+    /**
+     * Carga masiva de comprobantes de pago — PREVIEW (no persiste nada).
+     * Recibe varios PDFs ($_FILES['comprobantes']), los parsea y devuelve la
+     * relación propuesta de cada comprobante con un grupo de facturas autorizadas
+     * pendientes (empresa+proveedor). El usuario revisa/corrige antes de guardar
+     * (la persistencia es una fase posterior).
+     */
+    public function preview_comprobantes_match()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede conciliar comprobantes']);
+                return;
+            }
+
+            if (empty($_FILES['comprobantes']) || !is_array($_FILES['comprobantes']['name'])) {
+                json_output(['success' => false, 'message' => 'No se recibieron comprobantes PDF']);
+                return;
+            }
+
+            $files = $_FILES['comprobantes'];
+            $total = count($files['name']);
+            $comprobantes = [];
+
+            for ($i = 0; $i < $total; $i++) {
+                $nombre = $files['name'][$i];
+
+                if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+                    $comprobantes[] = [
+                        'archivo' => $nombre,
+                        'banco' => 'Desconocido', 'rfc_ordenante' => '', 'nombre_ordenante' => '',
+                        'rfc_beneficiario' => '', 'nombre_beneficiario' => '', 'cuenta_cargo' => '',
+                        'cuenta_abono' => '', 'importe' => 0.0, 'referencia' => '', 'fecha' => '',
+                        'raw_ok' => false, 'error' => 'Error al recibir el archivo',
+                    ];
+                    continue;
+                }
+
+                if (strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                    $comprobantes[] = [
+                        'archivo' => $nombre,
+                        'banco' => 'Desconocido', 'rfc_ordenante' => '', 'nombre_ordenante' => '',
+                        'rfc_beneficiario' => '', 'nombre_beneficiario' => '', 'cuenta_cargo' => '',
+                        'cuenta_abono' => '', 'importe' => 0.0, 'referencia' => '', 'fecha' => '',
+                        'raw_ok' => false, 'error' => 'Solo se permiten archivos PDF',
+                    ];
+                    continue;
+                }
+
+                // Parsear desde tmp_name (no se guarda en disco).
+                $comprobantes[] = ComprobantePagoParser::parse($files['tmp_name'][$i], $nombre);
+            }
+
+            $match = $this->paymentRequestInvoicesModel->match_comprobantes_con_grupos($comprobantes);
+
+            // Resumen para el front
+            $resumen = ['matched' => 0, 'ambiguo' => 0, 'unmatched' => 0, 'total' => 0, 'monto_total' => 0.0];
+            foreach ($match['comprobantes'] as $r) {
+                $resumen[$r['estado']]++;
+                $resumen['total']++;
+                $resumen['monto_total'] += (float)($r['comprobante']['importe'] ?? 0);
+            }
+
+            json_output([
+                'success'      => true,
+                'resumen'      => $resumen,
+                'grupos'       => $match['grupos'],        // para el dropdown de reasignación manual
+                'comprobantes' => $match['comprobantes'],
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en preview_comprobantes_match: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al procesar comprobantes: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Conciliación: marca como pagado cada grupo seleccionado y guarda su PDF.
+     *
+     * El front reenvía los PDFs en $_FILES['comprobantes'] (necesario porque
+     * PaymentTransactionDocumentsModel::upload usa move_uploaded_file, que exige
+     * un archivo recibido por HTTP en esta misma petición) + un JSON 'asignaciones'
+     * que mapea cada archivo (por índice) a su grupo y datos de pago.
+     *
+     * Cada comprobante se procesa de forma independiente (fallo parcial seguro):
+     * ejecuta el pago de las facturas del grupo, marca la requisición PAGADO si
+     * quedó saldada, y adjunta el PDF a la transacción generada.
+     */
+    public function conciliar_comprobantes()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede conciliar pagos']);
+                return;
+            }
+
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+
+            $asignaciones = json_decode($_POST['asignaciones'] ?? '[]', true);
+            if (!is_array($asignaciones) || empty($asignaciones)) {
+                json_output(['success' => false, 'message' => 'No se recibieron asignaciones']);
+                return;
+            }
+
+            $resultados = [];
+            $aplicados = 0;
+            $total_aplicado = 0.0;
+
+            foreach ($asignaciones as $a) {
+                $archivo_idx = isset($a['archivo_idx']) ? (int)$a['archivo_idx'] : -1;
+                $invoice_ids = array_values(array_filter(array_map('intval', $a['invoice_ids'] ?? [])));
+                $fecha_pago  = $a['fecha_pago'] ?? null;
+                $referencia  = trim($a['referencia'] ?? '');
+                $observaciones = trim($a['observaciones'] ?? '');
+                $nombre_archivo = $a['archivo'] ?? "comprobante #{$archivo_idx}";
+
+                if (empty($invoice_ids)) {
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Sin facturas asignadas'];
+                    continue;
+                }
+                if (!$fecha_pago || $referencia === '') {
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Falta fecha o referencia bancaria'];
+                    continue;
+                }
+
+                try {
+                    // Traer datos de las facturas autorizadas y armar el arreglo de pago
+                    $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_autorizadas_by_ids($invoice_ids);
+                    if (!$facturas_data) {
+                        $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Facturas no encontradas o no autorizadas'];
+                        continue;
+                    }
+
+                    $facturas_procesar = [];
+                    $monto_total = 0.0;
+                    foreach ($facturas_data as $f) {
+                        if ($f['payment_authorized'] != 1) {
+                            throw new Exception("La factura {$f['folio']} no está autorizada");
+                        }
+                        $facturas_procesar[] = [
+                            'invoice_id'         => $f['id'],
+                            'folio'              => $f['folio'],
+                            'monto_pagar'        => $f['authorized_amount'],
+                            'saldo_anterior'     => $f['saldo'],
+                            'payment_request_id' => $f['payment_request_id'],
+                        ];
+                        $monto_total += (float)$f['authorized_amount'];
+                    }
+
+                    // Derivar empresa/proveedor/banco de la requisición para la cabecera del lote
+                    $primer_prid = $facturas_data[0]['payment_request_id'];
+                    $req = $this->PaymentRequestsModel->get_request_by_id($primer_prid);
+                    $emp_cod = $req['emp_cod'] ?? null;
+                    $provider_cod = $req['provider_cod'] ?? null;
+
+                    // Preparar el item de $_FILES del comprobante reenviado
+                    $fileItem = null;
+                    if ($archivo_idx >= 0 && isset($_FILES['comprobantes']['name'][$archivo_idx])) {
+                        $fileItem = [
+                            'name'     => $_FILES['comprobantes']['name'][$archivo_idx],
+                            'type'     => $_FILES['comprobantes']['type'][$archivo_idx],
+                            'tmp_name' => $_FILES['comprobantes']['tmp_name'][$archivo_idx],
+                            'error'    => $_FILES['comprobantes']['error'][$archivo_idx],
+                            'size'     => $_FILES['comprobantes']['size'][$archivo_idx],
+                        ];
+                    }
+
+                    // Crear lote + ejecutar pago + marcar pagado + adjuntar comprobante al lote
+                    $result = $this->registrar_lote_y_pago(
+                        $facturas_procesar,
+                        [
+                            'fecha_pago'    => $fecha_pago,
+                            'referencia'    => $referencia,
+                            'observaciones' => $observaciones,
+                            'emp_cod'       => $emp_cod,
+                            'provider_cod'  => $provider_cod,
+                            'monto_total'   => $monto_total,
+                        ],
+                        $fileItem,
+                        $user_id
+                    );
+
+                    if (!$result['success']) {
+                        $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => $result['message']];
+                        continue;
+                    }
+
+                    $aplicados++;
+                    $total_aplicado += (float)$result['total_pagado'];
+                    $resultados[] = [
+                        'archivo'    => $nombre_archivo,
+                        'success'    => true,
+                        'message'    => $result['message'],
+                        'total'      => $result['total_pagado'],
+                    ];
+                } catch (Exception $e) {
+                    error_log("conciliar_comprobantes [$nombre_archivo]: " . $e->getMessage());
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => $e->getMessage()];
+                }
+            }
+
+            json_output([
+                'success'        => $aplicados > 0,
+                'aplicados'      => $aplicados,
+                'total'          => count($asignaciones),
+                'total_aplicado' => number_format($total_aplicado, 2, '.', ''),
+                'resultados'     => $resultados,
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en conciliar_comprobantes: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al conciliar: ' . $e->getMessage()]);
         }
     }
 

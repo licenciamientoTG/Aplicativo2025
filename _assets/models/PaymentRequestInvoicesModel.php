@@ -887,6 +887,168 @@ class PaymentRequestInvoicesModel extends Model
         ]) ?: false;
     }
 
+    /**
+     * Empareja comprobantes de pago (ya parseados con ComprobantePagoParser)
+     * contra los grupos de facturas autorizadas pendientes (empresa+proveedor).
+     *
+     * Criterio: RFC empresa (ordenante) + RFC proveedor (beneficiario) + monto
+     * con tolerancia. Para comprobantes Santander, donde el RFC beneficiario
+     * suele venir vacío, se cae a un fallback por RFC empresa + monto.
+     *
+     * NO persiste nada: solo construye la relación para mostrarla en pantalla.
+     *
+     * @param array $comprobantes Lista de structs de ComprobantePagoParser::parse()
+     * @param float $tolerancia   Diferencia máxima de monto permitida (comisiones/redondeo)
+     * @return array{grupos: array, comprobantes: array} Grupos disponibles + cada
+     *         comprobante con su grupo sugerido y estado (matched|ambiguo|unmatched).
+     */
+    /**
+     * Resuelve el proveedor_cod a partir de una cuenta de abono (CuentaLocal o
+     * CLABE) buscándola en el catálogo de cuentas de terceros. Devuelve un mapa
+     * cuenta(normalizada) => proveedor_cod para las cuentas recibidas.
+     */
+    private function resolver_provedores_por_cuenta(array $cuentas) : array {
+        $cuentas = array_values(array_unique(array_filter(array_map(
+            fn($c) => preg_replace('/\D/', '', (string)$c), $cuentas
+        ))));
+        if (empty($cuentas)) return [];
+
+        // Comparar contra CuentaLocal y contra los 10 dígitos centrales de una CLABE.
+        $variantes = [];
+        foreach ($cuentas as $c) {
+            $variantes[$c] = true;
+            if (strlen($c) === 18) $variantes[substr($c, 3, 10)] = true; // cuenta dentro de CLABE
+        }
+        $lista = array_keys($variantes);
+        $ph = implode(',', array_fill(0, count($lista), '?'));
+
+        $query = "
+            SELECT proveedor_cod, CuentaLocal
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            WHERE Tipo = 'Terceros' AND Activo = 1 AND proveedor_cod IS NOT NULL
+              AND REPLACE(CuentaLocal, ' ', '') IN ($ph)
+        ";
+        $rows = $this->sql->select($query, $lista) ?: [];
+
+        // Mapear cada cuenta original (y su variante) al proveedor_cod encontrado.
+        $mapa = [];
+        foreach ($rows as $r) {
+            $catCuenta = preg_replace('/\D/', '', (string)$r['CuentaLocal']);
+            foreach ($cuentas as $orig) {
+                if ($orig === $catCuenta || (strlen($orig) === 18 && substr($orig, 3, 10) === $catCuenta)) {
+                    $mapa[$orig] = (int)$r['proveedor_cod'];
+                }
+            }
+        }
+        return $mapa;
+    }
+
+    public function match_comprobantes_con_grupos(array $comprobantes, float $tolerancia = 1.00) : array {
+        $grupos = $this->get_authorized_pending_grouped() ?: [];
+
+        // Resolver proveedor por cuenta de abono (para comprobantes sin RFC de
+        // beneficiario, ej. Santander). Es un dato fuerte y exacto.
+        $cuentas_abono = array_map(fn($c) => $c['cuenta_abono'] ?? '', $comprobantes);
+        $cuenta_a_proveedor = $this->resolver_provedores_por_cuenta($cuentas_abono);
+
+        // Normalizar grupos a una forma ligera para el front + indexar.
+        $grupos_norm = [];
+        foreach ($grupos as $i => $g) {
+            $grupos_norm[] = [
+                'idx'             => $i,
+                'payment_request_id' => $g['payment_request_id'] ?? null,
+                'emp_cod'         => $g['emp_cod'] ?? null,
+                'provider_cod'    => $g['provider_cod'] ?? null,
+                'empresa_nombre'  => $g['empresa_nombre'] ?? '',
+                'empresa_rfc'     => strtoupper(trim($g['empresa_rfc'] ?? '')),
+                'proveedor_nombre'=> $g['proveedor_nombre'] ?? '',
+                'proveedor_rfc'   => strtoupper(trim($g['proveedor_rfc'] ?? '')),
+                'banco_asignado'  => $g['banco_asignado'] ?? '',
+                'total_autorizado'=> (float)($g['total_autorizado'] ?? 0),
+                'total_facturas'  => (int)($g['total_facturas'] ?? 0),
+                'invoice_ids'     => $g['invoice_ids'] ?? '',
+                'tipo_registro'   => $g['tipo_registro'] ?? 'FACTURAS',
+            ];
+        }
+
+        $usados = [];   // idx de grupo ya asignado, para no repetir
+        $resultado = [];
+
+        foreach ($comprobantes as $c) {
+            $rfc_emp = strtoupper(trim($c['rfc_ordenante'] ?? ''));
+            $rfc_prov = strtoupper(trim($c['rfc_beneficiario'] ?? ''));
+            $nombre_prov = strtoupper(trim($c['nombre_beneficiario'] ?? ''));
+            $importe = (float)($c['importe'] ?? 0);
+            // Proveedor resuelto por la cuenta de abono del comprobante (si la hay)
+            $cuenta_abono_norm = preg_replace('/\D/', '', (string)($c['cuenta_abono'] ?? ''));
+            $prov_cod_por_cuenta = $cuenta_a_proveedor[$cuenta_abono_norm] ?? null;
+
+            $candidatos = [];
+            foreach ($grupos_norm as $g) {
+                if (isset($usados[$g['idx']])) continue;
+                if ($g['empresa_rfc'] === '' || $g['empresa_rfc'] !== $rfc_emp) continue;
+                if (abs($g['total_autorizado'] - $importe) > $tolerancia) continue;
+
+                // Calcular fuerza del match
+                if ($rfc_prov !== '' && $g['proveedor_rfc'] === $rfc_prov) {
+                    $score = 3; // empresa + proveedor(RFC) + monto
+                } elseif ($prov_cod_por_cuenta !== null && (int)$g['provider_cod'] === $prov_cod_por_cuenta) {
+                    $score = 3; // empresa + proveedor(cuenta de abono) + monto — match fuerte
+                } elseif ($rfc_prov !== '' && $g['proveedor_rfc'] !== $rfc_prov) {
+                    continue;   // RFC proveedor presente pero no coincide → descartar
+                } elseif ($prov_cod_por_cuenta !== null && (int)$g['provider_cod'] !== $prov_cod_por_cuenta) {
+                    continue;   // cuenta resolvió otro proveedor → descartar
+                } elseif ($nombre_prov !== '' &&
+                          self::nombresCoinciden($nombre_prov, strtoupper($g['proveedor_nombre']))) {
+                    $score = 2; // empresa + proveedor(nombre) + monto
+                } else {
+                    $score = 1; // empresa + monto (proveedor sin confirmar)
+                }
+                $candidatos[] = ['g' => $g, 'score' => $score];
+            }
+
+            // Ordenar por score desc
+            usort($candidatos, fn($a, $b) => $b['score'] <=> $a['score']);
+
+            $estado = 'unmatched';
+            $grupo_sugerido = null;
+            if (count($candidatos) >= 1) {
+                $mejor = $candidatos[0];
+                $empate = count($candidatos) > 1 && $candidatos[1]['score'] === $mejor['score'];
+                $grupo_sugerido = $mejor['g'];
+                if ($mejor['score'] >= 3 && !$empate) {
+                    $estado = 'matched';
+                } else {
+                    $estado = 'ambiguo'; // score bajo (Santander) o varios candidatos: revisar
+                }
+                $usados[$mejor['g']['idx']] = true;
+            }
+
+            $resultado[] = [
+                'comprobante'    => $c,
+                'estado'         => $estado,
+                'grupo_sugerido' => $grupo_sugerido,
+            ];
+        }
+
+        return ['grupos' => $grupos_norm, 'comprobantes' => $resultado];
+    }
+
+    /**
+     * Coincidencia laxa de nombres de proveedor (primeras 2-3 palabras), para
+     * el fallback de comprobantes sin RFC de beneficiario.
+     */
+    private static function nombresCoinciden(string $a, string $b): bool {
+        $norm = function($s) {
+            $s = preg_replace('/\b(SA|SAPI|DE|CV|RL|S|C|V)\b/u', '', $s);
+            return trim(preg_replace('/\s+/', ' ', $s));
+        };
+        $a = $norm($a); $b = $norm($b);
+        if ($a === '' || $b === '') return false;
+        $primeraA = strtok($a, ' ');
+        return $primeraA !== false && $primeraA !== '' && strpos($b, $primeraA) !== false;
+    }
+
     public function get_invoices_detail_by_ids($invoice_ids) : array|false {
         if (empty($invoice_ids)) {
             return false;

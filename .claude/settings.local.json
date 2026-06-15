@@ -87,7 +87,8 @@
       "PowerShell(php _tmp_diag_cuentas.php)",
       "PowerShell(php _tmp_diag_cuentas2.php)",
       "PowerShell(php _tmp_test_layout_db.php)",
-      "PowerShell(php _tmp_test_layout_db2.php)"
+      "PowerShell(php _tmp_test_layout_db2.php)",
+      "Read(//c/Users/alejandro.martinez/Downloads/recibos/**)"
     ],
     "deny": [],
     "ask": []

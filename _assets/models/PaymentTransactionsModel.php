@@ -29,12 +29,13 @@ class PaymentTransactionsModel extends Model
     const STATUS_CONFIRMED = 2;
     const STATUS_REJECTED = 3;
 
-    public function process_bulk_payment($facturas,$user_id,$fecha_pago,$notes = null,$payment_reference = null,$payment_method = 'TRANSFERENCIA') : array {
+    public function process_bulk_payment($facturas,$user_id,$fecha_pago,$notes = null,$payment_reference = null,$payment_method = 'TRANSFERENCIA',$batch_id = null) : array {
         $this->sql->beginTransaction();
         try {
             $total_pagado = 0;
             $facturas_procesadas = 0;
             $errores = [];
+            $transaction_ids = [];
 
             foreach ($facturas as $factura) {
                 $invoice_id = intval($factura['invoice_id']);
@@ -79,13 +80,15 @@ class PaymentTransactionsModel extends Model
                     $notes,
                     null, // bank_account
                     $cuenta_proveedor,
-                    $titular_proveedor
+                    $titular_proveedor,
+                    $batch_id
                 );
 
                 if (!$transaction_id) {
                     $errores[] = "Error al insertar transacción para factura $folio";
                     throw new Exception("Error al insertar transacción para factura $folio");
                 }
+                $transaction_ids[] = $transaction_id;
 
                 // 5. Actualizar paid_amount en payment_request_invoices
                 $nuevo_paid_amount = $ya_pagado + $monto_pagar;
@@ -107,6 +110,7 @@ class PaymentTransactionsModel extends Model
                 'total_pagado'       => $total_pagado,
                 'facturas_procesadas'=> $facturas_procesadas,
                 'last_transaction_id'=> $transaction_id ?? null,
+                'transaction_ids'    => $transaction_ids,
             ];
 
         } catch (Exception $e) {
@@ -232,14 +236,15 @@ class PaymentTransactionsModel extends Model
         $notes = null,
         $bank_account = null,
         $beneficiary_account = null,
-        $beneficiary_name = null
+        $beneficiary_name = null,
+        $batch_id = null
     ) : int|false {
         $query = '
             INSERT INTO [TG].[dbo].[payment_transactions]
-            (payment_request_id, invoice_id, payment_amount, payment_date, 
+            (payment_request_id, invoice_id, payment_amount, payment_date,
              payment_method, payment_reference, notes, bank_account,
-             beneficiary_account, beneficiary_name, created_by, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             beneficiary_account, beneficiary_name, created_by, status, batch_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ';
 
         return $this->sql->insert($query, [
@@ -254,7 +259,8 @@ class PaymentTransactionsModel extends Model
             $beneficiary_account,
             $beneficiary_name,
             $created_by,
-            self::STATUS_PROCESSED
+            self::STATUS_PROCESSED,
+            $batch_id
         ]);
     }
 
@@ -484,7 +490,10 @@ class PaymentTransactionsModel extends Model
             OUTER APPLY (
                 SELECT TOP 1 id, file_extension
                 FROM [TG].[dbo].[payment_transaction_documents]
-                WHERE transaction_id = pt.id
+                -- El comprobante se liga al lote (batch); fallback a la transacción
+                -- para registros antiguos sin batch_id.
+                WHERE (pt.batch_id IS NOT NULL AND batch_id = pt.batch_id)
+                   OR transaction_id = pt.id
                 ORDER BY created_at ASC
             ) doc
             WHERE pt.id IN ($placeholders)
