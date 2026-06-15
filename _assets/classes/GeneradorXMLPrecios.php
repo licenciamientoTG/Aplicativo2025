@@ -410,7 +410,6 @@ class GeneradorXMLPrecios {
         foreach ($archivos as $archivo) {
             if (is_file($archivo)) {
                 unlink($archivo);
-                echo "Archivo previo eliminado: $archivo\n";
             }
         }
     }
