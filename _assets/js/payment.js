@@ -1655,12 +1655,45 @@ function sendToPayments(btn) {
             if (typeof tablaArchivosContabilidad !== "undefined" && tablaArchivosContabilidad) {
               tablaArchivosContabilidad.ajax.reload(null, false);
             }
+          } else if (resp && resp.mail_failed) {
+            // La agrupación SÍ ocurrió, pero el correo falló. Mostrar el motivo
+            // completo y aclarar que se puede reenviar.
+            Swal.fire({
+              icon: "warning",
+              title: "Se agrupó, pero el correo no se envió",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text(resp.message || "").html() +
+                "</div>" +
+                (resp.mail_error
+                  ? "<hr><details style='text-align:left;font-size:.78rem;color:#64748b;'><summary>Detalle técnico</summary><code>" +
+                    $("<div>").text(resp.mail_error).html() +
+                    "</code></details>"
+                  : ""),
+              confirmButtonText: "Entendido",
+              width: 620,
+            });
           } else {
-            alertify.error((resp && resp.message) || "No se pudo completar la operación");
+            Swal.fire({
+              icon: "error",
+              title: "No se pudo completar",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text((resp && resp.message) || "Error desconocido").html() +
+                "</div>",
+              confirmButtonText: "Cerrar",
+              width: 600,
+            });
           }
         })
-        .fail(function () {
-          alertify.error("Error de conexión");
+        .fail(function (xhr) {
+          var msg = "Error de conexión con el servidor.";
+          if (xhr && xhr.statusText === "timeout") {
+            msg = "La operación tardó demasiado y se agotó el tiempo de espera. Las requisiciones pueden haberse agrupado; verifica antes de reintentar.";
+          } else if (xhr && xhr.status) {
+            msg += " (HTTP " + xhr.status + ")";
+          }
+          Swal.fire({ icon: "error", title: "Error de conexión", text: msg });
         })
         .always(function () {
           $btn.prop("disabled", false).html(htmlOriginal);
@@ -1668,6 +1701,58 @@ function sendToPayments(btn) {
     },
     function () { /* cancelado */ }
   ).set("labels", { ok: "Sí, mandar", cancel: "Cancelar" });
+}
+
+
+// ===== Botón "Reenviar correo" (solo Id 6296): reenvía el correo de los pagos
+// cerrados hoy (por agrupación de contabilidad) SIN volver a agrupar. =====
+function resendTodayPayments(btn) {
+  alertify.confirm(
+    "Reenviar correo de pagos de hoy",
+    "Se reenviará el correo de solicitud con los pagos que se <strong>cerraron hoy</strong> (agrupados en contabilidad). <strong>No</strong> se volverá a agrupar ni cerrar nada. ¿Continuar?",
+    function () {
+      var $btn = $(btn);
+      var htmlOriginal = $btn.html();
+      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Reenviando...');
+
+      $.ajax({
+        url: "/payment/resend_today_payments",
+        type: "POST",
+        dataType: "json",
+        timeout: 120000,
+      })
+        .done(function (resp) {
+          if (resp && resp.success) {
+            alertify.success(resp.message || "Correo reenviado");
+          } else {
+            Swal.fire({
+              icon: resp && resp.mail_failed ? "warning" : "error",
+              title: "No se pudo reenviar",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text((resp && resp.message) || "Error desconocido").html() +
+                "</div>" +
+                (resp && resp.mail_error
+                  ? "<hr><details style='text-align:left;font-size:.78rem;color:#64748b;'><summary>Detalle técnico</summary><code>" +
+                    $("<div>").text(resp.mail_error).html() +
+                    "</code></details>"
+                  : ""),
+              confirmButtonText: "Cerrar",
+              width: 620,
+            });
+          }
+        })
+        .fail(function (xhr) {
+          var msg = "Error de conexión con el servidor.";
+          if (xhr && xhr.status) msg += " (HTTP " + xhr.status + ")";
+          Swal.fire({ icon: "error", title: "Error de conexión", text: msg });
+        })
+        .always(function () {
+          $btn.prop("disabled", false).html(htmlOriginal);
+        });
+    },
+    function () { /* cancelado */ }
+  ).set("labels", { ok: "Sí, reenviar", cancel: "Cancelar" });
 }
 
 
@@ -4046,29 +4131,31 @@ function loadAuthorizedPendingInvoices() {
         render: function (data, type, row) {
           if (row.tipo_registro === "ANTICIPO") {
             return `
-                            <button class="btn btn-sm btn-outline-secondary"
-                                    onclick="verDetalleAnticipo(${row.payment_request_id})"
-                                    title="Ver detalle del anticipo">
-                                <i class="fas fa-eye"></i> Ver Anticipo
+                            <button onclick="verDetalleAnticipo(${row.payment_request_id})"
+                                    title="Ver detalle del anticipo" data-bs-toggle="tooltip"
+                                    style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;">
+                                <i class="fas fa-eye" style="font-size:.8rem;"></i>
                             </button>
                         `;
           }
 
           const btnPagar = window.PUEDE_TESORERIA
-            ? `<button class="btn btn-sm btn-success ms-1"
-                       onclick='pagarGrupoIndividual(${JSON.stringify(String(row.invoice_ids))}, ${JSON.stringify(row.banco_asignado)}, ${JSON.stringify(row.empresa_nombre)}, ${JSON.stringify(row.proveedor_nombre)}, ${parseFloat(row.total_autorizado) || 0})'
-                       title="Marcar como pagado este grupo">
-                   <i class="fas fa-dollar-sign"></i> Pagar
+            ? `<button onclick='pagarGrupoIndividual(${JSON.stringify(String(row.invoice_ids))}, ${JSON.stringify(row.banco_asignado)}, ${JSON.stringify(row.empresa_nombre)}, ${JSON.stringify(row.proveedor_nombre)}, ${parseFloat(row.total_autorizado) || 0})'
+                       title="Marcar como pagado" data-bs-toggle="tooltip"
+                       style="color:#16a34a;background:#ecfdf5;border:none;border-radius:5px;padding:.3rem .5rem;">
+                   <i class="fas fa-dollar-sign" style="font-size:.8rem;"></i>
                </button>`
             : "";
 
           return `
-                        <button class="btn btn-sm btn-outline-info"
-                                onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
-                                title="Ver facturas individuales">
-                            <i class="fas fa-eye"></i> Ver Desglose
-                        </button>
-                        ${btnPagar}
+                        <div class="d-inline-flex gap-1 justify-content-center">
+                            <button onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
+                                    title="Ver desglose de facturas" data-bs-toggle="tooltip"
+                                    style="color:#0891b2;background:#ecfeff;border:none;border-radius:5px;padding:.3rem .5rem;">
+                                <i class="fas fa-eye" style="font-size:.8rem;"></i>
+                            </button>
+                            ${btnPagar}
+                        </div>
                     `;
         },
       },
@@ -4120,6 +4207,11 @@ function loadAuthorizedPendingInvoices() {
       const table = this.api();
       updateBankSummaryFromTable(table);
       updateSelectedSummary();
+
+      // Tooltips de los botones de acciones (solo icono)
+      $('#tabla_facturas_autorizadas [data-bs-toggle="tooltip"]').each(function () {
+        bootstrap.Tooltip.getOrCreateInstance(this);
+      });
 
       // Poblar filtro de empresas
       const empresas = new Set();

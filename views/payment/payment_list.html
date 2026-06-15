@@ -13,6 +13,9 @@
     });
 </script>
 
+{# <pre>
+    {{ dump(tg_user['Id'] ) }}
+</pre> #}
 <style>
     .pl-tab-link { border-bottom: 2px solid transparent; color: #64748b; background: none; border-top:none; border-left:none; border-right:none; padding: 0.75rem 0; font-size: 0.875rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: color .15s, border-color .15s; white-space: nowrap; }
     .pl-tab-link:hover { color: #1e293b; }
@@ -123,6 +126,11 @@
                 <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
                     <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
                 </button>
+                {% if tg_user['Id'] == 6296 %}
+                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0d9488;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
+                    <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Reenviar correo
+                </button>
+                {% endif %}
                 {# DEV-ONLY (comentado — descomentar si se necesita)
                 <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
                     <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
@@ -296,7 +304,7 @@
                         <th>Fecha Auth.</th>
                         <th>Vencimiento / Folio</th>
                         <th>Requisición</th>
-                        <th class="text-center">Acciones</th>
+                        <th class="text-center" style="min-width:70px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -876,8 +884,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#7c3aed;"></i>
                         <p class="mb-1 mt-2 fw-semibold" style="color:#6d28d9;">Arrastra aquí los PDFs de comprobantes o haz clic para seleccionar</p>
                         <small class="text-muted">Comprobantes Banorte SPEI y Santander. No se guarda nada hasta que confirmes.</small>
-                        <input type="file" id="inputComprobantes" accept="application/pdf" multiple style="display:none;">
                     </div>
+                    <input type="file" id="inputComprobantes" accept="application/pdf" multiple style="display:none;">
                     <div id="comprobantesArchivosSel" class="mt-2 small text-muted"></div>
 
                     <!-- Resumen -->

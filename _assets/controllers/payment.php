@@ -2263,7 +2263,8 @@ class Payment
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
             $from    = 'no-reply@totalgas.com';
 
-            $ok = send_mail($subject, $body, $emails, $from);
+            $mailError = null;
+            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
@@ -2276,11 +2277,133 @@ class Payment
                     'destinatarios'  => $emails
                 ]);
             } else {
-                json_output(['success' => false, 'message' => 'Se agruparon las requisiciones pero no se pudo enviar el correo.']);
+                $detalle = $this->_describir_error_correo($mailError);
+                error_log('send_to_payments: agrupación OK (' . ($group_result['grupos'] ?? 0) . ' grupos) pero FALLÓ el envío. Motivo: ' . ($mailError ?? 'desconocido'));
+                json_output([
+                    'success'        => false,
+                    'mail_failed'    => true,
+                    'grupos_creados' => $group_result['grupos'] ?? 0,
+                    'total_pagos'    => count($pagos),
+                    'destinatarios'  => $emails,
+                    'mail_error'     => $mailError,
+                    'message'        => 'Las requisiciones SÍ se agruparon (' . ($group_result['grupos'] ?? 0) . ' grupo(s)), pero el correo a '
+                        . count($emails) . ' destinatario(s) NO se pudo enviar.' . "\n\nMotivo: " . $detalle
+                        . "\n\nPuedes reintentar el envío con el botón \"Reenviar correo\" sin volver a agrupar.",
+                ]);
             }
         } catch (Exception $e) {
             error_log('Error en send_to_payments: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+            json_output(['success' => false, 'message' => 'Error inesperado: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Traduce el error crudo de PHPMailer/SMTP a un mensaje accionable para el usuario.
+     */
+    private function _describir_error_correo(?string $rawError): string
+    {
+        $raw = trim((string)$rawError);
+        if ($raw === '') {
+            return 'El servidor de correo rechazó el envío sin dar detalle. Revisa la conexión a internet del servidor y la configuración SMTP.';
+        }
+
+        $lower = mb_strtolower($raw);
+
+        if (str_contains($lower, 'could not authenticate') || str_contains($lower, 'username and password') || str_contains($lower, '535') || str_contains($lower, 'webloginrequired') || str_contains($lower, '534')) {
+            return 'La cuenta de correo del sistema (no-reply@totalgas.com) no pudo autenticarse con el servidor SMTP. '
+                . 'Es muy probable que la contraseña de aplicación haya expirado o que Google haya bloqueado el acceso. '
+                . 'Hay que regenerar la contraseña de aplicación y actualizarla en el sistema. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+        if (str_contains($lower, 'could not connect') || str_contains($lower, 'smtp connect') || str_contains($lower, 'timed out') || str_contains($lower, 'connection refused')) {
+            return 'No se pudo conectar con el servidor de correo (smtp.gmail.com:465). '
+                . 'Revisa la conexión a internet del servidor o si un firewall está bloqueando el puerto 465. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+        if (str_contains($lower, 'invalid address') || str_contains($lower, 'address')) {
+            return 'Uno de los correos destinatarios tiene un formato inválido. Revisa el catálogo de destinatarios. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+
+        return 'El servidor de correo reportó: ' . $raw;
+    }
+
+
+    /**
+     * Reenvía el correo de solicitud SIN volver a agrupar/cerrar nada.
+     * Toma los pagos cuyos grupos de contabilidad se crearon HOY (es decir, los
+     * que ya "se cerraron" hoy) y vuelve a mandar el correo a los destinatarios.
+     *
+     * Pensado para cuando la agrupación funcionó pero el correo falló.
+     * Restringido al usuario con Id = 6296.
+     */
+    public function resend_today_payments()
+    {
+        header('Content-Type: application/json');
+        try {
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            if ($user_id !== 6296) {
+                json_output(['success' => false, 'message' => 'No autorizado para reenviar el correo.']);
+                return;
+            }
+
+            $today = date('Y-m-d');
+
+            // Pagos cuyos grupos de contabilidad se crearon hoy (ya cerrados hoy).
+            $pagos = $this->PaymentAccountingGroupsModel->get_payments_by_group_date($today);
+
+            if (empty($pagos)) {
+                json_output([
+                    'success' => false,
+                    'message' => 'No hay pagos agrupados hoy para reenviar. (No se encontró ningún grupo de contabilidad creado el ' . date('d/m/Y') . '.)'
+                ]);
+                return;
+            }
+
+            // Destinatarios
+            if (self::TEST_MODE) {
+                $emails = [self::TEST_MODE_EMAIL];
+            } else {
+                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
+            }
+
+            if (empty($emails)) {
+                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto_neto'], $pagos));
+
+            $subject = 'Solicitud de pago a proveedores (reenvío) - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
+            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
+            $from    = 'no-reply@totalgas.com';
+
+            $mailError = null;
+            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+
+            if ($ok) {
+                error_log('resend_today_payments: correo REENVIADO a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s).');
+                json_output([
+                    'success'       => true,
+                    'message'       => 'Correo reenviado correctamente con ' . count($pagos) . ' pago(s) cerrados hoy.' . (self::TEST_MODE ? ' [MODO PRUEBAS]' : ''),
+                    'total_pagos'   => count($pagos),
+                    'total_monto'   => $total_general,
+                    'destinatarios' => $emails,
+                ]);
+            } else {
+                $detalle = $this->_describir_error_correo($mailError);
+                error_log('resend_today_payments: FALLÓ el reenvío. Motivo: ' . ($mailError ?? 'desconocido'));
+                json_output([
+                    'success'     => false,
+                    'mail_failed' => true,
+                    'mail_error'  => $mailError,
+                    'message'     => 'No se pudo reenviar el correo a ' . count($emails) . ' destinatario(s).'
+                        . "\n\nMotivo: " . $detalle,
+                ]);
+            }
+        } catch (Exception $e) {
+            error_log('Error en resend_today_payments: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error inesperado: ' . $e->getMessage()]);
         }
     }
 

@@ -88,7 +88,12 @@
       "PowerShell(php _tmp_diag_cuentas2.php)",
       "PowerShell(php _tmp_test_layout_db.php)",
       "PowerShell(php _tmp_test_layout_db2.php)",
-      "Read(//c/Users/alejandro.martinez/Downloads/recibos/**)"
+      "Read(//c/Users/alejandro.martinez/Downloads/recibos/**)",
+      "PowerShell(php -l \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_assets\\\\controllers\\\\payment.php\"; php -l \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_assets\\\\models\\\\PaymentAccountingGroupsModel.php\"; php -l \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_assets\\\\classes\\\\php_functions.php\")",
+      "PowerShell(python \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\check_resend_query.py\")",
+      "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_tmp_test_resend.php\" 2>&1)",
+      "Bash(rm -f _tmp_test_resend.php _tmp_test_mailerror.php)",
+      "Bash(ls _tmp_*.php)"
     ],
     "deny": [],
     "ask": []
