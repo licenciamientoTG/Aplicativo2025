@@ -69,8 +69,8 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
         $mail->Port       = 465;
 
-        $mail->Username   = 'totalgasdesarrollo@gmail.com';
-        $mail->Password   = 'bdppgxrwzhmyfrmf';
+        $mail->Username   = 'no-reply@totalgas.com';
+        $mail->Password   = 'sysdhepknmlkigbs';
 
         // --- Codificación y HTML ---
         $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8

@@ -76,7 +76,18 @@
       "PowerShell(php -l _assets\\\\controllers\\\\payment.php; php -l _assets\\\\models\\\\PaymentRequestInvoicesModel.php)",
       "PowerShell(php _tmp_dump_xlsx.php)",
       "PowerShell(python \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\check_notas_credito.py\")",
-      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result.txt; Get-Content _tmp_dump_result.txt -TotalCount 10)"
+      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result.txt; Get-Content _tmp_dump_result.txt -TotalCount 10)",
+      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result2.txt; Get-Content _tmp_dump_result2.txt -TotalCount 5)",
+      "PowerShell($c = Get-Content _tmp_dump_result2.txt; $c | Select-String -Pattern 'HOJA:|ARCHIVO:|HOJAS:' | ForEach-Object { \"$\\($_.LineNumber\\): $\\($_.Line.Trim\\(\\)\\)\" })",
+      "PowerShell(python \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\check_mandar_pagos.py\")",
+      "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_tmp_test_mail.php\")",
+      "PowerShell(php -l _assets\\\\controllers\\\\payment.php; php -l _assets\\\\models\\\\PaymentRequestInvoicesModel.php; php -l _assets\\\\models\\\\PaymentRequestsModel.php)",
+      "PowerShell(php _tmp_test_banorte.php)",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(php _tmp_diag_cuentas.php)",
+      "PowerShell(php _tmp_diag_cuentas2.php)",
+      "PowerShell(php _tmp_test_layout_db.php)",
+      "PowerShell(php _tmp_test_layout_db2.php)"
     ],
     "deny": [],
     "ask": []

@@ -21,8 +21,8 @@ class GeneradorXMLPrecios {
     
     // Configuración de correo
     private $emailConfig = [
-        'from' => 'totalgasdesarrollo@gmail.com',
-        'password' => 'bdppgxrwzhmyfrmf',
+        'from' => 'no-reply@totalgas.com',
+        'password' => 'sysdhepknmlkigbs',
         'smtp_server' => 'smtp.gmail.com',
         'smtp_port' => 465,
         'to' => 'aldo.ochoa@totalgas.com,claudia.martinez@totalgas.com'

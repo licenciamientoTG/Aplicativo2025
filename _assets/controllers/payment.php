@@ -2188,7 +2188,7 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'totalgasdesarrollo@gmail.com';
+            $from    = 'no-reply@totalgas.com';
 
             $ok = send_mail($subject, $body, $emails, $from);
 
@@ -2308,7 +2308,7 @@ class Payment
             );
 
             // Enviar correo
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             // Capturar salida para evitar problemas con JSON
             $resultado = send_mail($subject, $body, $emails, $from);
@@ -2346,7 +2346,7 @@ class Payment
                 $created_by
             );
 
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             $resultado = send_mail($subject, $body, $emails, $from);
 
@@ -2394,7 +2394,7 @@ class Payment
             );
 
             // Enviar correo
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             $resultado = send_mail($subject, $body, $emails, $from);
 
@@ -2812,8 +2812,10 @@ class Payment
 
 
             foreach ($todos_los_datos as $pago) {
-                // Validar cuenta cargo de la empresa (debe ser de 10 dígitos)
-                if (!$pago['cuenta_cargo_banorte'] || strlen($pago['cuenta_cargo_banorte']) != 10) {
+                // Validar cuenta cargo de la empresa: 10 dígitos, o CLABE Banorte
+                // de 18 (072...) de la que se extrae la cuenta de 10
+                $cuenta_cargo = $this->normalizar_cuenta_banorte($pago['cuenta_cargo_banorte']);
+                if (!$cuenta_cargo || strlen($cuenta_cargo) != 10) {
                     $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
                 }
 
@@ -2883,6 +2885,21 @@ class Payment
     }
 
 
+    /**
+     * Normaliza una cuenta propia Banorte: si viene como CLABE de 18 (072...)
+     * extrae la cuenta de 10 dígitos (posiciones 8-17, se omite el 0 inicial
+     * de la cuenta de 11 dentro de la CLABE).
+     */
+    private function normalizar_cuenta_banorte($cuenta)
+    {
+        $cuenta = trim((string)$cuenta);
+        if (strlen($cuenta) == 18 && substr($cuenta, 0, 3) === '072') {
+            return substr($cuenta, 7, 10);
+        }
+        return $cuenta;
+    }
+
+
     private function generar_layout_banorte_multi_empresa($pagos)
     {
         $lineas = [];
@@ -2893,12 +2910,11 @@ class Payment
             $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo'];
 
             if (!isset($consolidados[$key])) {
-                // ✅ Obtener cuenta de 10 dígitos del beneficiario
-                $cuenta_abono = $this->extraer_cuenta_banorte($pago['clabe_beneficiario']);
-
                 $consolidados[$key] = [
-                    'cuenta_cargo' => $pago['cuenta_cargo_banorte'],
-                    'cuenta_abono' => $cuenta_abono,
+                    'cuenta_cargo' => $this->normalizar_cuenta_banorte($pago['cuenta_cargo_banorte']),
+                    'cuenta_destino' => $pago['clabe_beneficiario'],
+                    'clave_id' => $pago['clave_id_beneficiario'] ?? '',
+                    'rfc' => $pago['proveedor_rfc'] ?? '',
                     'proveedor_nombre' => $pago['proveedor_nombre'],
                     'proveedor_codigo' => $pago['proveedor_codigo'],
                     'monto_total' => 0,
@@ -2920,18 +2936,31 @@ class Payment
 
         // ✅ GENERAR LÍNEAS
         $fecha_operacion = date('dmY'); // Formato DDMMAAAA
+        $referencia = date('Y');        // Referencia numérica (Tesorería usa el año)
 
         foreach ($consolidados as $grupo) {
-            // Monto en centavos (sin decimales)
-            $monto_centavos = intval($grupo['monto_total'] * 100);
+            // Operación y cuenta destino según el tipo de cuenta del beneficiario:
+            //   04 = interbancaria SPEI (CLABE completa de 18)
+            //   02 = cuenta Banorte (10 dígitos; si viene CLABE 072, extraer cuenta)
+            //   01 = solo traspasos entre cuentas propias (no aplica a proveedores)
+            $destino = trim($grupo['cuenta_destino']);
+            if (strlen($destino) == 18 && substr($destino, 0, 3) !== '072') {
+                $operacion = '04';
+                $cuenta_abono = $destino;
+            } else {
+                // Cuenta Banorte (10 dígitos directos o extraídos de CLABE 072)
+                $operacion = '02';
+                $cuenta_abono = $this->normalizar_cuenta_banorte($destino);
+            }
+
+            // ✅ Importe en PESOS con 2 decimales (Banorte NO usa centavos)
+            $importe = number_format($grupo['monto_total'], 2, '.', '');
 
             // ✅ Concepto adaptado
             $cantidad_refs = count($grupo['referencias']);
             $primera_ref = $grupo['referencias'][0];
 
-            if ($grupo['es_anticipo']) {
-                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
-            } else if ($cantidad_refs === 1) {
+            if ($grupo['es_anticipo'] || $cantidad_refs === 1) {
                 $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
             } else {
                 $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
@@ -2939,39 +2968,36 @@ class Payment
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
 
-            // ✅ Formato Banorte:
-            // 01[TAB][TAB]cuenta_cargo[TAB]cuenta_abono[TAB]monto[TAB]19[TAB]concepto[TAB][TAB]0[TAB]fecha[TAB]concepto
-            $linea = sprintf(
-                "01\t\t%s\t%s\t%d\t19\t%s\t\t0\t%s\t%s",
+            // Clave ID del beneficiario registrado en el portal Banorte (catálogo
+            // CatalogosCuentasBancarias.IdBeneficiario); '0' o vacío = sin clave
+            $clave_id = trim((string)$grupo['clave_id']);
+            if ($clave_id === '0') {
+                $clave_id = '';
+            }
+
+            $rfc = $this->limpiar_texto_layout((string)$grupo['rfc'], 13);
+
+            // ✅ Formato Banorte pago a proveedores (11 campos separados por TAB):
+            // OPERACION | CLAVE ID | CUENTA ORIGEN | CUENTA CLABE/DESTINO | IMPORTE
+            // | REFERENCIA | DESCRIPCION | RFC | IVA | FECHA APLICACION | INSTRUCCION DE PAGO
+            $linea = implode("\t", [
+                $operacion,
+                $clave_id,
                 $grupo['cuenta_cargo'],
-                $grupo['cuenta_abono'],
-                $monto_centavos,
+                $cuenta_abono,
+                $importe,
+                $referencia,
                 $concepto,
+                $rfc,
+                '0',
                 $fecha_operacion,
                 $concepto
-            );
+            ]);
 
             $lineas[] = $linea;
         }
 
         return implode("\r\n", $lineas);
-    }
-
-
-    private function extraer_cuenta_banorte($clabe_o_cuenta)
-    {
-        $longitud = strlen($clabe_o_cuenta);
-
-        if ($longitud == 18) {
-            // Es CLABE, extraer los 10 dígitos centrales (posición 3 a 12)
-            return substr($clabe_o_cuenta, 3, 10);
-        } else if ($longitud == 10) {
-            // Ya es cuenta de 10 dígitos
-            return $clabe_o_cuenta;
-        }
-
-        // Si no es ninguno de los dos, devolver tal cual (fallará en validación)
-        return $clabe_o_cuenta;
     }
 
 
