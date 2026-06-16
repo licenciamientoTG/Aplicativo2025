@@ -1,3 +1,25 @@
+async function ModalinvoicePdf(id, data) {
+  try {
+    $("#ModalinvoicePdf").modal("show"); // Abre el modal
+
+    const response = await fetch("/payment/ModalinvoicePdf", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/javascript, */*",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      credentials: "include",
+      body: `FacturaId=${id}&data=${encodeURIComponent(JSON.stringify(data))}`,
+    });
+
+    const content = await response.text();
+    // Inserta el contenido en el modal
+    $("#ModalinvoicePdf").find("#ModalinvoicePdfContent").html(content);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 // Si el documento esta listo
 $(document).ready(function () {
 
