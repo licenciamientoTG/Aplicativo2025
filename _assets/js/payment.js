@@ -4406,6 +4406,70 @@ function updateResumenDesglose(table) {
   if (container) container.innerHTML = html;
 }
 
+function descargarResumenExcel() {
+  if (typeof tablaFacturasAutorizadas === 'undefined' || !tablaFacturasAutorizadas || !tablaFacturasAutorizadas.data().count()) {
+    alertify.error('No hay datos para exportar.');
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    alertify.error('La librería Excel no está disponible. Recarga la página.');
+    return;
+  }
+
+  // Reconstruir el mismo agrupamiento que updateResumenDesglose
+  var grupos = {};
+  var totalGeneral = 0;
+
+  tablaFacturasAutorizadas.rows({ search: 'applied' }).data().each(function(row) {
+    var monto   = parseFloat(row.total_saldo) || 0;
+    var empresa = row.empresa_nombre   || 'Sin empresa';
+    var prov    = row.proveedor_nombre || 'Sin proveedor';
+    var banco   = row.banco_asignado   || '';
+    if (!grupos[empresa]) grupos[empresa] = { banco: banco, proveedores: {}, subtotal: 0 };
+    grupos[empresa].proveedores[prov] = (grupos[empresa].proveedores[prov] || 0) + monto;
+    grupos[empresa].subtotal += monto;
+    totalGeneral += monto;
+  });
+
+  var empresasOrdenadas = Object.keys(grupos).sort(function(a,b) {
+    return grupos[b].subtotal - grupos[a].subtotal;
+  });
+
+  var rows = [['Razón Social', 'Banco', 'Proveedor', 'Monto']];
+
+  empresasOrdenadas.forEach(function(empresa) {
+    var g = grupos[empresa];
+    var provsOrdenados = Object.entries(g.proveedores).sort(function(a,b){ return b[1]-a[1]; });
+    provsOrdenados.forEach(function(entry) {
+      rows.push([empresa, g.banco, entry[0], entry[1]]);
+    });
+    // Subtotal por empresa
+    rows.push(['', '', 'SUBTOTAL ' + empresa, g.subtotal]);
+    rows.push([]); // línea en blanco entre empresas
+  });
+
+  // Total general al final
+  rows.push(['', '', 'TOTAL GENERAL', totalGeneral]);
+
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Ancho de columnas
+  ws['!cols'] = [{ wch: 36 }, { wch: 12 }, { wch: 42 }, { wch: 18 }];
+
+  // Formato de número para la columna Monto (col D, índice 3)
+  rows.forEach(function(r, i) {
+    if (i === 0 || !r[3] && r[3] !== 0) return;
+    var cell = ws[XLSX.utils.encode_cell({ r: i, c: 3 })];
+    if (cell) cell.z = '"$"#,##0.00';
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+
+  var fecha = new Date().toLocaleDateString('es-MX').replace(/\//g, '-');
+  XLSX.writeFile(wb, 'Resumen_Pagos_' + fecha + '.xlsx');
+}
+
 function updateBankSummaryFromTable(table) {
   if (!table.data().count()) {
     return;

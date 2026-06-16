@@ -4,6 +4,7 @@
 {% block menutitle %}Pagos Programados{% endblock %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var sidebar = document.getElementById('sidebar');
@@ -271,12 +272,18 @@
 
         <!-- ── Card colapsable 2: Resumen por razón social → proveedor ── -->
         <div class="border-bottom">
-            <button class="d-flex align-items-center justify-content-between w-100 px-3 py-2 bg-transparent border-0 text-start"
-                    style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;"
-                    onclick="toggleResumenCard('resumenDesglose','chevronDesglose')">
-                <span><i class="fas fa-chart-bar me-1" style="color:#94a3b8;"></i> Resumen</span>
-                <i class="fas fa-chevron-down" id="chevronDesglose" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
-            </button>
+            <div class="d-flex align-items-center justify-content-between w-100 px-3 py-2">
+                <button class="d-flex align-items-center gap-1 bg-transparent border-0 p-0 text-start"
+                        style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;flex:1;"
+                        onclick="toggleResumenCard('resumenDesglose','chevronDesglose')">
+                    <i class="fas fa-chart-bar me-1" style="color:#94a3b8;"></i> Resumen
+                    <i class="fas fa-chevron-down ms-2" id="chevronDesglose" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
+                </button>
+                <button onclick="descargarResumenExcel()" class="btn btn-sm d-flex align-items-center gap-1"
+                        style="background:#16a34a;color:#fff;border-radius:.4rem;font-size:.75rem;padding:.25rem .65rem;white-space:nowrap;">
+                    <i class="fas fa-file-excel" style="font-size:.72rem;"></i> Excel
+                </button>
+            </div>
             <div id="resumenDesglose" style="display:none;">
                 <div class="border-top p-3">
                     <div id="resumenTablaContainer" style="font-size:.82rem;">
