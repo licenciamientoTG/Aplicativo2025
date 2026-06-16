@@ -2568,7 +2568,19 @@ async function analisis_compras_table() {
         className: "btn btn-success",
         text: '<i class="fas fa-file-excel"></i> Excel',
         title: "Analisis_Compras_" + fromDate + "_" + untilDate,
-        exportOptions: { columns: ":visible" }
+        exportOptions: {
+          columns: ":visible",
+          format: {
+            body: function (data, row, column, node) {
+              // UUID (13) y UUID Corpo (19) muestran el valor recortado; exportar el valor completo
+              if (column === 13 || column === 19) {
+                var full = $(node).find("[title]").attr("title");
+                return full || $(node).text();
+              }
+              return data;
+            }
+          }
+        }
       },
       {
         extend: "print",
