@@ -1,0 +1,250 @@
+{# views/arqueo/caja.html — Captura del arqueo de una caja #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }}){% endblock %}
+{% block mycss %}
+<style>
+    .seccion-titulo { background:#212529; color:#fff; padding:.5rem .75rem; font-weight:600; border-radius:6px 6px 0 0; }
+    .moneda-usd { border-top:3px solid #198754; }
+    .moneda-mxn { border-top:3px solid #0d6efd; }
+    .denom-tabla input.cantidad { width:90px; text-align:right; }
+    /* Campos de captura manual (amarillos, como el Excel) */
+    .campo-amarillo { background:#fff8c4 !important; }
+    .denom-tabla td.total { text-align:right; font-variant-numeric:tabular-nums; }
+    .gran-total { font-weight:700; text-align:right; font-variant-numeric:tabular-nums; }
+    .panel-totales { position:sticky; top:1rem; }
+    .panel-totales .row > div { padding:.25rem .5rem; }
+    .resultado-positivo { color:#198754; font-weight:700; }
+    .resultado-negativo { color:#dc3545; font-weight:700; }
+    .num { font-variant-numeric:tabular-nums; text-align:right; }
+    .denom-img { height:26px; width:auto; margin-right:6px; vertical-align:middle; border:1px solid #dee2e6; border-radius:3px; }
+</style>
+{% endblock %}
+{% block menutitle %}
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <span>Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }})</span>
+    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <i class="fas fa-backward"></i> Regresar
+    </a>
+</div>
+{% endblock %}
+{% block content %}
+
+{% if solo_lectura %}
+<div class="alert alert-info">
+    <i class="fas fa-lock"></i> La sesión está <strong>cerrada</strong>. Este arqueo es de solo lectura.
+</div>
+{% endif %}
+
+<input type="hidden" id="caja_id" value="{{ caja.id }}">
+<input type="hidden" id="solo_lectura" value="{{ solo_lectura ? '1' : '0' }}">
+
+<form id="form_arqueo">
+
+{# ---------------- Encabezado ---------------- #}
+<div class="card mb-3">
+  <div class="card-body row g-3">
+    <div class="col-md-3">
+      <label class="form-label">Sucursal</label>
+      <input type="text" class="form-control" value="{{ caja.sucursal_nombre }}" disabled>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Cajero (nombre y firma)</label>
+      <input type="text" id="cajero_nombre" class="form-control campo-amarillo" value="{{ caja.cajero_nombre }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Encargado de revisión</label>
+      <input type="text" id="encargado_revision" class="form-control campo-amarillo" value="{{ caja.encargado_revision }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label">Fecha del arqueo</label>
+      <input type="text" class="form-control" value="{{ sesion.fecha|date('d/m/Y') }}" disabled>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-lg-9">
+
+    {# ---------------- Go Exchange ---------------- #}
+    <div class="card mb-3">
+      <div class="seccion-titulo">Sistema — Go Exchange</div>
+      <div class="card-body row g-3">
+        <div class="col-md-3">
+          <label class="form-label">Dólares (USD)</label>
+          <input type="number" step="0.01" min="0" id="go_exchange_dolares" class="form-control campo-amarillo" value="{{ caja.go_exchange_dolares }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Moneda Nacional (MXN)</label>
+          <input type="number" step="0.01" min="0" id="go_exchange_mxn" class="form-control campo-amarillo" value="{{ caja.go_exchange_mxn }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tipo de cambio Venta</label>
+          <input type="number" step="0.0001" min="1" id="tipo_cambio_venta" class="form-control campo-amarillo" value="{{ caja.tipo_cambio_venta }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tipo de cambio Compra</label>
+          <input type="number" step="0.0001" min="1" id="tipo_cambio_compra" class="form-control campo-amarillo" value="{{ caja.tipo_cambio_compra }}">
+        </div>
+      </div>
+    </div>
+
+    {# ---------------- Grids de denominaciones ----------------
+       Recorremos la estructura por sección y moneda. El macro de abajo
+       renderiza una tabla de captura. tipo y etiqueta dependen de la sección. #}
+
+    {% set secciones = {
+        'cajon':         {'titulo':'Cajón del Cajero',          'tipo_usd':'billete', 'tipo_mxn':'billete', 'label':'Cantidad (Billetes)'},
+        'morrallero':    {'titulo':'Morrallero del Cajero',     'tipo_usd':'moneda',  'tipo_mxn':'moneda',  'label':'Cantidad (Monedas)'},
+        'caja_fuerte':   {'titulo':'Billetes de Caja Fuerte',   'tipo_usd':'fajilla', 'tipo_mxn':'fajilla', 'label':'Cantidad (Fajillas)'},
+        'morrallero_cf': {'titulo':'Morrallero de Caja Fuerte', 'tipo_usd':'bolsa',   'tipo_mxn':'bolsa',   'label':'Cantidad (Bolsas)'}
+    } %}
+
+    {% for seccion, meta in secciones %}
+    <div class="card mb-3">
+      <div class="seccion-titulo">{{ meta.titulo }}</div>
+      <div class="card-body">
+        <div class="row">
+          {% for moneda in ['USD','MXN'] %}
+          {% set tipo = (moneda == 'USD') ? meta.tipo_usd : meta.tipo_mxn %}
+          {% set es_cf_morr = (seccion == 'morrallero_cf') %}
+          {% set denoms = es_cf_morr ? estructura[seccion][moneda]['denominacion'] : estructura[seccion][moneda] %}
+          {% set bolsas = es_cf_morr ? estructura[seccion][moneda]['valor_bolsa'] : [] %}
+          <div class="col-md-6">
+            <table class="table table-sm table-bordered denom-tabla {{ moneda == 'USD' ? 'moneda-usd' : 'moneda-mxn' }}">
+              <thead>
+                <tr>
+                  <th colspan="{{ es_cf_morr ? 4 : 3 }}" class="text-center">{{ moneda }}</th>
+                </tr>
+                <tr>
+                  <th>Denominación</th>
+                  {% if es_cf_morr %}<th>Valor/Bolsa</th>{% endif %}
+                  <th>{{ meta.label }}</th>
+                  <th class="text-end">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% set es_moneda = (seccion == 'morrallero' or seccion == 'morrallero_cf') %}
+                {% for i, denom in denoms %}
+                {# Nombre del archivo de imagen de apoyo: moneda_denominacion(.png).
+                   Para monedas, $1 USD y $20 MXN llevan sufijo _coin (no chocar con el billete). #}
+                {% set img = (moneda|lower) ~ '_' ~ denom %}
+                {% if es_moneda and ((moneda == 'USD' and denom == 1) or (moneda == 'MXN' and denom == 20)) %}
+                  {% set img = img ~ '_coin' %}
+                {% endif %}
+                <tr>
+                  <td class="text-nowrap">
+                    <img src="{{ IMAGES }}arqueo/{{ img }}.png" alt="${{ denom }}"
+                         class="denom-img" loading="lazy"
+                         onerror="this.style.display='none'">
+                    ${{ denom }}
+                  </td>
+                  {% if es_cf_morr %}<td>${{ bolsas[i] }}</td>{% endif %}
+                  <td>
+                    <input type="number" min="0" step="1"
+                           class="form-control form-control-sm cantidad campo-amarillo denom-input"
+                           data-seccion="{{ seccion }}"
+                           data-moneda="{{ moneda }}"
+                           data-tipo="{{ tipo }}"
+                           data-denominacion="{{ denom }}"
+                           {% if es_cf_morr %}data-valor-bolsa="{{ bolsas[i] }}"{% endif %}
+                           value="0">
+                  </td>
+                  <td class="total" data-total="0">$0.00</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="{{ es_cf_morr ? 3 : 2 }}" class="text-end">Gran Total</th>
+                  <td class="gran-total" data-gran-total="{{ seccion }}-{{ moneda }}">$0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+    {# ---------------- Vales ---------------- #}
+    <div class="card mb-3">
+      <div class="seccion-titulo">Vales (hasta 15)</div>
+      <div class="card-body">
+        <table class="table table-sm table-bordered" id="tabla_vales">
+          <thead>
+            <tr>
+              <th style="width:50px;">#</th>
+              <th style="width:150px;">Fecha</th>
+              <th>Concepto</th>
+              <th style="width:140px;">Dólares</th>
+              <th style="width:140px;">MXN</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for n in 1..15 %}
+            <tr>
+              <td>{{ n }}</td>
+              <td><input type="date" class="form-control form-control-sm vale-fecha" data-num="{{ n }}"></td>
+              <td><input type="text" maxlength="200" class="form-control form-control-sm vale-concepto campo-amarillo" data-num="{{ n }}"></td>
+              <td><input type="number" min="0" step="0.01" class="form-control form-control-sm vale-dolares campo-amarillo num" data-num="{{ n }}" value="0"></td>
+              <td><input type="number" min="0" step="0.01" class="form-control form-control-sm vale-mxn campo-amarillo num" data-num="{{ n }}" value="0"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th colspan="3" class="text-end">Totales</th>
+              <td class="num" id="total_vales_dolares">$0.00</td>
+              <td class="num" id="total_vales_mxn">$0.00</td>
+            </tr>
+            <tr>
+              <th colspan="3" class="text-end">Gran Total Vales (MXN)</th>
+              <td colspan="2" class="num" id="gran_total_vales_mxn">$0.00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  {# ---------------- Panel de totales (sticky) ---------------- #}
+  <div class="col-lg-3">
+    <div class="card panel-totales">
+      <div class="seccion-titulo">Resumen del arqueo</div>
+      <div class="card-body">
+        <div class="row"><div class="col-7">Físico USD</div><div class="col-5 num" id="r_fisico_usd">$0.00</div></div>
+        <div class="row"><div class="col-7">Físico MXN</div><div class="col-5 num" id="r_fisico_mxn">$0.00</div></div>
+        <div class="row"><div class="col-7">Arqueo MXN (+vales)</div><div class="col-5 num" id="r_arqueo_mxn">$0.00</div></div>
+        <hr>
+        <div class="row"><div class="col-7">Total en Sistema</div><div class="col-5 num" id="r_sistema">$0.00</div></div>
+        <hr>
+        <div class="row"><div class="col-7">Diferencia USD</div><div class="col-5 num" id="r_dif_usd">$0.00</div></div>
+        <div class="row"><div class="col-7">Diferencia MXN</div><div class="col-5 num" id="r_dif_mxn">$0.00</div></div>
+        <hr>
+        <div class="row"><div class="col-7"><strong>Resultado Final</strong></div><div class="col-5 num" id="r_resultado">$0.00</div></div>
+        <small class="text-muted">Positivo = sobrante · Negativo = faltante</small>
+
+        {% if not solo_lectura %}
+        <button type="button" class="btn btn-primary w-100 mt-3" onclick="guardarCaja()">
+          <i class="fas fa-save"></i> Guardar arqueo
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+</form>
+
+{# Datos ya capturados (para precargar inputs desde JS) #}
+<script>
+  window.ARQUEO_DENOMS = {{ denominaciones|json_encode|raw }};
+  window.ARQUEO_VALES  = {{ vales|json_encode|raw }};
+</script>
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}arqueo.js"></script>
+{% endblock %}

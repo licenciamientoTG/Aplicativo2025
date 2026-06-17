@@ -58,6 +58,8 @@ async function graph_week(ctx,product) {
                     datasets: datasets
                 },
                 options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
                     scales: {
                         x: {
                             title: {
@@ -82,7 +84,7 @@ async function graph_week(ctx,product) {
                     legend: {
                         position:'right'
                     }
-    
+
                 }};
              new Chart(ctx, config);
 
@@ -168,6 +170,8 @@ async function graph_month(ctx,product) {
                 datasets: datasets
             },
             options: {
+                responsive: true,
+                maintainAspectRatio: false,
                 scales: {
                     x: {
                         title: {

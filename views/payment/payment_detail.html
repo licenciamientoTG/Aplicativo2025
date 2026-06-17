@@ -286,6 +286,9 @@
 							</td>
 							<td class="text-center" style="white-space:nowrap;">
 								<button class="btn btn-sm btn-outline-secondary" onclick="verHistorialPagos({{ invoice.id }}, '{{ invoice.folio }}')" title="Historial"><i class="fas fa-history"></i></button>
+								{% if authorized(66) %}
+								<button class="btn btn-sm btn-outline-success" onclick="openApplyCreditNoteModal({{ invoice.id }}, '{{ invoice.folio }}')" title="Aplicar nota a esta factura"><i class="fas fa-link"></i></button>
+								{% endif %}
 								{% if (payment.status == 0 or payment.status == 1) and invoice.paid_amount == 0 and authorized(66) %}
 								<button class="btn btn-sm btn-outline-danger" onclick="removeInvoiceFromPayment({{ invoice.id }}, '{{ invoice.folio }}')" title="Quitar"><i class="fas fa-times"></i></button>
 								{% endif %}
@@ -1009,39 +1012,43 @@
 		<div class="modal-dialog modal-dialog-centered modal-lg">
 			<div class="modal-content">
 				<div class="modal-header">
-					<h5 class="modal-title"><i class="fas fa-link"></i> Aplicar Nota al Pago</h5>
+					<h5 class="modal-title" id="applyNoteModalTitle"><i class="fas fa-link"></i> Aplicar Nota al Pago</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 				</div>
+				<div class="modal-body">
+					<!-- Notas ya aplicadas a esta factura -->
+					<div id="applyNoteExistingWrap" class="mb-3" style="display:none;">
+						<label class="d-block mb-1"><small class="text-muted">Notas ya aplicadas a esta factura</small></label>
+						<div id="applyNoteExistingList" class="d-flex flex-column gap-1"></div>
+					</div>
+				</div>
 				<form id="applyNoteForm" onsubmit="return false;">
-					<div class="modal-body">
+					<div class="modal-body pt-0">
 						<input type="hidden" id="applyNotePaymentId" name="payment_request_id" value="{{ payment.id }}">
-						<!-- Selector de nota -->
-						<div class="form-group">
-							<label>Nota de Crédito / Cargo *</label>
-							<select id="applyNoteSelect" name="credit_note_id" class="form-control" required>
-								<option value="">Cargando notas disponibles...</option>
-							</select>
-							<small class="form-text text-muted" id="applyNoteBalanceHint"></small>
-						</div>
 						<!-- Selector de factura (opcional) -->
 						<div class="form-group">
 							<label>Factura <small class="text-muted">(opcional — dejar vacío para nota independiente)</small></label>
-							<select name="invoice_id" class="form-control">
+							<select id="applyNoteInvoiceSelect" name="invoice_id" class="form-control">
 								<option value="">Sin factura asociada (nota independiente)</option>
 								{% for inv in invoices %}
 									<option value="{{ inv.id }}">{{ inv.folio }} — {{ inv.invoice_number }}</option>
 								{% endfor %}
 							</select>
 						</div>
-						<!-- Monto a aplicar -->
+						<!-- Lista de notas disponibles con checkbox + monto -->
 						<div class="form-group">
-							<label>Monto a Aplicar *</label>
-							<input type="number" name="applied_amount" id="applyNoteAmount"
-								class="form-control" step="0.01" min="0.01" required placeholder="0.00">
+							<label class="d-flex justify-content-between align-items-center">
+								<span>Notas de Crédito / Cargo a aplicar *</span>
+								<small class="text-muted" id="applyNoteSelectedHint"></small>
+							</label>
+							<div id="applyNoteCheckList" class="border rounded p-2"
+								style="max-height:260px; overflow-y:auto;">
+								<span class="text-muted small">Cargando notas disponibles...</span>
+							</div>
 						</div>
 					</div>
 					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cancelar</button>
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="fas fa-times"></i> Cerrar</button>
 						<button type="submit" class="btn btn-primary"><i class="fas fa-link"></i> Aplicar</button>
 					</div>
 				</form>
@@ -1118,62 +1125,20 @@
 	<script>
 		var paymentId = document.getElementById('paymentId').value;
 		let currentPermission = null;
+		let applyNotePageDirty = false;
 
-		// ── Aplicar nota de crédito/cargo ──────────────────────────────────────
-		document.getElementById('applyNoteForm').addEventListener('submit', function(e) {
-			e.preventDefault();
-
-			var sel     = document.getElementById('applyNoteSelect');
-			var balance = sel.options[sel.selectedIndex]
-				? parseFloat(sel.options[sel.selectedIndex].getAttribute('data-balance') || 0)
-				: 0;
-			var amount  = parseFloat(document.getElementById('applyNoteAmount').value || 0);
-
-			if (!sel.value) {
-				alertify.error('Seleccione una nota'); return;
+		// Recarga la página solo al cerrar el modal, si se aplicó/quitó alguna nota mientras estuvo abierto
+		document.getElementById('applyNoteModal').addEventListener('hidden.bs.modal', function() {
+			if (applyNotePageDirty) {
+				applyNotePageDirty = false;
+				location.reload();
 			}
-			if (amount <= 0) {
-				alertify.error('Ingrese un monto mayor a 0'); return;
-			}
-			if (amount > balance) {
-				alertify.error('El monto excede el saldo disponible ($' + balance.toFixed(2) + ')'); return;
-			}
-
-			var formData = new FormData(this);
-
-			fetch('/payment/applyCreditNote', {
-				method: 'POST',
-				body: formData,
-				credentials: 'include'
-			})
-			.then(r => r.json())
-			.then(function(data) {
-				if (data.success) {
-					$('#applyNoteModal').modal('hide');
-					alertify.success('Nota aplicada correctamente');
-					setTimeout(() => location.reload(), 800);
-				} else {
-					alertify.error(data.message || 'Error al aplicar la nota');
-				}
-			})
-			.catch(function() {
-				alertify.error('Error de conexión');
-			});
 		});
 
-		// Actualizar hint de saldo al seleccionar nota
-		document.getElementById('applyNoteSelect').addEventListener('change', function() {
-			var selected = this.options[this.selectedIndex];
-			var balance  = selected ? parseFloat(selected.getAttribute('data-balance') || 0) : 0;
-			var hint     = document.getElementById('applyNoteBalanceHint');
-			var amtInput = document.getElementById('applyNoteAmount');
-			if (balance > 0) {
-				hint.textContent = 'Saldo disponible: $' + balance.toFixed(2);
-				amtInput.max = balance;
-			} else {
-				hint.textContent = '';
-				amtInput.removeAttribute('max');
-			}
+		// ── Aplicar notas de crédito/cargo (multi-selección) ───────────────────
+		document.getElementById('applyNoteForm').addEventListener('submit', function(e) {
+			e.preventDefault();
+			applySelectedNotes();
 		});
 
 		function guardarCamposEdicion() {

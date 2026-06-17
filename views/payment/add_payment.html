@@ -716,23 +716,21 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="alert alert-info py-2 mb-3" id="assignNoteInvoiceInfo">—</div>
-        <div class="form-group mb-3">
-          <label>Nota disponible *</label>
-          <select id="assignNoteSelect" class="form-control" onchange="onAssignNoteSelectChange()">
-            <option value="">-- Seleccione una nota --</option>
-          </select>
-          <small class="text-muted" id="assignNoteBalance"></small>
-        </div>
+        <div class="bg-light border rounded px-2 py-2 mb-3" id="assignNoteInvoiceInfo">—</div>
         <div class="form-group">
-          <label>Monto a aplicar *</label>
-          <input type="number" id="assignNoteAmount" class="form-control" step="0.01" min="0.01" placeholder="0.00">
-          <small class="text-muted">Máximo: saldo disponible y total de la factura</small>
+          <label class="d-flex justify-content-between align-items-center">
+            <span>Notas disponibles *</span>
+            <small class="text-muted" id="assignNoteSelectedHint"></small>
+          </label>
+          <div id="assignNoteCheckList" class="border rounded p-2" style="max-height:260px; overflow-y:auto;">
+            <span class="text-muted small">Cargando notas disponibles...</span>
+          </div>
+          <small class="text-muted d-block mt-1">Máximo por nota: su saldo disponible y el total restante de la factura.</small>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-primary" onclick="confirmNoteAssignment()">
+        <button type="button" class="btn btn-primary" onclick="confirmNoteAssignments()">
           <i class="fas fa-check"></i> Asignar
         </button>
       </div>
@@ -1147,11 +1145,33 @@
         }
 
         const totalFac = parseFloat(item.total_fac) || 0;
-        document.getElementById('assignNoteInvoiceInfo').innerHTML =
-            `<strong>Folio:</strong> ${item.nro} | <strong>Factura:</strong> ${item.Factura || 'N/A'} | <strong>Total:</strong> $${totalFac.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
+        const alreadyApplied = pendingNotes
+            .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
+            .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
+        const restanteFactura = totalFac - alreadyApplied;
 
-        const sel = document.getElementById('assignNoteSelect');
-        sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
+        const fmt = v => '$' + v.toLocaleString('es-MX', { minimumFractionDigits: 2 });
+        document.getElementById('assignNoteInvoiceInfo').innerHTML = `
+            <div class="row g-2 text-center">
+                <div class="col-3 border-end">
+                    <div class="text-muted text-uppercase" style="font-size:.68rem; letter-spacing:.03em;">Folio</div>
+                    <div class="fw-bold">${item.nro}</div>
+                </div>
+                <div class="col-3 border-end">
+                    <div class="text-muted text-uppercase" style="font-size:.68rem; letter-spacing:.03em;">Factura</div>
+                    <div class="fw-bold text-truncate" title="${item.Factura || 'N/A'}">${item.Factura || 'N/A'}</div>
+                </div>
+                <div class="col-3 border-end">
+                    <div class="text-muted text-uppercase" style="font-size:.68rem; letter-spacing:.03em;">Total</div>
+                    <div class="fw-bold">${fmt(totalFac)}</div>
+                </div>
+                <div class="col-3">
+                    <div class="text-muted text-uppercase" style="font-size:.68rem; letter-spacing:.03em;">Restante</div>
+                    <div class="fw-bold ${restanteFactura < totalFac ? 'text-success' : ''}">${fmt(restanteFactura)}</div>
+                </div>
+            </div>`;
+
+        const list = document.getElementById('assignNoteCheckList');
 
         const notesWithBalance = availableNotes.map(n => {
             const usedForThisNote = pendingNotes
@@ -1162,61 +1182,81 @@
         }).filter(n => n.remaining > 0.001);
 
         if (notesWithBalance.length === 0) {
-            sel.innerHTML += '<option disabled>Sin notas disponibles para este proveedor</option>';
+            list.innerHTML = '<span class="text-muted small">Sin notas disponibles para este proveedor</span>';
         } else {
-            notesWithBalance.forEach(n => {
-                const type = n.note_type === 'CREDIT' ? 'Crédito' : 'Cargo';
-                const date = n.note_date ? n.note_date.substring(0, 10) : '';
-                sel.innerHTML += `<option value="${n.id}"
-                    data-balance="${n.remaining}"
-                    data-type="${n.note_type}"
-                    data-label="[${type}] ${n.note_number || 'S/N'} — ${date}">
-                    [${type}] ${n.note_number || 'S/N'} — ${date} — Saldo: $${n.remaining.toFixed(2)}
-                </option>`;
-            });
+            list.innerHTML = notesWithBalance.map(n => {
+                const type  = n.note_type === 'CREDIT' ? 'Crédito' : 'Cargo';
+                const badge = n.note_type === 'CREDIT' ? 'bg-success' : 'bg-secondary';
+                const date  = n.note_date ? n.note_date.substring(0, 10) : '';
+                const label = `[${type}] ${n.note_number || 'S/N'} — ${date}`;
+                const bal   = n.remaining.toFixed(2);
+                return `<div class="d-flex align-items-center gap-2 py-1 border-bottom assign-note-row"
+                    data-note-id="${n.id}" data-balance="${bal}" data-type="${n.note_type}" data-label="${label}">
+                    <input type="checkbox" class="form-check-input mt-0 assign-note-check" onchange="onAssignNoteCheckToggle(this)">
+                    <div class="flex-grow-1" style="font-size:.82rem; line-height:1.15;">
+                        <span class="badge ${badge} me-1">${type}</span>${n.note_number || 'S/N'}
+                        <span class="text-muted"> · ${date} · Saldo: $${bal}</span>
+                    </div>
+                    <input type="number" class="form-control form-control-sm assign-note-amount" style="width:110px;"
+                        step="0.01" min="0.01" max="${bal}" placeholder="Monto" disabled
+                        oninput="updateAssignNoteSelectedHint()">
+                </div>`;
+            }).join('');
         }
 
-        document.getElementById('assignNoteAmount').value = '';
-        document.getElementById('assignNoteBalance').textContent = '';
+        updateAssignNoteSelectedHint();
         $('#assignNoteModal').modal('show');
     }
 
-    // ── Actualizar saldo visible al cambiar nota ──────────────────────────────
-    function onAssignNoteSelectChange() {
-        const sel = document.getElementById('assignNoteSelect');
-        const opt = sel.options[sel.selectedIndex];
-        const balance = opt ? parseFloat(opt.dataset.balance) : 0;
-        const balanceEl = document.getElementById('assignNoteBalance');
-
-        if (balance > 0) {
-            balanceEl.textContent = `Saldo disponible: $${balance.toLocaleString('es-MX', {minimumFractionDigits:2})}`;
-            const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
-            const totalFac = item ? parseFloat(item.total_fac) || 0 : 0;
-            const alreadyApplied = pendingNotes
-                .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
-                .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
-            const maxForInvoice = totalFac - alreadyApplied;
-            const maxAmount = Math.min(balance, maxForInvoice);
-            document.getElementById('assignNoteAmount').max = maxAmount;
-        } else {
-            balanceEl.textContent = '';
+    // ── Al marcar/desmarcar una nota: habilita el monto y lo prellena ─────────
+    function onAssignNoteCheckToggle(chk) {
+        const row = chk.closest('.assign-note-row');
+        const amt = row.querySelector('.assign-note-amount');
+        amt.disabled = !chk.checked;
+        if (chk.checked) {
+            if (!amt.value) {
+                // Prellenar con el menor entre el saldo de la nota y lo restante de la factura
+                const balance = parseFloat(row.getAttribute('data-balance')) || 0;
+                const restante = restanteFacturaActual();
+                amt.value = Math.max(0, Math.min(balance, restante)).toFixed(2);
+            }
+            amt.focus();
         }
+        updateAssignNoteSelectedHint();
     }
 
-    // ── Confirmar asignación de nota (ligada a factura) ───────────────────────
-    function confirmNoteAssignment() {
-        const sel = document.getElementById('assignNoteSelect');
-        const noteId = sel.value;
-        if (!noteId) { alertify.error('Seleccione una nota'); return; }
+    // ── Total restante de la factura activa (total − ya aplicado en pendingNotes) ──
+    function restanteFacturaActual() {
+        const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
+        if (!item) return 0;
+        const totalFac = parseFloat(item.total_fac) || 0;
+        const alreadyApplied = pendingNotes
+            .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
+            .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
+        return totalFac - alreadyApplied;
+    }
 
-        const opt = sel.options[sel.selectedIndex];
-        const balance   = parseFloat(opt.dataset.balance) || 0;
-        const noteType  = opt.dataset.type;
-        const noteLabel = opt.dataset.label;
+    // ── Resumen "N notas · $Total" en el encabezado de la lista ───────────────
+    function updateAssignNoteSelectedHint() {
+        const hint = document.getElementById('assignNoteSelectedHint');
+        if (!hint) return;
+        let count = 0, total = 0;
+        document.querySelectorAll('#assignNoteCheckList .assign-note-row').forEach(row => {
+            const chk = row.querySelector('.assign-note-check');
+            if (chk && chk.checked) {
+                count++;
+                total += parseFloat(row.querySelector('.assign-note-amount').value || 0);
+            }
+        });
+        hint.textContent = count ? `${count} nota(s) · $${total.toFixed(2)}` : '';
+    }
 
-        const amount = parseFloat(document.getElementById('assignNoteAmount').value) || 0;
-        if (amount <= 0) { alertify.error('Ingrese un monto válido'); return; }
-        if (amount > balance + 0.001) { alertify.error(`El monto excede el saldo disponible ($${balance.toFixed(2)})`); return; }
+    // ── Confirmar asignación de varias notas (ligadas a la factura) ───────────
+    function confirmNoteAssignments() {
+        const rows = Array.from(document.querySelectorAll('#assignNoteCheckList .assign-note-row'))
+            .filter(row => row.querySelector('.assign-note-check').checked);
+
+        if (rows.length === 0) { alertify.error('Seleccione al menos una nota'); return; }
 
         const item = paymentItems.find(i => getInvoiceTempKey(i) === assignNoteInvoiceTempKey);
         if (!item) return;
@@ -1225,25 +1265,48 @@
             .filter(pn => pn.invoice_temp_key === assignNoteInvoiceTempKey)
             .reduce((s, pn) => s + parseFloat(pn.applied_amount), 0);
         const maxForInvoice = totalFac - alreadyApplied;
-        if (amount > maxForInvoice + 0.001) {
-            alertify.error(`El monto excede el total de la factura (máx: $${maxForInvoice.toFixed(2)})`);
+
+        // Validación: cada monto > 0, ≤ saldo de su nota, y la suma ≤ restante de la factura
+        let sumaSeleccion = 0;
+        const seleccion = [];
+        for (const row of rows) {
+            const amount  = parseFloat(row.querySelector('.assign-note-amount').value || 0);
+            const balance = parseFloat(row.getAttribute('data-balance')) || 0;
+            if (amount <= 0) { alertify.error('Hay notas marcadas sin monto válido'); return; }
+            if (amount > balance + 0.001) {
+                alertify.error(`Un monto excede el saldo disponible de su nota ($${balance.toFixed(2)})`);
+                return;
+            }
+            sumaSeleccion += amount;
+            seleccion.push({
+                credit_note_id:   parseInt(row.getAttribute('data-note-id')),
+                note_type:        row.getAttribute('data-type'),
+                note_label:       row.getAttribute('data-label'),
+                applied_amount:   amount
+            });
+        }
+
+        if (sumaSeleccion > maxForInvoice + 0.001) {
+            alertify.error(`La suma de las notas ($${sumaSeleccion.toFixed(2)}) excede el total restante de la factura (máx: $${maxForInvoice.toFixed(2)})`);
             return;
         }
 
-        pendingNotes.push({
-            credit_note_id:   parseInt(noteId),
-            note_number:      noteLabel,
-            note_type:        noteType,
-            applied_amount:   amount,
-            invoice_temp_key: assignNoteInvoiceTempKey,
-            note_label:       noteLabel
+        seleccion.forEach(s => {
+            pendingNotes.push({
+                credit_note_id:   s.credit_note_id,
+                note_number:      s.note_label,
+                note_type:        s.note_type,
+                applied_amount:   s.applied_amount,
+                invoice_temp_key: assignNoteInvoiceTempKey,
+                note_label:       s.note_label
+            });
         });
 
         $('#assignNoteModal').modal('hide');
         renderPaymentItems();
         renderPendingNotes();
         updateNotesSummary();
-        alertify.success('Nota asignada correctamente');
+        alertify.success(`${seleccion.length} nota(s) asignada(s) correctamente`);
     }
 
     // ── Quitar nota asignada ──────────────────────────────────────────────────

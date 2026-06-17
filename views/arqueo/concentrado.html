@@ -1,0 +1,84 @@
+{# views/arqueo/concentrado.html — Consolidado de la sesión #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Concentrado — {{ sesion.nombre }}{% endblock %}
+{% block mycss %}
+<style>
+    .num { font-variant-numeric:tabular-nums; text-align:right; }
+    .falt-negativo { color:#dc3545; font-weight:600; }
+    .falt-positivo { color:#198754; font-weight:600; }
+    #tabla_concentrado tfoot th { background:#f1f3f5; }
+</style>
+{% endblock %}
+{% block menutitle %}
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <span>Concentrado — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
+    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <i class="fas fa-backward"></i> Regresar
+    </a>
+</div>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-body table-responsive">
+    <table id="tabla_concentrado" class="table table-bordered table-hover" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Sucursal</th>
+          <th class="text-end">Total en Sistema M.N.</th>
+          <th class="text-end">Conteo Físico (sin vales)</th>
+          <th class="text-end">Vales Autorizados</th>
+          <th class="text-end">Faltantes (-) / Sobrantes (+)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set t_sistema = 0 %}
+        {% set t_fisico = 0 %}
+        {% set t_vales = 0 %}
+        {% set t_falt = 0 %}
+        {% for g in concentrado %}
+        {% set t_sistema = t_sistema + g.total_en_sistema_mn %}
+        {% set t_fisico  = t_fisico + g.total_conteo_fisico_sin_vales %}
+        {% set t_vales   = t_vales + g.vales_autorizados %}
+        {% set t_falt    = t_falt + g.faltantes_sobrantes %}
+        <tr>
+          <td>{{ g.sucursal }}</td>
+          <td class="num">{{ g.total_en_sistema_mn|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.total_conteo_fisico_sin_vales|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.vales_autorizados|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.faltantes_sobrantes < 0 ? 'falt-negativo' : 'falt-positivo' }}">
+            {{ g.faltantes_sobrantes|number_format(2,'.',',') }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th>Totales</th>
+          <th class="num">{{ t_sistema|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_fisico|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_vales|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_falt < 0 ? 'falt-negativo' : 'falt-positivo' }}">
+            {{ t_falt|number_format(2,'.',',') }}
+          </th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script>
+  $(function () {
+    $('#tabla_concentrado').DataTable({
+      paging: false,
+      searching: false,
+      info: false,
+      ordering: true,
+      dom: 'Bfrtip',
+      buttons: ['excel', 'print']
+    });
+  });
+</script>
+{% endblock %}

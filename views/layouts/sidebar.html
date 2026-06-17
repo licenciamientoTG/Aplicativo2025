@@ -626,7 +626,15 @@
         </ul>
         {% endif %}
       </li>
-      {% endif %} {% endif %} {% if authorized(3) or for_sistemas() %}
+      {% endif %} {% endif %} {% if authorized(73) or authorized(74) %}
+      <li class="sidebar-header">ARQUEO DOLLAR2GO</li>
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="/arqueo">
+          <i data-feather="dollar-sign"></i>
+          <span class="align-middle">Arqueos</span>
+        </a>
+      </li>
+      {% endif %} {% if authorized(3) or for_sistemas() %}
       <li class="sidebar-header">SISTEMAS</li>
       {% if authorized(22) or for_sistemas() %}
       <li class="sidebar-item">

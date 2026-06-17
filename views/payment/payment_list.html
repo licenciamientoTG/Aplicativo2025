@@ -4,6 +4,7 @@
 {% block menutitle %}Pagos Programados{% endblock %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         var sidebar = document.getElementById('sidebar');
@@ -13,6 +14,9 @@
     });
 </script>
 
+{# <pre>
+    {{ dump(tg_user['Id'] ) }}
+</pre> #}
 <style>
     .pl-tab-link { border-bottom: 2px solid transparent; color: #64748b; background: none; border-top:none; border-left:none; border-right:none; padding: 0.75rem 0; font-size: 0.875rem; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; transition: color .15s, border-color .15s; white-space: nowrap; }
     .pl-tab-link:hover { color: #1e293b; }
@@ -123,6 +127,11 @@
                 <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
                     <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
                 </button>
+                {% if tg_user['Id'] == 6296 %}
+                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0d9488;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
+                    <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Reenviar correo
+                </button>
+                {% endif %}
                 {# DEV-ONLY (comentado — descomentar si se necesita)
                 <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
                     <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
@@ -226,28 +235,60 @@
     <!-- ===== TAB: FACTURAS AUTORIZADAS ===== -->
     <div id="pl-tab-facturas-auth" class="pl-tab-content">
 
-        <!-- Cards resumen -->
-        <div class="row g-0 border-bottom">
-            <div class="col-12 col-md-4 border-end p-3">
-                <div class="resumen-card" style="background:#fdf4f4;border-color:#fca5a5;">
-                    <div class="rc-label" style="color:#b91c1c;"><i class="fas fa-piggy-bank"></i> Banorte</div>
-                    <div class="rc-amount" style="color:#991b1b;" id="totalBanorte">$0.00</div>
-                    <div class="rc-sub" style="color:#dc2626;" id="facturasBanorte">0 facturas</div>
+        <!-- ── Card colapsable 1: Totales por banco + seleccionadas ── -->
+        <div class="border-bottom">
+            <button class="d-flex align-items-center justify-content-between w-100 px-3 py-2 bg-transparent border-0 text-start"
+                    style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;"
+                    onclick="toggleResumenCard('resumenBancos','chevronBancos')">
+                <span><i class="fas fa-university me-1" style="color:#94a3b8;"></i> Totales por banco</span>
+                <i class="fas fa-chevron-down" id="chevronBancos" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
+            </button>
+            <div id="resumenBancos" style="display:none;">
+                <div class="row g-0 border-top">
+                    <div class="col-12 col-md-4 border-end p-3">
+                        <div class="resumen-card" style="background:#fdf4f4;border-color:#fca5a5;">
+                            <div class="rc-label" style="color:#b91c1c;"><i class="fas fa-piggy-bank"></i> Banorte</div>
+                            <div class="rc-amount" style="color:#991b1b;" id="totalBanorte">$0.00</div>
+                            <div class="rc-sub" style="color:#dc2626;" id="facturasBanorte">0 grupos</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4 border-end p-3">
+                        <div class="resumen-card" style="background:#fff1f0;border-color:#fda4a4;">
+                            <div class="rc-label" style="color:#ec1c24;"><i class="fas fa-landmark"></i> Santander</div>
+                            <div class="rc-amount" style="color:#c81e1e;" id="totalSantander">$0.00</div>
+                            <div class="rc-sub" style="color:#ec1c24;" id="facturasSantander">0 grupos</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4 p-3">
+                        <div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;">
+                            <div class="rc-label" style="color:#1d4ed8;"><i class="fas fa-check-square"></i> Seleccionadas</div>
+                            <div class="rc-amount" style="color:#1e40af;" id="totalSeleccionadas">$0.00</div>
+                            <div class="rc-sub" style="color:#3b82f6;" id="facturasSeleccionadas">listas para pagar</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="col-12 col-md-4 border-end p-3">
-                <div class="resumen-card" style="background:#fff1f0;border-color:#fda4a4;">
-                    <div class="rc-label" style="color:#ec1c24;"><i class="fas fa-landmark"></i> Santander</div>
-                    <div class="rc-amount" style="color:#c81e1e;" id="totalSantander">$0.00</div>
-                    <div class="rc-sub" style="color:#ec1c24;" id="facturasSantander">0 facturas</div>
-                </div>
+        </div>
+
+        <!-- ── Card colapsable 2: Resumen por razón social → proveedor ── -->
+        <div class="border-bottom">
+            <div class="d-flex align-items-center justify-content-between w-100 px-3 py-2">
+                <button class="d-flex align-items-center gap-1 bg-transparent border-0 p-0 text-start"
+                        style="font-size:.82rem;font-weight:600;color:#475569;cursor:pointer;flex:1;"
+                        onclick="toggleResumenCard('resumenDesglose','chevronDesglose')">
+                    <i class="fas fa-chart-bar me-1" style="color:#94a3b8;"></i> Resumen
+                    <i class="fas fa-chevron-down ms-2" id="chevronDesglose" style="color:#94a3b8;font-size:.75rem;transition:transform .2s;transform:rotate(-90deg);"></i>
+                </button>
+                <button onclick="descargarResumenExcel()" class="btn btn-sm d-flex align-items-center gap-1"
+                        style="background:#16a34a;color:#fff;border-radius:.4rem;font-size:.75rem;padding:.25rem .65rem;white-space:nowrap;">
+                    <i class="fas fa-file-excel" style="font-size:.72rem;"></i> Excel
+                </button>
             </div>
-            <div class="col-12 col-md-4 p-3">
-                <div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;">
-                    <div class="rc-label" style="color:#1d4ed8;"><i class="fas fa-check-square"></i> Seleccionadas</div>
-                    <div class="rc-amount" style="color:#1e40af;" id="totalSeleccionadas">$0.00</div>
-                    <div class="rc-sub" style="color:#3b82f6;" id="facturasSeleccionadas">listas para pagar</div>
-                </div>
+            <div id="resumenDesglose" style="display:none;">
+                <div class="border-top p-3">
+                    <div id="resumenTablaContainer" style="font-size:.82rem;">
+                        <!-- Se rellena por JS -->
+                    </div>
             </div>
         </div>
 
@@ -271,6 +312,9 @@
                 <button type="button" onclick="abrirModalRegistroPago()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Registrar pago ejecutado en el banco">
                     <i class="fas fa-check-circle" style="font-size:.75rem;"></i> Registrar Pago
                 </button>
+                <button type="button" onclick="abrirModalComprobantes()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Subir comprobantes de pago y conciliarlos automáticamente">
+                    <i class="fas fa-file-upload" style="font-size:.75rem;"></i> Subir Comprobantes
+                </button>
             </div>
             {% endif %}
         </div>
@@ -293,7 +337,7 @@
                         <th>Fecha Auth.</th>
                         <th>Vencimiento / Folio</th>
                         <th>Requisición</th>
-                        <th class="text-center">Acciones</th>
+                        <th class="text-center" style="min-width:70px;">Acciones</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
@@ -858,11 +902,81 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
         </div>
     </div>
+
+    <!-- ===== MODAL: Subir comprobantes de pago (conciliación) ===== -->
+    <div class="modal fade" id="modalComprobantes" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header" style="background:#7c3aed;color:#fff;">
+                    <h5 class="modal-title"><i class="fas fa-file-upload"></i> Conciliar comprobantes de pago</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Paso 1: zona de carga -->
+                    <div id="comprobantesDropzone" style="border:2px dashed #c4b5fd;border-radius:.75rem;padding:1.75rem;text-align:center;background:#faf5ff;cursor:pointer;">
+                        <i class="fas fa-cloud-upload-alt" style="font-size:2rem;color:#7c3aed;"></i>
+                        <p class="mb-1 mt-2 fw-semibold" style="color:#6d28d9;">Arrastra aquí los PDFs de comprobantes o haz clic para seleccionar</p>
+                        <small class="text-muted">Comprobantes Banorte SPEI y Santander. No se guarda nada hasta que confirmes.</small>
+                    </div>
+                    <input type="file" id="inputComprobantes" accept="application/pdf" multiple style="display:none;">
+                    <div id="comprobantesArchivosSel" class="mt-2 small text-muted"></div>
+
+                    <!-- Resumen -->
+                    <div id="comprobantesResumen" class="row g-2 mt-2" style="display:none;">
+                        <div class="col"><div class="resumen-card" style="background:#ecfdf5;border-color:#6ee7b7;"><div class="rc-label" style="color:#047857;">Emparejados</div><div class="rc-amount" style="color:#065f46;font-size:1.2rem;" id="compMatched">0</div></div></div>
+                        <div class="col"><div class="resumen-card" style="background:#fffbeb;border-color:#fcd34d;"><div class="rc-label" style="color:#b45309;">Por revisar</div><div class="rc-amount" style="color:#92400e;font-size:1.2rem;" id="compAmbiguo">0</div></div></div>
+                        <div class="col"><div class="resumen-card" style="background:#fef2f2;border-color:#fca5a5;"><div class="rc-label" style="color:#b91c1c;">Sin emparejar</div><div class="rc-amount" style="color:#991b1b;font-size:1.2rem;" id="compUnmatched">0</div></div></div>
+                        <div class="col"><div class="resumen-card" style="background:#eff6ff;border-color:#93c5fd;"><div class="rc-label" style="color:#1d4ed8;">Monto total</div><div class="rc-amount" style="color:#1e40af;font-size:1.2rem;" id="compMontoTotal">$0.00</div></div></div>
+                    </div>
+
+                    <!-- Spinner -->
+                    <div id="comprobantesLoading" class="text-center py-4" style="display:none;">
+                        <i class="fas fa-spinner fa-spin" style="font-size:1.5rem;color:#7c3aed;"></i>
+                        <p class="text-muted mt-2 mb-0">Leyendo y conciliando comprobantes…</p>
+                    </div>
+
+                    <!-- Tabla de relación -->
+                    <div class="table-responsive mt-3" id="comprobantesTablaWrap" style="display:none;">
+                        <table class="table table-sm table-hover align-middle" id="tablaComprobantes">
+                            <thead style="background:#f8fafc;">
+                                <tr style="font-size:.72rem;text-transform:uppercase;color:#475569;">
+                                    <th class="text-center" style="width:34px;">
+                                        <input type="checkbox" id="comprobanteSelectAll" title="Seleccionar todos los emparejados">
+                                    </th>
+                                    <th>Comprobante</th>
+                                    <th>Banco</th>
+                                    <th>Empresa (ordenante)</th>
+                                    <th>Proveedor (beneficiario)</th>
+                                    <th class="text-end">Importe</th>
+                                    <th>Se relaciona con</th>
+                                    <th>Requisición</th>
+                                    <th>Fecha pago</th>
+                                    <th>Referencia</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <span class="me-auto small text-muted" id="comprobantesSeleccionInfo"></span>
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
+                    <button type="button" class="btn btn-sm" style="background:#16a34a;color:#fff;" id="btnGuardarComprobantes" onclick="guardarConciliacionComprobantes()" disabled>
+                        <i class="fas fa-save"></i> Aplicar y guardar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block myjs %}
 <script src="{{ JS }}payment.js"></script>
 <script>
+
+    // Permisos expuestos al front (la tabla se renderiza en JS)
+    window.PUEDE_TESORERIA = {% if authorized(68) %}true{% else %}false{% endif %};
 
     let paymentListTable;
 

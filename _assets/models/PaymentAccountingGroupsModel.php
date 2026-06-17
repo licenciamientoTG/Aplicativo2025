@@ -359,4 +359,55 @@ class PaymentAccountingGroupsModel extends Model
             'errors'        => $errors
         ];
     }
+
+    /**
+     * Devuelve los pagos (requisiciones) cuyos grupos de contabilidad fueron
+     * creados en la fecha dada. Sirve para REENVIAR el correo de los pagos que
+     * "se cerraron hoy" sin volver a agrupar nada.
+     *
+     * Devuelve las mismas columnas que PaymentRequestsModel::get_payments_ready_for_request()
+     * para que generar_html_solicitud_pagos() funcione idéntico.
+     */
+    public function get_payments_by_group_date(string $date): array
+    {
+        $query = "
+            SELECT
+                t1.id,
+                t1.request_date,
+                t1.scheduled_payment_date,
+                t1.comment,
+                ISNULL(t2.total_invoices, 0)  AS total_invoices,
+                ISNULL(t2.total_amount, 0)    AS total_amount,
+                ISNULL(t3.total_credito, 0)   AS total_notas_credito,
+                ISNULL(t3.total_cargo, 0)     AS total_notas_cargo,
+                ISNULL(t2.total_amount, 0)
+                    - ISNULL(t3.total_credito, 0)
+                    + ISNULL(t3.total_cargo, 0) AS monto_neto,
+                t5.den AS provider_name,
+                t6.den AS emp_name,
+                g.accounting_id
+            FROM [TG].[dbo].[payment_requests] t1
+            INNER JOIN [TG].[dbo].[payment_accounting_groups] g
+                ON g.id = t1.accounting_group_id
+                AND CAST(g.created_at AS DATE) = ?
+            LEFT JOIN (
+                SELECT payment_request_id, COUNT(*) AS total_invoices, SUM(amount) AS total_amount
+                FROM [TG].[dbo].[payment_request_invoices]
+                GROUP BY payment_request_id
+            ) t2 ON t1.id = t2.payment_request_id
+            LEFT JOIN (
+                SELECT
+                    cna.payment_request_id,
+                    SUM(CASE WHEN n.note_type = 'CREDIT' THEN cna.applied_amount ELSE 0 END) AS total_credito,
+                    SUM(CASE WHEN n.note_type = 'DEBIT'  THEN cna.applied_amount ELSE 0 END) AS total_cargo
+                FROM [TG].[dbo].[credit_note_applications] cna
+                JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON cna.credit_note_id = n.id
+                GROUP BY cna.payment_request_id
+            ) t3 ON t1.id = t3.payment_request_id
+            LEFT JOIN [SG12].[dbo].Proveedores t5 ON t1.provider_cod = t5.cod
+            LEFT JOIN [SG12].[dbo].Empresas    t6 ON t1.emp_cod = t6.cod
+            ORDER BY g.accounting_id ASC, t1.id ASC";
+
+        return $this->sql->select($query, [$date]) ?: [];
+    }
 }

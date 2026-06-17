@@ -26,6 +26,7 @@ class Payment
     public PaymentAccountingGroupsModel $PaymentAccountingGroupsModel;
     public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
     public PaymentTransactionDocumentsModel $PaymentTransactionDocumentsModel;
+    public PaymentBatchesModel $PaymentBatchesModel;
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
@@ -52,6 +53,90 @@ class Payment
         $this->PaymentAccountingGroupsModel       = new PaymentAccountingGroupsModel();
         $this->PaymentNotificationRecipientsModel   = new PaymentNotificationRecipientsModel();
         $this->PaymentTransactionDocumentsModel     = new PaymentTransactionDocumentsModel();
+        $this->PaymentBatchesModel                  = new PaymentBatchesModel();
+    }
+
+    /**
+     * Banco asignado por empresa (mismo criterio que los queries de pagos).
+     */
+    private function banco_por_emp_cod($emp_cod): string
+    {
+        if (in_array((int)$emp_cod, [1, 10, 17, 18, 21, 23], true)) return 'Banorte';
+        if (in_array((int)$emp_cod, [11, 14, 15, 16, 19, 20], true)) return 'Santander';
+        return 'Sin asignar';
+    }
+
+    /**
+     * Registra un lote de pago: crea la cabecera (payment_batches), ejecuta el
+     * pago de las facturas (process_bulk_payment) ligándolas al lote, marca las
+     * requisiciones saldadas como PAGADO y adjunta el comprobante al lote.
+     *
+     * @param array      $facturas_procesar Arreglo para process_bulk_payment
+     * @param array      $datos             fecha_pago, referencia, observaciones, emp_cod, provider_cod, monto_total
+     * @param array|null $file              Item de $_FILES (o null si no hay comprobante)
+     * @param int        $user_id
+     * @return array ['success','message','total_pagado','batch_id', ...]
+     */
+    private function registrar_lote_y_pago(array $facturas_procesar, array $datos, ?array $file, int $user_id): array
+    {
+        $batch_id = $this->PaymentBatchesModel->create([
+            'fecha_pago'    => $datos['fecha_pago'],
+            'referencia'    => $datos['referencia'] ?? null,
+            'banco'         => $datos['banco'] ?? $this->banco_por_emp_cod($datos['emp_cod'] ?? null),
+            'emp_cod'       => $datos['emp_cod'] ?? null,
+            'provider_cod'  => $datos['provider_cod'] ?? null,
+            'monto_total'   => $datos['monto_total'] ?? 0,
+            'observaciones' => $datos['observaciones'] ?? null,
+            'created_by'    => $user_id,
+        ]);
+
+        if (!$batch_id) {
+            return ['success' => false, 'message' => 'No se pudo crear el lote de pago'];
+        }
+
+        $result = $this->paymentTransactionsModel->process_bulk_payment(
+            $facturas_procesar,
+            $user_id,
+            $datos['fecha_pago'],
+            $datos['observaciones'] ?? '',
+            $datos['referencia'] ?? null,
+            'TRANSFERENCIA',
+            $batch_id
+        );
+
+        if (!$result['success']) {
+            return ['success' => false, 'message' => $result['message'], 'batch_id' => $batch_id];
+        }
+
+        // Marcar requisiciones completamente pagadas
+        $prids = array_unique(array_column($facturas_procesar, 'payment_request_id'));
+        foreach ($prids as $prid) {
+            if ($this->paymentTransactionsModel->check_all_invoices_paid($prid)) {
+                $this->PaymentRequestsModel->update_request_status(
+                    $prid,
+                    PaymentRequestsModel::STATUS_PAID,
+                    "Pago registrado el " . date('d/m/Y', strtotime($datos['fecha_pago'])) . " - Ref: " . ($datos['referencia'] ?? '')
+                );
+            }
+        }
+
+        // Adjuntar el comprobante al lote (un PDF por lote, visible para todas sus
+        // facturas). Se liga al batch_id y también a la primera transacción del
+        // lote (transaction_id es NOT NULL en la tabla y mantiene compatibilidad).
+        $comprobante_msg = '';
+        if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+            $primera_tx = $result['transaction_ids'][0] ?? $result['last_transaction_id'] ?? null;
+            $up = $this->PaymentTransactionDocumentsModel->upload($primera_tx, $file, $user_id, $batch_id);
+            $comprobante_msg = $up['success'] ? ' Comprobante guardado.' : ' (comprobante no guardado: ' . $up['message'] . ')';
+        }
+
+        return [
+            'success'      => true,
+            'message'      => $result['message'] . $comprobante_msg,
+            'total_pagado' => $result['total_pagado'],
+            'batch_id'     => $batch_id,
+            'facturas_procesadas' => $result['facturas_procesadas'],
+        ];
     }
 
     function fuel_payments()
@@ -279,11 +364,24 @@ class Payment
                 } elseif ($estaVencida) {
                     $statusLabel = '<span class="badge bg-danger">Vencido</span>';
                 }
+                // Origen del total: si existe la factura en TG.dbo.FacturasRecibidas usamos su Total,
+                // de lo contrario caemos al total calculado desde ControlGas (SG12). El front marca en rojo el de CG.
+                $tieneFacturaRecibida = !empty($row['tiene_factura_recibida']) ? 1 : 0;
+                $totalControlGas      = $row['total_fac'];
+                $totalFacturaRecibida = $row['total_factura_recibida'] ?? null;
+                $totalMostrar         = $tieneFacturaRecibida ? $totalFacturaRecibida : $totalControlGas;
+
+                // Origen de la fecha de emisión: misma lógica que el total. fecha_emision_efectiva ya viene
+                // resuelta por el API (factura si existe, si no ControlGas) y es la base del cálculo de vencimiento.
+                $fechaDeFactura     = !empty($row['fecha_de_factura']) ? 1 : 0;
+                $fechaEmisionMostrar = $row['fecha_emision_efectiva'] ?? ($row['fecha'] ?? null);
+
                 $data[] = array(
                     'nro'              => $row['nro'],
                     'Factura'          => $row['Factura'],
                     'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
-                    'fecha'            => $row['fecha'],
+                    'fecha'            => $fechaEmisionMostrar,
+                    'fecha_de_factura' => $fechaDeFactura,
                     'fechaVto'         => $fechaVencimiento,
                     'producto'         => $row['producto'],
                     'proveedor'        => $row['proveedor'],
@@ -299,6 +397,10 @@ class Payment
                     'servicio'         => $row['servicio'],
                     'iva_servicio'     => $row['iva_servicio'],
                     'total_fac'        => $row['total_fac'],
+                    'total_factura_recibida' => $totalFacturaRecibida,
+                    'tiene_factura_recibida' => $tieneFacturaRecibida,
+                    'total_mostrar'    => $totalMostrar,
+                    'total_origen'     => $tieneFacturaRecibida ? 'FR' : 'CG',
                     'satuid'           => $row['satuid'],
                     'gasolinera'       => $row['gasolinera'],
                     'codgas'           => $row['codgas'],
@@ -1180,7 +1282,9 @@ class Payment
             }
             $total_reques = 0;
             foreach ($documents as $doc) {
-                $total_reques += $doc['total_fac'];
+                // Preferir el total efectivo (FacturasRecibidas si existe, si no ControlGas)
+                $monto_doc = $doc['total_mostrar'] ?? ($doc['total_fac'] ?? 0);
+                $total_reques += floatval($monto_doc);
             }
 
             // Llamar al modelo para crear el pago con transacción
@@ -1927,6 +2031,7 @@ class Payment
             // ✅ PREPARAR DATOS PARA PROCESAR (formato que espera el modelo)
             $facturas_procesar = [];
             $payment_request_ids_unicos = [];
+            $monto_total = 0.0;
             foreach ($facturas_data as $factura) {
                 if ($factura['payment_authorized'] != 1) {
                     json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
@@ -1941,56 +2046,43 @@ class Payment
                 ];
 
                 $payment_request_ids_unicos[$factura['payment_request_id']] = true;
+                $monto_total += (float)$factura['authorized_amount'];
             }
-            // ✅ EJECUTAR PAGO MASIVO=====================================
 
-            $result = $this->paymentTransactionsModel->process_bulk_payment(
+            // Derivar empresa/proveedor para la cabecera del lote
+            $primer_prid = $facturas_data[0]['payment_request_id'];
+            $req = $this->PaymentRequestsModel->get_request_by_id($primer_prid);
+
+            $comprobanteFile = (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK)
+                ? $_FILES['comprobante'] : null;
+
+            // ✅ Crear lote + ejecutar pago + marcar pagado + adjuntar comprobante al lote
+            $result = $this->registrar_lote_y_pago(
                 $facturas_procesar,
-                $user_id,
-                $fecha_pago,
-                $observaciones,
-                $referencia_bancaria,
-                'TRANSFERENCIA'
+                [
+                    'fecha_pago'    => $fecha_pago,
+                    'referencia'    => $referencia_bancaria,
+                    'observaciones' => $observaciones,
+                    'emp_cod'       => $req['emp_cod'] ?? null,
+                    'provider_cod'  => $req['provider_cod'] ?? null,
+                    'monto_total'   => $monto_total,
+                ],
+                $comprobanteFile,
+                $user_id
             );
 
-            // ========================================
-            // PROCESAR RESULTADO
-            // ========================================
-
-            // ✅ PROCESAR RESULTADO
             if ($result['success']) {
-                // Revisar cada payment_request y marcarlo como pagado si aplica
+                // Contar requisiciones completadas (para el resumen del front)
                 $solicitudes_completadas = 0;
                 foreach (array_keys($payment_request_ids_unicos) as $payment_request_id) {
-                    $all_paid = $this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id);
-                    if ($all_paid) {
-                        $this->PaymentRequestsModel->update_request_status(
-                            $payment_request_id,
-                            PaymentRequestsModel::STATUS_PAID,
-                            "Pago ejecutado el " . date('d/m/Y', strtotime($fecha_pago)) . " - Ref: $referencia_bancaria"
-                        );
+                    if ($this->paymentTransactionsModel->check_all_invoices_paid($payment_request_id)) {
                         $solicitudes_completadas++;
-                    }
-                }
-
-                // Subir comprobante si se adjuntó
-                $comprobante_msg = null;
-                if (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK) {
-                    // Obtener el transaction_id más reciente creado para estas facturas
-                    $last_transaction_id = $result['last_transaction_id'] ?? null;
-                    if ($last_transaction_id) {
-                        $upload = $this->PaymentTransactionDocumentsModel->upload(
-                            $last_transaction_id,
-                            $_FILES['comprobante'],
-                            $user_id
-                        );
-                        $comprobante_msg = $upload['success'] ? 'Comprobante subido.' : 'Pago registrado pero falló el comprobante: ' . $upload['message'];
                     }
                 }
 
                 json_output([
                     'success'                 => true,
-                    'message'                 => $result['message'] . ($comprobante_msg ? ' ' . $comprobante_msg : ''),
+                    'message'                 => $result['message'],
                     'facturas_procesadas'     => $result['facturas_procesadas'],
                     'total_pagado'            => $result['total_pagado'],
                     'fecha_pago'              => date('d/m/Y', strtotime($fecha_pago)),
@@ -2188,9 +2280,10 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'totalgasdesarrollo@gmail.com';
+            $from    = 'no-reply@totalgas.com';
 
-            $ok = send_mail($subject, $body, $emails, $from);
+            $mailError = null;
+            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
@@ -2203,11 +2296,133 @@ class Payment
                     'destinatarios'  => $emails
                 ]);
             } else {
-                json_output(['success' => false, 'message' => 'Se agruparon las requisiciones pero no se pudo enviar el correo.']);
+                $detalle = $this->_describir_error_correo($mailError);
+                error_log('send_to_payments: agrupación OK (' . ($group_result['grupos'] ?? 0) . ' grupos) pero FALLÓ el envío. Motivo: ' . ($mailError ?? 'desconocido'));
+                json_output([
+                    'success'        => false,
+                    'mail_failed'    => true,
+                    'grupos_creados' => $group_result['grupos'] ?? 0,
+                    'total_pagos'    => count($pagos),
+                    'destinatarios'  => $emails,
+                    'mail_error'     => $mailError,
+                    'message'        => 'Las requisiciones SÍ se agruparon (' . ($group_result['grupos'] ?? 0) . ' grupo(s)), pero el correo a '
+                        . count($emails) . ' destinatario(s) NO se pudo enviar.' . "\n\nMotivo: " . $detalle
+                        . "\n\nPuedes reintentar el envío con el botón \"Reenviar correo\" sin volver a agrupar.",
+                ]);
             }
         } catch (Exception $e) {
             error_log('Error en send_to_payments: ' . $e->getMessage());
-            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+            json_output(['success' => false, 'message' => 'Error inesperado: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Traduce el error crudo de PHPMailer/SMTP a un mensaje accionable para el usuario.
+     */
+    private function _describir_error_correo(?string $rawError): string
+    {
+        $raw = trim((string)$rawError);
+        if ($raw === '') {
+            return 'El servidor de correo rechazó el envío sin dar detalle. Revisa la conexión a internet del servidor y la configuración SMTP.';
+        }
+
+        $lower = mb_strtolower($raw);
+
+        if (str_contains($lower, 'could not authenticate') || str_contains($lower, 'username and password') || str_contains($lower, '535') || str_contains($lower, 'webloginrequired') || str_contains($lower, '534')) {
+            return 'La cuenta de correo del sistema (no-reply@totalgas.com) no pudo autenticarse con el servidor SMTP. '
+                . 'Es muy probable que la contraseña de aplicación haya expirado o que Google haya bloqueado el acceso. '
+                . 'Hay que regenerar la contraseña de aplicación y actualizarla en el sistema. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+        if (str_contains($lower, 'could not connect') || str_contains($lower, 'smtp connect') || str_contains($lower, 'timed out') || str_contains($lower, 'connection refused')) {
+            return 'No se pudo conectar con el servidor de correo (smtp.gmail.com:465). '
+                . 'Revisa la conexión a internet del servidor o si un firewall está bloqueando el puerto 465. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+        if (str_contains($lower, 'invalid address') || str_contains($lower, 'address')) {
+            return 'Uno de los correos destinatarios tiene un formato inválido. Revisa el catálogo de destinatarios. '
+                . '[Detalle técnico: ' . $raw . ']';
+        }
+
+        return 'El servidor de correo reportó: ' . $raw;
+    }
+
+
+    /**
+     * Reenvía el correo de solicitud SIN volver a agrupar/cerrar nada.
+     * Toma los pagos cuyos grupos de contabilidad se crearon HOY (es decir, los
+     * que ya "se cerraron" hoy) y vuelve a mandar el correo a los destinatarios.
+     *
+     * Pensado para cuando la agrupación funcionó pero el correo falló.
+     * Restringido al usuario con Id = 6296.
+     */
+    public function resend_today_payments()
+    {
+        header('Content-Type: application/json');
+        try {
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            if ($user_id !== 6296) {
+                json_output(['success' => false, 'message' => 'No autorizado para reenviar el correo.']);
+                return;
+            }
+
+            $today = date('Y-m-d');
+
+            // Pagos cuyos grupos de contabilidad se crearon hoy (ya cerrados hoy).
+            $pagos = $this->PaymentAccountingGroupsModel->get_payments_by_group_date($today);
+
+            if (empty($pagos)) {
+                json_output([
+                    'success' => false,
+                    'message' => 'No hay pagos agrupados hoy para reenviar. (No se encontró ningún grupo de contabilidad creado el ' . date('d/m/Y') . '.)'
+                ]);
+                return;
+            }
+
+            // Destinatarios
+            if (self::TEST_MODE) {
+                $emails = [self::TEST_MODE_EMAIL];
+            } else {
+                $emails = $this->PaymentNotificationRecipientsModel->get_active_emails('solicitud_pago');
+            }
+
+            if (empty($emails)) {
+                json_output(['success' => false, 'message' => 'No hay destinatarios configurados para la notificación.']);
+                return;
+            }
+
+            $total_general = array_sum(array_map(fn($p) => (float)$p['monto_neto'], $pagos));
+
+            $subject = 'Solicitud de pago a proveedores (reenvío) - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
+            $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
+            $from    = 'no-reply@totalgas.com';
+
+            $mailError = null;
+            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+
+            if ($ok) {
+                error_log('resend_today_payments: correo REENVIADO a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s).');
+                json_output([
+                    'success'       => true,
+                    'message'       => 'Correo reenviado correctamente con ' . count($pagos) . ' pago(s) cerrados hoy.' . (self::TEST_MODE ? ' [MODO PRUEBAS]' : ''),
+                    'total_pagos'   => count($pagos),
+                    'total_monto'   => $total_general,
+                    'destinatarios' => $emails,
+                ]);
+            } else {
+                $detalle = $this->_describir_error_correo($mailError);
+                error_log('resend_today_payments: FALLÓ el reenvío. Motivo: ' . ($mailError ?? 'desconocido'));
+                json_output([
+                    'success'     => false,
+                    'mail_failed' => true,
+                    'mail_error'  => $mailError,
+                    'message'     => 'No se pudo reenviar el correo a ' . count($emails) . ' destinatario(s).'
+                        . "\n\nMotivo: " . $detalle,
+                ]);
+            }
+        } catch (Exception $e) {
+            error_log('Error en resend_today_payments: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error inesperado: ' . $e->getMessage()]);
         }
     }
 
@@ -2308,7 +2523,7 @@ class Payment
             );
 
             // Enviar correo
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             // Capturar salida para evitar problemas con JSON
             $resultado = send_mail($subject, $body, $emails, $from);
@@ -2346,7 +2561,7 @@ class Payment
                 $created_by
             );
 
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             $resultado = send_mail($subject, $body, $emails, $from);
 
@@ -2394,7 +2609,7 @@ class Payment
             );
 
             // Enviar correo
-            $from = 'totalgasdesarrollo@gmail.com';
+            $from = 'no-reply@totalgas.com';
 
             $resultado = send_mail($subject, $body, $emails, $from);
 
@@ -2812,8 +3027,10 @@ class Payment
 
 
             foreach ($todos_los_datos as $pago) {
-                // Validar cuenta cargo de la empresa (debe ser de 10 dígitos)
-                if (!$pago['cuenta_cargo_banorte'] || strlen($pago['cuenta_cargo_banorte']) != 10) {
+                // Validar cuenta cargo de la empresa: 10 dígitos, o CLABE Banorte
+                // de 18 (072...) de la que se extrae la cuenta de 10
+                $cuenta_cargo = $this->normalizar_cuenta_banorte($pago['cuenta_cargo_banorte']);
+                if (!$cuenta_cargo || strlen($cuenta_cargo) != 10) {
                     $sin_cuenta_cargo[] = "Empresa: {$pago['empresa_nombre']} (emp_cod: {$pago['empresa_cod']})";
                 }
 
@@ -2883,6 +3100,21 @@ class Payment
     }
 
 
+    /**
+     * Normaliza una cuenta propia Banorte: si viene como CLABE de 18 (072...)
+     * extrae la cuenta de 10 dígitos (posiciones 8-17, se omite el 0 inicial
+     * de la cuenta de 11 dentro de la CLABE).
+     */
+    private function normalizar_cuenta_banorte($cuenta)
+    {
+        $cuenta = trim((string)$cuenta);
+        if (strlen($cuenta) == 18 && substr($cuenta, 0, 3) === '072') {
+            return substr($cuenta, 7, 10);
+        }
+        return $cuenta;
+    }
+
+
     private function generar_layout_banorte_multi_empresa($pagos)
     {
         $lineas = [];
@@ -2893,12 +3125,11 @@ class Payment
             $key = $pago['cuenta_cargo_banorte'] . '|' . $pago['proveedor_codigo'];
 
             if (!isset($consolidados[$key])) {
-                // ✅ Obtener cuenta de 10 dígitos del beneficiario
-                $cuenta_abono = $this->extraer_cuenta_banorte($pago['clabe_beneficiario']);
-
                 $consolidados[$key] = [
-                    'cuenta_cargo' => $pago['cuenta_cargo_banorte'],
-                    'cuenta_abono' => $cuenta_abono,
+                    'cuenta_cargo' => $this->normalizar_cuenta_banorte($pago['cuenta_cargo_banorte']),
+                    'cuenta_destino' => $pago['clabe_beneficiario'],
+                    'clave_id' => $pago['clave_id_beneficiario'] ?? '',
+                    'rfc' => $pago['proveedor_rfc'] ?? '',
                     'proveedor_nombre' => $pago['proveedor_nombre'],
                     'proveedor_codigo' => $pago['proveedor_codigo'],
                     'monto_total' => 0,
@@ -2920,18 +3151,31 @@ class Payment
 
         // ✅ GENERAR LÍNEAS
         $fecha_operacion = date('dmY'); // Formato DDMMAAAA
+        $referencia = date('Y');        // Referencia numérica (Tesorería usa el año)
 
         foreach ($consolidados as $grupo) {
-            // Monto en centavos (sin decimales)
-            $monto_centavos = intval($grupo['monto_total'] * 100);
+            // Operación y cuenta destino según el tipo de cuenta del beneficiario:
+            //   04 = interbancaria SPEI (CLABE completa de 18)
+            //   02 = cuenta Banorte (10 dígitos; si viene CLABE 072, extraer cuenta)
+            //   01 = solo traspasos entre cuentas propias (no aplica a proveedores)
+            $destino = trim($grupo['cuenta_destino']);
+            if (strlen($destino) == 18 && substr($destino, 0, 3) !== '072') {
+                $operacion = '04';
+                $cuenta_abono = $destino;
+            } else {
+                // Cuenta Banorte (10 dígitos directos o extraídos de CLABE 072)
+                $operacion = '02';
+                $cuenta_abono = $this->normalizar_cuenta_banorte($destino);
+            }
+
+            // ✅ Importe en PESOS con 2 decimales (Banorte NO usa centavos)
+            $importe = number_format($grupo['monto_total'], 2, '.', '');
 
             // ✅ Concepto adaptado
             $cantidad_refs = count($grupo['referencias']);
             $primera_ref = $grupo['referencias'][0];
 
-            if ($grupo['es_anticipo']) {
-                $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
-            } else if ($cantidad_refs === 1) {
+            if ($grupo['es_anticipo'] || $cantidad_refs === 1) {
                 $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
             } else {
                 $concepto_texto = 'C' . $primera_ref . ' ' . $grupo['proveedor_nombre'];
@@ -2939,39 +3183,36 @@ class Payment
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 30);
 
-            // ✅ Formato Banorte:
-            // 01[TAB][TAB]cuenta_cargo[TAB]cuenta_abono[TAB]monto[TAB]19[TAB]concepto[TAB][TAB]0[TAB]fecha[TAB]concepto
-            $linea = sprintf(
-                "01\t\t%s\t%s\t%d\t19\t%s\t\t0\t%s\t%s",
+            // Clave ID del beneficiario registrado en el portal Banorte (catálogo
+            // CatalogosCuentasBancarias.IdBeneficiario); '0' o vacío = sin clave
+            $clave_id = trim((string)$grupo['clave_id']);
+            if ($clave_id === '0') {
+                $clave_id = '';
+            }
+
+            $rfc = $this->limpiar_texto_layout((string)$grupo['rfc'], 13);
+
+            // ✅ Formato Banorte pago a proveedores (11 campos separados por TAB):
+            // OPERACION | CLAVE ID | CUENTA ORIGEN | CUENTA CLABE/DESTINO | IMPORTE
+            // | REFERENCIA | DESCRIPCION | RFC | IVA | FECHA APLICACION | INSTRUCCION DE PAGO
+            $linea = implode("\t", [
+                $operacion,
+                $clave_id,
                 $grupo['cuenta_cargo'],
-                $grupo['cuenta_abono'],
-                $monto_centavos,
+                $cuenta_abono,
+                $importe,
+                $referencia,
                 $concepto,
+                $rfc,
+                '0',
                 $fecha_operacion,
                 $concepto
-            );
+            ]);
 
             $lineas[] = $linea;
         }
 
         return implode("\r\n", $lineas);
-    }
-
-
-    private function extraer_cuenta_banorte($clabe_o_cuenta)
-    {
-        $longitud = strlen($clabe_o_cuenta);
-
-        if ($longitud == 18) {
-            // Es CLABE, extraer los 10 dígitos centrales (posición 3 a 12)
-            return substr($clabe_o_cuenta, 3, 10);
-        } else if ($longitud == 10) {
-            // Ya es cuenta de 10 dígitos
-            return $clabe_o_cuenta;
-        }
-
-        // Si no es ninguno de los dos, devolver tal cual (fallará en validación)
-        return $clabe_o_cuenta;
     }
 
 
@@ -4028,6 +4269,183 @@ class Payment
     }
 
 
+    /** RFC del emisor MGC (única empresa habilitada en esta fase). */
+    private const NOTAS_RFC_MGC = 'MME141110IJ9';
+
+    /**
+     * Carga masiva de notas de crédito — PREVIEW (no persiste).
+     * Recibe varios PDFs ($_FILES['notas']), los lee con NotaCreditoPdfParser,
+     * resuelve el proveedor por RFC emisor, detecta duplicados, y devuelve la
+     * tabla de revisión. Solo MGC en esta fase.
+     */
+    public function preview_notas_credito()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'No tienes permiso para cargar notas']);
+                return;
+            }
+            if (empty($_FILES['notas']) || !is_array($_FILES['notas']['name'])) {
+                $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+                // Si se excede max_file_uploads, PHP descarta $_FILES y deja el warning.
+                json_output(['success' => false, 'message' => "No se recibieron PDFs (¿superaste el máximo de {$maxUploads} archivos por carga? Súbelos en grupos más pequeños)"]);
+                return;
+            }
+
+            $files = $_FILES['notas'];
+            $total = count($files['name']);
+
+            $maxUploads = (int) ini_get('max_file_uploads') ?: 20;
+            if ($total > $maxUploads) {
+                json_output(['success' => false, 'message' => "Enviaste {$total} archivos; el máximo por carga es {$maxUploads}. Súbelos en grupos."]);
+                return;
+            }
+            $notas = [];
+            $resumen = ['ok' => 0, 'duplicado' => 0, 'error' => 0, 'total' => 0, 'monto_total' => 0.0];
+
+            for ($i = 0; $i < $total; $i++) {
+                $nombre = $files['name'][$i];
+
+                if ($files['error'][$i] !== UPLOAD_ERR_OK || strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                    $notas[] = ['archivo' => $nombre, 'estado' => 'error', 'mensaje' => 'Archivo inválido', 'raw_ok' => false];
+                    $resumen['error']++; $resumen['total']++;
+                    continue;
+                }
+
+                $d = NotaCreditoPdfParser::parse($files['tmp_name'][$i], $nombre);
+
+                if (!$d['raw_ok']) {
+                    $d['estado'] = 'error';
+                    $d['mensaje'] = $d['error'] ?? 'No se pudo leer la nota';
+                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
+                    continue;
+                }
+
+                // Solo MGC en esta fase
+                if ($d['rfc_emisor'] !== self::NOTAS_RFC_MGC) {
+                    $d['estado'] = 'error';
+                    $d['mensaje'] = 'Emisor no habilitado (solo MGC en esta fase): ' . $d['rfc_emisor'];
+                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
+                    continue;
+                }
+
+                $prov = $this->InvoiceCreditDebitNotesModel->getProviderByRfc($d['rfc_emisor']);
+                if (!$prov) {
+                    $d['estado'] = 'error';
+                    $d['mensaje'] = 'Proveedor no encontrado para RFC ' . $d['rfc_emisor'];
+                    $notas[] = $d; $resumen['error']++; $resumen['total']++;
+                    continue;
+                }
+                $d['provider_id']   = $prov['cod'];
+                $d['provider_name'] = $prov['den'];
+
+                if ($this->InvoiceCreditDebitNotesModel->existsNote($prov['cod'], $d['note_number'])) {
+                    $d['estado'] = 'duplicado';
+                    $d['mensaje'] = 'Ya registrada en el catálogo';
+                    $notas[] = $d; $resumen['duplicado']++; $resumen['total']++;
+                    continue;
+                }
+
+                $d['estado'] = 'ok';
+                $d['mensaje'] = 'Lista para guardar';
+                $notas[] = $d;
+                $resumen['ok']++; $resumen['total']++;
+                $resumen['monto_total'] += (float)$d['total'];
+            }
+
+            json_output(['success' => true, 'resumen' => $resumen, 'notas' => $notas]);
+        } catch (Exception $e) {
+            error_log('Error en preview_notas_credito: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al procesar notas: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Guarda las notas seleccionadas (reenviadas) + su PDF. Tolerante a fallo parcial.
+     */
+    public function guardar_notas_credito()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(66)) {
+                json_output(['success' => false, 'message' => 'No tienes permiso para guardar notas']);
+                return;
+            }
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            $items = json_decode($_POST['notas'] ?? '[]', true);
+            if (!is_array($items) || empty($items)) {
+                json_output(['success' => false, 'message' => 'No se recibieron notas para guardar']);
+                return;
+            }
+
+            $resultados = [];
+            $guardadas = 0;
+
+            foreach ($items as $it) {
+                $archivo_idx = isset($it['archivo_idx']) ? (int)$it['archivo_idx'] : -1;
+                $nombre = $it['archivo'] ?? "nota #{$archivo_idx}";
+                try {
+                    if (empty($it['provider_id']) || empty($it['note_number']) || empty($it['total'])) {
+                        throw new Exception('Datos incompletos');
+                    }
+                    // Revalidar duplicado por si se cargó dos veces en la misma tanda
+                    if ($this->InvoiceCreditDebitNotesModel->existsNote($it['provider_id'], $it['note_number'])) {
+                        throw new Exception('Ya existe (duplicado)');
+                    }
+
+                    $noteId = $this->InvoiceCreditDebitNotesModel->addCreditDebitNote([
+                        'provider_id' => (int)$it['provider_id'],
+                        'note_type'   => $it['note_type'] ?? 'CREDIT',
+                        'note_number' => $it['note_number'],
+                        'note_date'   => $it['fecha'] ?? date('Y-m-d'),
+                        'amount'      => (float)$it['total'],
+                        'description' => 'Carga masiva - UUID ' . ($it['uuid'] ?? ''),
+                        'reason_code' => null,
+                        'created_by'  => $user_id,
+                    ]);
+                    if (!$noteId) {
+                        throw new Exception('No se pudo guardar la nota');
+                    }
+
+                    // Guardar el PDF reenviado
+                    $docMsg = '';
+                    if ($archivo_idx >= 0 && isset($_FILES['notas']['name'][$archivo_idx])
+                        && $_FILES['notas']['error'][$archivo_idx] === UPLOAD_ERR_OK) {
+                        $ext = pathinfo($_FILES['notas']['name'][$archivo_idx], PATHINFO_EXTENSION) ?: 'pdf';
+                        $docId = $this->InvoiceCreditDebitNotesDocModel->createDocumentRecord([
+                            'credit_note_id' => $noteId,
+                            'file_extension' => $ext,
+                            'created_by'     => $user_id,
+                        ]);
+                        if ($docId) {
+                            $uploadDir = __DIR__ . '/../uploads/credit_debit_notes/';
+                            if (!is_dir($uploadDir)) { mkdir($uploadDir, 0755, true); }
+                            $fullPath = $uploadDir . "{$docId}.{$ext}";
+                            if (move_uploaded_file($_FILES['notas']['tmp_name'][$archivo_idx], $fullPath)) {
+                                $this->InvoiceCreditDebitNotesDocModel->updateFilePath($docId, 'uploads/credit_debit_notes/' . "{$docId}.{$ext}");
+                                $docMsg = ' PDF guardado.';
+                            } else {
+                                $docMsg = ' (PDF no se pudo guardar)';
+                            }
+                        }
+                    }
+
+                    $guardadas++;
+                    $resultados[] = ['archivo' => $nombre, 'success' => true, 'message' => "Nota {$it['note_number']} guardada." . $docMsg];
+                } catch (Exception $e) {
+                    $resultados[] = ['archivo' => $nombre, 'success' => false, 'message' => $e->getMessage()];
+                }
+            }
+
+            json_output(['success' => $guardadas > 0, 'guardadas' => $guardadas, 'total' => count($items), 'resultados' => $resultados]);
+        } catch (Exception $e) {
+            error_log('Error en guardar_notas_credito: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al guardar: ' . $e->getMessage()]);
+        }
+    }
+
+
     /**
      * Servir el PDF de un documento de nota de crédito/cargo
      */
@@ -4216,7 +4634,9 @@ class Payment
     public function credit_notes()
     {
         $proveedores = $this->proveedores->get_actives();
-        echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores'));
+        // Límite de archivos por carga (lo impone PHP: max_file_uploads)
+        $max_uploads = (int) ini_get('max_file_uploads') ?: 20;
+        echo $this->twig->render($this->route . 'credit_notes.html', compact('proveedores', 'max_uploads'));
     }
 
 
@@ -4274,6 +4694,227 @@ class Payment
     {
         if (empty($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
             throw new Exception('No se recibió el archivo PDF correctamente.', 400);
+        }
+    }
+
+    /**
+     * Carga masiva de comprobantes de pago — PREVIEW (no persiste nada).
+     * Recibe varios PDFs ($_FILES['comprobantes']), los parsea y devuelve la
+     * relación propuesta de cada comprobante con un grupo de facturas autorizadas
+     * pendientes (empresa+proveedor). El usuario revisa/corrige antes de guardar
+     * (la persistencia es una fase posterior).
+     */
+    public function preview_comprobantes_match()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede conciliar comprobantes']);
+                return;
+            }
+
+            if (empty($_FILES['comprobantes']) || !is_array($_FILES['comprobantes']['name'])) {
+                json_output(['success' => false, 'message' => 'No se recibieron comprobantes PDF']);
+                return;
+            }
+
+            $files = $_FILES['comprobantes'];
+            $total = count($files['name']);
+            $comprobantes = [];
+
+            for ($i = 0; $i < $total; $i++) {
+                $nombre = $files['name'][$i];
+
+                if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+                    $comprobantes[] = [
+                        'archivo' => $nombre,
+                        'banco' => 'Desconocido', 'rfc_ordenante' => '', 'nombre_ordenante' => '',
+                        'rfc_beneficiario' => '', 'nombre_beneficiario' => '', 'cuenta_cargo' => '',
+                        'cuenta_abono' => '', 'importe' => 0.0, 'referencia' => '', 'fecha' => '',
+                        'raw_ok' => false, 'error' => 'Error al recibir el archivo',
+                    ];
+                    continue;
+                }
+
+                if (strtolower(pathinfo($nombre, PATHINFO_EXTENSION)) !== 'pdf') {
+                    $comprobantes[] = [
+                        'archivo' => $nombre,
+                        'banco' => 'Desconocido', 'rfc_ordenante' => '', 'nombre_ordenante' => '',
+                        'rfc_beneficiario' => '', 'nombre_beneficiario' => '', 'cuenta_cargo' => '',
+                        'cuenta_abono' => '', 'importe' => 0.0, 'referencia' => '', 'fecha' => '',
+                        'raw_ok' => false, 'error' => 'Solo se permiten archivos PDF',
+                    ];
+                    continue;
+                }
+
+                // Parsear desde tmp_name (no se guarda en disco).
+                $comprobantes[] = ComprobantePagoParser::parse($files['tmp_name'][$i], $nombre);
+            }
+
+            $match = $this->paymentRequestInvoicesModel->match_comprobantes_con_grupos($comprobantes);
+
+            // Resumen para el front
+            $resumen = ['matched' => 0, 'ambiguo' => 0, 'unmatched' => 0, 'total' => 0, 'monto_total' => 0.0];
+            foreach ($match['comprobantes'] as $r) {
+                $resumen[$r['estado']]++;
+                $resumen['total']++;
+                $resumen['monto_total'] += (float)($r['comprobante']['importe'] ?? 0);
+            }
+
+            json_output([
+                'success'      => true,
+                'resumen'      => $resumen,
+                'grupos'       => $match['grupos'],        // para el dropdown de reasignación manual
+                'comprobantes' => $match['comprobantes'],
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en preview_comprobantes_match: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al procesar comprobantes: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Conciliación: marca como pagado cada grupo seleccionado y guarda su PDF.
+     *
+     * El front reenvía los PDFs en $_FILES['comprobantes'] (necesario porque
+     * PaymentTransactionDocumentsModel::upload usa move_uploaded_file, que exige
+     * un archivo recibido por HTTP en esta misma petición) + un JSON 'asignaciones'
+     * que mapea cada archivo (por índice) a su grupo y datos de pago.
+     *
+     * Cada comprobante se procesa de forma independiente (fallo parcial seguro):
+     * ejecuta el pago de las facturas del grupo, marca la requisición PAGADO si
+     * quedó saldada, y adjunta el PDF a la transacción generada.
+     */
+    public function conciliar_comprobantes()
+    {
+        header('Content-Type: application/json');
+
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede conciliar pagos']);
+                return;
+            }
+
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+
+            $asignaciones = json_decode($_POST['asignaciones'] ?? '[]', true);
+            if (!is_array($asignaciones) || empty($asignaciones)) {
+                json_output(['success' => false, 'message' => 'No se recibieron asignaciones']);
+                return;
+            }
+
+            $resultados = [];
+            $aplicados = 0;
+            $total_aplicado = 0.0;
+
+            foreach ($asignaciones as $a) {
+                $archivo_idx = isset($a['archivo_idx']) ? (int)$a['archivo_idx'] : -1;
+                $invoice_ids = array_values(array_filter(array_map('intval', $a['invoice_ids'] ?? [])));
+                $fecha_pago  = $a['fecha_pago'] ?? null;
+                $referencia  = trim($a['referencia'] ?? '');
+                $observaciones = trim($a['observaciones'] ?? '');
+                $nombre_archivo = $a['archivo'] ?? "comprobante #{$archivo_idx}";
+
+                if (empty($invoice_ids)) {
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Sin facturas asignadas'];
+                    continue;
+                }
+                if (!$fecha_pago || $referencia === '') {
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Falta fecha o referencia bancaria'];
+                    continue;
+                }
+
+                try {
+                    // Traer datos de las facturas autorizadas y armar el arreglo de pago
+                    $facturas_data = $this->paymentRequestInvoicesModel->get_facturas_autorizadas_by_ids($invoice_ids);
+                    if (!$facturas_data) {
+                        $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => 'Facturas no encontradas o no autorizadas'];
+                        continue;
+                    }
+
+                    $facturas_procesar = [];
+                    $monto_total = 0.0;
+                    foreach ($facturas_data as $f) {
+                        if ($f['payment_authorized'] != 1) {
+                            throw new Exception("La factura {$f['folio']} no está autorizada");
+                        }
+                        $facturas_procesar[] = [
+                            'invoice_id'         => $f['id'],
+                            'folio'              => $f['folio'],
+                            'monto_pagar'        => $f['authorized_amount'],
+                            'saldo_anterior'     => $f['saldo'],
+                            'payment_request_id' => $f['payment_request_id'],
+                        ];
+                        $monto_total += (float)$f['authorized_amount'];
+                    }
+
+                    // Derivar empresa/proveedor/banco de la requisición para la cabecera del lote
+                    $primer_prid = $facturas_data[0]['payment_request_id'];
+                    $req = $this->PaymentRequestsModel->get_request_by_id($primer_prid);
+                    $emp_cod = $req['emp_cod'] ?? null;
+                    $provider_cod = $req['provider_cod'] ?? null;
+
+                    // Preparar el item de $_FILES del comprobante reenviado
+                    $fileItem = null;
+                    if ($archivo_idx >= 0 && isset($_FILES['comprobantes']['name'][$archivo_idx])) {
+                        $fileItem = [
+                            'name'     => $_FILES['comprobantes']['name'][$archivo_idx],
+                            'type'     => $_FILES['comprobantes']['type'][$archivo_idx],
+                            'tmp_name' => $_FILES['comprobantes']['tmp_name'][$archivo_idx],
+                            'error'    => $_FILES['comprobantes']['error'][$archivo_idx],
+                            'size'     => $_FILES['comprobantes']['size'][$archivo_idx],
+                        ];
+                    }
+
+                    // Crear lote + ejecutar pago + marcar pagado + adjuntar comprobante al lote
+                    $result = $this->registrar_lote_y_pago(
+                        $facturas_procesar,
+                        [
+                            'fecha_pago'    => $fecha_pago,
+                            'referencia'    => $referencia,
+                            'observaciones' => $observaciones,
+                            'emp_cod'       => $emp_cod,
+                            'provider_cod'  => $provider_cod,
+                            'monto_total'   => $monto_total,
+                        ],
+                        $fileItem,
+                        $user_id
+                    );
+
+                    if (!$result['success']) {
+                        $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => $result['message']];
+                        continue;
+                    }
+
+                    $aplicados++;
+                    $total_aplicado += (float)$result['total_pagado'];
+                    $resultados[] = [
+                        'archivo'    => $nombre_archivo,
+                        'success'    => true,
+                        'message'    => $result['message'],
+                        'total'      => $result['total_pagado'],
+                    ];
+                } catch (Exception $e) {
+                    error_log("conciliar_comprobantes [$nombre_archivo]: " . $e->getMessage());
+                    $resultados[] = ['archivo' => $nombre_archivo, 'success' => false, 'message' => $e->getMessage()];
+                }
+            }
+
+            json_output([
+                'success'        => $aplicados > 0,
+                'aplicados'      => $aplicados,
+                'total'          => count($asignaciones),
+                'total_aplicado' => number_format($total_aplicado, 2, '.', ''),
+                'resultados'     => $resultados,
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en conciliar_comprobantes: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error al conciliar: ' . $e->getMessage()]);
         }
     }
 
@@ -4433,6 +5074,26 @@ class Payment
 
 
     /**
+     * API JSON: notas ya aplicadas a una factura específica (independiente del pago)
+     */
+    public function getInvoiceNoteApplications()
+    {
+        header('Content-Type: application/json');
+        try {
+            $invoiceId = $_POST['invoice_id'] ?? null;
+            if (!$invoiceId) {
+                throw new Exception('invoice_id es requerido');
+            }
+            $apps = $this->CreditNoteApplicationsModel->getByInvoice((int)$invoiceId);
+            echo json_encode(['success' => true, 'applications' => $apps ?: []]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
      * Aplicar una nota de crédito/cargo a una factura dentro de un pago
      */
     public function applyCreditNote()
@@ -4466,10 +5127,23 @@ class Payment
                 throw new Exception('Nota no encontrada');
             }
 
-            // Verificar saldo disponible
+            // Verificar saldo disponible de la nota
             $available = $this->InvoiceCreditDebitNotesModel->getAvailableBalance($creditNoteId);
             if ($appliedAmount > $available + 0.001) {
                 throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo disponible ($available)");
+            }
+
+            // Verificar que no se exceda el saldo de la factura (si aplica a una factura)
+            if ($invoiceId) {
+                $invoiceDetail = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids((string)$invoiceId);
+                if ($invoiceDetail) {
+                    $inv = $invoiceDetail[0];
+                    $saldoFactura = (float)$inv['amount'] - (float)$inv['paid_amount']
+                        - (float)$inv['total_notas_credito'] + (float)$inv['total_notas_cargo'];
+                    if ($note['note_type'] === 'CREDIT' && $appliedAmount > $saldoFactura + 0.001) {
+                        throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo pendiente de la factura ($saldoFactura)");
+                    }
+                }
             }
 
             $appId = $this->CreditNoteApplicationsModel->applyNote([

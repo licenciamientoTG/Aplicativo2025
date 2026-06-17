@@ -30,7 +30,13 @@ class PaymentTransactionDocumentsModel extends Model
      * Sube un archivo y lo registra en BD.
      * Retorna ['success', 'doc_id', 'message'].
      */
-    public function upload(int $transaction_id, array $file, int $user_id): array
+    /**
+     * Sube un archivo y lo registra. Puede ligarse a una transacción
+     * ($transaction_id) o a un lote de pago ($batch_id). Para conciliación se
+     * usa $batch_id (un comprobante = un lote = N facturas) y $transaction_id
+     * va null.
+     */
+    public function upload(?int $transaction_id, array $file, int $user_id, ?int $batch_id = null): array
     {
         if ($file['error'] !== UPLOAD_ERR_OK) {
             return ['success' => false, 'message' => 'Error al recibir el archivo'];
@@ -48,9 +54,9 @@ class PaymentTransactionDocumentsModel extends Model
         // Insertar primero para obtener el ID
         $doc_id = $this->sql->insert(
             "INSERT INTO [TG].[dbo].[payment_transaction_documents]
-                (transaction_id, file_path, file_extension, original_filename, file_size, created_by)
-             VALUES (?, '', ?, ?, ?, ?)",
-            [$transaction_id, $ext, $file['name'], $file['size'], $user_id]
+                (transaction_id, batch_id, file_path, file_extension, original_filename, file_size, created_by)
+             VALUES (?, ?, '', ?, ?, ?, ?)",
+            [$transaction_id, $batch_id, $ext, $file['name'], $file['size'], $user_id]
         );
 
         if (!$doc_id) {

@@ -1,0 +1,113 @@
+{# views/arqueo/index.html — Lista de sesiones de arqueo Dollar2Go #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Arqueos Dollar2Go{% endblock %}
+{% block mycss %}
+<style>
+    .badge-estado { font-size: .8rem; padding: .35em .7em; border-radius: 12px; }
+    .badge-programado { background:#6c757d; color:#fff; }
+    .badge-abierto    { background:#198754; color:#fff; }
+    .badge-cerrado    { background:#0d6efd; color:#fff; }
+    .progreso-cajas   { font-variant-numeric: tabular-nums; }
+</style>
+{% endblock %}
+{% block menutitle %}
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    Arqueos Simultáneos Dollar2Go
+    {% if es_admin %}
+    <button class="btn btn-primary text-light" style="border-radius:15px;" onclick="abrirModalCrearSesion()">
+        <i class="fas fa-plus"></i> Nuevo arqueo
+    </button>
+    {% endif %}
+</div>
+{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-body">
+        <table id="tabla_sesiones" class="table table-hover table-striped" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Nombre</th>
+                    <th>Fecha</th>
+                    <th>Estado</th>
+                    <th class="text-center">Cajas</th>
+                    <th class="text-end">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sesiones %}
+                <tr>
+                    <td>{{ s.id }}</td>
+                    <td>{{ s.nombre }}</td>
+                    <td>{{ s.fecha|date('d/m/Y') }}</td>
+                    <td><span class="badge-estado badge-{{ s.estado }}">{{ s.estado|capitalize }}</span></td>
+                    <td class="text-center progreso-cajas">
+                        {{ s.cajas_completadas }} / {{ s.total_cajas }}
+                    </td>
+                    <td class="text-end">
+                        {% if s.estado != 'programado' %}
+                        <a href="/arqueo/cajas/{{ s.id }}" class="btn btn-sm btn-outline-primary" title="Cajas">
+                            <i class="fas fa-cash-register"></i> Cajas
+                        </a>
+                        {% endif %}
+                        <a href="/arqueo/concentrado/{{ s.id }}" class="btn btn-sm btn-outline-secondary" title="Concentrado">
+                            <i class="fas fa-table"></i>
+                        </a>
+                        {% if es_admin %}
+                            {% if s.estado == 'programado' %}
+                            <button class="btn btn-sm btn-success" onclick="abrirSesion({{ s.id }})" title="Abrir arqueo">
+                                <i class="fas fa-lock-open"></i> Abrir
+                            </button>
+                            {% elseif s.estado == 'abierto' %}
+                            <button class="btn btn-sm btn-primary" onclick="cerrarSesion({{ s.id }})" title="Cerrar arqueo">
+                                <i class="fas fa-lock"></i> Cerrar
+                            </button>
+                            {% endif %}
+                            <a href="/arqueo/exportar/{{ s.id }}" class="btn btn-sm btn-outline-success" title="Exportar Excel">
+                                <i class="fas fa-file-excel"></i>
+                            </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if es_admin %}
+{# Modal crear sesión #}
+<div class="modal fade" id="modalCrearSesion" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Programar nuevo arqueo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Nombre</label>
+          <input type="text" id="nuevo_nombre" class="form-control" placeholder="ARQUEO SIMULTANEO JUNIO 2026">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Fecha del arqueo</label>
+          <input type="date" id="nuevo_fecha" class="form-control">
+        </div>
+        <p class="text-muted small mb-0">
+          Se crearán automáticamente las {{ '15' }} cajas (13 sucursales; Waterfill y Perez Serna con 2 cajas).
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="crearSesion()">Crear</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block myjs %}
+<script src="{{ JS }}arqueo.js"></script>
+{% endblock %}

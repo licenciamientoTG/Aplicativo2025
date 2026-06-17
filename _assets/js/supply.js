@@ -1,3 +1,25 @@
+async function ModalinvoicePdf(id, data) {
+  try {
+    $("#ModalinvoicePdf").modal("show"); // Abre el modal
+
+    const response = await fetch("/payment/ModalinvoicePdf", {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/javascript, */*",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      credentials: "include",
+      body: `FacturaId=${id}&data=${encodeURIComponent(JSON.stringify(data))}`,
+    });
+
+    const content = await response.text();
+    // Inserta el contenido en el modal
+    $("#ModalinvoicePdf").find("#ModalinvoicePdfContent").html(content);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 // Si el documento esta listo
 $(document).ready(function () {
 
@@ -2411,7 +2433,7 @@ document.addEventListener("click", function (e) {
 // Patrones esperados por proveedor_codigo
 // Derivados del análisis de 4,113 facturas históricas
 var _patronesProveedor = {
-  96: { nombre: 'AEMSA',      regex: /^F-\d+/i },
+  96: { nombre: 'AEMSA',      regex: /^02-8800\d+/i },
   83: { nombre: 'ENEREY',     regex: /^E-\d+/i },
   41: { nombre: 'GAZPRO',     regex: /^FE-\d+/i },
   72: { nombre: 'MGC',        regex: /^(CO-\d+|\d+-CO-\d+)/i },
@@ -2568,7 +2590,24 @@ async function analisis_compras_table() {
         className: "btn btn-success",
         text: '<i class="fas fa-file-excel"></i> Excel',
         title: "Analisis_Compras_" + fromDate + "_" + untilDate,
-        exportOptions: { columns: ":visible" }
+        exportOptions: {
+          columns: ":visible",
+          format: {
+            body: function (data, row, column, node) {
+              // UUID (13) y UUID Corpo (19) muestran el valor recortado en pantalla; exportar el valor completo
+              if (column === 13 || column === 19) {
+                var full = $(node).find("[title]").attr("title");
+                return full || $(node).text().trim();
+              }
+              // Factura SAT (15) es un link "Ver" sin texto útil; exportar si tiene PDF o no
+              if (column === 15) {
+                return $(node).find("a").length ? "Sí" : "Sin PDF";
+              }
+              // Resto de columnas renderizadas con HTML (badges, spans, iconos): exportar solo el texto visible
+              return $(node).text().trim();
+            }
+          }
+        }
       },
       {
         extend: "print",

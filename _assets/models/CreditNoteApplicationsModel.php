@@ -82,6 +82,29 @@ class CreditNoteApplicationsModel extends Model
     }
 
     /**
+     * Obtener todas las aplicaciones activas de una factura específica
+     */
+    public function getByInvoice($invoiceId) : array|false {
+        $query = "
+            SELECT
+                a.*,
+                n.note_type,
+                n.note_number,
+                n.note_date,
+                n.amount       as note_total_amount,
+                n.description  as note_description,
+                u.Nombre       as created_by_name,
+                (SELECT COUNT(*) FROM [tg].[dbo].invoice_credit_debit_notes_doc d
+                 WHERE d.credit_note_id = n.id AND d.file_path IS NOT NULL) as documents_count
+            FROM [tg].[dbo].credit_note_applications a
+            INNER JOIN [tg].[dbo].invoice_credit_debit_notes n ON a.credit_note_id = n.id
+            LEFT JOIN [TG].[dbo].[Usuario] u ON a.created_by = u.Id
+            WHERE a.invoice_id = ? AND a.status = 1
+            ORDER BY a.created_at DESC";
+        return $this->sql->select($query, [$invoiceId]);
+    }
+
+    /**
      * Obtener todas las aplicaciones de una nota (en qué pagos/facturas fue usada)
      */
     public function getByNote($creditNoteId) : array|false {

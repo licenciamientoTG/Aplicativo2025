@@ -1,0 +1,77 @@
+{# views/arqueo/cajas.html — Cajas de una sesión, para entrar a capturar #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Cajas — {{ sesion.nombre }}{% endblock %}
+{% block mycss %}
+<style>
+    .badge-estado { font-size:.8rem; padding:.35em .7em; border-radius:12px; }
+    .badge-pendiente   { background:#6c757d; color:#fff; }
+    .badge-completado  { background:#198754; color:#fff; }
+    .num { font-variant-numeric:tabular-nums; text-align:right; }
+    .res-negativo { color:#dc3545; font-weight:600; }
+    .res-positivo { color:#198754; font-weight:600; }
+</style>
+{% endblock %}
+{% block menutitle %}
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <span>Cajas — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
+    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <i class="fas fa-backward"></i> Regresar
+    </a>
+</div>
+{% endblock %}
+{% block content %}
+
+{% if sesion.estado == 'programado' %}
+<div class="alert alert-warning">
+    <i class="fas fa-clock"></i> Este arqueo aún está <strong>programado</strong>. El administrador debe abrirlo antes de capturar.
+</div>
+{% elseif sesion.estado == 'cerrado' %}
+<div class="alert alert-info">
+    <i class="fas fa-lock"></i> Arqueo <strong>cerrado</strong>. Las cajas son de solo lectura.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body table-responsive">
+    <table class="table table-hover table-bordered" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Sucursal</th>
+          <th class="text-center">Caja</th>
+          <th>Cajero</th>
+          <th class="text-center">Estado</th>
+          <th class="text-end">Resultado Final</th>
+          <th class="text-end">Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in cajas %}
+        <tr>
+          <td>{{ c.sucursal_nombre }}</td>
+          <td class="text-center">{{ c.caja_numero }}</td>
+          <td>{{ c.cajero_nombre }}</td>
+          <td class="text-center">
+            <span class="badge-estado badge-{{ c.estado }}">{{ c.estado|capitalize }}</span>
+          </td>
+          <td class="num {{ c.resultado_final < 0 ? 'res-negativo' : (c.resultado_final > 0 ? 'res-positivo' : '') }}">
+            {{ c.estado == 'completado' ? (c.resultado_final|number_format(2,'.',',')) : '—' }}
+          </td>
+          <td class="text-end">
+            <a href="/arqueo/caja/{{ c.id }}" class="btn btn-sm {{ sesion.estado == 'cerrado' ? 'btn-outline-secondary' : 'btn-primary' }}">
+              {% if sesion.estado == 'cerrado' %}
+                <i class="fas fa-eye"></i> Ver
+              {% elseif c.estado == 'completado' %}
+                <i class="fas fa-pen"></i> Editar
+              {% else %}
+                <i class="fas fa-cash-register"></i> Capturar
+              {% endif %}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

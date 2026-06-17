@@ -54,8 +54,9 @@ function json_modal($title, $html) {
 // Recipents = ['aaguirre@totalgas.com','acarrasco@totalgas.com','aochoa@totalgas.com','customerservice@totalgas.com','lcoronel@totalgas.com','dfong@totalgas.com','jfong@totalgas.com'];
 // CCAddress = ['hcastorena@totalgas.com'];
 // SetFrom: 'corsys@totalgas.com'
-function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false): bool {
+function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
 
+    $errorOut = null;
     $mail = new PHPMailer(true);
 
     try {
@@ -69,8 +70,8 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;   // antes: 'ssl' (string)
         $mail->Port       = 465;
 
-        $mail->Username   = 'totalgasdesarrollo@gmail.com';
-        $mail->Password   = 'bdppgxrwzhmyfrmf';
+        $mail->Username   = 'no-reply@totalgas.com';
+        $mail->Password   = 'sysdhepknmlkigbs';
 
         // --- Codificación y HTML ---
         $mail->CharSet  = 'UTF-8';        // CLAVE: todo en UTF-8
@@ -104,11 +105,16 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
             mb_internal_encoding('UTF-8');
         }
 
-        return $mail->send();
+        $sent = $mail->send();
+        if (!$sent) {
+            $errorOut = $mail->ErrorInfo ?: 'PHPMailer devolvió false sin detalle.';
+        }
+        return $sent;
 
     } catch (Exception $e) {
-        // Si estás devolviendo JSON desde el endpoint, no hagas echo aquí.
-        error_log("Mailer Error: {$mail->ErrorInfo}");
+        // Capturar el detalle real para que el caller pueda mostrarlo.
+        $errorOut = $mail->ErrorInfo ?: $e->getMessage();
+        error_log("Mailer Error: {$errorOut}");
         return false;
     }
 }

@@ -132,9 +132,45 @@ async function payment_create_table() {
       { data: "Factura" },
       { data: "gasolinera", className: "text-center text-nowrap" },
       { data: "proveedor", className: "text-center text-nowrap" },
-      { data: "fecha", className: "text-center text-nowrap" },
+      {
+        data: "fecha",
+        className: "text-center text-nowrap",
+        render: function (data, type, row) {
+          if (type !== "display") {
+            return data;
+          }
+          // Si la fecha NO viene de la factura (FacturasRecibidas), es de ControlGas: marcar en rojo
+          if (row.fecha_de_factura == 0) {
+            return (
+              '<span class="text-danger fw-bold" title="Fecha de ControlGas — sin factura recibida">' +
+              (data != null ? data : "") +
+              "</span>"
+            );
+          }
+          return data != null ? data : "";
+        },
+      },
       { data: "fechaVto", className: "text-center text-nowrap" },
-      { data: "total_fac", render: $.fn.dataTable.render.number(",", ".", 2) },
+      {
+        data: "total_mostrar",
+        className: "text-end text-nowrap",
+        render: function (data, type, row) {
+          var valor = data != null ? data : row.total_fac;
+          if (type !== "display") {
+            return parseFloat(valor) || 0;
+          }
+          var formateado = $.fn.dataTable.render.number(",", ".", 2).display(valor);
+          // Si NO viene de FacturasRecibidas, el total es de ControlGas: pintarlo en rojo con tooltip
+          if (row.tiene_factura_recibida == 0) {
+            return (
+              '<span class="text-danger fw-bold" title="Total de ControlGas — sin factura recibida">' +
+              formateado +
+              "</span>"
+            );
+          }
+          return formateado;
+        },
+      },
       { data: "producto", className: "text-center text-nowrap" },
       { data: "statusLabel" },
       { data: "satuid", visible: false, searchable: false },
@@ -1152,7 +1188,7 @@ async function generatePayment() {
         documentos: paymentItems,
         total_documentos: paymentItems.length,
         total_amount: paymentItems.reduce(
-            (sum, item) => sum + (parseFloat(item.total_fac) || 0),
+            (sum, item) => sum + (parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0),
             0,
         ),
         fecha_pago: scheduledDate,
@@ -1655,12 +1691,45 @@ function sendToPayments(btn) {
             if (typeof tablaArchivosContabilidad !== "undefined" && tablaArchivosContabilidad) {
               tablaArchivosContabilidad.ajax.reload(null, false);
             }
+          } else if (resp && resp.mail_failed) {
+            // La agrupación SÍ ocurrió, pero el correo falló. Mostrar el motivo
+            // completo y aclarar que se puede reenviar.
+            Swal.fire({
+              icon: "warning",
+              title: "Se agrupó, pero el correo no se envió",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text(resp.message || "").html() +
+                "</div>" +
+                (resp.mail_error
+                  ? "<hr><details style='text-align:left;font-size:.78rem;color:#64748b;'><summary>Detalle técnico</summary><code>" +
+                    $("<div>").text(resp.mail_error).html() +
+                    "</code></details>"
+                  : ""),
+              confirmButtonText: "Entendido",
+              width: 620,
+            });
           } else {
-            alertify.error((resp && resp.message) || "No se pudo completar la operación");
+            Swal.fire({
+              icon: "error",
+              title: "No se pudo completar",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text((resp && resp.message) || "Error desconocido").html() +
+                "</div>",
+              confirmButtonText: "Cerrar",
+              width: 600,
+            });
           }
         })
-        .fail(function () {
-          alertify.error("Error de conexión");
+        .fail(function (xhr) {
+          var msg = "Error de conexión con el servidor.";
+          if (xhr && xhr.statusText === "timeout") {
+            msg = "La operación tardó demasiado y se agotó el tiempo de espera. Las requisiciones pueden haberse agrupado; verifica antes de reintentar.";
+          } else if (xhr && xhr.status) {
+            msg += " (HTTP " + xhr.status + ")";
+          }
+          Swal.fire({ icon: "error", title: "Error de conexión", text: msg });
         })
         .always(function () {
           $btn.prop("disabled", false).html(htmlOriginal);
@@ -1668,6 +1737,58 @@ function sendToPayments(btn) {
     },
     function () { /* cancelado */ }
   ).set("labels", { ok: "Sí, mandar", cancel: "Cancelar" });
+}
+
+
+// ===== Botón "Reenviar correo" (solo Id 6296): reenvía el correo de los pagos
+// cerrados hoy (por agrupación de contabilidad) SIN volver a agrupar. =====
+function resendTodayPayments(btn) {
+  alertify.confirm(
+    "Reenviar correo de pagos de hoy",
+    "Se reenviará el correo de solicitud con los pagos que se <strong>cerraron hoy</strong> (agrupados en contabilidad). <strong>No</strong> se volverá a agrupar ni cerrar nada. ¿Continuar?",
+    function () {
+      var $btn = $(btn);
+      var htmlOriginal = $btn.html();
+      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Reenviando...');
+
+      $.ajax({
+        url: "/payment/resend_today_payments",
+        type: "POST",
+        dataType: "json",
+        timeout: 120000,
+      })
+        .done(function (resp) {
+          if (resp && resp.success) {
+            alertify.success(resp.message || "Correo reenviado");
+          } else {
+            Swal.fire({
+              icon: resp && resp.mail_failed ? "warning" : "error",
+              title: "No se pudo reenviar",
+              html:
+                "<div style='text-align:left;white-space:pre-line;font-size:.9rem;'>" +
+                $("<div>").text((resp && resp.message) || "Error desconocido").html() +
+                "</div>" +
+                (resp && resp.mail_error
+                  ? "<hr><details style='text-align:left;font-size:.78rem;color:#64748b;'><summary>Detalle técnico</summary><code>" +
+                    $("<div>").text(resp.mail_error).html() +
+                    "</code></details>"
+                  : ""),
+              confirmButtonText: "Cerrar",
+              width: 620,
+            });
+          }
+        })
+        .fail(function (xhr) {
+          var msg = "Error de conexión con el servidor.";
+          if (xhr && xhr.status) msg += " (HTTP " + xhr.status + ")";
+          Swal.fire({ icon: "error", title: "Error de conexión", text: msg });
+        })
+        .always(function () {
+          $btn.prop("disabled", false).html(htmlOriginal);
+        });
+    },
+    function () { /* cancelado */ }
+  ).set("labels", { ok: "Sí, reenviar", cancel: "Cancelar" });
 }
 
 
@@ -2271,7 +2392,10 @@ function renderPaymentItems() {
 
   let html = "";
   paymentItems.forEach((item, index) => {
-    const totalFac = parseFloat(item.total_fac) || 0;
+    const totalFac = parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0;
+    const esControlGas = item.tiene_factura_recibida == 0;
+    const totalBadgeClass = esControlGas ? "bg-light text-danger" : "bg-light text-dark";
+    const totalBadgeTitle = esControlGas ? ' title="Total de ControlGas — sin factura recibida"' : "";
     const tempKey = typeof getInvoiceTempKey === "function" ? getInvoiceTempKey(item) : `${item.nro}__${item.codgas}`;
     const notesForItem = typeof pendingNotes !== "undefined"
       ? pendingNotes.filter(n => n.invoice_temp_key === tempKey)
@@ -2293,7 +2417,7 @@ function renderPaymentItems() {
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start mb-1">
                         <strong>Folio: ${item.nro}</strong>
-                        <span class="badge bg-light text-dark">$${totalFac.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                        <span class="badge ${totalBadgeClass}"${totalBadgeTitle}>$${totalFac.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <small class="d-block">Factura: ${item.Factura || "N/A"} | Remisión: ${item.Remision || "N/A"}</small>
                     <small class="d-block">Proveedor: ${item.proveedor}</small>
@@ -2332,7 +2456,7 @@ function updatePaymentSummary() {
   let totalAmount = 0;
 
   paymentItems.forEach((item) => {
-    const amount = parseFloat(item.total_fac) || 0;
+    const amount = parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0;
     totalAmount += amount;
   });
 
@@ -4046,20 +4170,31 @@ function loadAuthorizedPendingInvoices() {
         render: function (data, type, row) {
           if (row.tipo_registro === "ANTICIPO") {
             return `
-                            <button class="btn btn-sm btn-outline-secondary"
-                                    onclick="verDetalleAnticipo(${row.payment_request_id})"
-                                    title="Ver detalle del anticipo">
-                                <i class="fas fa-eye"></i> Ver Anticipo
+                            <button onclick="verDetalleAnticipo(${row.payment_request_id})"
+                                    title="Ver detalle del anticipo" data-bs-toggle="tooltip"
+                                    style="color:#2563eb;background:#eff6ff;border:none;border-radius:5px;padding:.3rem .5rem;">
+                                <i class="fas fa-eye" style="font-size:.8rem;"></i>
                             </button>
                         `;
           }
 
+          const btnPagar = window.PUEDE_TESORERIA
+            ? `<button onclick='pagarGrupoIndividual(${JSON.stringify(String(row.invoice_ids))}, ${JSON.stringify(row.banco_asignado)}, ${JSON.stringify(row.empresa_nombre)}, ${JSON.stringify(row.proveedor_nombre)}, ${parseFloat(row.total_autorizado) || 0})'
+                       title="Marcar como pagado" data-bs-toggle="tooltip"
+                       style="color:#16a34a;background:#ecfdf5;border:none;border-radius:5px;padding:.3rem .5rem;">
+                   <i class="fas fa-dollar-sign" style="font-size:.8rem;"></i>
+               </button>`
+            : "";
+
           return `
-                        <button class="btn btn-sm btn-outline-info"
-                                onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
-                                title="Ver facturas individuales">
-                            <i class="fas fa-eye"></i> Ver Desglose
-                        </button>
+                        <div class="d-inline-flex gap-1 justify-content-center">
+                            <button onclick="verDetalleFacturasAgrupadas('${row.invoice_ids}', '${row.empresa_nombre}', '${row.proveedor_nombre}')"
+                                    title="Ver desglose de facturas" data-bs-toggle="tooltip"
+                                    style="color:#0891b2;background:#ecfeff;border:none;border-radius:5px;padding:.3rem .5rem;">
+                                <i class="fas fa-eye" style="font-size:.8rem;"></i>
+                            </button>
+                            ${btnPagar}
+                        </div>
                     `;
         },
       },
@@ -4111,6 +4246,15 @@ function loadAuthorizedPendingInvoices() {
       const table = this.api();
       updateBankSummaryFromTable(table);
       updateSelectedSummary();
+      // Actualizar resumen de desglose solo si el card está abierto
+      if (document.getElementById('resumenDesglose') && document.getElementById('resumenDesglose').style.display !== 'none') {
+        updateResumenDesglose(table);
+      }
+
+      // Tooltips de los botones de acciones (solo icono)
+      $('#tabla_facturas_autorizadas [data-bs-toggle="tooltip"]').each(function () {
+        bootstrap.Tooltip.getOrCreateInstance(this);
+      });
 
       // Poblar filtro de empresas
       const empresas = new Set();
@@ -4199,6 +4343,171 @@ function updateSelectedSummary() {
   $("#btnGenerarLayout").prop("disabled", totalSeleccionado === 0);
 }
 
+
+// ── Toggle de cards colapsables ──────────────────────────────────────────────
+function toggleResumenCard(contentId, chevronId) {
+  var el = document.getElementById(contentId);
+  var ch = document.getElementById(chevronId);
+  if (!el) return;
+  var open = el.style.display !== 'none';
+  el.style.display = open ? 'none' : 'block';
+  if (ch) ch.style.transform = open ? 'rotate(-90deg)' : 'rotate(0deg)';
+  // Si se abre el resumen de desglose y la tabla ya tiene datos, recalcular
+  if (!open && contentId === 'resumenDesglose' && typeof tablaFacturasAutorizadas !== 'undefined' && tablaFacturasAutorizadas) {
+    updateResumenDesglose(tablaFacturasAutorizadas);
+  }
+}
+
+// ── Resumen: por razón social → qué le paga a cada proveedor ─────────────────
+function updateResumenDesglose(table) {
+  if (!table || !table.data().count()) return;
+
+  // estructura: { empresa: { banco, proveedores: { prov: monto }, subtotal } }
+  var grupos = {};
+  var totalGeneral = 0;
+
+  table.rows({ search: 'applied' }).data().each(function (row) {
+    var monto   = parseFloat(row.total_saldo) || 0;
+    var empresa = row.empresa_nombre   || 'Sin empresa';
+    var prov    = row.proveedor_nombre || 'Sin proveedor';
+    var banco   = row.banco_asignado   || '';
+
+    if (!grupos[empresa]) {
+      grupos[empresa] = { banco: banco, proveedores: {}, subtotal: 0 };
+    }
+    grupos[empresa].proveedores[prov] = (grupos[empresa].proveedores[prov] || 0) + monto;
+    grupos[empresa].subtotal += monto;
+    totalGeneral += monto;
+  });
+
+  var fmt = function(n) {
+    return '$' + n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  var bancoColor = { Banorte: '#b91c1c', Santander: '#c81e1e' };
+  var bancoIcon  = { Banorte: 'fas fa-piggy-bank', Santander: 'fas fa-landmark' };
+
+  // Ordenar empresas por subtotal desc
+  var empresasOrdenadas = Object.keys(grupos).sort(function(a,b) {
+    return grupos[b].subtotal - grupos[a].subtotal;
+  });
+
+  var html = '';
+
+  // Encabezado con total general
+  html += '<div class="d-flex justify-content-between align-items-center mb-2">'
+        + '<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;">'
+        + '<i class="fas fa-building me-1"></i>Razón social / Proveedor</span>'
+        + '<span style="font-size:.78rem;font-weight:700;color:#1e293b;">Total: ' + fmt(totalGeneral) + '</span>'
+        + '</div>';
+
+  html += '<div style="display:flex;flex-direction:column;gap:.35rem;width:100%;max-width:450px;">';
+
+  empresasOrdenadas.forEach(function(empresa) {
+    var g = grupos[empresa];
+    var bColor = bancoColor[g.banco] || '#475569';
+    var bIcon  = bancoIcon[g.banco]  || 'fas fa-university';
+
+    html += '<div style="border:1px solid #e2e8f0;border-radius:5px;overflow:hidden;">';
+
+    // Cabecera empresa
+    html += '<div class="d-flex align-items-center justify-content-between px-2 py-1" '
+          +      'style="background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'
+          + '<span style="font-weight:700;color:#1e293b;font-size:.75rem;line-height:1.2;">' + empresa + '</span>'
+          + '<div class="d-flex align-items-center gap-1 ms-1 flex-shrink-0">'
+          + '<span style="font-size:.65rem;color:' + bColor + ';white-space:nowrap;">'
+          + '<i class="' + bIcon + '"></i> ' + (g.banco || '') + '</span>'
+          + '<span style="font-weight:700;color:#1e293b;font-size:.78rem;white-space:nowrap;">' + fmt(g.subtotal) + '</span>'
+          + '</div></div>';
+
+    // Filas de proveedores
+    var provsOrdenados = Object.entries(g.proveedores).sort(function(a,b){ return b[1]-a[1]; });
+    html += '<table style="width:100%;border-collapse:collapse;font-size:.75rem;"><tbody>';
+    provsOrdenados.forEach(function(entry, idx) {
+      var bg = idx % 2 === 0 ? '#fff' : '#f8fafc';
+      html += '<tr style="background:' + bg + ';">'
+            + '<td style="padding:3px 8px;color:#64748b;">'
+            + '<i class="fas fa-truck me-1" style="color:#cbd5e1;font-size:.65rem;"></i>' + entry[0]
+            + '</td>'
+            + '<td style="padding:3px 8px;text-align:right;font-weight:600;color:#334155;white-space:nowrap;">' + fmt(entry[1]) + '</td>'
+            + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+
+  html += '</div>';
+
+  if (!empresasOrdenadas.length) {
+    html = '<p class="text-muted text-center py-2" style="font-size:.8rem;">Sin datos para mostrar.</p>';
+  }
+
+  var container = document.getElementById('resumenTablaContainer');
+  if (container) container.innerHTML = html;
+}
+
+function descargarResumenExcel() {
+  if (typeof tablaFacturasAutorizadas === 'undefined' || !tablaFacturasAutorizadas || !tablaFacturasAutorizadas.data().count()) {
+    alertify.error('No hay datos para exportar.');
+    return;
+  }
+  if (typeof XLSX === 'undefined') {
+    alertify.error('La librería Excel no está disponible. Recarga la página.');
+    return;
+  }
+
+  // Reconstruir el mismo agrupamiento que updateResumenDesglose
+  var grupos = {};
+  var totalGeneral = 0;
+
+  tablaFacturasAutorizadas.rows({ search: 'applied' }).data().each(function(row) {
+    var monto   = parseFloat(row.total_saldo) || 0;
+    var empresa = row.empresa_nombre   || 'Sin empresa';
+    var prov    = row.proveedor_nombre || 'Sin proveedor';
+    var banco   = row.banco_asignado   || '';
+    if (!grupos[empresa]) grupos[empresa] = { banco: banco, proveedores: {}, subtotal: 0 };
+    grupos[empresa].proveedores[prov] = (grupos[empresa].proveedores[prov] || 0) + monto;
+    grupos[empresa].subtotal += monto;
+    totalGeneral += monto;
+  });
+
+  var empresasOrdenadas = Object.keys(grupos).sort(function(a,b) {
+    return grupos[b].subtotal - grupos[a].subtotal;
+  });
+
+  var rows = [['Razón Social', 'Banco', 'Proveedor', 'Monto']];
+
+  empresasOrdenadas.forEach(function(empresa) {
+    var g = grupos[empresa];
+    var provsOrdenados = Object.entries(g.proveedores).sort(function(a,b){ return b[1]-a[1]; });
+    provsOrdenados.forEach(function(entry) {
+      rows.push([empresa, g.banco, entry[0], entry[1]]);
+    });
+    // Subtotal por empresa
+    rows.push(['', '', 'SUBTOTAL ' + empresa, g.subtotal]);
+    rows.push([]); // línea en blanco entre empresas
+  });
+
+  // Total general al final
+  rows.push(['', '', 'TOTAL GENERAL', totalGeneral]);
+
+  var wb = XLSX.utils.book_new();
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // Ancho de columnas
+  ws['!cols'] = [{ wch: 36 }, { wch: 12 }, { wch: 42 }, { wch: 18 }];
+
+  // Formato de número para la columna Monto (col D, índice 3)
+  rows.forEach(function(r, i) {
+    if (i === 0 || !r[3] && r[3] !== 0) return;
+    var cell = ws[XLSX.utils.encode_cell({ r: i, c: 3 })];
+    if (cell) cell.z = '"$"#,##0.00';
+  });
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Resumen');
+
+  var fecha = new Date().toLocaleDateString('es-MX').replace(/\//g, '-');
+  XLSX.writeFile(wb, 'Resumen_Pagos_' + fecha + '.xlsx');
+}
 
 function updateBankSummaryFromTable(table) {
   if (!table.data().count()) {
@@ -5167,6 +5476,22 @@ function mostrarResumenPagoRegistrado(response) {
 }
 
 
+/**
+ * Pago individual de un solo grupo (botón "Pagar" por fila en Facturas autorizadas).
+ * Reutiliza el mismo modal y flujo del registro de pago, con un único grupo.
+ */
+function pagarGrupoIndividual(invoiceIds, banco, empresa, proveedor, monto) {
+  const grupo = {
+    banco: banco,
+    invoice_ids: invoiceIds,
+    empresa: empresa,
+    proveedor: proveedor,
+    monto: monto,
+  };
+  mostrarModalRegistroPago([grupo], banco);
+}
+
+
 function generarLayoutBanorte(
   gruposFacturas,
   gruposAnticipos,
@@ -5396,10 +5721,23 @@ async function addNoteModal(id) {
 }
 
 
-function openApplyCreditNoteModal() {
+function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
   const providerEl = document.getElementById("paymentProviderId");
   const providerId = providerEl ? providerEl.value : "";
   const paymentId  = document.getElementById("paymentId").value;
+
+  const invoiceSelect = document.getElementById("applyNoteInvoiceSelect");
+  invoiceSelect.value = invoiceId || "";
+
+  if (invoiceId && !invoiceFolio) {
+    const opt = invoiceSelect.options[invoiceSelect.selectedIndex];
+    invoiceFolio = opt ? opt.text : "";
+  }
+
+  const title = document.getElementById("applyNoteModalTitle");
+  title.innerHTML = invoiceId
+    ? `<i class="fas fa-link"></i> Aplicar Nota a Factura ${invoiceFolio || ""}`
+    : `<i class="fas fa-link"></i> Aplicar Nota al Pago`;
 
   fetch("/payment/getProviderNotes", {
     method: "POST",
@@ -5412,6 +5750,9 @@ function openApplyCreditNoteModal() {
       if (!data.success) throw new Error(data.message);
       renderApplyNoteModalNotes(data.notes);
       document.getElementById("applyNotePaymentId").value = paymentId;
+      return invoiceId ? loadInvoiceNoteApplications(invoiceId) : renderApplyNoteExistingList([]);
+    })
+    .then(() => {
       $("#applyNoteModal").modal("show");
     })
     .catch((err) => {
@@ -5420,21 +5761,178 @@ function openApplyCreditNoteModal() {
 }
 
 
-function renderApplyNoteModalNotes(notes) {
-  const sel = document.getElementById("applyNoteSelect");
-  sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
-  if (!notes || notes.length === 0) {
-    sel.innerHTML += '<option disabled>Sin notas disponibles para este proveedor</option>';
+function loadInvoiceNoteApplications(invoiceId) {
+  return fetch("/payment/getInvoiceNoteApplications", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    credentials: "include",
+    body: `invoice_id=${invoiceId}`,
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      renderApplyNoteExistingList(data.success ? data.applications : []);
+    });
+}
+
+
+function renderApplyNoteExistingList(applications) {
+  const wrap = document.getElementById("applyNoteExistingWrap");
+  const list = document.getElementById("applyNoteExistingList");
+  if (!applications || applications.length === 0) {
+    wrap.style.display = "none";
+    list.innerHTML = "";
     return;
   }
-  notes.forEach((n) => {
-    const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
-    const balance = parseFloat(n.available_balance).toFixed(2);
-    const date    = n.note_date ? n.note_date.substring(0, 10) : "";
-    sel.innerHTML += `<option value="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
-      [${type}] ${n.note_number || "S/N"} — ${date} — Saldo: $${balance}
-    </option>`;
+  wrap.style.display = "";
+  list.innerHTML = applications
+    .map((app) => {
+      const sign  = app.note_type === "CREDIT" ? "-" : "+";
+      const badge = app.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const amount = parseFloat(app.applied_amount).toFixed(2);
+      return `<div class="d-flex justify-content-between align-items-center border rounded px-2 py-1" style="font-size:.82rem;">
+        <span><span class="badge ${badge} me-1">${app.note_type === "CREDIT" ? "Crédito" : "Cargo"}</span>${app.note_number || "S/N"}</span>
+        <span>
+          <strong>${sign} $${amount}</strong>
+          <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="removeApplication(${app.id}, true)" title="Quitar"><i class="fas fa-unlink"></i></button>
+        </span>
+      </div>`;
+    })
+    .join("");
+}
+
+
+function renderApplyNoteModalNotes(notes) {
+  const list = document.getElementById("applyNoteCheckList");
+  if (!notes || notes.length === 0) {
+    list.innerHTML =
+      '<span class="text-muted small">Sin notas disponibles para este proveedor</span>';
+    updateApplyNoteSelectedHint();
+    return;
+  }
+  list.innerHTML = notes
+    .map((n) => {
+      const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
+      const badge   = n.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const balance = parseFloat(n.available_balance).toFixed(2);
+      const date    = n.note_date ? n.note_date.substring(0, 10) : "";
+      return `<div class="d-flex align-items-center gap-2 py-1 border-bottom apply-note-row" data-note-id="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
+        <input type="checkbox" class="form-check-input mt-0 apply-note-check" onchange="onApplyNoteCheckToggle(this)">
+        <div class="flex-grow-1" style="font-size:.82rem; line-height:1.15;">
+          <span class="badge ${badge} me-1">${type}</span>${n.note_number || "S/N"}
+          <span class="text-muted"> · ${date} · Saldo: $${balance}</span>
+        </div>
+        <input type="number" class="form-control form-control-sm apply-note-amount" style="width:110px;"
+          step="0.01" min="0.01" max="${balance}" placeholder="Monto" disabled
+          oninput="updateApplyNoteSelectedHint()">
+      </div>`;
+    })
+    .join("");
+  updateApplyNoteSelectedHint();
+}
+
+
+// Al marcar/desmarcar: habilita el monto y lo pre-llena con el saldo de la nota
+function onApplyNoteCheckToggle(chk) {
+  const row = chk.closest(".apply-note-row");
+  const amt = row.querySelector(".apply-note-amount");
+  amt.disabled = !chk.checked;
+  if (chk.checked) {
+    if (!amt.value) amt.value = row.getAttribute("data-balance");
+    amt.focus();
+  }
+  updateApplyNoteSelectedHint();
+}
+
+
+// Resumen "N notas · $Total" en el encabezado de la lista
+function updateApplyNoteSelectedHint() {
+  const hint = document.getElementById("applyNoteSelectedHint");
+  if (!hint) return;
+  let count = 0;
+  let total = 0;
+  document.querySelectorAll("#applyNoteCheckList .apply-note-row").forEach((row) => {
+    const chk = row.querySelector(".apply-note-check");
+    if (chk && chk.checked) {
+      count++;
+      total += parseFloat(row.querySelector(".apply-note-amount").value || 0);
+    }
   });
+  hint.textContent = count ? `${count} nota(s) · $${total.toFixed(2)}` : "";
+}
+
+
+// Itera las notas marcadas y las aplica una por una vía /payment/applyCreditNote
+async function applySelectedNotes() {
+  const paymentId = document.getElementById("applyNotePaymentId").value;
+  const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+  const rows = Array.from(
+    document.querySelectorAll("#applyNoteCheckList .apply-note-row")
+  ).filter((row) => row.querySelector(".apply-note-check").checked);
+
+  if (rows.length === 0) {
+    alertify.error("Seleccione al menos una nota");
+    return;
+  }
+
+  // Validación de montos en cliente (el backend revalida saldos)
+  for (const row of rows) {
+    const amount  = parseFloat(row.querySelector(".apply-note-amount").value || 0);
+    const balance = parseFloat(row.getAttribute("data-balance") || 0);
+    if (amount <= 0) {
+      alertify.error("Hay notas marcadas sin monto válido");
+      return;
+    }
+    if (amount > balance + 0.001) {
+      alertify.error(`Un monto excede el saldo disponible ($${balance.toFixed(2)})`);
+      return;
+    }
+  }
+
+  const submitBtn = document.querySelector('#applyNoteForm button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+
+  let okCount = 0;
+  const errors = [];
+
+  for (const row of rows) {
+    const noteId = row.getAttribute("data-note-id");
+    const amount = row.querySelector(".apply-note-amount").value;
+    const body = new URLSearchParams({
+      credit_note_id: noteId,
+      payment_request_id: paymentId,
+      applied_amount: amount,
+    });
+    if (invoiceId) body.append("invoice_id", invoiceId);
+
+    try {
+      const res  = await fetch("/payment/applyCreditNote", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        credentials: "include",
+        body: body.toString(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        okCount++;
+      } else {
+        errors.push(data.message || "Error al aplicar una nota");
+      }
+    } catch (e) {
+      errors.push("Error de conexión al aplicar una nota");
+    }
+  }
+
+  if (submitBtn) submitBtn.disabled = false;
+
+  if (okCount > 0) {
+    applyNotePageDirty = true;
+    alertify.success(`${okCount} nota(s) aplicada(s) correctamente`);
+    // Refrescar lista de notas (saldos) y notas ya aplicadas a la factura
+    openApplyCreditNoteModal(invoiceId || null, null);
+  }
+  if (errors.length > 0) {
+    alertify.error(errors.join(" | "));
+  }
 }
 
 
@@ -5497,6 +5995,21 @@ function openNoteDocViewerPD(docId) {
     b.classList.toggle("btn-outline-danger", b.dataset.docId != docId);
   });
 }
+
+
+// ── Delegación: botón "Ver PDF(s)" en la lista de notas de payment_detail ─────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".view-note-docs-btn");
+  if (!btn) return;
+  openNoteDocsModalPD(btn.dataset.noteId);
+});
+
+// ── Delegación: selector de doc dentro del modal noteDocsModalPD ──────────────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".note-doc-item-pd");
+  if (!btn) return;
+  openNoteDocViewerPD(btn.dataset.docId);
+});
 
 
 // ── Submit: subir PDF desde payment_detail ────────────────────────────────────
@@ -5597,7 +6110,7 @@ function subirPDFNota() {
 }
 
 
-function removeApplication(appId) {
+function removeApplication(appId, fromModal) {
   Swal.fire({
     title: "¿Quitar esta nota aplicada?",
     text: "El saldo de la nota quedará disponible nuevamente.",
@@ -5617,12 +6130,20 @@ function removeApplication(appId) {
     })
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
+        if (!data.success) {
+          Swal.fire({ icon: "error", title: "Error", text: data.message });
+          return;
+        }
+        if (fromModal) {
+          const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+          Swal.fire({ icon: "success", title: "Quitada", timer: 1200, showConfirmButton: false });
+          applyNotePageDirty = true;
+          // Recarga notas disponibles (saldo liberado) y lista de aplicadas a la factura
+          openApplyCreditNoteModal(invoiceId || null, null);
+        } else {
           Swal.fire({ icon: "success", title: "Quitada", timer: 1500 }).then(
             () => location.reload()
           );
-        } else {
-          Swal.fire({ icon: "error", title: "Error", text: data.message });
         }
       })
       .catch(() => {
@@ -6260,5 +6781,357 @@ async function toggleFacturasInline(btn, groupId) {
        </div>`
     );
   }
+}
+
+
+// =====================================================================
+// CONCILIACIÓN DE COMPROBANTES DE PAGO (carga masiva → preview)
+// =====================================================================
+let comprobantesGrupos = []; // grupos pendientes devueltos por el preview
+let comprobantesFiles = [];  // File objects originales (para reenviar al guardar)
+let comprobantesPreview = []; // resultado del preview por comprobante (para fecha/ref default)
+
+function abrirModalComprobantes() {
+  // Resetear estado del modal
+  $("#inputComprobantes").val("");
+  $("#comprobantesArchivosSel").html("");
+  $("#comprobantesResumen").hide();
+  $("#comprobantesTablaWrap").hide();
+  $("#comprobantesLoading").hide();
+  $("#tablaComprobantes tbody").empty();
+  $("#comprobanteSelectAll").prop("checked", false);
+  $("#comprobantesSeleccionInfo").text("");
+  $("#btnGuardarComprobantes").prop("disabled", true);
+  comprobantesGrupos = [];
+  comprobantesFiles = [];
+  comprobantesPreview = [];
+  $("#modalComprobantes").modal("show");
+}
+
+// Wiring de la zona de carga (una sola vez)
+$(document).on("click", "#comprobantesDropzone", function () {
+  $("#inputComprobantes").click();
+});
+$(document).on("change", "#inputComprobantes", function () {
+  if (this.files && this.files.length) {
+    subirComprobantesPreview(this.files);
+  }
+});
+$(document).on("dragover", "#comprobantesDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#f3e8ff");
+});
+$(document).on("dragleave drop", "#comprobantesDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#faf5ff");
+});
+$(document).on("drop", "#comprobantesDropzone", function (e) {
+  const files = e.originalEvent.dataTransfer.files;
+  if (files && files.length) subirComprobantesPreview(files);
+});
+
+function subirComprobantesPreview(fileList) {
+  const files = Array.from(fileList).filter(
+    (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+  );
+  if (files.length === 0) {
+    alertify.warning("Selecciona archivos PDF");
+    return;
+  }
+
+  // Conservar los File en el mismo orden en que se envían al backend,
+  // para poder reenviarlos al guardar (move_uploaded_file lo exige).
+  comprobantesFiles = files;
+
+  $("#comprobantesArchivosSel").html(
+    `<i class="fas fa-paperclip"></i> ${files.length} archivo(s) seleccionado(s)`
+  );
+  $("#comprobantesLoading").show();
+  $("#comprobantesTablaWrap").hide();
+  $("#comprobantesResumen").hide();
+
+  const fd = new FormData();
+  files.forEach((f) => fd.append("comprobantes[]", f));
+
+  fetch("/payment/preview_comprobantes_match", { method: "POST", body: fd })
+    .then((r) => r.json())
+    .then((res) => {
+      $("#comprobantesLoading").hide();
+      if (!res.success) {
+        alertify.error(res.message || "Error al procesar comprobantes");
+        return;
+      }
+      comprobantesGrupos = res.grupos || [];
+      comprobantesPreview = res.comprobantes || [];
+      renderComprobantesResumen(res.resumen);
+      renderComprobantesTabla(res.comprobantes);
+      actualizarSeleccionComprobantes();
+    })
+    .catch((err) => {
+      $("#comprobantesLoading").hide();
+      alertify.error("Error de conexión: " + err.message);
+    });
+}
+
+// Normaliza la fecha de un comprobante (dd/mm/aaaa [hh:mm]) a yyyy-mm-dd para el input date.
+function fechaComprobanteAInput(fecha) {
+  const m = (fecha || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return new Date().toISOString().split("T")[0];
+}
+
+function renderComprobantesResumen(r) {
+  $("#compMatched").text(r.matched || 0);
+  $("#compAmbiguo").text(r.ambiguo || 0);
+  $("#compUnmatched").text(r.unmatched || 0);
+  $("#compMontoTotal").text(
+    "$" + (r.monto_total || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })
+  );
+  $("#comprobantesResumen").show();
+}
+
+function fmtMoneda(v) {
+  return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+}
+
+function fmtFechaCorta(f) {
+  if (!f) return "—";
+  const d = new Date(f);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function infoRequisicion(g) {
+  if (!g || !g.payment_request_id) return "—";
+  return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
+}
+
+function opcionesGruposSelect(idxSeleccionado) {
+  let opts = '<option value="">— Sin relacionar —</option>';
+  comprobantesGrupos.forEach((g) => {
+    const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
+    const req = g.payment_request_id ? ` · Req #${g.payment_request_id}` : "";
+    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}${req}</option>`;
+  });
+  return opts;
+}
+
+function renderComprobantesTabla(comprobantes) {
+  const colores = {
+    matched: { bg: "#ecfdf5", badge: "bg-success", txt: "Emparejado" },
+    ambiguo: { bg: "#fffbeb", badge: "bg-warning text-dark", txt: "Revisar" },
+    unmatched: { bg: "#fef2f2", badge: "bg-danger", txt: "Sin emparejar" },
+  };
+
+  const hoy = new Date().toISOString().split("T")[0];
+  let html = "";
+  comprobantes.forEach((item, i) => {
+    const c = item.comprobante;
+    const g = item.grupo_sugerido;
+    const estilo = colores[item.estado] || colores.unmatched;
+    const idxSel = g ? g.idx : null;
+    const tieneGrupo = g !== null && g !== undefined;
+    // Por defecto se marca lo que ya viene emparejado o ambiguo con grupo.
+    const checkDefault = tieneGrupo ? "checked" : "";
+
+    const proveedorPdf = c.rfc_beneficiario
+      ? `${c.nombre_beneficiario || ""}<br><small class="text-muted">${c.rfc_beneficiario}</small>`
+      : `${c.nombre_beneficiario || "—"}<br><small class="text-muted">RFC benef. no incluido · cuenta ${c.cuenta_abono || "—"}</small>`;
+
+    const errorPdf = c.error
+      ? `<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> ${c.error}</small>`
+      : "";
+
+    // Fecha/referencia pre-rellenadas desde el PDF (editables)
+    const fechaDefault = fechaComprobanteAInput(c.fecha);
+    const refDefault = (c.referencia || "").replace(/"/g, "");
+
+    html += `
+      <tr data-row="${i}" style="background:${estilo.bg};">
+        <td class="text-center">
+          <input type="checkbox" class="comprobante-aplicar-check" data-row="${i}" ${checkDefault} ${tieneGrupo ? "" : "disabled"}>
+        </td>
+        <td><small class="fw-semibold">${c.archivo}</small>${errorPdf}</td>
+        <td><small>${c.banco}</small></td>
+        <td><small>${c.nombre_ordenante || "—"}<br><span class="text-muted">${c.rfc_ordenante || ""}</span></small></td>
+        <td><small>${proveedorPdf}</small></td>
+        <td class="text-end fw-semibold">${fmtMoneda(c.importe)}</td>
+        <td style="min-width:260px;">
+          <select class="form-select form-select-sm comprobante-grupo-select" data-row="${i}">
+            ${opcionesGruposSelect(idxSel)}
+          </select>
+        </td>
+        <td class="comprobante-requisicion"><small>${infoRequisicion(g)}</small></td>
+        <td><input type="date" class="form-control form-control-sm comprobante-fecha" data-row="${i}" value="${fechaDefault}" max="${hoy}" style="min-width:140px;"></td>
+        <td><input type="text" class="form-control form-control-sm comprobante-ref" data-row="${i}" value="${refDefault}" placeholder="Referencia" maxlength="50" style="min-width:140px;"></td>
+        <td><span class="badge ${estilo.badge}">${estilo.txt}</span></td>
+      </tr>`;
+  });
+
+  $("#tablaComprobantes tbody").html(html);
+  $("#comprobantesTablaWrap").show();
+}
+
+// Reasignación manual: al cambiar el grupo, recalcular estado/badge y habilitar el check.
+$(document).on("change", ".comprobante-grupo-select", function () {
+  const $row = $(this).closest("tr");
+  const val = $(this).val();
+  const $badge = $row.find("td:last-child .badge");
+  const $check = $row.find(".comprobante-aplicar-check");
+  const $req = $row.find(".comprobante-requisicion");
+  const g = val !== "" ? comprobantesGrupos.find((x) => String(x.idx) === val) : null;
+  $req.html(`<small>${infoRequisicion(g)}</small>`);
+  if (val === "") {
+    $row.css("background", "#fef2f2");
+    $badge.attr("class", "badge bg-danger").text("Sin emparejar");
+    $check.prop("checked", false).prop("disabled", true);
+  } else {
+    $row.css("background", "#eff6ff");
+    $badge.attr("class", "badge bg-primary").text("Manual");
+    $check.prop("disabled", false).prop("checked", true);
+  }
+  actualizarSeleccionComprobantes();
+});
+
+// "Seleccionar todos": solo afecta filas con grupo asignado (checkbox habilitado).
+$(document).on("change", "#comprobanteSelectAll", function () {
+  const marcar = $(this).prop("checked");
+  $(".comprobante-aplicar-check:not(:disabled)").prop("checked", marcar);
+  actualizarSeleccionComprobantes();
+});
+
+$(document).on("change", ".comprobante-aplicar-check", function () {
+  actualizarSeleccionComprobantes();
+});
+
+// Recalcula contador, total y estado del botón Guardar.
+function actualizarSeleccionComprobantes() {
+  let n = 0;
+  let total = 0;
+  $(".comprobante-aplicar-check:checked:not(:disabled)").each(function () {
+    const i = parseInt($(this).data("row"));
+    const item = comprobantesPreview[i];
+    if (item) {
+      n++;
+      total += parseFloat(item.comprobante.importe) || 0;
+    }
+  });
+  if (n > 0) {
+    $("#comprobantesSeleccionInfo").html(
+      `<strong>${n}</strong> pago(s) por aplicar · <strong>${fmtMoneda(total)}</strong>`
+    );
+    $("#btnGuardarComprobantes").prop("disabled", false);
+  } else {
+    $("#comprobantesSeleccionInfo").text("");
+    $("#btnGuardarComprobantes").prop("disabled", true);
+  }
+}
+
+// Guardar = aplicar pagos + guardar PDFs de las filas marcadas.
+function guardarConciliacionComprobantes() {
+  const asignaciones = [];
+  let totalSel = 0;
+
+  $(".comprobante-aplicar-check:checked:not(:disabled)").each(function () {
+    const i = parseInt($(this).data("row"));
+    const $row = $(`#tablaComprobantes tbody tr[data-row="${i}"]`);
+    const grupoIdx = $row.find(".comprobante-grupo-select").val();
+    if (grupoIdx === "") return;
+
+    const grupo = comprobantesGrupos.find((g) => String(g.idx) === String(grupoIdx));
+    if (!grupo) return;
+
+    const invoiceIds = String(grupo.invoice_ids || "")
+      .split(",")
+      .map((x) => parseInt(x.trim()))
+      .filter((x) => x > 0);
+
+    asignaciones.push({
+      archivo_idx: i,
+      archivo: comprobantesPreview[i]?.comprobante?.archivo || `comprobante ${i}`,
+      invoice_ids: invoiceIds,
+      fecha_pago: $row.find(".comprobante-fecha").val(),
+      referencia: $row.find(".comprobante-ref").val().trim(),
+      observaciones: "Conciliación automática de comprobante",
+    });
+    totalSel += parseFloat(comprobantesPreview[i]?.comprobante?.importe) || 0;
+  });
+
+  if (asignaciones.length === 0) {
+    alertify.warning("No hay comprobantes seleccionados con grupo asignado");
+    return;
+  }
+
+  // Validar fecha/referencia en cada uno
+  const incompletos = asignaciones.filter((a) => !a.fecha_pago || !a.referencia);
+  if (incompletos.length > 0) {
+    alertify.error("Completa fecha y referencia en todas las filas seleccionadas");
+    return;
+  }
+
+  alertify.confirm(
+    '<i class="fas fa-check-circle text-success"></i> Confirmar conciliación',
+    `<div class="text-center">
+        <p>Vas a <strong>marcar como pagado</strong> y guardar el comprobante de:</p>
+        <div class="alert alert-info">
+          <strong>${asignaciones.length}</strong> pago(s) · Total <strong>${fmtMoneda(totalSel)}</strong>
+        </div>
+        <small class="text-muted">Esta acción registra las transacciones y no se puede deshacer fácilmente.</small>
+     </div>`,
+    function () {
+      ejecutarConciliacionComprobantes(asignaciones);
+    },
+    function () {
+      alertify.message("Conciliación cancelada");
+    }
+  ).set("labels", { ok: "Sí, aplicar", cancel: "Cancelar" });
+}
+
+function ejecutarConciliacionComprobantes(asignaciones) {
+  const fd = new FormData();
+  // Reenviar TODOS los PDFs en el mismo orden/índice que usa archivo_idx.
+  comprobantesFiles.forEach((f) => fd.append("comprobantes[]", f));
+  fd.append("asignaciones", JSON.stringify(asignaciones));
+
+  $("#btnGuardarComprobantes")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Aplicando...');
+
+  fetch("/payment/conciliar_comprobantes", { method: "POST", body: fd })
+    .then((r) => r.json())
+    .then((res) => {
+      $("#btnGuardarComprobantes").html('<i class="fas fa-save"></i> Aplicar y guardar');
+      if (!res.success && res.aplicados === 0) {
+        alertify.error(res.message || "No se aplicó ningún pago");
+        $("#btnGuardarComprobantes").prop("disabled", false);
+      }
+      // Mostrar resultado por comprobante
+      let detalle = (res.resultados || [])
+        .map(
+          (x) =>
+            `<li>${x.success ? '<i class="fas fa-check text-success"></i>' : '<i class="fas fa-times text-danger"></i>'} <strong>${x.archivo}</strong>: ${x.message}</li>`
+        )
+        .join("");
+      alertify.alert(
+        '<i class="fas fa-clipboard-check"></i> Resultado de la conciliación',
+        `<div>
+            <div class="alert alert-success">${res.aplicados} de ${res.total} aplicados · Total ${fmtMoneda(res.total_aplicado)}</div>
+            <ul style="font-size:.85rem;max-height:300px;overflow:auto;">${detalle}</ul>
+         </div>`
+      );
+      // Refrescar la tabla de facturas autorizadas (ya no estarán las pagadas)
+      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
+        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
+      }
+      if (res.aplicados > 0) {
+        $("#modalComprobantes").modal("hide");
+      }
+    })
+    .catch((err) => {
+      $("#btnGuardarComprobantes")
+        .prop("disabled", false)
+        .html('<i class="fas fa-save"></i> Aplicar y guardar');
+      alertify.error("Error de conexión: " + err.message);
+    });
 }
 
