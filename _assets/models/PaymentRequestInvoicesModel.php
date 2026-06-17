@@ -957,6 +957,7 @@ class PaymentRequestInvoicesModel extends Model
             $grupos_norm[] = [
                 'idx'             => $i,
                 'payment_request_id' => $g['payment_request_id'] ?? null,
+                'scheduled_payment_date' => $g['scheduled_payment_date'] ?? null,
                 'emp_cod'         => $g['emp_cod'] ?? null,
                 'provider_cod'    => $g['provider_cod'] ?? null,
                 'empresa_nombre'  => $g['empresa_nombre'] ?? '',

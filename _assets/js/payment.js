@@ -6894,11 +6894,24 @@ function fmtMoneda(v) {
   return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
 }
 
+function fmtFechaCorta(f) {
+  if (!f) return "—";
+  const d = new Date(f);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function infoRequisicion(g) {
+  if (!g || !g.payment_request_id) return "—";
+  return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
+}
+
 function opcionesGruposSelect(idxSeleccionado) {
   let opts = '<option value="">— Sin relacionar —</option>';
   comprobantesGrupos.forEach((g) => {
     const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
-    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}</option>`;
+    const req = g.payment_request_id ? ` · Req #${g.payment_request_id}` : "";
+    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}${req}</option>`;
   });
   return opts;
 }
@@ -6948,6 +6961,7 @@ function renderComprobantesTabla(comprobantes) {
             ${opcionesGruposSelect(idxSel)}
           </select>
         </td>
+        <td class="comprobante-requisicion"><small>${infoRequisicion(g)}</small></td>
         <td><input type="date" class="form-control form-control-sm comprobante-fecha" data-row="${i}" value="${fechaDefault}" max="${hoy}" style="min-width:140px;"></td>
         <td><input type="text" class="form-control form-control-sm comprobante-ref" data-row="${i}" value="${refDefault}" placeholder="Referencia" maxlength="50" style="min-width:140px;"></td>
         <td><span class="badge ${estilo.badge}">${estilo.txt}</span></td>
@@ -6964,6 +6978,9 @@ $(document).on("change", ".comprobante-grupo-select", function () {
   const val = $(this).val();
   const $badge = $row.find("td:last-child .badge");
   const $check = $row.find(".comprobante-aplicar-check");
+  const $req = $row.find(".comprobante-requisicion");
+  const g = val !== "" ? comprobantesGrupos.find((x) => String(x.idx) === val) : null;
+  $req.html(`<small>${infoRequisicion(g)}</small>`);
   if (val === "") {
     $row.css("background", "#fef2f2");
     $badge.attr("class", "badge bg-danger").text("Sin emparejar");
