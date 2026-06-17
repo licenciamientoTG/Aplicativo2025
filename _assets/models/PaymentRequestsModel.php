@@ -62,7 +62,8 @@ class PaymentRequestsModel extends Model
                 $folio          = $doc['nro'] ?? null;
                 $invoice_number = $doc['Factura'] ?? null;
                 $codgas         = $doc['codgas'] ?? null;
-                $amount         = $doc['total_fac'] ?? 0;
+                // Preferir el total efectivo (FacturasRecibidas si existe, si no ControlGas)
+                $amount         = $doc['total_mostrar'] ?? ($doc['total_fac'] ?? 0);
                 $expiration_date = $doc['fechaVto'] ?? null;
                 $status         = self::STATUS_PENDING;
                 $uuid           = $doc['satuid'] ?? null;

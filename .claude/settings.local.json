@@ -94,7 +94,11 @@
       "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\codigo\\\\AplicativoPhp\\\\_tmp_test_resend.php\" 2>&1)",
       "Bash(rm -f _tmp_test_resend.php _tmp_test_mailerror.php)",
       "Bash(ls _tmp_*.php)",
-      "PowerShell(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('C:/Users/alejandro.martinez/Desktop/codigo/AplicativoPhp/_assets/js/payment.js','utf8'\\);try{new Function\\(c\\);console.log\\('JS OK'\\);}catch\\(e\\){console.error\\('ERROR:',e.message\\);}\")"
+      "PowerShell(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('C:/Users/alejandro.martinez/Desktop/codigo/AplicativoPhp/_assets/js/payment.js','utf8'\\);try{new Function\\(c\\);console.log\\('JS OK'\\);}catch\\(e\\){console.error\\('ERROR:',e.message\\);}\")",
+      "Bash(ls -la views/payment/add_payment.html)",
+      "Bash(ls -la views/supply/add_payment.html)",
+      "Read(//c/Users/alejandro.martinez/Desktop/codigo/ApiER/api/TG_php/**)",
+      "Read(//c/Users/alejandro.martinez/Desktop/codigo/ApiER/api/**)"
     ],
     "deny": [],
     "ask": []

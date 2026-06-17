@@ -364,11 +364,24 @@ class Payment
                 } elseif ($estaVencida) {
                     $statusLabel = '<span class="badge bg-danger">Vencido</span>';
                 }
+                // Origen del total: si existe la factura en TG.dbo.FacturasRecibidas usamos su Total,
+                // de lo contrario caemos al total calculado desde ControlGas (SG12). El front marca en rojo el de CG.
+                $tieneFacturaRecibida = !empty($row['tiene_factura_recibida']) ? 1 : 0;
+                $totalControlGas      = $row['total_fac'];
+                $totalFacturaRecibida = $row['total_factura_recibida'] ?? null;
+                $totalMostrar         = $tieneFacturaRecibida ? $totalFacturaRecibida : $totalControlGas;
+
+                // Origen de la fecha de emisión: misma lógica que el total. fecha_emision_efectiva ya viene
+                // resuelta por el API (factura si existe, si no ControlGas) y es la base del cálculo de vencimiento.
+                $fechaDeFactura     = !empty($row['fecha_de_factura']) ? 1 : 0;
+                $fechaEmisionMostrar = $row['fecha_emision_efectiva'] ?? ($row['fecha'] ?? null);
+
                 $data[] = array(
                     'nro'              => $row['nro'],
                     'Factura'          => $row['Factura'],
                     'Remision'         => isset($row['Remision']) ? substr($row['Remision'], 0, 15) : '',
-                    'fecha'            => $row['fecha'],
+                    'fecha'            => $fechaEmisionMostrar,
+                    'fecha_de_factura' => $fechaDeFactura,
                     'fechaVto'         => $fechaVencimiento,
                     'producto'         => $row['producto'],
                     'proveedor'        => $row['proveedor'],
@@ -384,6 +397,10 @@ class Payment
                     'servicio'         => $row['servicio'],
                     'iva_servicio'     => $row['iva_servicio'],
                     'total_fac'        => $row['total_fac'],
+                    'total_factura_recibida' => $totalFacturaRecibida,
+                    'tiene_factura_recibida' => $tieneFacturaRecibida,
+                    'total_mostrar'    => $totalMostrar,
+                    'total_origen'     => $tieneFacturaRecibida ? 'FR' : 'CG',
                     'satuid'           => $row['satuid'],
                     'gasolinera'       => $row['gasolinera'],
                     'codgas'           => $row['codgas'],
@@ -1265,7 +1282,9 @@ class Payment
             }
             $total_reques = 0;
             foreach ($documents as $doc) {
-                $total_reques += $doc['total_fac'];
+                // Preferir el total efectivo (FacturasRecibidas si existe, si no ControlGas)
+                $monto_doc = $doc['total_mostrar'] ?? ($doc['total_fac'] ?? 0);
+                $total_reques += floatval($monto_doc);
             }
 
             // Llamar al modelo para crear el pago con transacción
@@ -5055,6 +5074,26 @@ class Payment
 
 
     /**
+     * API JSON: notas ya aplicadas a una factura específica (independiente del pago)
+     */
+    public function getInvoiceNoteApplications()
+    {
+        header('Content-Type: application/json');
+        try {
+            $invoiceId = $_POST['invoice_id'] ?? null;
+            if (!$invoiceId) {
+                throw new Exception('invoice_id es requerido');
+            }
+            $apps = $this->CreditNoteApplicationsModel->getByInvoice((int)$invoiceId);
+            echo json_encode(['success' => true, 'applications' => $apps ?: []]);
+        } catch (Exception $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
+    }
+
+
+    /**
      * Aplicar una nota de crédito/cargo a una factura dentro de un pago
      */
     public function applyCreditNote()
@@ -5088,10 +5127,23 @@ class Payment
                 throw new Exception('Nota no encontrada');
             }
 
-            // Verificar saldo disponible
+            // Verificar saldo disponible de la nota
             $available = $this->InvoiceCreditDebitNotesModel->getAvailableBalance($creditNoteId);
             if ($appliedAmount > $available + 0.001) {
                 throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo disponible ($available)");
+            }
+
+            // Verificar que no se exceda el saldo de la factura (si aplica a una factura)
+            if ($invoiceId) {
+                $invoiceDetail = $this->paymentRequestInvoicesModel->get_invoices_detail_by_ids((string)$invoiceId);
+                if ($invoiceDetail) {
+                    $inv = $invoiceDetail[0];
+                    $saldoFactura = (float)$inv['amount'] - (float)$inv['paid_amount']
+                        - (float)$inv['total_notas_credito'] + (float)$inv['total_notas_cargo'];
+                    if ($note['note_type'] === 'CREDIT' && $appliedAmount > $saldoFactura + 0.001) {
+                        throw new Exception("El monto a aplicar ($appliedAmount) supera el saldo pendiente de la factura ($saldoFactura)");
+                    }
+                }
             }
 
             $appId = $this->CreditNoteApplicationsModel->applyNote([

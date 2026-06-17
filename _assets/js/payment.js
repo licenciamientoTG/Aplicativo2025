@@ -132,9 +132,45 @@ async function payment_create_table() {
       { data: "Factura" },
       { data: "gasolinera", className: "text-center text-nowrap" },
       { data: "proveedor", className: "text-center text-nowrap" },
-      { data: "fecha", className: "text-center text-nowrap" },
+      {
+        data: "fecha",
+        className: "text-center text-nowrap",
+        render: function (data, type, row) {
+          if (type !== "display") {
+            return data;
+          }
+          // Si la fecha NO viene de la factura (FacturasRecibidas), es de ControlGas: marcar en rojo
+          if (row.fecha_de_factura == 0) {
+            return (
+              '<span class="text-danger fw-bold" title="Fecha de ControlGas — sin factura recibida">' +
+              (data != null ? data : "") +
+              "</span>"
+            );
+          }
+          return data != null ? data : "";
+        },
+      },
       { data: "fechaVto", className: "text-center text-nowrap" },
-      { data: "total_fac", render: $.fn.dataTable.render.number(",", ".", 2) },
+      {
+        data: "total_mostrar",
+        className: "text-end text-nowrap",
+        render: function (data, type, row) {
+          var valor = data != null ? data : row.total_fac;
+          if (type !== "display") {
+            return parseFloat(valor) || 0;
+          }
+          var formateado = $.fn.dataTable.render.number(",", ".", 2).display(valor);
+          // Si NO viene de FacturasRecibidas, el total es de ControlGas: pintarlo en rojo con tooltip
+          if (row.tiene_factura_recibida == 0) {
+            return (
+              '<span class="text-danger fw-bold" title="Total de ControlGas — sin factura recibida">' +
+              formateado +
+              "</span>"
+            );
+          }
+          return formateado;
+        },
+      },
       { data: "producto", className: "text-center text-nowrap" },
       { data: "statusLabel" },
       { data: "satuid", visible: false, searchable: false },
@@ -1152,7 +1188,7 @@ async function generatePayment() {
         documentos: paymentItems,
         total_documentos: paymentItems.length,
         total_amount: paymentItems.reduce(
-            (sum, item) => sum + (parseFloat(item.total_fac) || 0),
+            (sum, item) => sum + (parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0),
             0,
         ),
         fecha_pago: scheduledDate,
@@ -2356,7 +2392,10 @@ function renderPaymentItems() {
 
   let html = "";
   paymentItems.forEach((item, index) => {
-    const totalFac = parseFloat(item.total_fac) || 0;
+    const totalFac = parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0;
+    const esControlGas = item.tiene_factura_recibida == 0;
+    const totalBadgeClass = esControlGas ? "bg-light text-danger" : "bg-light text-dark";
+    const totalBadgeTitle = esControlGas ? ' title="Total de ControlGas — sin factura recibida"' : "";
     const tempKey = typeof getInvoiceTempKey === "function" ? getInvoiceTempKey(item) : `${item.nro}__${item.codgas}`;
     const notesForItem = typeof pendingNotes !== "undefined"
       ? pendingNotes.filter(n => n.invoice_temp_key === tempKey)
@@ -2378,7 +2417,7 @@ function renderPaymentItems() {
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start mb-1">
                         <strong>Folio: ${item.nro}</strong>
-                        <span class="badge bg-light text-dark">$${totalFac.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
+                        <span class="badge ${totalBadgeClass}"${totalBadgeTitle}>$${totalFac.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <small class="d-block">Factura: ${item.Factura || "N/A"} | Remisión: ${item.Remision || "N/A"}</small>
                     <small class="d-block">Proveedor: ${item.proveedor}</small>
@@ -2417,7 +2456,7 @@ function updatePaymentSummary() {
   let totalAmount = 0;
 
   paymentItems.forEach((item) => {
-    const amount = parseFloat(item.total_fac) || 0;
+    const amount = parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0;
     totalAmount += amount;
   });
 
@@ -5682,10 +5721,23 @@ async function addNoteModal(id) {
 }
 
 
-function openApplyCreditNoteModal() {
+function openApplyCreditNoteModal(invoiceId, invoiceFolio) {
   const providerEl = document.getElementById("paymentProviderId");
   const providerId = providerEl ? providerEl.value : "";
   const paymentId  = document.getElementById("paymentId").value;
+
+  const invoiceSelect = document.getElementById("applyNoteInvoiceSelect");
+  invoiceSelect.value = invoiceId || "";
+
+  if (invoiceId && !invoiceFolio) {
+    const opt = invoiceSelect.options[invoiceSelect.selectedIndex];
+    invoiceFolio = opt ? opt.text : "";
+  }
+
+  const title = document.getElementById("applyNoteModalTitle");
+  title.innerHTML = invoiceId
+    ? `<i class="fas fa-link"></i> Aplicar Nota a Factura ${invoiceFolio || ""}`
+    : `<i class="fas fa-link"></i> Aplicar Nota al Pago`;
 
   fetch("/payment/getProviderNotes", {
     method: "POST",
@@ -5698,6 +5750,9 @@ function openApplyCreditNoteModal() {
       if (!data.success) throw new Error(data.message);
       renderApplyNoteModalNotes(data.notes);
       document.getElementById("applyNotePaymentId").value = paymentId;
+      return invoiceId ? loadInvoiceNoteApplications(invoiceId) : renderApplyNoteExistingList([]);
+    })
+    .then(() => {
       $("#applyNoteModal").modal("show");
     })
     .catch((err) => {
@@ -5706,21 +5761,178 @@ function openApplyCreditNoteModal() {
 }
 
 
-function renderApplyNoteModalNotes(notes) {
-  const sel = document.getElementById("applyNoteSelect");
-  sel.innerHTML = '<option value="">-- Seleccione una nota --</option>';
-  if (!notes || notes.length === 0) {
-    sel.innerHTML += '<option disabled>Sin notas disponibles para este proveedor</option>';
+function loadInvoiceNoteApplications(invoiceId) {
+  return fetch("/payment/getInvoiceNoteApplications", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    credentials: "include",
+    body: `invoice_id=${invoiceId}`,
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      renderApplyNoteExistingList(data.success ? data.applications : []);
+    });
+}
+
+
+function renderApplyNoteExistingList(applications) {
+  const wrap = document.getElementById("applyNoteExistingWrap");
+  const list = document.getElementById("applyNoteExistingList");
+  if (!applications || applications.length === 0) {
+    wrap.style.display = "none";
+    list.innerHTML = "";
     return;
   }
-  notes.forEach((n) => {
-    const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
-    const balance = parseFloat(n.available_balance).toFixed(2);
-    const date    = n.note_date ? n.note_date.substring(0, 10) : "";
-    sel.innerHTML += `<option value="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
-      [${type}] ${n.note_number || "S/N"} — ${date} — Saldo: $${balance}
-    </option>`;
+  wrap.style.display = "";
+  list.innerHTML = applications
+    .map((app) => {
+      const sign  = app.note_type === "CREDIT" ? "-" : "+";
+      const badge = app.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const amount = parseFloat(app.applied_amount).toFixed(2);
+      return `<div class="d-flex justify-content-between align-items-center border rounded px-2 py-1" style="font-size:.82rem;">
+        <span><span class="badge ${badge} me-1">${app.note_type === "CREDIT" ? "Crédito" : "Cargo"}</span>${app.note_number || "S/N"}</span>
+        <span>
+          <strong>${sign} $${amount}</strong>
+          <button type="button" class="btn btn-sm btn-outline-danger ms-2" onclick="removeApplication(${app.id}, true)" title="Quitar"><i class="fas fa-unlink"></i></button>
+        </span>
+      </div>`;
+    })
+    .join("");
+}
+
+
+function renderApplyNoteModalNotes(notes) {
+  const list = document.getElementById("applyNoteCheckList");
+  if (!notes || notes.length === 0) {
+    list.innerHTML =
+      '<span class="text-muted small">Sin notas disponibles para este proveedor</span>';
+    updateApplyNoteSelectedHint();
+    return;
+  }
+  list.innerHTML = notes
+    .map((n) => {
+      const type    = n.note_type === "CREDIT" ? "Crédito" : "Cargo";
+      const badge   = n.note_type === "CREDIT" ? "bg-success" : "bg-secondary";
+      const balance = parseFloat(n.available_balance).toFixed(2);
+      const date    = n.note_date ? n.note_date.substring(0, 10) : "";
+      return `<div class="d-flex align-items-center gap-2 py-1 border-bottom apply-note-row" data-note-id="${n.id}" data-balance="${balance}" data-type="${n.note_type}">
+        <input type="checkbox" class="form-check-input mt-0 apply-note-check" onchange="onApplyNoteCheckToggle(this)">
+        <div class="flex-grow-1" style="font-size:.82rem; line-height:1.15;">
+          <span class="badge ${badge} me-1">${type}</span>${n.note_number || "S/N"}
+          <span class="text-muted"> · ${date} · Saldo: $${balance}</span>
+        </div>
+        <input type="number" class="form-control form-control-sm apply-note-amount" style="width:110px;"
+          step="0.01" min="0.01" max="${balance}" placeholder="Monto" disabled
+          oninput="updateApplyNoteSelectedHint()">
+      </div>`;
+    })
+    .join("");
+  updateApplyNoteSelectedHint();
+}
+
+
+// Al marcar/desmarcar: habilita el monto y lo pre-llena con el saldo de la nota
+function onApplyNoteCheckToggle(chk) {
+  const row = chk.closest(".apply-note-row");
+  const amt = row.querySelector(".apply-note-amount");
+  amt.disabled = !chk.checked;
+  if (chk.checked) {
+    if (!amt.value) amt.value = row.getAttribute("data-balance");
+    amt.focus();
+  }
+  updateApplyNoteSelectedHint();
+}
+
+
+// Resumen "N notas · $Total" en el encabezado de la lista
+function updateApplyNoteSelectedHint() {
+  const hint = document.getElementById("applyNoteSelectedHint");
+  if (!hint) return;
+  let count = 0;
+  let total = 0;
+  document.querySelectorAll("#applyNoteCheckList .apply-note-row").forEach((row) => {
+    const chk = row.querySelector(".apply-note-check");
+    if (chk && chk.checked) {
+      count++;
+      total += parseFloat(row.querySelector(".apply-note-amount").value || 0);
+    }
   });
+  hint.textContent = count ? `${count} nota(s) · $${total.toFixed(2)}` : "";
+}
+
+
+// Itera las notas marcadas y las aplica una por una vía /payment/applyCreditNote
+async function applySelectedNotes() {
+  const paymentId = document.getElementById("applyNotePaymentId").value;
+  const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+  const rows = Array.from(
+    document.querySelectorAll("#applyNoteCheckList .apply-note-row")
+  ).filter((row) => row.querySelector(".apply-note-check").checked);
+
+  if (rows.length === 0) {
+    alertify.error("Seleccione al menos una nota");
+    return;
+  }
+
+  // Validación de montos en cliente (el backend revalida saldos)
+  for (const row of rows) {
+    const amount  = parseFloat(row.querySelector(".apply-note-amount").value || 0);
+    const balance = parseFloat(row.getAttribute("data-balance") || 0);
+    if (amount <= 0) {
+      alertify.error("Hay notas marcadas sin monto válido");
+      return;
+    }
+    if (amount > balance + 0.001) {
+      alertify.error(`Un monto excede el saldo disponible ($${balance.toFixed(2)})`);
+      return;
+    }
+  }
+
+  const submitBtn = document.querySelector('#applyNoteForm button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+
+  let okCount = 0;
+  const errors = [];
+
+  for (const row of rows) {
+    const noteId = row.getAttribute("data-note-id");
+    const amount = row.querySelector(".apply-note-amount").value;
+    const body = new URLSearchParams({
+      credit_note_id: noteId,
+      payment_request_id: paymentId,
+      applied_amount: amount,
+    });
+    if (invoiceId) body.append("invoice_id", invoiceId);
+
+    try {
+      const res  = await fetch("/payment/applyCreditNote", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        credentials: "include",
+        body: body.toString(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        okCount++;
+      } else {
+        errors.push(data.message || "Error al aplicar una nota");
+      }
+    } catch (e) {
+      errors.push("Error de conexión al aplicar una nota");
+    }
+  }
+
+  if (submitBtn) submitBtn.disabled = false;
+
+  if (okCount > 0) {
+    applyNotePageDirty = true;
+    alertify.success(`${okCount} nota(s) aplicada(s) correctamente`);
+    // Refrescar lista de notas (saldos) y notas ya aplicadas a la factura
+    openApplyCreditNoteModal(invoiceId || null, null);
+  }
+  if (errors.length > 0) {
+    alertify.error(errors.join(" | "));
+  }
 }
 
 
@@ -5783,6 +5995,21 @@ function openNoteDocViewerPD(docId) {
     b.classList.toggle("btn-outline-danger", b.dataset.docId != docId);
   });
 }
+
+
+// ── Delegación: botón "Ver PDF(s)" en la lista de notas de payment_detail ─────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".view-note-docs-btn");
+  if (!btn) return;
+  openNoteDocsModalPD(btn.dataset.noteId);
+});
+
+// ── Delegación: selector de doc dentro del modal noteDocsModalPD ──────────────
+document.addEventListener("click", function (e) {
+  var btn = e.target.closest(".note-doc-item-pd");
+  if (!btn) return;
+  openNoteDocViewerPD(btn.dataset.docId);
+});
 
 
 // ── Submit: subir PDF desde payment_detail ────────────────────────────────────
@@ -5883,7 +6110,7 @@ function subirPDFNota() {
 }
 
 
-function removeApplication(appId) {
+function removeApplication(appId, fromModal) {
   Swal.fire({
     title: "¿Quitar esta nota aplicada?",
     text: "El saldo de la nota quedará disponible nuevamente.",
@@ -5903,12 +6130,20 @@ function removeApplication(appId) {
     })
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
+        if (!data.success) {
+          Swal.fire({ icon: "error", title: "Error", text: data.message });
+          return;
+        }
+        if (fromModal) {
+          const invoiceId = document.getElementById("applyNoteInvoiceSelect").value;
+          Swal.fire({ icon: "success", title: "Quitada", timer: 1200, showConfirmButton: false });
+          applyNotePageDirty = true;
+          // Recarga notas disponibles (saldo liberado) y lista de aplicadas a la factura
+          openApplyCreditNoteModal(invoiceId || null, null);
+        } else {
           Swal.fire({ icon: "success", title: "Quitada", timer: 1500 }).then(
             () => location.reload()
           );
-        } else {
-          Swal.fire({ icon: "error", title: "Error", text: data.message });
         }
       })
       .catch(() => {
