@@ -76,7 +76,8 @@
       "PowerShell(php -l _assets\\\\controllers\\\\payment.php; php -l _assets\\\\models\\\\PaymentRequestInvoicesModel.php)",
       "PowerShell(php _tmp_dump_xlsx.php)",
       "PowerShell(python \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\check_notas_credito.py\")",
-      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result.txt; Get-Content _tmp_dump_result.txt -TotalCount 10)"
+      "PowerShell(php -d memory_limit=2048M _tmp_dump_xlsx.php > _tmp_dump_result.txt; Get-Content _tmp_dump_result.txt -TotalCount 10)",
+      "Bash(timeout 3 bash -c 'cat < /dev/null > /dev/tcp/192.168.0.6/1433')"
     ],
     "deny": [],
     "ask": []
