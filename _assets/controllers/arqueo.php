@@ -253,7 +253,7 @@ class Arqueo
     /* ===================================================================== */
 
     /** Formulario de captura de una caja (solo-lectura si la sesión está cerrada). */
-    public function mostrar_caja($caja_id): void
+    public function caja($caja_id): void
     {
         $this->guard([self::PERM_AUDITOR, self::PERM_ADMIN]);
 

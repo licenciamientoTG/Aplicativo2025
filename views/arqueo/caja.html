@@ -16,6 +16,7 @@
     .resultado-positivo { color:#198754; font-weight:700; }
     .resultado-negativo { color:#dc3545; font-weight:700; }
     .num { font-variant-numeric:tabular-nums; text-align:right; }
+    .denom-img { height:26px; width:auto; margin-right:6px; vertical-align:middle; border:1px solid #dee2e6; border-radius:3px; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -122,9 +123,21 @@
                 </tr>
               </thead>
               <tbody>
+                {% set es_moneda = (seccion == 'morrallero' or seccion == 'morrallero_cf') %}
                 {% for i, denom in denoms %}
+                {# Nombre del archivo de imagen de apoyo: moneda_denominacion(.png).
+                   Para monedas, $1 USD y $20 MXN llevan sufijo _coin (no chocar con el billete). #}
+                {% set img = (moneda|lower) ~ '_' ~ denom %}
+                {% if es_moneda and ((moneda == 'USD' and denom == 1) or (moneda == 'MXN' and denom == 20)) %}
+                  {% set img = img ~ '_coin' %}
+                {% endif %}
                 <tr>
-                  <td>${{ denom }}</td>
+                  <td class="text-nowrap">
+                    <img src="{{ IMAGES }}arqueo/{{ img }}.png" alt="${{ denom }}"
+                         class="denom-img" loading="lazy"
+                         onerror="this.style.display='none'">
+                    ${{ denom }}
+                  </td>
                   {% if es_cf_morr %}<td>${{ bolsas[i] }}</td>{% endif %}
                   <td>
                     <input type="number" min="0" step="1"

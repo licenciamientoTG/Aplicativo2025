@@ -68,7 +68,8 @@ resultado_final      = diferencia_mxn + (diferencia_dolares * tipo_cambio_venta)
 - `index()` — lista de sesiones con conteo completadas/total.
 - `crear_sesion()` — [admin] crea sesión `programado` + cajas por sucursal.
 - `abrir($sesion_id)` — [admin] `programado → abierto`.
-- `mostrar_caja($caja_id)` — [auditor] formulario de captura (solo-lectura si cerrado).
+- `cajas($sesion_id)` — [auditor/admin] lista las cajas de la sesión para capturar.
+- `caja($caja_id)` — [auditor] formulario de captura (solo-lectura si cerrado).
 - `guardar_caja($caja_id)` — [auditor] valida, recalcula totales, guarda (transacción);
   rechaza si la sesión está cerrada.
 - `concentrado($sesion_id)` — [admin] consolidado agrupado por sucursal.

@@ -98,7 +98,12 @@
       "Bash(ls -la views/payment/add_payment.html)",
       "Bash(ls -la views/supply/add_payment.html)",
       "Read(//c/Users/alejandro.martinez/Desktop/codigo/ApiER/api/TG_php/**)",
-      "Read(//c/Users/alejandro.martinez/Desktop/codigo/ApiER/api/**)"
+      "Read(//c/Users/alejandro.martinez/Desktop/codigo/ApiER/api/**)",
+      "Bash(rm -rf _tmp_media)",
+      "Bash(ls _tmp_media)",
+      "Bash(mv usd_0.50.png usd_0.5.png)",
+      "Bash(mv usd_0.10.png usd_0.1.png)",
+      "Bash(mv mxn_0.50.png mxn_0.5.png)"
     ],
     "deny": [],
     "ask": []
