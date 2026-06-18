@@ -172,6 +172,12 @@
 				<span class="badge bg-secondary ms-1">{{ transactions|length }}</span>
 			</button>
 			{% endif %}
+			<button class="pd-tab-link" onclick="pdTab(this,'tab-auditoria')">
+				<i class="fas fa-user-clock"></i> Auditoría
+				{% if audit_log and audit_log|length > 0 %}
+				<span class="badge bg-secondary ms-1">{{ audit_log|length }}</span>
+				{% endif %}
+			</button>
 		</div>
 
 		<!-- Tab: Facturas -->
@@ -549,6 +555,50 @@
 			</div>
 		</div>
 		{% endif %}
+
+		<!-- Tab: Auditoría -->
+		<div id="tab-auditoria" class="pd-tab-content">
+			{% if audit_log and audit_log|length > 0 %}
+			<div class="table-responsive">
+				<table class="table table-sm table-hover mb-0" style="font-size:.82rem;">
+					<thead class="table-light">
+						<tr>
+							<th>#</th><th>Fecha</th><th>Movimiento</th><th>Folio</th>
+							<th>Factura</th><th class="text-end">Monto</th><th>Usuario</th><th>Alerta</th>
+						</tr>
+					</thead>
+					<tbody>
+						{% for log in audit_log %}
+						<tr class="{% if log.fue_post_agrupacion %}table-danger{% endif %}">
+							<td class="text-center">{{ loop.index }}</td>
+							<td>{{ log.fecha|date('d/m/Y H:i') }}</td>
+							<td>
+								{% if log.operacion == 'ADD_INVOICE' %}
+									<span class="badge bg-success"><i class="fas fa-plus"></i> Agregó factura</span>
+								{% else %}
+									<span class="badge bg-danger"><i class="fas fa-minus"></i> Quitó factura</span>
+								{% endif %}
+							</td>
+							<td>{{ log.folio ?? '-' }}</td>
+							<td>{{ log.invoice_number ?? '-' }}</td>
+							<td class="text-end">{% if log.amount %}${{ log.amount|number_format(2) }}{% else %}-{% endif %}</td>
+							<td><i class="fas fa-user"></i> {{ log.usuario_nombre ?? 'Desconocido' }}</td>
+							<td class="text-center">
+								{% if log.fue_post_agrupacion %}
+									<span class="badge bg-danger" title="Este movimiento ocurrió cuando la requisición ya estaba en un archivo de contabilidad">
+										<i class="fas fa-exclamation-triangle"></i> Post-agrupación
+									</span>
+								{% endif %}
+							</td>
+						</tr>
+						{% endfor %}
+					</tbody>
+				</table>
+			</div>
+			{% else %}
+			<p class="text-muted text-center py-3 mb-0">Sin movimientos registrados para esta requisición.</p>
+			{% endif %}
+		</div>
 	</div>
 
 	<div class="pd-footer-spacer"></div>

@@ -1634,9 +1634,11 @@ class PaymentRequestInvoicesModel extends Model
      */
     public function remove_invoice_from_payment($invoice_id) : array {
         try {
-            // Verificar que la factura no tenga pagos
+            // Verificar que la factura no tenga pagos. Se trae la fila completa para
+            // poder dejar un snapshot en la auditoría antes de borrarla.
             $query_check = "
-                SELECT paid_amount, folio
+                SELECT id, payment_request_id, folio, invoice_number, codgas, amount,
+                       paid_amount, status, expiration_date, uuid
                 FROM [TG].[dbo].[payment_request_invoices]
                 WHERE id = ?
             ";
@@ -1664,7 +1666,8 @@ class PaymentRequestInvoicesModel extends Model
             if ($result) {
                 return [
                     'success' => true,
-                    'message' => 'Factura eliminada del pago correctamente'
+                    'message' => 'Factura eliminada del pago correctamente',
+                    'invoice_snapshot' => $invoice[0]
                 ];
             } else {
                 return [

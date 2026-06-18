@@ -27,6 +27,7 @@ class Payment
     public PaymentNotificationRecipientsModel $PaymentNotificationRecipientsModel;
     public PaymentTransactionDocumentsModel $PaymentTransactionDocumentsModel;
     public PaymentBatchesModel $PaymentBatchesModel;
+    public PaymentRequestAuditLogModel $PaymentRequestAuditLogModel;
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
@@ -54,6 +55,20 @@ class Payment
         $this->PaymentNotificationRecipientsModel   = new PaymentNotificationRecipientsModel();
         $this->PaymentTransactionDocumentsModel     = new PaymentTransactionDocumentsModel();
         $this->PaymentBatchesModel                  = new PaymentBatchesModel();
+        $this->PaymentRequestAuditLogModel          = new PaymentRequestAuditLogModel();
+    }
+
+    /**
+     * Bloquea modificaciones a una requisición ya incluida en un archivo de contabilidad.
+     * Excepción: usuario 6296 (autorizado a corregir requisiciones agrupadas).
+     * @return string|null  Mensaje de error si está bloqueada, null si se puede modificar.
+     */
+    private function assert_payment_not_grouped(array $payment, int $user_id): ?string
+    {
+        if (!empty($payment['accounting_group_id']) && $user_id !== 6296) {
+            return 'Esta requisición ya fue incluida en un archivo de contabilidad y no puede modificarse. Contacte a Contabilidad.';
+        }
+        return null;
     }
 
     /**
@@ -260,10 +275,12 @@ class Payment
             }
 
             $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
-            if (!empty($payment['accounting_group_id']) && $user_id !== 6296) {
+            $user_name = $_SESSION['tg_user']['Nombre'] ?? null;
+            $blockMessage = $this->assert_payment_not_grouped($payment, $user_id);
+            if ($blockMessage !== null) {
                 echo json_encode([
                     'success' => false,
-                    'message' => 'Esta requisición ya fue incluida en un archivo de contabilidad y no puede modificarse. Contacte a Contabilidad.'
+                    'message' => $blockMessage
                 ]);
                 return;
             }
@@ -279,6 +296,10 @@ class Payment
 
                 if ($result['success']) {
                     $added++;
+                    $this->PaymentRequestAuditLogModel->log_add_invoice(
+                        $payment_id, $doc, $result['invoice_id'] ?? null, $user_id, $user_name,
+                        $payment['accounting_group_id'] ?? null
+                    );
                 } else {
                     $skipped++;
                     $errors[] = $result['message'];
@@ -1472,6 +1493,22 @@ class Payment
         }
         $transactions = $this->paymentTransactionsModel->get_by_payment_request($payment_id);
 
+        // Historial de movimientos (alta/baja de facturas) de esta requisición.
+        // Se decodifica el snapshot JSON aquí para mantener la vista libre de lógica de parseo.
+        $audit_log_raw = $this->PaymentRequestAuditLogModel->get_by_payment($payment_id);
+        $audit_log = array_map(function ($row) {
+            $datos = json_decode($row['DatosNuevos'] ?? $row['DatosAnteriores'] ?? '', true) ?: [];
+            return [
+                'operacion'           => $row['Operacion'],
+                'fecha'               => $row['Fecha'],
+                'usuario_nombre'      => $row['UsuarioNombre'],
+                'folio'               => $datos['folio'] ?? ($datos['nro'] ?? null),
+                'invoice_number'      => $datos['invoice_number'] ?? ($datos['Factura'] ?? null),
+                'amount'              => $datos['amount'] ?? ($datos['total_fac'] ?? null),
+                'fue_post_agrupacion' => !empty($row['AccountingGroupId']),
+            ];
+        }, $audit_log_raw);
+
         // ✅ Obtener resumen desde el modelo
         $summary = $this->paymentRequestInvoicesModel->get_payment_summary_from_transactions($payment_id);
         $payment_calculation = [
@@ -1500,7 +1537,8 @@ class Payment
             'total_monto_autorizado',
             'note_applications',
             'notes_totals',
-            'payment_calculation'
+            'payment_calculation',
+            'audit_log'
         ));
         // } catch (Exception $e) {
         //     setFlashMessage('error', 'Error al cargar el detalle: ' . $e->getMessage());
@@ -3686,6 +3724,13 @@ class Payment
                 return;
             }
 
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            $user_name = $_SESSION['tg_user']['Nombre'] ?? null;
+            $this->PaymentRequestAuditLogModel->log_add_invoice(
+                $payment_id, $document, $result['invoice_id'] ?? null, $user_id, $user_name,
+                $payment['accounting_group_id'] ?? null
+            );
+
             // Recalcular total
             $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
 
@@ -3744,6 +3789,16 @@ class Payment
                 return;
             }
 
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            $blockMessage = $this->assert_payment_not_grouped($payment, $user_id);
+            if ($blockMessage !== null) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => $blockMessage
+                ]);
+                return;
+            }
+
             // Quitar la factura
             $result = $this->paymentRequestInvoicesModel->remove_invoice_from_payment($invoice_id);
 
@@ -3751,6 +3806,12 @@ class Payment
                 echo json_encode($result);
                 return;
             }
+
+            $user_name = $_SESSION['tg_user']['Nombre'] ?? null;
+            $this->PaymentRequestAuditLogModel->log_remove_invoice(
+                $payment_id, $result['invoice_snapshot'] ?? [], $user_id, $user_name,
+                $payment['accounting_group_id'] ?? null
+            );
 
             // Recalcular total
             $this->PaymentRequestsModel->recalculate_payment_total($payment_id);
