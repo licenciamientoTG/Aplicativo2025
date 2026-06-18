@@ -14,7 +14,6 @@ class BallotModel extends Model{
     public $FechaCreacion;
     public $FechaActualizacion;
 
-
     function save() {
 
         // Debes validar que no exista otra papeleta creada con el mismo IdTabulador, y Moneda

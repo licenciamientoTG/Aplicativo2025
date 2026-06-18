@@ -89,6 +89,33 @@ class MySqlPdoHandler{
 		return $records;
 	}
 
+	/**
+	 * Igual que select() pero NO termina la ejecución (die) cuando una consulta
+	 * falla. Devuelve false ante cualquier error para que el llamador pueda
+	 * decidir qué hacer (por ejemplo, omitir una estación sin conexión).
+	 *
+	 * @return array|false
+	 */
+	public function selectSafe($query, $params = NULL) {
+		if (!stristr($query, "select") || empty($this->_connection)) {
+			return false;
+		}
+		$records = array();
+		try {
+			$stmt = $this->_connection->prepare($query);
+			$stmt->execute($params);
+			$i = 0;
+			while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+				$records[$i++] = $row;
+			}
+			$stmt->closeCursor();
+		} catch (Exception $e) {
+			error_log('selectSafe error: ' . $e->getMessage());
+			return false;
+		}
+		return $records;
+	}
+
 	public function select2($query, $params=NULL) {
 		$records=array();
 		//Make sure query contains the word "select" and connection is valid

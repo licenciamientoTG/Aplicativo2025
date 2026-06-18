@@ -99,7 +99,7 @@
 
             </div>
 
-            <div class="tab-pane fade show" id="lasts-tab-pane" role="tabpanel" aria-labelledby="lasts-tab" tabindex="0">
+            <div class="tab-pane fade" id="lasts-tab-pane" role="tabpanel" aria-labelledby="lasts-tab" tabindex="0">
                 <div class="row mt-3">
                     <div class="col-4 d-flex">
                         <div class="card flex-fill">
@@ -147,7 +147,7 @@
                 </div>
             </div>
 
-            <div class="tab-pane fade show" id="customer-tab-pane" role="tabpanel" aria-labelledby="customer-tab" tabindex="0">
+            <div class="tab-pane fade" id="customer-tab-pane" role="tabpanel" aria-labelledby="customer-tab" tabindex="0">
                 <div class="row mt-3">
                     <div class="col-12 d-flex">
                         <div class="card flex-fill">
@@ -408,24 +408,23 @@
             $('.myContent').addClass('loading');
         });
 
-        let datatables_anticipos_2 = $('#datatables_anticipos_2').DataTable({
+        let datatables_customer_anticipos = $('#datatables_customer_anticipos').DataTable({
             colReorder: true,
-            order: [3, "desc"],
+            order: [0, "asc"],
             dom: '<"top"Bf>rt<"bottom"lip>',
             pageLength: 100,
             buttons: [
                 {
                     extend: 'excel',
                     className: 'd-none',
-                    // Título del archivo de exportación
-                    title: 'Anticipos',
+                    title: 'Anticipos por Cliente',
                 }
             ],
             ajax: {
-                url: '/administration/datatables_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
+                url: '/administration/datatables_customer_anticipos/' + $('input#from').val() + '/' + $('input#until').val(),
                 type: 'POST',
                 error: function() {
-                    $('#datatables_anticipos_2').waitMe('hide');
+                    $('#datatables_customer_anticipos').waitMe('hide');
                     alertify.myAlert(
                         `<div class="container text-center text-danger">
                     <h4 class="mt-2 text-danger">¡Error!</h4>
@@ -440,19 +439,20 @@
                 }
             },
             columns: [
-                {'data': 'FACTURA'},
+                {'data': 'CODCLIENTE'},
+                {'data': 'CLIENTE'},
+                {'data': 'STATUS'},
+                {'data': 'RFC'},
                 {'data': 'TIPO'},
                 {'data': 'PRODUCTO'},
-                {'data': 'CUENTA'},
-                {'data': 'MONTO', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
-                {'data': 'IVA', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
                 {'data': 'TOTAL', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
-                {'data': 'CFDI'},
-                {'data': 'PAGO'},
-                {'data': 'CLIENTE'},
-                {'data': 'ESTACION'},
-                {'data': 'REGISTRO'},
-                {'data': 'FECHA'}
+                {'data': 'CONSUMOS', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'SALDOCALCULADO', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'SALDOINGRESADO', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'DIFERENCIA', render: $.fn.dataTable.render.number(',', '.', 2, '$')},
+                {'data': 'ULTIMODEPOSITO'},
+                {'data': 'ULTIMOCONSUMO'},
+                {'data': null, orderable: false, searchable: false, defaultContent: ''}
             ],
             createdRow: function (row, data, dataIndex) {
             },
@@ -462,30 +462,32 @@
             }
         });
 
+        $('#exportExcel').on('click', function () {
+            datatables_customer_anticipos.button(0).trigger();
+        });
+
         // Evento para aplicar los filtros cuando cambien los valores en los inputs de filtrado
-        $('#filtro-datatables_anticipos_2 input').on('keyup  change clear', function () {
-            datatables_anticipos_2
-                .column(0).search($('#FACTURA').val().trim())
-                .column(1).search($('#TIPO').val().trim())
-                .column(2).search($('#PRODUCTO').val().trim())
-                .column(3).search($('#CUENTA').val().trim())
-                .column(4).search($('#MONTO').val().trim())
-                .column(5).search($('#IVA').val().trim())
-                .column(6).search($('#TOTAL').val().trim())
-                .column(7).search($('#CFDI').val().trim())
-                .column(8).search($('#PAGO').val().trim())
-                .column(9).search($('#CLIENTE').val().trim())
-                .column(10).search($('#ESTACION').val().trim())
-                .column(11).search($('#REGISTRO').val().trim())
-                .column(12).search($('#FECHA').val().trim())
+        $('#filtro-datatables_customer_anticipos input').on('keyup change clear', function () {
+            datatables_customer_anticipos
+                .column(0).search($('#CODCLIENTE').val().trim())
+                .column(1).search($('#CLIENTE1').val().trim())
+                .column(2).search($('#STATUS').val().trim())
+                .column(3).search($('#RFC').val().trim())
+                .column(4).search($('#TIPO1').val().trim())
+                .column(5).search($('#PRODUCTO1').val().trim())
+                .column(6).search($('#TOTAL1').val().trim())
+                .column(7).search($('#CONSUMOS').val().trim())
+                .column(8).search($('#SALDOCALCULADO').val().trim())
+                .column(9).search($('#SALDOINGRESADO').val().trim())
+                .column(10).search($('#DIFERENCIA').val().trim())
                 .draw();
         });
 
         // Agregar un evento clic de refresh
-        $('.refresh_datatables_anticipos_2').on('click', function () {
-            datatables_anticipos_2.clear().draw();
-            datatables_anticipos_2.ajax.reload();
-            $('#datatables_anticipos_2').waitMe('hide');
+        $('.refresh').on('click', function () {
+            datatables_customer_anticipos.clear().draw();
+            datatables_customer_anticipos.ajax.reload();
+            $('#datatables_customer_anticipos').waitMe('hide');
         });
 
         function formatCurrency(value) {
