@@ -2347,7 +2347,7 @@ class Payment
 
         return 'El servidor de correo reportó: ' . $raw;
     }
-
+ 
 
     /**
      * Reenvía el correo de solicitud SIN volver a agrupar/cerrar nada.
@@ -4657,9 +4657,10 @@ class Payment
             // 1. Validaciones iniciales
             $this->validate_pdf_request();
             $proveedor = $this->get_validated_provider();
+            $forzar = !empty($_POST['forzar']) && $_POST['forzar'] === '1';
 
             // 2. Comunicación con la API (Lógica delegada)
-            $apiResponse = $this->call_pdf_import_api($_FILES['pdf'], $proveedor);
+            $apiResponse = $this->call_pdf_import_api($_FILES['pdf'], $proveedor, $forzar);
 
             // 3. Gestión de archivos local (Lógica delegada)
             $fileData = $this->save_imported_pdf($apiResponse, $proveedor, $_FILES['pdf']['tmp_name']);
@@ -4928,7 +4929,7 @@ class Payment
         return $proveedor;
     }
 
-    private function call_pdf_import_api($pdfFile, $proveedor): array
+    private function call_pdf_import_api($pdfFile, $proveedor, bool $forzar = false): array
     {
         $curl = curl_init();
         curl_setopt_array($curl, [
@@ -4938,6 +4939,7 @@ class Payment
             CURLOPT_POSTFIELDS     => [
                 'pdf'       => new CURLFile($pdfFile['tmp_name'], 'application/pdf', $pdfFile['name']),
                 'proveedor' => $proveedor,
+                'forzar'    => $forzar ? '1' : '0',
             ],
             CURLOPT_TIMEOUT        => 30,
         ]);

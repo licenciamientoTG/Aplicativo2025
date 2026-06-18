@@ -26,7 +26,7 @@
 
     .progress-bar-sm { height: 4px; border-radius: 2px; transition: width .3s; }
 </style>
-{% endblock %}
+{% endblock %} 
 {% block content %}
 <div class="container-fluid p-4">
     <div class="row">
@@ -62,6 +62,13 @@
                                 <div id="file-name" class="mt-2 text-muted" style="font-size:.85rem;">Ningún archivo seleccionado</div>
                             </div>
                             <input type="file" id="pdf-input" accept="application/pdf" multiple class="d-none">
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="forzar-actualizacion">
+                            <label class="form-check-label" for="forzar-actualizacion">
+                                Forzar actualización si la factura ya existe (aunque ya tenga Total/SubTotal)
+                            </label>
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100" id="btn-import">
@@ -143,6 +150,7 @@ document.getElementById('import-form').addEventListener('submit', async function
     e.preventDefault();
 
     const proveedor = document.getElementById('proveedor').value;
+    const forzar = document.getElementById('forzar-actualizacion').checked;
     if (!proveedor)       return alertify.error('Selecciona un proveedor.');
     if (!selectedFiles.length) return alertify.error('Selecciona al menos un archivo PDF.');
 
@@ -177,6 +185,7 @@ document.getElementById('import-form').addEventListener('submit', async function
             const formData = new FormData();
             formData.append('pdf', file);
             formData.append('proveedor', proveedor);
+            formData.append('forzar', forzar ? '1' : '0');
 
             const resp = await fetch('/payment/import_invoice_pdf', {
                 method: 'POST',
@@ -217,10 +226,11 @@ function actualizarFila(rowId, filename, res) {
 
     if (res.success) {
         estadoKey   = 'exitosa';
-        estadoLabel = '✓ Importada';
+        estadoLabel = res.forzado ? '✓ Actualizada (forzado)' : '✓ Importada';
         uuid        = `<small class="font-monospace text-muted">${res.uuid || '—'}</small>`;
         facturaId   = res.factura_id || '—';
-        if (res.advertencia) detalle = `<br><small class="text-warning">${res.advertencia}</small>`;
+        if (res.advertencia) detalle += `<br><small class="text-warning">${res.advertencia}</small>`;
+        if (res.forzado) detalle += `<br><small class="text-info">Total: ${res.total_anterior ?? '—'} → ${res.total_nuevo ?? '—'}</small>`;
     } else {
         const mapped = estadoMap[res.estado] || ['error', res.estado || 'Error'];
         estadoKey   = mapped[0];
