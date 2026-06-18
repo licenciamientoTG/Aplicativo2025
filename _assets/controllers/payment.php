@@ -259,7 +259,8 @@ class Payment
                 return;
             }
 
-            if (!empty($payment['accounting_group_id'])) {
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+            if (!empty($payment['accounting_group_id']) && $user_id !== 6296) {
                 echo json_encode([
                     'success' => false,
                     'message' => 'Esta requisición ya fue incluida en un archivo de contabilidad y no puede modificarse. Contacte a Contabilidad.'

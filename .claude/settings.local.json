@@ -103,7 +103,12 @@
       "Bash(ls _tmp_media)",
       "Bash(mv usd_0.50.png usd_0.5.png)",
       "Bash(mv usd_0.10.png usd_0.1.png)",
-      "Bash(mv mxn_0.50.png mxn_0.5.png)"
+      "Bash(mv mxn_0.50.png mxn_0.5.png)",
+      "Bash(jobs)",
+      "Bash(awk '/^def extract_with_profile_premiergas/,/^def [a-zA-Z_]+\\\\\\(.*\\\\\\):/{print NR\": \"$0; if\\(NR>1151 && /^def / && !/premiergas/\\) exit}' \"C:\\\\Users\\\\alejandro.martinez\\\\Desktop\\\\pago a proveedores\\\\correoFacturas\\\\extractors.py\")",
+      "Bash(awk NR>=1240 && NR<=1340 *)",
+      "Bash(awk -F: '$1>=1151 && $1<=1300')",
+      "Read(//c/Software/TareasProgramadas/Facturas_proveedores/correoFacturas/attachments/premiergas/**)"
     ],
     "deny": [],
     "ask": []
