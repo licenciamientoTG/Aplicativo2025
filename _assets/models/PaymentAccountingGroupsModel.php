@@ -125,6 +125,7 @@ class PaymentAccountingGroupsModel extends Model
              LEFT JOIN (
                  SELECT payment_request_id, COUNT(*) AS total_invoices
                  FROM [TG].[dbo].[payment_request_invoices]
+                 WHERE is_deleted = 0
                  GROUP BY payment_request_id
              ) inv ON inv.payment_request_id = pr.id
              LEFT JOIN [TG].[dbo].[Proveedores] pv ON pv.id_control_gas = pr.provider_cod
@@ -171,7 +172,7 @@ class PaymentAccountingGroupsModel extends Model
                     ON fr.UUID = pri.uuid
                     AND fr.RutaArchivo IS NOT NULL
                     AND fr.RutaArchivo != ''
-                WHERE pr.accounting_group_id = ?
+                WHERE pr.accounting_group_id = ? AND pri.is_deleted = 0
                 ORDER BY pr.id, pri.id
             ";
         return $this->sql->select($query, [$group_id]) ?: [];
@@ -190,6 +191,7 @@ class PaymentAccountingGroupsModel extends Model
             WHERE pr.accounting_group_id = ?
               AND pri.invoice_number IS NOT NULL
               AND TRIM(pri.invoice_number) != ''
+              AND pri.is_deleted = 0
         ";
         $rows = $this->sql->select($query, [$group_id]) ?: [];
         return array_column($rows, 'invoice_number');
@@ -209,6 +211,7 @@ class PaymentAccountingGroupsModel extends Model
             WHERE pr.accounting_group_id = ?
               AND pri.folio IS NOT NULL
               AND pri.codgas IS NOT NULL
+              AND pri.is_deleted = 0
         ";
         return $this->sql->select($query, [$group_id]) ?: [];
     }
@@ -228,7 +231,7 @@ class PaymentAccountingGroupsModel extends Model
                 ON fr.UUID = pri.uuid
                 AND fr.RutaArchivo IS NOT NULL
                 AND fr.RutaArchivo != ''
-            WHERE pr.accounting_group_id = ?
+            WHERE pr.accounting_group_id = ? AND pri.is_deleted = 0
         ";
         $rows = $this->sql->select($query, [$group_id]) ?: [];
         return array_column($rows, 'RutaArchivo');
@@ -256,6 +259,7 @@ class PaymentAccountingGroupsModel extends Model
             LEFT JOIN (
                 SELECT payment_request_id, COUNT(*) AS total_invoices
                 FROM [TG].[dbo].[payment_request_invoices]
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) inv ON inv.payment_request_id = pr.id
             LEFT JOIN [SG12].[dbo].[Proveedores] pv ON pv.cod = pr.provider_cod
@@ -291,14 +295,14 @@ class PaymentAccountingGroupsModel extends Model
               AND pr.tipo = 0
               AND EXISTS (
                   SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
-                  WHERE pri.payment_request_id = pr.id
+                  WHERE pri.payment_request_id = pr.id AND pri.is_deleted = 0
               )
               AND NOT EXISTS (
                   SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
                   LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
                       ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
                       AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
-                  WHERE pri.payment_request_id = pr.id AND fr.UUID IS NULL
+                  WHERE pri.payment_request_id = pr.id AND pri.is_deleted = 0 AND fr.UUID IS NULL
               )
             ORDER BY pr.emp_cod, pr.id
         ";
@@ -393,6 +397,7 @@ class PaymentAccountingGroupsModel extends Model
             LEFT JOIN (
                 SELECT payment_request_id, COUNT(*) AS total_invoices, SUM(amount) AS total_amount
                 FROM [TG].[dbo].[payment_request_invoices]
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) t2 ON t1.id = t2.payment_request_id
             LEFT JOIN (

@@ -3799,8 +3799,8 @@ class Payment
                 return;
             }
 
-            // Quitar la factura
-            $result = $this->paymentRequestInvoicesModel->remove_invoice_from_payment($invoice_id);
+            // Quitar la factura (soft-delete)
+            $result = $this->paymentRequestInvoicesModel->remove_invoice_from_payment($invoice_id, $user_id);
 
             if (!$result['success']) {
                 echo json_encode($result);
@@ -3871,7 +3871,7 @@ class Payment
                 AND dc.satuid NOT IN (
                     SELECT uuid
                     FROM TG.dbo.payment_request_invoices
-                    WHERE uuid IS NOT NULL
+                    WHERE uuid IS NOT NULL AND is_deleted = 0
                 )
                 AND (
                     dc.Factura LIKE ?
