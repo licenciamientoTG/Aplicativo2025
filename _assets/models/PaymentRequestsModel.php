@@ -98,7 +98,7 @@ class PaymentRequestsModel extends Model
                 $ids_query = "
                     SELECT id, folio, codgas
                     FROM [TG].[dbo].[payment_request_invoices]
-                    WHERE payment_request_id = ?";
+                    WHERE payment_request_id = ? AND is_deleted = 0";
                 $inserted_invoices = $this->sql->select($ids_query, [$payment_id]);
                 $invoice_map = [];
                 foreach ($inserted_invoices as $row) {
@@ -141,7 +141,7 @@ class PaymentRequestsModel extends Model
                     monto_total = (
                         SELECT ISNULL(SUM(pri.amount), 0)
                         FROM [TG].[dbo].[payment_request_invoices] pri
-                        WHERE pri.payment_request_id = ?
+                        WHERE pri.payment_request_id = ? AND pri.is_deleted = 0
                     )
                     WHERE id = ?";
                 $this->sql->update($totals_query, [$payment_id, $payment_id, $payment_id, $payment_id]);
@@ -286,6 +286,7 @@ class PaymentRequestsModel extends Model
                             AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
                         WHERE pri.payment_request_id = t1.id
                           AND pri.is_debit_note = 0
+                          AND pri.is_deleted = 0
                           AND fr.UUID IS NULL
                     ) THEN 'missing'
                     ELSE 'complete'
@@ -318,6 +319,7 @@ class PaymentRequestsModel extends Model
                     SUM(CASE WHEN payment_authorized = 1 THEN 1 ELSE 0 END) AS authorized_invoices_count,
                     SUM(CASE WHEN payment_authorized = 1 THEN ISNULL(authorized_amount, 0) ELSE 0 END) AS authorized_amount_total
                 FROM tg.dbo.payment_request_invoices
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) t2 ON t1.id = t2.payment_request_id
             LEFT JOIN [TG].[dbo].[Usuario] t3 ON t1.user_id = t3.Id
@@ -378,6 +380,7 @@ class PaymentRequestsModel extends Model
             LEFT JOIN (
                 SELECT payment_request_id, COUNT(*) AS total_invoices, SUM(amount) AS total_amount
                 FROM [TG].[dbo].[payment_request_invoices]
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) t2 ON t1.id = t2.payment_request_id
             LEFT JOIN (
@@ -402,6 +405,7 @@ class PaymentRequestsModel extends Model
                         AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
                     WHERE pri.payment_request_id = t1.id
                       AND pri.is_debit_note = 0
+                      AND pri.is_deleted = 0
                       AND fr.UUID IS NULL
               )
             ORDER BY t1.request_date ASC";
@@ -589,6 +593,7 @@ class PaymentRequestsModel extends Model
                     SUM(CASE WHEN payment_authorized = 1 THEN 1 ELSE 0 END) AS authorized_invoices_count,
                     SUM(CASE WHEN payment_authorized = 1 THEN ISNULL(authorized_amount, 0) ELSE 0 END) AS authorized_amount_total
                 FROM tg.dbo.payment_request_invoices
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) t2 ON t1.id = t2.payment_request_id
             LEFT JOIN [TG].[dbo].[Usuario] t3 ON t1.user_id = t3.Id
@@ -1102,6 +1107,7 @@ class PaymentRequestsModel extends Model
                     SUM(amount) as total_amount,
                     MIN(expiration_date) as fecha_vencimiento_min
                 FROM [TG].[dbo].[payment_request_invoices]
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) inv_summary ON pr.id = inv_summary.payment_request_id
             
@@ -1477,6 +1483,7 @@ class PaymentRequestsModel extends Model
             LEFT JOIN (
                 SELECT payment_request_id, COUNT(*) as total_invoices
                 FROM [TG].[dbo].[payment_request_invoices]
+                WHERE is_deleted = 0
                 GROUP BY payment_request_id
             ) inv_sum ON pr.id = inv_sum.payment_request_id
             WHERE pr.id IN ($placeholders)
@@ -1497,7 +1504,7 @@ class PaymentRequestsModel extends Model
             $query = "
                 SELECT ISNULL(SUM(amount), 0) as total
                 FROM [TG].[dbo].[payment_request_invoices]
-                WHERE payment_request_id = ?
+                WHERE payment_request_id = ? AND is_deleted = 0
             ";
 
             $result = $this->sql->select($query, [$payment_request_id]);

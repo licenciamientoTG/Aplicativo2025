@@ -138,7 +138,7 @@ class PaymentTransactionsModel extends Model
             FROM [TG].[dbo].[payment_request_invoices] t1
             left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
             LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
-            WHERE t1.id = ?";
+            WHERE t1.id = ? AND t1.is_deleted = 0";
         $result = $this->sql->select($query, [$invoice_id]);
         return $result ? $result[0] : false;
     }
@@ -175,6 +175,7 @@ class PaymentTransactionsModel extends Model
             FROM [TG].[dbo].[payment_request_invoices]
             WHERE payment_request_id = ?
             AND status IN (0, 1, 3)
+            AND is_deleted = 0
         ";
         
         $result = $this->sql->select($query, [$payment_request_id]);

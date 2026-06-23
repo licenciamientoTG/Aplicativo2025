@@ -27,9 +27,9 @@ class PaymentRequestInvoicesModel extends Model
      * @return array|false
      */
     public function get_invoices_by_request($payment_request_id) : array|false {
-        $query = 'SELECT id, payment_request_id, folio, invoice_number, codgas, amount, paid_amount, status, date_added 
-                  FROM [TG].[dbo].[payment_request_invoices] 
-                  WHERE payment_request_id = ?
+        $query = 'SELECT id, payment_request_id, folio, invoice_number, codgas, amount, paid_amount, status, date_added
+                  FROM [TG].[dbo].[payment_request_invoices]
+                  WHERE payment_request_id = ? AND is_deleted = 0
                   ORDER BY id;';
         return ($this->sql->select($query, [$payment_request_id])) ?: false;
     }
@@ -135,7 +135,7 @@ class PaymentRequestInvoicesModel extends Model
      * Verifica si una factura ya existe en alguna orden de pago (por UUID)
      */
     public function invoice_exists_by_uuid($uuid) : bool {
-        $query = 'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ?';
+        $query = 'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ? AND is_deleted = 0';
         $result = $this->sql->select($query, [$uuid]);
         return !empty($result);
     }
@@ -151,7 +151,7 @@ class PaymentRequestInvoicesModel extends Model
             FROM [TG].[dbo].[payment_request_invoices] pri
             LEFT JOIN [TG].[dbo].[payment_requests] pr ON pri.payment_request_id = pr.id
             LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
-            WHERE pri.uuid = ?
+            WHERE pri.uuid = ? AND pri.is_deleted = 0
         ';
         $result = $this->sql->select($query, [$uuid]);
         return $result ? $result[0] : false;
@@ -184,7 +184,7 @@ class PaymentRequestInvoicesModel extends Model
                 SUM(ISNULL(paid_amount, 0)) as total_paid,
                 SUM(amount) - SUM(ISNULL(paid_amount, 0)) as total_pending
             FROM [TG].[dbo].[payment_request_invoices]
-            WHERE payment_request_id = ?
+            WHERE payment_request_id = ? AND is_deleted = 0
         ';
         $result = $this->sql->select($query, [$payment_request_id]);
         return $result ? $result[0] : false;
@@ -309,7 +309,7 @@ class PaymentRequestInvoicesModel extends Model
                 LEFT JOIN SG12.dbo.Proveedores prov_nd ON t1.is_debit_note = 1 AND prov_nd.cod = pr_nd.provider_cod
                 -- Para notas de cargo: datos de invoice_credit_debit_notes (buscando por note_number = folio)
                 LEFT JOIN [TG].[dbo].[invoice_credit_debit_notes] nota_nd ON t1.is_debit_note = 1 AND nota_nd.note_number = t1.folio AND nota_nd.note_type = \'DEBIT\'
-                WHERE t1.payment_request_id = ?
+                WHERE t1.payment_request_id = ? AND t1.is_deleted = 0
                 ORDER BY t1.is_debit_note ASC, t1.date_added DESC
         ';
         return ($this->sql->select($query, [$payment_request_id])) ?: false;
@@ -326,10 +326,10 @@ class PaymentRequestInvoicesModel extends Model
                 pri.amount,
                 ISNULL(SUM(pt.payment_amount), 0) as paid_amount
             FROM [TG].[dbo].[payment_request_invoices] pri
-            LEFT JOIN [TG].[dbo].[payment_transactions] pt 
-                ON pt.invoice_id = pri.id 
+            LEFT JOIN [TG].[dbo].[payment_transactions] pt
+                ON pt.invoice_id = pri.id
                 AND pt.status IN (1, 2)
-            WHERE pri.payment_request_id = ?
+            WHERE pri.payment_request_id = ? AND pri.is_deleted = 0
             GROUP BY pri.id, pri.amount
         )
         SELECT 
@@ -391,7 +391,7 @@ class PaymentRequestInvoicesModel extends Model
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
                 left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
                 LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
-                WHERE t1.Id IN ($placeholders)
+                WHERE t1.Id IN ($placeholders) AND t1.is_deleted = 0
                 ORDER BY t1.date_added DESC
         ";
         $result = $this->sql->select($query, $ids);
@@ -441,9 +441,9 @@ class PaymentRequestInvoicesModel extends Model
                 
                 // Verificar que la factura pertenece a este payment_request y obtener su estado actual
                 $query_check = "
-                    SELECT id, amount, paid_amount, payment_authorized 
+                    SELECT id, amount, paid_amount, payment_authorized
                     FROM [TG].[dbo].[payment_request_invoices]
-                    WHERE id = ? AND payment_request_id = ?
+                    WHERE id = ? AND payment_request_id = ? AND is_deleted = 0
                 ";
                 
                 $invoice_data = $this->sql->select($query_check, [$invoice_id, $payment_id]);
@@ -534,6 +534,7 @@ class PaymentRequestInvoicesModel extends Model
             WHERE payment_request_id = ?
             AND payment_authorized = 1
             AND status != ?
+            AND is_deleted = 0
             ORDER BY id
         ";
         
@@ -549,7 +550,7 @@ class PaymentRequestInvoicesModel extends Model
         $query = "
             SELECT payment_authorized
             FROM [TG].[dbo].[payment_request_invoices]
-            WHERE id = ?
+            WHERE id = ? AND is_deleted = 0
         ";
         
         $result = $this->sql->select($query, [$invoice_id]);
@@ -571,7 +572,7 @@ class PaymentRequestInvoicesModel extends Model
             SELECT COUNT(*) as total,
                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pagadas
             FROM [TG].[dbo].[payment_request_invoices]
-            WHERE payment_request_id = ?
+            WHERE payment_request_id = ? AND is_deleted = 0
         ";
         
         $result = $this->sql->select($query, [
@@ -601,7 +602,7 @@ class PaymentRequestInvoicesModel extends Model
                 SUM(CASE WHEN payment_authorized = 1 THEN 1 ELSE 0 END) as facturas_autorizadas,
                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as facturas_pagadas
             FROM [TG].[dbo].[payment_request_invoices]
-            WHERE payment_request_id = ?
+            WHERE payment_request_id = ? AND is_deleted = 0
         ";
         
         $result = $this->sql->select($query, [
@@ -695,6 +696,7 @@ class PaymentRequestInvoicesModel extends Model
             AND pri.status != ?              -- No pagadas completamente
             AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0  -- Con saldo pendiente
             AND pr.status = ?                -- Pago autorizado
+            AND pri.is_deleted = 0
             
             ORDER BY 
                 banco_asignado,
@@ -734,7 +736,8 @@ class PaymentRequestInvoicesModel extends Model
             AND pri.status != ?
             AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
             AND pr.status = ?
-            
+            AND pri.is_deleted = 0
+
             GROUP BY
                 CASE
                     WHEN pr.emp_cod IN (1, 10, 17, 18, 21, 23) THEN 'Banorte'
@@ -817,6 +820,7 @@ class PaymentRequestInvoicesModel extends Model
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
+                AND pri.is_deleted = 0
             GROUP BY
                 pr.id,
                 pr.request_date,
@@ -1139,11 +1143,11 @@ class PaymentRequestInvoicesModel extends Model
                 GROUP BY a.invoice_id
             ) notas ON pri.id = notas.invoice_id
 
-            WHERE pri.id IN ($ids_string)
+            WHERE pri.id IN ($ids_string) AND pri.is_deleted = 0
 
             ORDER BY pri.expiration_date, pri.folio
         ";
-        
+
         return $this->sql->select($query) ?: false;
     }
 
@@ -1238,6 +1242,7 @@ class PaymentRequestInvoicesModel extends Model
                 AND pri.payment_authorized = 0
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
+                AND pri.is_deleted = 0
 
             ORDER BY pr.id, pri.expiration_date, pri.folio
         ";
@@ -1396,6 +1401,7 @@ class PaymentRequestInvoicesModel extends Model
             
         WHERE inv.id IN ($placeholders)
         AND inv.authorized_amount > 0
+        AND inv.is_deleted = 0
 
         ORDER BY COALESCE(prov_cg.den, prov_nd.den), inv.folio
     ";
@@ -1417,7 +1423,7 @@ class PaymentRequestInvoicesModel extends Model
                     FROM [TG].[dbo].[payment_request_invoices] t1
                     LEFT JOIN TG.dbo.payment_requests t2 ON t1.payment_request_id = t2.id
                     INNER JOIN SG12.[dbo].[Empresas] t3 ON t3.cod = t2.emp_cod
-                    WHERE t1.id IN ($placeholders)
+                    WHERE t1.id IN ($placeholders) AND t1.is_deleted = 0
                     ORDER BY t3.den
                 ";
 
@@ -1521,8 +1527,8 @@ class PaymentRequestInvoicesModel extends Model
             LEFT JOIN [TG].[dbo].[Usuarios] usr 
                 ON usr.id = inv.authorized_by
             
-            WHERE inv.id IN ($placeholders)
-            
+            WHERE inv.id IN ($placeholders) AND inv.is_deleted = 0
+
             ORDER BY inv.expiration_date ASC, inv.folio ASC
         ";
         
@@ -1554,6 +1560,7 @@ class PaymentRequestInvoicesModel extends Model
             WHERE id IN ($ids_str)
             AND payment_authorized = 1
             AND status != ?
+            AND is_deleted = 0
             ORDER BY payment_request_id, id
         ";
         return $this->sql->select($query, [PaymentRequestsModel::STATUS_PAID]) ?: false;
@@ -1632,13 +1639,15 @@ class PaymentRequestInvoicesModel extends Model
      * @param int $invoice_id
      * @return array
      */
-    public function remove_invoice_from_payment($invoice_id) : array {
+    public function remove_invoice_from_payment($invoice_id, $deleted_by = null) : array {
         try {
-            // Verificar que la factura no tenga pagos
+            // Verificar que la factura no tenga pagos. Se trae la fila completa para
+            // poder dejar un snapshot en la auditoría antes de borrarla.
             $query_check = "
-                SELECT paid_amount, folio
+                SELECT id, payment_request_id, folio, invoice_number, codgas, amount,
+                       paid_amount, status, expiration_date, uuid
                 FROM [TG].[dbo].[payment_request_invoices]
-                WHERE id = ?
+                WHERE id = ? AND is_deleted = 0
             ";
 
             $invoice = $this->sql->select($query_check, [$invoice_id]);
@@ -1657,14 +1666,19 @@ class PaymentRequestInvoicesModel extends Model
                 ];
             }
 
-            // Eliminar la factura
-            $query_delete = "DELETE FROM [TG].[dbo].[payment_request_invoices] WHERE id = ?";
-            $result = $this->sql->delete($query_delete, [$invoice_id]);
+            // Soft-delete: se conserva la fila para auditoría/restauración en vez de borrarla físicamente.
+            $query_delete = "
+                UPDATE [TG].[dbo].[payment_request_invoices]
+                SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = ?
+                WHERE id = ? AND is_deleted = 0
+            ";
+            $result = $this->sql->update($query_delete, [$deleted_by, $invoice_id]);
 
             if ($result) {
                 return [
                     'success' => true,
-                    'message' => 'Factura eliminada del pago correctamente'
+                    'message' => 'Factura eliminada del pago correctamente',
+                    'invoice_snapshot' => $invoice[0]
                 ];
             } else {
                 return [
