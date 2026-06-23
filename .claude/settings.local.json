@@ -112,7 +112,9 @@
       "Bash(schtasks /query /fo LIST /v)",
       "Read(//c/Software/TareasProgramadas/Facturas_proveedores/**)",
       "Bash(pip show *)",
-      "Bash(./env/Scripts/python.exe -c ' *)"
+      "Bash(./env/Scripts/python.exe -c ' *)",
+      "Bash(\"./env/Scripts/python.exe\" -c \"import fitz, pdfplumber; print\\('ok'\\)\")",
+      "Bash(./env/bin/python -c \"import fitz, pdfplumber; print\\('ok'\\)\")"
     ],
     "deny": [],
     "ask": []

@@ -2917,7 +2917,8 @@ class Payment
         foreach ($consolidados as $grupo) {
             $codigo_banco = $this->obtener_codigo_banco_desde_clabe($grupo['clabe_beneficiario']);
             $monto_centavos = intval($grupo['monto_total'] * 100);
-            $monto_con_plaza = str_pad($monto_centavos, 19, '0', STR_PAD_LEFT) . '901';
+            // Importe Santander: 18 dígitos en centavos + plaza "901".
+            $monto_con_plaza = str_pad($monto_centavos, 18, '0', STR_PAD_LEFT) . '901';
             $nombre_beneficiario = $this->limpiar_texto_layout($grupo['titular_beneficiario'], 40);
 
             // ✅ Concepto adaptado
@@ -2935,15 +2936,20 @@ class Payment
 
             $concepto = $this->limpiar_texto_layout($concepto_texto, 40);
 
+            // Layout posicional Santander. Anchos exactos (validados contra archivo del banco):
+            //   nombre beneficiario 40, importe = 18 díg. centavos + "901", concepto 40,
+            //   correo beneficiario 40. El nombre va pegado a "1234" y el concepto pegado a
+            //   "00 00" (sin espacios intermedios) — cualquier corrimiento desfasa los campos
+            //   siguientes y el banco rechaza con "VALOR INCORRECTO" / "CUENTA NO REGISTRADA".
             $linea = sprintf(
-                "LTX05 %-11s       %-18s %-5s%-40s    1234%s  %-40s 00 00  %-28s",
+                "LTX05 %-11s       %-18s %-5s%-40s1234%s  %-40s00 00  %-40s",
                 $grupo['cuenta_cargo'],
                 $grupo['clabe_beneficiario'],
                 $codigo_banco,
                 $nombre_beneficiario,
                 $monto_con_plaza,
                 $concepto,
-                substr($email_notificacion, 0, 28)
+                substr($email_notificacion, 0, 40)
             );
 
             $lineas[] = $linea;
