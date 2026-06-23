@@ -264,6 +264,82 @@ class CuentasBancariasModel extends Model {
      * @param string $search Término de búsqueda
      * @return array
      */
+    /**
+     * ✅ ADMIN: lista TODAS las cuentas (activas e inactivas) con los campos
+     * relevantes para administración, incluyendo Tipo, emp_cod y proveedor_cod.
+     */
+    public function get_cuentas_admin() : array {
+        $query = "
+            SELECT
+                Id,
+                FechaAlta,
+                CuentaLocal,
+                Descripcion,
+                TipoCuenta,
+                Banco,
+                Divisa,
+                TitularCuenta,
+                Tipo,
+                emp_cod,
+                proveedor_cod,
+                Activo,
+                FechaModificacion,
+                UsuarioModificacion
+            FROM [TG].[dbo].[CatalogosCuentasBancarias]
+            ORDER BY Descripcion, Banco, CuentaLocal
+        ";
+        return $this->sql->select($query) ?: [];
+    }
+
+    /**
+     * ✅ ADMIN: actualiza los campos editables desde la vista de administración.
+     * A diferencia de edit(), incluye Tipo, emp_cod y proveedor_cod (claves para
+     * que el layout seleccione la cuenta correcta) y registra usuario/fecha.
+     */
+    public function update_admin($id, array $data, $usuario_id) : bool {
+        $query = "
+            UPDATE [TG].[dbo].[CatalogosCuentasBancarias] SET
+                CuentaLocal         = ?,
+                Descripcion         = ?,
+                Banco               = ?,
+                TitularCuenta       = ?,
+                Tipo                = ?,
+                Divisa              = ?,
+                emp_cod             = ?,
+                proveedor_cod       = ?,
+                Activo              = ?,
+                FechaModificacion   = GETDATE(),
+                UsuarioModificacion = ?
+            WHERE Id = ?
+        ";
+        $params = [
+            $data['CuentaLocal'],
+            $data['Descripcion'],
+            $data['Banco'],
+            $data['TitularCuenta'],
+            $data['Tipo']           !== '' ? $data['Tipo']           : null,
+            $data['Divisa']         !== '' ? $data['Divisa']         : null,
+            $data['emp_cod']        !== '' ? $data['emp_cod']        : null,
+            $data['proveedor_cod']  !== '' ? $data['proveedor_cod']  : null,
+            (int)$data['Activo'],
+            $usuario_id,
+            $id,
+        ];
+        return (bool)$this->sql->update($query, $params);
+    }
+
+    /**
+     * ✅ ADMIN: activa/desactiva (Activo = 1/0) registrando usuario y fecha.
+     */
+    public function set_activo($id, int $activo, $usuario_id) : bool {
+        $query = "
+            UPDATE [TG].[dbo].[CatalogosCuentasBancarias]
+            SET Activo = ?, FechaModificacion = GETDATE(), UsuarioModificacion = ?
+            WHERE Id = ?
+        ";
+        return (bool)$this->sql->update($query, [$activo, $usuario_id, $id]);
+    }
+
     public function buscar_cuenta_tercero($search) {
         $query = "
             SELECT 

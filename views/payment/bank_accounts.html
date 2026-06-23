@@ -1,0 +1,277 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Cuentas Bancarias{% endblock %}
+{% block menutitle %}Cuentas Bancarias{% endblock %}
+{% block mycss %}
+<style>
+    .cb-thead th {
+        background: #f8fafc !important;
+        color: #475569 !important;
+        font-size: .7rem;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+        font-weight: 700;
+        border-bottom: 1px solid #e2e8f0 !important;
+        white-space: nowrap;
+    }
+    .badge-tipo { font-size: .68rem; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+        <div>
+            <h6 class="mb-0" style="color:#334155;"><i class="fas fa-university me-2 text-primary"></i>Catálogo de Cuentas Bancarias</h6>
+            <small class="text-muted">Administra cuentas propias y de terceros usadas en los layouts de pago.</small>
+        </div>
+        <button onclick="reloadBankAccounts()" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-sync-alt"></i> Recargar
+        </button>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <div class="table-responsive" style="padding:.75rem;">
+            <table id="bank_accounts_table" class="table table-hover table-sm w-100 mb-0">
+                <thead class="cb-thead">
+                    <tr>
+                        <th>Descripción</th>
+                        <th>Cuenta / CLABE</th>
+                        <th>Banco</th>
+                        <th>Titular</th>
+                        <th>Tipo</th>
+                        <th class="text-center">Emp.</th>
+                        <th class="text-center">Prov.</th>
+                        <th class="text-center">Activo</th>
+                        <th class="text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar -->
+<div class="modal fade" id="editAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <form id="editAccountForm">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Editar Cuenta Bancaria</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id" id="ed_id">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label form-label-sm">Descripción</label>
+                            <input type="text" class="form-control form-control-sm" name="Descripcion" id="ed_descripcion">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm">Banco</label>
+                            <input type="text" class="form-control form-control-sm" name="Banco" id="ed_banco" placeholder="SANTANDER, BANORTE...">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label form-label-sm">Cuenta / CLABE <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" name="CuentaLocal" id="ed_cuentalocal" required>
+                            <small class="text-muted" id="ed_cuentalocal_hint"></small>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label form-label-sm">Titular</label>
+                            <input type="text" class="form-control form-control-sm" name="TitularCuenta" id="ed_titular">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm">Tipo</label>
+                            <select class="form-select form-select-sm" name="Tipo" id="ed_tipo">
+                                <option value="">(sin tipo)</option>
+                                <option value="Propias">Propias</option>
+                                <option value="Terceros">Terceros</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm">Divisa</label>
+                            <input type="text" class="form-control form-control-sm" name="Divisa" id="ed_divisa" placeholder="NUEVO PESO MEXICANO">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm">Activo</label>
+                            <select class="form-select form-select-sm" name="Activo" id="ed_activo">
+                                <option value="1">Sí</option>
+                                <option value="0">No</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label form-label-sm">emp_cod <small class="text-muted">(empresa propia)</small></label>
+                            <input type="number" class="form-control form-control-sm" name="emp_cod" id="ed_emp_cod" placeholder="solo cuentas Propias">
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label form-label-sm">proveedor_cod <small class="text-muted">(vincula cuenta de tercero a un proveedor)</small></label>
+                            <input type="number" class="form-control form-control-sm" name="proveedor_cod" id="ed_proveedor_cod" list="proveedores_list" placeholder="código de proveedor (ControlGas)">
+                            <datalist id="proveedores_list">
+                                {% for p in proveedores %}
+                                <option value="{{ p.cod }}">{{ p.cod }} — {{ p.den }}</option>
+                                {% endfor %}
+                            </datalist>
+                            <small class="text-muted">Este código es el que el layout usa para elegir la cuenta del proveedor (prioridad sobre el match por nombre).</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-save"></i> Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script>
+let bankAccountsTable = null;
+
+function badgeTipo(tipo) {
+    if (tipo === 'Propias')  return '<span class="badge bg-info badge-tipo">Propias</span>';
+    if (tipo === 'Terceros') return '<span class="badge bg-secondary badge-tipo">Terceros</span>';
+    return '<span class="badge bg-light text-muted badge-tipo">—</span>';
+}
+
+function reloadBankAccounts() {
+    if (bankAccountsTable) {
+        bankAccountsTable.ajax.reload(null, false);
+    }
+}
+
+function initBankAccountsTable() {
+    bankAccountsTable = $('#bank_accounts_table').DataTable({
+        dom: '<"d-flex justify-content-between align-items-center mb-2"Bf>rtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="fas fa-file-excel"></i> Excel',
+                className: 'btn btn-sm btn-success',
+                title: 'Cuentas Bancarias',
+                exportOptions: { columns: [0,1,2,3,4,5,6,7] }
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="fas fa-columns"></i> Columnas',
+                className: 'btn btn-sm btn-outline-secondary'
+            }
+        ],
+        processing: true,
+        ajax: {
+            url: '/payment/bank_accounts_table',
+            type: 'POST',
+            dataSrc: function(json) {
+                if (json.error) { alertify.error(json.error); return []; }
+                return json.data || [];
+            },
+            error: function() { alertify.error('Error al cargar las cuentas'); }
+        },
+        columns: [
+            { data: 'Descripcion', defaultContent: '—' },
+            { data: 'CuentaLocal', className: 'font-monospace', render: function(d){ return d || '—'; } },
+            { data: 'Banco', defaultContent: '—' },
+            { data: 'TitularCuenta', defaultContent: '—' },
+            { data: 'Tipo', className: 'text-center', render: function(d){ return badgeTipo(d); } },
+            { data: 'emp_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
+            { data: 'proveedor_cod', className: 'text-center', defaultContent: '—', render: function(d){ return (d === null || d === '') ? '—' : d; } },
+            {
+                data: 'Activo', className: 'text-center', orderable: false,
+                render: function(d, type, row) {
+                    var checked = (parseInt(d) === 1) ? 'checked' : '';
+                    return '<div class="form-check form-switch d-flex justify-content-center">'
+                         + '<input class="form-check-input" type="checkbox" ' + checked
+                         + ' onchange="toggleAccount(' + row.Id + ', this.checked ? 1 : 0, this)"></div>';
+                }
+            },
+            {
+                data: 'Id', className: 'text-center', orderable: false,
+                render: function(d) {
+                    return '<button class="btn btn-sm btn-outline-primary" onclick="openEdit(' + d + ')" title="Editar">'
+                         + '<i class="fas fa-edit"></i></button>';
+                }
+            }
+        ],
+        order: [[0, 'asc']],
+        pageLength: 50
+    });
+}
+
+function openEdit(id) {
+    const row = bankAccountsTable.rows().data().toArray().find(r => parseInt(r.Id) === parseInt(id));
+    if (!row) { alertify.error('No se encontró la cuenta'); return; }
+
+    $('#ed_id').val(row.Id);
+    $('#ed_descripcion').val(row.Descripcion || '');
+    $('#ed_banco').val(row.Banco || '');
+    $('#ed_cuentalocal').val(row.CuentaLocal || '');
+    $('#ed_titular').val(row.TitularCuenta || '');
+    $('#ed_tipo').val(row.Tipo || '');
+    $('#ed_divisa').val(row.Divisa || '');
+    $('#ed_activo').val(parseInt(row.Activo) === 1 ? '1' : '0');
+    $('#ed_emp_cod').val(row.emp_cod ?? '');
+    $('#ed_proveedor_cod').val(row.proveedor_cod ?? '');
+
+    const len = (row.CuentaLocal || '').length;
+    $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
+
+    $('#editAccountModal').modal('show');
+}
+
+$('#ed_cuentalocal').on('keyup', function(){
+    const len = (this.value || '').length;
+    $('#ed_cuentalocal_hint').text(len ? (len + ' dígitos') : '');
+});
+
+$('#editAccountForm').on('submit', function(e) {
+    e.preventDefault();
+    const $btn = $(this).find('button[type="submit"]');
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Guardando...');
+
+    $.ajax({
+        url: '/payment/update_bank_account',
+        type: 'POST',
+        dataType: 'json',
+        data: $(this).serialize()
+    }).done(function(resp) {
+        if (resp.success) {
+            alertify.success(resp.message || 'Guardado');
+            $('#editAccountModal').modal('hide');
+            reloadBankAccounts();
+        } else {
+            alertify.error(resp.message || 'Error al guardar');
+        }
+    }).fail(function() {
+        alertify.error('Error de comunicación');
+    }).always(function() {
+        $btn.prop('disabled', false).html('<i class="fas fa-save"></i> Guardar');
+    });
+});
+
+function toggleAccount(id, activo, el) {
+    $.ajax({
+        url: '/payment/toggle_bank_account',
+        type: 'POST',
+        dataType: 'json',
+        data: { id: id, activo: activo }
+    }).done(function(resp) {
+        if (resp.success) {
+            alertify.success(resp.message);
+        } else {
+            alertify.error(resp.message || 'No se pudo cambiar el estado');
+            $(el).prop('checked', activo !== 1); // revertir visual
+        }
+    }).fail(function() {
+        alertify.error('Error de comunicación');
+        $(el).prop('checked', activo !== 1);
+    });
+}
+
+$(document).ready(function() {
+    initBankAccountsTable();
+});
+</script>
+{% endblock %}

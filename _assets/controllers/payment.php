@@ -6378,6 +6378,115 @@ class Payment
     }
 
 
+    /**
+     * Vista de administración del catálogo de cuentas bancarias (permiso 66).
+     */
+    public function bank_accounts()
+    {
+        if (!authorized(66)) {
+            $this->twig->render('views/errors/403.html');
+            echo '<h3 class="text-center mt-5">Sin permiso para ver esta sección.</h3>';
+            return;
+        }
+        $proveedores = $this->proveedores->get_actives() ?: [];
+        echo $this->twig->render($this->route . 'bank_accounts.html', compact('proveedores'));
+    }
+
+    /**
+     * JSON con todas las cuentas bancarias para el DataTable de administración.
+     */
+    public function bank_accounts_table()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(66)) {
+            json_output(['data' => [], 'error' => 'Sin permiso']);
+            return;
+        }
+        $cuentas = $this->CuentasBancariasModel->get_cuentas_admin();
+        json_output(['data' => $cuentas]);
+    }
+
+    /**
+     * Actualiza una cuenta bancaria desde el modal de edición (permiso 66).
+     */
+    public function update_bank_account()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'ID inválido']);
+            return;
+        }
+
+        $cuenta = $this->CuentasBancariasModel->get_by_id($id);
+        if (!$cuenta) {
+            json_output(['success' => false, 'message' => 'La cuenta no existe']);
+            return;
+        }
+
+        $cuenta_local = trim($_POST['CuentaLocal'] ?? '');
+        if ($cuenta_local === '') {
+            json_output(['success' => false, 'message' => 'La cuenta (CLABE/Cuenta) es obligatoria']);
+            return;
+        }
+
+        $data = [
+            'CuentaLocal'   => $cuenta_local,
+            'Descripcion'   => trim($_POST['Descripcion'] ?? ''),
+            'Banco'         => trim($_POST['Banco'] ?? ''),
+            'TitularCuenta' => trim($_POST['TitularCuenta'] ?? ''),
+            'Tipo'          => trim($_POST['Tipo'] ?? ''),
+            'Divisa'        => trim($_POST['Divisa'] ?? ''),
+            'emp_cod'       => trim($_POST['emp_cod'] ?? ''),
+            'proveedor_cod' => trim($_POST['proveedor_cod'] ?? ''),
+            'Activo'        => intval($_POST['Activo'] ?? 1),
+        ];
+
+        $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+        $ok = $this->CuentasBancariasModel->update_admin($id, $data, $user_id);
+
+        json_output([
+            'success' => (bool)$ok,
+            'message' => $ok ? 'Cuenta actualizada correctamente' : 'No se pudo actualizar la cuenta',
+        ]);
+    }
+
+    /**
+     * Activa o desactiva una cuenta bancaria (permiso 66).
+     */
+    public function toggle_bank_account()
+    {
+        header('Content-Type: application/json');
+        if (!authorized(66)) {
+            json_output(['success' => false, 'message' => 'Sin permiso']);
+            return;
+        }
+
+        $id     = intval($_POST['id'] ?? 0);
+        $activo = intval($_POST['activo'] ?? 0) === 1 ? 1 : 0;
+        if (!$id) {
+            json_output(['success' => false, 'message' => 'ID inválido']);
+            return;
+        }
+
+        $user_id = $_SESSION['tg_user']['Id'] ?? 0;
+        $ok = $this->CuentasBancariasModel->set_activo($id, $activo, $user_id);
+
+        json_output([
+            'success' => (bool)$ok,
+            'activo'  => $activo,
+            'message' => $ok
+                ? ($activo ? 'Cuenta activada' : 'Cuenta desactivada')
+                : 'No se pudo cambiar el estado',
+        ]);
+    }
+
+
     public function invoices_due_table()
     {
         ini_set('max_execution_time', 5000);

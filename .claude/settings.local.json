@@ -112,7 +112,11 @@
       "Bash(schtasks /query /fo LIST /v)",
       "Read(//c/Software/TareasProgramadas/Facturas_proveedores/**)",
       "Bash(pip show *)",
-      "Bash(./env/Scripts/python.exe -c ' *)"
+      "Bash(./env/Scripts/python.exe -c ' *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash($SQLCMD *)",
+      "Bash('/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd' -S 192.168.0.6 -U cguser -P sahei1712 -d TG -C -b -Q ' *)",
+      "Bash(echo \"rc=$?\")"
     ],
     "deny": [],
     "ask": []
