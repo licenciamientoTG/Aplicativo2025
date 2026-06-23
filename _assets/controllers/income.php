@@ -1473,54 +1473,47 @@ public function anomalies_client_tickets()
     }
 
     function datatables_dispatches() : void {
-        ini_set('memory_limit', '512M');
+        ini_set('memory_limit', '1024M');
         set_time_limit(300);
-        $data = [];
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
 
-        if ($dispatches = $this->despachosModel->control_dispatches2(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed)) {
-            foreach ($dispatches as $dispatch) {
-                $data[] = array(
-                   'fecha'                    => $dispatch['fecha'],
-                    'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-                    'turno'                   => $dispatch['turno'],
-                    'despacho'                => $dispatch['despacho'],
-                    'producto'                => $dispatch['producto'],
-                    'estacion'                => $dispatch['estacion'],
-                    'empresa'                 => $dispatch['empresa'],
-                    'cliente_des'             => $dispatch['cliente_des'],
-                    'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'FechaFactura'                => $dispatch['FechaFactura'],
-                    'cantidad'                => $dispatch['cantidad'],
-                    'importe'                 => $dispatch['importe'],
-                    'precio'                  => $dispatch['precio'],
-                    'despachador'             => $dispatch['despachador'],
-                    'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
-                    'rut'                     => $dispatch['rut'],
-                    'txtref'                  => $dispatch['txtref'],
-                    'denominacion'            => $dispatch['denominacion'],
-                    'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-                    'codval'                  => $dispatch['codval'],
-                    'tipo_cliente'            => $dispatch['tipo_cliente'],
-                    'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-                    'vehiculo'                => $dispatch['vehiculo'],
-                    'placas'                  => $dispatch['placas'],
-                    'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-                    'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-                );
-            }
+        $dispatches = $this->despachosModel->control_dispatches2(dateToInt($_POST['from']), dateToInt($_POST['until']), $codgas,$_POST['uuid'],$tipo_cliente,$billed);
+        if (!$dispatches) {
+            json_output(array("data" => []));
+            return;
         }
-        json_output(array("data" => $data));
+
+        // Transformar cada fila EN SITIO (por referencia) para no mantener
+        // una segunda copia completa del dataset en memoria.
+        foreach ($dispatches as &$dispatch) {
+            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
+            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
+            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
+            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
+            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
+            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
+
+            // Liberar columnas auxiliares que el frontend no utiliza.
+            unset(
+                $dispatch['gasfac'],
+                $dispatch['nrofac'],
+                $dispatch['factura_desp'],
+                $dispatch['UUID_fac'],
+                $dispatch['UUID_dep'],
+                $dispatch['tipval']
+            );
+        }
+        unset($dispatch); // romper la referencia del último elemento
+
+        json_output(array("data" => $dispatches));
     }
 
     function datatables_dispatches_est() : void {
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');
         set_time_limit(0); // sin lÃ­mite
-        $data = [];
         $codgas = $_POST['codgas'];
         $billed = $_POST['billed'];
         $tipo_cliente=0;
@@ -1548,42 +1541,35 @@ public function anomalies_client_tickets()
         curl_close($ch);
 
         // $apiData = json_decode($response, true);
-        if ($apiData = json_decode($response, true)) {
-            
-            foreach ($apiData['data'] as $dispatch) {
-                $data[] = array(
-                   'fecha'                    => $dispatch['fecha'],
-                    'hora_formateada'         => date("H:i", strtotime($dispatch['hora_formateada'])),
-                    'turno'                   => $dispatch['turno'],
-                    'despacho'                => $dispatch['despacho'],
-                    'producto'                => $dispatch['producto'],
-                    'estacion'                => $dispatch['estacion'],
-                    'empresa'                 => $dispatch['empresa'],
-                    'cliente_des'             => $dispatch['cliente_des'],
-                    'cliente_fac'             => $dispatch['cliente_fac']??$dispatch['cliente_des'],
-                    'FechaFactura'            => $dispatch['FechaFactura'],
-                    'cantidad'                => $dispatch['cantidad'],
-                    'importe'                 => $dispatch['importe'],
-                    'precio'                  => $dispatch['precio'],
-                    'despachador'             => $dispatch['despachador'],
-                    'factura'                 => $dispatch['factura']??$dispatch['factura_desp'],
-                    'UUID'                    => $dispatch['UUID']??".",
-                    'rut'                     => $dispatch['rut'],
-                    'rut'                     => $dispatch['rut'],
-                    'txtref'                  => $dispatch['txtref'],
-                    'denominacion'            => $dispatch['denominacion'],
-                    'codigo_cliente'          => ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']),
-                    'codval'                  => $dispatch['codval'],
-                    'tipo_cliente'            => $dispatch['tipo_cliente'],
-                    'tipo_cliente_aplicativo' => $dispatch['tipo_cliente_aplicativo'],
-                    'vehiculo'                => $dispatch['vehiculo'],
-                    'placas'                  => $dispatch['placas'],
-                    'tipo_pago'               => $dispatch['tipo_pago']??$dispatch['tipo_pago_despacho'],
-                    'tipo_pago_despacho'      => $dispatch['tipo_pago_despacho'],
-                );
-            }
+        $apiData = json_decode($response, true);
+        if (empty($apiData['data'])) {
+            json_output(array("data" => []));
+            return;
         }
-        json_output(array("data" => $data));
+
+        // Transformar cada fila EN SITIO (por referencia) para no mantener
+        // una segunda copia completa del dataset en memoria.
+        foreach ($apiData['data'] as &$dispatch) {
+            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
+            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
+            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
+            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
+            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
+            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
+
+            // Liberar columnas auxiliares que el frontend no utiliza.
+            unset(
+                $dispatch['gasfac'],
+                $dispatch['nrofac'],
+                $dispatch['factura_desp'],
+                $dispatch['UUID_fac'],
+                $dispatch['UUID_dep'],
+                $dispatch['tipval']
+            );
+        }
+        unset($dispatch); // romper la referencia del último elemento
+
+        json_output(array("data" => $apiData['data']));
     }
 
    

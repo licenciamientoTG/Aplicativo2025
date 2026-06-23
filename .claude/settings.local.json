@@ -103,7 +103,8 @@
       "Bash(ls _tmp_media)",
       "Bash(mv usd_0.50.png usd_0.5.png)",
       "Bash(mv usd_0.10.png usd_0.1.png)",
-      "Bash(mv mxn_0.50.png mxn_0.5.png)"
+      "Bash(mv mxn_0.50.png mxn_0.5.png)",
+      "PowerShell(php -l \"_assets\\\\controllers\\\\income.php\")"
     ],
     "deny": [],
     "ask": []
