@@ -1510,6 +1510,82 @@ public function anomalies_client_tickets()
         json_output(array("data" => $dispatches));
     }
 
+    /**
+     * Versión server-side (paginada) del reporte diario corporativo.
+     * Sustituye la carga client-side que reventaba la memoria con rangos amplios:
+     * solo procesa y devuelve la página visible. Responde el formato que espera
+     * DataTables: {draw, recordsTotal, recordsFiltered, data}.
+     */
+    function datatables_dispatches_paginated() : void {
+        ini_set('memory_limit', '512M');
+        set_time_limit(300);
+
+        $draw   = isset($_POST['draw'])   ? (int) $_POST['draw']   : 0;
+        $start  = isset($_POST['start'])  ? (int) $_POST['start']  : 0;
+        $length = isset($_POST['length']) ? (int) $_POST['length'] : 100;
+
+        $codgas = (int) ($_POST['codgas'] ?? 0);
+        $billed = $_POST['billed'] ?? 0;
+        $uuid   = $_POST['uuid'] ?? 0;
+        $tipo_cliente = 0;
+
+        // Orden solicitado por DataTables.
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir    = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+
+        // Búsquedas por columna + búsqueda global.
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[$col['data']] = $col['search']['value'];
+                }
+            }
+        }
+        $globalSearch = $_POST['search']['value'] ?? '';
+
+        $result = $this->despachosModel->control_dispatches2_paginated(
+            dateToInt($_POST['from']), dateToInt($_POST['until']),
+            $codgas, $uuid, $tipo_cliente, $billed,
+            $start, $length, $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+
+        // Transformar SOLO la página actual (decenas de filas, no todo el dataset).
+        foreach ($result['data'] as &$dispatch) {
+            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
+            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
+            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
+            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
+            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
+            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
+        }
+        unset($dispatch);
+
+        json_output([
+            'draw'            => $draw,
+            'recordsTotal'    => $result['recordsTotal'],
+            'recordsFiltered' => $result['recordsFiltered'],
+            'data'            => $result['data'],
+        ]);
+    }
+
+    /**
+     * Resumen de Factura Global para los collapses del reporte. Se calcula con un
+     * GROUP BY ligero en SQL (no trae el detalle), reemplazando el agruparPorFactura
+     * que recorría todo el dataset en el navegador.
+     */
+    function factura_global_summary() : void {
+        $codgas = (int) ($_POST['codgas'] ?? 0);
+        $billed = $_POST['billed'] ?? 0;
+        $uuid   = $_POST['uuid'] ?? 0;
+        $rows = $this->despachosModel->factura_global_summary(
+            dateToInt($_POST['from']), dateToInt($_POST['until']),
+            $codgas, $uuid, 0, $billed
+        );
+        json_output(array("data" => $rows));
+    }
+
     function datatables_dispatches_est() : void {
         ini_set('max_execution_time', 5000);
         ini_set('memory_limit', '1024M');

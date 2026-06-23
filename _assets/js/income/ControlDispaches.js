@@ -51,9 +51,11 @@ function actualizarDataTable() {
                 text: ' PDF'
             },
            ],
+           processing: true,
+           serverSide: true,
            ajax: {
                method: 'POST',
-               url: '/income/datatables_dispatches',
+               url: '/income/datatables_dispatches_paginated',
                data: {
                     'from': from,
                     'until': until,
@@ -110,12 +112,14 @@ function actualizarDataTable() {
            ],
            rowId: 'despacho',
            createdRow: function (row, data, dataIndex) {
-       
+
            },
            initComplete: function (settings, json) {
             //    $('.dt-buttons').addClass('d-none');
                $('.control_dispaches_table').removeClass('loading');
-               agruparPorFactura(json.data);
+               // Server-side: json.data es solo la página actual. El resumen de
+               // Factura Global se carga aparte con una consulta agregada.
+               cargarFacturaGlobalSummary(from, until, codgas, uuid, billed);
 
            }
        });
@@ -146,8 +150,13 @@ function actualizarDataTable() {
         .column(19).search($('#tipo_cliente').val().trim())        // Tipo cliente
         .column(19).search($('#tipo_cliente_aplicativo').val().trim())        // Tipo cliente
         .column(20).search($('#vehiculo').val().trim())            // Vehículo
-        .column(21).search($('#placas').val().trim())  
-            .draw();
+        .column(21).search($('#placas').val().trim());
+        // Debounce: con server-side cada draw consulta la BD; esperamos a que
+        // el usuario deje de escribir para no disparar una consulta por tecla.
+        clearTimeout(window._dispatchSearchTimer);
+        window._dispatchSearchTimer = setTimeout(function () {
+            datatables_dispatches.draw();
+        }, 600);
     });
     $('#limpiar').on('click', function () {
         $('#tipo_cliente').val(''); // Limpiar el campo de tipo de cliente
@@ -455,6 +464,88 @@ function agruparPorFactura(data) {
     collapsesContainer.append(links + collapsedivsHtml );
 }
 
+
+// Carga el resumen de Factura Global desde el endpoint agregado (server-side).
+// Reemplaza el cálculo que antes hacía agruparPorFactura recorriendo TODO el
+// dataset en el navegador.
+function cargarFacturaGlobalSummary(from, until, codgas, uuid, billed) {
+    $.ajax({
+        method: 'POST',
+        url: '/income/factura_global_summary',
+        data: { 'from': from, 'until': until, 'codgas': codgas, 'uuid': uuid, 'billed': billed },
+        success: function (resp) {
+            renderFacturaGlobalCollapses((resp && resp.data) ? resp.data : []);
+        },
+        error: function () {
+            $('#collapses-container').empty();
+        }
+    });
+}
+
+// Construye los collapses de facturas a partir del resumen agregado:
+// filas { tipo_pago, factura, numero_f, txtref }.
+function renderFacturaGlobalCollapses(rows) {
+    var grupos = {
+        'Efectivo': {},
+        'Tarjeta Debito': {},
+        'Tarjeta Credito': {}
+    };
+    rows.forEach(function (r) {
+        if (grupos[r.tipo_pago]) {
+            grupos[r.tipo_pago][r.factura] = { txtref: r.txtref, numero_f: r.numero_f };
+        }
+    });
+
+    var collapsesContainer = $('#collapses-container');
+    collapsesContainer.empty();
+
+    function crearLinksCollapse(collapseId, tipo) {
+        return `<a class="btn btn-primary" data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}">Facturas - ${tipo}</a>`;
+    }
+
+    function crearCollapseDivs(facturas, collapseId, title) {
+        var html = `
+            <div class="collapse" id="${collapseId}">
+                <div class="card card-body">
+                    <span>${title}</span>
+                    <ul class="list-group list-group-flush">
+        `;
+        for (var numero in facturas) {
+            var f = facturas[numero];
+            html += `
+               <li class="list-group-item d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                    <div class="fw-bold">${numero}</div>
+                    ${f.txtref != null ? f.txtref : ''}
+                    </div>
+                    <span class="text-danger">${f.numero_f}</span>
+                </li>
+                `;
+        }
+        html += `
+                    </ul>
+                </div>
+            </div>
+        `;
+        return html;
+    }
+
+    var links = `<p>`;
+    var collapsedivsHtml = '<div class="div_collapse">';
+    if (Object.keys(grupos['Efectivo']).length > 0) {
+        links += crearLinksCollapse('collapseEfectivo', 'Efectivo');
+        collapsedivsHtml += crearCollapseDivs(grupos['Efectivo'], 'collapseEfectivo', 'Efectivo');
+    }
+    if (Object.keys(grupos['Tarjeta Debito']).length > 0) {
+        links += crearLinksCollapse('collapseDebito', 'Tarjeta Débito');
+        collapsedivsHtml += crearCollapseDivs(grupos['Tarjeta Debito'], 'collapseDebito', 'Tarjeta Débito');
+    }
+    if (Object.keys(grupos['Tarjeta Credito']).length > 0) {
+        links += crearLinksCollapse('collapseCredito', 'Tarjeta Crédito');
+        collapsedivsHtml += crearCollapseDivs(grupos['Tarjeta Credito'], 'collapseCredito', 'Tarjeta Crédito');
+    }
+    collapsesContainer.append(links + collapsedivsHtml);
+}
 
 function actualizarDataTablePivot() {
     var from2 = $('#from2').val();

@@ -112,7 +112,10 @@
       "Bash(schtasks /query /fo LIST /v)",
       "Read(//c/Software/TareasProgramadas/Facturas_proveedores/**)",
       "Bash(pip show *)",
-      "Bash(./env/Scripts/python.exe -c ' *)"
+      "Bash(./env/Scripts/python.exe -c ' *)",
+      "PowerShell(php -l \"_assets\\\\models\\\\DespachosModel.php\")",
+      "PowerShell(php -l \"_assets\\\\controllers\\\\income.php\")",
+      "PowerShell(node --check \"_assets\\\\js\\\\income\\\\ControlDispaches.js\" 2>&1; if \\($LASTEXITCODE -eq 0\\) { \"JS OK\" } else { \"node no disponible o error\" })"
     ],
     "deny": [],
     "ask": []
