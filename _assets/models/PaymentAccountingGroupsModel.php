@@ -372,6 +372,58 @@ class PaymentAccountingGroupsModel extends Model
     }
 
     /**
+     * Agrupa una sola requisición puntual (no agrupada todavía) al momento en que
+     * Tesorería la autoriza sin que Abastos la haya enviado primero. Reutiliza el
+     * grupo del día para la misma empresa si ya existe (creado por auto_group_by_date()
+     * u otra llamada a este método), o crea uno nuevo si no.
+     */
+    public function auto_group_single_request(int $request_id, string $emp_cod, int $user_id): array
+    {
+        // 1. Buscar grupo ya creado hoy para esta empresa
+        $existing = $this->sql->select(
+            "SELECT TOP 1 id, accounting_id
+             FROM [TG].[dbo].[payment_accounting_groups]
+             WHERE emp_cod = ? AND CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
+             ORDER BY id DESC",
+            [$emp_cod]
+        );
+
+        if (!empty($existing)) {
+            $group_id      = $existing[0]['id'];
+            $accounting_id = $existing[0]['accounting_id'];
+
+            $updated = $this->sql->update(
+                "UPDATE [TG].[dbo].[payment_requests]
+                 SET accounting_group_id = ?
+                 WHERE id = ? AND accounting_group_id IS NULL",
+                [$group_id, $request_id]
+            );
+
+            if ($updated === false) {
+                return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => "No se pudo asignar la requisición #$request_id al grupo existente"];
+            }
+
+            return ['success' => true, 'accounting_id' => $accounting_id, 'group_id' => $group_id, 'message' => "Requisición agregada al grupo contable $accounting_id"];
+        }
+
+        // 2. No hay grupo del día para esta empresa: crear uno nuevo
+        $emp_name = $this->sql->select(
+            "SELECT den FROM [SG12].[dbo].[Empresas] WHERE cod = ?",
+            [$emp_cod]
+        );
+        $razon_social = $emp_name[0]['den'] ?? 'Sin empresa';
+
+        $next_id = $this->get_next_accounting_id();
+        $result  = $this->create_group($next_id, null, $emp_cod, $razon_social, $user_id, [$request_id]);
+
+        if (!$result['success']) {
+            return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => $result['message']];
+        }
+
+        return ['success' => true, 'accounting_id' => $result['accounting_id'], 'group_id' => $result['group_id'], 'message' => "Requisición agrupada en nuevo archivo contable {$result['accounting_id']}"];
+    }
+
+    /**
      * Devuelve los pagos (requisiciones) cuyos grupos de contabilidad fueron
      * creados en la fecha dada. Sirve para REENVIAR el correo de los pagos que
      * "se cerraron hoy" sin volver a agrupar nada.
