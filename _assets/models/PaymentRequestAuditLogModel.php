@@ -2,8 +2,9 @@
 
 class PaymentRequestAuditLogModel extends Model {
 
-    const OP_ADD_INVOICE    = 'ADD_INVOICE';
-    const OP_REMOVE_INVOICE = 'REMOVE_INVOICE';
+    const OP_ADD_INVOICE         = 'ADD_INVOICE';
+    const OP_REMOVE_INVOICE      = 'REMOVE_INVOICE';
+    const OP_UNAUTHORIZE_INVOICE = 'UNAUTHORIZE_INVOICE';
 
     /**
      * Registra el borrado de una factura de una requisición.
@@ -44,6 +45,29 @@ class PaymentRequestAuditLogModel extends Model {
             $user_name,
             null,
             json_encode($invoice_data, JSON_UNESCAPED_UNICODE),
+            $accounting_group_id
+        );
+    }
+
+    /**
+     * Registra la desautorización de una factura (Tesorería la regresa a la cola).
+     * Guarda el snapshot de la factura ANTES de limpiar sus campos de autorización,
+     * de modo que quede el rastro del autorizador original (authorized_by/authorized_at).
+     * @param int         $payment_id
+     * @param array       $invoice_snapshot  Fila de payment_request_invoices antes de poner NULL
+     * @param int|null    $user_id           Usuario que desautoriza
+     * @param string|null $user_name
+     * @param int|null    $accounting_group_id
+     */
+    public function log_unauthorize_invoice($payment_id, array $invoice_snapshot, $user_id, $user_name, $accounting_group_id): bool {
+        return $this->insert_log(
+            $payment_id,
+            $invoice_snapshot['id'] ?? null,
+            self::OP_UNAUTHORIZE_INVOICE,
+            $user_id,
+            $user_name,
+            json_encode($invoice_snapshot, JSON_UNESCAPED_UNICODE),
+            null,
             $accounting_group_id
         );
     }
