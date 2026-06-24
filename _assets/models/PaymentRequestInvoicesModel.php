@@ -504,11 +504,127 @@ class PaymentRequestInvoicesModel extends Model
         } catch (Exception $e) {
             $this->sql->rollback();
             error_log("Error en authorize_invoices_for_payment: " . $e->getMessage());
-            
+
             return [
                 'success' => false,
                 'message' => 'Error al autorizar facturas: ' . $e->getMessage()
             ];
+        }
+    }
+
+    /**
+     * Desautoriza ("limpia") facturas autorizadas para pago: revierte
+     * payment_authorized a 0 y authorized_amount a NULL, de modo que la factura
+     * sale de la tab "Facturas Autorizadas" y regresa a la cola de autorización
+     * de Tesorería.
+     *
+     * Reglas:
+     *  - Solo facturas con payment_authorized = 1.
+     *  - NO se desautoriza ninguna que ya tenga pagos (paid_amount > 0), para no
+     *    dejar transacciones de pago huérfanas.
+     *  - Si una requisición queda sin ninguna factura autorizada y su status era
+     *    AUTORIZADO (1), se regresa a PENDIENTE (0) para que vuelva al flujo normal.
+     *
+     * @param array $invoice_ids
+     * @return array
+     */
+    public function unauthorize_invoices(array $invoice_ids) : array {
+        $invoice_ids = array_values(array_unique(array_map('intval', $invoice_ids)));
+        $invoice_ids = array_filter($invoice_ids, fn($v) => $v > 0);
+
+        if (empty($invoice_ids)) {
+            return ['success' => false, 'message' => 'No se proporcionaron facturas válidas'];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($invoice_ids), '?'));
+
+        $this->sql->beginTransaction();
+        try {
+            // 1. Traer estado actual de las facturas solicitadas
+            $rows = $this->sql->select("
+                SELECT id, payment_request_id, folio, payment_authorized,
+                       ISNULL(paid_amount, 0) AS paid_amount
+                FROM [TG].[dbo].[payment_request_invoices]
+                WHERE id IN ($placeholders) AND is_deleted = 0
+            ", $invoice_ids);
+
+            if (!$rows) {
+                throw new Exception('No se encontraron las facturas');
+            }
+
+            $a_limpiar       = [];
+            $errores         = [];
+            $payment_req_ids = [];
+
+            foreach ($rows as $r) {
+                if ((int)$r['payment_authorized'] !== 1) {
+                    $errores[] = "Factura {$r['folio']}: no está autorizada";
+                    continue;
+                }
+                if ((float)$r['paid_amount'] > 0) {
+                    $errores[] = "Factura {$r['folio']}: tiene pagos registrados y no puede desautorizarse";
+                    continue;
+                }
+                $a_limpiar[] = (int)$r['id'];
+                $payment_req_ids[(int)$r['payment_request_id']] = true;
+            }
+
+            if (empty($a_limpiar)) {
+                throw new Exception(empty($errores)
+                    ? 'No hay facturas para desautorizar'
+                    : implode('. ', $errores));
+            }
+
+            // 2. Limpiar la autorización
+            $ph2 = implode(',', array_fill(0, count($a_limpiar), '?'));
+            $ok = $this->sql->update("
+                UPDATE [TG].[dbo].[payment_request_invoices]
+                SET payment_authorized = 0,
+                    authorized_amount  = NULL,
+                    authorized_by      = NULL,
+                    authorized_at      = NULL
+                WHERE id IN ($ph2)
+            ", $a_limpiar);
+
+            if ($ok === false) {
+                throw new Exception('Error al desautorizar las facturas');
+            }
+
+            // 3. Si alguna requisición quedó sin facturas autorizadas y estaba en
+            //    estado AUTORIZADO, regresarla a PENDIENTE.
+            foreach (array_keys($payment_req_ids) as $prid) {
+                $restantes = $this->sql->select("
+                    SELECT COUNT(*) AS n
+                    FROM [TG].[dbo].[payment_request_invoices]
+                    WHERE payment_request_id = ? AND payment_authorized = 1 AND is_deleted = 0
+                ", [$prid]);
+
+                if ($restantes && (int)$restantes[0]['n'] === 0) {
+                    $this->sql->update("
+                        UPDATE [TG].[dbo].[payment_requests]
+                        SET status = ?
+                        WHERE id = ? AND status = ?
+                    ", [
+                        PaymentRequestsModel::STATUS_PENDING,
+                        $prid,
+                        PaymentRequestsModel::STATUS_AUTHORIZED,
+                    ]);
+                }
+            }
+
+            $this->sql->commit();
+
+            return [
+                'success'        => true,
+                'desautorizadas' => count($a_limpiar),
+                'errores'        => $errores,
+                'message'        => count($a_limpiar) . ' factura(s) regresada(s) a la cola de Tesorería'
+                    . (empty($errores) ? '' : '. Omitidas: ' . implode('; ', $errores)),
+            ];
+        } catch (Exception $e) {
+            $this->sql->rollback();
+            error_log("Error en unauthorize_invoices: " . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

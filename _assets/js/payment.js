@@ -4663,9 +4663,27 @@ function cargarDesgloseFacturas(invoiceIds) {
  * Inicializar tabla de desglose con datos
  */
 function inicializarTablaDesglose(data) {
-  tablaDesgloseFacturas = $("#tablaDesgloseFacturas").DataTable({
-    data: data,
-    columns: [
+  // Guardar el dataset actual para el cálculo del total proyectado al desautorizar.
+  desgloseDataActual = data;
+
+  // Columna de selección para desautorizar — solo visible para Tesorería (68).
+  // Una factura con pagos (paid_amount > 0) no puede desautorizarse: checkbox bloqueado.
+  const colSeleccion = {
+    data: null,
+    orderable: false,
+    className: "text-center",
+    render: function (d, type, row) {
+      const pagado = parseFloat(row.paid_amount) || 0;
+      if (pagado > 0) {
+        return '<i class="fas fa-lock text-muted" title="Tiene pagos, no se puede desautorizar"></i>';
+      }
+      return '<input type="checkbox" class="chk-desautorizar" value="' + row.id +
+             '" data-monto="' + (parseFloat(row.authorized_amount) || 0) +
+             '" onchange="onToggleDesautorizar()">';
+    },
+  };
+
+  const columnasBase = [
       {
         data: "folio",
         render: function (data) {
@@ -4808,8 +4826,18 @@ function inicializarTablaDesglose(data) {
           });
         },
       },
-    ],
-    order: [[9, "asc"]], // Ordenar por vencimiento (ahora col 9)
+    ];
+
+  // Si es Tesorería, anteponer la columna de selección. Eso desplaza en 1 los
+  // índices, por lo que la columna de vencimiento (base idx 9) pasa a 10.
+  const puedeTesoreria = !!window.PUEDE_TESORERIA;
+  const columnasFinal = puedeTesoreria ? [colSeleccion, ...columnasBase] : columnasBase;
+  const ordenCol = puedeTesoreria ? 10 : 9;
+
+  tablaDesgloseFacturas = $("#tablaDesgloseFacturas").DataTable({
+    data: data,
+    columns: columnasFinal,
+    order: [[ordenCol, "asc"]], // Ordenar por vencimiento
     pageLength: 25,
     dom: "frtip",
     drawCallback: function () {
@@ -4818,6 +4846,13 @@ function inicializarTablaDesglose(data) {
   });
 
   actualizarTotalesDesglose(data);
+
+  // Reset del panel de desautorización al recargar la tabla.
+  if (puedeTesoreria) {
+    $("#desautorizarPanel").attr("style", "display:none !important;");
+    $("#btnDesautorizarSeleccionadas").prop("disabled", true);
+    onToggleDesautorizar();
+  }
 }
 
 
@@ -4859,6 +4894,111 @@ function actualizarTotalesDesglose(data) {
   if (totalND > 0) notasHtml += (totalNC > 0 ? "<br>" : "") + '<small class="text-danger">+' + fmt(totalND) + "</small>";
   $("#footerDesgloseNotas").html(notasHtml);
   $("#footerDesgloseSaldoNeto").html('<strong class="text-danger">' + fmt(totalSaldoNeto) + "</strong>");
+}
+
+
+/**
+ * Tesorería: recalcula en vivo cuánto quedaría autorizado si se desautorizan
+ * las facturas marcadas, para que el usuario compare contra el saldo que tiene
+ * en el banco antes de confirmar.
+ */
+function onToggleDesautorizar() {
+  if (!window.PUEDE_TESORERIA) return;
+
+  const seleccionadas = $(".chk-desautorizar:checked");
+  const count = seleccionadas.length;
+
+  // Total autorizado actual del grupo (todas las facturas del desglose).
+  let totalAutorizado = 0;
+  (desgloseDataActual || []).forEach(function (f) {
+    totalAutorizado += parseFloat(f.authorized_amount) || 0;
+  });
+
+  // Monto que se restaría con lo marcado.
+  let bajaria = 0;
+  seleccionadas.each(function () {
+    bajaria += parseFloat($(this).data("monto")) || 0;
+  });
+
+  const proyectado = totalAutorizado - bajaria;
+  const fmt = function (v) {
+    return "$" + v.toLocaleString("es-MX", { minimumFractionDigits: 2 });
+  };
+
+  $("#desautorizarCount").text(count);
+  $("#desgloseAutorizadoProyectado").text(fmt(proyectado));
+  $("#desgloseBajaraEn").text(bajaria > 0 ? "(−" + fmt(bajaria) + ")" : "");
+  $("#btnDesautorizarSeleccionadas").prop("disabled", count === 0);
+
+  // Mostrar/ocultar el panel según haya o no selección.
+  if (count > 0) {
+    $("#desautorizarPanel").attr("style", "display:flex !important;");
+  } else {
+    $("#desautorizarPanel").attr("style", "display:none !important;");
+  }
+}
+
+
+/**
+ * Tesorería: desautoriza ("limpia") las facturas marcadas, regresándolas a la
+ * cola de autorización. Pide confirmación y refresca el desglose y la tabla.
+ */
+function desautorizarSeleccionadas() {
+  const ids = $(".chk-desautorizar:checked")
+    .map(function () { return $(this).val(); })
+    .get();
+
+  if (ids.length === 0) {
+    alertify.error("Selecciona al menos una factura");
+    return;
+  }
+
+  alertify
+    .confirm(
+      '<i class="fas fa-eraser text-warning me-1"></i> Desautorizar facturas',
+      '<div class="text-center"><p class="mb-2">¿Regresar <strong>' + ids.length +
+        ' factura(s)</strong> a la cola de autorización de Tesorería?</p>' +
+        '<small class="text-muted">Se limpiará su autorización. Podrás volver a autorizarlas después.</small></div>',
+      function () {
+        $.ajax({
+          url: "/payment/unauthorize_invoices",
+          type: "POST",
+          dataType: "json",
+          data: { invoice_ids: JSON.stringify(ids) },
+        })
+          .done(function (resp) {
+            if (resp.success) {
+              alertify.success(resp.message || "Facturas desautorizadas");
+              // Recargar el desglose con las facturas restantes del grupo.
+              const restantes = (desgloseDataActual || [])
+                .map(function (f) { return f.id; })
+                .filter(function (id) { return ids.indexOf(String(id)) === -1; });
+
+              if (restantes.length > 0) {
+                if ($.fn.DataTable.isDataTable("#tablaDesgloseFacturas")) {
+                  $("#tablaDesgloseFacturas").DataTable().destroy();
+                }
+                cargarDesgloseFacturas(restantes.join(","));
+              } else {
+                // Ya no quedan facturas en el grupo: cerrar el modal.
+                $("#modalDesgloseFacturas").modal("hide");
+              }
+
+              // Refrescar la tabla principal de facturas autorizadas.
+              if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
+                $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
+              }
+            } else {
+              alertify.error(resp.message || "No se pudo desautorizar");
+            }
+          })
+          .fail(function () {
+            alertify.error("Error de comunicación");
+          });
+      },
+      function () { alertify.message("Cancelado"); }
+    )
+    .set("labels", { ok: "Desautorizar", cancel: "Cancelar" });
 }
 
 

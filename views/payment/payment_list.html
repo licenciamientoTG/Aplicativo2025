@@ -289,6 +289,7 @@
                     <div id="resumenTablaContainer" style="font-size:.82rem;">
                         <!-- Se rellena por JS -->
                     </div>
+                </div>
             </div>
         </div>
 
@@ -566,6 +567,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <table id="tablaDesgloseFacturas" class="table table-sm w-100 table-hover table-bordered">
                             <thead class="table-light">
                                 <tr>
+                                    {% if authorized(68) %}<th class="text-center" style="width:34px;"><i class="fas fa-eraser text-muted" title="Marcar para desautorizar"></i></th>{% endif %}
                                     <th>Folio</th>
                                     <th>Factura</th>
                                     <th>Estación</th>
@@ -585,7 +587,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             </tbody>
                             <tfoot class="table-light">
                                 <tr>
-                                    <th colspan="5" class="text-end">TOTALES:</th>
+                                    <th colspan="{% if authorized(68) %}6{% else %}5{% endif %}" class="text-end">TOTALES:</th>
                                     <th class="text-end" id="footerDesgloseAutorizado">$0.00</th>
                                     <th class="text-end" id="footerDesgloseSaldo">$0.00</th>
                                     <th class="text-end" id="footerDesgloseNotas"></th>
@@ -596,7 +598,19 @@ document.addEventListener('DOMContentLoaded', function() {
                         </table>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer justify-content-between">
+                    {% if authorized(68) %}
+                    <div id="desautorizarPanel" class="d-flex align-items-center gap-2" style="display:none !important;">
+                        <span class="text-muted" style="font-size:.8rem;">
+                            Quedaría autorizado:
+                            <strong id="desgloseAutorizadoProyectado" class="text-success">$0.00</strong>
+                            <span class="text-danger" id="desgloseBajaraEn" style="font-size:.78rem;"></span>
+                        </span>
+                        <button type="button" class="btn btn-warning btn-sm" id="btnDesautorizarSeleccionadas" onclick="desautorizarSeleccionadas()" disabled>
+                            <i class="fas fa-eraser"></i> Desautorizar (<span id="desautorizarCount">0</span>)
+                        </button>
+                    </div>
+                    {% endif %}
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times"></i> Cerrar
                     </button>

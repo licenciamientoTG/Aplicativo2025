@@ -297,12 +297,19 @@ class PaymentAccountingGroupsModel extends Model
                   SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
                   WHERE pri.payment_request_id = pr.id AND pri.is_deleted = 0
               )
+              -- Que NO exista ninguna factura normal sin archivo. Las notas de cargo
+              -- (is_debit_note = 1, falsos fletes) se capturan a mano y por diseno no
+              -- tienen CFDI/PDF, asi que se omiten de este requisito, igual que ya lo
+              -- hacen get_payments_ready_for_request() y el calculo de pdf_status.
               AND NOT EXISTS (
                   SELECT 1 FROM [TG].[dbo].[payment_request_invoices] pri
                   LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
                       ON pri.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
                       AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
-                  WHERE pri.payment_request_id = pr.id AND pri.is_deleted = 0 AND fr.UUID IS NULL
+                  WHERE pri.payment_request_id = pr.id
+                    AND pri.is_debit_note = 0
+                    AND pri.is_deleted = 0
+                    AND fr.UUID IS NULL
               )
             ORDER BY pr.emp_cod, pr.id
         ";

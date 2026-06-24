@@ -2783,6 +2783,41 @@ class Payment
     }
 
 
+    /**
+     * Desautoriza ("limpia") facturas autorizadas para pago, regresándolas a la
+     * cola de autorización de Tesorería. Solo Tesorería (68). No permite
+     * desautorizar facturas con pagos registrados.
+     */
+    public function unauthorize_invoices()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede desautorizar facturas']);
+                return;
+            }
+
+            $raw = $_POST['invoice_ids'] ?? '';
+            // Acepta JSON (["1","2"]) o lista separada por comas ("1,2").
+            $invoice_ids = json_decode($raw, true);
+            if (!is_array($invoice_ids)) {
+                $invoice_ids = array_filter(array_map('trim', explode(',', (string)$raw)));
+            }
+
+            if (empty($invoice_ids)) {
+                json_output(['success' => false, 'message' => 'No se proporcionaron facturas']);
+                return;
+            }
+
+            $result = $this->paymentRequestInvoicesModel->unauthorize_invoices($invoice_ids);
+            json_output($result);
+        } catch (Exception $e) {
+            error_log("Error en unauthorize_invoices: " . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+        }
+    }
+
+
     public function generate_santander_layout()
     {
         try {
