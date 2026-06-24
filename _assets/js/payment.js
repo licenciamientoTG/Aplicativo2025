@@ -1246,6 +1246,95 @@ async function generatePayment() {
 }
 
 
+/**
+ * Agrega una fila de cabeceras con filtro por columna a una DataTable,
+ * igual que la del tab de Pagos: un input de texto por columna visible
+ * (placeholder = titulo de la columna) que filtra esa columna. Se reconstruye
+ * cuando cambia la visibilidad de columnas. Reutilizable para cualquier tabla.
+ *
+ * @param {string} tableId  id del <table> (sin #)
+ * @param {object} api      instancia DataTables API (this.api() dentro de initComplete)
+ */
+function addColumnFilters(tableId, api) {
+  var settings = api.settings()[0];
+  var usaScroll = !!(settings.oScroll.sX || settings.oScroll.sY);
+
+  // Con scrollX/scrollY DataTables clona el thead en un contenedor fijo
+  // (.dataTables_scrollHead); la fila de filtros debe ir en ESE header clonado
+  // para que sea visible. Sin scroll, va en el thead normal de la tabla.
+  function getHeaderContainer() {
+    if (usaScroll) {
+      return $("#" + tableId + "_wrapper .dataTables_scrollHead thead");
+    }
+    return $("#" + tableId + " thead");
+  }
+
+  function rebuildFilterRow() {
+    var $head = getHeaderContainer();
+    if (!$head.length) return;
+
+    // Guardar lo que el usuario ya hubiera escrito antes de reconstruir
+    var valores = {};
+    $head.find("tr.filter th input").each(function () {
+      valores[$(this).closest("th").data("col-idx")] = this.value;
+    });
+
+    $head.find("tr.filter").remove();
+
+    // Iterar sobre los <th> reales de la fila de cabecera (mas confiable que
+    // api.columns().every() durante initComplete, que a veces no itera todavia).
+    var $headerCells = $head.find("tr:first th");
+    if (!$headerCells.length) return;
+
+    var totalCols = $headerCells.length;
+    var $filterRow = $('<tr class="filter"></tr>');
+    $headerCells.each(function (colIdx) {
+      var title = $(this).text().trim();
+      var isLast = colIdx === totalCols - 1;
+      // Columnas sin titulo (checkbox, acciones) no llevan input
+      if (isLast || title === "") {
+        $filterRow.append('<th data-col-idx="' + colIdx + '"></th>');
+      } else {
+        var $th = $('<th data-col-idx="' + colIdx + '"></th>');
+        var $input = $('<input type="text" class="form-control form-control-sm" placeholder="' +
+          title + '" style="font-size:.75rem;" />');
+        if (valores[colIdx] !== undefined) $input.val(valores[colIdx]);
+        $th.append($input);
+        $filterRow.append($th);
+      }
+    });
+    $head.append($filterRow);
+
+    $head.find("tr.filter th input").on("keyup change", function () {
+      var colIdx = $(this).closest("th").data("col-idx");
+      api.column(colIdx).search(this.value).draw();
+    });
+
+    // No ordenar al hacer click/escribir sobre la fila de filtros
+    $head.find("tr.filter th input").on("click", function (e) {
+      e.stopPropagation();
+    });
+  }
+
+  rebuildFilterRow();
+  // Fallback: reconstruir tras el primer render completo, cuando el header
+  // (clonado en caso de scroll) ya esta en el DOM. Aplica con y sin scroll.
+  setTimeout(rebuildFilterRow, 50);
+
+  // El header clonado se regenera al ajustar columnas (resize, recalculo de
+  // anchos). Reinsertamos la fila preservando el texto que el usuario tenia.
+  if (usaScroll) {
+    api.on("column-sizing.dt", function () {
+      rebuildFilterRow();
+    });
+  }
+
+  api.on("column-visibility.dt", function () {
+    rebuildFilterRow();
+  });
+}
+
+
 function loadPaymentList() {
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
@@ -4251,6 +4340,9 @@ function loadAuthorizedPendingInvoices() {
         $(row).css("background-color", "#fff3cd");
       }
     },
+    initComplete: function () {
+      addColumnFilters("tabla_facturas_autorizadas", this.api());
+    },
     drawCallback: function () {
       const table = this.api();
       updateBankSummaryFromTable(table);
@@ -4847,10 +4939,17 @@ function inicializarTablaDesglose(data) {
     data: data,
     columns: columnasFinal,
     order: [[ordenCol, "asc"]], // Ordenar por vencimiento
-    pageLength: 25,
-    dom: "frtip",
+    paging: false, // Sin paginacion: todo se ve via scroll interno
+    info: false,
+    dom: "frt",
+    scrollY: "45vh", // Scroll interno: el cuerpo scrollea y deja header/footer fijos
+    scrollX: true,
+    scrollCollapse: true,
     drawCallback: function () {
       actualizarTotalesDesglose(data);
+    },
+    initComplete: function () {
+      addColumnFilters("tablaDesgloseFacturas", this.api());
     },
   });
 
@@ -4895,14 +4994,16 @@ function actualizarTotalesDesglose(data) {
   $("#desgloseTotalND").text("+" + fmt(totalND));
   $("#desgloseSaldoTotal").text(fmt(totalSaldoNeto));
 
-  // Actualizar footer de la tabla
-  $("#footerDesgloseAutorizado").html("<strong>" + fmt(totalAutorizado) + "</strong>");
-  $("#footerDesgloseSaldo").html(fmt(totalSaldo));
+  // Actualizar footer de la tabla. Con scrollY, DataTables clona el tfoot en un
+  // contenedor fijo aparte, asi que usamos selectores de clase (no #id) para
+  // actualizar tanto el footer original como el clon visible.
+  $(".footerDesgloseAutorizado").html("<strong>" + fmt(totalAutorizado) + "</strong>");
+  $(".footerDesgloseSaldo").html(fmt(totalSaldo));
   var notasHtml = "";
   if (totalNC > 0) notasHtml += '<small class="text-success">-' + fmt(totalNC) + "</small>";
   if (totalND > 0) notasHtml += (totalNC > 0 ? "<br>" : "") + '<small class="text-danger">+' + fmt(totalND) + "</small>";
-  $("#footerDesgloseNotas").html(notasHtml);
-  $("#footerDesgloseSaldoNeto").html('<strong class="text-danger">' + fmt(totalSaldoNeto) + "</strong>");
+  $(".footerDesgloseNotas").html(notasHtml);
+  $(".footerDesgloseSaldoNeto").html('<strong class="text-danger">' + fmt(totalSaldoNeto) + "</strong>");
 }
 
 

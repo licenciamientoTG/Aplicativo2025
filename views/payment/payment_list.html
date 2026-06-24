@@ -46,6 +46,33 @@
         box-sizing: border-box;
     }
 
+    /* Fila de filtros para las tablas con scroll (Desglose) y Facturas Autorizadas */
+    #tablaDesgloseFacturas_wrapper thead tr.filter th,
+    #tabla_facturas_autorizadas thead tr.filter th {
+        background-color: #e2e8f0 !important;
+        padding: 3px 6px !important;
+    }
+    #tablaDesgloseFacturas_wrapper thead tr.filter th input,
+    #tabla_facturas_autorizadas thead tr.filter th input {
+        font-size: 0.7rem;
+        padding: 2px 5px;
+        height: 24px;
+        border-radius: 3px;
+        border: 1px solid #cbd5e1;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    /* En tablas con scrollY/scrollX, DataTables envuelve el contenido del header
+       en .dataTables_sizing (height:0; overflow:hidden) para medir anchos. Hay que
+       anularlo SOLO en la fila de filtros para que los inputs sean visibles. */
+    #tablaDesgloseFacturas_wrapper .dataTables_scrollHead thead tr.filter th .dataTables_sizing {
+        height: auto !important;
+        overflow: visible !important;
+    }
+    #tablaDesgloseFacturas_wrapper .dataTables_scrollHead thead tr.filter {
+        height: auto !important;
+    }
+
     .auth-box { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font-size: 12px; transition: all .2s; }
     .auth-box.bg-success { background-color: #dcfce7 !important; color: #16a34a !important; }
     .auth-box.bg-warning { background-color: #fef9c3 !important; color: #ca8a04 !important; }
@@ -562,8 +589,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         </div>
                     </div>
 
-                    <!-- Tabla de Facturas -->
-                    <div class="table-responsive">
+                    {% if authorized(68) %}
+                    <!-- Panel de desautorización (fijo arriba, siempre visible para Tesorería) -->
+                    <div id="desautorizarPanel" class="alert alert-warning d-flex align-items-center justify-content-between gap-2 mb-3 py-2" style="display:none !important;">
+                        <span class="text-dark" style="font-size:.85rem;">
+                            Quedaría autorizado:
+                            <strong id="desgloseAutorizadoProyectado" class="text-success">$0.00</strong>
+                            <span class="text-danger" id="desgloseBajaraEn" style="font-size:.8rem;"></span>
+                        </span>
+                        <button type="button" class="btn btn-warning btn-sm" id="btnDesautorizarSeleccionadas" onclick="desautorizarSeleccionadas()" disabled>
+                            <i class="fas fa-eraser"></i> Desautorizar (<span id="desautorizarCount">0</span>)
+                        </button>
+                    </div>
+                    {% endif %}
+
+                    <!-- Tabla de Facturas (scroll interno: header y footer fijos) -->
+                    <div>
                         <table id="tablaDesgloseFacturas" class="table table-sm w-100 table-hover table-bordered">
                             <thead class="table-light">
                                 <tr>
@@ -588,29 +629,17 @@ document.addEventListener('DOMContentLoaded', function() {
                             <tfoot class="table-light">
                                 <tr>
                                     <th colspan="{% if authorized(68) %}6{% else %}5{% endif %}" class="text-end">TOTALES:</th>
-                                    <th class="text-end" id="footerDesgloseAutorizado">$0.00</th>
-                                    <th class="text-end" id="footerDesgloseSaldo">$0.00</th>
-                                    <th class="text-end" id="footerDesgloseNotas"></th>
-                                    <th class="text-end" id="footerDesgloseSaldoNeto">$0.00</th>
+                                    <th class="text-end footerDesgloseAutorizado">$0.00</th>
+                                    <th class="text-end footerDesgloseSaldo">$0.00</th>
+                                    <th class="text-end footerDesgloseNotas"></th>
+                                    <th class="text-end footerDesgloseSaldoNeto">$0.00</th>
                                     <th colspan="3"></th>
                                 </tr>
                             </tfoot>
                         </table>
                     </div>
                 </div>
-                <div class="modal-footer justify-content-between">
-                    {% if authorized(68) %}
-                    <div id="desautorizarPanel" class="d-flex align-items-center gap-2" style="display:none !important;">
-                        <span class="text-muted" style="font-size:.8rem;">
-                            Quedaría autorizado:
-                            <strong id="desgloseAutorizadoProyectado" class="text-success">$0.00</strong>
-                            <span class="text-danger" id="desgloseBajaraEn" style="font-size:.78rem;"></span>
-                        </span>
-                        <button type="button" class="btn btn-warning btn-sm" id="btnDesautorizarSeleccionadas" onclick="desautorizarSeleccionadas()" disabled>
-                            <i class="fas fa-eraser"></i> Desautorizar (<span id="desautorizarCount">0</span>)
-                        </button>
-                    </div>
-                    {% endif %}
+                <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times"></i> Cerrar
                     </button>
