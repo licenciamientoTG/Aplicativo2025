@@ -116,7 +116,20 @@
       "Bash(echo \"exit:$?\")",
       "Bash($SQLCMD *)",
       "Bash('/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd' -S 192.168.0.6 -U cguser -P sahei1712 -d TG -C -b -Q ' *)",
-      "Bash(echo \"rc=$?\")"
+      "Bash(echo \"rc=$?\")",
+      "Bash('/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd' -S 192.168.0.6 -U cguser -P sahei1712 -d TG -C -h -1 -W -s '|' -Q ' *)",
+      "Bash('/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/sqlcmd' -S 192.168.0.6 -U cguser -P sahei1712 -d TG -C -h -1 -W -Q 'SET NOCOUNT ON; SELECT @@VERSION;')",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auto-agrupar-al-autorizar.md 1)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package c4d800a a672c55)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package c4d800a 0082a56)",
+      "Bash(sed -i 's|Task 1: pendiente \\(modelo auto_group_single_request\\)|Task 1: complete \\(commits c4d800a..0082a56, review clean; 2 Important fixed; Minor: failure messages identical pre/post-check\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auto-agrupar-al-autorizar.md 2)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 0082a56 26bcb71)",
+      "Bash(sed -i 's|Task 2: pendiente \\(controller authorize_payment_execution\\)|Task 2: complete \\(commit 26bcb71, review clean, no findings\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auto-agrupar-al-autorizar.md 3)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 26bcb71 83a00e7)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package c4d800a 83a00e7)",
+      "Bash(echo \"=== commits en el rango ===\")"
     ],
     "deny": [],
     "ask": []
