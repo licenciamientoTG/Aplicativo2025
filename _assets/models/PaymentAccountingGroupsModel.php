@@ -379,6 +379,13 @@ class PaymentAccountingGroupsModel extends Model
      */
     public function auto_group_single_request(int $request_id, string $emp_cod, int $user_id): array
     {
+        // 0. Sin empresa asignada no se puede agrupar de forma segura: una
+        // emp_cod vacía empataría con CUALQUIER otra requisición sin empresa
+        // creada el mismo día, mezclando grupos de empresas distintas.
+        if (trim($emp_cod) === '') {
+            return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => 'La requisición no tiene empresa asignada; no se puede agrupar automáticamente'];
+        }
+
         // 1. Buscar grupo ya creado hoy para esta empresa
         $existing = $this->sql->select(
             "SELECT TOP 1 id, accounting_id
@@ -392,6 +399,20 @@ class PaymentAccountingGroupsModel extends Model
             $group_id      = $existing[0]['id'];
             $accounting_id = $existing[0]['accounting_id'];
 
+            // El wrapper sql->update() solo devuelve true/false según si el
+            // execute() del statement tuvo éxito (rowCount() está deshabilitado
+            // en MySqlPdoHandler::update()), por lo que NO distingue "0 filas
+            // afectadas" de "1+ filas afectadas". Para reportar éxito de forma
+            // correcta verificamos explícitamente el estado anterior y posterior.
+            $current = $this->sql->select(
+                "SELECT accounting_group_id FROM [TG].[dbo].[payment_requests] WHERE id = ?",
+                [$request_id]
+            );
+
+            if (empty($current) || $current[0]['accounting_group_id'] !== null) {
+                return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => 'La requisición ya está agrupada o no existe; no se pudo asignar al grupo del día'];
+            }
+
             $updated = $this->sql->update(
                 "UPDATE [TG].[dbo].[payment_requests]
                  SET accounting_group_id = ?
@@ -401,6 +422,17 @@ class PaymentAccountingGroupsModel extends Model
 
             if ($updated === false) {
                 return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => "No se pudo asignar la requisición #$request_id al grupo existente"];
+            }
+
+            // Confirmar que la fila realmente quedó asignada al grupo (cubre el
+            // caso de condición de carrera entre la verificación y el UPDATE).
+            $confirm = $this->sql->select(
+                "SELECT accounting_group_id FROM [TG].[dbo].[payment_requests] WHERE id = ?",
+                [$request_id]
+            );
+
+            if (empty($confirm) || (int)$confirm[0]['accounting_group_id'] !== (int)$group_id) {
+                return ['success' => false, 'accounting_id' => null, 'group_id' => null, 'message' => 'La requisición ya está agrupada o no existe; no se pudo asignar al grupo del día'];
             }
 
             return ['success' => true, 'accounting_id' => $accounting_id, 'group_id' => $group_id, 'message' => "Requisición agregada al grupo contable $accounting_id"];
