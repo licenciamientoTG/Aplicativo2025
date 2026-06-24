@@ -5500,130 +5500,83 @@ function abrirModalRegistroPago() {
 }
 
 
-/**
- * ✅ Muestra modal para registrar el pago
- */
+// Estado del nuevo modal Registrar Pago (multi-comprobante)
+let regPagoFacturas = [];          // facturas de la línea: {id, folio, factura, estacion, authorized_amount, asignadoA}
+let regPagoComprobantes = [];      // comprobantes leídos: {file, archivo, banco, fecha, referencia, importe, error}
+let regPagoComprobanteActivo = null; // índice en regPagoComprobantes
+let regPagoBanco = "";
+
 function mostrarModalRegistroPago(gruposSeleccionados, banco) {
-  // Extraer todos los invoice_ids
+  // Reset de estado
+  regPagoFacturas = [];
+  regPagoComprobantes = [];
+  regPagoComprobanteActivo = null;
+  regPagoBanco = banco;
+
+  // Reunir todos los invoice_ids de los grupos seleccionados
   const todosLosIds = [];
   gruposSeleccionados.forEach((grupo) => {
-    const ids = String(grupo.invoice_ids).split(",").map((id) => parseInt(id.trim()));
-    todosLosIds.push(...ids);
+    String(grupo.invoice_ids).split(",").forEach((id) => {
+      const n = parseInt(String(id).trim());
+      if (n > 0) todosLosIds.push(n);
+    });
   });
 
-  // Calcular totales
-  const totalGrupos = gruposSeleccionados.length;
-  const totalFacturas = todosLosIds.length;
-  const totalMonto = gruposSeleccionados.reduce(
-    (sum, g) => sum + parseFloat(g.monto),
-    0,
-  );
-
-  // Obtener empresa única
+  // Header resumen
   const empresas = [...new Set(gruposSeleccionados.map((g) => g.empresa))];
-  const empresasTexto =
-    empresas.length === 1 ? empresas[0] : `${empresas.length} empresas`;
-
-  // Color del banco
+  const empresasTexto = empresas.length === 1 ? empresas[0] : `${empresas.length} empresas`;
+  const totalMonto = gruposSeleccionados.reduce((s, g) => s + parseFloat(g.monto), 0);
   const bancoColor = banco === "Santander" ? "#ec1c24" : banco === "Banorte" ? "#c9302c" : "#6c757d";
-  const bancoIcon = banco === "Santander" ? "fas fa-university" : banco === "Banorte" ? "fas fa-piggy-bank" : "fas fa-university";
+  const bancoIcon = banco === "Santander" ? "fas fa-university" : "fas fa-piggy-bank";
 
-  // ✅ MODAL CON FORMULARIO
-  const modalHTML = `
-        <div class="text-start" style="font-family: inherit;">
-
-            <!-- Header banco + resumen -->
-            <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                <div class="d-flex align-items-center gap-2 mb-3">
-                    <div style="background: ${bancoColor}; border-radius: 6px; width: 36px; height: 36px; display:flex; align-items:center; justify-content:center;">
-                        <i class="${bancoIcon} text-white"></i>
-                    </div>
-                    <div>
-                        <div style="color: #fff; font-weight: 600; font-size: 0.95rem;">${banco}</div>
-                        <div style="color: #adb5bd; font-size: 0.75rem;">Pago a realizar</div>
-                    </div>
-                </div>
-                <div class="row g-2 text-center">
-                    <div class="col-4">
-                        <div style="background: rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 4px;">
-                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Empresa</div>
-                            <div style="color: #fff; font-size: 0.82rem; font-weight: 600; margin-top: 2px;">${empresasTexto}</div>
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        <div style="background: rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 4px;">
-                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Facturas</div>
-                            <div style="color: #fff; font-size: 0.82rem; font-weight: 600; margin-top: 2px;">${totalFacturas} <span style="font-size:0.7rem; color:#adb5bd;">(${totalGrupos} grupos)</span></div>
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        <div style="background: rgba(40,167,69,0.2); border: 1px solid rgba(40,167,69,0.4); border-radius: 6px; padding: 8px 4px;">
-                            <div style="color: #adb5bd; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px;">Total</div>
-                            <div style="color: #5cb85c; font-size: 0.88rem; font-weight: 700; margin-top: 2px;">$${totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Formulario -->
-            <form id="formRegistroPago">
-                <div class="mb-3">
-                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <i class="fas fa-calendar-check me-1 text-primary"></i> Fecha de Pago <span class="text-danger">*</span>
-                    </label>
-                    <input type="date" class="form-control form-control-sm" id="fecha_pago" required
-                           value="${new Date().toISOString().split("T")[0]}" max="${new Date().toISOString().split("T")[0]}">
-                    <small class="text-muted" style="font-size:0.72rem;">Fecha en que se ejecutó el pago en el banco</small>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <i class="fas fa-hashtag me-1 text-primary"></i> Referencia Bancaria <span class="text-danger">*</span>
-                    </label>
-                    <input type="text" class="form-control form-control-sm" id="referencia_bancaria"
-                           placeholder="Ej: 123456789" required maxlength="50">
-                    <small class="text-muted" style="font-size:0.72rem;">Folio o referencia del banco</small>
-                </div>
-
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <i class="fas fa-comment-dots me-1 text-primary"></i> Observaciones
-                    </label>
-                    <textarea class="form-control form-control-sm" id="observaciones_pago" rows="2"
-                              placeholder="Notas adicionales (opcional)"></textarea>
-                </div>
-
-                <div class="mb-2">
-                    <label class="form-label fw-semibold mb-1" style="font-size: 0.78rem; color: #6c757d; text-transform: uppercase; letter-spacing: 0.5px;">
-                        <i class="fas fa-paperclip me-1 text-primary"></i> Comprobante
-                        <span class="text-muted fw-normal">(opcional — PDF, JPG, PNG · máx 10 MB)</span>
-                    </label>
-                    <input type="file" class="form-control form-control-sm" id="comprobante_pago"
-                           accept=".pdf,.jpg,.jpeg,.png">
-                </div>
-
-                <input type="hidden" id="invoice_ids_pago" value='${JSON.stringify(todosLosIds)}'>
-            </form>
+  $("#regPagoHeaderResumen").html(`
+    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 8px; padding: 14px;">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <div style="background:${bancoColor};border-radius:6px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;">
+          <i class="${bancoIcon} text-white"></i>
         </div>
-    `;
+        <div>
+          <div style="color:#fff;font-weight:600;font-size:.95rem;">${banco}</div>
+          <div style="color:#adb5bd;font-size:.72rem;">${empresasTexto} · ${todosLosIds.length} factura(s) · $${totalMonto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</div>
+        </div>
+      </div>
+    </div>`);
 
-  alertify
-    .confirm(
-      '<i class="fas fa-check-circle text-success me-1"></i> Registrar Pago Ejecutado',
-      modalHTML,
-      function () {
-        ejecutarRegistroPago();
-      },
-      function () {
-        alertify.message("Registro cancelado");
-      },
-    )
-    .set({
-      labels: { ok: '<i class="fas fa-check me-1"></i> Registrar Pago', cancel: '<i class="fas fa-times me-1"></i> Cancelar' },
-      maximizable: false,
-      closable: true,
-    })
-    .resizeTo("480px", "auto");
+  // Resetear UI
+  $("#regPagoInput").val("");
+  $("#regPagoComprobantesCards").html("");
+  $("#regPagoFacturasBody").html('<tr><td colspan="6" class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Cargando facturas...</td></tr>');
+  $("#regPagoSinComprobante").show();
+  $("#btnGuardarRegistroPago").prop("disabled", true);
+  $("#regPagoResumenSel").text("");
+
+  $("#modalRegistroPagoNuevo").modal("show");
+
+  // Cargar detalle de facturas (mismo endpoint que el desglose)
+  $.ajax({
+    url: "/payment/get_invoices_detail",
+    type: "POST",
+    data: { invoice_ids: todosLosIds.join(",") },
+    dataType: "json",
+    success: function (response) {
+      if (response.success && response.data) {
+        regPagoFacturas = response.data.map((f) => ({
+          id: f.id,
+          folio: f.folio,
+          factura: f.factura || "",
+          estacion: f.estacion || "",
+          authorized_amount: parseFloat(f.authorized_amount) || 0,
+          asignadoA: null,
+        }));
+        renderRegPagoFacturas();
+      } else {
+        $("#regPagoFacturasBody").html('<tr><td colspan="6" class="text-center text-danger">No se pudieron cargar las facturas</td></tr>');
+      }
+    },
+    error: function () {
+      $("#regPagoFacturasBody").html('<tr><td colspan="6" class="text-center text-danger">Error de conexión</td></tr>');
+    },
+  });
 }
 
 
