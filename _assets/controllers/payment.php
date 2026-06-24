@@ -1833,7 +1833,7 @@ class Payment
             if (empty($payment['accounting_group_id'])) {
                 $group_result = $this->PaymentAccountingGroupsModel->auto_group_single_request(
                     (int)$payment_id,
-                    $payment['emp_cod'],
+                    (string)($payment['emp_cod'] ?? ''),
                     $user_id
                 );
                 if ($group_result['success']) {
