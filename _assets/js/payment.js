@@ -5563,8 +5563,8 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
         regPagoFacturas = response.data.map((f) => ({
           id: f.id,
           folio: f.folio,
-          factura: f.factura || "",
-          estacion: f.estacion || "",
+          factura: f.invoice_number || "",
+          estacion: f.estacion_nombre || "",
           authorized_amount: parseFloat(f.authorized_amount) || 0,
           asignadoA: null,
         }));
