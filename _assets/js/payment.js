@@ -5707,8 +5707,28 @@ function subirRegPagoComprobantes(fileList) {
     alertify.warning("Selecciona archivos PDF");
     return;
   }
-  // Leer cada PDF de forma independiente reutilizando preview_comprobantes_match
+  // Reservar un slot fijo por archivo, en el orden en que se soltaron,
+  // para evitar que el orden de resolución de los fetch determine la
+  // posición/activación de las tarjetas (condición de carrera).
+  const baseIdx = regPagoComprobantes.length;
   files.forEach((file) => {
+    regPagoComprobantes.push({
+      file: file,
+      archivo: file.name,
+      banco: "",
+      fecha: new Date().toISOString().split("T")[0],
+      referencia: "",
+      importe: 0,
+      error: "Leyendo...",
+    });
+  });
+  // Activar siempre el primer archivo recién agregado (determinista)
+  regPagoComprobanteActivo = baseIdx;
+  recalcularRegPago();
+
+  // Leer cada PDF de forma independiente reutilizando preview_comprobantes_match
+  files.forEach((file, k) => {
+    const slot = baseIdx + k;
     const fd = new FormData();
     fd.append("comprobantes[]", file);
     fetch("/payment/preview_comprobantes_match", { method: "POST", body: fd })
@@ -5716,7 +5736,7 @@ function subirRegPagoComprobantes(fileList) {
       .then((res) => {
         const c = (res.success && res.comprobantes && res.comprobantes[0])
           ? res.comprobantes[0].comprobante : null;
-        regPagoComprobantes.push({
+        regPagoComprobantes[slot] = {
           file: file,
           archivo: file.name,
           banco: c ? c.banco : "",
@@ -5724,17 +5744,14 @@ function subirRegPagoComprobantes(fileList) {
           referencia: c ? (c.referencia || "") : "",
           importe: c ? (parseFloat(c.importe) || 0) : 0,
           error: c ? (c.error || "") : "No se pudo leer el PDF",
-        });
-        // Activar el recién agregado
-        regPagoComprobanteActivo = regPagoComprobantes.length - 1;
+        };
         recalcularRegPago();
       })
       .catch(() => {
-        regPagoComprobantes.push({
+        regPagoComprobantes[slot] = {
           file: file, archivo: file.name, banco: "", fecha: new Date().toISOString().split("T")[0],
           referencia: "", importe: 0, error: "Error de conexión al leer el PDF",
-        });
-        regPagoComprobanteActivo = regPagoComprobantes.length - 1;
+        };
         recalcularRegPago();
       });
   });
