@@ -3285,6 +3285,15 @@ function ejecutarAutorizacionPago(facturasAutorizar) {
     success: function (response) {
       if (response.success) {
         alertify.success("✓ " + response.message);
+
+        if (response.auto_grouped) {
+          alertify.message(
+            "Esta requisición no había sido enviada por Abastos — se agrupó automáticamente en el archivo contable " +
+              response.accounting_id +
+              " al autorizarla."
+          );
+        }
+
         $("#modalAutorizarPago").modal("hide");
 
         setTimeout(() => {
