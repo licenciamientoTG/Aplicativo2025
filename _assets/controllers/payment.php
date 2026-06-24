@@ -1826,6 +1826,22 @@ class Payment
                 return;
             }
 
+            // Si Tesorería autoriza una requisición que Abastos aún no agrupó/envió
+            // por correo, se agrupa en este momento para no perder trazabilidad contable.
+            $auto_grouped = false;
+            $accounting_id = null;
+            if (empty($payment['accounting_group_id'])) {
+                $group_result = $this->PaymentAccountingGroupsModel->auto_group_single_request(
+                    (int)$payment_id,
+                    $payment['emp_cod'],
+                    $user_id
+                );
+                if ($group_result['success']) {
+                    $auto_grouped = true;
+                    $accounting_id = $group_result['accounting_id'];
+                }
+            }
+
             // ========================================
             // PROCESAR AUTORIZACIONES USANDO EL MODELO
             // ========================================
@@ -1850,7 +1866,9 @@ class Payment
                     'message' => $mensaje,
                     'facturas_autorizadas' => $result['facturas_autorizadas'],
                     'total_autorizado' => number_format($result['total_autorizado'], 2, '.', ''),
-                    'errores' => $result['errores'] ?? []
+                    'errores' => $result['errores'] ?? [],
+                    'auto_grouped' => $auto_grouped,
+                    'accounting_id' => $accounting_id
                 ]);
             } else {
                 json_output(['success' => false, 'message' => $result['message']]);
