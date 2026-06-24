@@ -5579,6 +5579,257 @@ function mostrarModalRegistroPago(gruposSeleccionados, banco) {
   });
 }
 
+function regPagoFmt(v) {
+  return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+}
+
+// Normaliza fecha dd/mm/aaaa [hh:mm] -> yyyy-mm-dd (reutiliza la lógica del otro flujo)
+function regPagoFechaAInput(fecha) {
+  const m = (fecha || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return new Date().toISOString().split("T")[0];
+}
+
+function renderRegPagoFacturas() {
+  let html = "";
+  regPagoFacturas.forEach((f) => {
+    const asignado = f.asignadoA !== null;
+    const compTxt = asignado && regPagoComprobantes[f.asignadoA]
+      ? `<span class="badge bg-primary">${regPagoComprobantes[f.asignadoA].archivo}</span>`
+      : '<span class="text-muted">—</span>';
+    // Marcable solo si está libre, o si pertenece al comprobante activo
+    const perteneceActivo = f.asignadoA === regPagoComprobanteActivo;
+    const deshabilitado = asignado && !perteneceActivo;
+    const checked = perteneceActivo ? "checked" : "";
+    html += `
+      <tr>
+        <td class="text-center">
+          <input type="checkbox" class="regpago-chk" data-id="${f.id}" ${checked} ${deshabilitado ? "disabled" : ""} onchange="onToggleRegPagoFactura(${f.id})">
+        </td>
+        <td><strong>${f.folio}</strong></td>
+        <td>${f.factura}</td>
+        <td>${f.estacion}</td>
+        <td class="text-end">${regPagoFmt(f.authorized_amount)}</td>
+        <td>${compTxt}</td>
+      </tr>`;
+  });
+  $("#regPagoFacturasBody").html(html || '<tr><td colspan="6" class="text-center text-muted">Sin facturas</td></tr>');
+}
+
+function renderRegPagoComprobantes() {
+  if (regPagoComprobantes.length === 0) {
+    $("#regPagoComprobantesCards").html("");
+    $("#regPagoSinComprobante").show();
+    return;
+  }
+  $("#regPagoSinComprobante").hide();
+  let html = "";
+  regPagoComprobantes.forEach((c, idx) => {
+    const asignadas = regPagoFacturas.filter((f) => f.asignadoA === idx);
+    const sumaAsignada = asignadas.reduce((s, f) => s + f.authorized_amount, 0);
+    const saldo = (parseFloat(c.importe) || 0) - sumaAsignada;
+    const activo = idx === regPagoComprobanteActivo;
+    const dif = saldo;
+    const difTxt = Math.abs(dif) < 0.01
+      ? '<span class="text-success">cuadra</span>'
+      : `<span class="text-danger">dif. ${regPagoFmt(dif)}</span>`;
+    const errTxt = c.error ? `<div class="text-danger small"><i class="fas fa-exclamation-triangle"></i> ${c.error}</div>` : "";
+    html += `
+      <div class="card mb-2 ${activo ? "border-success" : ""}" style="cursor:pointer;" onclick="setRegPagoComprobanteActivo(${idx})">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>${activo ? '<i class="fas fa-dot-circle text-success"></i> ' : ""}${c.archivo}</strong>
+              <span class="badge bg-secondary ms-1">${c.banco || "—"}</span>
+              ${errTxt}
+            </div>
+            <div class="text-end small">
+              Importe leído: <strong>${regPagoFmt(c.importe)}</strong><br>
+              Asignado: ${regPagoFmt(sumaAsignada)} · ${difTxt}
+            </div>
+          </div>
+          <div class="row g-2 mt-1" onclick="event.stopPropagation()">
+            <div class="col">
+              <input type="date" class="form-control form-control-sm regpago-comp-fecha" data-idx="${idx}" value="${c.fecha}" max="${new Date().toISOString().split("T")[0]}">
+            </div>
+            <div class="col">
+              <input type="text" class="form-control form-control-sm regpago-comp-ref" data-idx="${idx}" value="${(c.referencia || "").replace(/"/g, "")}" placeholder="Referencia" maxlength="50">
+            </div>
+          </div>
+        </div>
+      </div>`;
+  });
+  $("#regPagoComprobantesCards").html(html);
+}
+
+function setRegPagoComprobanteActivo(idx) {
+  regPagoComprobanteActivo = idx;
+  renderRegPagoComprobantes();
+  renderRegPagoFacturas();
+}
+
+function onToggleRegPagoFactura(invoiceId) {
+  if (regPagoComprobanteActivo === null) {
+    alertify.warning("Selecciona un comprobante primero");
+    renderRegPagoFacturas();
+    return;
+  }
+  const f = regPagoFacturas.find((x) => x.id === invoiceId);
+  if (!f) return;
+  if (f.asignadoA === regPagoComprobanteActivo) {
+    f.asignadoA = null; // desmarcar
+  } else if (f.asignadoA === null) {
+    f.asignadoA = regPagoComprobanteActivo; // asignar al activo
+  }
+  recalcularRegPago();
+}
+
+function recalcularRegPago() {
+  renderRegPagoComprobantes();
+  renderRegPagoFacturas();
+  // Resumen + habilitar guardar si hay al menos una factura asignada
+  const asignadasTotal = regPagoFacturas.filter((f) => f.asignadoA !== null);
+  const total = asignadasTotal.reduce((s, f) => s + f.authorized_amount, 0);
+  if (asignadasTotal.length > 0) {
+    $("#regPagoResumenSel").html(`<strong>${asignadasTotal.length}</strong> factura(s) asignada(s) · <strong>${regPagoFmt(total)}</strong>`);
+    $("#btnGuardarRegistroPago").prop("disabled", false);
+  } else {
+    $("#regPagoResumenSel").text("");
+    $("#btnGuardarRegistroPago").prop("disabled", true);
+  }
+}
+
+function subirRegPagoComprobantes(fileList) {
+  const files = Array.from(fileList).filter(
+    (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+  );
+  if (files.length === 0) {
+    alertify.warning("Selecciona archivos PDF");
+    return;
+  }
+  // Leer cada PDF de forma independiente reutilizando preview_comprobantes_match
+  files.forEach((file) => {
+    const fd = new FormData();
+    fd.append("comprobantes[]", file);
+    fetch("/payment/preview_comprobantes_match", { method: "POST", body: fd })
+      .then((r) => r.json())
+      .then((res) => {
+        const c = (res.success && res.comprobantes && res.comprobantes[0])
+          ? res.comprobantes[0].comprobante : null;
+        regPagoComprobantes.push({
+          file: file,
+          archivo: file.name,
+          banco: c ? c.banco : "",
+          fecha: c ? regPagoFechaAInput(c.fecha) : new Date().toISOString().split("T")[0],
+          referencia: c ? (c.referencia || "") : "",
+          importe: c ? (parseFloat(c.importe) || 0) : 0,
+          error: c ? (c.error || "") : "No se pudo leer el PDF",
+        });
+        // Activar el recién agregado
+        regPagoComprobanteActivo = regPagoComprobantes.length - 1;
+        recalcularRegPago();
+      })
+      .catch(() => {
+        regPagoComprobantes.push({
+          file: file, archivo: file.name, banco: "", fecha: new Date().toISOString().split("T")[0],
+          referencia: "", importe: 0, error: "Error de conexión al leer el PDF",
+        });
+        regPagoComprobanteActivo = regPagoComprobantes.length - 1;
+        recalcularRegPago();
+      });
+  });
+}
+
+function guardarRegistroPagoMulti() {
+  // Sincronizar fecha/referencia editadas en las tarjetas hacia el estado
+  $(".regpago-comp-fecha").each(function () {
+    const i = parseInt($(this).data("idx"));
+    if (regPagoComprobantes[i]) regPagoComprobantes[i].fecha = this.value;
+  });
+  $(".regpago-comp-ref").each(function () {
+    const i = parseInt($(this).data("idx"));
+    if (regPagoComprobantes[i]) regPagoComprobantes[i].referencia = this.value.trim();
+  });
+
+  // Construir asignaciones (un lote por comprobante con facturas asignadas)
+  const asignaciones = [];
+  regPagoComprobantes.forEach((c, idx) => {
+    const ids = regPagoFacturas.filter((f) => f.asignadoA === idx).map((f) => f.id);
+    if (ids.length === 0) return; // comprobante sin facturas: se omite
+    asignaciones.push({
+      archivo_idx: idx,
+      archivo: c.archivo,
+      invoice_ids: ids,
+      fecha_pago: c.fecha,
+      referencia: c.referencia,
+      observaciones: "Registro de pago con comprobante",
+    });
+  });
+
+  if (asignaciones.length === 0) {
+    alertify.warning("Asigna al menos una factura a un comprobante");
+    return;
+  }
+  const incompletos = asignaciones.filter((a) => !a.fecha_pago || !a.referencia);
+  if (incompletos.length > 0) {
+    alertify.error("Completa fecha y referencia en cada comprobante con facturas asignadas");
+    return;
+  }
+
+  const fd = new FormData();
+  // Reenviar TODOS los PDFs en el mismo orden/índice que archivo_idx
+  regPagoComprobantes.forEach((c) => fd.append("comprobantes[]", c.file));
+  fd.append("asignaciones", JSON.stringify(asignaciones));
+
+  $("#btnGuardarRegistroPago").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Registrando...');
+
+  fetch("/payment/conciliar_comprobantes", { method: "POST", body: fd })
+    .then((r) => r.json())
+    .then((res) => {
+      $("#btnGuardarRegistroPago").html('<i class="fas fa-save"></i> Registrar pago(s)').prop("disabled", false);
+      let detalle = (res.resultados || [])
+        .map((x) => `<li>${x.success ? '<i class="fas fa-check text-success"></i>' : '<i class="fas fa-times text-danger"></i>'} <strong>${x.archivo}</strong>: ${x.message}</li>`)
+        .join("");
+      alertify.alert(
+        '<i class="fas fa-clipboard-check"></i> Resultado del registro',
+        `<div>
+            <div class="alert alert-success">${res.aplicados || 0} de ${res.total || 0} aplicados · Total ${regPagoFmt(res.total_aplicado || 0)}</div>
+            <ul style="font-size:.85rem;max-height:300px;overflow:auto;">${detalle}</ul>
+         </div>`
+      );
+      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
+        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
+      }
+      if ((res.aplicados || 0) > 0) {
+        $("#modalRegistroPagoNuevo").modal("hide");
+      }
+    })
+    .catch((err) => {
+      $("#btnGuardarRegistroPago").html('<i class="fas fa-save"></i> Registrar pago(s)').prop("disabled", false);
+      alertify.error("Error de conexión: " + err.message);
+    });
+}
+
+// Wiring del dropzone (una sola vez)
+$(document).on("click", "#regPagoDropzone", function () {
+  $("#regPagoInput").click();
+});
+$(document).on("change", "#regPagoInput", function () {
+  if (this.files && this.files.length) subirRegPagoComprobantes(this.files);
+});
+$(document).on("dragover", "#regPagoDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#dcfce7");
+});
+$(document).on("dragleave drop", "#regPagoDropzone", function (e) {
+  e.preventDefault();
+  $(this).css("background", "#f0fdf4");
+});
+$(document).on("drop", "#regPagoDropzone", function (e) {
+  const files = e.originalEvent.dataTransfer.files;
+  if (files && files.length) subirRegPagoComprobantes(files);
+});
+
 
 /**
  * ✅ Ejecuta el registro del pago
