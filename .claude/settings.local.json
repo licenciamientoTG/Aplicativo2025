@@ -129,7 +129,19 @@
       "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auto-agrupar-al-autorizar.md 3)",
       "Bash(bash __TRACKED_VAR__/scripts/review-package 26bcb71 83a00e7)",
       "Bash(bash __TRACKED_VAR__/scripts/review-package c4d800a 83a00e7)",
-      "Bash(echo \"=== commits en el rango ===\")"
+      "Bash(echo \"=== commits en el rango ===\")",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 1b4eb89 5dfecfb)",
+      "Bash(sed -i 's|Task 1: pendiente \\(modal HTML #modalRegistroPagoNuevo\\)|Task 1: complete \\(commit 5dfecfb, review clean, no findings\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-registrar-pago-multicomprobante.md 2)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 5dfecfb 01495c0)",
+      "Bash(sed -i 's|Task 2: pendiente \\(reescribir mostrarModalRegistroPago\\)|Task 2: complete \\(commit 01495c0, review clean; ambos callers verificados intactos\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-registrar-pago-multicomprobante.md 3)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 01495c0 7b607a6)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 7b607a6 9b3f312)",
+      "Bash(sed -i 's|Task 3: pendiente \\(lectura PDF + asignacion + guardado\\)|Task 3: complete \\(commits 7b607a6 + fix 9b3f312, review clean; Important race al subir N PDFs -> FIXED\\)|' .superpowers/sdd/progress.md)",
+      "Bash(echo \"=== rango feature ===\")",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 1b4eb89 9b3f312)"
     ],
     "deny": [],
     "ask": []
