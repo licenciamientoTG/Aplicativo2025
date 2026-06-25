@@ -1504,7 +1504,7 @@ class Payment
                 'usuario_nombre'      => $row['UsuarioNombre'],
                 'folio'               => $datos['folio'] ?? ($datos['nro'] ?? null),
                 'invoice_number'      => $datos['invoice_number'] ?? ($datos['Factura'] ?? null),
-                'amount'              => $datos['amount'] ?? ($datos['total_fac'] ?? null),
+                'amount'              => $datos['amount'] ?? ($datos['total_fac'] ?? ($datos['authorized_amount'] ?? null)),
                 'fue_post_agrupacion' => !empty($row['AccountingGroupId']),
             ];
         }, $audit_log_raw);
