@@ -94,26 +94,37 @@ function totalDenominacion(tipo, denom, cantidad, valorBolsa) {
 function recalcular() {
   const seccionMoneda = {}; // "seccion-MONEDA" -> suma
 
-  document.querySelectorAll(".denom-input").forEach((inp) => {
-    const tipo = inp.dataset.tipo;
-    const denom = parseFloat(inp.dataset.denominacion) || 0;
-    const cantidad = parseInt(inp.value, 10) || 0;
-    const valorBolsa = inp.dataset.valorBolsa ? parseFloat(inp.dataset.valorBolsa) : null;
-    const total = totalDenominacion(tipo, denom, cantidad, valorBolsa);
+  // Acumular por fila: cada <tr> puede tener 1 o 2 .denom-input (Vales no
+  // usa esta clase). Se suma el total de todos los inputs de la fila y se
+  // pinta una sola vez en la celda td.total de esa fila.
+  document.querySelectorAll(".denom-tabla tbody tr").forEach((tr) => {
+    let totalFila = 0;
+    tr.querySelectorAll(".denom-input").forEach((inp) => {
+      const tipo = inp.dataset.tipo;
+      const denom = parseFloat(inp.dataset.denominacion) || 0;
+      const cantidad = parseInt(inp.value, 10) || 0;
+      const valorBolsa = inp.dataset.valorBolsa ? parseFloat(inp.dataset.valorBolsa) : null;
+      const total = totalDenominacion(tipo, denom, cantidad, valorBolsa);
 
-    const celda = inp.closest("tr").querySelector("td.total");
+      totalFila += total;
+      const key = inp.dataset.seccion + "-" + inp.dataset.moneda;
+      seccionMoneda[key] = (seccionMoneda[key] || 0) + total;
+    });
+
+    const celda = tr.querySelector("td.total");
     if (celda) {
-      celda.dataset.total = total;
-      celda.textContent = fmtMoney(total);
+      celda.dataset.total = totalFila;
+      celda.textContent = fmtMoney(totalFila);
     }
-    const key = inp.dataset.seccion + "-" + inp.dataset.moneda;
-    seccionMoneda[key] = (seccionMoneda[key] || 0) + total;
   });
 
-  // Gran totales por sección/moneda.
-  document.querySelectorAll("[data-gran-total]").forEach((td) => {
-    const key = td.dataset.granTotal;
-    td.textContent = fmtMoney(seccionMoneda[key] || 0);
+  // Gran totales por tabla: suman las dos secciones BD de esa tabla
+  // (ej. cajon + caja_fuerte para Billetes; morrallero + morrallero_cf para Monedas).
+  document.querySelectorAll("[data-gran-total-cajon]").forEach((td) => {
+    const keyCajon = td.dataset.granTotalCajon;
+    const keyCf = td.dataset.granTotalCf;
+    const total = (seccionMoneda[keyCajon] || 0) + (seccionMoneda[keyCf] || 0);
+    td.textContent = fmtMoney(total);
   });
 
   const sum = (k) => seccionMoneda[k] || 0;
