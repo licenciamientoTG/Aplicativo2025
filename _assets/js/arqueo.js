@@ -252,6 +252,9 @@ document.addEventListener("DOMContentLoaded", function () {
       .querySelectorAll(".denom-input, .vale-dolares, .vale-mxn, #go_exchange_dolares, #go_exchange_mxn, #costo_promedio")
       .forEach((el) => el.addEventListener("input", recalcular));
 
+    // Al enfocar un input, seleccionar todo su contenido (escribir reemplaza en vez de insertar).
+    enCaja.querySelectorAll("input").forEach((el) => el.addEventListener("focus", () => el.select()));
+
     // Solo lectura: deshabilita toda la captura.
     if (document.getElementById("solo_lectura").value === "1") {
       enCaja.querySelectorAll("input").forEach((i) => (i.disabled = true));
