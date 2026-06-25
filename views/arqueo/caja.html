@@ -89,41 +89,61 @@
     </div>
 
     {# ---------------- Grids de denominaciones ----------------
-       Recorremos la estructura por sección y moneda. El macro de abajo
-       renderiza una tabla de captura. tipo y etiqueta dependen de la sección. #}
+       Dos secciones visuales (Billetes, Monedas), cada una con una tabla
+       por moneda que combina Cajón y Caja Fuerte en la misma fila por
+       denominación. Las listas de Cajón y Caja Fuerte están alineadas
+       posicionalmente (misma cantidad de denominaciones, mismo orden). #}
 
-    {% set secciones = {
-        'cajon':         {'titulo':'Cajón del Cajero',          'tipo_usd':'billete', 'tipo_mxn':'billete', 'label':'Cantidad (Billetes)'},
-        'morrallero':    {'titulo':'Morrallero del Cajero',     'tipo_usd':'moneda',  'tipo_mxn':'moneda',  'label':'Cantidad (Monedas)'},
-        'caja_fuerte':   {'titulo':'Billetes de Caja Fuerte',   'tipo_usd':'fajilla', 'tipo_mxn':'fajilla', 'label':'Cantidad (Fajillas)'},
-        'morrallero_cf': {'titulo':'Morrallero de Caja Fuerte', 'tipo_usd':'bolsa',   'tipo_mxn':'bolsa',   'label':'Cantidad (Bolsas)'}
+    {% set grupos = {
+        'billetes': {
+            'titulo':        'Billetes',
+            'tipo_cajon':     'billete',
+            'tipo_cf':        'fajilla',
+            'label_cajon':    'Cajón',
+            'label_cf':       'Caja Fuerte',
+            'denoms_cajon':   {'USD': estructura.cajon.USD, 'MXN': estructura.cajon.MXN},
+            'denoms_cf':      {'USD': estructura.caja_fuerte.USD, 'MXN': estructura.caja_fuerte.MXN},
+            'valor_bolsa_cf': null
+        },
+        'monedas': {
+            'titulo':        'Monedas',
+            'tipo_cajon':     'moneda',
+            'tipo_cf':        'bolsa',
+            'label_cajon':    'Cajón',
+            'label_cf':       'Caja Fuerte',
+            'denoms_cajon':   {'USD': estructura.morrallero.USD, 'MXN': estructura.morrallero.MXN},
+            'denoms_cf':      {'USD': estructura.morrallero_cf.USD.denominacion, 'MXN': estructura.morrallero_cf.MXN.denominacion},
+            'valor_bolsa_cf': {'USD': estructura.morrallero_cf.USD.valor_bolsa, 'MXN': estructura.morrallero_cf.MXN.valor_bolsa}
+        }
     } %}
 
-    {% for seccion, meta in secciones %}
+    {% set seccion_cajon = {'billetes': 'cajon', 'monedas': 'morrallero'} %}
+    {% set seccion_cf    = {'billetes': 'caja_fuerte', 'monedas': 'morrallero_cf'} %}
+
+    {% for grupo_id, g in grupos %}
     <div class="card mb-3">
-      <div class="seccion-titulo">{{ meta.titulo }}</div>
+      <div class="seccion-titulo">{{ g.titulo }}</div>
       <div class="card-body">
         <div class="row">
           {% for moneda in ['USD','MXN'] %}
-          {% set tipo = (moneda == 'USD') ? meta.tipo_usd : meta.tipo_mxn %}
-          {% set es_cf_morr = (seccion == 'morrallero_cf') %}
-          {% set denoms = es_cf_morr ? estructura[seccion][moneda]['denominacion'] : estructura[seccion][moneda] %}
-          {% set bolsas = es_cf_morr ? estructura[seccion][moneda]['valor_bolsa'] : [] %}
+          {% set denoms = g.denoms_cajon[moneda] %}
+          {% set denoms_cf = g.denoms_cf[moneda] %}
+          {% set bolsas = g.valor_bolsa_cf ? g.valor_bolsa_cf[moneda] : [] %}
           <div class="col-md-6">
             <table class="table table-sm table-bordered denom-tabla {{ moneda == 'USD' ? 'moneda-usd' : 'moneda-mxn' }}">
               <thead>
                 <tr>
-                  <th colspan="{{ es_cf_morr ? 4 : 3 }}" class="text-center">{{ moneda }}</th>
+                  <th colspan="4" class="text-center">{{ moneda }}</th>
                 </tr>
                 <tr>
                   <th>Denominación</th>
-                  {% if es_cf_morr %}<th>Valor/Bolsa</th>{% endif %}
-                  <th>{{ meta.label }}</th>
+                  <th>{{ g.label_cajon }}</th>
+                  <th>{{ g.label_cf }}{% if g.valor_bolsa_cf %} <small class="text-muted">($/bolsa)</small>{% endif %}</th>
                   <th class="text-end">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {% set es_moneda = (seccion == 'morrallero' or seccion == 'morrallero_cf') %}
+                {% set es_moneda = (grupo_id == 'monedas') %}
                 {% for i, denom in denoms %}
                 {# Nombre del archivo de imagen de apoyo: moneda_denominacion(.png).
                    Para monedas, $1 USD y $20 MXN llevan sufijo _coin (no chocar con el billete). #}
@@ -138,15 +158,26 @@
                          onerror="this.style.display='none'">
                     ${{ denom }}
                   </td>
-                  {% if es_cf_morr %}<td>${{ bolsas[i] }}</td>{% endif %}
                   <td>
                     <input type="number" min="0" step="1"
                            class="form-control form-control-sm cantidad campo-amarillo denom-input"
-                           data-seccion="{{ seccion }}"
+                           data-seccion="{{ seccion_cajon[grupo_id] }}"
                            data-moneda="{{ moneda }}"
-                           data-tipo="{{ tipo }}"
+                           data-tipo="{{ g.tipo_cajon }}"
                            data-denominacion="{{ denom }}"
-                           {% if es_cf_morr %}data-valor-bolsa="{{ bolsas[i] }}"{% endif %}
+                           value="0">
+                  </td>
+                  <td>
+                    {% if g.valor_bolsa_cf %}
+                    <div class="small text-muted mb-1">${{ bolsas[i] }}/bolsa</div>
+                    {% endif %}
+                    <input type="number" min="0" step="1"
+                           class="form-control form-control-sm cantidad campo-amarillo denom-input"
+                           data-seccion="{{ seccion_cf[grupo_id] }}"
+                           data-moneda="{{ moneda }}"
+                           data-tipo="{{ g.tipo_cf }}"
+                           data-denominacion="{{ denoms_cf[i] }}"
+                           {% if g.valor_bolsa_cf %}data-valor-bolsa="{{ bolsas[i] }}"{% endif %}
                            value="0">
                   </td>
                   <td class="total" data-total="0">$0.00</td>
@@ -155,8 +186,10 @@
               </tbody>
               <tfoot>
                 <tr>
-                  <th colspan="{{ es_cf_morr ? 3 : 2 }}" class="text-end">Gran Total</th>
-                  <td class="gran-total" data-gran-total="{{ seccion }}-{{ moneda }}">$0.00</td>
+                  <th colspan="3" class="text-end">Gran Total {{ g.titulo }}</th>
+                  <td class="gran-total"
+                      data-gran-total-cajon="{{ seccion_cajon[grupo_id] }}-{{ moneda }}"
+                      data-gran-total-cf="{{ seccion_cf[grupo_id] }}-{{ moneda }}">$0.00</td>
                 </tr>
               </tfoot>
             </table>
