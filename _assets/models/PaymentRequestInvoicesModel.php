@@ -528,7 +528,7 @@ class PaymentRequestInvoicesModel extends Model
      * @param array $invoice_ids
      * @return array
      */
-    public function unauthorize_invoices(array $invoice_ids) : array {
+    public function unauthorize_invoices(array $invoice_ids, $user_id = null, $user_name = null) : array {
         $invoice_ids = array_values(array_unique(array_map('intval', $invoice_ids)));
         $invoice_ids = array_filter($invoice_ids, fn($v) => $v > 0);
 
@@ -542,10 +542,13 @@ class PaymentRequestInvoicesModel extends Model
         try {
             // 1. Traer estado actual de las facturas solicitadas
             $rows = $this->sql->select("
-                SELECT id, payment_request_id, folio, payment_authorized,
-                       ISNULL(paid_amount, 0) AS paid_amount
-                FROM [TG].[dbo].[payment_request_invoices]
-                WHERE id IN ($placeholders) AND is_deleted = 0
+                SELECT pri.id, pri.payment_request_id, pri.folio, pri.payment_authorized,
+                       pri.authorized_amount, pri.authorized_by, pri.authorized_at,
+                       ISNULL(pri.paid_amount, 0) AS paid_amount,
+                       pr.accounting_group_id
+                FROM [TG].[dbo].[payment_request_invoices] pri
+                LEFT JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+                WHERE pri.id IN ($placeholders) AND pri.is_deleted = 0
             ", $invoice_ids);
 
             if (!$rows) {
@@ -556,6 +559,8 @@ class PaymentRequestInvoicesModel extends Model
             $errores         = [];
             $payment_req_ids = [];
 
+            $auditLog = new PaymentRequestAuditLogModel();
+
             foreach ($rows as $r) {
                 if ((int)$r['payment_authorized'] !== 1) {
                     $errores[] = "Factura {$r['folio']}: no está autorizada";
@@ -565,6 +570,26 @@ class PaymentRequestInvoicesModel extends Model
                     $errores[] = "Factura {$r['folio']}: tiene pagos registrados y no puede desautorizarse";
                     continue;
                 }
+
+                // Registrar auditoría con el snapshot ANTES de limpiar la autorización.
+                $snapshot = [
+                    'id'                => (int)$r['id'],
+                    'folio'             => $r['folio'],
+                    'authorized_amount' => $r['authorized_amount'],
+                    'authorized_by'     => $r['authorized_by'],
+                    'authorized_at'     => $r['authorized_at'],
+                ];
+                $logged = $auditLog->log_unauthorize_invoice(
+                    (int)$r['payment_request_id'],
+                    $snapshot,
+                    $user_id,
+                    $user_name,
+                    $r['accounting_group_id'] ?? null
+                );
+                if (!$logged) {
+                    throw new Exception("No se pudo registrar la auditoría de la factura {$r['folio']}");
+                }
+
                 $a_limpiar[] = (int)$r['id'];
                 $payment_req_ids[(int)$r['payment_request_id']] = true;
             }
