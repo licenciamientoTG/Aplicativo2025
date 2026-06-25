@@ -575,6 +575,8 @@
 							<td>
 								{% if log.operacion == 'ADD_INVOICE' %}
 									<span class="badge bg-success"><i class="fas fa-plus"></i> Agregó factura</span>
+								{% elseif log.operacion == 'UNAUTHORIZE_INVOICE' %}
+									<span class="badge bg-warning text-dark"><i class="fas fa-unlock"></i> Desautorizó factura</span>
 								{% else %}
 									<span class="badge bg-danger"><i class="fas fa-minus"></i> Quitó factura</span>
 								{% endif %}
