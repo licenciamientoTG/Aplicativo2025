@@ -210,7 +210,7 @@ function guardarCaja() {
   });
 
   const vales = [];
-  for (let n = 1; n <= 15; n++) {
+  for (let n = 1; n <= 3; n++) {
     const fecha = (document.querySelector(`.vale-fecha[data-num="${n}"]`) || {}).value || "";
     const concepto = (document.querySelector(`.vale-concepto[data-num="${n}"]`) || {}).value || "";
     const dolares = parseFloat((document.querySelector(`.vale-dolares[data-num="${n}"]`) || {}).value) || 0;

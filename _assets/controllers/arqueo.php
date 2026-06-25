@@ -56,10 +56,10 @@ class Arqueo
             'USD' => [100, 50, 20, 10, 5, 2, 1],
             'MXN' => [1000, 500, 200, 100, 50, 20],
         ],
-        'morrallero_cf' => [ // bolsas (valor fijo por bolsa)
-            'USD' => ['valor_bolsa' => [100, 50, 25, 10, 5, 1],
+        'morrallero_cf' => [ // bolsas (valor fijo por bolsa = piezas por bolsa × denominación)
+            'USD' => ['valor_bolsa' => [100, 50, 20, 10, 5, 1],
                       'denominacion' => [1, 0.50, 0.25, 0.10, 0.05, 0.01]],
-            'MXN' => ['valor_bolsa' => [2000, 1000, 500, 200, 100, 50],
+            'MXN' => ['valor_bolsa' => [2000, 1000, 500, 500, 100, 50],
                       'denominacion' => [20, 10, 5, 2, 1, 0.50]],
         ],
     ];
