@@ -854,19 +854,17 @@ class PaymentRequestsModel extends Model
             // Insertar cada aplicación
             $query = "
                 INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
-                (anticipo_id, payment_request_id, invoice_id, monto_aplicado, fecha_aplicacion, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (anticipo_id, invoice_id, monto_aplicado, fecha_aplicacion, aplicado_por)
+                VALUES (?, ?, ?, ?, ?)
             ";
 
             foreach ($aplicaciones as $app) {
                 $params = [
                     $anticipo_id,
-                    $app['payment_request_id'] ?? null,
                     $app['invoice_id'] ?? null,
                     $app['monto'],
                     $fecha_aplicacion,
-                    $user_id,
-                    $fecha_aplicacion
+                    $user_id
                 ];
 
                 if (!$this->sql->insert($query, $params)) {
