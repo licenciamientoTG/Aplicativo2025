@@ -1752,7 +1752,8 @@ class PaymentRequestInvoicesModel extends Model
             $folio = $document['nro'] ?? null;
             $invoice_number = $document['Factura'] ?? null;
             $codgas = $document['codgas'] ?? null;
-            $amount = $document['total_fac'] ?? 0;
+            // Preferir el total efectivo (FacturasRecibidas si existe, si no ControlGas)
+            $amount = $document['total_mostrar'] ?? ($document['total_fac'] ?? 0);
             $expiration_date = $document['fechaVto'] ?? null;
             $uuid = $document['satuid'] ?? null;
 

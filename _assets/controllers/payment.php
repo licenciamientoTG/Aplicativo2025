@@ -7,6 +7,38 @@ class Payment
     private const ALLOWED_PROVIDERS = ['lobo', 'mcg', 'tesoro', 'aemsa', 'enerey', 'essafuel', 'premiergas', 'petrotal'];
     private const BASE_ATTACHMENTS_PATH = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\attachments';
 
+    /** provider_cod (TG/SG12.dbo.Proveedores) de MGC MEXICO S.A. DE C.V. */
+    private const PROVIDER_COD_MGC = 72;
+
+    /**
+     * Referencia fija por empresa pagadora (emp_cod) para los layouts bancarios
+     * de pagos a MGC. MGC exige una referencia de cuenta propia por empresa en
+     * vez de la referencia genérica (año) o el folio/concepto normal.
+     */
+    private const REFERENCIAS_MGC_POR_EMPRESA = [
+        1  => '97480000005', // DIAZ GAS
+        10 => '13930000008', // ESTACION CUSTODIA
+        11 => '10590000005', // SYC
+        14 => '36200000002', // CLARA
+        15 => '36240000004', // JARUDO
+        16 => '88400000001', // GASOMEX
+        19 => '44990000000', // PICACHOS
+        20 => '45000000005', // VENTANAS
+        21 => '49460000000', // TSA
+    ];
+
+    /**
+     * Referencia fija de MGC para la empresa pagadora dada, o null si no aplica
+     * (proveedor distinto de MGC, o empresa sin referencia configurada).
+     */
+    private function referencia_mgc_por_empresa($proveedor_codigo, $empresa_cod): ?string
+    {
+        if ((int)$proveedor_codigo !== self::PROVIDER_COD_MGC) {
+            return null;
+        }
+        return self::REFERENCIAS_MGC_POR_EMPRESA[(int)$empresa_cod] ?? null;
+    }
+
     public $twig;
     public $route;
     public GasolinerasModel $gasolinerasModel;
@@ -2954,6 +2986,7 @@ class Payment
                     'titular_beneficiario' => $pago['titular_beneficiario'] ?: $pago['proveedor_nombre'],
                     'proveedor_nombre' => $pago['proveedor_nombre'],
                     'proveedor_codigo' => $pago['proveedor_codigo'],
+                    'empresa_cod' => $pago['empresa_cod'] ?? null,
                     'monto_total' => 0,
                     'referencias' => [],
                     'es_anticipo' => false
@@ -2980,7 +3013,13 @@ class Payment
             $cantidad_refs = count($grupo['referencias']);
             $primera_ref = $grupo['referencias'][0];
 
-            if ($grupo['es_anticipo']) {
+            // MGC exige que el concepto sea únicamente su referencia de cuenta
+            // propia fija por empresa pagadora (sin folio ni nombre de proveedor).
+            $referencia_mgc = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod']);
+
+            if ($referencia_mgc !== null) {
+                $concepto_texto = $referencia_mgc;
+            } else if ($grupo['es_anticipo']) {
                 // Para anticipos: "ANTICIPO #55 NOMBRE PROVEEDOR"
                 $concepto_texto = $primera_ref . ' ' . $grupo['proveedor_nombre'];
             } else if ($cantidad_refs === 1) {
@@ -3232,6 +3271,7 @@ class Payment
                     'rfc' => $pago['proveedor_rfc'] ?? '',
                     'proveedor_nombre' => $pago['proveedor_nombre'],
                     'proveedor_codigo' => $pago['proveedor_codigo'],
+                    'empresa_cod' => $pago['empresa_cod'] ?? null,
                     'monto_total' => 0,
                     'referencias' => [],
                     'es_anticipo' => false
@@ -3251,9 +3291,13 @@ class Payment
 
         // ✅ GENERAR LÍNEAS
         $fecha_operacion = date('dmY'); // Formato DDMMAAAA
-        $referencia = date('Y');        // Referencia numérica (Tesorería usa el año)
+        $referencia_default = date('Y'); // Referencia numérica (Tesorería usa el año)
 
         foreach ($consolidados as $grupo) {
+            // MGC exige una referencia de cuenta propia fija por empresa pagadora
+            // en vez de la referencia genérica (año).
+            $referencia = $this->referencia_mgc_por_empresa($grupo['proveedor_codigo'], $grupo['empresa_cod'])
+                ?? $referencia_default;
             // Operación y cuenta destino según el tipo de cuenta del beneficiario:
             //   04 = interbancaria SPEI (CLABE completa de 18)
             //   02 = cuenta Banorte (10 dígitos; si viene CLABE 072, extraer cuenta)

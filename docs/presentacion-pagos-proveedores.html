@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Automatización del Pago a Proveedores — TotalGas</title>
+<style>
+  :root{
+    --azul:#1d4ed8; --azul-2:#3b82f6; --azul-suave:#eff6ff;
+    --verde:#16a34a; --verde-2:#22c55e; --verde-suave:#f0fdf4;
+    --rojo:#dc2626; --rojo-suave:#fef2f2;
+    --gris:#475569; --gris-claro:#94a3b8; --tinta:#0f172a;
+    --linea:#e2e8f0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--tinta); background:#fff; line-height:1.5; font-size:14px;
+  }
+  /* Cada .slide = una página A4 horizontal al imprimir */
+  .slide{
+    width:1122px; min-height:793px; margin:0 auto; padding:48px 56px;
+    page-break-after:always; position:relative; display:flex; flex-direction:column;
+  }
+  .slide:last-child{page-break-after:auto;}
+  @page{size:A4 landscape; margin:0;}
+  @media print{
+    body{font-size:13px;}
+    .slide{margin:0; box-shadow:none;}
+  }
+  @media screen{
+    body{background:#f1f5f9; padding:24px 0;}
+    .slide{background:#fff; box-shadow:0 6px 24px rgba(0,0,0,.08); margin-bottom:28px; border-radius:6px;}
+  }
+
+  h1{font-size:40px; font-weight:800; letter-spacing:-.02em; line-height:1.1;}
+  h2{font-size:27px; font-weight:800; color:var(--azul); letter-spacing:-.01em;}
+  h3{font-size:17px; font-weight:700; color:var(--gris);}
+  .kicker{font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:var(--verde); margin-bottom:10px;}
+  .muted{color:var(--gris);}
+  .small{font-size:12px;}
+
+  .topbar{display:flex; align-items:center; justify-content:space-between; border-bottom:3px solid var(--azul); padding-bottom:14px; margin-bottom:26px;}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; color:var(--azul); font-size:15px;}
+  .brand .dot{width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,var(--azul),var(--verde));}
+  .pagenum{font-size:12px; color:var(--gris-claro); font-weight:700;}
+
+  /* Portada */
+  .cover{justify-content:center; background:linear-gradient(135deg,#0f172a 0%,#1e293b 60%,#143d2b 100%); color:#fff;}
+  .cover h1{color:#fff;}
+  .cover .sub{font-size:19px; color:#cbd5e1; margin-top:16px; max-width:760px;}
+  .cover .badge-row{display:flex; gap:12px; margin-top:34px; flex-wrap:wrap;}
+  .cover .badge{background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.18); border-radius:8px; padding:10px 16px; font-size:13px; color:#e2e8f0;}
+  .cover .accent{color:var(--verde-2); font-weight:800;}
+
+  /* Tabla comparativa */
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{padding:11px 13px; text-align:left; vertical-align:top; border-bottom:1px solid var(--linea);}
+  thead th{background:var(--azul); color:#fff; font-weight:700; font-size:12px; text-transform:uppercase; letter-spacing:.04em;}
+  thead th:first-child{border-top-left-radius:6px;}
+  thead th:last-child{border-top-right-radius:6px;}
+  .col-antes{background:#f8fafc;}
+  .col-ahora{background:var(--verde-suave);}
+  th.h-antes{background:var(--gris);}
+  th.h-ahora{background:var(--verde);}
+  td.etapa{font-weight:700; color:var(--tinta); background:#f1f5f9; width:150px;}
+  tr:last-child td{border-bottom:none;}
+  .tag{display:inline-block; font-size:10px; font-weight:800; padding:2px 7px; border-radius:4px; letter-spacing:.03em; text-transform:uppercase;}
+  .tag-elim{background:#e2e8f0; color:var(--gris);}
+  .tag-auto{background:#dcfce7; color:#166534;}
+  .tag-new{background:#dcfce7; color:#166534;}
+
+  /* Diagramas de flujo: dos columnas, de arriba hacia abajo, max. 2 colores (gris=antes, verde=ahora) */
+  .flow-cols{display:grid; grid-template-columns:1fr 1fr; gap:34px; margin-top:8px; flex:1;}
+  .flow-col-title{display:flex; align-items:center; gap:10px; font-weight:800; font-size:14px; margin-bottom:12px; padding-bottom:10px; border-bottom:2px solid var(--linea);}
+  .flow-col-title .pill{font-size:11px; font-weight:800; padding:3px 11px; border-radius:20px; color:#fff;}
+  .pill-antes{background:var(--gris);}
+  .pill-ahora{background:var(--verde);}
+  .flow-v{display:flex; flex-direction:column; align-items:stretch;}
+  .step{
+    border-radius:8px; padding:10px 13px; display:flex; flex-direction:column; gap:2px;
+    border:1.5px solid var(--linea); background:#f8fafc;
+  }
+  .step .who{font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--gris-claro);}
+  .step .what{font-size:12px; font-weight:700; line-height:1.3; color:var(--tinta);}
+  .step .time{font-size:10.5px; font-weight:700; margin-top:2px; color:var(--gris);}
+  .arrow-down{display:flex; align-items:center; justify-content:center; height:20px; color:var(--gris-claro); font-size:15px; font-weight:800;}
+  .step-ahora{background:var(--verde-suave); border-color:#bbf7d0;}
+  .step-ahora .time{color:var(--verde);}
+  .step-elim{background:#fff; border:1.5px dashed var(--gris-claro); opacity:.65;}
+  .step-elim .what{text-decoration:line-through; color:var(--gris);}
+  .step-elim .who{color:var(--gris-claro);}
+  .step-aside{display:flex; align-items:center; gap:7px; margin:2px 0 0 18px; padding:5px 10px;
+    border-left:2px dashed var(--gris-claro); font-size:10.5px; color:var(--gris); font-style:italic;}
+  .flow-total{margin-top:14px; padding:13px 16px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;}
+  .flow-total .lbl{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;}
+  .flow-total .val{font-size:22px; font-weight:800; letter-spacing:-.01em;}
+  .flow-total.antes{background:#f1f5f9; border:1.5px solid var(--linea); color:var(--gris);}
+  .flow-total.ahora{background:var(--verde); color:#fff;}
+
+  /* Tarjetas de métricas */
+  .cards{display:flex; gap:18px; margin-top:8px;}
+  .card{flex:1; border:1px solid var(--linea); border-radius:12px; padding:20px; background:#fff;}
+  .card .big{font-size:38px; font-weight:800; line-height:1; letter-spacing:-.02em;}
+  .card .lbl{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--gris); margin-top:8px;}
+  .card.green{background:var(--verde-suave); border-color:#bbf7d0;}
+  .card.green .big{color:var(--verde);}
+  .card.blue{background:var(--azul-suave); border-color:#bfdbfe;}
+  .card.blue .big{color:var(--azul);}
+  .card.red .big{color:var(--gris);}
+
+  ul.clean{list-style:none; display:flex; flex-direction:column; gap:9px; margin-top:6px;}
+  ul.clean li{display:flex; gap:10px; align-items:flex-start; font-size:13.5px;}
+  ul.clean li::before{content:"✓"; color:var(--verde); font-weight:800; flex:0 0 auto;}
+  ul.clean.x li::before{content:"✕"; color:var(--gris-claro);}
+
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:4px;}
+  .panel{border:1px solid var(--linea); border-radius:12px; padding:18px 20px;}
+  .panel.red{background:#f8fafc; border-color:var(--linea);}
+  .panel.green{background:var(--verde-suave); border-color:#bbf7d0;}
+  .panel h3{margin-bottom:10px;}
+  .footer-note{margin-top:auto; padding-top:18px; font-size:11px; color:var(--gris-claro); border-top:1px solid var(--linea);}
+</style>
+</head>
+<body>
+
+<!-- ===== PORTADA ===== -->
+<section class="slide cover">
+  <div class="kicker" style="color:var(--verde-2)">TotalGas · Mejora de Procesos</div>
+  <h1>Automatización del<br>Pago a Proveedores</h1>
+  <p class="sub">De un proceso manual con <span class="accent">4 áreas</span>, Excel y correos, a un flujo digital end-to-end donde solo intervienen <span class="accent">Abastos y Tesorería</span>.</p>
+  <div class="badge-row">
+    <div class="badge">⏱ 12–16 horas a la semana liberadas en Contabilidad</div>
+    <div class="badge">🏢 2 áreas eliminadas del flujo</div>
+    <div class="badge">📄 Comprobantes leídos automáticamente</div>
+    <div class="badge">🔎 Trazabilidad y auditoría integradas</div>
+  </div>
+</section>
+
+<!-- ===== RESUMEN EJECUTIVO ===== -->
+<section class="slide">
+  <div class="topbar"><div class="brand"><span class="dot"></span> TotalGas · Pago a Proveedores</div><div class="pagenum">Resumen ejecutivo</div></div>
+  <div class="kicker">El cambio en una frase</div>
+  <h2 style="margin-bottom:18px;">El sistema absorbió el trabajo manual de Abastos, Contabilidad y Jefatura; ahora el ciclo lo operan dos áreas dentro de la aplicación.</h2>
+
+  <div class="two-col">
+    <div class="panel red">
+      <h3>Antes — proceso manual y disperso</h3>
+      <ul class="clean x">
+        <li>Abastos armaba su lista de pagos en <b>Excel</b> y verificaba en ControlGas.</li>
+        <li>Correo de Abastos a Contabilidad, con copia al supervisor (en paralelo, sin detener el flujo).</li>
+        <li>Contabilidad descargaba remisiones y revalidaba ControlGas.</li>
+        <li>Impresión física y firma de <b>Jefatura de Administración</b>.</li>
+        <li>Tesorería decidía por correo y armaba el <b>layout en Excel</b>.</li>
+      </ul>
+    </div>
+    <div class="panel green">
+      <h3>✅ Ahora — flujo digital integrado</h3>
+      <ul class="clean">
+        <li>Las requisiciones se crean desde lo ya cargado en <b>ControlGas</b>, sin Excel ni doble verificación.</li>
+        <li>Abastos manda a pagar con un clic; el sistema agrupa y notifica.</li>
+        <li>Tesorería 1 autoriza dentro de la app; Tesorería 2 <b>genera el layout</b> y paga en el banco.</li>
+        <li>Tesorería 1 sube comprobantes que el sistema lee y concilia.</li>
+        <li>Cada movimiento queda <b>auditado</b>, incluida la desautorización.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="cards" style="margin-top:26px;">
+    <div class="card red"><div class="big">4 → 2</div><div class="lbl">Áreas que intervienen</div></div>
+    <div class="card green"><div class="big">12–16 h</div><div class="lbl">Liberadas por semana en Contabilidad</div></div>
+    <div class="card blue"><div class="big">0</div><div class="lbl">Pasos en Excel</div></div>
+    <div class="card green"><div class="big">100%</div><div class="lbl">Trazabilidad digital</div></div>
+  </div>
+  <div class="footer-note">El dato de Contabilidad fue confirmado por el propio equipo. El ahorro de Abastos, Jefatura y Tesorería está por cuantificar.</div>
+</section>
+
+<!-- ===== TABLA COMPARATIVA ===== -->
+<section class="slide">
+  <div class="topbar"><div class="brand"><span class="dot"></span> TotalGas · Pago a Proveedores</div><div class="pagenum">Comparativa por etapa</div></div>
+  <div class="kicker">Antes vs. Ahora</div>
+  <h2 style="margin-bottom:16px;">Tabla comparativa del proceso</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:150px;">Etapa</th>
+        <th class="h-antes" style="width:43%;">Antes (manual)</th>
+        <th class="h-ahora">✅ Ahora (en el sistema)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="etapa">Creación de requisición</td>
+        <td class="col-antes">Abastos arma la lista de pagos en <b>Excel</b> y verifica en ControlGas que las facturas ya estén cargadas.</td>
+        <td class="col-ahora"><span class="tag tag-auto">Optimizado</span> Las requisiciones se crean a partir de las facturas <b>ya cargadas desde ControlGas</b>; no hay Excel ni doble verificación.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Envío a pago</td>
+        <td class="col-antes">Abastos manda correo a su <b>supervisor</b>; el supervisor aprueba y reenvía a Contabilidad.</td>
+        <td class="col-ahora"><span class="tag tag-auto">1 clic</span> Abastos pulsa <b>"Mandar pagos"</b>: el sistema agrupa por empresa y notifica a Tesorería.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Validación de Contabilidad</td>
+        <td class="col-antes">Contabilidad descarga remisiones, revisa ControlGas y confirma que todas las facturas estén arriba.</td>
+        <td class="col-ahora"><span class="tag tag-elim">Eliminado</span> La validación de PDFs y montos la hace el sistema (indicador verde/rojo por requisición).</td>
+      </tr>
+      <tr>
+        <td class="etapa">Aprobación de Jefatura</td>
+        <td class="col-antes">Impresión física y <b>firma de Jefatura de Administración</b> antes de pasar a Tesorería.</td>
+        <td class="col-ahora"><span class="tag tag-elim">Eliminado</span> Ya no existe este paso ni la impresión.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Autorización (Tesorería 1)</td>
+        <td class="col-antes">Tesorería decide por <b>correo</b> qué pagar.</td>
+        <td class="col-ahora"><span class="tag tag-new">En la app</span> Tesorería 1 autoriza facturas en pantalla; si no estaban agrupadas, se agrupan al autorizar.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Layout y pago (Tesorería 2)</td>
+        <td class="col-antes">Tesorería arma el <b>layout bancario en Excel</b> a mano y paga en el banco.</td>
+        <td class="col-ahora"><span class="tag tag-auto">Generado</span> Tesorería 2 genera el <b>layout Banorte/Santander</b> desde el sistema y ejecuta el pago.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Comprobantes</td>
+        <td class="col-antes">No había conciliación estructurada del comprobante con la factura.</td>
+        <td class="col-ahora"><span class="tag tag-new">Lectura PDF</span> Tesorería 1 sube comprobantes; el sistema <b>lee</b> banco, fecha, referencia e importe y los <b>concilia</b>.</td>
+      </tr>
+      <tr>
+        <td class="etapa">Trazabilidad</td>
+        <td class="col-antes">Sin rastro: correos sueltos y archivos personales.</td>
+        <td class="col-ahora"><span class="tag tag-new">Auditoría</span> Cada alta, baja y <b>desautorización</b> queda registrada con usuario y fecha.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="footer-note">Tags: <span class="tag tag-elim">Eliminado</span> = el paso desapareció · <span class="tag tag-auto">Optimizado</span> = el sistema simplifica el trabajo manual · <span class="tag tag-new">En la app</span> = nueva capacidad digital.</div>
+</section>
+
+<!-- ===== DIAGRAMAS DE FLUJO COMPARATIVOS ===== -->
+<section class="slide">
+  <div class="topbar"><div class="brand"><span class="dot"></span> TotalGas · Pago a Proveedores</div><div class="pagenum">Diagrama de flujo</div></div>
+  <div class="kicker">Antes vs. Ahora</div>
+  <h2 style="margin-bottom:4px;">El recorrido de una requisición, paso a paso</h2>
+
+  <div class="flow-cols">
+    <!-- Columna ANTES -->
+    <div class="flow-v">
+      <div class="flow-col-title"><span class="pill pill-antes">ANTES</span> <span class="muted small">6 pasos · 4 áreas</span></div>
+
+      <div class="step"><span class="who">Abastos</span><span class="what">Arma lista de pagos en Excel + verifica ControlGas</span><span class="time">≈ 30 min</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Abastos</span><span class="what">Manda correo a Contabilidad</span><span class="time">correo</span></div>
+      <div class="step-aside">⤷ con copia al supervisor de Abastos, en paralelo (≈15 min de revisión, no detiene el flujo)</div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Contabilidad</span><span class="what">Descarga remisiones y revisa ControlGas</span><span class="time">la actividad más pesada</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Contabilidad</span><span class="what">Imprime y lleva a firma</span><span class="time">impresión</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Jefatura de Administración</span><span class="what">Firma y aprueba físicamente</span><span class="time">≈ 15 min</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Tesorería 1</span><span class="what">Decide por correo qué pagar</span><span class="time">correo</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step"><span class="who">Tesorería 2</span><span class="what">Arma layout en Excel y paga en banco</span><span class="time">por confirmar</span></div>
+
+      <div class="flow-total antes"><span class="lbl">Áreas que tocan la requisición</span><span class="val">4</span></div>
+    </div>
+
+    <!-- Columna AHORA -->
+    <div class="flow-v">
+      <div class="flow-col-title"><span class="pill pill-ahora">AHORA</span> <span class="muted small">4 pasos · 2 áreas</span></div>
+
+      <div class="step step-ahora"><span class="who">Abastos</span><span class="what">Revisa las requisiciones (ya armadas desde ControlGas) y pulsa "Mandar pagos"</span><span class="time">1 clic</span></div>
+      <div class="step-aside">⤷ el sistema agrupa por empresa y notifica a Tesorería sin intervención manual</div>
+      <div class="arrow-down">↓</div>
+      <div class="step step-ahora"><span class="who">Tesorería 1</span><span class="what">Autoriza los pagos dentro de la app</span><span class="time">en pantalla</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step step-ahora"><span class="who">Tesorería 2</span><span class="what">Genera el layout bancario y paga</span><span class="time">generado</span></div>
+      <div class="arrow-down">↓</div>
+      <div class="step step-ahora"><span class="who">Tesorería 1</span><span class="what">Sube comprobantes; el sistema los lee y concilia</span><span class="time">lectura PDF</span></div>
+
+      <div class="step step-elim" style="margin-top:14px;"><span class="who">Ya no existe</span><span class="what">Excel · correos · Contabilidad · firma de Jefatura</span></div>
+
+      <div class="flow-total ahora"><span class="lbl">Áreas que tocan la requisición</span><span class="val">2</span></div>
+    </div>
+  </div>
+
+  <div class="footer-note">El correo a Contabilidad llegaba en copia al supervisor de Abastos en paralelo (no detenía el flujo, pero sí consumía tiempo de revisión). El sistema absorbió las validaciones de Contabilidad, la verificación manual en ControlGas y la firma de Jefatura de Administración.</div>
+</section>
+
+<!-- ===== IMPACTO EN TIEMPOS ===== -->
+<section class="slide">
+  <div class="topbar"><div class="brand"><span class="dot"></span> TotalGas · Pago a Proveedores</div><div class="pagenum">Impacto en tiempos</div></div>
+  <div class="kicker">Lo que se libera por requisición</div>
+  <h2 style="margin-bottom:16px;">Tiempos de actividades eliminadas</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:26%;">Área / actividad</th>
+        <th class="h-antes" style="width:24%;">Antes (tiempo)</th>
+        <th class="h-ahora" style="width:24%;">Ahora</th>
+        <th style="width:26%;">Estado</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="etapa">Abastos — Excel + verificación ControlGas</td>
+        <td class="col-antes">≈ 30 min</td>
+        <td class="col-ahora">Optimizado (desde ControlGas)</td>
+        <td><span class="tag tag-auto">Optimizado</span></td>
+      </tr>
+      <tr>
+        <td class="etapa">Supervisor de Abastos — revisión (en paralelo)</td>
+        <td class="col-antes">≈ 15 min</td>
+        <td class="col-ahora">—</td>
+        <td><span class="tag tag-elim">Ya no se revisa</span></td>
+      </tr>
+      <tr>
+        <td class="etapa">Contabilidad — revisión y remisiones</td>
+        <td class="col-antes">≈ 3.75 h <span class="small muted">(días más pesados, por persona)</span></td>
+        <td class="col-ahora">—</td>
+        <td><span class="tag tag-elim">Eliminado</span></td>
+      </tr>
+      <tr>
+        <td class="etapa">Jefatura de Administración — firma</td>
+        <td class="col-antes">≈ 15 min</td>
+        <td class="col-ahora">—</td>
+        <td><span class="tag tag-elim">Eliminado</span></td>
+      </tr>
+      <tr>
+        <td class="etapa">Tesorería — layout en Excel</td>
+        <td class="col-antes" style="font-weight:700;color:#b45309;">Por confirmar</td>
+        <td class="col-ahora">Layout generado por el sistema</td>
+        <td><span class="tag tag-auto">Automatizado</span></td>
+      </tr>
+      <tr style="border-top:2px solid var(--azul);">
+        <td class="etapa" style="background:#eff6ff;">TOTAL liberado / día pesado</td>
+        <td class="col-antes" style="font-weight:800;font-size:15px;">≈ 4.75 h <span class="small muted">(+ Tesorería)</span></td>
+        <td class="col-ahora" style="font-weight:800;font-size:15px;color:var(--verde);">Minutos</td>
+        <td><span class="tag tag-new">Mejora</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="cards" style="margin-top:28px;">
+    <div class="card green"><div class="big">12–16 h</div><div class="lbl">Liberadas por semana en todo el departamento de Contabilidad</div></div>
+    <div class="card green"><div class="big">≈ 45 min</div><div class="lbl">Liberados por requisición en Abastos (captura + revisión del supervisor)</div></div>
+    <div class="card blue"><div class="big">⏳</div><div class="lbl">Ahorro de Tesorería: por confirmar</div></div>
+  </div>
+  <div class="footer-note">El dato de Contabilidad fue confirmado por su propio equipo. Pendiente: medir el tiempo real que antes tomaba a Tesorería armar el layout en Excel, para cuantificar el ahorro total.</div>
+</section>
+
+<!-- ===== CIERRE ===== -->
+<section class="slide">
+  <div class="topbar"><div class="brand"><span class="dot"></span> TotalGas · Pago a Proveedores</div><div class="pagenum">Conclusión</div></div>
+  <div class="kicker">En resumen</div>
+  <h2 style="margin-bottom:20px;">Un proceso más corto, controlado y trazable</h2>
+
+  <ul class="clean" style="font-size:15px; gap:14px;">
+    <li><b>De 4 áreas a 2:</b> solo Abastos y Tesorería operan el ciclo; Contabilidad y Jefatura salieron del flujo, y se ahorra también el tiempo de revisión del supervisor.</li>
+    <li><b>Sin Excel ni doble verificación:</b> las requisiciones nacen de lo ya cargado en ControlGas.</li>
+    <li><b>Menos correos, menos papel:</b> la aprobación, el envío y la autorización ocurren dentro de la aplicación.</li>
+    <li><b>Pago asistido:</b> layout bancario generado y comprobantes leídos/conciliados automáticamente.</li>
+    <li><b>Auditoría completa:</b> cada alta, baja y desautorización queda registrada con usuario y fecha.</li>
+    <li><b>12 a 16 horas a la semana liberadas en Contabilidad</b>, confirmado por el propio equipo (más el ahorro de Abastos, Jefatura y Tesorería, por cuantificar).</li>
+  </ul>
+
+  <div class="panel green" style="margin-top:28px;">
+    <h3>Siguiente paso</h3>
+    <p class="muted" style="font-size:14px;">Cuantificar el tiempo que el sistema le ahorra a Tesorería (layout manual en Excel vs. generado) para completar la métrica de ahorro total del proceso.</p>
+  </div>
+
+  <div class="footer-note">TotalGas · Aplicativo de Pago a Proveedores · Presentación de mejora de proceso.</div>
+</section>
+
+</body>
+</html>
