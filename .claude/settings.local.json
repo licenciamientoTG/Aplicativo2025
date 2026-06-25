@@ -141,7 +141,20 @@
       "Bash(bash __TRACKED_VAR__/scripts/review-package 7b607a6 9b3f312)",
       "Bash(sed -i 's|Task 3: pendiente \\(lectura PDF + asignacion + guardado\\)|Task 3: complete \\(commits 7b607a6 + fix 9b3f312, review clean; Important race al subir N PDFs -> FIXED\\)|' .superpowers/sdd/progress.md)",
       "Bash(echo \"=== rango feature ===\")",
-      "Bash(bash __TRACKED_VAR__/scripts/review-package 1b4eb89 9b3f312)"
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 1b4eb89 9b3f312)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package fb89100 b632cc5)",
+      "Bash(sed -i 's|Task 1: pendiente \\(log_unauthorize_invoice en modelo auditoria\\)|Task 1: complete \\(commit b632cc5, review clean; Minor json_encode sin guard = patron preexistente\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auditar-desautorizacion.md 2)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package b632cc5 36f038b)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package b632cc5 58dafcb)",
+      "Bash(sed -i 's|Task 2: pendiente \\(registrar log en unauthorize_invoices\\)|Task 2: complete \\(commits 36f038b + fix 58dafcb, review clean; CRITICAL reconexion mata transaccion -> FIXED moviendo new AuditLogModel antes de beginTransaction\\). NOTA: footgun arquitectonico en Model.php/MySqlPdoHandler -- cualquier new XxxModel\\(\\) dentro de una transaccion la rompe.|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auditar-desautorizacion.md 3)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package 58dafcb d616b54)",
+      "Bash(sed -i 's|Task 3: pendiente \\(controller pasa usuario\\)|Task 3: complete \\(commit d616b54, review clean, no findings\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/task-brief docs/superpowers/plans/2026-06-24-auditar-desautorizacion.md 4)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package d616b54 d595673)",
+      "Bash(sed -i 's|Task 4: pendiente \\(badge en tab Auditoria\\)|Task 4: complete \\(commit d595673, review clean, no findings\\)|' .superpowers/sdd/progress.md)",
+      "Bash(bash __TRACKED_VAR__/scripts/review-package fb89100 d595673)"
     ],
     "deny": [],
     "ask": []
