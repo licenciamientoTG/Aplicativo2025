@@ -184,7 +184,12 @@
       "Bash(bash \"C:\\\\Users\\\\alejandro.martinez\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\6.0.3\\\\skills\\\\subagent-driven-development\\\\scripts\\\\review-package\" 8478eec 8f4f436)",
       "Bash(findstr /r \"t6\\\\..*den\\\\|t6\\\\..*cod\\\\|t6\\\\..*RFC\\\\|emp\\\\..*den\\\\|emp\\\\..*cod\" _assets\\\\models\\\\*.php)",
       "PowerShell(php \"C:\\\\Users\\\\alejandro.martinez\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\query_empresas.php\")",
-      "Bash(composer install *)"
+      "Bash(composer install *)",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc2.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc3.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc4.php\")",
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc5.php\")"
     ],
     "deny": [],
     "ask": []
