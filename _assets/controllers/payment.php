@@ -5714,6 +5714,118 @@ class Payment
         }
     }
 
+    /**
+     * Registra el pago de un anticipo ya autorizado: crea el lote, la
+     * transacción (sin factura) y sube el comprobante. Marca el anticipo
+     * como PAGADO.
+     */
+    public function pay_anticipo()
+    {
+        header('Content-Type: application/json');
+        try {
+            $anticipo_id = isset($_POST['anticipo_id']) ? intval($_POST['anticipo_id']) : 0;
+            $fecha_pago = $_POST['fecha_pago'] ?? null;
+            $referencia = $_POST['referencia'] ?? null;
+            $observaciones = $_POST['observaciones'] ?? '';
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+
+            if (!$anticipo_id || !$fecha_pago || !$referencia) {
+                json_output(['success' => false, 'message' => 'Faltan datos obligatorios: fecha y referencia bancaria']);
+                return;
+            }
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede registrar el pago']);
+                return;
+            }
+
+            $anticipo = $this->PaymentRequestsModel->get_request_by_id($anticipo_id);
+            if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+                json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
+                return;
+            }
+            if (intval($anticipo['status']) !== PaymentRequestsModel::STATUS_AUTHORIZED) {
+                json_output(['success' => false, 'message' => 'El anticipo debe estar autorizado por Tesorería antes de pagarse']);
+                return;
+            }
+
+            $comprobante = (!empty($_FILES['comprobante']['name']) && $_FILES['comprobante']['error'] === UPLOAD_ERR_OK)
+                ? $_FILES['comprobante'] : null;
+            if (!$comprobante) {
+                json_output(['success' => false, 'message' => 'El comprobante de pago es obligatorio']);
+                return;
+            }
+
+            $this->PaymentRequestsModel->sql->beginTransaction();
+
+            $batch_id = $this->PaymentBatchesModel->create([
+                'fecha_pago'    => $fecha_pago,
+                'referencia'    => $referencia,
+                'banco'         => $this->banco_por_emp_cod($anticipo['emp_cod'] ?? null),
+                'emp_cod'       => $anticipo['emp_cod'] ?? null,
+                'provider_cod'  => $anticipo['provider_cod'] ?? null,
+                'monto_total'   => $anticipo['monto_total'],
+                'observaciones' => $observaciones,
+                'created_by'    => $user_id,
+            ]);
+
+            if (!$batch_id) {
+                $this->PaymentRequestsModel->sql->rollback();
+                json_output(['success' => false, 'message' => 'No se pudo crear el lote de pago']);
+                return;
+            }
+
+            $transaction_id = $this->paymentTransactionsModel->insert_transaction(
+                $anticipo_id,
+                null,
+                $anticipo['monto_total'],
+                $fecha_pago,
+                $user_id,
+                'TRANSFERENCIA',
+                $referencia,
+                $observaciones,
+                null,
+                null,
+                null,
+                $batch_id
+            );
+
+            if (!$transaction_id) {
+                $this->PaymentRequestsModel->sql->rollback();
+                json_output(['success' => false, 'message' => 'Error al registrar la transacción del anticipo']);
+                return;
+            }
+
+            $upload = $this->PaymentTransactionDocumentsModel->upload($transaction_id, $comprobante, $user_id, $batch_id);
+            if (!$upload['success']) {
+                $this->PaymentRequestsModel->sql->rollback();
+                json_output(['success' => false, 'message' => 'Error al guardar el comprobante: ' . $upload['message']]);
+                return;
+            }
+
+            $this->PaymentRequestsModel->update_request_status(
+                $anticipo_id,
+                PaymentRequestsModel::STATUS_PAID,
+                "Anticipo pagado el " . date('d/m/Y', strtotime($fecha_pago)) . " - Ref: " . $referencia
+            );
+
+            $this->PaymentRequestsModel->sql->commit();
+
+            json_output([
+                'success' => true,
+                'message' => 'Anticipo pagado y comprobante guardado correctamente',
+                'batch_id' => $batch_id
+            ]);
+        } catch (Exception $e) {
+            $this->PaymentRequestsModel->sql->rollback();
+            error_log('Error en pay_anticipo: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor: ' . $e->getMessage()]);
+        }
+    }
+
     private function generar_html_notificacion_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
         $fecha = date('d/m/Y H:i:s');
