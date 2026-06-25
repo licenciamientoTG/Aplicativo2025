@@ -5686,6 +5686,33 @@ class Payment
         }
     }
 
+    /**
+     * Facturas pendientes de un proveedor, para el modal de ligar anticipo.
+     */
+    public function get_invoices_pendientes_by_provider()
+    {
+        header('Content-Type: application/json');
+        try {
+            $json = file_get_contents('php://input');
+            $data = json_decode($json, true);
+            $provider_cod = $data['provider_cod'] ?? null;
+
+            if (!$provider_cod) {
+                json_output(['success' => false, 'message' => 'Proveedor requerido']);
+                return;
+            }
+
+            $facturas = $this->paymentRequestInvoicesModel->get_pending_by_provider($provider_cod);
+
+            json_output([
+                'success' => true,
+                'data' => $facturas ?: []
+            ]);
+        } catch (Exception $e) {
+            error_log('Error en get_invoices_pendientes_by_provider: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor']);
+        }
+    }
 
     private function generar_html_notificacion_pago($payment_id, $provider_name, $total_documents, $total_amount, $comment, $created_by)
     {
