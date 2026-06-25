@@ -142,13 +142,13 @@ function recalcular() {
 
   const goUsd = parseFloat(document.getElementById("go_exchange_dolares").value) || 0;
   const goMxn = parseFloat(document.getElementById("go_exchange_mxn").value) || 0;
-  const tcVenta = parseFloat(document.getElementById("tipo_cambio_venta").value) || 0;
+  const costoPromedio = parseFloat(document.getElementById("costo_promedio").value) || 0;
 
   const arqueoMxn = fisicoMxn + valesMxn;
-  const totalSistema = goUsd * tcVenta + goMxn;
+  const totalSistema = goUsd * costoPromedio + goMxn;
   const difUsd = fisicoUsd - goUsd;
   const difMxn = arqueoMxn - goMxn;
-  const resultado = difMxn + difUsd * tcVenta;
+  const resultado = difMxn + difUsd * costoPromedio;
 
   // Pintar vales.
   document.getElementById("total_vales_dolares").textContent = fmtMoney(valesUsd);
@@ -223,8 +223,7 @@ function guardarCaja() {
     encargado_revision: document.getElementById("encargado_revision").value,
     go_exchange_dolares: parseFloat(document.getElementById("go_exchange_dolares").value) || 0,
     go_exchange_mxn: parseFloat(document.getElementById("go_exchange_mxn").value) || 0,
-    tipo_cambio_venta: parseFloat(document.getElementById("tipo_cambio_venta").value) || 0,
-    tipo_cambio_compra: parseFloat(document.getElementById("tipo_cambio_compra").value) || 0,
+    costo_promedio: parseFloat(document.getElementById("costo_promedio").value) || 0,
     denominaciones: denominaciones,
     vales: vales,
   };
@@ -250,7 +249,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Recalcular en cada cambio.
     document
-      .querySelectorAll(".denom-input, .vale-dolares, .vale-mxn, #go_exchange_dolares, #go_exchange_mxn, #tipo_cambio_venta")
+      .querySelectorAll(".denom-input, .vale-dolares, .vale-mxn, #go_exchange_dolares, #go_exchange_mxn, #costo_promedio")
       .forEach((el) => el.addEventListener("input", recalcular));
 
     // Solo lectura: deshabilita toda la captura.

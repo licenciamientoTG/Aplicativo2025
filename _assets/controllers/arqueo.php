@@ -276,7 +276,7 @@ class Arqueo
     /**
      * Guarda la captura de una caja. POST (JSON o form):
      *   cajero_nombre, encargado_revision,
-     *   go_exchange_dolares, go_exchange_mxn, tipo_cambio_venta, tipo_cambio_compra,
+     *   go_exchange_dolares, go_exchange_mxn, costo_promedio,
      *   denominaciones[] => {seccion,moneda,tipo,denominacion,valor_bolsa,cantidad},
      *   vales[]          => {numero_vale,fecha,concepto,dolares,mxn}
      * Recalcula todos los totales y marca la caja como completada.
@@ -315,8 +315,7 @@ class Arqueo
         $go = [
             'go_exchange_dolares' => (float) ($in['go_exchange_dolares'] ?? 0),
             'go_exchange_mxn'     => (float) ($in['go_exchange_mxn'] ?? 0),
-            'tipo_cambio_venta'   => (float) ($in['tipo_cambio_venta'] ?? 0),
-            'tipo_cambio_compra'  => (float) ($in['tipo_cambio_compra'] ?? 0),
+            'costo_promedio'      => (float) ($in['costo_promedio'] ?? 0),
         ];
 
         $totales = $this->calcular_totales_caja($denom_rows, $vales_in, $go);
@@ -433,10 +432,8 @@ class Arqueo
                 $e[$f] = 'Requerido, numérico ≥ 0.';
             }
         }
-        foreach (['tipo_cambio_venta', 'tipo_cambio_compra'] as $f) {
-            if (!isset($in[$f]) || !is_numeric($in[$f]) || (float) $in[$f] < 1) {
-                $e[$f] = 'Requerido, numérico ≥ 1.';
-            }
+        if (!isset($in['costo_promedio']) || !is_numeric($in['costo_promedio']) || (float) $in['costo_promedio'] < 1) {
+            $e['costo_promedio'] = 'Requerido, numérico ≥ 1.';
         }
         return $e;
     }
@@ -519,20 +516,19 @@ class Arqueo
         }
         $gran_total_vales_mxn = $total_vales_dolares + $total_vales_mxn;
 
-        $tc_venta = (float) $go['tipo_cambio_venta'];
+        $costo_promedio = (float) $go['costo_promedio'];
 
         $total_arqueo_mxn = $total_fisico_mxn + $total_vales_mxn;
-        $total_en_sistema = ((float) $go['go_exchange_dolares'] * $tc_venta) + (float) $go['go_exchange_mxn'];
+        $total_en_sistema = ((float) $go['go_exchange_dolares'] * $costo_promedio) + (float) $go['go_exchange_mxn'];
 
         $diferencia_dolares = $total_fisico_dolares - (float) $go['go_exchange_dolares'];
         $diferencia_mxn     = $total_arqueo_mxn - (float) $go['go_exchange_mxn'];
-        $resultado_final    = $diferencia_mxn + ($diferencia_dolares * $tc_venta);
+        $resultado_final    = $diferencia_mxn + ($diferencia_dolares * $costo_promedio);
 
         return [
             'go_exchange_dolares'  => (float) $go['go_exchange_dolares'],
             'go_exchange_mxn'      => (float) $go['go_exchange_mxn'],
-            'tipo_cambio_venta'    => $tc_venta,
-            'tipo_cambio_compra'   => (float) $go['tipo_cambio_compra'],
+            'costo_promedio'       => $costo_promedio,
             'total_fisico_dolares' => $total_fisico_dolares,
             'total_fisico_mxn'     => $total_fisico_mxn,
             'total_arqueo_mxn'     => $total_arqueo_mxn,
