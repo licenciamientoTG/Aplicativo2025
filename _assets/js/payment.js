@@ -3072,106 +3072,6 @@ function cargarProveedoresAnticipo() {
 }
 
 
-async function cargarAnticiposDisponibles(proveedor_cod) {
-  try {
-    const response = await fetch("/payment/get_anticipos_disponibles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider_cod: proveedor_cod }),
-    });
-
-    const data = await response.json();
-
-    if (data.success && data.anticipos.length > 0) {
-      mostrarAnticiposDisponibles(data.anticipos);
-    } else {
-      $("#anticipos_disponibles_section").hide();
-    }
-  } catch (error) {
-    console.error("Error:", error);
-  }
-}
-
-
-function mostrarAnticiposDisponibles(anticipos) {
-  const $tbody = $("#tabla_anticipos_aplicables tbody");
-  $tbody.empty();
-
-  anticipos.forEach((ant) => {
-    const row = `
-            <tr>
-                <td class="text-center">
-                    <input type="checkbox" 
-                           class="anticipo-checkbox" 
-                           data-anticipo-id="${ant.id}"
-                           data-saldo="${ant.saldo_disponible}">
-                </td>
-                <td>${ant.id}</td>
-                <td>${ant.request_date}</td>
-                <td class="text-end"><strong>$${parseFloat(ant.saldo_disponible).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong></td>
-                <td>
-                    <input type="number" 
-                           class="form-control form-control-sm anticipo-monto"
-                           data-anticipo-id="${ant.id}"
-                           step="0.01"
-                           min="0.01"
-                           max="${ant.saldo_disponible}"
-                           placeholder="0.00"
-                           disabled>
-                </td>
-            </tr>
-        `;
-    $tbody.append(row);
-  });
-
-  $("#anticipos_disponibles_section").show();
-
-  // Eventos
-  $(".anticipo-checkbox").on("change", function () {
-    const $input = $(
-      `.anticipo-monto[data-anticipo-id="${$(this).data("anticipo-id")}"]`,
-    );
-    $input.prop("disabled", !$(this).is(":checked"));
-    if (!$(this).is(":checked")) {
-      $input.val("");
-    }
-    calcularTotalConAnticipos();
-  });
-
-  $(".anticipo-monto").on("input", calcularTotalConAnticipos);
-}
-
-
-function calcularTotalConAnticipos() {
-  const totalFacturas = paymentItems.reduce(
-    (sum, item) => sum + (parseFloat(item.total_fac) || 0),
-    0,
-  );
-
-  let totalAnticipos = 0;
-  $(".anticipo-checkbox:checked").each(function () {
-    const anticipoId = $(this).data("anticipo-id");
-    const monto =
-      parseFloat(
-        $(`.anticipo-monto[data-anticipo-id="${anticipoId}"]`).val(),
-      ) || 0;
-    totalAnticipos += monto;
-  });
-
-  const totalAPagar = Math.max(0, totalFacturas - totalAnticipos);
-
-  $("#total_factura_original").text(
-    "$" + totalFacturas.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-  );
-  $("#total_anticipos_aplicados").text(
-    "$" + totalAnticipos.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-  );
-  $("#total_con_anticipos").text(
-    "$" + totalAPagar.toLocaleString("es-MX", { minimumFractionDigits: 2 }),
-  );
-}
-
-
 function openAuthModal(permission, departamento) {
   currentPermission = permission;
   $("#modalDepartamento").text(departamento);
@@ -7603,6 +7503,243 @@ function ejecutarConciliacionComprobantes(asignaciones) {
         .prop("disabled", false)
         .html('<i class="fas fa-save"></i> Aplicar y guardar');
       alertify.error("Error de conexión: " + err.message);
+    });
+}
+
+// ============================================================
+// ANTICIPO DETAIL: autorización, pago y aplicación a facturas
+// ============================================================
+
+function openAuthModalAnticipo() {
+  $("#authModalAnticipo").modal("show");
+}
+
+function confirmarAutorizacionAnticipo() {
+  const anticipoId = $("#anticipoId").val();
+
+  fetch("/payment/authorize_payment", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ payment_id: anticipoId, permission: 68 }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      $("#authModalAnticipo").modal("hide");
+      if (data.success) {
+        alertify.success(data.message || "Anticipo autorizado");
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        alertify.error(data.message || "Error al autorizar");
+      }
+    })
+    .catch(() => {
+      $("#authModalAnticipo").modal("hide");
+      alertify.error("Error de conexión al autorizar");
+    });
+}
+
+function abrirModalPagarAnticipo() {
+  $("#formPagarAnticipo")[0].reset();
+  $("#pago_fecha").val(new Date().toISOString().slice(0, 10));
+  $("#modalPagarAnticipo").modal("show");
+}
+
+function confirmarPagoAnticipo() {
+  const anticipoId = $("#anticipoId").val();
+  const fecha = $("#pago_fecha").val();
+  const referencia = $("#pago_referencia").val().trim();
+  const observaciones = $("#pago_observaciones").val().trim();
+  const fileInput = document.getElementById("pago_comprobante");
+
+  if (!fecha || !referencia) {
+    alertify.error("Fecha y referencia bancaria son obligatorias");
+    return;
+  }
+  if (!fileInput.files.length) {
+    alertify.error("Debe adjuntar el comprobante de pago");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("anticipo_id", anticipoId);
+  formData.append("fecha_pago", fecha);
+  formData.append("referencia", referencia);
+  formData.append("observaciones", observaciones);
+  formData.append("comprobante", fileInput.files[0]);
+
+  $("#btnConfirmarPagoAnticipo")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Procesando...');
+
+  fetch("/payment/pay_anticipo", { method: "POST", body: formData })
+    .then((r) => r.json())
+    .then((data) => {
+      $("#modalPagarAnticipo").modal("hide");
+      if (data.success) {
+        alertify.success(data.message || "Anticipo pagado correctamente");
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        alertify.error(data.message || "Error al registrar el pago");
+        $("#btnConfirmarPagoAnticipo")
+          .prop("disabled", false)
+          .html('<i class="fas fa-check"></i> Confirmar Pago');
+      }
+    })
+    .catch(() => {
+      alertify.error("Error de conexión al registrar el pago");
+      $("#btnConfirmarPagoAnticipo")
+        .prop("disabled", false)
+        .html('<i class="fas fa-check"></i> Confirmar Pago');
+    });
+}
+
+let facturasPendientesAplicar = [];
+
+function abrirModalAplicarAFacturas() {
+  const providerCod = $("#anticipoProviderCod").val();
+  const saldo = parseFloat($("#anticipoSaldoDisponible").val()) || 0;
+
+  $("#saldoDisponibleModal").text(saldo.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
+  $("#tbodyFacturasAplicar").html(
+    '<tr><td colspan="7" class="text-center text-muted">Cargando facturas...</td></tr>',
+  );
+  $("#modalAplicarAnticipo").modal("show");
+
+  fetch("/payment/get_invoices_pendientes_by_provider", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider_cod: providerCod }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      facturasPendientesAplicar = data.success ? data.data : [];
+      renderFacturasPendientesAplicar(facturasPendientesAplicar);
+    })
+    .catch(() => {
+      $("#tbodyFacturasAplicar").html(
+        '<tr><td colspan="7" class="text-center text-danger">Error al cargar facturas</td></tr>',
+      );
+    });
+}
+
+function renderFacturasPendientesAplicar(facturas) {
+  const $tbody = $("#tbodyFacturasAplicar");
+  $tbody.empty();
+
+  if (!facturas.length) {
+    $tbody.html(
+      '<tr><td colspan="7" class="text-center text-muted">No hay facturas pendientes de este proveedor</td></tr>',
+    );
+    return;
+  }
+
+  facturas.forEach((f) => {
+    const saldo = parseFloat(f.saldo) || 0;
+    const row = `
+      <tr data-invoice-id="${f.id}" data-payment-request-id="${f.payment_request_id}" data-saldo="${saldo}">
+        <td><input type="checkbox" class="factura-aplicar-checkbox"></td>
+        <td>${f.folio}</td>
+        <td>${f.invoice_number}</td>
+        <td>${f.estacion_nombre || "N/A"}</td>
+        <td class="text-end">$${parseFloat(f.amount).toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+        <td class="text-end">$${saldo.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
+        <td>
+          <input type="number" class="form-control form-control-sm monto-aplicar-input"
+                 step="0.01" min="0.01" max="${saldo}" placeholder="0.00" disabled>
+        </td>
+      </tr>`;
+    $tbody.append(row);
+  });
+
+  $(".factura-aplicar-checkbox").on("change", function () {
+    const $input = $(this).closest("tr").find(".monto-aplicar-input");
+    $input.prop("disabled", !this.checked);
+    if (!this.checked) $input.val("");
+    actualizarTotalAplicar();
+  });
+  $(".monto-aplicar-input").on("input", actualizarTotalAplicar);
+}
+
+$(document).on("input", "#buscarFacturaAplicar", function () {
+  const term = $(this).val().toLowerCase();
+  const filtradas = facturasPendientesAplicar.filter(
+    (f) =>
+      (f.folio || "").toLowerCase().includes(term) ||
+      (f.invoice_number || "").toLowerCase().includes(term),
+  );
+  renderFacturasPendientesAplicar(filtradas);
+});
+
+$(document).on("change", "#selectAllFacturasAplicar", function () {
+  $(".factura-aplicar-checkbox").prop("checked", this.checked).trigger("change");
+});
+
+function actualizarTotalAplicar() {
+  const saldoDisponible = parseFloat($("#anticipoSaldoDisponible").val()) || 0;
+  let total = 0;
+  $(".factura-aplicar-checkbox:checked").each(function () {
+    const monto = parseFloat($(this).closest("tr").find(".monto-aplicar-input").val()) || 0;
+    total += monto;
+  });
+
+  $("#totalAplicarModal").text(total.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
+
+  const excede = total > saldoDisponible;
+  $("#alertExcedeSaldo").toggleClass("d-none", !excede);
+  $("#btnConfirmarAplicarAnticipo").prop("disabled", excede || total <= 0);
+}
+
+function confirmarAplicarAnticipo() {
+  const anticipoId = $("#anticipoId").val();
+  const aplicaciones = [];
+
+  $(".factura-aplicar-checkbox:checked").each(function () {
+    const $row = $(this).closest("tr");
+    const monto = parseFloat($row.find(".monto-aplicar-input").val()) || 0;
+    if (monto > 0) {
+      aplicaciones.push({
+        invoice_id: $row.data("invoice-id"),
+        payment_request_id: $row.data("payment-request-id"),
+        monto: monto,
+      });
+    }
+  });
+
+  if (!aplicaciones.length) {
+    alertify.error("Seleccione al menos una factura y un monto a aplicar");
+    return;
+  }
+
+  $("#btnConfirmarAplicarAnticipo")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Aplicando...');
+
+  fetch("/payment/apply_anticipo_to_invoices", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      anticipo_id: anticipoId,
+      aplicaciones: JSON.stringify(aplicaciones),
+    }),
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      $("#modalAplicarAnticipo").modal("hide");
+      if (data.success) {
+        alertify.success(data.message || "Anticipo aplicado correctamente");
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        alertify.error(data.message || "Error al aplicar el anticipo");
+        $("#btnConfirmarAplicarAnticipo")
+          .prop("disabled", false)
+          .html('<i class="fas fa-check"></i> Confirmar Aplicación');
+      }
+    })
+    .catch(() => {
+      alertify.error("Error de conexión al aplicar el anticipo");
+      $("#btnConfirmarAplicarAnticipo")
+        .prop("disabled", false)
+        .html('<i class="fas fa-check"></i> Confirmar Aplicación');
     });
 }
 
