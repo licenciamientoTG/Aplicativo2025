@@ -5648,6 +5648,11 @@ class Payment
         header('Content-Type: application/json');
 
         try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'No tiene permisos para esta acción']);
+                return;
+            }
+
             $anticipo_id = $_POST['anticipo_id'] ?? null;
             $aplicaciones = json_decode($_POST['aplicaciones'] ?? '[]', true);
 
