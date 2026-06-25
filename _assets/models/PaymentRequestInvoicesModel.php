@@ -1494,8 +1494,9 @@ class PaymentRequestInvoicesModel extends Model
     $placeholders = implode(',', array_fill(0, count($facturas_ids), '?'));
     
     $query = "
-        SELECT 
+        SELECT
             inv.id,
+            inv.payment_request_id,
             inv.folio,
             inv.invoice_number,
             inv.amount AS monto_original,

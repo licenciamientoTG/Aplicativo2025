@@ -2998,7 +2998,9 @@ class Payment
                 $consolidados[$key]['referencias'][] = $pago['folio']; // "ANTICIPO #55"
                 $consolidados[$key]['es_anticipo'] = true;
             } else {
-                $consolidados[$key]['referencias'][] = $pago['invoice_number'] ?? $pago['folio'];
+                // El concepto debe llevar el número de requisición (orden de pago),
+                // no el folio/UUID de la factura.
+                $consolidados[$key]['referencias'][] = $pago['payment_request_id'];
             }
         }
         // ✅ GENERAR LÍNEAS
@@ -3285,7 +3287,9 @@ class Payment
                 $consolidados[$key]['referencias'][] = $pago['folio']; // "ANTICIPO #55"
                 $consolidados[$key]['es_anticipo'] = true;
             } else {
-                $consolidados[$key]['referencias'][] = $pago['invoice_number'] ?? $pago['folio'];
+                // El concepto debe llevar el número de requisición (orden de pago),
+                // no el folio/UUID de la factura.
+                $consolidados[$key]['referencias'][] = $pago['payment_request_id'];
             }
         }
 
