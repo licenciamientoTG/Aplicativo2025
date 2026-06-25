@@ -2827,7 +2827,9 @@ class Payment
                 return;
             }
 
-            $result = $this->paymentRequestInvoicesModel->unauthorize_invoices($invoice_ids);
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            $user_name = $_SESSION['tg_user']['Nombre'] ?? null;
+            $result = $this->paymentRequestInvoicesModel->unauthorize_invoices($invoice_ids, $user_id, $user_name);
             json_output($result);
         } catch (Exception $e) {
             error_log("Error en unauthorize_invoices: " . $e->getMessage());
