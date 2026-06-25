@@ -538,6 +538,13 @@ class PaymentRequestInvoicesModel extends Model
 
         $placeholders = implode(',', array_fill(0, count($invoice_ids), '?'));
 
+        // Instanciar ANTES de abrir la transacción: el constructor de cualquier
+        // Model llama a MySqlPdoHandler::connect(), que reemplaza la conexión PDO
+        // singleton. Si se hiciera dentro del try, destruiría la conexión con la
+        // transacción abierta, dejando los UPDATE posteriores en autocommit y el
+        // rollback como no-op.
+        $auditLog = new PaymentRequestAuditLogModel();
+
         $this->sql->beginTransaction();
         try {
             // 1. Traer estado actual de las facturas solicitadas
@@ -558,8 +565,6 @@ class PaymentRequestInvoicesModel extends Model
             $a_limpiar       = [];
             $errores         = [];
             $payment_req_ids = [];
-
-            $auditLog = new PaymentRequestAuditLogModel();
 
             foreach ($rows as $r) {
                 if ((int)$r['payment_authorized'] !== 1) {
