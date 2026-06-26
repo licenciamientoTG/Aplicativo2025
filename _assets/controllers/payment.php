@@ -1943,9 +1943,23 @@ class Payment
             }
 
             $invoices = $this->paymentRequestInvoicesModel->get_all_pending_payment_invoices();
+            $anticipos = $this->PaymentRequestsModel->get_pending_anticipos_for_authorization();
+
+            $anticipos_data = [];
+            foreach (($anticipos ?: []) as $anticipo) {
+                $anticipos_data[] = [
+                    'id' => $anticipo['id'],
+                    'monto_total' => floatval($anticipo['monto_total']),
+                    'request_date' => $anticipo['request_date'],
+                    'usuario_nombre' => $anticipo['usuario_nombre'] ?? 'N/A',
+                    'proveedor_nombre' => $anticipo['proveedor_nombre'] ?? 'N/A',
+                    'empresa_nombre' => $anticipo['empresa_nombre'] ?? 'N/A',
+                    'comment' => $anticipo['comment']
+                ];
+            }
 
             if (!$invoices) {
-                json_output(['success' => true, 'data' => [], 'message' => 'No hay facturas pendientes de autorización de pago']);
+                json_output(['success' => true, 'data' => [], 'anticipos' => $anticipos_data, 'message' => 'No hay facturas pendientes de autorización de pago']);
                 return;
             }
 
@@ -1973,7 +1987,7 @@ class Payment
                 ];
             }
 
-            json_output(['success' => true, 'data' => $data]);
+            json_output(['success' => true, 'data' => $data, 'anticipos' => $anticipos_data]);
         } catch (Exception $e) {
             error_log("Error en get_pending_payment_invoices: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);

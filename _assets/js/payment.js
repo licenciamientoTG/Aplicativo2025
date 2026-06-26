@@ -3343,6 +3343,7 @@ function abrirModalAutorizarPagoMasivo() {
   $("#loadingPagoMasivo").show();
   $("#tablaPagoMasivoContainer").hide();
   $("#sinFacturasPagoMasivo").hide();
+  $("#anticiposPagoMasivoContainer").hide();
 
   $.ajax({
     url: "/payment/get_pending_payment_invoices",
@@ -3355,11 +3356,127 @@ function abrirModalAutorizarPagoMasivo() {
       } else {
         $("#sinFacturasPagoMasivo").show();
       }
+
+      if (response.success && response.anticipos && response.anticipos.length > 0) {
+        renderTablaAnticiposPagoMasivo(response.anticipos);
+        $("#anticiposPagoMasivoContainer").show();
+      }
     },
     error: function () {
       $("#loadingPagoMasivo").hide();
       alertify.error("Error al cargar facturas pendientes");
     },
+  });
+}
+
+
+function renderTablaAnticiposPagoMasivo(anticipos) {
+  const tbody = $("#tablaAnticiposPagoMasivo tbody");
+  tbody.empty();
+
+  const fmt = (val) =>
+    "$" +
+    parseFloat(val || 0).toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  anticipos.forEach(function (a) {
+    const row = `<tr data-anticipo-id="${a.id}">
+      <td>
+        <input type="checkbox" class="anticipo-masivo-checkbox" value="${a.id}" onchange="updateBtnAutorizarAnticiposMasivo()"/>
+      </td>
+      <td><a href="/payment/anticipo_detail/${a.id}" target="_blank">#${a.id}</a></td>
+      <td>${a.empresa_nombre}</td>
+      <td>${a.proveedor_nombre}</td>
+      <td>${a.comment || ""}</td>
+      <td class="text-end">${fmt(a.monto_total)}</td>
+    </tr>`;
+    tbody.append(row);
+  });
+
+  updateBtnAutorizarAnticiposMasivo();
+}
+
+function toggleSelectAllAnticiposMasivo() {
+  const checked = $("#selectAllAnticiposMasivo").is(":checked");
+  $(".anticipo-masivo-checkbox").prop("checked", checked);
+  updateBtnAutorizarAnticiposMasivo();
+}
+
+function updateBtnAutorizarAnticiposMasivo() {
+  const totalChecked = $(".anticipo-masivo-checkbox:checked").length;
+  $("#btnConfirmarAutorizacionAnticiposMasiva").prop("disabled", totalChecked === 0);
+}
+
+function confirmarAutorizarAnticiposMasivo() {
+  const anticipoIds = $(".anticipo-masivo-checkbox:checked")
+    .map(function () {
+      return $(this).val();
+    })
+    .get();
+
+  if (anticipoIds.length === 0) {
+    alertify.error("Debe seleccionar al menos un anticipo");
+    return;
+  }
+
+  alertify
+    .confirm(
+      "Confirmar Autorización de Anticipos",
+      `<div class="text-center">
+        <i class="fas fa-check-circle text-warning fa-3x mb-3"></i>
+        <p class="mb-0">¿Está seguro de autorizar <strong>${anticipoIds.length} anticipo(s)</strong>?</p>
+      </div>`,
+      function () {
+        ejecutarAutorizacionAnticiposMasivo(anticipoIds);
+      },
+      function () {
+        alertify.message("Operación cancelada");
+      },
+    )
+    .set("labels", { ok: "Autorizar", cancel: "Cancelar" });
+}
+
+function ejecutarAutorizacionAnticiposMasivo(anticipoIds) {
+  $("#btnConfirmarAutorizacionAnticiposMasiva")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Autorizando...');
+
+  let pendientes = anticipoIds.length;
+  let errores = [];
+
+  anticipoIds.forEach(function (anticipoId) {
+    $.ajax({
+      url: "/payment/authorize_payment",
+      type: "POST",
+      data: {
+        payment_id: anticipoId,
+        permission: 68,
+      },
+      success: function (response) {
+        if (!response.success) {
+          errores.push(`Anticipo #${anticipoId}: ${response.message}`);
+        }
+      },
+      error: function () {
+        errores.push(`Anticipo #${anticipoId}: error de conexión`);
+      },
+      complete: function () {
+        pendientes--;
+        if (pendientes === 0) {
+          if (errores.length === 0) {
+            alertify.success("Anticipos autorizados correctamente");
+          } else {
+            alertify.error(errores.join("<br>"));
+          }
+          $("#modalAutorizarPagoMasivo").modal("hide");
+          setTimeout(() => {
+            location.reload();
+          }, 1500);
+        }
+      },
+    });
   });
 }
 

@@ -789,6 +789,36 @@ document.addEventListener('DOMContentLoaded', function() {
                         <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
                         <p class="text-muted">No hay facturas pendientes de autorización de pago.</p>
                     </div>
+
+                    <!-- Anticipos pendientes de autorización -->
+                    <div id="anticiposPagoMasivoContainer" style="display: none;">
+                        <hr>
+                        <h6 class="mb-3"><i class="fas fa-hand-holding-usd text-warning"></i> Anticipos pendientes de autorización</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover table-bordered" id="tablaAnticiposPagoMasivo">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th width="40">
+                                            <input type="checkbox" id="selectAllAnticiposMasivo" onchange="toggleSelectAllAnticiposMasivo()"/>
+                                        </th>
+                                        <th>Anticipo</th>
+                                        <th>Empresa</th>
+                                        <th>Proveedor</th>
+                                        <th>Comentario</th>
+                                        <th class="text-end">Monto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dinámico vía JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-end mb-2">
+                            <button type="button" class="btn btn-warning btn-sm" id="btnConfirmarAutorizacionAnticiposMasiva" onclick="confirmarAutorizarAnticiposMasivo()" disabled>
+                                <i class="fas fa-check-circle"></i> Autorizar Anticipos Seleccionados
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

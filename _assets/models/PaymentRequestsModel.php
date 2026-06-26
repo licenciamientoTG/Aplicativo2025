@@ -1162,6 +1162,42 @@ class PaymentRequestsModel extends Model
         }
     }
 
+    public function get_pending_anticipos_for_authorization(): array|false
+    {
+        $query = "
+            SELECT
+                pr.id,
+                pr.request_date,
+                pr.user_id,
+                pr.comment,
+                pr.provider_cod,
+                pr.emp_cod,
+                ISNULL(pr.monto_total, 0) as monto_total,
+
+                u.Nombre as usuario_nombre,
+                prov.den as proveedor_nombre,
+                emp.den as empresa_nombre
+
+            FROM [TG].[dbo].[payment_requests] pr
+
+            LEFT JOIN [TG].[dbo].[Usuario] u ON pr.user_id = u.Id
+            LEFT JOIN [SG12].[dbo].[Proveedores] prov ON pr.provider_cod = prov.cod
+            LEFT JOIN [SG12].[dbo].[Empresas] emp ON pr.emp_cod = emp.cod
+
+            LEFT JOIN [TG].[dbo].[payment_request_authorizations] pra
+                ON pr.id = pra.payment_request_id AND pra.permission_number = 68
+
+            WHERE
+                pr.status = ?
+                AND pr.tipo = 1
+                AND pra.id IS NULL
+
+            ORDER BY pr.request_date ASC
+        ";
+
+        return $this->sql->select($query, [self::STATUS_PENDING]) ?: false;
+    }
+
 
     /**
      * Procesar aprobación masiva de pagos
