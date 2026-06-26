@@ -3,10 +3,16 @@
 {% block title %}Concentrado — {{ sesion.nombre }}{% endblock %}
 {% block mycss %}
 <style>
-    .num { font-variant-numeric:tabular-nums; text-align:right; }
+    .num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
     .falt-negativo { color:#dc3545; font-weight:600; }
     .falt-positivo { color:#198754; font-weight:600; }
     #tabla_concentrado tfoot th { background:#f1f3f5; }
+    .th-rojo { background:#83160E !important; color:#fff !important; }
+    .th-azul { background:#1C4587 !important; color:#fff !important; }
+    .resumen-card { max-width:520px; }
+    .resumen-titulo { background:#B0F5F5; font-weight:600; padding:.4rem .75rem; }
+    .resumen-total { background:#FFFF00; font-weight:700; }
+    .resumen-row td { padding:.3rem .75rem; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -19,35 +25,76 @@
 {% endblock %}
 {% block content %}
 
-<div class="card">
+<div class="card mb-3">
   <div class="card-body table-responsive">
-    <table id="tabla_concentrado" class="table table-bordered table-hover" style="width:100%;">
+    <table id="tabla_concentrado" class="table table-bordered table-hover table-sm" style="width:100%;">
       <thead>
         <tr>
           <th>Sucursal</th>
-          <th class="text-end">Total en Sistema M.N.</th>
-          <th class="text-end">Conteo Físico (sin vales)</th>
-          <th class="text-end">Vales Autorizados</th>
-          <th class="text-end">Faltantes (-) / Sobrantes (+)</th>
+          <th class="text-end th-rojo">Capital de Trabajo</th>
+          <th class="text-end th-rojo">Total en Sistema M.N.</th>
+          <th class="text-end th-azul">Conteo Físico sin Vales</th>
+          <th class="text-end th-azul">Faltantes(-)/Sobrantes(+) sin Vales</th>
+          <th class="text-end th-azul">Vales Autorizados</th>
+          <th class="text-end th-azul">Faltante Real de Arqueo</th>
+          <th class="text-end th-rojo">Gastos en Trámite</th>
+          <th class="text-end th-rojo">Adeudo</th>
+          <th class="text-end th-rojo">Reinversión</th>
+          <th class="text-end th-rojo">Conteo Físico, Vales y Gastos</th>
+          <th class="text-end th-rojo">Utilidad</th>
+          <th class="text-end th-rojo">Capital, Utilidad y Reinversión</th>
+          <th class="text-end th-azul">Variación vs Indicadores D2GO</th>
+          <th>Editar</th>
         </tr>
       </thead>
       <tbody>
-        {% set t_sistema = 0 %}
-        {% set t_fisico = 0 %}
-        {% set t_vales = 0 %}
-        {% set t_falt = 0 %}
+        {% set t_capital = 0 %}
+        {% set t_D = 0 %}
+        {% set t_E = 0 %}
+        {% set t_F = 0 %}
+        {% set t_G = 0 %}
+        {% set t_H = 0 %}
+        {% set t_gastos = 0 %}
+        {% set t_adeudo = 0 %}
+        {% set t_L = 0 %}
+        {% set t_reinv = 0 %}
+        {% set t_util = 0 %}
+        {% set t_N = 0 %}
+        {% set t_O = 0 %}
         {% for g in concentrado %}
-        {% set t_sistema = t_sistema + g.total_en_sistema_mn %}
-        {% set t_fisico  = t_fisico + g.total_conteo_fisico_sin_vales %}
-        {% set t_vales   = t_vales + g.vales_autorizados %}
-        {% set t_falt    = t_falt + g.faltantes_sobrantes %}
+        {% set t_capital = t_capital + g.capital_trabajo %}
+        {% set t_D = t_D + g.D %}
+        {% set t_E = t_E + g.E %}
+        {% set t_F = t_F + g.F %}
+        {% set t_G = t_G + g.G %}
+        {% set t_H = t_H + g.H %}
+        {% set t_gastos = t_gastos + g.gastos_tramite %}
+        {% set t_adeudo = t_adeudo + g.adeudo %}
+        {% set t_L = t_L + g.L %}
+        {% set t_reinv = t_reinv + g.reinversion %}
+        {% set t_util = t_util + g.utilidad %}
+        {% set t_N = t_N + g.N %}
+        {% set t_O = t_O + g.O %}
         <tr>
           <td>{{ g.sucursal }}</td>
-          <td class="num">{{ g.total_en_sistema_mn|number_format(2,'.',',') }}</td>
-          <td class="num">{{ g.total_conteo_fisico_sin_vales|number_format(2,'.',',') }}</td>
-          <td class="num">{{ g.vales_autorizados|number_format(2,'.',',') }}</td>
-          <td class="num {{ g.faltantes_sobrantes < 0 ? 'falt-negativo' : 'falt-positivo' }}">
-            {{ g.faltantes_sobrantes|number_format(2,'.',',') }}
+          <td class="num">{{ g.capital_trabajo|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.D|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.E|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.F < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.F|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.G|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.H < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.H|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.gastos_tramite|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.adeudo|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.reinversion|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.L|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.utilidad|number_format(2,'.',',') }}</td>
+          <td class="num">{{ g.N|number_format(2,'.',',') }}</td>
+          <td class="num {{ g.O < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ g.O|number_format(2,'.',',') }}</td>
+          <td class="text-center">
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    onclick="abrirModalExtra({{ g.sucursal_id }}, '{{ g.sucursal|e('js') }}', {{ g.capital_trabajo }}, {{ g.gastos_tramite }}, {{ g.adeudo }}, {{ g.reinversion }}, {{ g.utilidad }})">
+              <i class="fas fa-edit"></i>
+            </button>
           </td>
         </tr>
         {% endfor %}
@@ -55,15 +102,87 @@
       <tfoot>
         <tr>
           <th>Totales</th>
-          <th class="num">{{ t_sistema|number_format(2,'.',',') }}</th>
-          <th class="num">{{ t_fisico|number_format(2,'.',',') }}</th>
-          <th class="num">{{ t_vales|number_format(2,'.',',') }}</th>
-          <th class="num {{ t_falt < 0 ? 'falt-negativo' : 'falt-positivo' }}">
-            {{ t_falt|number_format(2,'.',',') }}
-          </th>
+          <th class="num">{{ t_capital|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_D|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_E|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_F < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_F|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_G|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_H < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_H|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_gastos|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_adeudo|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_reinv|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_L|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_util|number_format(2,'.',',') }}</th>
+          <th class="num">{{ t_N|number_format(2,'.',',') }}</th>
+          <th class="num {{ t_O < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ t_O|number_format(2,'.',',') }}</th>
+          <th></th>
         </tr>
       </tfoot>
     </table>
+  </div>
+</div>
+
+<div class="card resumen-card">
+  <div class="card-body p-0">
+    <table class="table table-borderless table-sm mb-0">
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resumen del arqueo vs Indicadores D2GO — {{ sesion.fecha|date('d/m/Y') }}</td></tr>
+      <tr class="resumen-row"><td>Capital de Trabajo</td><td class="num">{{ t_capital|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Utilidad</td><td class="num">{{ t_util|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Reinversión</td><td class="num">{{ t_reinv|number_format(2,'.',',') }}</td></tr>
+      {% set total1 = t_capital + t_reinv + t_util %}
+      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total1|number_format(2,'.',',') }}</td></tr>
+
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Resultado de Arqueo</td></tr>
+      <tr class="resumen-row"><td>Conteo Físico</td><td class="num">{{ t_E|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Vales</td><td class="num">{{ t_G|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Gastos</td><td class="num">{{ t_gastos|number_format(2,'.',',') }}</td></tr>
+      <tr class="resumen-row"><td>Adeudo</td><td class="num">{{ t_adeudo|number_format(2,'.',',') }}</td></tr>
+      {% set total2 = t_E + t_G + t_gastos + t_adeudo %}
+      <tr class="resumen-row resumen-total"><td>Total</td><td class="num">{{ total2|number_format(2,'.',',') }}</td></tr>
+
+      <tr class="resumen-row"><td colspan="2" class="resumen-titulo">Diferencia</td></tr>
+      {% set faltante = total2 - total1 %}
+      <tr class="resumen-row resumen-total"><td>Faltante</td><td class="num {{ faltante < 0 ? 'falt-negativo' : 'falt-positivo' }}">{{ faltante|number_format(2,'.',',') }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Modal de captura manual -->
+<div class="modal fade" id="modal_concentrado_extra" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar valores — <span id="mx_sucursal_nombre"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="mx_sucursal_id">
+        <div class="mb-3">
+          <label class="form-label">Capital de Trabajo</label>
+          <input type="number" step="0.01" class="form-control" id="mx_capital_trabajo">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Gastos en trámite o por cancelar</label>
+          <input type="number" step="0.01" class="form-control" id="mx_gastos_tramite">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Adeudo</label>
+          <input type="number" step="0.01" class="form-control" id="mx_adeudo">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Reinversión</label>
+          <input type="number" step="0.01" class="form-control" id="mx_reinversion">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Utilidad</label>
+          <input type="number" step="0.01" class="form-control" id="mx_utilidad">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarModalExtra()">Guardar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -80,5 +199,36 @@
       buttons: ['excel', 'print']
     });
   });
+
+  function abrirModalExtra(sucursalId, sucursalNombre, capital, gastos, adeudo, reinversion, utilidad) {
+    document.getElementById('mx_sucursal_id').value = sucursalId;
+    document.getElementById('mx_sucursal_nombre').textContent = sucursalNombre;
+    document.getElementById('mx_capital_trabajo').value = capital;
+    document.getElementById('mx_gastos_tramite').value = gastos;
+    document.getElementById('mx_adeudo').value = adeudo;
+    document.getElementById('mx_reinversion').value = reinversion;
+    document.getElementById('mx_utilidad').value = utilidad;
+    $('#modal_concentrado_extra').modal('show');
+  }
+
+  function guardarModalExtra() {
+    const payload = {
+      sesion_id: {{ sesion.id }},
+      sucursal_id: parseInt(document.getElementById('mx_sucursal_id').value, 10),
+      capital_trabajo: parseFloat(document.getElementById('mx_capital_trabajo').value) || 0,
+      gastos_tramite: parseFloat(document.getElementById('mx_gastos_tramite').value) || 0,
+      adeudo: parseFloat(document.getElementById('mx_adeudo').value) || 0,
+      reinversion: parseFloat(document.getElementById('mx_reinversion').value) || 0,
+      utilidad: parseFloat(document.getElementById('mx_utilidad').value) || 0,
+    };
+    fetch('/arqueo/guardar_concentrado_extra', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify(payload)
+    })
+      .then(r => r.json())
+      .then(d => { if (d.success) location.reload(); else alert(d.message || 'No se pudo guardar.'); })
+      .catch(() => alert('Error de red al guardar.'));
+  }
 </script>
 {% endblock %}
