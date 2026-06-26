@@ -72,7 +72,7 @@ $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' 
 $body    = generar_html_solicitud_pagos_cron($pagos, $total_general);
 $from    = 'no-reply@totalgas.com';
 
-$ok = send_mail($subject, $body, $emails, $from);
+$ok = send_mail_with_fallback($subject, $body, $emails, $from);
 
 if ($ok) {
     echo "[" . date('Y-m-d H:i:s') . "] Correo enviado a: " . implode(', ', $emails) . "\n";

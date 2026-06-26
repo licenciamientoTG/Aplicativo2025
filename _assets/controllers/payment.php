@@ -1125,10 +1125,11 @@ class Payment
 
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
         $type = isset($_POST['type']) ? $_POST['type'] : 'all';
+        $search = isset($_POST['search']) ? $_POST['search'] : '';
 
         try {
             // Obtener datos del modelo
-            $results = $this->PaymentRequestsModel->get_requests_with_summary($type, $status);
+            $results = $this->PaymentRequestsModel->get_requests_with_summary($type, $status, $search);
 
             if (!$results) {
                 json_output(['data' => []]);
@@ -1751,6 +1752,21 @@ class Payment
             // Verificar si ya están todas las autorizaciones
             $next_level = $this->paymentRequestAuthorizationsModel->get_next_authorization_level($payment_id);
 
+            // Si Tesorería autoriza una requisición (factura o anticipo) que
+            // Abastos aún no agrupó/envió por correo, se agrupa en este momento
+            // para no perder trazabilidad contable (mismo criterio que
+            // authorize_payment_execution()).
+            if ((int)$permission === 68) {
+                $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+                if ($payment && empty($payment['accounting_group_id'])) {
+                    $this->PaymentAccountingGroupsModel->auto_group_single_request(
+                        (int)$payment_id,
+                        (string)($payment['emp_cod'] ?? ''),
+                        $user_id
+                    );
+                }
+            }
+
             // Con un solo nivel (Tesorería), next_level siempre será null tras autorizar
             $this->PaymentRequestsModel->update_request_status(
                 $payment_id,
@@ -1927,9 +1943,23 @@ class Payment
             }
 
             $invoices = $this->paymentRequestInvoicesModel->get_all_pending_payment_invoices();
+            $anticipos = $this->PaymentRequestsModel->get_pending_anticipos_for_authorization();
+
+            $anticipos_data = [];
+            foreach (($anticipos ?: []) as $anticipo) {
+                $anticipos_data[] = [
+                    'id' => $anticipo['id'],
+                    'monto_total' => floatval($anticipo['monto_total']),
+                    'request_date' => $anticipo['request_date'],
+                    'usuario_nombre' => $anticipo['usuario_nombre'] ?? 'N/A',
+                    'proveedor_nombre' => $anticipo['proveedor_nombre'] ?? 'N/A',
+                    'empresa_nombre' => $anticipo['empresa_nombre'] ?? 'N/A',
+                    'comment' => $anticipo['comment']
+                ];
+            }
 
             if (!$invoices) {
-                json_output(['success' => true, 'data' => [], 'message' => 'No hay facturas pendientes de autorización de pago']);
+                json_output(['success' => true, 'data' => [], 'anticipos' => $anticipos_data, 'message' => 'No hay facturas pendientes de autorización de pago']);
                 return;
             }
 
@@ -1957,7 +1987,7 @@ class Payment
                 ];
             }
 
-            json_output(['success' => true, 'data' => $data]);
+            json_output(['success' => true, 'data' => $data, 'anticipos' => $anticipos_data]);
         } catch (Exception $e) {
             error_log("Error en get_pending_payment_invoices: " . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
@@ -2369,10 +2399,10 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'no-reply@totalgas.com';
+            $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail_with_fallback($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
@@ -2484,10 +2514,10 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores (reenvío) - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'no-reply@totalgas.com';
+            $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail_with_fallback($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('resend_today_payments: correo REENVIADO a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s).');
@@ -2615,7 +2645,7 @@ class Payment
             $from = 'no-reply@totalgas.com';
 
             // Capturar salida para evitar problemas con JSON
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de pago #{$payment_id} enviada a: " . implode(', ', $emails));
@@ -2652,7 +2682,7 @@ class Payment
 
             $from = 'no-reply@totalgas.com';
 
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de anticipo #{$anticipo_id} enviada a: " . implode(', ', $emails));
@@ -2700,7 +2730,7 @@ class Payment
             // Enviar correo
             $from = 'no-reply@totalgas.com';
 
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de autorización pendiente para pago #{$payment_id} enviada a {$next_department}: " . implode(', ', $emails));

@@ -1335,12 +1335,26 @@ function addColumnFilters(tableId, api) {
 }
 
 
+let _loadPaymentListDebounceTimer = null;
+function loadPaymentListDebounced() {
+  clearTimeout(_loadPaymentListDebounceTimer);
+  _loadPaymentListDebounceTimer = setTimeout(loadPaymentList, 400);
+}
+
 function loadPaymentList() {
+  // Conservar el valor del filtro de PDF entre reconstrucciones de la tabla
+  const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
+
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
     $("#payment_list_table thead tr.filter").remove();
   }
+  // El select de PDF se inyecta dinámicamente en initComplete; quitar el anterior
+  // para que no se duplique cada vez que se reconstruye la tabla.
+  $("#pdf_status_filter").remove();
+
   const status = $("#status_filter").val();
+  const search = $("#search_pagos").val();
 
   paymentListTable = $("#payment_list_table").DataTable({
     responsive: true,
@@ -1373,6 +1387,7 @@ function loadPaymentList() {
       data: {
         status: status,
         type: "all",
+        search: search,
       },
       error: function (xhr, error, thrown) {
         alertify.error("Error al cargar datos: " + thrown);
@@ -1491,6 +1506,7 @@ function loadPaymentList() {
       var api = this.api();
 
       // Select de filtro por estado de PDF junto a los botones de DataTables
+      // (se quita en loadPaymentList() antes de reconstruir la tabla para no duplicarlo)
       var pdfColIdx = api.column('pdf_status:name').index();
       var $select = $(
         '<select id="pdf_status_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por PDF">' +
@@ -1499,7 +1515,11 @@ function loadPaymentList() {
         '<option value="missing">🔴 Incompletos</option>' +
         '</select>'
       );
+      $select.val(pdfStatusPrevValue);
       $(".dt-buttons").append($select);
+      if (pdfStatusPrevValue) {
+        api.column(pdfColIdx).search(pdfStatusPrevValue);
+      }
       $select.on("change", function () {
         api.column(pdfColIdx).search(this.value).draw();
       });
@@ -3323,6 +3343,7 @@ function abrirModalAutorizarPagoMasivo() {
   $("#loadingPagoMasivo").show();
   $("#tablaPagoMasivoContainer").hide();
   $("#sinFacturasPagoMasivo").hide();
+  $("#anticiposPagoMasivoContainer").hide();
 
   $.ajax({
     url: "/payment/get_pending_payment_invoices",
@@ -3335,11 +3356,127 @@ function abrirModalAutorizarPagoMasivo() {
       } else {
         $("#sinFacturasPagoMasivo").show();
       }
+
+      if (response.success && response.anticipos && response.anticipos.length > 0) {
+        renderTablaAnticiposPagoMasivo(response.anticipos);
+        $("#anticiposPagoMasivoContainer").show();
+      }
     },
     error: function () {
       $("#loadingPagoMasivo").hide();
       alertify.error("Error al cargar facturas pendientes");
     },
+  });
+}
+
+
+function renderTablaAnticiposPagoMasivo(anticipos) {
+  const tbody = $("#tablaAnticiposPagoMasivo tbody");
+  tbody.empty();
+
+  const fmt = (val) =>
+    "$" +
+    parseFloat(val || 0).toLocaleString("es-MX", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  anticipos.forEach(function (a) {
+    const row = `<tr data-anticipo-id="${a.id}">
+      <td>
+        <input type="checkbox" class="anticipo-masivo-checkbox" value="${a.id}" onchange="updateBtnAutorizarAnticiposMasivo()"/>
+      </td>
+      <td><a href="/payment/anticipo_detail/${a.id}" target="_blank">#${a.id}</a></td>
+      <td>${a.empresa_nombre}</td>
+      <td>${a.proveedor_nombre}</td>
+      <td>${a.comment || ""}</td>
+      <td class="text-end">${fmt(a.monto_total)}</td>
+    </tr>`;
+    tbody.append(row);
+  });
+
+  updateBtnAutorizarAnticiposMasivo();
+}
+
+function toggleSelectAllAnticiposMasivo() {
+  const checked = $("#selectAllAnticiposMasivo").is(":checked");
+  $(".anticipo-masivo-checkbox").prop("checked", checked);
+  updateBtnAutorizarAnticiposMasivo();
+}
+
+function updateBtnAutorizarAnticiposMasivo() {
+  const totalChecked = $(".anticipo-masivo-checkbox:checked").length;
+  $("#btnConfirmarAutorizacionAnticiposMasiva").prop("disabled", totalChecked === 0);
+}
+
+function confirmarAutorizarAnticiposMasivo() {
+  const anticipoIds = $(".anticipo-masivo-checkbox:checked")
+    .map(function () {
+      return $(this).val();
+    })
+    .get();
+
+  if (anticipoIds.length === 0) {
+    alertify.error("Debe seleccionar al menos un anticipo");
+    return;
+  }
+
+  alertify
+    .confirm(
+      "Confirmar Autorización de Anticipos",
+      `<div class="text-center">
+        <i class="fas fa-check-circle text-warning fa-3x mb-3"></i>
+        <p class="mb-0">¿Está seguro de autorizar <strong>${anticipoIds.length} anticipo(s)</strong>?</p>
+      </div>`,
+      function () {
+        ejecutarAutorizacionAnticiposMasivo(anticipoIds);
+      },
+      function () {
+        alertify.message("Operación cancelada");
+      },
+    )
+    .set("labels", { ok: "Autorizar", cancel: "Cancelar" });
+}
+
+function ejecutarAutorizacionAnticiposMasivo(anticipoIds) {
+  $("#btnConfirmarAutorizacionAnticiposMasiva")
+    .prop("disabled", true)
+    .html('<i class="fas fa-spinner fa-spin"></i> Autorizando...');
+
+  let pendientes = anticipoIds.length;
+  let errores = [];
+
+  anticipoIds.forEach(function (anticipoId) {
+    $.ajax({
+      url: "/payment/authorize_payment",
+      type: "POST",
+      data: {
+        payment_id: anticipoId,
+        permission: 68,
+      },
+      success: function (response) {
+        if (!response.success) {
+          errores.push(`Anticipo #${anticipoId}: ${response.message}`);
+        }
+      },
+      error: function () {
+        errores.push(`Anticipo #${anticipoId}: error de conexión`);
+      },
+      complete: function () {
+        pendientes--;
+        if (pendientes === 0) {
+          if (errores.length === 0) {
+            alertify.success("Anticipos autorizados correctamente");
+          } else {
+            alertify.error(errores.join("<br>"));
+          }
+          $("#modalAutorizarPagoMasivo").modal("hide");
+          setTimeout(() => {
+            location.reload();
+          }, 1500);
+        }
+      },
+    });
   });
 }
 
@@ -4242,6 +4379,15 @@ function loadAuthorizedPendingInvoices() {
     },
     initComplete: function () {
       addColumnFilters("tabla_facturas_autorizadas", this.api());
+
+      // Filtro persistente de Banco/Empresa: se registra una sola vez aquí
+      // (no en cada click) para que conviva con los demás draws de la tabla
+      // (paginación, orden, búsqueda por columna) en vez de perderse.
+      const idx = $.fn.dataTable.ext.search.indexOf(filtroBancoEmpresaSearchFn);
+      if (idx !== -1) {
+        $.fn.dataTable.ext.search.splice(idx, 1);
+      }
+      $.fn.dataTable.ext.search.push(filtroBancoEmpresaSearchFn);
     },
     drawCallback: function () {
       const table = this.api();
@@ -4545,27 +4691,32 @@ function updateBankSummaryFromTable(table) {
 
 
 /**
+ * Función de búsqueda persistente para los filtros de Banco/Empresa de la
+ * tabla de facturas autorizadas. Se registra una sola vez (ver initComplete
+ * de tablaFacturasAutorizadas) y lee el valor actual de los selects en cada
+ * draw, en vez de push/pop por click (que perdía el filtro en el siguiente
+ * draw disparado por paginación, orden o la búsqueda por columna).
+ */
+function filtroBancoEmpresaSearchFn(settings, data, dataIndex) {
+  if (settings.nTable.id !== "tabla_facturas_autorizadas") {
+    return true;
+  }
+
+  const banco = $("#filtroBanco").val();
+  const empresa = $("#filtroEmpresa").val();
+  const rowData = tablaFacturasAutorizadas.row(dataIndex).data();
+
+  let bancoMatch = banco === "all" || rowData.banco_asignado === banco;
+  let empresaMatch = empresa === "all" || rowData.empresa_nombre === empresa;
+
+  return bancoMatch && empresaMatch;
+}
+
+/**
  * Aplicar filtros
  */
 function aplicarFiltros() {
-  const banco = $("#filtroBanco").val();
-  const empresa = $("#filtroEmpresa").val();
-
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-    if (settings.nTable.id !== "tabla_facturas_autorizadas") {
-      return true;
-    }
-
-    const rowData = tablaFacturasAutorizadas.row(dataIndex).data();
-
-    let bancoMatch = banco === "all" || rowData.banco_asignado === banco;
-    let empresaMatch = empresa === "all" || rowData.empresa_nombre === empresa;
-
-    return bancoMatch && empresaMatch;
-  });
-
   tablaFacturasAutorizadas.draw();
-  $.fn.dataTable.ext.search.pop();
 }
 
 //             function() {

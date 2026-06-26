@@ -1942,7 +1942,7 @@ class Operations{
 
         $this->open_mojo_ticket('Registro de responsable de bombas', $body, $_POST['email']);
 
-        if (send_mail('Alta de empleado',$body,['aldo.ochoa@totalgas.com'],'totalgasdesarrollo@gmail.com')) {
+        if (send_mail_with_fallback('Alta de empleado',$body,['aldo.ochoa@totalgas.com'],'totalgasdesarrollo@gmail.com')) {
             setFlashMessage('success','Se ha enviado un correo electrónico al departamento de Sistemas para que se dé de alta al colaborador. El alta se realizará en un plazo de 24 horas.');
         } else {
             setFlashMessage('error','No se pudo enviar el correo electrónico. Por favor, intente más tarde.');
@@ -2008,7 +2008,7 @@ class Operations{
 
         $ticket_id = $this->open_mojo_ticket('Baja de responsable de bombas', $body, $_POST['email']);
 
-        if (send_mail('Baja de empleado',$body,['aldo.ochoa@totalgas.com'],'totalgasdesarrollo@gmail.com')) {
+        if (send_mail_with_fallback('Baja de empleado',$body,['aldo.ochoa@totalgas.com'],'totalgasdesarrollo@gmail.com')) {
             setFlashMessage('success','Se ha enviado un correo electrónico al departamento de Sistemas para que se dé de baja al colaborador. La baja se realizará en un plazo de 24 horas.');
         } else {
             setFlashMessage('error','No se pudo enviar el correo electrónico. Por favor, intente más tarde.');
