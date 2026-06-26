@@ -301,13 +301,10 @@ class Arqueo
             $this->json(['success' => false, 'message' => 'La sesión debe estar abierta para capturar.']);
         }
 
-        // Datos de entrada (soporta JSON body o $_POST).
+        // Datos de entrada (soporta JSON body o $_POST). Se permite guardado
+        // parcial (p.ej. solo el nombre del cajero) mientras la sesión esté
+        // abierta; los campos numéricos ausentes se toman como 0.
         $in = $this->input();
-
-        $errores = $this->validar($in);
-        if ($errores) {
-            $this->json(['success' => false, 'message' => 'Datos inválidos.', 'errores' => $errores]);
-        }
 
         $denom_rows = $this->normalizar_denominaciones($in['denominaciones'] ?? []);
         $vales_in   = $in['vales'] ?? [];
@@ -421,21 +418,6 @@ class Arqueo
             }
         }
         return $_POST;
-    }
-
-    /** Validación manual (sin engine externo). Devuelve arreglo de errores. */
-    private function validar(array $in): array
-    {
-        $e = [];
-        foreach (['go_exchange_dolares', 'go_exchange_mxn'] as $f) {
-            if (!isset($in[$f]) || !is_numeric($in[$f]) || (float) $in[$f] < 0) {
-                $e[$f] = 'Requerido, numérico ≥ 0.';
-            }
-        }
-        if (!isset($in['costo_promedio']) || !is_numeric($in['costo_promedio']) || (float) $in['costo_promedio'] < 1) {
-            $e['costo_promedio'] = 'Requerido, numérico ≥ 1.';
-        }
-        return $e;
     }
 
     /**
