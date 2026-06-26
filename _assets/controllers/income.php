@@ -126,13 +126,13 @@ public function balance_age_send_mail(){
 
         // Captura la salida del PHPMailer para depurar sin romper el JSON
         ob_start();
-        $ok = @send_mail2($subject, $body, $to, $from, $tmp);
+        $ok = @send_mail_with_fallback($subject, $body, $to, $from, $tmp);
         $mailerOut = trim(ob_get_clean());
 
         @unlink($tmp);
     } else {
         ob_start();
-        $ok = @send_mail2($subject, $body, $to, $from);
+        $ok = @send_mail_with_fallback($subject, $body, $to, $from);
         $mailerOut = trim(ob_get_clean());
     }
 
@@ -2161,7 +2161,7 @@ public function anomalies_client_tickets()
         <p>Agradecemos su atenciÃ³n y colaboraciÃ³n. Quedamos pendientes de sus comentarios.</p>
         ';
 
-        if (send_mail('Solicitud de tickets faltantes ' . $fch,$body,explode(';', $sentTo),'totalgasdesarrollo@gmail.com')) {
+        if (send_mail_with_fallback('Solicitud de tickets faltantes ' . $fch,$body,explode(';', $sentTo),'totalgasdesarrollo@gmail.com')) {
             json_output(array("status" => "success", "message" => "Correo enviado correctamente."));
         } else {
             json_output(array("status" => "error", "message" => "No se pudo enviar el correo."));

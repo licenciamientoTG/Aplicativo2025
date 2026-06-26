@@ -63,7 +63,7 @@ class Payment
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
-    private const TEST_MODE = true;
+    private const TEST_MODE = false;
 
     public function __construct($twig)
     {
@@ -2399,12 +2399,10 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            // 🚧 FALLBACK TEMPORAL: no-reply@totalgas.com excedió el límite diario de envíos de Gmail.
-            // Mientras se libera el límite, se usa send_mail2() (totalgasdesarrollo@gmail.com).
             $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail2($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail_with_fallback($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
@@ -2516,12 +2514,10 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores (reenvío) - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            // 🚧 FALLBACK TEMPORAL: no-reply@totalgas.com excedió el límite diario de envíos de Gmail.
-            // Mientras se libera el límite, se usa send_mail2() (totalgasdesarrollo@gmail.com).
             $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail2($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail_with_fallback($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('resend_today_payments: correo REENVIADO a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s).');
@@ -2649,7 +2645,7 @@ class Payment
             $from = 'no-reply@totalgas.com';
 
             // Capturar salida para evitar problemas con JSON
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de pago #{$payment_id} enviada a: " . implode(', ', $emails));
@@ -2686,7 +2682,7 @@ class Payment
 
             $from = 'no-reply@totalgas.com';
 
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de anticipo #{$anticipo_id} enviada a: " . implode(', ', $emails));
@@ -2734,7 +2730,7 @@ class Payment
             // Enviar correo
             $from = 'no-reply@totalgas.com';
 
-            $resultado = send_mail($subject, $body, $emails, $from);
+            $resultado = send_mail_with_fallback($subject, $body, $emails, $from);
 
             if ($resultado) {
                 error_log("Notificación de autorización pendiente para pago #{$payment_id} enviada a {$next_department}: " . implode(', ', $emails));

@@ -192,7 +192,10 @@
       "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc5.php\")",
       "Bash(awk 'NR==1700,NR==1760' _assets/controllers/payment.php)",
       "Bash(awk 'NR==1760,NR==1830' _assets/controllers/payment.php)",
-      "Bash(\"/c/Program Files/nodejs/node\" --check _assets/js/payment.js)"
+      "Bash(\"/c/Program Files/nodejs/node\" --check _assets/js/payment.js)",
+      "Bash(/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/SQLCMD.EXE *)",
+      "Bash(tasklist //FI \"PID eq 21116\")",
+      "Bash(wmic process *)"
     ],
     "deny": [],
     "ask": []

@@ -2452,7 +2452,7 @@ class Accounting{
 
             $subject = 'Solicitud de Renegociación con Proveedores — TotalGas';
             // MODO PRUEBA: todos los correos van a alejandro.martinez@totalgas.com
-            $ok = send_mail($subject, $body, ['alejandro.martinez@totalgas.com'], $from);
+            $ok = send_mail_with_fallback($subject, $body, ['alejandro.martinez@totalgas.com'], $from);
 
             $this->RenegEmailLogModel->log_send([
                 'upload_id'      => $upload_id,

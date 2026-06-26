@@ -183,6 +183,74 @@ function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, 
     }
 }
 
+// Cuenta de emergencia (alejandro.martinez@totalgas.com) mientras se resuelven los límites
+// de no-reply@totalgas.com y totalgasdesarrollo@gmail.com. Usar solo como último fallback.
+function send_mail3($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
+
+    $errorOut = null;
+    $mail = new PHPMailer(true);
+
+    try {
+        $mail->isSMTP();
+        $mail->SMTPDebug = SMTP::DEBUG_OFF;
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        $mail->Port       = 465;
+
+        $mail->Username   = 'alejandro.martinez@totalgas.com';
+        $mail->Password   = 'mnnndwnmfbxxdxcf';
+
+        $mail->CharSet  = 'UTF-8';
+        $mail->Encoding = 'base64';
+        $mail->isHTML(true);
+
+        $mail->setLanguage('es');
+
+        $mail->setFrom($setFrom, 'TotalGas | Sistema de Gestión de correos');
+
+        foreach ((array)$recipients as $to) {
+            if ($to) { $mail->addAddress(trim($to)); }
+        }
+
+        $mail->Subject = (string)$subject;
+        $mail->Body    = (string)$body;
+        $mail->AltBody = strip_tags((string)$body);
+
+        if ($attachment1) { $mail->addAttachment($attachment1); }
+        if ($attachment2) { $mail->addAttachment($attachment2); }
+
+        if (function_exists('mb_internal_encoding')) {
+            mb_internal_encoding('UTF-8');
+        }
+
+        $sent = $mail->send();
+        if (!$sent) {
+            $errorOut = $mail->ErrorInfo ?: 'PHPMailer devolvió false sin detalle.';
+        }
+        return $sent;
+
+    } catch (Exception $e) {
+        $errorOut = $mail->ErrorInfo ?: $e->getMessage();
+        error_log("Mailer Error (send_mail3): {$errorOut}");
+        return false;
+    }
+}
+
+// Envía intentando send_mail() y, si falla (p.ej. límite diario de Gmail excedido),
+// hace fallback a send_mail2() y luego a send_mail3() (cuenta de emergencia
+// alejandro.martinez@totalgas.com). Úsese en lugar de llamar send_mail()/send_mail2()
+// directamente en cualquier flujo nuevo o existente que envíe correo desde el aplicativo.
+function send_mail_with_fallback($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
+    $ok = send_mail($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
+    if ($ok) { return true; }
+
+    $ok = send_mail2($subject, $body, $recipients, $setFrom, $attachment1, $attachment2, $errorOut);
+    if ($ok) { return true; }
+
+    return send_mail3($subject, $body, $recipients, 'alejandro.martinez@totalgas.com', $attachment1, $attachment2, $errorOut);
+}
+
 function dateToInt($date) {
 
     $referenceDate = new DateTime('1900-01-01');
