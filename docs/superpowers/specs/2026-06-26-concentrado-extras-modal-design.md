@@ -92,25 +92,25 @@ public function by_sesion(int $sesion_id): array
 /** Upsert de los 5 campos manuales para sesion_id+sucursal_id. */
 public function upsert(int $sesion_id, int $sucursal_id, array $d, ?int $usuario_id): bool
 {
-    $update = $this->sql->update(
-        "UPDATE [TG].[dbo].[arqueo_concentrado_extras] SET
-            capital_trabajo = ?, gastos_tramite = ?, adeudo = ?,
-            reinversion = ?, utilidad = ?, updated_by = ?, updated_at = GETDATE()
-         WHERE sesion_id = ? AND sucursal_id = ?;",
+    return (bool) $this->sql->update(
+        "IF EXISTS (SELECT 1 FROM [TG].[dbo].[arqueo_concentrado_extras]
+                     WHERE sesion_id = ? AND sucursal_id = ?)
+            UPDATE [TG].[dbo].[arqueo_concentrado_extras] SET
+                capital_trabajo = ?, gastos_tramite = ?, adeudo = ?,
+                reinversion = ?, utilidad = ?, updated_by = ?, updated_at = GETDATE()
+            WHERE sesion_id = ? AND sucursal_id = ?
+         ELSE
+            INSERT INTO [TG].[dbo].[arqueo_concentrado_extras]
+                (sesion_id, sucursal_id, capital_trabajo, gastos_tramite, adeudo, reinversion, utilidad, updated_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
         [
+            // condición EXISTS
+            $sesion_id, $sucursal_id,
+            // rama UPDATE
             $d['capital_trabajo'], $d['gastos_tramite'], $d['adeudo'],
             $d['reinversion'], $d['utilidad'], $usuario_id,
             $sesion_id, $sucursal_id,
-        ]
-    );
-    if ($update) {
-        return true;
-    }
-    return (bool) $this->sql->insert(
-        "INSERT INTO [TG].[dbo].[arqueo_concentrado_extras]
-            (sesion_id, sucursal_id, capital_trabajo, gastos_tramite, adeudo, reinversion, utilidad, updated_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?);",
-        [
+            // rama INSERT
             $sesion_id, $sucursal_id, $d['capital_trabajo'], $d['gastos_tramite'],
             $d['adeudo'], $d['reinversion'], $d['utilidad'], $usuario_id,
         ]
@@ -118,7 +118,7 @@ public function upsert(int $sesion_id, int $sucursal_id, array $d, ?int $usuario
 }
 ```
 
-`update()` en `MySqlPdoHandler` debe devolver la cantidad de filas afectadas (o algo truthy/falsy según filas afectadas) para que el patrón "UPDATE; si 0 filas, INSERT" funcione — se confirma este comportamiento al implementar revisando `MySqlPdoHandler::update()`; si en cambio siempre devuelve `true` con 0 filas afectadas, el upsert se reescribe usando `IF EXISTS (...) UPDATE ... ELSE INSERT ...` en un solo statement T-SQL en vez de dos llamadas PHP.
+Se usa un único statement T-SQL `IF EXISTS...UPDATE...ELSE INSERT` (en vez de dos llamadas PHP separadas) porque `MySqlPdoHandler::update()` devuelve `true` con cualquier ejecución exitosa, sin importar cuántas filas afectó (`rowCount()` está deshabilitado en esa clase) — confirmado leyendo `_assets/classes/common/MySqlPdoHandler.class.php:150-174`. Un UPDATE que no encuentra fila también devolvería `true`, rompiendo el patrón "si falla, INSERT". El método `update()` exige que la query contenga la palabra "update" (verificación con `stristr`), lo cual se cumple porque el statement la incluye en la rama UPDATE.
 
 ### Controlador: `Arqueo::concentrado()` reescrito
 
