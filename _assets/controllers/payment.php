@@ -2385,10 +2385,12 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'no-reply@totalgas.com';
+            // 🚧 FALLBACK TEMPORAL: no-reply@totalgas.com excedió el límite diario de envíos de Gmail.
+            // Mientras se libera el límite, se usa send_mail2() (totalgasdesarrollo@gmail.com).
+            $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail2($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('send_to_payments: agrupados ' . ($group_result['grupos'] ?? 0) . ' grupos, correo enviado a ' . implode(', ', $emails));
@@ -2500,10 +2502,12 @@ class Payment
 
             $subject = 'Solicitud de pago a proveedores (reenvío) - ' . count($pagos) . ' pago(s) - ' . date('d/m/Y');
             $body    = $this->generar_html_solicitud_pagos($pagos, $total_general);
-            $from    = 'no-reply@totalgas.com';
+            // 🚧 FALLBACK TEMPORAL: no-reply@totalgas.com excedió el límite diario de envíos de Gmail.
+            // Mientras se libera el límite, se usa send_mail2() (totalgasdesarrollo@gmail.com).
+            $from    = 'totalgasdesarrollo@gmail.com';
 
             $mailError = null;
-            $ok = send_mail($subject, $body, $emails, $from, false, false, $mailError);
+            $ok = send_mail2($subject, $body, $emails, $from, false, false, $mailError);
 
             if ($ok) {
                 error_log('resend_today_payments: correo REENVIADO a ' . implode(', ', $emails) . ' con ' . count($pagos) . ' pago(s).');

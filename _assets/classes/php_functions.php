@@ -119,8 +119,9 @@ function send_mail($subject, $body, $recipients, $setFrom, $attachment1=false, $
     }
 }
 
-function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false): bool {
+function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, $attachment2=false, &$errorOut=null): bool {
 
+    $errorOut = null;
     $mail = new PHPMailer(true);
 
     try {
@@ -169,10 +170,15 @@ function send_mail2($subject, $body, $recipients, $setFrom, $attachment1=false, 
             mb_internal_encoding('UTF-8');
         }
 
-        return $mail->send();
+        $sent = $mail->send();
+        if (!$sent) {
+            $errorOut = $mail->ErrorInfo ?: 'PHPMailer devolvió false sin detalle.';
+        }
+        return $sent;
 
     } catch (Exception $e) {
-        error_log("Mailer Error (send_mail2): {$mail->ErrorInfo}");
+        $errorOut = $mail->ErrorInfo ?: $e->getMessage();
+        error_log("Mailer Error (send_mail2): {$errorOut}");
         return false;
     }
 }
