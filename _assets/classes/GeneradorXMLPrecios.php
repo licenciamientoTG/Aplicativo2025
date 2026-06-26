@@ -495,47 +495,59 @@ class GeneradorXMLPrecios {
      * @return bool True si el correo se envió exitosamente
      */
     private function enviarCorreoConAdjuntos($asunto, $cuerpo, $adjuntos) {
-        
-        $mail = new PHPMailer(true);
-        
-        try {
-            // Configuración del servidor
-            $mail->isSMTP();
-            $mail->Host = $this->emailConfig['smtp_server'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $this->emailConfig['from'];
-            $mail->Password = $this->emailConfig['password'];
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-            $mail->Port = $this->emailConfig['smtp_port'];
-            $mail->CharSet = 'UTF-8';
-            
-            // Destinatarios
-            $mail->setFrom($this->emailConfig['from'], 'TotalGas Desarrollo');
-            
-            $destinatarios = explode(',', $this->emailConfig['to']);
-            foreach ($destinatarios as $destinatario) {
-                $mail->addAddress(trim($destinatario));
-            }
-            
-            // Contenido
-            $mail->isHTML(false);
-            $mail->Subject = $asunto;
-            $mail->Body = $cuerpo;
-            
-            // Adjuntos
-            foreach ($adjuntos as $adjunto) {
-                if (file_exists($adjunto)) {
-                    $mail->addAttachment($adjunto);
+
+        $destinatarios = array_map('trim', explode(',', $this->emailConfig['to']));
+        $cuerpoHtml = nl2br($cuerpo);
+
+        // Cuentas en cascada: no-reply@totalgas.com -> totalgasdesarrollo@gmail.com ->
+        // alejandro.martinez@totalgas.com (emergencia), igual que send_mail_with_fallback().
+        $cuentas = [
+            ['user' => 'no-reply@totalgas.com',            'pass' => 'sysdhepknmlkigbs'],
+            ['user' => 'totalgasdesarrollo@gmail.com',      'pass' => 'bdppgxrwzhmyfrmf'],
+            ['user' => 'alejandro.martinez@totalgas.com',   'pass' => 'mnnndwnmfbxxdxcf'],
+        ];
+
+        $errorOut = null;
+        foreach ($cuentas as $cuenta) {
+            $mail = new PHPMailer(true);
+            try {
+                $mail->isSMTP();
+                $mail->SMTPDebug = SMTP::DEBUG_OFF;
+                $mail->Host = 'smtp.gmail.com';
+                $mail->SMTPAuth = true;
+                $mail->Username = $cuenta['user'];
+                $mail->Password = $cuenta['pass'];
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                $mail->Port = 465;
+                $mail->CharSet = 'UTF-8';
+
+                $mail->setFrom($cuenta['user'], 'TotalGas | Sistema de Gestión de correos');
+
+                foreach ($destinatarios as $destinatario) {
+                    if ($destinatario) { $mail->addAddress($destinatario); }
                 }
+
+                $mail->isHTML(true);
+                $mail->Subject = $asunto;
+                $mail->Body = $cuerpoHtml;
+                $mail->AltBody = $cuerpo;
+
+                foreach ($adjuntos as $adjunto) {
+                    if (file_exists($adjunto)) {
+                        $mail->addAttachment($adjunto);
+                    }
+                }
+
+                $mail->send();
+                return true;
+
+            } catch (Exception $e) {
+                $errorOut = $mail->ErrorInfo ?: $e->getMessage();
             }
-            
-            $mail->send();
-            return true;
-            
-        } catch (Exception $e) {
-            $this->errores[] = "Error al enviar correo: {$mail->ErrorInfo}";
-            return false;
         }
+
+        $this->errores[] = "Error al enviar correo: " . ($errorOut ?? 'desconocido');
+        return false;
     }
     
     /**
