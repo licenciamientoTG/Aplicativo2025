@@ -45,11 +45,12 @@
     .resultado-positivo { color:#059669 !important; font-weight:700 !important; font-size:1.05rem; }
     .resultado-negativo { color:#dc2626 !important; font-weight:700 !important; font-size:1.05rem; }
     .panel-hint { font-size:.68rem; color:#94a3b8; margin-top:.15rem; }
-    .btn-guardar-arqueo { width:100%; margin-top:1rem; background:#2563eb; border:none; color:#fff; padding:.55rem 1rem; border-radius:.5rem; font-weight:500; font-size:.875rem; display:flex; align-items:center; justify-content:center; gap:.5rem; transition:background-color .15s; }
-    .btn-guardar-arqueo:hover { background:#1d4ed8; color:#fff; }
 
     .vales-head { background:#1e293b; padding:.7rem 1rem; display:flex; justify-content:space-between; align-items:center; }
     .vales-head h2 { color:#fff; font-size:.85rem; font-weight:600; margin:0; }
+
+    .btn-guardar-flotante { position:fixed; bottom:1.5rem; right:1.5rem; z-index:1030; background:#2563eb; border:none; color:#fff; padding:.8rem 1.5rem; border-radius:2rem; font-weight:600; font-size:.9rem; display:flex; align-items:center; gap:.55rem; box-shadow:0 4px 14px rgba(37,99,235,.4); transition:background-color .15s, box-shadow .15s; }
+    .btn-guardar-flotante:hover { background:#1d4ed8; color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.5); }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -287,18 +288,18 @@
           <div class="panel-row"><span class="lbl">Resultado Final</span><span class="val" id="r_resultado">$0.00</span></div>
           <div class="panel-hint">Positivo = sobrante · Negativo = faltante</div>
         </div>
-
-        {% if not solo_lectura %}
-        <button type="button" class="btn-guardar-arqueo" onclick="guardarCaja()">
-          <i class="fas fa-save"></i> Guardar arqueo
-        </button>
-        {% endif %}
       </div>
     </div>
   </div>
 </div>
 
 </form>
+
+{% if not solo_lectura %}
+<button type="button" class="btn-guardar-flotante" onclick="guardarCaja()">
+  <i class="fas fa-save"></i> Guardar arqueo
+</button>
+{% endif %}
 
 </div>
 
