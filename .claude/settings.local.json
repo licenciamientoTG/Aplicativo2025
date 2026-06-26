@@ -189,7 +189,9 @@
       "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc2.php\")",
       "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc3.php\")",
       "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc4.php\")",
-      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc5.php\")"
+      "PowerShell(php \"C:\\\\Users\\\\ALEJAN~1.MAR\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alejandro-martinez-Desktop-codigo-AplicativoPhp\\\\433579d8-ae2f-4107-a6cf-2436a57c8bd4\\\\scratchpad\\\\debug_mgc5.php\")",
+      "Bash(awk 'NR==1700,NR==1760' _assets/controllers/payment.php)",
+      "Bash(awk 'NR==1760,NR==1830' _assets/controllers/payment.php)"
     ],
     "deny": [],
     "ask": []
