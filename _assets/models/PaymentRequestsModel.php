@@ -234,14 +234,23 @@ class PaymentRequestsModel extends Model
             ];
         }
     }
-    public function get_requests_with_summary($type, $status = 'all'): array|false
+    public function get_requests_with_summary($type, $status = 'all', $search = ''): array|false
     {
         $whereClauses = [];
         $params = [];
 
         if ($status !== 'all') {
-            $whereClauses[] = "t1.status = ?";
-            $params[] = $status;
+            $statusMap = [
+                'pending' => self::STATUS_PENDING,
+                'authorized' => self::STATUS_AUTHORIZED,
+                'paid' => self::STATUS_PAID,
+                'cancelled' => self::STATUS_CANCELLED
+            ];
+
+            if (isset($statusMap[$status])) {
+                $whereClauses[] = "t1.status = ?";
+                $params[] = $statusMap[$status];
+            }
         }
 
         if ($type === 'payment') {
@@ -250,6 +259,13 @@ class PaymentRequestsModel extends Model
             $whereClauses[] = "t1.tipo NOT IN (0)";
         }
         // type === 'all' → sin filtro de tipo, devuelve pagos y anticipos
+
+        $search = trim($search);
+        if ($search !== '') {
+            $whereClauses[] = "(CAST(t1.id AS VARCHAR(20)) LIKE ? OR t5.den LIKE ? OR t6.den LIKE ? OR t1.comment LIKE ?)";
+            $like = '%' . $search . '%';
+            array_push($params, $like, $like, $like, $like);
+        }
 
         $whereSQL = !empty($whereClauses)
             ? "WHERE " . implode(" AND ", $whereClauses)

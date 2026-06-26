@@ -1335,12 +1335,26 @@ function addColumnFilters(tableId, api) {
 }
 
 
+let _loadPaymentListDebounceTimer = null;
+function loadPaymentListDebounced() {
+  clearTimeout(_loadPaymentListDebounceTimer);
+  _loadPaymentListDebounceTimer = setTimeout(loadPaymentList, 400);
+}
+
 function loadPaymentList() {
+  // Conservar el valor del filtro de PDF entre reconstrucciones de la tabla
+  const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
+
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
     $("#payment_list_table thead tr.filter").remove();
   }
+  // El select de PDF se inyecta dinámicamente en initComplete; quitar el anterior
+  // para que no se duplique cada vez que se reconstruye la tabla.
+  $("#pdf_status_filter").remove();
+
   const status = $("#status_filter").val();
+  const search = $("#search_pagos").val();
 
   paymentListTable = $("#payment_list_table").DataTable({
     responsive: true,
@@ -1373,6 +1387,7 @@ function loadPaymentList() {
       data: {
         status: status,
         type: "all",
+        search: search,
       },
       error: function (xhr, error, thrown) {
         alertify.error("Error al cargar datos: " + thrown);
@@ -1491,6 +1506,7 @@ function loadPaymentList() {
       var api = this.api();
 
       // Select de filtro por estado de PDF junto a los botones de DataTables
+      // (se quita en loadPaymentList() antes de reconstruir la tabla para no duplicarlo)
       var pdfColIdx = api.column('pdf_status:name').index();
       var $select = $(
         '<select id="pdf_status_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por PDF">' +
@@ -1499,7 +1515,11 @@ function loadPaymentList() {
         '<option value="missing">🔴 Incompletos</option>' +
         '</select>'
       );
+      $select.val(pdfStatusPrevValue);
       $(".dt-buttons").append($select);
+      if (pdfStatusPrevValue) {
+        api.column(pdfColIdx).search(pdfStatusPrevValue);
+      }
       $select.on("change", function () {
         api.column(pdfColIdx).search(this.value).draw();
       });
@@ -4242,6 +4262,15 @@ function loadAuthorizedPendingInvoices() {
     },
     initComplete: function () {
       addColumnFilters("tabla_facturas_autorizadas", this.api());
+
+      // Filtro persistente de Banco/Empresa: se registra una sola vez aquí
+      // (no en cada click) para que conviva con los demás draws de la tabla
+      // (paginación, orden, búsqueda por columna) en vez de perderse.
+      const idx = $.fn.dataTable.ext.search.indexOf(filtroBancoEmpresaSearchFn);
+      if (idx !== -1) {
+        $.fn.dataTable.ext.search.splice(idx, 1);
+      }
+      $.fn.dataTable.ext.search.push(filtroBancoEmpresaSearchFn);
     },
     drawCallback: function () {
       const table = this.api();
@@ -4545,27 +4574,32 @@ function updateBankSummaryFromTable(table) {
 
 
 /**
+ * Función de búsqueda persistente para los filtros de Banco/Empresa de la
+ * tabla de facturas autorizadas. Se registra una sola vez (ver initComplete
+ * de tablaFacturasAutorizadas) y lee el valor actual de los selects en cada
+ * draw, en vez de push/pop por click (que perdía el filtro en el siguiente
+ * draw disparado por paginación, orden o la búsqueda por columna).
+ */
+function filtroBancoEmpresaSearchFn(settings, data, dataIndex) {
+  if (settings.nTable.id !== "tabla_facturas_autorizadas") {
+    return true;
+  }
+
+  const banco = $("#filtroBanco").val();
+  const empresa = $("#filtroEmpresa").val();
+  const rowData = tablaFacturasAutorizadas.row(dataIndex).data();
+
+  let bancoMatch = banco === "all" || rowData.banco_asignado === banco;
+  let empresaMatch = empresa === "all" || rowData.empresa_nombre === empresa;
+
+  return bancoMatch && empresaMatch;
+}
+
+/**
  * Aplicar filtros
  */
 function aplicarFiltros() {
-  const banco = $("#filtroBanco").val();
-  const empresa = $("#filtroEmpresa").val();
-
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-    if (settings.nTable.id !== "tabla_facturas_autorizadas") {
-      return true;
-    }
-
-    const rowData = tablaFacturasAutorizadas.row(dataIndex).data();
-
-    let bancoMatch = banco === "all" || rowData.banco_asignado === banco;
-    let empresaMatch = empresa === "all" || rowData.empresa_nombre === empresa;
-
-    return bancoMatch && empresaMatch;
-  });
-
   tablaFacturasAutorizadas.draw();
-  $.fn.dataTable.ext.search.pop();
 }
 
 //             function() {

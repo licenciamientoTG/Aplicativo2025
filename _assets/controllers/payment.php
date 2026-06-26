@@ -63,7 +63,7 @@ class Payment
 
     // 🚧 MODO PRUEBAS: cuando es true, todo correo de pagos va solo a este buzón.
     private const TEST_MODE_EMAIL = 'alejandro.martinez@totalgas.com';
-    private const TEST_MODE = false;
+    private const TEST_MODE = true;
 
     public function __construct($twig)
     {
@@ -1125,10 +1125,11 @@ class Payment
 
         $status = isset($_POST['status']) ? $_POST['status'] : 'all';
         $type = isset($_POST['type']) ? $_POST['type'] : 'all';
+        $search = isset($_POST['search']) ? $_POST['search'] : '';
 
         try {
             // Obtener datos del modelo
-            $results = $this->PaymentRequestsModel->get_requests_with_summary($type, $status);
+            $results = $this->PaymentRequestsModel->get_requests_with_summary($type, $status, $search);
 
             if (!$results) {
                 json_output(['data' => []]);
@@ -1750,6 +1751,21 @@ class Payment
 
             // Verificar si ya están todas las autorizaciones
             $next_level = $this->paymentRequestAuthorizationsModel->get_next_authorization_level($payment_id);
+
+            // Si Tesorería autoriza una requisición (factura o anticipo) que
+            // Abastos aún no agrupó/envió por correo, se agrupa en este momento
+            // para no perder trazabilidad contable (mismo criterio que
+            // authorize_payment_execution()).
+            if ((int)$permission === 68) {
+                $payment = $this->PaymentRequestsModel->get_request_by_id($payment_id);
+                if ($payment && empty($payment['accounting_group_id'])) {
+                    $this->PaymentAccountingGroupsModel->auto_group_single_request(
+                        (int)$payment_id,
+                        (string)($payment['emp_cod'] ?? ''),
+                        $user_id
+                    );
+                }
+            }
 
             // Con un solo nivel (Tesorería), next_level siempre será null tras autorizar
             $this->PaymentRequestsModel->update_request_status(
