@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ReportePrecios xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://xsd.cne.gob.mx/Produccion/2641/v1/Esquema.xsd">
+  <Permiso Numero="PL/12841/EXP/ES/2015" RFC="DGM880621FU5" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="19.39" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="23.69" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="25.98" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/12840/EXP/ES/2015" RFC="DGM880621FU5" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="19.39" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="23.69" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="25.98" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/13074/EXP/ES/2016" RFC="DGM880621FU5" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="19.39" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="23.69" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="25.98" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/12842/EXP/ES/2015" RFC="DGM880621FU5" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="19.39" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="25.98" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+  <Permiso Numero="PL/12843/EXP/ES/2015" RFC="DGM880621FU5" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="19.39" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="23.69" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+    <NuevoPrecio TipoProductoId="3" TipoSubProductoId="16" TipoSubProductoMarcaId="17" OtraMarca="" Precio="25.98" FechaAplicacion="26/06/2026" HoraAplicacion="16:00"/>
+  </Permiso>
+</ReportePrecios>
