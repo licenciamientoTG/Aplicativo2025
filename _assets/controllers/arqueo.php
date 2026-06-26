@@ -70,15 +70,17 @@ class Arqueo
     public ArqueoCajasModel $cajasModel;
     public ArqueoDenominacionesModel $denominacionesModel;
     public ArqueoValesModel $valesModel;
+    public ArqueoConcentradoExtrasModel $concentradoExtrasModel;
 
     public function __construct($twig)
     {
-        $this->twig                = $twig;
-        $this->route               = 'views/arqueo/';
-        $this->sesionesModel       = new ArqueoSesionesModel();
-        $this->cajasModel          = new ArqueoCajasModel();
-        $this->denominacionesModel = new ArqueoDenominacionesModel();
-        $this->valesModel          = new ArqueoValesModel();
+        $this->twig                   = $twig;
+        $this->route                  = 'views/arqueo/';
+        $this->sesionesModel          = new ArqueoSesionesModel();
+        $this->cajasModel             = new ArqueoCajasModel();
+        $this->denominacionesModel    = new ArqueoDenominacionesModel();
+        $this->valesModel             = new ArqueoValesModel();
+        $this->concentradoExtrasModel = new ArqueoConcentradoExtrasModel();
     }
 
     /* ===================================================================== */
@@ -351,37 +353,79 @@ class Arqueo
             (new Errors())->get404();
             return;
         }
-        $cajas = $this->cajasModel->by_sesion((int) $sesion_id);
+        $cajas  = $this->cajasModel->by_sesion((int) $sesion_id);
+        $extras = $this->concentradoExtrasModel->by_sesion((int) $sesion_id);
 
         $grupos = [];
         foreach ($cajas as $c) {
             $sid = (int) $c['sucursal_id'];
             if (!isset($grupos[$sid])) {
                 $grupos[$sid] = [
-                    'sucursal_id'                   => $sid,
-                    'sucursal'                      => $c['sucursal_nombre'],
-                    'total_en_sistema_mn'           => 0,
-                    'total_conteo_fisico_sin_vales' => 0,
-                    'vales_autorizados'             => 0,
+                    'sucursal_id' => $sid,
+                    'sucursal'    => $c['sucursal_nombre'],
+                    'D'           => 0, // Total en Sistemas M.N.
+                    'E'           => 0, // Total Conteo Físico sin Vales
+                    'G'           => 0, // Vales Autorizados
                 ];
             }
-            $grupos[$sid]['total_en_sistema_mn']           += (float) $c['total_en_sistema'];
-            // "Conteo físico sin vales" = arqueo físico en MXN sin sumar vales.
-            $grupos[$sid]['total_conteo_fisico_sin_vales'] += (float) $c['total_fisico_mxn'];
-            $grupos[$sid]['vales_autorizados']             += (float) $c['gran_total_vales_mxn'];
+            $grupos[$sid]['D'] += (float) $c['total_en_sistema'];
+            $grupos[$sid]['E'] += (float) $c['total_fisico_mxn'];
+            $grupos[$sid]['G'] += (float) $c['gran_total_vales_mxn'];
         }
 
-        // faltantes_sobrantes = sistema - fisico_sin_vales - vales_autorizados
-        foreach ($grupos as &$g) {
-            $g['faltantes_sobrantes'] =
-                $g['total_en_sistema_mn']
-                - $g['total_conteo_fisico_sin_vales']
-                - $g['vales_autorizados'];
+        foreach ($grupos as $sid => &$g) {
+            $ex = $extras[$sid] ?? null;
+            $g['capital_trabajo'] = (float) ($ex['capital_trabajo'] ?? 0);
+            $g['gastos_tramite']  = (float) ($ex['gastos_tramite']  ?? 0);
+            $g['adeudo']          = (float) ($ex['adeudo']          ?? 0);
+            $g['reinversion']     = (float) ($ex['reinversion']     ?? 0);
+            $g['utilidad']        = (float) ($ex['utilidad']        ?? 0);
+
+            // F: Faltantes/Sobrantes sin vales = E - D
+            $g['F'] = $g['E'] - $g['D'];
+            // H: Faltante Real de Arqueo = E - D + G
+            $g['H'] = $g['E'] - $g['D'] + $g['G'];
+            // L: Conteo Físico, Vales y Gastos = E + Gastos + Adeudo + G
+            $g['L'] = $g['E'] + $g['gastos_tramite'] + $g['adeudo'] + $g['G'];
+            // N: Capital, Utilidad y Reinversión = Capital + Reinversión + Utilidad
+            $g['N'] = $g['capital_trabajo'] + $g['reinversion'] + $g['utilidad'];
+            // O: Variación del Arqueo vs Indicadores D2GO = L - N
+            $g['O'] = $g['L'] - $g['N'];
         }
         unset($g);
 
         $concentrado = array_values($grupos);
         echo $this->twig->render($this->route . 'concentrado.html', compact('sesion', 'concentrado'));
+    }
+
+    /**
+     * Guarda (upsert) los 5 valores manuales de una sucursal en una sesión:
+     * Capital de Trabajo, Gastos en trámite, Adeudo, Reinversión, Utilidad.
+     * POST JSON: sesion_id, sucursal_id, capital_trabajo, gastos_tramite,
+     * adeudo, reinversion, utilidad.
+     */
+    public function guardar_concentrado_extra(): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+        header('Content-Type: application/json');
+
+        $in          = $this->input();
+        $sesion_id   = (int) ($in['sesion_id']   ?? 0);
+        $sucursal_id = (int) ($in['sucursal_id'] ?? 0);
+        if ($sesion_id <= 0 || $sucursal_id <= 0) {
+            $this->json(['success' => false, 'message' => 'Sesión y sucursal son obligatorias.']);
+        }
+
+        $datos = [
+            'capital_trabajo' => (float) ($in['capital_trabajo'] ?? 0),
+            'gastos_tramite'  => (float) ($in['gastos_tramite']  ?? 0),
+            'adeudo'          => (float) ($in['adeudo']          ?? 0),
+            'reinversion'     => (float) ($in['reinversion']     ?? 0),
+            'utilidad'        => (float) ($in['utilidad']        ?? 0),
+        ];
+
+        $ok = $this->concentradoExtrasModel->upsert($sesion_id, $sucursal_id, $datos, $this->user_id());
+        $this->json(['success' => $ok]);
     }
 
     /* ===================================================================== */
