@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ReportePrecios xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://xsd.cne.gob.mx/Produccion/2641/v1/Esquema.xsd">
+  <Permiso Numero="PL/3340/EXP/ES/2015" RFC="FGA110722PR7" ZonaHorariaId="1">
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="13" TipoSubProductoMarcaId="1" OtraMarca="" Precio="23.99" FechaAplicacion="26/06/2026" HoraAplicacion="14:00"/>
+    <NuevoPrecio TipoProductoId="7" TipoSubProductoId="14" TipoSubProductoMarcaId="3" OtraMarca="" Precio="28.99" FechaAplicacion="26/06/2026" HoraAplicacion="14:00"/>
+  </Permiso>
+</ReportePrecios>
