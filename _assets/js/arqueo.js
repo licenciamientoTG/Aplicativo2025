@@ -165,7 +165,7 @@ function recalcular() {
 
   const elRes = document.getElementById("r_resultado");
   elRes.textContent = fmtMoney(resultado);
-  elRes.className = "col-5 num " + (resultado < 0 ? "resultado-negativo" : "resultado-positivo");
+  elRes.className = "val " + (resultado < 0 ? "resultado-negativo" : "resultado-positivo");
 }
 
 /* Precarga inputs con lo ya capturado (window.ARQUEO_DENOMS / ARQUEO_VALES). */
