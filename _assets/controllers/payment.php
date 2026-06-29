@@ -3928,14 +3928,30 @@ class Payment
                 return;
             }
 
-            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
-            $blockMessage = $this->assert_payment_not_grouped($payment, $user_id);
-            if ($blockMessage !== null) {
+            $invoice = $this->paymentRequestInvoicesModel->get_invoice_by_id($invoice_id);
+
+            if (!$invoice || (int)$invoice['payment_request_id'] !== (int)$payment_id) {
                 echo json_encode([
                     'success' => false,
-                    'message' => $blockMessage
+                    'message' => 'Factura no encontrada'
                 ]);
                 return;
+            }
+
+            $user_id = (int)($_SESSION['tg_user']['Id'] ?? 0);
+
+            // El guard de requisición agrupada solo aplica si Tesorería ya
+            // autorizó esta factura puntual. Si nunca se autorizó, no hay
+            // monto comprometido en el archivo contable que proteger.
+            if ((int)($invoice['payment_authorized'] ?? 0) === 1) {
+                $blockMessage = $this->assert_payment_not_grouped($payment, $user_id);
+                if ($blockMessage !== null) {
+                    echo json_encode([
+                        'success' => false,
+                        'message' => $blockMessage
+                    ]);
+                    return;
+                }
             }
 
             // Quitar la factura (soft-delete)
