@@ -1812,6 +1812,22 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
+     * Trae una factura puntual (no eliminada) por su id, con su estado de
+     * autorización. Usado para decidir si el guard de requisición agrupada
+     * aplica a esta factura específica.
+     */
+    public function get_invoice_by_id($invoice_id): array|false
+    {
+        $query = "
+            SELECT id, payment_request_id, payment_authorized, folio
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE id = ? AND is_deleted = 0
+        ";
+
+        return ($rs = $this->sql->select($query, [$invoice_id])) ? $rs[0] : false;
+    }
+
+    /**
      * Quita una factura de un pago (solo si no ha sido pagada)
      * @param int $invoice_id
      * @return array
