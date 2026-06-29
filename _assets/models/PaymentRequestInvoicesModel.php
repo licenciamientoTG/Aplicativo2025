@@ -418,7 +418,7 @@ class PaymentRequestInvoicesModel extends Model
                 END as status
                 FROM [TG].[dbo].[payment_request_invoices] t1
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
-                left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and t1.folio = t3.nro and t3.tip = 1
+                left join sg12.[dbo].DocumentosC t3 ON t1.codgas = t3.codgas  and TRY_CAST(t1.folio AS int) = t3.nro and t3.tip = 1
                 LEFT JOIN SG12.dbo.Proveedores t4 on t3.codopr = t4.cod
                 WHERE t1.Id IN ($placeholders) AND t1.is_deleted = 0
                 ORDER BY t1.date_added DESC
@@ -1809,6 +1809,22 @@ class PaymentRequestInvoicesModel extends Model
                 'message' => 'Error: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Trae una factura puntual (no eliminada) por su id, con su estado de
+     * autorización. Usado para decidir si el guard de requisición agrupada
+     * aplica a esta factura específica.
+     */
+    public function get_invoice_by_id($invoice_id): array|false
+    {
+        $query = "
+            SELECT id, payment_request_id, payment_authorized, folio
+            FROM [TG].[dbo].[payment_request_invoices]
+            WHERE id = ? AND is_deleted = 0
+        ";
+
+        return ($rs = $this->sql->select($query, [$invoice_id])) ? $rs[0] : false;
     }
 
     /**

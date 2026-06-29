@@ -195,7 +195,13 @@
       "Bash(\"/c/Program Files/nodejs/node\" --check _assets/js/payment.js)",
       "Bash(/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/170/Tools/Binn/SQLCMD.EXE *)",
       "Bash(tasklist //FI \"PID eq 21116\")",
-      "Bash(wmic process *)"
+      "Bash(wmic process *)",
+      "Read(//c/Users/alejandro.martinez/Desktop/**)",
+      "Read(//c//**)",
+      "Bash(xargs -I{} sh -c 'grep -l -i \"enerey\\\\|ENEREY\" \"{}\" 2>/dev/null')",
+      "Bash(pdftotext -layout \"95BA106D_E104_4978_A451_366DAE1B5C49.pdf\" -)",
+      "Bash(pdftotext \"95BA106D_E104_4978_A451_366DAE1B5C49.pdf\" -)",
+      "Bash(pdftotext -layout \"132DB300_4965_4380_890D_B022D4EA8594.pdf\" -)"
     ],
     "deny": [],
     "ask": []
