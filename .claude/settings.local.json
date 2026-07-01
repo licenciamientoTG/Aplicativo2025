@@ -226,7 +226,8 @@
       "Bash(echo \"started with pid $!\")",
       "PowerShell(composer require *)",
       "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_spout.php\")",
-      "PowerShell(git check-ignore *)"
+      "PowerShell(git check-ignore *)",
+      "PowerShell(php -l _assets/controllers/income.php)"
     ],
     "deny": [],
     "ask": []

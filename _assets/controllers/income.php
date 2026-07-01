@@ -1640,7 +1640,23 @@ public function anomalies_client_tickets()
             return;
         }
 
+        // OpenSpout arma el XLSX en archivos temporales antes de enviarlo. En
+        // IIS el usuario del app pool no puede escribir en C:\Windows\TEMP (la
+        // carpeta temporal por defecto), así que usamos una propia dentro de
+        // la aplicación.
+        $tempFolder = ROOT . 'temp';
+        if (!is_dir($tempFolder)) {
+            @mkdir($tempFolder, 0775, true);
+        }
+        if (!is_dir($tempFolder) || !is_writable($tempFolder)) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el Excel: la carpeta temporal "' . $tempFolder .
+                                    '" no existe o no tiene permisos de escritura para el usuario del servidor web.']);
+            return;
+        }
+
         $options = new SpoutXlsxOptions();
+        $options->setTempFolder($tempFolder);
         $options->DEFAULT_COLUMN_WIDTH = 16;
         $writer = new SpoutXlsxWriter($options);
         $writer->openToBrowser('Control_Despachos_Corporativo.xlsx');
