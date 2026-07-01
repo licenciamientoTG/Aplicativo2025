@@ -1,4 +1,8 @@
 <?php
+if (!defined('DATASTUDIO_ENTRY')) {
+    http_response_code(404);
+    exit;
+}
 // Bootstrap standalone para la API de DataStudio. No depende de
 // _assets/classes/header.class.php ni del autoloader de la app: solo
 // carga la clase de conexión a BD directamente.

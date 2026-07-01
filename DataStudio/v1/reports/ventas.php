@@ -1,4 +1,8 @@
 <?php
+if (!defined('DATASTUDIO_ENTRY')) {
+    http_response_code(404);
+    exit;
+}
 $desde = $_GET['desde'] ?? date('Y-m-01');
 $hasta = $_GET['hasta'] ?? date('Y-m-d');
 

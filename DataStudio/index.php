@@ -1,4 +1,5 @@
 <?php
+define('DATASTUDIO_ENTRY', true);
 require __DIR__ . '/_bootstrap.php';
 require __DIR__ . '/lib/ApiKeyAuth.php';
 require __DIR__ . '/lib/JsonResponse.php';

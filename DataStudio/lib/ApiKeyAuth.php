@@ -1,4 +1,8 @@
 <?php
+if (!defined('DATASTUDIO_ENTRY')) {
+    http_response_code(404);
+    exit;
+}
 class ApiKeyAuth
 {
     public static function check(): bool

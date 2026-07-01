@@ -1,4 +1,8 @@
 <?php
+if (!defined('DATASTUDIO_ENTRY')) {
+    http_response_code(404);
+    exit;
+}
 class JsonResponse
 {
     public static function success(array $schema, array $rows): void
