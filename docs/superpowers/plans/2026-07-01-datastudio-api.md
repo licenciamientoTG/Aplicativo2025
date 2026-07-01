@@ -167,8 +167,16 @@ if (!ApiKeyAuth::check()) {
     exit;
 }
 
-$version = preg_replace('/[^a-z0-9]/', '', strtolower($_GET['version'] ?? ''));
-$report  = preg_replace('/[^a-z0-9_]/', '', strtolower($_GET['report'] ?? ''));
+$version = $_GET['version'] ?? '';
+$report  = $_GET['report'] ?? '';
+
+if (!is_string($version) || !is_string($report)) {
+    JsonResponse::error('Parámetros version y report son requeridos', 400);
+    exit;
+}
+
+$version = preg_replace('/[^a-z0-9]/', '', strtolower($version));
+$report  = preg_replace('/[^a-z0-9_]/', '', strtolower($report));
 
 if ($version === '' || $report === '') {
     JsonResponse::error('Parámetros version y report son requeridos', 400);
