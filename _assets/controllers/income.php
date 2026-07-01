@@ -1571,6 +1571,113 @@ public function anomalies_client_tickets()
     }
 
     /**
+     * Exporta a Excel TODAS las filas que cumplen los filtros/búsquedas actuales
+     * del reporte Control Despachos - Corporativo (no solo la página visible).
+     * Recibe el mismo payload que arma DataTables (table.ajax.params()), por lo
+     * que respeta los mismos filtros que ve el usuario en pantalla.
+     */
+    function export_dispatches_excel() : void {
+        ini_set('memory_limit', '1024M');
+        set_time_limit(300);
+
+        $codgas = (int) ($_POST['codgas'] ?? 0);
+        $billed = $_POST['billed'] ?? 0;
+        $uuid   = $_POST['uuid'] ?? 0;
+        $tipo_cliente = 0;
+
+        $orderColIdx = isset($_POST['order'][0]['column']) ? (int) $_POST['order'][0]['column'] : 0;
+        $orderDir    = $_POST['order'][0]['dir'] ?? 'asc';
+        $orderColKey = $_POST['columns'][$orderColIdx]['data'] ?? 'fecha';
+
+        $columnSearches = [];
+        if (!empty($_POST['columns']) && is_array($_POST['columns'])) {
+            foreach ($_POST['columns'] as $col) {
+                if (isset($col['data'], $col['search']['value']) && $col['search']['value'] !== '') {
+                    $columnSearches[$col['data']] = $col['search']['value'];
+                }
+            }
+        }
+        $globalSearch = $_POST['search']['value'] ?? '';
+        $from = dateToInt($_POST['from']);
+        $until = dateToInt($_POST['until']);
+
+        // Límite de seguridad: generar el Excel implica tener todas las filas
+        // en memoria como objetos de celda (más pesado que el arreglo plano de
+        // la BD). Calibrado empíricamente: 40,000 filas x 24 columnas ya usa
+        // ~750MB/62s; 30,000 deja margen cómodo frente al límite de memoria.
+        $totalRows = $this->despachosModel->count_dispatches2_all(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed, $columnSearches, $globalSearch
+        );
+        if ($totalRows > 30000) {
+            http_response_code(413);
+            json_output([
+                'error' => "El rango seleccionado tiene $totalRows registros, demasiados para exportar en un solo archivo. " .
+                           "Por favor acote el rango de fechas o seleccione una estación específica e intente de nuevo."
+            ]);
+            return;
+        }
+
+        $dispatches = $this->despachosModel->control_dispatches2_all(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+
+        foreach ($dispatches as &$dispatch) {
+            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
+            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
+            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
+            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
+            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
+            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
+        }
+        unset($dispatch);
+
+        // Mismo orden/etiquetas que el encabezado de la tabla en pantalla.
+        $headers = [
+            'Fecha', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa',
+            'Cliente', 'Cantidad', 'Importe', 'Precio', 'Despachador', 'Pago',
+            'Factura', 'Fecha Factura', 'UUID', 'Notas', 'Rut', 'Denominacion',
+            'Codigo', 'Tipo', 'Tipo Aplicativo', 'Vehiculo', 'Placas',
+        ];
+        $fields = [
+            'fecha', 'hora_formateada', 'turno', 'despacho', 'producto', 'estacion', 'empresa',
+            'cliente_fac', 'cantidad', 'importe', 'precio', 'despachador', 'tipo_pago',
+            'factura', 'FechaFactura', 'UUID', 'txtref', 'rut', 'denominacion',
+            'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas',
+        ];
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Control Despachos');
+
+        $sheet->fromArray($headers, NULL, 'A1');
+        $lastCol = range('A', 'Z')[count($headers) - 1];
+        $sheet->getStyle('A1:' . $lastCol . '1')->getFont()->setBold(true);
+
+        $rowIdx = 2;
+        foreach ($dispatches as $d) {
+            $col = 'A';
+            foreach ($fields as $field) {
+                $sheet->setCellValue($col . $rowIdx, $d[$field] ?? '');
+                $col++;
+            }
+            $rowIdx++;
+        }
+
+        foreach (range('A', $lastCol) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment;filename="Control_Despachos_Corporativo.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        $writer = new Xlsx($spreadsheet);
+        $writer->save('php://output');
+        exit;
+    }
+
+    /**
      * Resumen de Factura Global para los collapses del reporte. Se calcula con un
      * GROUP BY ligero en SQL (no trae el detalle), reemplazando el agruparPorFactura
      * que recorría todo el dataset en el navegador.
