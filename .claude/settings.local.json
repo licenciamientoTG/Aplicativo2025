@@ -223,7 +223,10 @@
       "Bash(echo \"Started PID $!\")",
       "Bash(kill 56066)",
       "Bash(/home/a8a/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.0/skills/subagent-driven-development/scripts/review-package e732d89 *)",
-      "Bash(echo \"started with pid $!\")"
+      "Bash(echo \"started with pid $!\")",
+      "PowerShell(composer require *)",
+      "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_spout.php\")",
+      "PowerShell(git check-ignore *)"
     ],
     "deny": [],
     "ask": []
