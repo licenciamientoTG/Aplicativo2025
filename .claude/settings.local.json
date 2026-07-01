@@ -227,7 +227,11 @@
       "PowerShell(composer require *)",
       "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_spout.php\")",
       "PowerShell(git check-ignore *)",
-      "PowerShell(php -l _assets/controllers/income.php)"
+      "PowerShell(php -l _assets/controllers/income.php)",
+      "PowerShell($p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"Status: $\\($r.StatusCode\\)\"; if \\($r.Content -match 'login|Login|contrase'\\) { 'Contenido de login detectado: SI' } else { 'Contenido de login detectado: NO'; $r.Content.Substring\\(0, [Math]::Min\\(300, $r.Content.Length\\)\\) } } finally { Stop-Process $p -Force })",
+      "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_connect_guard.php\")",
+      "PowerShell(if \\(Test-Path .\\\\temp\\\\twig\\) { Remove-Item -Recurse -Force .\\\\temp\\\\twig }; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $t1 = Measure-Command { $r1 = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing }; $t2 = Measure-Command { $r2 = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing }; \"Peticion 1 \\(compila\\): $\\([int]$t1.TotalMilliseconds\\)ms status $\\($r1.StatusCode\\)\"; \"Peticion 2 \\(con cache\\): $\\([int]$t2.TotalMilliseconds\\)ms status $\\($r2.StatusCode\\)\"; $n = \\(Get-ChildItem .\\\\temp\\\\twig -Recurse -File | Measure-Object\\).Count; \"Archivos de cache Twig generados: $n\" } finally { Stop-Process $p -Force })",
+      "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_regex.php\"; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"Status: $\\($r.StatusCode\\)\"; \"Set-Cookie: $\\($r.Headers['Set-Cookie']\\)\" } finally { Stop-Process $p -Force })"
     ],
     "deny": [],
     "ask": []

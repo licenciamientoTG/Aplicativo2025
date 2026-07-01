@@ -11,6 +11,7 @@ class MySqlPdoHandler{
 	private $_username;
 	private $_password;
 	private $_connection;
+	private $_host;
 	public $dbname;
 
 	/**
@@ -38,10 +39,18 @@ class MySqlPdoHandler{
 	 * Return: Void
 	 */
 	public function connect($dbname, $host = "192.168.0.6", $username = 'cguser', $password = 'sahei1712') {
-		// print_r(PDO::getAvailableDrivers());
+		// Evitar reconexiones redundantes: cada modelo llama connect() en su
+		// constructor, así que una petición que instancia varios modelos abría
+		// una conexión TCP nueva por cada uno. Si ya estamos conectados al
+		// mismo servidor/BD/usuario, se reutiliza la conexión existente.
+		if ($this->_connection !== null && $this->dbname === $dbname
+			&& $this->_host === $host && $this->_username === $username) {
+			return;
+		}
 
 		$this->_username = $username;
 		$this->_password = $password;
+		$this->_host = $host;
 		$this->dbname = $dbname;
 
 		try{
