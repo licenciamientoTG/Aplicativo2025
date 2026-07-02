@@ -26,6 +26,13 @@
     <div class="card-body">
         <div class="row align-items-end">
             <div class="col-auto">
+                <label for="source" class="col-form-label col-form-label-sm">Fuente:</label>
+                <select id="source" class="form-control form-control-sm">
+                    <option value="app" selected>Log de la app (logs/php_errors.log)</option>
+                    <option value="php">Log global de PHP (php.ini)</option>
+                </select>
+            </div>
+            <div class="col-auto">
                 <label for="lines" class="col-form-label col-form-label-sm">Últimas líneas:</label>
                 <select id="lines" class="form-control form-control-sm">
                     <option value="200">200</option>
@@ -84,8 +91,14 @@ function pintarLog() {
 }
 
 function cargarLog() {
-    $.get('/it/error_log_data', { lines: $('#lines').val() }, function (r) {
-        if (!r || !r.success) { return; }
+    $.get('/it/error_log_data', { lines: $('#lines').val(), source: $('#source').val() }, function (r) {
+        if (!r) { return; }
+        if (!r.success) {
+            rawLog = '';
+            $('#log_info').text('');
+            $('#log_content').text(r.message || 'No se pudo leer el log.');
+            return;
+        }
         rawLog = r.content || '';
         $('#log_info').text(r.file + '   ·   ' + (r.size / 1024).toFixed(1) + ' KB   ·   última escritura: ' + (r.mtime || '—'));
         pintarLog();
@@ -95,6 +108,15 @@ function cargarLog() {
 $('#refrescar').on('click', cargarLog);
 $('#lines').on('change', cargarLog);
 $('#filtro').on('keyup', pintarLog);
+
+// El log global del php.ini puede ser compartido con otros sitios del
+// servidor: solo se permite vaciar el log propio de la app.
+$('#source').on('change', function () {
+    var esApp = $(this).val() === 'app';
+    $('#vaciar').prop('disabled', !esApp)
+                .attr('title', esApp ? '' : 'Solo se puede vaciar el log de la app');
+    cargarLog();
+});
 
 var autoTimer = null;
 $('#auto').on('change', function () {

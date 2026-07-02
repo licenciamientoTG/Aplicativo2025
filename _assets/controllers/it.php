@@ -1040,6 +1040,20 @@ class It{
         return ROOT . 'logs' . DS . 'php_errors.log';
     }
 
+    /**
+     * Fuentes de log que el visor puede leer (whitelist: nunca se acepta una
+     * ruta arbitraria del cliente). 'php' es el error_log original del php.ini
+     * del servidor; se lee de global_value porque header.class.php lo re-apunta
+     * con ini_set() al log de la app en cada petición.
+     */
+    private function error_log_sources(): array {
+        $iniLog = ini_get_all()['error_log']['global_value'] ?? '';
+        return [
+            'app' => $this->error_log_path(),
+            'php' => (string) $iniLog,
+        ];
+    }
+
     public function error_log(): void {
         if (!in_array((int)$_SESSION['tg_user']['Id'], self::ERROR_LOG_USERS)) {
             (new Errors())->get404();
@@ -1053,9 +1067,19 @@ class It{
         if (!in_array((int)$_SESSION['tg_user']['Id'], self::ERROR_LOG_USERS)) {
             echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
         }
-        $file  = $this->error_log_path();
-        $lines = min(5000, max(50, (int)($_GET['lines'] ?? 500)));
+        $sources = $this->error_log_sources();
+        $source  = ($_GET['source'] ?? 'app') === 'php' ? 'php' : 'app';
+        $file    = $sources[$source];
+        $lines   = min(5000, max(50, (int)($_GET['lines'] ?? 500)));
 
+        if ($file === '') {
+            echo json_encode(['success' => false, 'message' => 'El php.ini de este servidor no tiene configurada la directiva error_log.']);
+            return;
+        }
+        if (is_file($file) && !is_readable($file)) {
+            echo json_encode(['success' => false, 'message' => "Sin permiso de lectura sobre $file. Otorgue lectura al usuario del app pool (icacls)."]);
+            return;
+        }
         if (!is_file($file) || filesize($file) === 0) {
             echo json_encode(['success' => true, 'content' => '', 'size' => 0, 'mtime' => null, 'file' => $file]);
             return;
