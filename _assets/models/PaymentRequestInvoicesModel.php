@@ -328,7 +328,16 @@ class PaymentRequestInvoicesModel extends Model
                     SELECT COUNT(*)
                     FROM [TG].[dbo].[credit_note_applications] ca
                     WHERE ca.invoice_id = t1.id AND ca.status = 1
-                ), 0) as notas_count
+                ), 0) as notas_count,
+                -- Comprobantes de pago (documentos) ligados por transacción o por lote
+                (
+                    SELECT STRING_AGG(CAST(d.id AS VARCHAR), \',\')
+                    FROM [TG].[dbo].[payment_transactions] t5b
+                    INNER JOIN [TG].[dbo].[payment_transaction_documents] d
+                        ON d.transaction_id = t5b.id
+                        OR (t5b.batch_id IS NOT NULL AND d.batch_id = t5b.batch_id)
+                    WHERE t5b.invoice_id = t1.id
+                ) as comprobante_doc_ids
                 FROM [TG].[dbo].[payment_request_invoices] t1
                 LEFT JOIN sg12.[dbo].[Gasolineras] t2 ON t1.codgas = t2.cod
                 LEFT JOIN sg12.[dbo].DocumentosC t3 ON t1.is_debit_note = 0 AND t1.codgas = t3.codgas AND TRY_CAST(t1.folio AS int) = t3.nro AND t3.tip = 1

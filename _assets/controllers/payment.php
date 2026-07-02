@@ -1405,6 +1405,15 @@ class Payment
                 }
             }
 
+            // Nombres de los comprobantes de pago ligados a cada factura
+            $todos_doc_ids = [];
+            foreach ($invoices as $inv) {
+                if (!empty($inv['comprobante_doc_ids'])) {
+                    $todos_doc_ids = array_merge($todos_doc_ids, explode(',', $inv['comprobante_doc_ids']));
+                }
+            }
+            $nombres_comprobantes = $this->PaymentTransactionDocumentsModel->get_names_by_ids($todos_doc_ids);
+
             $data = [];
             foreach ($invoices as $inv) {
                 $uuidKey       = strtoupper(trim($inv['uuid'] ?? ''));
@@ -1414,6 +1423,17 @@ class Payment
                 $paid_amount   = (float)($inv['paid_amount'] ?? 0);
                 $saldo         = (float)$inv['amount'] - $paid_amount;
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
+
+                $comprobantes = [];
+                if (!empty($inv['comprobante_doc_ids'])) {
+                    foreach (explode(',', $inv['comprobante_doc_ids']) as $docId) {
+                        $docId = (int)$docId;
+                        $comprobantes[] = [
+                            'doc_id' => $docId,
+                            'nombre' => $nombres_comprobantes[$docId] ?? 'Comprobante',
+                        ];
+                    }
+                }
 
                 $esNotaCargo = (int)($inv['is_debit_note'] ?? 0) === 1;
                 $data[] = [
@@ -1438,6 +1458,7 @@ class Payment
                     'is_debit_note'         => (int)($inv['is_debit_note'] ?? 0),
                     'nota_id'               => $inv['nota_id'] ?? null,
                     'nota_doc_path'         => !empty($inv['nota_id']) ? true : null,
+                    'comprobantes'          => $comprobantes,
                 ];
             }
 

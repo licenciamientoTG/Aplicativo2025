@@ -1335,12 +1335,6 @@ function addColumnFilters(tableId, api) {
 }
 
 
-let _loadPaymentListDebounceTimer = null;
-function loadPaymentListDebounced() {
-  clearTimeout(_loadPaymentListDebounceTimer);
-  _loadPaymentListDebounceTimer = setTimeout(loadPaymentList, 400);
-}
-
 function loadPaymentList() {
   // Conservar el valor del filtro de PDF entre reconstrucciones de la tabla
   const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
@@ -1353,8 +1347,8 @@ function loadPaymentList() {
   // para que no se duplique cada vez que se reconstruye la tabla.
   $("#pdf_status_filter").remove();
 
-  const status = $("#status_filter").val();
-  const search = $("#search_pagos").val();
+  const status = "all";
+  const search = "";
 
   paymentListTable = $("#payment_list_table").DataTable({
     responsive: true,
@@ -1583,14 +1577,27 @@ function formatPaymentInvoicesChild(invoices) {
       }
       return '<span class="badge" style="background:#fef9c3;color:#854d0e;" title="Sin documento adjunto para esta nota de cargo"><i class="fas fa-file"></i> Sin doc</span>';
     }
+    var botones = [];
     if (inv.tiene_archivo && inv.fr_id) {
-      return (
+      botones.push(
         '<button type="button" class="btn btn-sm btn-success" ' +
         'title="' + (inv.nombre_archivo || "Ver factura") + '" ' +
         "onclick='ModalinvoicePdf(" + inv.fr_id + ", {})'>" +
-        '<i class="fas fa-file-pdf"></i> Ver' +
+        '<i class="fas fa-file-pdf"></i> Factura' +
         "</button>"
       );
+    }
+    (inv.comprobantes || []).forEach(function (c) {
+      botones.push(
+        '<button type="button" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;" ' +
+        'title="' + (c.nombre || "Ver comprobante") + '" ' +
+        "onclick=\"window.open('/payment/view_payment_document/" + c.doc_id + "', '_blank')\">" +
+        '<i class="fas fa-receipt"></i> Comprobante' +
+        "</button>"
+      );
+    });
+    if (botones.length > 0) {
+      return '<div class="d-flex flex-column gap-1 align-items-center">' + botones.join("") + '</div>';
     }
     return '<span class="badge bg-danger" title="No se ha recibido el archivo de esta factura"><i class="fas fa-exclamation-triangle"></i> Sin archivo</span>';
   }

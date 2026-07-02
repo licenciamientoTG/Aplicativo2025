@@ -27,6 +27,27 @@ class PaymentTransactionDocumentsModel extends Model
     }
 
     /**
+     * Trae id + nombre original para un conjunto de documentos, indexado por id.
+     */
+    public function get_names_by_ids(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) return [];
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $rows = $this->sql->select(
+            "SELECT id, original_filename FROM [TG].[dbo].[payment_transaction_documents] WHERE id IN ($ph)",
+            $ids
+        ) ?: [];
+
+        $out = [];
+        foreach ($rows as $r) {
+            $out[(int)$r['id']] = $r['original_filename'];
+        }
+        return $out;
+    }
+
+    /**
      * Sube un archivo y lo registra en BD.
      * Retorna ['success', 'doc_id', 'message'].
      */
