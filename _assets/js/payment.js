@@ -1560,9 +1560,9 @@ function formatPaymentInvoicesChild(invoices) {
     return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
   }
   function statusBadge(s) {
-    if (s === 2) return '<span class="badge" style="background:#d1e7dd;color:#0a3622;">Pagado</span>';
-    if (s === 3) return '<span class="badge bg-secondary">Pago Parcial</span>';
-    return '<span class="badge bg-secondary">Pendiente</span>';
+    if (s === 2) return '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;">Pagado</span>';
+    if (s === 3) return '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;">Pago Parcial</span>';
+    return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">Pendiente</span>';
   }
   function archivoBadge(inv) {
     if (parseInt(inv.is_debit_note) === 1) {
@@ -1580,7 +1580,7 @@ function formatPaymentInvoicesChild(invoices) {
     var botones = [];
     if (inv.tiene_archivo && inv.fr_id) {
       botones.push(
-        '<button type="button" class="btn btn-sm btn-success" ' +
+        '<button type="button" class="btn btn-sm w-100 d-flex align-items-center justify-content-center gap-1" style="background:#059669;color:#fff;border:1px solid #059669;" ' +
         'title="' + (inv.nombre_archivo || "Ver factura") + '" ' +
         "onclick='ModalinvoicePdf(" + inv.fr_id + ", {})'>" +
         '<i class="fas fa-file-pdf"></i> Factura' +
@@ -1589,7 +1589,7 @@ function formatPaymentInvoicesChild(invoices) {
     }
     (inv.comprobantes || []).forEach(function (c) {
       botones.push(
-        '<button type="button" class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;" ' +
+        '<button type="button" class="btn btn-sm btn-comprobante-outline w-100 d-flex align-items-center justify-content-center gap-1" ' +
         'title="' + (c.nombre || "Ver comprobante") + '" ' +
         "onclick=\"window.open('/payment/view_payment_document/" + c.doc_id + "', '_blank')\">" +
         '<i class="fas fa-receipt"></i> Comprobante' +
@@ -1597,7 +1597,7 @@ function formatPaymentInvoicesChild(invoices) {
       );
     });
     if (botones.length > 0) {
-      return '<div class="d-flex flex-column gap-1 align-items-center">' + botones.join("") + '</div>';
+      return '<div class="d-flex flex-column gap-1 align-items-stretch" style="min-width:110px;">' + botones.join("") + '</div>';
     }
     return '<span class="badge bg-danger" title="No se ha recibido el archivo de esta factura"><i class="fas fa-exclamation-triangle"></i> Sin archivo</span>';
   }

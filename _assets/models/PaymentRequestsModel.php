@@ -527,13 +527,13 @@ class PaymentRequestsModel extends Model
     {
         switch ($status) {
             case self::STATUS_PENDING:
-                return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:600;">Pendiente</span>';
+                return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:600;">Pendiente</span>';
             case self::STATUS_AUTHORIZED:
-                return '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;font-weight:600;">Autorizado</span>';
+                return '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;font-weight:600;">Autorizado</span>';
             case self::STATUS_PAID:
-                return '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;font-weight:600;">Pagado</span>';
+                return '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;font-weight:600;">Pagado</span>';
             case self::STATUS_CANCELLED:
-                return '<span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;font-weight:600;">Cancelado</span>';
+                return '<span class="badge" style="background:#ffe4e6;color:#9f1239;border:1px solid #fecdd3;font-weight:600;">Cancelado</span>';
             default:
                 return '<span class="badge" style="background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-weight:600;">Desconocido</span>';
         }

@@ -1080,6 +1080,14 @@ class Payment
         // opcional: si la DB almacena con barras invertidas dobles, limpiarlas:
         $ruta = str_replace('\\\\', DIRECTORY_SEPARATOR, $ruta);
 
+        // El importador guardaba rutas absolutas (C:\...), pero desde el cambio de
+        // importador algunas facturas llegan con ruta relativa (attachments\...\...).
+        // Si no es absoluta (no empieza con letra de unidad tipo "C:\"), se antepone
+        // la carpeta base donde el importador escribe los adjuntos.
+        if (!preg_match('/^[A-Za-z]:\\\\/', $ruta)) {
+            $ruta = 'C:\\Software\\TareasProgramadas\\Facturas_proveedores\\correoFacturas\\' . ltrim($ruta, '\\');
+        }
+
         // Seguridad: restringir a un directorio base permitido
         $baseAllowed = realpath('C:\\Software\\TareasProgramadas\\Facturas_proveedores'); // ajusta si hace falta
         $real = realpath($ruta);
