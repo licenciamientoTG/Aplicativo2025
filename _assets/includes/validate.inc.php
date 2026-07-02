@@ -1,4 +1,12 @@
 <?php
+    // Mismo log de errores que fija header.class.php (logs/php_errors.log en la
+    // raíz de la app): este script recibe el POST del login directamente, sin
+    // pasar por index.php, así que hay que fijarlo también aquí.
+    $appLogDir = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'logs';
+    if (!is_dir($appLogDir)) { @mkdir($appLogDir, 0775, true); }
+    ini_set('log_errors', '1');
+    ini_set('error_log', $appLogDir . DIRECTORY_SEPARATOR . 'php_errors.log');
+
     require_once('../classes/common/MySqlPdoHandler.class.php');
     require_once('../classes/php_functions.php');
 
@@ -37,6 +45,9 @@
         }
 
         // Aqui vamos a hacer una consulta para obtener los permisos de cada usuario
+        // Mismos atributos de cookie que en index.php: este script recibe el POST
+        // del login directamente, así que también puede ser quien cree la cookie.
+        session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
         session_start();
         $_SESSION['tg_user'] = $info_usuario[0];
 
@@ -57,10 +68,11 @@
 
         // 2. Filtramos rutas que NO queremos redigir (ej. la pagina de login misma o vacía)
         $ignoredRoutes = [
-            '', 
-            '/', 
-            '/index.php', 
-            '/views/login.php'
+            '',
+            '/',
+            '/index.php',
+            '/views/login.php', // ruta vieja, por si algún navegador la tiene cacheada en JS
+            '/views/login.html'
         ];
 
         // 3. Verificamos: si la ruta contiene el archivo de validación o está en la lista de ignorados, forzamos home

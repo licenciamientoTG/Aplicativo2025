@@ -12,6 +12,15 @@ if (!alertify.myAlert) {
   }, true, 'alert');
 }
 
+// Sesión expirada: el backend responde 401 JSON a cualquier AJAX sin sesión
+// (ver index.php). Redirigimos al login en vez de dejar que cada tabla/módulo
+// muestre su error genérico.
+$(document).ajaxError(function (event, xhr) {
+  if (xhr.status === 401) {
+    window.location.href = '/';
+  }
+});
+
 // Agregar un evento clic al enlace
 $('#exportExcel').on('click', function () {
   // Disparar el evento clic del botón de exportación de Excel del DataTable

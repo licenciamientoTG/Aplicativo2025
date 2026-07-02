@@ -11,6 +11,7 @@ class MySqlPdoHandler{
 	private $_username;
 	private $_password;
 	private $_connection;
+	private $_host;
 	public $dbname;
 
 	/**
@@ -35,23 +36,59 @@ class MySqlPdoHandler{
 	}
 
 	/**
+	 * Registra el detalle de un error de BD (mensaje de PDO, consulta y
+	 * parámetros) en el log del servidor. El detalle NUNCA se manda al
+	 * navegador: expone estructura de tablas y datos (incluso contraseñas
+	 * cuando el parámetro es de un login).
+	 */
+	private function logQueryError($e, $query = '', $params = NULL) {
+		error_log('MySqlPdoHandler: ' . $e->getMessage()
+			. ($query !== '' ? "\nQuery: " . $query : '')
+			. (!empty($params) ? "\nParams: " . print_r($params, true) : ''));
+	}
+
+	/**
+	 * Termina la ejecución con un mensaje genérico y status 500, para los
+	 * métodos que históricamente hacían die() ante un error de BD.
+	 */
+	private function failGeneric() {
+		if (!headers_sent()) {
+			http_response_code(500);
+		}
+		die('Error en la base de datos. Contacte al administrador del sistema.');
+	}
+
+	/**
 	 * Return: Void
 	 */
 	public function connect($dbname, $host = "192.168.0.6", $username = 'cguser', $password = 'sahei1712') {
-		// print_r(PDO::getAvailableDrivers());
+		// Evitar reconexiones redundantes: cada modelo llama connect() en su
+		// constructor, así que una petición que instancia varios modelos abría
+		// una conexión TCP nueva por cada uno. Si ya estamos conectados al
+		// mismo servidor/BD/usuario, se reutiliza la conexión existente.
+		if ($this->_connection !== null && $this->dbname === $dbname
+			&& $this->_host === $host && $this->_username === $username) {
+			return;
+		}
 
 		$this->_username = $username;
 		$this->_password = $password;
+		$this->_host = $host;
 		$this->dbname = $dbname;
 
 		try{
 			$this->_connection = null;	//Close connection. Destroy the object.
-			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname;TrustServerCertificate=yes;MultipleActiveResultSets=1", $this->_username, $this->_password);
+			// LoginTimeout: si el servidor destino está caído, fallar en 10s
+			// en lugar de colgar la página el timeout por defecto del driver.
+			$this->_connection = new PDO("sqlsrv:Server=$host;Database=$dbname;TrustServerCertificate=yes;MultipleActiveResultSets=1;LoginTimeout=10", $this->_username, $this->_password);
 			$this->_connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 			$this->_connection->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
 		}catch(PDOException $e) {
-			echo $e->getMessage();
-			die("Database connection could not be established!<br/>");
+			error_log("MySqlPdoHandler: fallo de conexion a $host/$dbname: " . $e->getMessage());
+			if (!headers_sent()) {
+				http_response_code(500);
+			}
+			die("Database connection could not be established!");
 		}
 	}
 
@@ -65,26 +102,15 @@ class MySqlPdoHandler{
 			try{
 				$stmt = $this->_connection->prepare($query);
 				$stmt->execute($params);
-				$i=0;
-				while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-					$records[$i++] = $row;	//Put row into array
-				}
+				$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 				$stmt->closeCursor();	//Release database resources before issuing next call
 			} catch(Exception $e) {
-				$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-				$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-				$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-
-				echo $errorMessage; // Muestra el mensaje de error en pantalla
-				echo '<pre>';
-				var_dump($errorMessage);
-				die();
-				throw new Exception("Error en la base de datos", 1);
+				$this->logQueryError($e, $query, $params);
+				$this->failGeneric();
 			}
 		} else {
-			echo '<pre>';
-			var_dump("Query mal formado");
-			die();
+			error_log('MySqlPdoHandler: query mal formado (select): ' . $query);
+			$this->failGeneric();
 		}
 		return $records;
 	}
@@ -104,10 +130,7 @@ class MySqlPdoHandler{
 		try {
 			$stmt = $this->_connection->prepare($query);
 			$stmt->execute($params);
-			$i = 0;
-			while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-				$records[$i++] = $row;
-			}
+			$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 			$stmt->closeCursor();
 		} catch (Exception $e) {
 			error_log('selectSafe error: ' . $e->getMessage());
@@ -159,15 +182,8 @@ class MySqlPdoHandler{
 				if($status)
 					return true;
 				} catch(Exception $e) {
-					$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-					$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-					$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-	
-					echo $errorMessage; // Muestra el mensaje de error en pantalla
-					echo '<pre>';
-					var_dump($errorMessage);
-					die();
-					throw new Exception("Error en la base de datos", 1);
+					$this->logQueryError($e, $query, $params);
+					$this->failGeneric();
 				}
 		}
 		return false;
@@ -191,17 +207,14 @@ class MySqlPdoHandler{
 				elseif($status)
 					return true;
 				} catch(Exception $e) {
-					$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-					$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-					$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-	
-					echo $errorMessage; // Muestra el mensaje de error en pantalla
+					// Se relanza (no die): los flujos con transacciones atrapan
+					// esta excepción para hacer rollBack.
+					$this->logQueryError($e, $query, $params);
 					throw new Exception("Error en la base de datos", 1);
 				}
 		} else {
-			echo '<pre>';
-			var_dump("Query mal formado");
-			die();
+			error_log('MySqlPdoHandler: query mal formado (insert): ' . $query);
+			$this->failGeneric();
 		}
 		return $pk;
 	}
@@ -219,15 +232,8 @@ class MySqlPdoHandler{
 				if($status)
 					return true;
 				} catch(Exception $e) {
-					$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-					$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-					$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-	
-					echo $errorMessage; // Muestra el mensaje de error en pantalla
-					echo '<pre>';
-					var_dump($errorMessage);
-					die();
-					throw new Exception("Error en la base de datos", 1);
+					$this->logQueryError($e, $query, $params);
+					$this->failGeneric();
 				}
 		}
 		return false;
@@ -255,19 +261,13 @@ class MySqlPdoHandler{
 
 				$stmt->execute();
 
-				$i = 0;
-				while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-					$records[$i++] = $row;
-				}
+				$records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 				$stmt->closeCursor();
 
 			} catch(Exception $e) {
-				$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-				$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-				$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-
-				echo $errorMessage; // Muestra el mensaje de error en pantalla
+				// Se relanza (no die): hay callers que atrapan esta excepción.
+				$this->logQueryError($e, $query ?? $procedureName, $params);
 				throw new Exception("Error en la base de datos", 1);
 			}
 		}
@@ -290,11 +290,8 @@ class MySqlPdoHandler{
 				if($status)
 					return true;
 				} catch(Exception $e) {
-					$errorMessage = 'Error en la consulta: ' . $e->getMessage();
-					$errorMessage .= "\nQuery: " . $query; // Agrega la consulta al mensaje de error
-					$errorMessage .= "\nParams: " . print_r($params, true); // Agrega los parámetros al mensaje de error
-	
-					echo $errorMessage; // Muestra el mensaje de error en pantalla
+					// Se relanza (no die): hay callers que atrapan esta excepción.
+					$this->logQueryError($e, $query, $params);
 					throw new Exception("Error en la base de datos", 1);
 				}
 		} else {
@@ -311,19 +308,13 @@ class MySqlPdoHandler{
                 $stmt = $this->_connection->prepare($query);
                 $stmt->execute($params ?: []);
                 do {
-                    $rows = [];
-                    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                        $rows[] = $row;
-                    }
+                    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     $results[] = $rows ?: false;
                 } while ($stmt->nextRowset());
                 $stmt->closeCursor();
             } catch (Exception $e) {
-                $errorMessage = 'Error en la consulta: ' . $e->getMessage();
-                $errorMessage .= "\nQuery: " . $query;
-                $errorMessage .= "\nParams: " . print_r($params, true);
-                echo $errorMessage;
-                die();
+                $this->logQueryError($e, $query, $params);
+                $this->failGeneric();
             }
         }
         return $results;

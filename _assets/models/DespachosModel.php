@@ -1211,6 +1211,82 @@ class DespachosModel extends Model{
     }
 
     /**
+     * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: recorre
+     * TODAS las filas que cumplen los mismos filtros de reporte + búsquedas de
+     * columna/globales. Devuelve un Generator que entrega las filas UNA POR UNA
+     * directo del cursor de SQL Server, sin materializar el dataset completo en
+     * memoria, para que la exportación a Excel pueda escribir en streaming sin
+     * límite de registros (ver export_dispatches_excel en el controller).
+     */
+    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                     $orderColKey, $orderDir,
+                                     array $columnSearches = [], string $globalSearch = '') : Generator {
+        $colExpr = [
+            'fecha'                   => 'fecha',
+            'hora_formateada'         => 'hora_formateada',
+            'turno'                   => 'turno',
+            'despacho'                => 'despacho',
+            'producto'                => 'producto',
+            'estacion'                => 'estacion',
+            'empresa'                 => 'empresa',
+            'cliente_fac'             => 'COALESCE(cliente_fac, cliente_des)',
+            'cantidad'                => 'cantidad',
+            'importe'                 => 'importe',
+            'precio'                  => 'precio',
+            'despachador'             => 'despachador',
+            'tipo_pago'               => 'COALESCE(tipo_pago, tipo_pago_despacho)',
+            'factura'                 => 'COALESCE(factura, factura_desp)',
+            'FechaFactura'            => 'FechaFactura',
+            'UUID'                    => 'UUID',
+            'txtref'                  => 'txtref',
+            'rut'                     => 'rut',
+            'denominacion'            => 'denominacion',
+            'codigo_cliente'          => 'codigo_cliente',
+            'tipo_cliente'            => 'tipo_cliente',
+            'tipo_cliente_aplicativo' => 'tipo_cliente_aplicativo',
+            'vehiculo'                => 'vehiculo',
+            'placas'                  => 'placas',
+        ];
+
+        $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
+        $cte   = $this->dispatchesCTE($from, $until, $where);
+
+        $searchWhere = '';
+        $params = [];
+        foreach ($columnSearches as $key => $val) {
+            if ($val !== '' && isset($colExpr[$key])) {
+                $searchWhere .= " AND CAST(" . $colExpr[$key] . " AS NVARCHAR(MAX)) LIKE ?";
+                $params[] = '%' . $val . '%';
+            }
+        }
+        if ($globalSearch !== '') {
+            $ors = [];
+            foreach ($colExpr as $expr) {
+                $ors[] = "CAST($expr AS NVARCHAR(MAX)) LIKE ?";
+                $params[] = '%' . $globalSearch . '%';
+            }
+            if (!empty($ors)) {
+                $searchWhere .= " AND (" . implode(' OR ', $ors) . ")";
+            }
+        }
+
+        $orderExpr = $colExpr[$orderColKey] ?? 'fecha';
+        $orderDir  = strtolower($orderDir) === 'desc' ? 'DESC' : 'ASC';
+
+        $dataQuery = "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
+                      ORDER BY $orderExpr $orderDir, despacho ASC";
+
+        // Cursor forward-only de sqlsrv: las filas viajan del servidor conforme
+        // se consumen, así el uso de memoria en PHP es constante.
+        $stmt = $this->sql->getConnection()->prepare($dataQuery);
+        $stmt->execute($params);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            yield $row;
+        }
+        $stmt->closeCursor();
+    }
+
+    /**
      * Resumen ligero de Factura Global (codigo_cliente = 21701354) agrupado por
      * tipo de pago y número de factura. Reemplaza el cálculo que antes hacía el
      * front recorriendo TODO el detalle (agruparPorFactura).

@@ -41,9 +41,67 @@ function actualizarDataTable() {
            // order: [3, 'asc'],
            buttons: [
                {
-                   extend: 'excel',
-                   className: 'btn btn-outline-success',
+                   // La tabla usa serverSide, así que el navegador solo tiene la
+                   // página actual: el botón nativo 'excel' de DataTables solo
+                   // exportaría esas filas. En su lugar pedimos al servidor
+                   // TODAS las filas que cumplen los mismos filtros/búsquedas
+                   // (mismo payload que arma DataTables para el AJAX normal).
+                   // El servidor genera el XLSX en streaming (OpenSpout), por lo
+                   // que no hay límite de registros exportables.
                    text: '<i data-feather="download"> Excel',
+                   className: 'btn btn-outline-success buttons-excel',
+                   action: function (e, dt, node, config) {
+                       $('.control_dispaches_table').addClass('loading');
+                       $.ajax({
+                           url: '/income/export_dispatches_excel',
+                           method: 'POST',
+                           data: dt.ajax.params(),
+                           xhrFields: { responseType: 'blob' },
+                           success: function (blob) {
+                               const url = window.URL.createObjectURL(blob);
+                               const a = document.createElement('a');
+                               a.href = url;
+                               a.download = 'Control_Despachos_Corporativo.xlsx';
+                               document.body.appendChild(a);
+                               a.click();
+                               a.remove();
+                               window.URL.revokeObjectURL(url);
+                               $('.control_dispaches_table').removeClass('loading');
+                           },
+                           error: function (xhr) {
+                               $('.control_dispaches_table').removeClass('loading');
+                               // Si el backend responde un error con JSON, como pedimos
+                               // responseType blob, hay que leerlo con FileReader para
+                               // sacar el mensaje real.
+                               const showError = function (message) {
+                                   alertify.myAlert(
+                                       `<div class="container text-center text-danger">
+                                           <h4 class="mt-2 text-danger">¡Error!</h4>
+                                       </div>
+                                       <div class="text-dark">
+                                           <p class="text-center">${message}</p>
+                                       </div>`
+                                   );
+                               };
+                               const defaultMessage = 'No se pudo generar el Excel. Intentelo nuevamente.';
+                               if (xhr.response instanceof Blob) {
+                                   const reader = new FileReader();
+                                   reader.onload = function () {
+                                       try {
+                                           const data = JSON.parse(reader.result);
+                                           showError(data.error || defaultMessage);
+                                       } catch (e) {
+                                           showError(defaultMessage);
+                                       }
+                                   };
+                                   reader.onerror = function () { showError(defaultMessage); };
+                                   reader.readAsText(xhr.response);
+                               } else {
+                                   showError(defaultMessage);
+                               }
+                           }
+                       });
+                   }
                },
                {
                 extend: 'pdf',
