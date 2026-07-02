@@ -7428,12 +7428,31 @@ function infoRequisicion(g) {
   return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
 }
 
-function opcionesGruposSelect(idxSeleccionado) {
+function opcionesGruposSelect(idxSeleccionado, c) {
   let opts = '<option value="">— Sin relacionar —</option>';
-  comprobantesGrupos.forEach((g) => {
+
+  const rfcEmpresa = (c && c.rfc_ordenante ? c.rfc_ordenante : "").trim().toUpperCase();
+  const rfcProveedor = (c && c.rfc_beneficiario ? c.rfc_beneficiario : "").trim().toUpperCase();
+  const nombreProveedor = (c && c.nombre_beneficiario ? c.nombre_beneficiario : "").trim().toUpperCase();
+
+  const gruposFiltrados = comprobantesGrupos.filter((g) => {
+    // Si ya está seleccionado ese grupo (reasignación), siempre se muestra.
+    if (idxSeleccionado !== null && idxSeleccionado === g.idx) return true;
+    if (rfcEmpresa && (g.empresa_rfc || "").toUpperCase() !== rfcEmpresa) return false;
+    if (rfcProveedor) {
+      return (g.proveedor_rfc || "").toUpperCase() === rfcProveedor;
+    }
+    if (nombreProveedor) {
+      return (g.proveedor_nombre || "").toUpperCase().includes(nombreProveedor)
+        || nombreProveedor.includes((g.proveedor_nombre || "").toUpperCase());
+    }
+    return true;
+  });
+
+  gruposFiltrados.forEach((g) => {
     const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
     const req = g.payment_request_id ? ` · Req #${g.payment_request_id}` : "";
-    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}${req}</option>`;
+    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_saldo)}${req}</option>`;
   });
   return opts;
 }
@@ -7480,7 +7499,7 @@ function renderComprobantesTabla(comprobantes) {
         <td class="text-end fw-semibold">${fmtMoneda(c.importe)}</td>
         <td style="min-width:260px;">
           <select class="form-select form-select-sm comprobante-grupo-select" data-row="${i}">
-            ${opcionesGruposSelect(idxSel)}
+            ${opcionesGruposSelect(idxSel, c)}
           </select>
         </td>
         <td class="comprobante-requisicion"><small>${infoRequisicion(g)}</small></td>

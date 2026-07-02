@@ -1071,8 +1071,9 @@ class PaymentRequestInvoicesModel extends Model
      * contra los grupos de facturas autorizadas pendientes (empresa+proveedor).
      *
      * Criterio: RFC empresa (ordenante) + RFC proveedor (beneficiario) + monto
-     * con tolerancia. Para comprobantes Santander, donde el RFC beneficiario
-     * suele venir vacío, se cae a un fallback por RFC empresa + monto.
+     * (contra el saldo pendiente, no el autorizado, para soportar pagos
+     * parciales) con tolerancia. Para comprobantes Santander, donde el RFC
+     * beneficiario suele venir vacío, se cae a un fallback por RFC empresa + monto.
      *
      * NO persiste nada: solo construye la relación para mostrarla en pantalla.
      *
@@ -1145,6 +1146,7 @@ class PaymentRequestInvoicesModel extends Model
                 'proveedor_rfc'   => strtoupper(trim($g['proveedor_rfc'] ?? '')),
                 'banco_asignado'  => $g['banco_asignado'] ?? '',
                 'total_autorizado'=> (float)($g['total_autorizado'] ?? 0),
+                'total_saldo'     => (float)($g['total_saldo'] ?? ($g['total_autorizado'] ?? 0)),
                 'total_facturas'  => (int)($g['total_facturas'] ?? 0),
                 'invoice_ids'     => $g['invoice_ids'] ?? '',
                 'tipo_registro'   => $g['tipo_registro'] ?? 'FACTURAS',
@@ -1167,7 +1169,7 @@ class PaymentRequestInvoicesModel extends Model
             foreach ($grupos_norm as $g) {
                 if (isset($usados[$g['idx']])) continue;
                 if ($g['empresa_rfc'] === '' || $g['empresa_rfc'] !== $rfc_emp) continue;
-                if (abs($g['total_autorizado'] - $importe) > $tolerancia) continue;
+                if (abs($g['total_saldo'] - $importe) > $tolerancia) continue;
 
                 // Calcular fuerza del match
                 if ($rfc_prov !== '' && $g['proveedor_rfc'] === $rfc_prov) {

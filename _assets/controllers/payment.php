@@ -5064,11 +5064,11 @@ class Payment
                         $facturas_procesar[] = [
                             'invoice_id'         => $f['id'],
                             'folio'              => $f['folio'],
-                            'monto_pagar'        => $f['authorized_amount'],
+                            'monto_pagar'        => $f['saldo'],
                             'saldo_anterior'     => $f['saldo'],
                             'payment_request_id' => $f['payment_request_id'],
                         ];
-                        $monto_total += (float)$f['authorized_amount'];
+                        $monto_total += (float)$f['saldo'];
                     }
 
                     // Derivar empresa/proveedor/banco de la requisición para la cabecera del lote

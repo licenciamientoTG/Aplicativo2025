@@ -232,15 +232,14 @@
       "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_connect_guard.php\")",
       "PowerShell(if \\(Test-Path .\\\\temp\\\\twig\\) { Remove-Item -Recurse -Force .\\\\temp\\\\twig }; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $t1 = Measure-Command { $r1 = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing }; $t2 = Measure-Command { $r2 = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing }; \"Peticion 1 \\(compila\\): $\\([int]$t1.TotalMilliseconds\\)ms status $\\($r1.StatusCode\\)\"; \"Peticion 2 \\(con cache\\): $\\([int]$t2.TotalMilliseconds\\)ms status $\\($r2.StatusCode\\)\"; $n = \\(Get-ChildItem .\\\\temp\\\\twig -Recurse -File | Measure-Object\\).Count; \"Archivos de cache Twig generados: $n\" } finally { Stop-Process $p -Force })",
       "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_regex.php\"; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"Status: $\\($r.StatusCode\\)\"; \"Set-Cookie: $\\($r.Headers['Set-Cookie']\\)\" } finally { Stop-Process $p -Force })",
-      "PowerShell(Import-Module WebAdministration -ErrorAction SilentlyContinue; Get-ChildItem IIS:\\\\AppPools | Select-Object Name, State; Write-Host \"---SITES---\"; Get-ChildItem IIS:\\\\Sites | Select-Object Name, State, PhysicalPath)",
-      "PowerShell(Import-Module WebAdministration; \\(Get-ItemProperty IIS:\\\\AppPools\\\\TG_PHP -Name processModel\\).identityType; \\(Get-ItemProperty IIS:\\\\AppPools\\\\TG_PHP -Name processModel\\).userName)",
-      "PowerShell(icacls \"C:\\\\php\\\\logs\" /grant \"IIS AppPool\\\\TG_PHP:\\(OI\\)\\(CI\\)M\" 2>&1)",
-      "PowerShell(icacls \"C:\\\\php\\\\logs\")",
-      "PowerShell(iisreset *)",
-      "PowerShell(Get-WebBinding *)",
-      "PowerShell(Invoke-WebRequest -Uri \"http://192.168.0.3:400/_test_error_log.php\" -UseBasicParsing | Select-Object -ExpandProperty Content)",
-      "PowerShell(Get-ScheduledTask *)",
-      "PowerShell(Start-ScheduledTask *)"
+      "PowerShell(php -l _assets/classes/common/MySqlPdoHandler.class.php; \"=== STDOUT \\(lo que veria el usuario\\) ===\"; php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_handler.php\" 2>\"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\stderr.txt\"; \"=== STDERR \\(error_log, solo para el admin\\) ===\"; Get-Content \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\stderr.txt\" | Select-Object -First 8)",
+      "PowerShell(php -r \"echo 'error_log=' . var_export\\(ini_get\\('error_log'\\), true\\) . PHP_EOL . 'log_errors=' . var_export\\(ini_get\\('log_errors'\\), true\\) . PHP_EOL; echo 'ini: ' . php_ini_loaded_file\\(\\);\")",
+      "PowerShell(\\(Get-Content _assets\\\\controllers\\\\it.php | Measure-Object -Line\\).Lines)",
+      "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\test_log.php\"; Get-Content .\\\\logs\\\\php_errors.log)",
+      "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\find_user.php\")",
+      "PowerShell(git *)",
+      "PowerShell(php -r \"ini_set\\('error_log', 'C:/otra/ruta.log'\\); echo 'runtime: ' . ini_get\\('error_log'\\) . PHP_EOL; echo 'php.ini: ' . \\(ini_get_all\\(\\)['error_log']['global_value'] ?? '\\(vacio\\)'\\);\")",
+      "PowerShell(php -l _assets/controllers/it.php; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"App arranca: $\\($r.StatusCode\\)\" } finally { Stop-Process $p -Force })"
     ],
     "deny": [],
     "ask": []
