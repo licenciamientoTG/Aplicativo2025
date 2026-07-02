@@ -1,0 +1,115 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Log de Errores PHP{% endblock %}
+{% block mycss %}
+<style>
+    #log_content {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: Consolas, 'Courier New', monospace;
+        font-size: 12px;
+        padding: 14px;
+        border-radius: 6px;
+        height: 68vh;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin-bottom: 0;
+    }
+    #log_info {
+        font-family: Consolas, 'Courier New', monospace;
+    }
+</style>
+{% endblock %}
+{% block menutitle %}Log de Errores PHP{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-body">
+        <div class="row align-items-end">
+            <div class="col-auto">
+                <label for="lines" class="col-form-label col-form-label-sm">Últimas líneas:</label>
+                <select id="lines" class="form-control form-control-sm">
+                    <option value="200">200</option>
+                    <option value="500" selected>500</option>
+                    <option value="1000">1000</option>
+                    <option value="2000">2000</option>
+                </select>
+            </div>
+            <div class="col-3">
+                <label for="filtro" class="col-form-label col-form-label-sm">Filtrar líneas:</label>
+                <input type="text" id="filtro" class="form-control form-control-sm" placeholder="ej. MySqlPdoHandler, SQLSTATE, income...">
+            </div>
+            <div class="col-auto">
+                <button type="button" id="refrescar" class="btn btn-sm btn-primary">
+                    <i data-feather="refresh-ccw"></i> Actualizar
+                </button>
+                <div class="form-check form-check-inline ms-2">
+                    <input class="form-check-input" type="checkbox" id="auto">
+                    <label class="form-check-label" for="auto">Auto-actualizar (5s)</label>
+                </div>
+            </div>
+            <div class="col text-end">
+                <button type="button" id="vaciar" class="btn btn-sm btn-outline-danger">
+                    <i data-feather="trash-2"></i> Vaciar log
+                </button>
+            </div>
+        </div>
+        <div class="text-muted small mt-2" id="log_info"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <pre id="log_content">Cargando…</pre>
+    </div>
+</div>
+{% endblock %}
+{% block myjs %}
+<script>
+var rawLog = '';
+
+function escapeHtml(text) {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Pinta el log aplicando el filtro por línea (solo en el cliente, sobre lo ya cargado)
+function pintarLog() {
+    var filtro = $('#filtro').val().toLowerCase();
+    var lineas = rawLog === '' ? [] : rawLog.split('\n');
+    if (filtro !== '') {
+        lineas = lineas.filter(function (l) { return l.toLowerCase().indexOf(filtro) !== -1; });
+    }
+    $('#log_content').html(lineas.length ? escapeHtml(lineas.join('\n')) : '(sin líneas que mostrar)');
+    var el = document.getElementById('log_content');
+    el.scrollTop = el.scrollHeight; // lo más reciente está al final
+}
+
+function cargarLog() {
+    $.get('/it/error_log_data', { lines: $('#lines').val() }, function (r) {
+        if (!r || !r.success) { return; }
+        rawLog = r.content || '';
+        $('#log_info').text(r.file + '   ·   ' + (r.size / 1024).toFixed(1) + ' KB   ·   última escritura: ' + (r.mtime || '—'));
+        pintarLog();
+    });
+}
+
+$('#refrescar').on('click', cargarLog);
+$('#lines').on('change', cargarLog);
+$('#filtro').on('keyup', pintarLog);
+
+var autoTimer = null;
+$('#auto').on('change', function () {
+    if (this.checked) {
+        autoTimer = setInterval(cargarLog, 5000);
+    } else {
+        clearInterval(autoTimer);
+    }
+});
+
+$('#vaciar').on('click', function () {
+    if (!confirm('¿Vaciar el log de errores? Esta acción no se puede deshacer.')) { return; }
+    $.post('/it/error_log_clear', function () { cargarLog(); });
+});
+
+cargarLog();
+</script>
+{% endblock %}

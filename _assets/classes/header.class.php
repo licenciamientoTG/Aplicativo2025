@@ -30,6 +30,16 @@ define('IMAGES', REL_ASSETS.'images'.DS);
 define('TEMPLATE', REL_ASSETS.'template'.DS);
 define('VIEWS', ROOT.'views'.DS);
 
+// Log de errores PHP en una ruta propia y estable de la aplicación (en vez de
+// depender del php.ini de cada máquina). Aquí cae todo lo que se manda a
+// error_log(), incluidos los errores de BD de MySqlPdoHandler. Se consulta
+// desde la interfaz en /it/error_log o directamente en logs/php_errors.log.
+if (!is_dir(ROOT . 'logs')) {
+    @mkdir(ROOT . 'logs', 0775, true);
+}
+ini_set('log_errors', '1');
+ini_set('error_log', ROOT . 'logs' . DS . 'php_errors.log');
+
 // Controlador por defecto / Metodo por defecto / Controlador de error por defecto
 define('CRON_SECRET', 'TG_CRON_2024');
 define('DEFAULT_CONTROLLER', 'home');
