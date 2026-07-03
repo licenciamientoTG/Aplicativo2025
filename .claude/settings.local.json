@@ -239,7 +239,8 @@
       "PowerShell(php \"C:\\\\Users\\\\ALFO~1.OCH\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-alfo-ochoa-Documents-Desarrollo-Aplicativo2025\\\\0286b54c-a1be-46b3-9c95-e10a26456438\\\\scratchpad\\\\find_user.php\")",
       "PowerShell(git *)",
       "PowerShell(php -r \"ini_set\\('error_log', 'C:/otra/ruta.log'\\); echo 'runtime: ' . ini_get\\('error_log'\\) . PHP_EOL; echo 'php.ini: ' . \\(ini_get_all\\(\\)['error_log']['global_value'] ?? '\\(vacio\\)'\\);\")",
-      "PowerShell(php -l _assets/controllers/it.php; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"App arranca: $\\($r.StatusCode\\)\" } finally { Stop-Process $p -Force })"
+      "PowerShell(php -l _assets/controllers/it.php; $p = Start-Process php -ArgumentList '-S','localhost:8123','router.php' -PassThru -WindowStyle Hidden; Start-Sleep -Seconds 2; try { $r = Invoke-WebRequest 'http://localhost:8123/' -UseBasicParsing; \"App arranca: $\\($r.StatusCode\\)\" } finally { Stop-Process $p -Force })",
+      "Bash(cmd //c \"dir \\\\\"C:\\\\Users\\\\alejandro.martinez\\\\Downloads\\\\zip\\\\\"\")"
     ],
     "deny": [],
     "ask": []

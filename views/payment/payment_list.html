@@ -153,16 +153,14 @@
                     <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Reenviar correo
                 </button>
                 {% endif %}
-                {# DEV-ONLY (comentado — descomentar si se necesita)
-                <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
-                    <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
-                </button>
-                /DEV-ONLY #}
                 {% endif %}
                 {% if authorized(68) %}
                 <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0891b2;" title="Autorizar facturas para ejecución de pago">
                     <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
                 </button>
+                <a href="/payment/authorize_payments" target="_blank" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0891b2;" title="Abrir autorización de pago en una vista completa">
+                    <i class="fas fa-external-link-alt" style="font-size:.75rem;"></i>
+                </a>
                 {% endif %}
                 {% if authorized(66) %}
                 <a href="/payment/add_payment" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#16a34a;">

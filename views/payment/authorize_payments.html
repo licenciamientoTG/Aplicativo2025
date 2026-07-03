@@ -1,0 +1,241 @@
+{# authorize_payments.html #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Autorizar Pago de Facturas{% endblock %}
+{% block menutitle %}Autorizar Pago de Facturas{% endblock %}
+{% block content %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var sidebar = document.getElementById('sidebar');
+        if (sidebar && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('collapsed');
+        }
+    });
+</script>
+
+<style>
+    .apf-page { background: #f8fafc; margin: -1.5rem; padding: 1.5rem; }
+    .apf-card { background: #fff; border: 1px solid #e2e8f0; border-radius: .9rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+
+    .apf-header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.4rem; border-bottom: 1px solid #e2e8f0; }
+    .apf-header h5 { font-weight: 700; letter-spacing: -.01em; color: #0f172a; margin: 0; display: flex; align-items: center; gap: .55rem; }
+    .apf-header h5 i { color: #0891b2; }
+    .apf-btn-back { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem 1rem; font-size: .85rem; font-weight: 500; color: #475569; background: #fff; border: 1px solid #cbd5e1; border-radius: .6rem; transition: background .15s; }
+    .apf-btn-back:hover { background: #f8fafc; color: #0f172a; }
+
+    .apf-body { padding: 1.4rem; }
+
+    .apf-alert { background: #ecfeff; border: 1px solid #cffafe; border-radius: .8rem; padding: .9rem 1.1rem; display: flex; gap: .7rem; color: #155e75; font-size: .87rem; box-shadow: 0 1px 2px rgba(15,23,42,.03); }
+    .apf-alert i { color: #0891b2; margin-top: .15rem; }
+
+    .apf-kpi { background: #fff; border: 1px solid #e2e8f0; border-radius: .8rem; padding: 1rem 1.1rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); transition: box-shadow .15s; height: 100%; }
+    .apf-kpi:hover { box-shadow: 0 4px 10px rgba(15,23,42,.06); }
+    .apf-kpi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #64748b; }
+    .apf-kpi-value { font-size: 1.4rem; font-weight: 700; margin: .2rem 0 0; }
+
+    .apf-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: .8rem; padding: .85rem 1.1rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); position: sticky; top: 0; z-index: 10; }
+    .apf-btn-toggle { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem 1rem; font-size: .85rem; font-weight: 500; color: #374151; background: #fff; border: 1px solid #cbd5e1; border-radius: .6rem; transition: background .15s; }
+    .apf-btn-toggle:hover { background: #f8fafc; }
+    .apf-search { position: relative; min-width: 280px; }
+    .apf-search i { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: .8rem; pointer-events: none; }
+    .apf-search input { padding-left: 2.1rem; border-radius: .6rem; border-color: #cbd5e1; }
+    .apf-search input:focus { border-color: #06b6d4; box-shadow: 0 0 0 .2rem rgba(6,182,212,.15); }
+    .apf-btn-confirm { display: inline-flex; align-items: center; gap: .45rem; padding: .6rem 1.3rem; font-size: .87rem; font-weight: 600; color: #fff; background: #0891b2; border: none; border-radius: .6rem; box-shadow: 0 1px 2px rgba(15,23,42,.06); transition: background .15s; }
+    .apf-btn-confirm:hover:not(:disabled) { background: #0e7490; }
+    .apf-btn-confirm:disabled { background: #cbd5e1; color: #fff; cursor: not-allowed; }
+
+    .apf-table-wrap { background: #fff; border: 1px solid #e2e8f0; border-radius: .8rem; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+    .apf-table-wrap .table { margin-bottom: 0; }
+    .apf-table-wrap thead th { background: #f8fafc; color: #64748b; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+    .apf-table-wrap tbody td { vertical-align: middle; font-size: .87rem; }
+    .apf-table-wrap tfoot th { background: #f8fafc; font-size: .82rem; }
+
+    .apf-table-wrap .group-header-row { background: #f8fafc !important; cursor: pointer; }
+    .apf-table-wrap .group-header-row:hover { background: #ecfeff !important; }
+    .apf-table-wrap .apf-row-selectable { cursor: pointer; }
+    .apf-table-wrap .apf-row-selectable:hover { background: #f8fafc; }
+    .apf-table-wrap .apf-row-selectable input[type="number"],
+    .apf-table-wrap .apf-row-selectable a { cursor: default; }
+    .apf-badge-pago { display: inline-flex; align-items: center; font-weight: 700; color: #0e7490; background: #ecfeff; border: 1px solid #cffafe; padding: .15rem .6rem; border-radius: .5rem; font-size: .82rem; }
+    .apf-badge-count { display: inline-flex; align-items: center; font-weight: 500; color: #475569; background: #f1f5f9; padding: .1rem .55rem; border-radius: 999px; font-size: .72rem; }
+    .apf-badge-venc { display: inline-flex; align-items: center; gap: .25rem; padding: .18rem .6rem; border-radius: 999px; font-size: .74rem; font-weight: 500; background: #f1f5f9; color: #475569; }
+    .apf-badge-venc.overdue { background: #ffe4e6; color: #be123c; }
+    .apf-badge-venc.soon { background: #fef3c7; color: #92400e; }
+    .apf-badge-venc.upcoming { background: #cffafe; color: #0e7490; }
+    .apf-saldo-danger { color: #e11d48; font-weight: 600; }
+    .apf-saldo-neto { color: #0e7490; font-weight: 600; }
+
+    .apf-monto-input { text-align: right; font-weight: 600; border-radius: .5rem; }
+    .apf-monto-input:disabled { background: #f8fafc; color: #94a3b8; border-color: #e2e8f0; }
+    .apf-monto-input:not(:disabled) { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+
+    .apf-empty { text-align: center; padding: 3rem 1rem; color: #64748b; }
+    .apf-empty i { color: #10b981; }
+</style>
+
+<div class="apf-page">
+<div class="apf-card">
+    <div class="apf-header">
+        <h5>
+            <i class="fas fa-check-circle"></i>
+            Autorizar Pago de Facturas
+        </h5>
+        <a href="/payment/payment_list" class="apf-btn-back" title="Volver a Pagos Programados">
+            <i class="fas fa-arrow-left"></i> Volver
+        </a>
+    </div>
+    <div class="apf-body">
+        <div class="apf-alert mb-4">
+            <i class="fas fa-info-circle"></i>
+            <span>Seleccione las facturas que autoriza para ejecución de pago. Se muestran las facturas pendientes de pagos agrupados en contabilidad; al autorizarlas queda registrada la aprobación de Tesorería.</span>
+        </div>
+
+        <!-- Resumen -->
+        <div class="row mb-4 g-3">
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Monto Facturas</div>
+                    <div class="apf-kpi-value text-primary" id="masivoPagoMontoFacturas">$0.00</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Notas Crédito</div>
+                    <div class="apf-kpi-value text-success" id="masivoPagoNC">-$0.00</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Notas Cargo</div>
+                    <div class="apf-kpi-value text-warning" id="masivoPagoND">+$0.00</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Saldo Neto Total</div>
+                    <div class="apf-kpi-value text-primary" id="masivoPagoSaldoNeto">$0.00</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Monto a Autorizar</div>
+                    <div class="apf-kpi-value text-success" id="masivoPagoTotalAutorizar">$0.00</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4 col-lg-2">
+                <div class="apf-kpi">
+                    <div class="apf-kpi-label">Seleccionadas</div>
+                    <div class="apf-kpi-value" style="color:#0891b2;" id="masivoPagoSeleccionadas">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="apf-toolbar d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="apf-btn-toggle" id="btnToggleAllGroups" onclick="toggleAllGroupsMasivo()">
+                    <i class="fas fa-expand-alt"></i> Expandir Todos
+                </button>
+                <div class="apf-search">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="buscadorPagoMasivo" class="form-control form-control-sm"
+                        placeholder="Buscar proveedor, empresa, folio..."
+                        oninput="filtrarTablaPagoMasivo(this.value)">
+                </div>
+            </div>
+            <button type="button" class="apf-btn-confirm" id="btnConfirmarAutorizacionMasiva" onclick="confirmarAutorizarPagoMasivo()" disabled>
+                <i class="fas fa-check-circle"></i> Autorizar Facturas Seleccionadas
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingPagoMasivo" class="text-center py-4" style="display: none;">
+            <i class="fas fa-spinner fa-spin fa-2x" style="color:#0891b2;"></i>
+            <p class="mt-2 text-muted">Cargando facturas pendientes...</p>
+        </div>
+
+        <!-- Tabla de Facturas -->
+        <div class="apf-table-wrap" id="tablaPagoMasivoContainer" style="display: none;">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover" id="tablaAutorizarPagoMasivo">
+                <thead>
+                    <tr>
+                        <th width="40">
+                            <input type="checkbox" id="selectAllFacturasMasivo" onchange="toggleSelectAllFacturasMasivo()"/>
+                        </th>
+                        <th>Folio</th>
+                        <th>Factura</th>
+                        <th>Estación</th>
+                        <th class="text-end">Monto</th>
+                        <th class="text-end">Pagado</th>
+                        <th class="text-end">Saldo</th>
+                        <th class="text-end">NC / ND</th>
+                        <th class="text-end">Saldo Neto</th>
+                        <th class="text-end">Vencimiento</th>
+                        <th width="140">Monto a Autorizar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Dinámico vía JS -->
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="4" class="text-end">TOTALES:</th>
+                        <th class="text-end" id="footerMasivoPagoMonto">$0.00</th>
+                        <th class="text-end" id="footerMasivoPagoPagado">$0.00</th>
+                        <th class="text-end" id="footerMasivoPagoSaldo">$0.00</th>
+                        <th class="text-end" id="footerMasivoPagoNotas"></th>
+                        <th class="text-end" id="footerMasivoPagoSaldoNeto">$0.00</th>
+                        <th colspan="2"></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        </div>
+
+        <!-- Sin datos -->
+        <div id="sinFacturasPagoMasivo" class="apf-empty" style="display: none;">
+            <i class="fas fa-check-circle fa-3x mb-3"></i>
+            <p class="text-muted mb-0">No hay facturas pendientes de autorización de pago.</p>
+        </div>
+
+        <!-- Anticipos pendientes de autorización -->
+        <div id="anticiposPagoMasivoContainer" style="display: none;">
+            <hr class="my-4">
+            <h6 class="mb-3 fw-bold"><i class="fas fa-hand-holding-usd text-warning"></i> Anticipos pendientes de autorización</h6>
+            <div class="apf-table-wrap mb-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover" id="tablaAnticiposPagoMasivo">
+                    <thead>
+                        <tr>
+                            <th width="40">
+                                <input type="checkbox" id="selectAllAnticiposMasivo" onchange="toggleSelectAllAnticiposMasivo()"/>
+                            </th>
+                            <th>Anticipo</th>
+                            <th>Empresa</th>
+                            <th>Proveedor</th>
+                            <th>Comentario</th>
+                            <th class="text-end">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dinámico vía JS -->
+                    </tbody>
+                </table>
+            </div>
+            </div>
+            <div class="text-end mb-2">
+                <button type="button" class="btn btn-warning btn-sm" id="btnConfirmarAutorizacionAnticiposMasiva" onclick="confirmarAutorizarAnticiposMasivo()" disabled>
+                    <i class="fas fa-check-circle"></i> Autorizar Anticipos Seleccionados
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script src="{{ JS }}authorize_payments.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        cargarFacturasPagoMasivo();
+    });
+</script>
+{% endblock %}

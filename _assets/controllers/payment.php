@@ -1125,6 +1125,16 @@ class Payment
 
 
     /**
+     * Vista completa (no modal) de autorización de pago de facturas.
+     * Misma funcionalidad que el modal #modalAutorizarPagoMasivo de payment_list.html.
+     */
+    function authorize_payments()
+    {
+        echo $this->twig->render($this->route . 'authorize_payments.html');
+    }
+
+
+    /**
      * Endpoint para obtener lista de pagos programados (DataTable)
      */
     function payment_list_table()
@@ -6873,50 +6883,5 @@ class Payment
         json_output(['data' => $data]);
     }
 
-
-    // DEV-ONLY: eliminar antes de producción ↓
-    public function dev_reset_piloto()
-    {
-        header('Content-Type: application/json');
-        $db = $this->PaymentRequestsModel->sql;
-        $db->beginTransaction();
-        try {
-            $db->query("DELETE FROM [TG].[dbo].[payment_transaction_documents]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_transactions]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_authorizations]");
-            $db->query("DELETE FROM [TG].[dbo].[credit_note_applications]");
-            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes_doc]");
-            $db->query("DELETE FROM [TG].[dbo].[invoice_credit_debit_notes]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_invoices]");
-            $db->query("UPDATE [TG].[dbo].[payment_requests] SET accounting_group_id = NULL");
-            $db->query("DELETE FROM [TG].[dbo].[payment_accounting_groups]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_request_bulk_authorizations]");
-            $db->query("DELETE FROM [TG].[dbo].[payment_requests]");
-            $db->commit();
-
-            // Limpiar archivos físicos
-            $dirs = [
-                __DIR__ . '/../../_assets/uploads/payment_documents/',
-                __DIR__ . '/../../_assets/uploads/credit_debit_notes/',
-            ];
-            foreach ($dirs as $dir) {
-                if (is_dir($dir)) {
-                    $it = new RecursiveIteratorIterator(
-                        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
-                        RecursiveIteratorIterator::CHILD_FIRST
-                    );
-                    foreach ($it as $file) {
-                        $file->isDir() ? rmdir($file->getRealPath()) : unlink($file->getRealPath());
-                    }
-                }
-            }
-
-            json_output(['success' => true, 'message' => 'Datos de prueba eliminados correctamente']);
-        } catch (Exception $e) {
-            $db->rollBack();
-            json_output(['success' => false, 'message' => $e->getMessage()]);
-        }
-    }
-    // /DEV-ONLY ↑
 
 }
