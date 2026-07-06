@@ -71,6 +71,7 @@ class Arqueo
     public ArqueoDenominacionesModel $denominacionesModel;
     public ArqueoValesModel $valesModel;
     public ArqueoConcentradoExtrasModel $concentradoExtrasModel;
+    public ArqueoCapitalBaseModel $capitalBaseModel;
 
     public function __construct($twig)
     {
@@ -81,6 +82,7 @@ class Arqueo
         $this->denominacionesModel    = new ArqueoDenominacionesModel();
         $this->valesModel             = new ArqueoValesModel();
         $this->concentradoExtrasModel = new ArqueoConcentradoExtrasModel();
+        $this->capitalBaseModel       = new ArqueoCapitalBaseModel();
     }
 
     /* ===================================================================== */
@@ -180,12 +182,15 @@ class Arqueo
             $this->json(['success' => false, 'message' => 'Fecha inválida (use YYYY-MM-DD).']);
         }
 
+        $base = $this->capitalBaseModel->get_all();
+
         $this->sql_begin();
         try {
             $sesion_id = $this->sesionesModel->create($nombre, $fecha, (int) $this->user_id());
             if (!$sesion_id) {
                 throw new Exception('No se pudo crear la sesión.');
             }
+            $sucursales_hechas = [];
             foreach (self::SUCURSALES as $s) {
                 $this->cajasModel->create([
                     'sesion_id'       => $sesion_id,
@@ -193,6 +198,17 @@ class Arqueo
                     'sucursal_nombre' => $s['nombre'],
                     'caja_numero'     => $s['caja'],
                 ]);
+                if (isset($sucursales_hechas[$s['id']])) {
+                    continue;
+                }
+                $sucursales_hechas[$s['id']] = true;
+                $this->concentradoExtrasModel->upsert($sesion_id, (int) $s['id'], [
+                    'capital_trabajo' => $base[$s['id']] ?? 0.0,
+                    'gastos_tramite'  => 0.0,
+                    'adeudo'          => 0.0,
+                    'reinversion'     => 0.0,
+                    'utilidad'        => 0.0,
+                ], $this->user_id());
             }
             $this->sesionesModel->sql->commit();
             $this->json(['success' => true, 'sesion_id' => $sesion_id]);
