@@ -7405,6 +7405,9 @@ function fmtFechaCorta(f) {
 
 function infoRequisicion(g) {
   if (!g || !g.payment_request_id) return "—";
+  if (g.tipo_registro === "ANTICIPO") {
+    return `<a href="/payment/anticipo_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-warning fw-semibold">ANTICIPO</small>`;
+  }
   return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
 }
 
@@ -7431,7 +7434,9 @@ function opcionesGruposSelect(idxSeleccionado, c) {
 
   gruposFiltrados.forEach((g) => {
     const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
-    const req = g.payment_request_id ? ` · Req #${g.payment_request_id}` : "";
+    const req = g.payment_request_id
+      ? (g.tipo_registro === "ANTICIPO" ? ` · ANTICIPO #${g.payment_request_id}` : ` · Req #${g.payment_request_id}`)
+      : "";
     opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_saldo)}${req}</option>`;
   });
   return opts;
@@ -7567,13 +7572,18 @@ function guardarConciliacionComprobantes() {
       .map((x) => parseInt(x.trim()))
       .filter((x) => x > 0);
 
+    const esAnticipo = grupo.tipo_registro === "ANTICIPO";
+
     asignaciones.push({
       archivo_idx: i,
       archivo: comprobantesPreview[i]?.comprobante?.archivo || `comprobante ${i}`,
-      invoice_ids: invoiceIds,
+      invoice_ids: esAnticipo ? [] : invoiceIds,
+      anticipo_id: esAnticipo ? grupo.payment_request_id : 0,
       fecha_pago: $row.find(".comprobante-fecha").val(),
       referencia: $row.find(".comprobante-ref").val().trim(),
-      observaciones: "Conciliación automática de comprobante",
+      observaciones: esAnticipo
+        ? "Pago de anticipo vía conciliación de comprobantes"
+        : "Conciliación automática de comprobante",
     });
     totalSel += parseFloat(comprobantesPreview[i]?.comprobante?.importe) || 0;
   });

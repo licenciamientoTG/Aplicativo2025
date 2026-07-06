@@ -48,7 +48,7 @@ function renderTablaAnticiposPagoMasivo(anticipos) {
     });
 
   anticipos.forEach(function (a) {
-    const row = `<tr data-anticipo-id="${a.id}">
+    const row = `<tr data-anticipo-id="${a.id}" class="apf-row-selectable">
       <td>
         <input type="checkbox" class="anticipo-masivo-checkbox" value="${a.id}" onchange="updateBtnAutorizarAnticiposMasivo()"/>
       </td>
@@ -168,6 +168,7 @@ function renderTablaPagoMasivo(facturas) {
         empresa: inv.empresa_nombre,
         proveedor: inv.proveedor_nombre,
         fecha: inv.pago_fecha,
+        es_anticipo: !!inv.es_anticipo,
         facturas: [],
       };
       ordenGrupos.push(pid);
@@ -208,6 +209,12 @@ function renderTablaPagoMasivo(facturas) {
     });
 
     // Fila encabezado del grupo
+    const detailUrl = grupo.es_anticipo
+      ? `/payment/anticipo_detail/${pid}`
+      : `/payment/payment_detail/${pid}`;
+    const anticipoBadge = grupo.es_anticipo
+      ? '<span class="badge bg-warning text-dark ms-1">Anticipo</span>'
+      : '';
     const headerRow = `<tr class="group-header-row" data-group-id="${pid}">
       <td>
         <input type="checkbox" class="group-select-all" data-group="${pid}"
@@ -215,7 +222,7 @@ function renderTablaPagoMasivo(facturas) {
       </td>
       <td colspan="${totalCols - 1}" onclick="toggleGroupMasivo(${pid})">
         <i class="fas fa-chevron-right group-toggle-icon" data-group="${pid}" style="transition: transform 0.2s; margin-right: 6px; color:#94a3b8;"></i>
-        <span class="apf-badge-pago">Pago #${pid}</span>
+        <span class="apf-badge-pago">Pago #${pid}</span>${anticipoBadge}
         <span class="mx-2 text-muted">|</span>
         <i class="fas fa-building text-muted"></i> ${grupo.empresa}
         <span class="mx-2 text-muted">|</span>
@@ -226,7 +233,7 @@ function renderTablaPagoMasivo(facturas) {
         <span class="apf-badge-count">${numFacturas} factura(s)</span>
         <span class="mx-2 text-muted">|</span>
         <span class="apf-saldo-neto">${fmt(grupoSaldoNeto)}</span>
-        <a href="/payment/payment_detail/${pid}" target="_blank" class="float-end text-muted" onclick="event.stopPropagation()" title="Ver pago #${pid}"><i class="fas fa-external-link-alt"></i></a>
+        <a href="${detailUrl}" target="_blank" class="float-end text-muted" onclick="event.stopPropagation()" title="Ver pago #${pid}"><i class="fas fa-external-link-alt"></i></a>
       </td>
     </tr>`;
     tbody.append(headerRow);
@@ -612,6 +619,13 @@ document.addEventListener("DOMContentLoaded", function () {
   $(document).on("click", "#tablaAutorizarPagoMasivo tbody tr.apf-row-selectable", function (e) {
     if ($(e.target).is('input, a, a *')) return;
     const checkbox = $(this).find(".factura-masivo-checkbox");
+    checkbox.prop("checked", !checkbox.prop("checked")).trigger("change");
+  });
+
+  // Mismo comportamiento para la tabla de anticipos pendientes de autorización.
+  $(document).on("click", "#tablaAnticiposPagoMasivo tbody tr.apf-row-selectable", function (e) {
+    if ($(e.target).is('input, a, a *')) return;
+    const checkbox = $(this).find(".anticipo-masivo-checkbox");
     checkbox.prop("checked", !checkbox.prop("checked")).trigger("change");
   });
 });

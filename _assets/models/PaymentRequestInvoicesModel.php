@@ -1378,6 +1378,7 @@ class PaymentRequestInvoicesModel extends Model
                 pr.emp_cod,
                 pr.provider_cod,
                 pr.request_date as pago_fecha,
+                CASE WHEN pr.tipo = 1 THEN 1 ELSE 0 END as es_anticipo,
 
                 -- Información de la estación
                 g.abr as estacion_nombre,
