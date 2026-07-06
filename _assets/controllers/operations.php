@@ -1378,6 +1378,12 @@ class Operations{
         // Obtenemos la informacion del tabular
         $tabular = $this->tabulatorModel->get_tabulator($_POST['tabularId']);
 
+        // No se permite marcar despachos si la fecha del corte no es la fecha actual
+        if (dateToInt($tabular['FechaTabular']) !== dateToInt(date('Y-m-d'))) {
+            setFlashMessage('error', 'No es posible marcar despachos de un corte con fecha distinta a la actual.');
+            redirect("/operations/tab_process/{$_POST['tabularId']}");
+        }
+
         // Obtenemos la información del valor butt
         $CodigoValor = $this->valorButtModel->getRow($_POST['CodigoValor']);
 

@@ -1,5 +1,10 @@
 <form action="/operations/markDispatchesForm" id="markDispatchesForm" method="post">
   <div class="modal-body">
+    {% if not is_today %}
+    <div class="alert alert-warning py-2 px-3 mb-3" role="alert">
+      No es posible marcar despachos: la fecha del corte no es la fecha actual.
+    </div>
+    {% endif %}
     {# Tabular #}
     <div class="row g-3 mb-2 align-items-center">
       <div class="col-3">
@@ -84,7 +89,7 @@
   </div>
   <div class="modal-footer">
     <input type="hidden" name="tabularId" value="{{ tabular.Id }}">
-    <button type="submit" class="btn btn-primary" id="markDispatches">Marcación de despachos 1</button>
+    <button type="submit" class="btn btn-primary" id="markDispatches" {% if not is_today %}disabled{% endif %}>Marcación de despachos</button>
     <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancelar</button>
   </div>
 </form>
