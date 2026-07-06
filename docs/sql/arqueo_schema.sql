@@ -189,3 +189,24 @@ GO
 SELECT [id],[action],[description] FROM [TG].[dbo].[tg_permissions]
 WHERE [action] IN ('arqueo_admin','arqueo_capturar');
 GO
+
+/* ---------------------------------------------------------------------------
+   7) Capital de Trabajo BASE por sucursal.
+   Catálogo que se copia a arqueo_concentrado_extras al crear cada sesión.
+   Editable desde el modal del Concentrado (checkbox "actualizar base").
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_capital_base]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_capital_base] (
+        [id]              INT IDENTITY(1,1) NOT NULL,
+        [sucursal_id]     INT               NOT NULL,
+        [capital_trabajo] DECIMAL(14,2)     NOT NULL
+                          CONSTRAINT [DF_acb_capital] DEFAULT (0),
+        [updated_by]      INT               NULL,
+        [updated_at]      DATETIME          NOT NULL
+                          CONSTRAINT [DF_acb_updated] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_capital_base] PRIMARY KEY CLUSTERED ([id]),
+        CONSTRAINT [UQ_arqueo_capital_base] UNIQUE ([sucursal_id])
+    );
+END
+GO
