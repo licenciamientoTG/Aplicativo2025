@@ -419,6 +419,7 @@ class Arqueo
      * Capital de Trabajo, Gastos en trámite, Adeudo, Reinversión, Utilidad.
      * POST JSON: sesion_id, sucursal_id, capital_trabajo, gastos_tramite,
      * adeudo, reinversion, utilidad.
+     * actualizar_base (bool, opcional): además guarda capital_trabajo como base.
      */
     public function guardar_concentrado_extra(): void
     {
@@ -441,6 +442,15 @@ class Arqueo
         ];
 
         $ok = $this->concentradoExtrasModel->upsert($sesion_id, $sucursal_id, $datos, $this->user_id());
+
+        if ($ok && !empty($in['actualizar_base'])) {
+            $this->capitalBaseModel->upsert(
+                $sucursal_id,
+                $datos['capital_trabajo'],
+                $this->user_id()
+            );
+        }
+
         $this->json(['success' => $ok]);
     }
 
