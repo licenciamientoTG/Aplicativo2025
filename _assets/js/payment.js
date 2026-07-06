@@ -3498,10 +3498,10 @@ function renderTablaPagoMasivo(facturas) {
     totalSaldoNeto = 0;
   const totalCols = 11;
 
-  // Ordenar facturas de cada grupo por folio
+  // Ordenar facturas de cada grupo por número de factura
   ordenGrupos.forEach(function (pid) {
     grupos[pid].facturas.sort(function(a, b) {
-      return (a.folio || '').localeCompare(b.folio || '', 'es', { numeric: true });
+      return (a.invoice_number || '').localeCompare(b.invoice_number || '', 'es', { numeric: true });
     });
   });
 
