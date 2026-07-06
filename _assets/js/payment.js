@@ -1335,12 +1335,6 @@ function addColumnFilters(tableId, api) {
 }
 
 
-let _loadPaymentListDebounceTimer = null;
-function loadPaymentListDebounced() {
-  clearTimeout(_loadPaymentListDebounceTimer);
-  _loadPaymentListDebounceTimer = setTimeout(loadPaymentList, 400);
-}
-
 function loadPaymentList() {
   // Conservar el valor del filtro de PDF entre reconstrucciones de la tabla
   const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
@@ -1353,8 +1347,8 @@ function loadPaymentList() {
   // para que no se duplique cada vez que se reconstruye la tabla.
   $("#pdf_status_filter").remove();
 
-  const status = $("#status_filter").val();
-  const search = $("#search_pagos").val();
+  const status = "all";
+  const search = "";
 
   paymentListTable = $("#payment_list_table").DataTable({
     responsive: true,
@@ -1566,9 +1560,9 @@ function formatPaymentInvoicesChild(invoices) {
     return "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
   }
   function statusBadge(s) {
-    if (s === 2) return '<span class="badge" style="background:#d1e7dd;color:#0a3622;">Pagado</span>';
-    if (s === 3) return '<span class="badge bg-secondary">Pago Parcial</span>';
-    return '<span class="badge bg-secondary">Pendiente</span>';
+    if (s === 2) return '<span class="badge" style="background:#d1fae5;color:#065f46;border:1px solid #a7f3d0;">Pagado</span>';
+    if (s === 3) return '<span class="badge" style="background:#dbeafe;color:#1e40af;border:1px solid #bfdbfe;">Pago Parcial</span>';
+    return '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">Pendiente</span>';
   }
   function archivoBadge(inv) {
     if (parseInt(inv.is_debit_note) === 1) {
@@ -1583,14 +1577,27 @@ function formatPaymentInvoicesChild(invoices) {
       }
       return '<span class="badge" style="background:#fef9c3;color:#854d0e;" title="Sin documento adjunto para esta nota de cargo"><i class="fas fa-file"></i> Sin doc</span>';
     }
+    var botones = [];
     if (inv.tiene_archivo && inv.fr_id) {
-      return (
-        '<button type="button" class="btn btn-sm btn-success" ' +
+      botones.push(
+        '<button type="button" class="btn btn-sm w-100 d-flex align-items-center justify-content-center gap-1" style="background:#059669;color:#fff;border:1px solid #059669;" ' +
         'title="' + (inv.nombre_archivo || "Ver factura") + '" ' +
         "onclick='ModalinvoicePdf(" + inv.fr_id + ", {})'>" +
-        '<i class="fas fa-file-pdf"></i> Ver' +
+        '<i class="fas fa-file-pdf"></i> Factura' +
         "</button>"
       );
+    }
+    (inv.comprobantes || []).forEach(function (c) {
+      botones.push(
+        '<button type="button" class="btn btn-sm btn-comprobante-outline w-100 d-flex align-items-center justify-content-center gap-1" ' +
+        'title="' + (c.nombre || "Ver comprobante") + '" ' +
+        "onclick=\"window.open('/payment/view_payment_document/" + c.doc_id + "', '_blank')\">" +
+        '<i class="fas fa-receipt"></i> Comprobante' +
+        "</button>"
+      );
+    });
+    if (botones.length > 0) {
+      return '<div class="d-flex flex-column gap-1 align-items-stretch" style="min-width:110px;">' + botones.join("") + '</div>';
     }
     return '<span class="badge bg-danger" title="No se ha recibido el archivo de esta factura"><i class="fas fa-exclamation-triangle"></i> Sin archivo</span>';
   }
@@ -1748,33 +1755,6 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
   }
 });
 
-
-
-// DEV-ONLY: eliminar antes de producción ↓
-function devResetPiloto(btn) {
-  alertify.confirm(
-    "⚠️ [DEV] Reset Piloto",
-    "Se eliminarán <strong>TODOS</strong> los pagos, anticipos, autorizaciones, notas de crédito/cargo, grupos de contabilidad y archivos subidos.<br><br>¿Continuar?",
-    function () {
-      var $btn = $(btn), orig = $btn.html();
-      $btn.prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i>');
-      $.post("/payment/dev_reset_piloto", {}, function (resp) {
-        if (resp.success) {
-          alertify.success(resp.message);
-          loadPaymentList();
-          loadAnticiposList();
-          loadAuthorizedPendingInvoices();
-          if (typeof tablaArchivosContabilidad !== "undefined" && tablaArchivosContabilidad) {
-            tablaArchivosContabilidad.ajax.reload(null, false);
-          }
-        } else {
-          alertify.error(resp.message || "Error al resetear");
-        }
-      }, "json").always(function () { $btn.prop("disabled", false).html(orig); });
-    },
-    function () {}
-  ).set("labels", { ok: "Sí, resetear todo", cancel: "Cancelar" });
-}
 // /DEV-ONLY ↑
 
 
@@ -3518,10 +3498,10 @@ function renderTablaPagoMasivo(facturas) {
     totalSaldoNeto = 0;
   const totalCols = 11;
 
-  // Ordenar facturas de cada grupo por folio
+  // Ordenar facturas de cada grupo por número de factura
   ordenGrupos.forEach(function (pid) {
     grupos[pid].facturas.sort(function(a, b) {
-      return (a.folio || '').localeCompare(b.folio || '', 'es', { numeric: true });
+      return (a.invoice_number || '').localeCompare(b.invoice_number || '', 'es', { numeric: true });
     });
   });
 
@@ -7425,15 +7405,39 @@ function fmtFechaCorta(f) {
 
 function infoRequisicion(g) {
   if (!g || !g.payment_request_id) return "—";
+  if (g.tipo_registro === "ANTICIPO") {
+    return `<a href="/payment/anticipo_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-warning fw-semibold">ANTICIPO</small>`;
+  }
   return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
 }
 
-function opcionesGruposSelect(idxSeleccionado) {
+function opcionesGruposSelect(idxSeleccionado, c) {
   let opts = '<option value="">— Sin relacionar —</option>';
-  comprobantesGrupos.forEach((g) => {
+
+  const rfcEmpresa = (c && c.rfc_ordenante ? c.rfc_ordenante : "").trim().toUpperCase();
+  const rfcProveedor = (c && c.rfc_beneficiario ? c.rfc_beneficiario : "").trim().toUpperCase();
+  const nombreProveedor = (c && c.nombre_beneficiario ? c.nombre_beneficiario : "").trim().toUpperCase();
+
+  const gruposFiltrados = comprobantesGrupos.filter((g) => {
+    // Si ya está seleccionado ese grupo (reasignación), siempre se muestra.
+    if (idxSeleccionado !== null && idxSeleccionado === g.idx) return true;
+    if (rfcEmpresa && (g.empresa_rfc || "").toUpperCase() !== rfcEmpresa) return false;
+    if (rfcProveedor) {
+      return (g.proveedor_rfc || "").toUpperCase() === rfcProveedor;
+    }
+    if (nombreProveedor) {
+      return (g.proveedor_nombre || "").toUpperCase().includes(nombreProveedor)
+        || nombreProveedor.includes((g.proveedor_nombre || "").toUpperCase());
+    }
+    return true;
+  });
+
+  gruposFiltrados.forEach((g) => {
     const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
-    const req = g.payment_request_id ? ` · Req #${g.payment_request_id}` : "";
-    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_autorizado)}${req}</option>`;
+    const req = g.payment_request_id
+      ? (g.tipo_registro === "ANTICIPO" ? ` · ANTICIPO #${g.payment_request_id}` : ` · Req #${g.payment_request_id}`)
+      : "";
+    opts += `<option value="${g.idx}" ${sel}>${g.empresa_nombre} / ${g.proveedor_nombre} · ${fmtMoneda(g.total_saldo)}${req}</option>`;
   });
   return opts;
 }
@@ -7480,7 +7484,7 @@ function renderComprobantesTabla(comprobantes) {
         <td class="text-end fw-semibold">${fmtMoneda(c.importe)}</td>
         <td style="min-width:260px;">
           <select class="form-select form-select-sm comprobante-grupo-select" data-row="${i}">
-            ${opcionesGruposSelect(idxSel)}
+            ${opcionesGruposSelect(idxSel, c)}
           </select>
         </td>
         <td class="comprobante-requisicion"><small>${infoRequisicion(g)}</small></td>
@@ -7568,13 +7572,18 @@ function guardarConciliacionComprobantes() {
       .map((x) => parseInt(x.trim()))
       .filter((x) => x > 0);
 
+    const esAnticipo = grupo.tipo_registro === "ANTICIPO";
+
     asignaciones.push({
       archivo_idx: i,
       archivo: comprobantesPreview[i]?.comprobante?.archivo || `comprobante ${i}`,
-      invoice_ids: invoiceIds,
+      invoice_ids: esAnticipo ? [] : invoiceIds,
+      anticipo_id: esAnticipo ? grupo.payment_request_id : 0,
       fecha_pago: $row.find(".comprobante-fecha").val(),
       referencia: $row.find(".comprobante-ref").val().trim(),
-      observaciones: "Conciliación automática de comprobante",
+      observaciones: esAnticipo
+        ? "Pago de anticipo vía conciliación de comprobantes"
+        : "Conciliación automática de comprobante",
     });
     totalSel += parseFloat(comprobantesPreview[i]?.comprobante?.importe) || 0;
   });

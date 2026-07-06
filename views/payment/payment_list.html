@@ -84,10 +84,22 @@
     .table tbody tr:hover { background-color: #f8fafc; }
     .table tbody tr td { font-size: .82rem; vertical-align: middle; color: #334155; border-color: #f1f5f9; }
     .table tbody tr td, .table thead th { padding: .55rem .75rem; }
-    .badge.status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-    .badge.status-authorized { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
-    .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-    .badge.status-cancelled { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .badge.status-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .badge.status-authorized { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge.status-paid { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .badge.status-cancelled { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+
+    /* Botones de acciones del toolbar: outline con color propio via --action-color */
+    .btn-outline-action { background:#fff; color:var(--action-color); border:1px solid color-mix(in srgb, var(--action-color) 35%, white); border-radius:.5rem; font-size:.82rem; padding:.4rem .9rem; transition:background-color .15s, color .15s; }
+    .btn-outline-action:hover { background: color-mix(in srgb, var(--action-color) 10%, white); color: var(--action-color); }
+    .btn-outline-action:focus { color: var(--action-color); }
+
+    /* Fila expandida (child row de DataTables) de detalle de factura: remarcar que es contenido hijo */
+    #payment_list_table tr.child > td { border-left: 4px solid #3b82f6; background:#f8fafc; }
+
+    /* Botón "Comprobante" (outline azul) en el panel de facturas de un pago */
+    .btn-comprobante-outline { background:#fff; color:#2563eb; border:1px solid #bfdbfe; }
+    .btn-comprobante-outline:hover { background:#eff6ff; color:#1d4ed8; border-color:#93c5fd; }
 
     #tabla_facturas_autorizadas thead th,
     #tabla_archivos_contabilidad thead th { background-color: #f8fafc !important; color: #475569 !important; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; border-bottom: 1px solid #e2e8f0 !important; }
@@ -130,51 +142,31 @@
     <div id="pl-tab-pagos" class="pl-tab-content active">
 
         <!-- Toolbar -->
-        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
-            <div class="d-flex align-items-center gap-2 w-100" style="max-width:480px;">
-                <div class="position-relative flex-grow-1">
-                    <i class="fas fa-search position-absolute" style="left:.7rem;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.8rem;"></i>
-                    <input type="text" id="search_pagos" placeholder="Buscar pago, proveedor..." class="form-control form-control-sm" style="padding-left:2.1rem;border-radius:.5rem;border-color:#cbd5e1;" oninput="loadPaymentListDebounced()">
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <select class="form-select form-select-sm" id="status_filter" style="border-radius:.5rem;border-color:#cbd5e1;font-size:.8rem;min-width:130px;">
-                        <option value="all">Todos los estados</option>
-                        <option value="pending">Pendiente</option>
-                        <option value="authorized">Autorizado</option>
-                        <option value="paid">Pagado</option>
-                        <option value="cancelled">Cancelado</option>
-                    </select>
-                    <button onclick="loadPaymentList()" class="btn btn-sm border" style="border-color:#cbd5e1;color:#64748b;border-radius:.5rem;">
-                        <i class="fas fa-filter" style="font-size:.8rem;"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-column flex-sm-row justify-content-end align-items-start align-items-sm-center gap-3 px-3 py-3 border-bottom" style="background:#f8fafc;">
+            <div class="d-flex align-items-center gap-2 ms-sm-auto">
                 {% if authorized(66) %}
-                <button type="button" onclick="sendToPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#7c3aed;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Agrupar requisiciones del día y notificar a Tesorería">
+                <button type="button" onclick="sendToPayments(this)" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#7c3aed;" title="Agrupar requisiciones del día y notificar a Tesorería">
                     <i class="fas fa-share" style="font-size:.75rem;"></i> Mandar a pagos
                 </button>
                 {% if tg_user['Id'] == 6296 %}
-                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0d9488;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
+                <button type="button" onclick="resendTodayPayments(this)" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0d9488;" title="Reenviar el correo de los pagos cerrados hoy (sin volver a agrupar)">
                     <i class="fas fa-paper-plane" style="font-size:.75rem;"></i> Reenviar correo
                 </button>
                 {% endif %}
-                {# DEV-ONLY (comentado — descomentar si se necesita)
-                <button type="button" onclick="devResetPiloto(this)" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#b91c1c;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="[DEV] Limpiar todos los datos de prueba">
-                    <i class="fas fa-bomb" style="font-size:.75rem;"></i> Reset Piloto
-                </button>
-                /DEV-ONLY #}
                 {% endif %}
                 {% if authorized(68) %}
-                <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#0891b2;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;" title="Autorizar facturas para ejecución de pago">
+                <button type="button" onclick="abrirModalAutorizarPagoMasivo()" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0891b2;" title="Autorizar facturas para ejecución de pago">
                     <i class="fas fa-file-invoice-dollar" style="font-size:.75rem;"></i> Autorizar Pago
                 </button>
+                <a href="/payment/authorize_payments" target="_blank" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#0891b2;" title="Abrir autorización de pago en una vista completa">
+                    <i class="fas fa-external-link-alt" style="font-size:.75rem;"></i>
+                </a>
                 {% endif %}
                 {% if authorized(66) %}
-                <a href="/payment/add_payment" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#16a34a;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <a href="/payment/add_payment" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#16a34a;">
                     <i class="fas fa-plus" style="font-size:.75rem;"></i> Nuevo Pago
                 </a>
-                <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm d-flex align-items-center gap-1 fw-medium" style="background:#d97706;color:#fff;border-radius:.5rem;font-size:.82rem;padding:.4rem .9rem;">
+                <button onclick="abrirModalCrearAnticipo()" class="btn btn-sm btn-outline-action d-flex align-items-center gap-1 fw-medium" style="--action-color:#d97706;">
                     <i class="fas fa-hand-holding-usd" style="font-size:.75rem;"></i> Nuevo Anticipo
                 </button>
                 {% endif %}

@@ -1030,6 +1030,105 @@ class It{
         json_output($model->disable_user($cod));
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  VISOR DEL LOG DE ERRORES PHP (logs/php_errors.log)                  */
+    /* ------------------------------------------------------------------ */
+
+    private const ERROR_LOG_USERS = [6382, 6371, 6177, 6296, 6274];
+
+    private function error_log_path(): string {
+        return ROOT . 'logs' . DS . 'php_errors.log';
+    }
+
+    /**
+     * Fuentes de log que el visor puede leer (whitelist: nunca se acepta una
+     * ruta arbitraria del cliente). 'php' es el error_log original del php.ini
+     * del servidor; se lee de global_value porque header.class.php lo re-apunta
+     * con ini_set() al log de la app en cada petición.
+     */
+    private function error_log_sources(): array {
+        $iniLog = ini_get_all()['error_log']['global_value'] ?? '';
+        return [
+            'app' => $this->error_log_path(),
+            'php' => (string) $iniLog,
+        ];
+    }
+
+    public function error_log(): void {
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::ERROR_LOG_USERS)) {
+            (new Errors())->get404();
+            return;
+        }
+        echo $this->twig->render($this->route . 'error_log.html');
+    }
+
+    public function error_log_data(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::ERROR_LOG_USERS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        $sources = $this->error_log_sources();
+        $source  = ($_GET['source'] ?? 'app') === 'php' ? 'php' : 'app';
+        $file    = $sources[$source];
+        $lines   = min(5000, max(50, (int)($_GET['lines'] ?? 500)));
+
+        if ($file === '') {
+            echo json_encode(['success' => false, 'message' => 'El php.ini de este servidor no tiene configurada la directiva error_log.']);
+            return;
+        }
+        if (is_file($file) && !is_readable($file)) {
+            echo json_encode(['success' => false, 'message' => "Sin permiso de lectura sobre $file. Otorgue lectura al usuario del app pool (icacls)."]);
+            return;
+        }
+        if (!is_file($file) || filesize($file) === 0) {
+            echo json_encode(['success' => true, 'content' => '', 'size' => 0, 'mtime' => null, 'file' => $file]);
+            return;
+        }
+
+        // Leer solo el final del archivo (máximo 1MB) para que el visor no
+        // cargue en memoria un log que puede crecer mucho.
+        $size  = filesize($file);
+        $chunk = (int) min($size, 1048576);
+        $fh = fopen($file, 'rb');
+        fseek($fh, -$chunk, SEEK_END);
+        $data = fread($fh, $chunk);
+        fclose($fh);
+
+        $arr = explode("\n", $data);
+        if ($chunk < $size) {
+            array_shift($arr); // la primera línea del chunk puede venir cortada
+        }
+        if (count($arr) > $lines) {
+            $arr = array_slice($arr, -$lines);
+        }
+
+        // JSON_INVALID_UTF8_SUBSTITUTE: los mensajes del driver ODBC pueden
+        // traer acentos en encoding Windows que romperían json_encode.
+        echo json_encode([
+            'success' => true,
+            'content' => implode("\n", $arr),
+            'size'    => $size,
+            'mtime'   => date('Y-m-d H:i:s', filemtime($file)),
+            'file'    => $file,
+        ], JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    public function error_log_clear(): void {
+        header('Content-Type: application/json');
+        if (!in_array((int)$_SESSION['tg_user']['Id'], self::ERROR_LOG_USERS)) {
+            echo json_encode(['success' => false, 'message' => 'Sin permisos']); return;
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Método no permitido']); return;
+        }
+        $file = $this->error_log_path();
+        if (is_file($file)) {
+            file_put_contents($file, '');
+        }
+        error_log('Log de errores vaciado por el usuario ' . $_SESSION['tg_user']['Id']);
+        echo json_encode(['success' => true]);
+    }
+
     public function datatables_controlgas_users(): void {
         $model = new ControlgasUsersModel();
         $data  = [];

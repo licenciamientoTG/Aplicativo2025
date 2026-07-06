@@ -4,6 +4,7 @@
         "phpmailer/phpmailer": "^6.9.1",
         "phpoffice/phpspreadsheet": "^2.2",
         "setasign/fpdi": "^2.6",
-        "smalot/pdfparser": "^2.12"
+        "smalot/pdfparser": "^2.12",
+        "openspout/openspout": "^4.28"
     }
 }

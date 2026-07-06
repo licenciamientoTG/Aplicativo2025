@@ -46,6 +46,8 @@ function actualizarDataTable() {
                    // exportaría esas filas. En su lugar pedimos al servidor
                    // TODAS las filas que cumplen los mismos filtros/búsquedas
                    // (mismo payload que arma DataTables para el AJAX normal).
+                   // El servidor genera el XLSX en streaming (OpenSpout), por lo
+                   // que no hay límite de registros exportables.
                    text: '<i data-feather="download"> Excel',
                    className: 'btn btn-outline-success buttons-excel',
                    action: function (e, dt, node, config) {
@@ -68,9 +70,9 @@ function actualizarDataTable() {
                            },
                            error: function (xhr) {
                                $('.control_dispaches_table').removeClass('loading');
-                               // El backend responde 413 con JSON (rango con demasiadas
-                               // filas para exportar); como pedimos responseType blob,
-                               // hay que leerlo con FileReader para sacar el mensaje real.
+                               // Si el backend responde un error con JSON, como pedimos
+                               // responseType blob, hay que leerlo con FileReader para
+                               // sacar el mensaje real.
                                const showError = function (message) {
                                    alertify.myAlert(
                                        `<div class="container text-center text-danger">

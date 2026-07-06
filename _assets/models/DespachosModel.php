@@ -1211,14 +1211,16 @@ class DespachosModel extends Model{
     }
 
     /**
-     * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: devuelve
+     * Igual que control_dispatches2_paginated pero sin OFFSET/FETCH: recorre
      * TODAS las filas que cumplen los mismos filtros de reporte + búsquedas de
-     * columna/globales. Usado para exportar a Excel del lado del servidor en
-     * vez de solo la página visible (ver export_dispatches_excel en el controller).
+     * columna/globales. Devuelve un Generator que entrega las filas UNA POR UNA
+     * directo del cursor de SQL Server, sin materializar el dataset completo en
+     * memoria, para que la exportación a Excel pueda escribir en streaming sin
+     * límite de registros (ver export_dispatches_excel en el controller).
      */
-    function control_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                      $orderColKey, $orderDir,
-                                      array $columnSearches = [], string $globalSearch = '') : array {
+    function stream_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+                                     $orderColKey, $orderDir,
+                                     array $columnSearches = [], string $globalSearch = '') : Generator {
         $colExpr = [
             'fecha'                   => 'fecha',
             'hora_formateada'         => 'hora_formateada',
@@ -1273,67 +1275,15 @@ class DespachosModel extends Model{
 
         $dataQuery = "$cte SELECT * FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere
                       ORDER BY $orderExpr $orderDir, despacho ASC";
-        return $this->sql->select($dataQuery, $params) ?: [];
-    }
 
-    /**
-     * Cuenta cuántas filas cumplirían control_dispatches2_all() para los mismos
-     * filtros, SIN traer el detalle. Usado por la exportación a Excel para
-     * decidir si el conjunto es exportable antes de cargarlo completo a memoria.
-     */
-    function count_dispatches2_all($from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-                                    array $columnSearches = [], string $globalSearch = '') : int {
-        $colExpr = [
-            'fecha'                   => 'fecha',
-            'hora_formateada'         => 'hora_formateada',
-            'turno'                   => 'turno',
-            'despacho'                => 'despacho',
-            'producto'                => 'producto',
-            'estacion'                => 'estacion',
-            'empresa'                 => 'empresa',
-            'cliente_fac'             => 'COALESCE(cliente_fac, cliente_des)',
-            'cantidad'                => 'cantidad',
-            'importe'                 => 'importe',
-            'precio'                  => 'precio',
-            'despachador'             => 'despachador',
-            'tipo_pago'               => 'COALESCE(tipo_pago, tipo_pago_despacho)',
-            'factura'                 => 'COALESCE(factura, factura_desp)',
-            'FechaFactura'            => 'FechaFactura',
-            'UUID'                    => 'UUID',
-            'txtref'                  => 'txtref',
-            'rut'                     => 'rut',
-            'denominacion'            => 'denominacion',
-            'codigo_cliente'          => 'codigo_cliente',
-            'tipo_cliente'            => 'tipo_cliente',
-            'tipo_cliente_aplicativo' => 'tipo_cliente_aplicativo',
-            'vehiculo'                => 'vehiculo',
-            'placas'                  => 'placas',
-        ];
-
-        $where = $this->dispatchesWhere($codgas, $uuid, $tipo_cliente, $billed);
-        $cte   = $this->dispatchesCTE($from, $until, $where);
-
-        $searchWhere = '';
-        $params = [];
-        foreach ($columnSearches as $key => $val) {
-            if ($val !== '' && isset($colExpr[$key])) {
-                $searchWhere .= " AND CAST(" . $colExpr[$key] . " AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $val . '%';
-            }
+        // Cursor forward-only de sqlsrv: las filas viajan del servidor conforme
+        // se consumen, así el uso de memoria en PHP es constante.
+        $stmt = $this->sql->getConnection()->prepare($dataQuery);
+        $stmt->execute($params);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            yield $row;
         }
-        if ($globalSearch !== '') {
-            $ors = [];
-            foreach ($colExpr as $expr) {
-                $ors[] = "CAST($expr AS NVARCHAR(MAX)) LIKE ?";
-                $params[] = '%' . $globalSearch . '%';
-            }
-            if (!empty($ors)) {
-                $searchWhere .= " AND (" . implode(' OR ', $ors) . ")";
-            }
-        }
-
-        $countRow = $this->sql->select("$cte SELECT COUNT(*) AS c FROM CTE WITH (NOLOCK) WHERE rn = 1 $searchWhere", $params);
-        return (int) ($countRow[0]['c'] ?? 0);
+        $stmt->closeCursor();
     }
 
     /**

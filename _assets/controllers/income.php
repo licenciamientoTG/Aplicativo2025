@@ -2,6 +2,10 @@
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use OpenSpout\Common\Entity\Row as SpoutRow;
+use OpenSpout\Common\Entity\Style\Style as SpoutStyle;
+use OpenSpout\Writer\XLSX\Options as SpoutXlsxOptions;
+use OpenSpout\Writer\XLSX\Writer as SpoutXlsxWriter;
 
 require_once('./_assets/classes/code128.php');
 
@@ -1575,10 +1579,16 @@ public function anomalies_client_tickets()
      * del reporte Control Despachos - Corporativo (no solo la página visible).
      * Recibe el mismo payload que arma DataTables (table.ajax.params()), por lo
      * que respeta los mismos filtros que ve el usuario en pantalla.
+     *
+     * Escribe con OpenSpout en streaming: cada fila viaja del cursor de la BD
+     * directo al XLSX sin materializar el dataset en memoria, por lo que no hay
+     * límite de registros (antes PhpSpreadsheet armaba todo el archivo en RAM y
+     * obligaba a rechazar rangos de más de 30,000 filas). Si se rebasa el máximo
+     * de filas por hoja de Excel (1,048,576), OpenSpout continúa en otra hoja.
      */
     function export_dispatches_excel() : void {
-        ini_set('memory_limit', '1024M');
-        set_time_limit(300);
+        ini_set('memory_limit', '512M');
+        set_time_limit(0);
 
         $codgas = (int) ($_POST['codgas'] ?? 0);
         $billed = $_POST['billed'] ?? 0;
@@ -1601,37 +1611,6 @@ public function anomalies_client_tickets()
         $from = dateToInt($_POST['from']);
         $until = dateToInt($_POST['until']);
 
-        // Límite de seguridad: generar el Excel implica tener todas las filas
-        // en memoria como objetos de celda (más pesado que el arreglo plano de
-        // la BD). Calibrado empíricamente: 40,000 filas x 24 columnas ya usa
-        // ~750MB/62s; 30,000 deja margen cómodo frente al límite de memoria.
-        $totalRows = $this->despachosModel->count_dispatches2_all(
-            $from, $until, $codgas, $uuid, $tipo_cliente, $billed, $columnSearches, $globalSearch
-        );
-        if ($totalRows > 30000) {
-            http_response_code(413);
-            json_output([
-                'error' => "El rango seleccionado tiene $totalRows registros, demasiados para exportar en un solo archivo. " .
-                           "Por favor acote el rango de fechas o seleccione una estación específica e intente de nuevo."
-            ]);
-            return;
-        }
-
-        $dispatches = $this->despachosModel->control_dispatches2_all(
-            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
-            $orderColKey, $orderDir, $columnSearches, $globalSearch
-        );
-
-        foreach ($dispatches as &$dispatch) {
-            $dispatch['hora_formateada'] = date("H:i", strtotime($dispatch['hora_formateada']));
-            $dispatch['cliente_fac']     = $dispatch['cliente_fac']   ?? $dispatch['cliente_des'];
-            $dispatch['factura']         = $dispatch['factura']       ?? $dispatch['factura_desp'];
-            $dispatch['UUID']            = $dispatch['UUID']          ?? ".";
-            $dispatch['codigo_cliente']  = ($dispatch['codigo_cliente'] < 0 ? "" : $dispatch['codigo_cliente']);
-            $dispatch['tipo_pago']       = $dispatch['tipo_pago']     ?? $dispatch['tipo_pago_despacho'];
-        }
-        unset($dispatch);
-
         // Mismo orden/etiquetas que el encabezado de la tabla en pantalla.
         $headers = [
             'Fecha', 'Hora', 'Turno', 'Despacho', 'Producto', 'Estacion', 'Empresa',
@@ -1646,34 +1625,65 @@ public function anomalies_client_tickets()
             'codigo_cliente', 'tipo_cliente', 'tipo_cliente_aplicativo', 'vehiculo', 'placas',
         ];
 
-        $spreadsheet = new Spreadsheet();
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Control Despachos');
+        $dispatches = $this->despachosModel->stream_dispatches2_all(
+            $from, $until, $codgas, $uuid, $tipo_cliente, $billed,
+            $orderColKey, $orderDir, $columnSearches, $globalSearch
+        );
+        // Ejecutar la consulta (hasta la primera fila) ANTES de enviar headers:
+        // si la BD falla, todavía podemos responder JSON de error en vez de
+        // mandar un archivo truncado con status 200.
+        try {
+            $dispatches->valid();
+        } catch (Throwable $e) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el Excel. Intentelo nuevamente.']);
+            return;
+        }
 
-        $sheet->fromArray($headers, NULL, 'A1');
-        $lastCol = range('A', 'Z')[count($headers) - 1];
-        $sheet->getStyle('A1:' . $lastCol . '1')->getFont()->setBold(true);
+        // OpenSpout arma el XLSX en archivos temporales antes de enviarlo. En
+        // IIS el usuario del app pool no puede escribir en C:\Windows\TEMP (la
+        // carpeta temporal por defecto), así que usamos una propia dentro de
+        // la aplicación.
+        $tempFolder = ROOT . 'temp';
+        if (!is_dir($tempFolder)) {
+            @mkdir($tempFolder, 0775, true);
+        }
+        if (!is_dir($tempFolder) || !is_writable($tempFolder)) {
+            http_response_code(500);
+            json_output(['error' => 'No se pudo generar el Excel: la carpeta temporal "' . $tempFolder .
+                                    '" no existe o no tiene permisos de escritura para el usuario del servidor web.']);
+            return;
+        }
 
-        $rowIdx = 2;
+        $options = new SpoutXlsxOptions();
+        $options->setTempFolder($tempFolder);
+        $options->DEFAULT_COLUMN_WIDTH = 16;
+        $writer = new SpoutXlsxWriter($options);
+        $writer->openToBrowser('Control_Despachos_Corporativo.xlsx');
+        $writer->getCurrentSheet()->setName('Control Despachos');
+
+        $bold = (new SpoutStyle())->setFontBold();
+        $writer->addRow(SpoutRow::fromValues($headers, $bold));
+
         foreach ($dispatches as $d) {
-            $col = 'A';
+            $d['hora_formateada'] = date("H:i", strtotime($d['hora_formateada']));
+            $d['cliente_fac']     = $d['cliente_fac']   ?? $d['cliente_des'];
+            $d['factura']         = $d['factura']       ?? $d['factura_desp'];
+            $d['UUID']            = $d['UUID']          ?? ".";
+            $d['codigo_cliente']  = ($d['codigo_cliente'] < 0 ? "" : $d['codigo_cliente']);
+            $d['tipo_pago']       = $d['tipo_pago']     ?? $d['tipo_pago_despacho'];
+
+            $values = [];
             foreach ($fields as $field) {
-                $sheet->setCellValue($col . $rowIdx, $d[$field] ?? '');
-                $col++;
+                $v = $d[$field] ?? '';
+                // sqlsrv entrega los numéricos como texto; convertirlos para que
+                // Excel los trate como números (igual que hacía PhpSpreadsheet).
+                $values[] = is_numeric($v) ? $v + 0 : $v;
             }
-            $rowIdx++;
+            $writer->addRow(SpoutRow::fromValues($values));
         }
 
-        foreach (range('A', $lastCol) as $col) {
-            $sheet->getColumnDimension($col)->setAutoSize(true);
-        }
-
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header('Content-Disposition: attachment;filename="Control_Despachos_Corporativo.xlsx"');
-        header('Cache-Control: max-age=0');
-
-        $writer = new Xlsx($spreadsheet);
-        $writer->save('php://output');
+        $writer->close();
         exit;
     }
 
