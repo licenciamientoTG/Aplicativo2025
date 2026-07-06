@@ -2202,17 +2202,24 @@ class Payment
                 if ($factura['payment_authorized'] != 1) {
                     json_output(['success' => false, 'message' => "La factura {$factura['folio']} no está autorizada"]); return;
                 }
+                // authorized_amount es el acumulado histórico autorizado (puede incluir
+                // rondas ya pagadas): lo que falta pagar de esta ronda es la diferencia
+                // contra lo que ya se pagó.
+                $monto_pagar = (float)$factura['authorized_amount'] - (float)($factura['paid_amount'] ?? 0);
+                if ($monto_pagar <= 0.01) {
+                    continue;
+                }
                 $facturas_procesar[] = [
                     'invoice_id' => $factura['id'],
                     'folio' => $factura['folio'],
-                    'monto_pagar' => $factura['authorized_amount'], // ✅ Usar monto autorizado
+                    'monto_pagar' => $monto_pagar,
                     'saldo_anterior' => $factura['saldo'],
                     'payment_request_id' => $factura['payment_request_id'] // ✅ Incluir para el proceso
 
                 ];
 
                 $payment_request_ids_unicos[$factura['payment_request_id']] = true;
-                $monto_total += (float)$factura['authorized_amount'];
+                $monto_total += $monto_pagar;
             }
 
             // Derivar empresa/proveedor para la cabecera del lote

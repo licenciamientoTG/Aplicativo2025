@@ -1454,21 +1454,33 @@ function loadPaymentList() {
             return '<span class="badge bg-secondary">Sin autorizar</span>';
           }
 
-          // Calcular porcentaje
+          // Calcular porcentaje por conteo de facturas
           var totalInvoices = parseInt(row.total_invoices) || 0;
           var percentage =
             totalInvoices > 0 ? Math.round((count / totalInvoices) * 100) : 0;
 
+          // Aunque todas las facturas estén marcadas como autorizadas (100% por
+          // conteo), el monto autorizado puede ser menor al monto total si alguna
+          // factura fue autorizada por un pago parcial: comparamos montos también
+          // (se refleja en la columna "Faltante" de al lado, no aquí).
+          var rawTotal = (row.total_amount || "0").toString().replace(/[$,]/g, "");
+          var totalAmount = parseFloat(rawTotal) || 0;
+          var montoCompleto = totalAmount > 0 && authorized_amount_total >= totalAmount - 0.01;
+
           let badgeColor = "bg-warning";
-          if (percentage === 100) {
+          let icon = "fa-check-circle";
+          if (percentage === 100 && montoCompleto) {
             badgeColor = "bg-success";
+          } else if (percentage === 100 && !montoCompleto) {
+            badgeColor = "bg-warning";
+            icon = "fa-exclamation-triangle";
           } else if (percentage >= 50) {
             badgeColor = "bg-warning";
           }
           return `
                         <div class="text-center">
                             <span class="badge ${badgeColor}" style="font-size: 0.85rem;">
-                                <i class="fas fa-check-circle"></i> ${count} de ${totalInvoices}
+                                <i class="fas ${icon}"></i> ${count} de ${totalInvoices}
                             </span>
                             <br>
                             <small class="text-success fw-bold">
@@ -1476,6 +1488,33 @@ function loadPaymentList() {
                             </small>
                         </div>
                     `;
+        },
+      },
+      {
+        data: null,
+        className: "text-center",
+        render: function (data, type, row) {
+          if (parseInt(row.tipo) === 1) {
+            return '<span class="text-muted" style="font-size:.8rem;">—</span>';
+          }
+          var rawAuth = (row.authorized_amount_total || "0").toString().replace(/[$,]/g, "");
+          var authorizedTotal = parseFloat(rawAuth) || 0;
+          var rawTotal = (row.total_amount || "0").toString().replace(/[$,]/g, "");
+          var totalAmount = parseFloat(rawTotal) || 0;
+          var faltante = totalAmount - authorizedTotal;
+
+          if (faltante <= 0.01) {
+            return '<span class="text-muted" style="font-size:.8rem;">$0.00</span>';
+          }
+          if (authorizedTotal <= 0.01) {
+            // Nada autorizado todavía: es el estado normal de un pago sin tocar,
+            // no una alerta de autorización parcial incompleta.
+            return `<span class="text-muted" style="font-size:.8rem;">$${faltante.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</span>`;
+          }
+          // Ya se autorizó una parte pero no cubre el total: sí es una alerta real.
+          return `<span class="text-danger fw-bold" style="font-size:.85rem;" title="Ya se autorizó una parte; falta autorizar/pagar esta diferencia">
+                        <i class="fas fa-exclamation-triangle"></i> $${faltante.toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                    </span>`;
         },
       },
       { data: "status", className: "text-center" },

@@ -144,7 +144,14 @@ class PaymentTransactionsModel extends Model
     }
 
     /**
-     * Actualiza el paid_amount y status de una factura
+     * Actualiza el paid_amount y status de una factura.
+     *
+     * Autorizar y pagar son pasos independientes: authorized_amount es el
+     * acumulado histórico de todo lo que Tesorería ha autorizado (se haya
+     * pagado ya o no) y NO se modifica aquí — pagar no "deshace" una
+     * autorización ya otorgada. El pendiente por autorizar (amount -
+     * authorized_amount) sigue el flujo normal de get_all_pending_payment_invoices
+     * sin verse afectado por este pago.
      */
     private function update_invoice_paid_amount($invoice_id, $nuevo_paid_amount, $total_amount) : bool {
         // Determinar nuevo estado
@@ -155,14 +162,14 @@ class PaymentTransactionsModel extends Model
         } else {
             $nuevo_status = 0; // Pendiente
         }
-        
+
         $query = "
             UPDATE [TG].[dbo].[payment_request_invoices]
             SET paid_amount = ?,
                 status = ?
             WHERE id = ?
         ";
-        
+
         return $this->sql->update($query, [$nuevo_paid_amount, $nuevo_status, $invoice_id]);
     }
 

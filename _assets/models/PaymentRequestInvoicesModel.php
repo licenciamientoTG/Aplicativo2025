@@ -479,40 +479,53 @@ class PaymentRequestInvoicesModel extends Model
                 
                 // Verificar que la factura pertenece a este payment_request y obtener su estado actual
                 $query_check = "
-                    SELECT id, amount, paid_amount, payment_authorized
+                    SELECT id, amount, paid_amount, authorized_amount, payment_authorized
                     FROM [TG].[dbo].[payment_request_invoices]
                     WHERE id = ? AND payment_request_id = ? AND is_deleted = 0
                 ";
-                
+
                 $invoice_data = $this->sql->select($query_check, [$invoice_id, $payment_id]);
-                
+
                 if (!$invoice_data || empty($invoice_data)) {
                     $errores[] = "Factura {$folio}: no pertenece a esta solicitud";
                     continue;
                 }
-                
+
                 $invoice = $invoice_data[0];
-                
-                // Verificar que no esté ya autorizada
-                if ($invoice['payment_authorized'] == 1) {
-                    $errores[] = "Factura {$folio}: ya está autorizada para pago";
+
+                // Autorizaciones acumulables: cada ronda suma al monto ya autorizado
+                // (que puede tener saldo pendiente de una ronda anterior si aún no se
+                // pagó, o si ya se pagó una parte y se autoriza el resto). Se bloquea
+                // solo si ya no queda nada por autorizar.
+                $authorized_amount_actual = floatval($invoice['authorized_amount'] ?? 0);
+                $pendiente_por_autorizar = floatval($invoice['amount']) - $authorized_amount_actual;
+
+                if ($pendiente_por_autorizar <= 0.01) {
+                    $errores[] = "Factura {$folio}: ya está autorizada en su totalidad";
                     continue;
                 }
-                
-                // Actualizar factura con autorización
+
+                if ($monto_autorizado > $pendiente_por_autorizar + 0.01) {
+                    $errores[] = "Factura {$folio}: el monto excede lo pendiente por autorizar (\${$pendiente_por_autorizar})";
+                    continue;
+                }
+
+                $nuevo_authorized_amount = $authorized_amount_actual + $monto_autorizado;
+
+                // Actualizar factura con autorización (acumulada)
                 $query_update = "
                     UPDATE [TG].[dbo].[payment_request_invoices]
-                    SET 
+                    SET
                         authorized_amount = ?,
                         payment_authorized = 1,
                         authorized_by = ?,
                         authorized_at = GETDATE()
                     WHERE id = ?
                 ";
-                
+
                 $update_result = $this->sql->update(
                     $query_update,
-                    [$monto_autorizado, $user_id, $invoice_id]
+                    [$nuevo_authorized_amount, $user_id, $invoice_id]
                 );
                 
                 if ($update_result) {
@@ -969,8 +982,11 @@ class PaymentRequestInvoicesModel extends Model
                 SUM(pri.authorized_amount) as total_autorizado,
                 SUM(ISNULL(notas.total_credito, 0)) as total_notas_credito,
                 SUM(ISNULL(notas.total_cargo, 0))   as total_notas_cargo,
+                -- total_saldo = lo que este comprobante debe cubrir: el monto
+                -- AUTORIZADO pendiente de pago (no el monto total de la factura,
+                -- que puede exceder lo autorizado si la autorización fue parcial).
                 SUM(
-                    (pri.amount - ISNULL(pri.paid_amount, 0))
+                    (ISNULL(pri.authorized_amount, 0) - ISNULL(pri.paid_amount, 0))
                     - ISNULL(notas.total_credito, 0)
                     + ISNULL(notas.total_cargo, 0)
                 ) as total_saldo,
@@ -1360,16 +1376,18 @@ class PaymentRequestInvoicesModel extends Model
                 pri.expiration_date,
                 pri.uuid,
 
-                -- Saldo calculado
-                (pri.amount - ISNULL(pri.paid_amount, 0)) as saldo,
+                -- Saldo pendiente POR AUTORIZAR (no por pagar): resta lo ya
+                -- autorizado en rondas anteriores, para que el modal de
+                -- autorización muestre y limite solo el monto que aún falta.
+                (pri.amount - ISNULL(pri.authorized_amount, 0)) as saldo,
 
                 -- Notas de crédito y cargo por factura
                 ISNULL(notas.total_notas_credito, 0) as total_notas_credito,
                 ISNULL(notas.total_notas_cargo, 0)   as total_notas_cargo,
                 ISNULL(notas.notas_count, 0)          as notas_count,
 
-                -- Saldo neto (saldo - NC + ND)
-                (pri.amount - ISNULL(pri.paid_amount, 0))
+                -- Saldo neto pendiente por autorizar (saldo - NC + ND)
+                (pri.amount - ISNULL(pri.authorized_amount, 0))
                     - ISNULL(notas.total_notas_credito, 0)
                     + ISNULL(notas.total_notas_cargo, 0) as saldo_neto,
 
@@ -1426,7 +1444,7 @@ class PaymentRequestInvoicesModel extends Model
 
             WHERE pr.status IN (?, ?)
                 AND pr.accounting_group_id IS NOT NULL
-                AND pri.payment_authorized = 0
+                AND pri.amount > ISNULL(pri.authorized_amount, 0) + 0.01
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pri.is_deleted = 0
