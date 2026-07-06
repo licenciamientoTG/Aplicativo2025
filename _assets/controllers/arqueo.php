@@ -202,13 +202,16 @@ class Arqueo
                     continue;
                 }
                 $sucursales_hechas[$s['id']] = true;
-                $this->concentradoExtrasModel->upsert($sesion_id, (int) $s['id'], [
+                $ok_extra = $this->concentradoExtrasModel->upsert($sesion_id, (int) $s['id'], [
                     'capital_trabajo' => $base[$s['id']] ?? 0.0,
                     'gastos_tramite'  => 0.0,
                     'adeudo'          => 0.0,
                     'reinversion'     => 0.0,
                     'utilidad'        => 0.0,
                 ], $this->user_id());
+                if (!$ok_extra) {
+                    throw new Exception('No se pudo copiar el capital base de la sucursal ' . $s['id'] . '.');
+                }
             }
             $this->sesionesModel->sql->commit();
             $this->json(['success' => true, 'sesion_id' => $sesion_id]);
