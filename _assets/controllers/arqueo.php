@@ -72,6 +72,7 @@ class Arqueo
     public ArqueoValesModel $valesModel;
     public ArqueoConcentradoExtrasModel $concentradoExtrasModel;
     public ArqueoCapitalBaseModel $capitalBaseModel;
+    public ArqueoAuditLogModel $auditLogModel;
 
     public function __construct($twig)
     {
@@ -83,6 +84,7 @@ class Arqueo
         $this->valesModel             = new ArqueoValesModel();
         $this->concentradoExtrasModel = new ArqueoConcentradoExtrasModel();
         $this->capitalBaseModel       = new ArqueoCapitalBaseModel();
+        $this->auditLogModel          = new ArqueoAuditLogModel();
     }
 
     /* ===================================================================== */
@@ -92,6 +94,14 @@ class Arqueo
     private function user_id(): ?int
     {
         return isset($_SESSION['tg_user']['Id']) ? (int) $_SESSION['tg_user']['Id'] : null;
+    }
+
+    /** Nombre visible del usuario logueado (mismo campo que la auditoría de pagos). */
+    private function user_name(): ?string
+    {
+        return $_SESSION['tg_user']['Nombre']
+            ?? $_SESSION['tg_user']['Usuario']
+            ?? null;
     }
 
     /**

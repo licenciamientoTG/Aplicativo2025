@@ -210,3 +210,28 @@ BEGIN
     );
 END
 GO
+
+/* ---------------------------------------------------------------------------
+   8) Log de auditoría del módulo arqueo.
+   Quién, cuándo, qué acción y qué cambió (JSON antes/después).
+   Sin FK a propósito: la auditoría sobrevive a cualquier borrado.
+   --------------------------------------------------------------------------- */
+IF OBJECT_ID('[TG].[dbo].[arqueo_audit_log]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [TG].[dbo].[arqueo_audit_log] (
+        [id]               INT IDENTITY(1,1) NOT NULL,
+        [sesion_id]        INT               NOT NULL,
+        [caja_id]          INT               NULL,
+        [sucursal_id]      INT               NULL,
+        [accion]           VARCHAR(30)       NOT NULL,
+        [usuario_id]       INT               NULL,
+        [usuario_nombre]   NVARCHAR(120)     NULL,
+        [datos_anteriores] NVARCHAR(MAX)     NULL,
+        [datos_nuevos]     NVARCHAR(MAX)     NULL,
+        [fecha]            DATETIME          NOT NULL
+                           CONSTRAINT [DF_aal_fecha] DEFAULT (GETDATE()),
+        CONSTRAINT [PK_arqueo_audit_log] PRIMARY KEY CLUSTERED ([id])
+    );
+    CREATE INDEX [IX_aal_sesion] ON [TG].[dbo].[arqueo_audit_log] ([sesion_id]);
+END
+GO
