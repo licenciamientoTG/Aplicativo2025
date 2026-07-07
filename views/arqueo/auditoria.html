@@ -126,10 +126,15 @@
     return String(v);
   }
 
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function filaDiff(campo, antes, despues) {
-    return '<tr><td>' + campo + '</td>' +
-      '<td class="val-antes">' + fmtVal(antes) + '</td>' +
-      '<td class="val-despues">' + fmtVal(despues) + '</td></tr>';
+    return '<tr><td>' + escHtml(campo) + '</td>' +
+      '<td class="val-antes">' + escHtml(fmtVal(antes)) + '</td>' +
+      '<td class="val-despues">' + escHtml(fmtVal(despues)) + '</td></tr>';
   }
 
   // Compara escalares planos de dos objetos (ignora sub-objetos/arrays)
@@ -150,8 +155,9 @@
 
   function claveDenom(d) { return d.seccion + '|' + d.moneda + '|' + d.tipo + '|' + d.denominacion; }
   function etiquetaDenom(d) {
+    var tipo = String(d.tipo || '');
     return (SECCIONES[d.seccion] || d.seccion) + ' · ' +
-      (d.tipo.charAt(0).toUpperCase() + d.tipo.slice(1)) + ' $' + d.denominacion + ' ' + d.moneda;
+      (tipo.charAt(0).toUpperCase() + tipo.slice(1)) + ' $' + d.denominacion + ' ' + d.moneda;
   }
 
   function construirDiff(antes, despues) {
