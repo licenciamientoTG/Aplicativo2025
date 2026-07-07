@@ -1336,16 +1336,19 @@ function addColumnFilters(tableId, api) {
 
 
 function loadPaymentList() {
-  // Conservar el valor del filtro de PDF entre reconstrucciones de la tabla
+  // Conservar el valor de los filtros entre reconstrucciones de la tabla
   const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
+  const statusFilterPrevValue = $("#payment_status_filter").val() || "";
 
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
     $("#payment_list_table thead tr.filter").remove();
   }
-  // El select de PDF se inyecta dinámicamente en initComplete; quitar el anterior
-  // para que no se duplique cada vez que se reconstruye la tabla.
+  // Los selects de filtro y el botón de refrescar se inyectan dinámicamente en
+  // initComplete; quitar los anteriores para que no se dupliquen al reconstruir.
   $("#pdf_status_filter").remove();
+  $("#payment_status_filter").remove();
+  $("#payment_list_refresh_btn").remove();
 
   const status = "all";
   const search = "";
@@ -1517,7 +1520,7 @@ function loadPaymentList() {
                     </span>`;
         },
       },
-      { data: "status", className: "text-center" },
+      { data: "status", name: "status", className: "text-center" },
       { data: "authorizations", className: "text-center" },
       { data: "comment" },
       { data: "pdf_status", name: "pdf_status", visible: false },
@@ -1555,6 +1558,38 @@ function loadPaymentList() {
       }
       $select.on("change", function () {
         api.column(pdfColIdx).search(this.value).draw();
+      });
+
+      // Select de filtro por columna "Estado" (Pendiente/Autorizado/Pagado/Cancelado)
+      // junto al filtro de PDF. Busca el texto del badge ya renderizado en la celda.
+      var statusColIdx = api.column('status:name').index();
+      var $statusSelect = $(
+        '<select id="payment_status_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por Estado">' +
+        '<option value="">Todos los estados</option>' +
+        '<option value="Pendiente">Pendiente</option>' +
+        '<option value="Autorizado">Autorizado</option>' +
+        '<option value="Pagado">Pagado</option>' +
+        '<option value="Cancelado">Cancelado</option>' +
+        '</select>'
+      );
+      $statusSelect.val(statusFilterPrevValue);
+      $(".dt-buttons").append($statusSelect);
+      if (statusFilterPrevValue) {
+        api.column(statusColIdx).search(statusFilterPrevValue);
+      }
+      $statusSelect.on("change", function () {
+        api.column(statusColIdx).search(this.value).draw();
+      });
+
+      // Botón para refrescar la tabla (vuelve a pedir los datos al servidor)
+      var $refreshBtn = $(
+        '<button type="button" id="payment_list_refresh_btn" class="btn btn-sm btn-outline-secondary ms-2" title="Refrescar tabla">' +
+        '<i class="fas fa-sync-alt"></i>' +
+        '</button>'
+      );
+      $(".dt-buttons").append($refreshBtn);
+      $refreshBtn.on("click", function () {
+        api.ajax.reload(null, false);
       });
 
       function rebuildFilterRow() {

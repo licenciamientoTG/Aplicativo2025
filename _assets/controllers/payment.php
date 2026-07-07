@@ -5145,14 +5145,22 @@ class Payment
                         if ($f['payment_authorized'] != 1) {
                             throw new Exception("La factura {$f['folio']} no está autorizada");
                         }
+                        // Pagar solo lo AUTORIZADO pendiente de pago (authorized_amount -
+                        // paid_amount), no f['saldo'] (amount - paid_amount): si la
+                        // autorización fue parcial, el saldo total de la factura puede
+                        // exceder lo que Tesorería realmente autorizó a pagar.
+                        $monto_pagar = (float)$f['authorized_amount'] - (float)($f['paid_amount'] ?? 0);
+                        if ($monto_pagar <= 0.01) {
+                            continue;
+                        }
                         $facturas_procesar[] = [
                             'invoice_id'         => $f['id'],
                             'folio'              => $f['folio'],
-                            'monto_pagar'        => $f['saldo'],
+                            'monto_pagar'        => $monto_pagar,
                             'saldo_anterior'     => $f['saldo'],
                             'payment_request_id' => $f['payment_request_id'],
                         ];
-                        $monto_total += (float)$f['saldo'];
+                        $monto_total += $monto_pagar;
                     }
 
                     // Derivar empresa/proveedor/banco de la requisición para la cabecera del lote

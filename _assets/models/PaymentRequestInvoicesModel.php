@@ -286,12 +286,14 @@ class PaymentRequestInvoicesModel extends Model
                 t2.abr as estacion_nombre,
                 -- Para filas is_debit_note=1: datos de la nota de cargo
                 nota_nd.id AS nota_id,
-                -- Calcular paid_amount desde payment_transactions
+                -- Calcular paid_amount desde payment_transactions (todas las
+                -- transacciones de la factura, sin filtrar por su status actual:
+                -- filtrar por t1.status aquí descartaba el pago ya registrado en
+                -- cuanto el status pasaba a Parcial/Pagado, dejando paid_amount en 0).
                  ISNULL((
                     SELECT SUM(payment_amount)
                     FROM [TG].[dbo].[payment_transactions] t5
                     WHERE t5.invoice_id = t1.id
-                    AND t1.status IN (1, 2)
                 ), 0) as paid_amount,
                 -- Calcular status dinámicamente
                 CASE
@@ -299,13 +301,11 @@ class PaymentRequestInvoicesModel extends Model
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
-                        AND t1.status IN (1, 2)
                     ), 0) = 0 THEN 0  -- Pendiente
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
-                        AND t1.status IN (1, 2)
                     ), 0) < t1.amount THEN 3  -- Parcial
                     ELSE 2  -- Pagado
                 END as status,
