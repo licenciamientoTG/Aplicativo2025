@@ -31,6 +31,13 @@
 </div>
 {% endif %}
 
+{% if not es_admin and cajas is empty %}
+<div class="alert alert-warning">
+    <i class="fas fa-user-slash"></i> No tienes cajas asignadas en este arqueo.
+    Pide a un administrador que te asigne.
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-body table-responsive">
     <table class="table table-hover table-bordered" style="width:100%;">
@@ -39,6 +46,7 @@
           <th>Sucursal</th>
           <th class="text-center">Caja</th>
           <th>Cajero</th>
+          <th>Asignado a</th>
           <th class="text-center">Estado</th>
           <th class="text-end">Resultado Final</th>
           <th class="text-end">Acción</th>
@@ -50,6 +58,18 @@
           <td>{{ c.sucursal_nombre }}</td>
           <td class="text-center">{{ c.caja_numero }}</td>
           <td>{{ c.cajero_nombre }}</td>
+          <td>
+            {% if es_admin and sesion.estado != 'cerrado' %}
+            <select class="form-select form-select-sm select-asignar" data-caja-id="{{ c.id }}" style="min-width:170px;">
+              <option value="0">— Sin asignar —</option>
+              {% for u in usuarios %}
+              <option value="{{ u.Id }}" {{ c.asignado_user_id == u.Id ? 'selected' : '' }}>{{ u.Nombre }}</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            {{ c.asignado_nombre ?: '—' }}
+            {% endif %}
+          </td>
           <td class="text-center">
             <span class="badge-estado badge-{{ c.estado }}">{{ c.estado|capitalize }}</span>
           </td>
@@ -74,4 +94,37 @@
   </div>
 </div>
 
+{% endblock %}
+{% block myjs %}
+<script>
+  $(document).on('change', '.select-asignar', function () {
+    var sel = this;
+    var anterior = sel.getAttribute('data-anterior') ?? String(sel.value);
+    var userId = parseInt(sel.value, 10) || 0;
+    sel.disabled = true;
+    fetch('/arqueo/asignar_caja', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+      body: JSON.stringify({ caja_id: parseInt(sel.getAttribute('data-caja-id'), 10), user_id: userId })
+    })
+      .then(r => r.json())
+      .then(d => {
+        sel.disabled = false;
+        if (d.success) {
+          sel.setAttribute('data-anterior', String(sel.value));
+          sel.classList.add('is-valid');
+          setTimeout(() => sel.classList.remove('is-valid'), 1200);
+        } else {
+          alert(d.message || 'No se pudo asignar.');
+          sel.value = anterior;
+        }
+      })
+      .catch(() => { sel.disabled = false; alert('Error de red al asignar.'); sel.value = anterior; });
+  });
+
+  // Guardar el valor inicial para poder revertir en caso de error
+  document.querySelectorAll('.select-asignar').forEach(function (s) {
+    s.setAttribute('data-anterior', String(s.value));
+  });
+</script>
 {% endblock %}

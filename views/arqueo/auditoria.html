@@ -16,6 +16,7 @@
     .acc-GUARDAR_CAJA        { background:rgb(131 22 14 / 10%);   color:#83160E; }
     .acc-EDITAR_CONCENTRADO  { background:rgb(28 69 135 / 10%);   color:#1C4587; }
     .acc-EDITAR_CAPITAL_BASE { background:rgb(180 83 9 / 12%);    color:#B45309; }
+    .acc-ASIGNAR_CAJA        { background:rgb(180 83 9 / 12%);    color:#B45309; }
     .fecha-log { white-space:nowrap; font-variant-numeric:tabular-nums; }
     #tabla_diff td, #tabla_diff th { font-size:.85rem; }
     #tabla_diff .val-antes  { color:#dc3545; }
@@ -38,7 +39,8 @@
     'CERRAR_SESION': 'Cerró el arqueo',
     'GUARDAR_CAJA': 'Guardó captura de caja',
     'EDITAR_CONCENTRADO': 'Editó concentrado',
-    'EDITAR_CAPITAL_BASE': 'Actualizó capital base'
+    'EDITAR_CAPITAL_BASE': 'Actualizó capital base',
+    'ASIGNAR_CAJA': 'Asignó caja'
 } %}
 
 <div class="card">
@@ -118,6 +120,7 @@
     estado: 'Estado', nombre: 'Nombre', fecha: 'Fecha',
     numero_vale: 'Número de vale', concepto: 'Concepto',
     dolares: 'Dólares', mxn: 'MXN',
+    asignado_user_id: 'Usuario asignado (id)', asignado_nombre: 'Usuario asignado',
   };
   var SECCIONES = { cajon: 'Cajón', morrallero: 'Morrallero',
     caja_fuerte: 'Caja Fuerte', morrallero_cf: 'Morrallero CF' };
