@@ -13,6 +13,8 @@
     .resumen-titulo { background:#B0F5F5; font-weight:600; padding:.4rem .75rem; }
     .resumen-total { background:#FFFF00; font-weight:700; }
     .resumen-row td { padding:.3rem .75rem; }
+    .dt-buttons { gap:.5rem; }
+    .dt-buttons .btn { border-radius:.25rem !important; }
 </style>
 {% endblock %}
 {% block menutitle %}
@@ -201,8 +203,25 @@
       searching: false,
       info: false,
       ordering: true,
-      dom: 'Bfrtip',
-      buttons: ['excel', 'print']
+      dom: '<"d-flex justify-content-end mb-2"B>frtip',
+      buttons: [
+        {
+          extend: 'excel',
+          text: '<i class="fas fa-file-excel"></i> Excel',
+          className: 'btn btn-sm btn-success',
+          title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
+          footer: true,
+          exportOptions: { columns: ':not(:last-child)' }
+        },
+        {
+          extend: 'print',
+          text: '<i class="fas fa-print"></i> Imprimir',
+          className: 'btn btn-sm btn-outline-secondary',
+          title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
+          footer: true,
+          exportOptions: { columns: ':not(:last-child)' }
+        }
+      ]
     });
   });
 
