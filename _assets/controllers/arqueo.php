@@ -237,17 +237,31 @@ class Arqueo
         $anterior_id     = isset($caja['asignado_user_id']) ? (int) $caja['asignado_user_id'] : 0;
         $anterior_nombre = $anterior_id > 0 ? $this->sql_nombre_usuario($anterior_id) : null;
 
-        $ok = $this->cajasModel->asignar($caja_id, $user_id);
-        if ($ok) {
-            $this->auditLogModel->log(
+        if ($anterior_id === (int) ($user_id ?? 0)) {
+            $this->json(['success' => true, 'asignado_nombre' => $asignado_nombre, 'message' => 'Sin cambios.']);
+        }
+
+        $this->sql_begin();
+        try {
+            if (!$this->cajasModel->asignar($caja_id, $user_id)) {
+                throw new Exception('No se pudo asignar la caja.');
+            }
+            $ok_log = $this->auditLogModel->log(
                 ArqueoAuditLogModel::ACC_ASIGNAR_CAJA,
                 (int) $caja['sesion_id'], $caja_id, (int) $caja['sucursal_id'],
                 $anterior_id > 0 ? ['asignado_user_id' => $anterior_id, 'asignado_nombre' => $anterior_nombre] : null,
                 $user_id !== null ? ['asignado_user_id' => $user_id, 'asignado_nombre' => $asignado_nombre] : null,
                 $this->user_id(), $this->user_name()
             );
+            if (!$ok_log) {
+                throw new Exception('No se pudo registrar la auditoría.');
+            }
+            $this->cajasModel->sql->commit();
+        } catch (Exception $e) {
+            $this->cajasModel->sql->rollBack();
+            $this->json(['success' => false, 'message' => $e->getMessage()]);
         }
-        $this->json(['success' => (bool) $ok, 'asignado_nombre' => $asignado_nombre]);
+        $this->json(['success' => true, 'asignado_nombre' => $asignado_nombre]);
     }
 
     /** Nombre de un usuario por Id (para auditoría de reasignaciones). */

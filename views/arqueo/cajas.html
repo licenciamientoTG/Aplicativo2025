@@ -65,6 +65,9 @@
               {% for u in usuarios %}
               <option value="{{ u.Id }}" {{ c.asignado_user_id == u.Id ? 'selected' : '' }}>{{ u.Nombre }}</option>
               {% endfor %}
+              {% if c.asignado_user_id and c.asignado_user_id not in usuarios|column('Id') %}
+              <option value="{{ c.asignado_user_id }}" selected>{{ c.asignado_nombre ?: 'Usuario #' ~ c.asignado_user_id }} (inactivo)</option>
+              {% endif %}
             </select>
             {% else %}
             {{ c.asignado_nombre ?: '—' }}
