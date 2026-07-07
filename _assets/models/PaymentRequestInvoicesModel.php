@@ -1156,6 +1156,27 @@ class PaymentRequestInvoicesModel extends Model
         $cuentas_abono = array_map(fn($c) => $c['cuenta_abono'] ?? '', $comprobantes);
         $cuenta_a_proveedor = $this->resolver_provedores_por_cuenta($cuentas_abono);
 
+        // Resolver el nombre REAL de la empresa por el RFC ordenante del
+        // comprobante: el campo "Contrato"/nombre que trae el PDF (sobre todo
+        // en Santander) puede no coincidir con el RFC real de la transferencia
+        // (ej. una cuenta consolidada de grupo). El match usa el RFC, así que
+        // mostrar el nombre resuelto por RFC evita que el nombre del PDF
+        // confunda sobre a qué empresa se le está aplicando el pago.
+        $rfcs_ordenante = array_values(array_unique(array_filter(array_map(
+            fn($c) => strtoupper(trim($c['rfc_ordenante'] ?? '')), $comprobantes
+        ))));
+        $rfc_a_empresa_nombre = [];
+        if (!empty($rfcs_ordenante)) {
+            $placeholders = implode(',', array_fill(0, count($rfcs_ordenante), '?'));
+            $empresas = $this->sql->select(
+                "SELECT rfc, den FROM [SG12].[dbo].[Empresas] WHERE rfc IN ($placeholders)",
+                $rfcs_ordenante
+            ) ?: [];
+            foreach ($empresas as $e) {
+                $rfc_a_empresa_nombre[strtoupper(trim($e['rfc']))] = $e['den'];
+            }
+        }
+
         // Normalizar grupos a una forma ligera para el front + indexar.
         $grupos_norm = [];
         foreach ($grupos as $i => $g) {
@@ -1230,6 +1251,10 @@ class PaymentRequestInvoicesModel extends Model
                 }
                 $usados[$mejor['g']['idx']] = true;
             }
+
+            // Nombre real de la empresa dueña del RFC ordenante (puede diferir
+            // del nombre que trae el PDF, ej. contrato consolidado de grupo).
+            $c['empresa_ordenante_real'] = $rfc_a_empresa_nombre[$rfc_emp] ?? null;
 
             $resultado[] = [
                 'comprobante'    => $c,

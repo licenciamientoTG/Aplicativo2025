@@ -388,8 +388,9 @@ class MovimientosTarModel extends Model{
         return $this->sql->select($query, []) ?: false;
     }
 
-    function get_valeras_report(int $fromInt, int $untilInt) : array|false {
+    function get_valeras_report(int $fromInt, int $untilInt, int $codgas = 0) : array|false {
         $query = "
+            DECLARE @codgas INT = ?; -- 0 = todas las estaciones
             SELECT
                 t2.abr,
                 t13.den AS denominacion,
@@ -404,6 +405,7 @@ class MovimientosTarModel extends Model{
             WHERE
                 t1.mto != 0
                 AND t1.fchtrn BETWEEN ? AND ?
+                AND (@codgas = 0 OR t1.codgas = @codgas)
                 AND t8.den IS NOT NULL
                 AND NOT EXISTS (
                     SELECT 1 FROM (VALUES
@@ -439,7 +441,7 @@ class MovimientosTarModel extends Model{
                 anio, mes
             OPTION (RECOMPILE);
         ";
-        return $this->sql->select($query, [$fromInt, $untilInt]) ?: false;
+        return $this->sql->select($query, [$codgas, $fromInt, $untilInt]) ?: false;
     }
 
     function monthly_dollar_sales_report_table(){

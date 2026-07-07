@@ -32,6 +32,7 @@ class Direction{
     public MetaVentaModel $MetaVentaModel;
     public VentasModel $VentasModel;
     public ValesRModel $valesr;
+    public GasolinerasModel $GasolinerasModel;
 
 
     /**
@@ -51,6 +52,7 @@ class Direction{
         $this->MetaVentaModel        = new MetaVentaModel();
         $this->VentasModel        = new VentasModel();
         $this->valesr        = new ValesRModel();
+        $this->GasolinerasModel   = new GasolinerasModel();
 
     }
 
@@ -131,14 +133,16 @@ class Direction{
     }
 
     function valeras() {
-        echo $this->twig->render($this->route . 'tg6/valeras.html');
+        $stations = $this->GasolinerasModel->get_active_stations();
+        echo $this->twig->render($this->route . 'tg6/valeras.html', compact('stations'));
     }
 
     function valeras_table() {
         $from  = DateTime::createFromFormat('!Y-m-d', $_POST['fromDate'] ?? '');
         $until = DateTime::createFromFormat('!Y-m-d', $_POST['untilDate'] ?? '');
+        $codgas = (int)($_POST['codgas'] ?? 0); // 0 = todas las estaciones
         if (!$from || !$until || $from > $until) {
-            echo json_encode(['columns' => [], 'data' => []]);
+            echo json_encode(['columns' => [], 'data' => [], 'base' => []]);
             return;
         }
 
@@ -163,11 +167,14 @@ class Direction{
 
         $rows = $this->movimientosTarModel->get_valeras_report(
             dateToInt($from->format('Y-m-d')),
-            dateToInt($until->format('Y-m-d'))
+            dateToInt($until->format('Y-m-d')),
+            $codgas
         );
 
         // Pivote: una fila por estación + denominación, respetando el orden del query
+        // Base: las mismas filas sin pivotear (una por estación + denominación + año + mes)
         $data = [];
+        $base = [];
         if ($rows) {
             foreach ($rows as $row) {
                 $key = $row['abr'] . '|' . $row['denominacion'];
@@ -186,9 +193,17 @@ class Direction{
                     $data[$key][$colKey] = (float)$row['total'];
                 }
                 $data[$key]['total'] = round($data[$key]['total'] + (float)$row['total'], 2);
+
+                $base[] = [
+                    'estacion'     => trim($row['abr']),
+                    'denominacion' => trim($row['denominacion']),
+                    'anio'         => (int)$row['anio'],
+                    'mes'          => (int)$row['mes'],
+                    'total'        => (float)$row['total']
+                ];
             }
         }
-        echo json_encode(['columns' => $columns, 'data' => array_values($data)]);
+        echo json_encode(['columns' => $columns, 'data' => array_values($data), 'base' => $base]);
     }
 
     public function credit_debit_product_table() {

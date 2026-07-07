@@ -615,10 +615,7 @@ async function vta_vs_meta_canvas(ctx) {
 }
 
 
-async function valeras_table() {
-    var fromDate = document.getElementById('from').value;
-    var untilDate = document.getElementById('until').value;
-
+function valeras_valid_range(fromDate, untilDate) {
     if (!fromDate || !untilDate || fromDate > untilDate) {
         alertify.myAlert(
             `<div class="container text-center text-danger">
@@ -628,8 +625,17 @@ async function valeras_table() {
                 <p class="text-center">Por favor, seleccione un rango de fechas válido.</p>
             </div>`
         );
-        return;
+        return false;
     }
+    return true;
+}
+
+async function valeras_table() {
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+    var codgas = document.getElementById('codgas').value;
+
+    if (!valeras_valid_range(fromDate, untilDate)) return;
 
     if ($.fn.DataTable.isDataTable('#valeras_table')) {
         $('#valeras_table').DataTable().destroy();
@@ -638,14 +644,16 @@ async function valeras_table() {
     $('#valeras_table tfoot tr').empty();
     $('#valeras_table tbody').empty();
 
-    $('.table-responsive').removeClass('d-none');
+    $('#card_table .table-responsive').removeClass('d-none');
     $('#alert_valeras_table').addClass('d-none');
     $('#card_table').addClass('loading');
+    $('#search_valeras_table').prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Consultando...');
 
     $.ajax({
         method: 'POST',
         url: '/direction/valeras_table',
-        data: { 'fromDate': fromDate, 'untilDate': untilDate },
+        data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
         dataType: 'json',
         timeout: 600000
     })
@@ -694,16 +702,6 @@ async function valeras_table() {
             deferRender: true,
             initComplete: function () {
                 $('#card_table').removeClass('loading');
-                if (!response.data.length) {
-                    alertify.myAlert(
-                        `<div class="container text-center text-danger">
-                            <h4 class="mt-2 text-danger">¡Atención!</h4>
-                        </div>
-                        <div class="text-dark">
-                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
-                        </div>`
-                    );
-                }
             },
             footerCallback: function (row, data, start, end, display) {
                 const nf = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2 });
@@ -725,6 +723,17 @@ async function valeras_table() {
                 });
             }
         });
+
+        if (!response.data.length) {
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Atención!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+        }
     })
     .fail(function () {
         $('#card_table').removeClass('loading');
@@ -736,6 +745,106 @@ async function valeras_table() {
                 <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
             </div>`
         );
+    })
+    .always(function () {
+        $('#search_valeras_table').prop('disabled', false).html('Generar Reporte');
+    });
+}
+
+async function valeras_base_table() {
+    var fromDate = document.getElementById('from_base').value;
+    var untilDate = document.getElementById('until_base').value;
+    var codgas = document.getElementById('codgas_base').value;
+
+    if (!valeras_valid_range(fromDate, untilDate)) return;
+
+    if ($.fn.DataTable.isDataTable('#valeras_base_table')) {
+        $('#valeras_base_table').DataTable().destroy();
+    }
+    $('#valeras_base_table tbody').empty();
+
+    $('#card_table_base .table-responsive').removeClass('d-none');
+    $('#alert_valeras_base_table').addClass('d-none');
+    $('#card_table_base').addClass('loading');
+    $('#search_valeras_base_table').prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Consultando...');
+
+    $.ajax({
+        method: 'POST',
+        url: '/direction/valeras_table',
+        data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
+        dataType: 'json',
+        timeout: 600000
+    })
+    .done(function (response) {
+        $('#valeras_base_table').DataTable({
+            data: response.base,
+            columns: [
+                { data: 'estacion', className: 'text-nowrap' },
+                { data: 'denominacion', className: 'text-nowrap' },
+                { data: 'anio', className: 'text-end' },
+                { data: 'mes', className: 'text-end' },
+                { data: 'total', className: 'text-end', render: $.fn.dataTable.render.number(',', '.', 2) }
+            ],
+            order: [],
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel',
+                    title: 'Valeras_Base_' + fromDate + '_' + untilDate
+                },
+            ],
+            deferRender: true,
+            initComplete: function () {
+                $('#card_table_base').removeClass('loading');
+            },
+            footerCallback: function (row, data, start, end, display) {
+                const nf = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2 });
+                var api = this.api();
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ? i : 0;
+                };
+                $(api.column(1).footer()).html('Suma');
+                var total = api
+                    .column(4, { page: 'current' })
+                    .data()
+                    .reduce(function (a, b) { return intVal(a) + intVal(b); }, 0);
+                $(api.column(4).footer()).html(nf.format(total.toFixed(2)));
+            }
+        });
+
+        if (!response.base.length) {
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Atención!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+        }
+    })
+    .fail(function () {
+        $('#card_table_base').removeClass('loading');
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+            </div>`
+        );
+    })
+    .always(function () {
+        $('#search_valeras_base_table').prop('disabled', false).html('Generar Reporte');
     });
 }
 

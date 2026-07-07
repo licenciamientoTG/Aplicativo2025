@@ -7485,12 +7485,23 @@ function infoRequisicion(g) {
   return `<a href="/payment/payment_detail/${g.payment_request_id}" target="_blank" class="fw-semibold text-decoration-none">#${g.payment_request_id}</a><br><small class="text-muted">Esp. ${fmtFechaCorta(g.scheduled_payment_date)}</small>`;
 }
 
+// Normaliza nombres de razón social para comparar sin que puntuación ("S.A.
+// DE C.V." vs "SA DE CV") o palabras genéricas rompan el match por texto.
+function normalizarNombreEmpresa(s) {
+  return (s || "")
+    .toUpperCase()
+    .replace(/[.,]/g, "")
+    .replace(/\b(SA|SAPI|DE|CV|RL|S|C|V)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function opcionesGruposSelect(idxSeleccionado, c) {
   let opts = '<option value="">— Sin relacionar —</option>';
 
   const rfcEmpresa = (c && c.rfc_ordenante ? c.rfc_ordenante : "").trim().toUpperCase();
   const rfcProveedor = (c && c.rfc_beneficiario ? c.rfc_beneficiario : "").trim().toUpperCase();
-  const nombreProveedor = (c && c.nombre_beneficiario ? c.nombre_beneficiario : "").trim().toUpperCase();
+  const nombreProveedorNorm = normalizarNombreEmpresa(c && c.nombre_beneficiario);
 
   const gruposFiltrados = comprobantesGrupos.filter((g) => {
     // Si ya está seleccionado ese grupo (reasignación), siempre se muestra.
@@ -7499,9 +7510,10 @@ function opcionesGruposSelect(idxSeleccionado, c) {
     if (rfcProveedor) {
       return (g.proveedor_rfc || "").toUpperCase() === rfcProveedor;
     }
-    if (nombreProveedor) {
-      return (g.proveedor_nombre || "").toUpperCase().includes(nombreProveedor)
-        || nombreProveedor.includes((g.proveedor_nombre || "").toUpperCase());
+    if (nombreProveedorNorm) {
+      const grupoProveedorNorm = normalizarNombreEmpresa(g.proveedor_nombre);
+      return grupoProveedorNorm.includes(nombreProveedorNorm)
+        || nombreProveedorNorm.includes(grupoProveedorNorm);
     }
     return true;
   });
@@ -7542,6 +7554,17 @@ function renderComprobantesTabla(comprobantes) {
       ? `<br><small class="text-danger"><i class="fas fa-exclamation-triangle"></i> ${c.error}</small>`
       : "";
 
+    // El nombre que trae el PDF (ej. "Contrato" en Santander) puede no coincidir
+    // con el RFC real de la transferencia (cuenta consolidada de grupo). El
+    // match usa el RFC, así que si el nombre resuelto por RFC difiere del que
+    // trae el PDF, se muestran ambos para no confundir sobre a qué empresa se
+    // le está aplicando el pago.
+    const nombreOrdenantePdf = (c.nombre_ordenante || "").trim();
+    const empresaReal = (c.empresa_ordenante_real || "").trim();
+    const nombreOrdenanteHtml = (empresaReal && empresaReal.toUpperCase() !== nombreOrdenantePdf.toUpperCase())
+      ? `${empresaReal} <span class="badge bg-warning text-dark" title="El PDF dice '${nombreOrdenantePdf}', pero el RFC pertenece a esta empresa">RFC≠nombre PDF</span>`
+      : (nombreOrdenantePdf || empresaReal || "—");
+
     // Fecha/referencia pre-rellenadas desde el PDF (editables)
     const fechaDefault = fechaComprobanteAInput(c.fecha);
     const refDefault = (c.referencia || "").replace(/"/g, "");
@@ -7553,7 +7576,7 @@ function renderComprobantesTabla(comprobantes) {
         </td>
         <td><small class="fw-semibold">${c.archivo}</small>${errorPdf}</td>
         <td><small>${c.banco}</small></td>
-        <td><small>${c.nombre_ordenante || "—"}<br><span class="text-muted">${c.rfc_ordenante || ""}</span></small></td>
+        <td><small>${nombreOrdenanteHtml}<br><span class="text-muted">${c.rfc_ordenante || ""}</span></small></td>
         <td><small>${proveedorPdf}</small></td>
         <td class="text-end fw-semibold">${fmtMoneda(c.importe)}</td>
         <td style="min-width:260px;">
