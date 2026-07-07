@@ -248,7 +248,41 @@
           className: 'btn btn-sm btn-success',
           title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
           footer: true,
-          exportOptions: { columns: ':not(:last-child)' }
+          exportOptions: { columns: ':not(:last-child)' },
+          customize: function (xlsx) {
+            // Pinta las cabeceras con los colores de la vista (rojo/azul, texto blanco)
+            var styles = xlsx.xl['styles.xml'];
+            var NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
+
+            function agregar(tag, xmlStr) {
+              var parent = styles.getElementsByTagName(tag)[0];
+              var tmp = $.parseXML('<x xmlns="' + NS + '">' + xmlStr + '</x>');
+              parent.appendChild(styles.importNode(tmp.documentElement.firstChild, true));
+              parent.setAttribute('count', parent.children.length);
+              return parent.children.length - 1;
+            }
+
+            function estiloCabecera(argb) {
+              var fontId = agregar('fonts', '<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font>');
+              var fillId = agregar('fills', '<fill><patternFill patternType="solid"><fgColor rgb="' + argb + '"/><bgColor indexed="64"/></patternFill></fill>');
+              return agregar('cellXfs', '<xf numFmtId="0" fontId="' + fontId + '" fillId="' + fillId + '" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>');
+            }
+
+            var sRojo = estiloCabecera('FF83160E');
+            var sAzul = estiloCabecera('FF1C4587');
+
+            // Columnas exportadas (sin Editar): A=Sucursal, B..N como en la vista
+            var ROJAS  = ['B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
+            var AZULES = ['D', 'E', 'F', 'G', 'N'];
+
+            // Fila 1 = título, fila 2 = cabeceras
+            var sheet = xlsx.xl.worksheets['sheet1.xml'];
+            $('row', sheet).eq(1).find('c').each(function () {
+              var col = this.getAttribute('r').replace(/\d+/g, '');
+              if (ROJAS.indexOf(col)  !== -1) this.setAttribute('s', sRojo);
+              if (AZULES.indexOf(col) !== -1) this.setAttribute('s', sAzul);
+            });
+          }
         },
         {
           extend: 'print',
