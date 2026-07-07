@@ -212,7 +212,10 @@ class Arqueo
             $this->json(['success' => false, 'message' => 'Caja no encontrada.']);
         }
         $sesion = $this->sesionesModel->find((int) $caja['sesion_id']);
-        if (!$sesion || $sesion['estado'] === 'cerrado') {
+        if (!$sesion) {
+            $this->json(['success' => false, 'message' => 'Sesión no encontrada.']);
+        }
+        if ($sesion['estado'] === 'cerrado') {
             $this->json(['success' => false, 'message' => 'La sesión está cerrada; no se puede reasignar.']);
         }
 
