@@ -541,18 +541,20 @@ class Arqueo
 
         if ($ok && !empty($in['actualizar_base'])) {
             $base_anterior = $this->capitalBaseModel->get_all()[$sucursal_id] ?? null;
-            $this->capitalBaseModel->upsert(
+            $ok_base = $this->capitalBaseModel->upsert(
                 $sucursal_id,
                 $datos['capital_trabajo'],
                 $this->user_id()
             );
-            $this->auditLogModel->log(
-                ArqueoAuditLogModel::ACC_EDITAR_CAPITAL_BASE,
-                $sesion_id, null, $sucursal_id,
-                $base_anterior === null ? null : ['capital_trabajo' => $base_anterior],
-                ['capital_trabajo' => $datos['capital_trabajo']],
-                $this->user_id(), $this->user_name()
-            );
+            if ($ok_base) {
+                $this->auditLogModel->log(
+                    ArqueoAuditLogModel::ACC_EDITAR_CAPITAL_BASE,
+                    $sesion_id, null, $sucursal_id,
+                    $base_anterior === null ? null : ['capital_trabajo' => $base_anterior],
+                    ['capital_trabajo' => $datos['capital_trabajo']],
+                    $this->user_id(), $this->user_name()
+                );
+            }
         }
 
         $this->json(['success' => $ok]);
@@ -649,15 +651,15 @@ class Arqueo
         return [
             'cajero_nombre'       => $enc['cajero_nombre'] ?? null,
             'encargado_revision'  => $enc['encargado_revision'] ?? null,
-            'go_exchange_dolares' => (float) ($enc['go_exchange_dolares'] ?? 0),
-            'go_exchange_mxn'     => (float) ($enc['go_exchange_mxn'] ?? 0),
-            'costo_promedio'      => (float) ($enc['costo_promedio'] ?? 0),
+            'go_exchange_dolares' => round((float) ($enc['go_exchange_dolares'] ?? 0), 2),
+            'go_exchange_mxn'     => round((float) ($enc['go_exchange_mxn'] ?? 0), 2),
+            'costo_promedio'      => round((float) ($enc['costo_promedio'] ?? 0), 4),
             'totales' => [
-                'total_fisico_dolares' => (float) ($enc['total_fisico_dolares'] ?? 0),
-                'total_fisico_mxn'     => (float) ($enc['total_fisico_mxn'] ?? 0),
-                'total_en_sistema'     => (float) ($enc['total_en_sistema'] ?? 0),
-                'gran_total_vales_mxn' => (float) ($enc['gran_total_vales_mxn'] ?? 0),
-                'resultado_final'      => (float) ($enc['resultado_final'] ?? 0),
+                'total_fisico_dolares' => round((float) ($enc['total_fisico_dolares'] ?? 0), 2),
+                'total_fisico_mxn'     => round((float) ($enc['total_fisico_mxn'] ?? 0), 2),
+                'total_en_sistema'     => round((float) ($enc['total_en_sistema'] ?? 0), 2),
+                'gran_total_vales_mxn' => round((float) ($enc['gran_total_vales_mxn'] ?? 0), 2),
+                'resultado_final'      => round((float) ($enc['resultado_final'] ?? 0), 2),
             ],
             'denominaciones' => array_values(array_map(fn($d) => [
                 'seccion'      => $d['seccion'],
@@ -673,7 +675,11 @@ class Arqueo
                 'concepto'    => $v['concepto'] ?? null,
                 'dolares'     => (float) ($v['dolares'] ?? 0),
                 'mxn'         => (float) ($v['mxn'] ?? 0),
-            ], $vales)),
+            ], array_filter($vales, function ($v) {
+                $dolares = (float) ($v['dolares'] ?? 0);
+                $mxn     = (float) ($v['mxn'] ?? 0);
+                return !($dolares == 0 && $mxn == 0 && empty($v['concepto']));
+            }))),
         ];
     }
 
