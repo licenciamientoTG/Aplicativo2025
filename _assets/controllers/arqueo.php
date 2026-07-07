@@ -442,6 +442,34 @@ class Arqueo
     }
 
     /**
+     * Formato imprimible de UNA hoja con el resumen del arqueo de la caja
+     * (lo guardado en BD) y espacios de firma para cajero y auditor.
+     */
+    public function imprimir_caja($caja_id): void
+    {
+        $this->guard([self::PERM_AUDITOR, self::PERM_ADMIN]);
+
+        $caja = $this->cajasModel->find((int) $caja_id);
+        if (!$caja) {
+            (new Errors())->get404();
+            return;
+        }
+        if (!$this->puede_capturar($caja)) {
+            http_response_code(403);
+            echo 'No tienes asignada esta caja. Pide a un administrador que te la asigne.';
+            return;
+        }
+        if ($caja['estado'] === 'pendiente') {
+            echo 'La caja aún no tiene captura guardada.';
+            return;
+        }
+        $sesion = $this->sesionesModel->find((int) $caja['sesion_id']);
+        $vales  = $this->valesModel->by_caja((int) $caja_id);
+
+        echo $this->twig->render($this->route . 'caja_impresion.html', compact('caja', 'sesion', 'vales'));
+    }
+
+    /**
      * Guarda la captura de una caja. POST (JSON o form):
      *   cajero_nombre, encargado_revision,
      *   go_exchange_dolares, go_exchange_mxn, costo_promedio,

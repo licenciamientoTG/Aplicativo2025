@@ -1,0 +1,132 @@
+{# views/arqueo/caja_impresion.html — Formato imprimible de una hoja (standalone, sin layout) #}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Arqueo — {{ caja.sucursal_nombre }} Caja {{ caja.caja_numero }}</title>
+<style>
+    @page { size: letter; margin: 14mm 16mm; }
+    * { box-sizing: border-box; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #212529;
+           margin: 0 auto; max-width: 720px; padding: 16px; }
+    h1 { font-size: 15px; margin: 0; color: #83160E; text-transform: uppercase; letter-spacing: .04em; }
+    .encabezado { display: flex; justify-content: space-between; align-items: flex-start;
+                  border-bottom: 3px solid #83160E; padding-bottom: 6px; margin-bottom: 10px; }
+    .encabezado .der { text-align: right; font-size: 10px; color: #555; }
+    .datos { display: flex; flex-wrap: wrap; gap: 4px 24px; margin-bottom: 10px; }
+    .datos div { min-width: 200px; }
+    .datos b { color: #1C4587; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #adb5bd; padding: 3px 7px; }
+    th { background: #1C4587; color: #fff; text-align: left; font-size: 10px;
+         text-transform: uppercase; letter-spacing: .03em; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .negativo { color: #dc3545; font-weight: 700; }
+    .seccion-titulo { font-size: 11px; font-weight: 700; color: #83160E;
+                      text-transform: uppercase; margin: 10px 0 4px; }
+    .resultado { border: 2px solid #212529; padding: 8px 12px; margin: 10px 0;
+                 display: flex; justify-content: space-between; align-items: center; }
+    .resultado .etiqueta { font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .resultado .monto { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .observaciones .renglon { border-bottom: 1px dotted #888; height: 18px; margin-bottom: 6px; }
+    .firmas { display: flex; justify-content: space-around; gap: 40px; margin-top: 42px; }
+    .firma { flex: 1; text-align: center; }
+    .firma .linea { border-top: 1px solid #212529; margin: 0 12px; padding-top: 4px;
+                    font-weight: 700; font-size: 11px; }
+    .firma .nombre { font-size: 10px; color: #555; margin-top: 2px; }
+    .no-print { text-align: center; margin-top: 18px; }
+    .no-print button { padding: 6px 18px; cursor: pointer; }
+    @media print { .no-print { display: none; } body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<div class="encabezado">
+    <div>
+        <h1>Arqueo de Caja — Dollar2Go</h1>
+        <div>{{ sesion.nombre }} &middot; {{ sesion.fecha|date('d/m/Y') }}</div>
+    </div>
+    <div class="der">
+        Impreso: {{ "now"|date('d/m/Y H:i') }}<br>
+        Folio caja: {{ caja.id }}
+    </div>
+</div>
+
+<div class="datos">
+    <div><b>Sucursal:</b> {{ caja.sucursal_nombre }} — Caja {{ caja.caja_numero }}</div>
+    <div><b>Estado:</b> {{ caja.estado|capitalize }}</div>
+    <div><b>Cajero:</b> {{ caja.cajero_nombre ?: '________________' }}</div>
+    <div><b>Encargado de revisión:</b> {{ caja.encargado_revision ?: '________________' }}</div>
+</div>
+
+<div class="seccion-titulo">Resumen del arqueo</div>
+<table>
+    <tr><th style="width:60%;">Concepto</th><th class="num">Importe</th></tr>
+    <tr><td>Total físico USD</td><td class="num">{{ caja.total_fisico_dolares|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Total físico M.N.</td><td class="num">{{ caja.total_fisico_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Vales USD</td><td class="num">{{ caja.total_vales_dolares|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Vales M.N.</td><td class="num">{{ caja.total_vales_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Gran total vales M.N.</td><td class="num">{{ caja.gran_total_vales_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Total arqueo M.N. (físico + vales M.N.)</td><td class="num">{{ caja.total_arqueo_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Go Exchange USD</td><td class="num">{{ caja.go_exchange_dolares|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Go Exchange M.N.</td><td class="num">{{ caja.go_exchange_mxn|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Costo promedio</td><td class="num">{{ caja.costo_promedio|number_format(4,'.',',') }}</td></tr>
+    <tr><td>Total en sistema M.N.</td><td class="num">{{ caja.total_en_sistema|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Diferencia USD (físico − sistema)</td>
+        <td class="num {{ caja.diferencia_dolares < 0 ? 'negativo' : '' }}">{{ caja.diferencia_dolares|number_format(2,'.',',') }}</td></tr>
+    <tr><td>Diferencia M.N. (arqueo − sistema)</td>
+        <td class="num {{ caja.diferencia_mxn < 0 ? 'negativo' : '' }}">{{ caja.diferencia_mxn|number_format(2,'.',',') }}</td></tr>
+</table>
+
+<div class="resultado">
+    <span class="etiqueta">
+        Resultado final —
+        {% if caja.resultado_final < 0 %}FALTANTE{% elseif caja.resultado_final > 0 %}SOBRANTE{% else %}SIN DIFERENCIA{% endif %}
+    </span>
+    <span class="monto {{ caja.resultado_final < 0 ? 'negativo' : '' }}">
+        $ {{ caja.resultado_final|number_format(2,'.',',') }} M.N.
+    </span>
+</div>
+
+{% if vales|length > 0 %}
+<div class="seccion-titulo">Vales</div>
+<table>
+    <tr><th># Vale</th><th>Fecha</th><th>Concepto</th><th class="num">USD</th><th class="num">M.N.</th></tr>
+    {% for v in vales %}
+    <tr>
+        <td>{{ v.numero_vale }}</td>
+        <td>{{ v.fecha ? v.fecha|date('d/m/Y') : '—' }}</td>
+        <td>{{ v.concepto }}</td>
+        <td class="num">{{ v.dolares|number_format(2,'.',',') }}</td>
+        <td class="num">{{ v.mxn|number_format(2,'.',',') }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+
+<div class="seccion-titulo">Observaciones</div>
+<div class="observaciones">
+    <div class="renglon"></div>
+    <div class="renglon"></div>
+    <div class="renglon"></div>
+</div>
+
+<div class="firmas">
+    <div class="firma">
+        <div class="linea">Entregó — Cajero</div>
+        <div class="nombre">{{ caja.cajero_nombre }}</div>
+    </div>
+    <div class="firma">
+        <div class="linea">Revisó — Auditor</div>
+        <div class="nombre">{{ caja.encargado_revision }}</div>
+    </div>
+</div>
+
+<div class="no-print">
+    <button type="button" onclick="window.print()">Imprimir</button>
+    <button type="button" onclick="window.close()">Cerrar</button>
+</div>
+
+<script>window.addEventListener('load', function () { window.print(); });</script>
+</body>
+</html>

@@ -56,9 +56,22 @@
 {% block menutitle %}
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Arqueo — {{ caja.sucursal_nombre }} (Caja {{ caja.caja_numero }})</span>
-    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
-        <i class="fas fa-backward"></i> Regresar
-    </a>
+    <span>
+        {% if caja.estado == 'pendiente' %}
+        <button type="button" class="btn btn-outline-secondary small" style="border-radius:15px;"
+                onclick="alertify.error('Guarda el arqueo antes de imprimir.')" title="Imprime lo último guardado">
+            <i class="fas fa-print"></i> Imprimir
+        </button>
+        {% else %}
+        <a href="/arqueo/imprimir_caja/{{ caja.id }}" target="_blank" class="btn btn-outline-secondary small"
+           style="border-radius:15px;" title="Imprime lo último guardado">
+            <i class="fas fa-print"></i> Imprimir
+        </a>
+        {% endif %}
+        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+            <i class="fas fa-backward"></i> Regresar
+        </a>
+    </span>
 </div>
 {% endblock %}
 {% block content %}
