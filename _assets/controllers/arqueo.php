@@ -223,6 +223,16 @@ class Arqueo
                     throw new Exception('No se pudo copiar el capital base de la sucursal ' . $s['id'] . '.');
                 }
             }
+            $ok_log = $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_CREAR_SESION,
+                (int) $sesion_id, null, null,
+                null,
+                ['nombre' => $nombre, 'fecha' => $fecha],
+                $this->user_id(), $this->user_name()
+            );
+            if (!$ok_log) {
+                throw new Exception('No se pudo registrar la auditoría.');
+            }
             $this->sesionesModel->sql->commit();
             $this->json(['success' => true, 'sesion_id' => $sesion_id]);
         } catch (Exception $e) {
@@ -245,6 +255,14 @@ class Arqueo
             $this->json(['success' => false, 'message' => 'Solo se puede abrir una sesión programada.']);
         }
         $ok = $this->sesionesModel->set_estado((int) $sesion_id, 'abierto');
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_ABRIR_SESION,
+                (int) $sesion_id, null, null,
+                ['estado' => 'programado'], ['estado' => 'abierto'],
+                $this->user_id(), $this->user_name()
+            );
+        }
         $this->json(['success' => (bool) $ok]);
     }
 
@@ -276,6 +294,14 @@ class Arqueo
             ]);
         }
         $ok = $this->sesionesModel->set_estado((int) $sesion_id, 'cerrado', $this->user_id());
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_CERRAR_SESION,
+                (int) $sesion_id, null, null,
+                ['estado' => 'abierto'], ['estado' => 'cerrado'],
+                $this->user_id(), $this->user_name()
+            );
+        }
         $this->json(['success' => (bool) $ok]);
     }
 
@@ -350,6 +376,12 @@ class Arqueo
         $totales['cajero_nombre']      = trim($in['cajero_nombre'] ?? '') ?: $caja['cajero_nombre'];
         $totales['encargado_revision'] = trim($in['encargado_revision'] ?? '');
 
+        $snap_antes = $this->snapshot_caja(
+            $caja,
+            $this->denominacionesModel->by_caja((int) $caja_id),
+            $this->valesModel->by_caja((int) $caja_id)
+        );
+
         $this->sql_begin();
         try {
             $this->denominacionesModel->delete_by_caja((int) $caja_id);
@@ -357,6 +389,16 @@ class Arqueo
             $this->denominacionesModel->insert_bulk((int) $caja_id, $denom_rows);
             $this->valesModel->insert_bulk((int) $caja_id, $vales_in);
             $this->cajasModel->update_totales((int) $caja_id, $totales);
+            $snap_despues = $this->snapshot_caja($totales, $denom_rows, $vales_in);
+            $ok_log = $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_GUARDAR_CAJA,
+                (int) $caja['sesion_id'], (int) $caja_id, (int) $caja['sucursal_id'],
+                $snap_antes, $snap_despues,
+                $this->user_id(), $this->user_name()
+            );
+            if (!$ok_log) {
+                throw new Exception('No se pudo registrar la auditoría de la caja.');
+            }
             $this->cajasModel->sql->commit();
             $this->json(['success' => true, 'totales' => $totales]);
         } catch (Exception $e) {
@@ -456,13 +498,39 @@ class Arqueo
             'utilidad'        => (float) ($in['utilidad']        ?? 0),
         ];
 
+        $previos = $this->concentradoExtrasModel->by_sesion($sesion_id)[$sucursal_id] ?? null;
+        $antes = $previos === null ? null : [
+            'capital_trabajo' => (float) $previos['capital_trabajo'],
+            'gastos_tramite'  => (float) $previos['gastos_tramite'],
+            'adeudo'          => (float) $previos['adeudo'],
+            'reinversion'     => (float) $previos['reinversion'],
+            'utilidad'        => (float) $previos['utilidad'],
+        ];
+
         $ok = $this->concentradoExtrasModel->upsert($sesion_id, $sucursal_id, $datos, $this->user_id());
 
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_EDITAR_CONCENTRADO,
+                $sesion_id, null, $sucursal_id,
+                $antes, $datos,
+                $this->user_id(), $this->user_name()
+            );
+        }
+
         if ($ok && !empty($in['actualizar_base'])) {
+            $base_anterior = $this->capitalBaseModel->get_all()[$sucursal_id] ?? null;
             $this->capitalBaseModel->upsert(
                 $sucursal_id,
                 $datos['capital_trabajo'],
                 $this->user_id()
+            );
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_EDITAR_CAPITAL_BASE,
+                $sesion_id, null, $sucursal_id,
+                $base_anterior === null ? null : ['capital_trabajo' => $base_anterior],
+                ['capital_trabajo' => $datos['capital_trabajo']],
+                $this->user_id(), $this->user_name()
             );
         }
 
@@ -549,6 +617,43 @@ class Arqueo
             default: // billete | moneda
                 return $cantidad * $denom;
         }
+    }
+
+    /**
+     * Snapshot uniforme de una caja para auditoría. $enc acepta tanto la fila
+     * de arqueo_cajas como el array de totales calculados (mismas claves).
+     */
+    private function snapshot_caja(array $enc, array $denominaciones, array $vales): array
+    {
+        return [
+            'cajero_nombre'       => $enc['cajero_nombre'] ?? null,
+            'encargado_revision'  => $enc['encargado_revision'] ?? null,
+            'go_exchange_dolares' => (float) ($enc['go_exchange_dolares'] ?? 0),
+            'go_exchange_mxn'     => (float) ($enc['go_exchange_mxn'] ?? 0),
+            'costo_promedio'      => (float) ($enc['costo_promedio'] ?? 0),
+            'totales' => [
+                'total_fisico_dolares' => (float) ($enc['total_fisico_dolares'] ?? 0),
+                'total_fisico_mxn'     => (float) ($enc['total_fisico_mxn'] ?? 0),
+                'total_en_sistema'     => (float) ($enc['total_en_sistema'] ?? 0),
+                'gran_total_vales_mxn' => (float) ($enc['gran_total_vales_mxn'] ?? 0),
+                'resultado_final'      => (float) ($enc['resultado_final'] ?? 0),
+            ],
+            'denominaciones' => array_values(array_map(fn($d) => [
+                'seccion'      => $d['seccion'],
+                'moneda'       => $d['moneda'],
+                'tipo'         => $d['tipo'],
+                'denominacion' => (float) $d['denominacion'],
+                'cantidad'     => (int) ($d['cantidad'] ?? 0),
+                'total'        => (float) ($d['total'] ?? 0),
+            ], $denominaciones)),
+            'vales' => array_values(array_map(fn($v) => [
+                'numero_vale' => $v['numero_vale'] ?? null,
+                'fecha'       => $v['fecha'] ?? null,
+                'concepto'    => $v['concepto'] ?? null,
+                'dolares'     => (float) ($v['dolares'] ?? 0),
+                'mxn'         => (float) ($v['mxn'] ?? 0),
+            ], $vales)),
+        ];
     }
 
     /**
