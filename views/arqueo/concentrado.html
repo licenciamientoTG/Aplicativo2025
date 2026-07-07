@@ -62,7 +62,7 @@
     <table id="tabla_concentrado" class="table table-bordered table-hover table-sm" style="width:100%;">
       <thead>
         <tr>
-          <th>Sucursal</th>
+          <th class="th-rojo">Sucursal</th>
           <th class="text-end th-rojo">Capital de Trabajo</th>
           <th class="text-end th-rojo">Total en Sistema M.N.</th>
           <th class="text-end th-azul">Conteo Físico sin Vales</th>
@@ -286,7 +286,7 @@
             var sAzul = estiloCabecera('FF1C4587');
 
             // Columnas exportadas (sin Editar): A=Sucursal, B..N como en la vista
-            var ROJAS  = ['B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
+            var ROJAS  = ['A', 'B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
             var AZULES = ['D', 'E', 'F', 'G', 'N'];
 
             // Fila 1 = título, fila 2 = cabeceras
@@ -297,8 +297,9 @@
               if (AZULES.indexOf(col) !== -1) this.setAttribute('s', sAzul);
             });
 
-            // Negativos en rojo en las columnas Faltantes (E y G del Excel)
+            // Formato numérico con negativos en rojo (para E, G y N)
             var NUMFMT_ID = 200;
+            var FMT_MILES = 4; // formato integrado de Excel: #,##0.00
             var hoja = styles.documentElement;
             var numFmts = styles.getElementsByTagName('numFmts')[0];
             if (!numFmts) {
@@ -311,20 +312,38 @@
             numFmts.appendChild(styles.importNode(tmpF.documentElement.firstChild, true));
             numFmts.setAttribute('count', numFmts.children.length);
 
-            var sNeg = agregar('cellXfs',
-              '<xf numFmtId="' + NUMFMT_ID + '" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>');
+            // Tintes de columna (mismos de la vista: rojo 13% y azul 9% sobre blanco)
+            function estiloCuerpo(argbFill, numFmt) {
+              var fillId = agregar('fills',
+                '<fill><patternFill patternType="solid"><fgColor rgb="' + argbFill + '"/><bgColor indexed="64"/></patternFill></fill>');
+              return agregar('cellXfs',
+                '<xf numFmtId="' + numFmt + '" fontId="0" fillId="' + fillId + '" borderId="0" xfId="0" applyNumberFormat="1" applyFill="1"/>');
+            }
+            var sBodyRojo    = estiloCuerpo('FFEFE1E0', FMT_MILES);
+            var sBodyAzul    = estiloCuerpo('FFEBEEF4', FMT_MILES);
+            var sBodyAzulNeg = estiloCuerpo('FFEBEEF4', NUMFMT_ID);
+
             var fontNegrita = agregar('fonts', '<font><b/><sz val="11"/><name val="Calibri"/></font>');
             var sNegTotal = agregar('cellXfs',
               '<xf numFmtId="' + NUMFMT_ID + '" fontId="' + fontNegrita + '" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>');
+
+            var CUERPO_ROJAS = ['B', 'C', 'H', 'I', 'J', 'K', 'L', 'M'];
+            var CUERPO_NEG   = ['E', 'G', 'N']; // azules con negativos en rojo
 
             var $filas = $('row', sheet);
             var ultima = $filas.length - 1; // fila de Totales
             $filas.each(function (i) {
               if (i < 2) return; // título y cabeceras
-              var s = (i === ultima) ? sNegTotal : sNeg;
+              var esTotal = (i === ultima);
               $(this).find('c').each(function () {
                 var col = this.getAttribute('r').replace(/\d+/g, '');
-                if (col === 'E' || col === 'G') this.setAttribute('s', s);
+                if (esTotal) {
+                  if (CUERPO_NEG.indexOf(col) !== -1) this.setAttribute('s', sNegTotal);
+                  return;
+                }
+                if (CUERPO_ROJAS.indexOf(col) !== -1)   this.setAttribute('s', sBodyRojo);
+                else if (CUERPO_NEG.indexOf(col) !== -1) this.setAttribute('s', sBodyAzulNeg);
+                else if (col === 'D' || col === 'F')     this.setAttribute('s', sBodyAzul);
               });
             });
           }
