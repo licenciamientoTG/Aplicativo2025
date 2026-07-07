@@ -335,7 +335,17 @@
           className: 'btn btn-sm btn-outline-secondary',
           title: 'Concentrado — {{ sesion.nombre|e('js') }} ({{ sesion.fecha|date('d-m-Y') }})',
           footer: true,
-          exportOptions: { columns: ':not(:last-child)' }
+          exportOptions: { columns: ':not(:last-child)' },
+          customize: function (win) {
+            // Negativos en rojo en Faltantes/Sobrantes (col 5) y Faltante Real (col 7)
+            $(win.document.body).find('table tbody tr, table tfoot tr').each(function () {
+              $(this).children('td, th').each(function (i) {
+                if ((i === 4 || i === 6) && $(this).text().trim().charAt(0) === '-') {
+                  $(this).css({ 'color': '#dc3545', 'font-weight': '600' });
+                }
+              });
+            });
+          }
         }
       ]
     });
