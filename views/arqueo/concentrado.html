@@ -282,6 +282,37 @@
               if (ROJAS.indexOf(col)  !== -1) this.setAttribute('s', sRojo);
               if (AZULES.indexOf(col) !== -1) this.setAttribute('s', sAzul);
             });
+
+            // Negativos en rojo en las columnas Faltantes (E y G del Excel)
+            var NUMFMT_ID = 200;
+            var hoja = styles.documentElement;
+            var numFmts = styles.getElementsByTagName('numFmts')[0];
+            if (!numFmts) {
+              var tmpN = $.parseXML('<x xmlns="' + NS + '"><numFmts count="0"/></x>');
+              numFmts = hoja.insertBefore(
+                styles.importNode(tmpN.documentElement.firstChild, true), hoja.firstChild);
+            }
+            var tmpF = $.parseXML('<x xmlns="' + NS + '"><numFmt numFmtId="' + NUMFMT_ID +
+                                  '" formatCode="#,##0.00;[Red]-#,##0.00"/></x>');
+            numFmts.appendChild(styles.importNode(tmpF.documentElement.firstChild, true));
+            numFmts.setAttribute('count', numFmts.children.length);
+
+            var sNeg = agregar('cellXfs',
+              '<xf numFmtId="' + NUMFMT_ID + '" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>');
+            var fontNegrita = agregar('fonts', '<font><b/><sz val="11"/><name val="Calibri"/></font>');
+            var sNegTotal = agregar('cellXfs',
+              '<xf numFmtId="' + NUMFMT_ID + '" fontId="' + fontNegrita + '" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>');
+
+            var $filas = $('row', sheet);
+            var ultima = $filas.length - 1; // fila de Totales
+            $filas.each(function (i) {
+              if (i < 2) return; // título y cabeceras
+              var s = (i === ultima) ? sNegTotal : sNeg;
+              $(this).find('c').each(function () {
+                var col = this.getAttribute('r').replace(/\d+/g, '');
+                if (col === 'E' || col === 'G') this.setAttribute('s', s);
+              });
+            });
           }
         },
         {
