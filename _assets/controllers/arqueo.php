@@ -32,7 +32,7 @@ class Arqueo
         ['id' => 7,  'nombre' => 'Gomez Morin',     'caja' => 1],
         ['id' => 8,  'nombre' => 'Lopez Mateos',    'caja' => 1],
         ['id' => 9,  'nombre' => 'Villa Ahumada',   'caja' => 1],
-        ['id' => 10, 'nombre' => 'Km30',            'caja' => 1],
+        ['id' => 10, 'nombre' => 'Km 30',           'caja' => 1],
         ['id' => 11, 'nombre' => 'Curva',           'caja' => 1],
         ['id' => 12, 'nombre' => 'Custodia',        'caja' => 1],
         ['id' => 13, 'nombre' => 'Perez Serna',     'caja' => 1],
