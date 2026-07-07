@@ -50,16 +50,21 @@
 {% block menutitle %}
 <div style="display:flex; justify-content:space-between; align-items:center;">
     <span>Concentrado — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
-    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
-        <i class="fas fa-backward"></i> Regresar
-    </a>
+    <span>
+        <a href="/arqueo/auditoria/{{ sesion.id }}" class="btn btn-outline-light small" style="border-radius:15px; border-color:#fff;">
+            <i class="fas fa-history"></i> Auditoría
+        </a>
+        <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+            <i class="fas fa-backward"></i> Regresar
+        </a>
+    </span>
 </div>
 {% endblock %}
 {% block content %}
 
 <div class="card mb-3">
   <div class="card-body table-responsive">
-    <table id="tabla_concentrado" class="table table-bordered table-hover table-sm" style="width:100%;">
+    <table id="tabla_concentrado" class="table table-bordered table-hover table-sm " style="width:100%;">
       <thead>
         <tr>
           <th class="th-rojo">Sucursal</th>

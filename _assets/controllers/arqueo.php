@@ -471,6 +471,27 @@ class Arqueo
         echo $this->twig->render($this->route . 'concentrado.html', compact('sesion', 'concentrado'));
     }
 
+    /** Historial de auditoría de una sesión (solo admin). */
+    public function auditoria($sesion_id): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+
+        $sesion = $this->sesionesModel->find((int) $sesion_id);
+        if (!$sesion) {
+            (new Errors())->get404();
+            return;
+        }
+        $logs = $this->auditLogModel->by_sesion((int) $sesion_id);
+
+        // Mapa sucursal_id => nombre para mostrar en la tabla
+        $sucursales = [];
+        foreach (self::SUCURSALES as $s) {
+            $sucursales[$s['id']] = $s['nombre'];
+        }
+
+        echo $this->twig->render($this->route . 'auditoria.html', compact('sesion', 'logs', 'sucursales'));
+    }
+
     /**
      * Guarda (upsert) los 5 valores manuales de una sucursal en una sesión:
      * Capital de Trabajo, Gastos en trámite, Adeudo, Reinversión, Utilidad.

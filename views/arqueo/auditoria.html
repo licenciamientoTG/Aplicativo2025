@@ -1,0 +1,200 @@
+{# views/arqueo/auditoria.html — Historial de auditoría de una sesión #}
+{% extends "views/layouts/base.html" %}
+{% block title %}Auditoría — {{ sesion.nombre }}{% endblock %}
+{% block mycss %}
+<style>
+    #tabla_auditoria thead th { text-transform:uppercase; font-size:.72rem;
+        letter-spacing:.04em; color:#6c757d; }
+    #tabla_auditoria tbody td { vertical-align:middle; padding:.55rem .75rem; }
+    .badge-accion { display:inline-flex; align-items:center; gap:.45em;
+        font-size:.75rem; font-weight:600; padding:.3em .8em; border-radius:999px; }
+    .badge-accion::before { content:''; width:.5em; height:.5em;
+        border-radius:50%; background:currentColor; }
+    .acc-CREAR_SESION        { background:rgb(108 117 125 / 12%); color:#5c636a; }
+    .acc-ABRIR_SESION        { background:rgb(25 135 84 / 12%);   color:#198754; }
+    .acc-CERRAR_SESION       { background:rgb(28 69 135 / 10%);   color:#1C4587; }
+    .acc-GUARDAR_CAJA        { background:rgb(131 22 14 / 10%);   color:#83160E; }
+    .acc-EDITAR_CONCENTRADO  { background:rgb(28 69 135 / 10%);   color:#1C4587; }
+    .acc-EDITAR_CAPITAL_BASE { background:rgb(180 83 9 / 12%);    color:#B45309; }
+    .fecha-log { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    #tabla_diff td, #tabla_diff th { font-size:.85rem; }
+    #tabla_diff .val-antes  { color:#dc3545; }
+    #tabla_diff .val-despues{ color:#198754; font-weight:600; }
+</style>
+{% endblock %}
+{% block menutitle %}
+<div style="display:flex; justify-content:space-between; align-items:center;">
+    <span>Auditoría — {{ sesion.nombre }} ({{ sesion.fecha|date('d/m/Y') }})</span>
+    <a href="/arqueo" class="btn btn-primary text-light small" style="border-radius:15px;">
+        <i class="fas fa-backward"></i> Regresar
+    </a>
+</div>
+{% endblock %}
+{% block content %}
+
+{% set etiquetas = {
+    'CREAR_SESION': 'Creó el arqueo',
+    'ABRIR_SESION': 'Abrió el arqueo',
+    'CERRAR_SESION': 'Cerró el arqueo',
+    'GUARDAR_CAJA': 'Guardó captura de caja',
+    'EDITAR_CONCENTRADO': 'Editó concentrado',
+    'EDITAR_CAPITAL_BASE': 'Actualizó capital base'
+} %}
+
+<div class="card">
+  <div class="card-body table-responsive">
+    <table id="tabla_auditoria" class="table table-hover" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>Acción</th>
+          <th>Sucursal / Caja</th>
+          <th class="text-end">Detalle</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in logs %}
+        <tr>
+          <td class="fecha-log">{{ l.fecha|date('d/m/Y H:i') }}</td>
+          <td title="ID {{ l.usuario_id }}">{{ l.usuario_nombre ?: ('Usuario ' ~ l.usuario_id) }}</td>
+          <td><span class="badge-accion acc-{{ l.accion }}">{{ etiquetas[l.accion] ?? l.accion }}</span></td>
+          <td>
+            {% if l.sucursal_id %}{{ sucursales[l.sucursal_id] ?? ('Sucursal ' ~ l.sucursal_id) }}{% endif %}
+            {% if l.caja_id %} <span class="text-muted small">(caja #{{ l.caja_id }})</span>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if l.datos_anteriores or l.datos_nuevos %}
+            <button type="button" class="btn btn-sm btn-outline-secondary btn-ver-cambios"
+                    data-antes="{{ l.datos_anteriores|e('html_attr') }}"
+                    data-despues="{{ l.datos_nuevos|e('html_attr') }}">
+              <i class="fas fa-exchange-alt"></i> Ver cambios
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal de diff -->
+<div class="modal fade" id="modal_diff" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cambios del movimiento</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm" id="tabla_diff">
+          <thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="diff_sin_cambios" class="text-muted mb-0" style="display:none;">
+          Sin cambios en los valores (se guardó lo mismo).
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block myjs %}
+<script>
+  var ETIQUETAS_CAMPO = {
+    cajero_nombre: 'Cajero', encargado_revision: 'Encargado de revisión',
+    go_exchange_dolares: 'Go Exchange USD', go_exchange_mxn: 'Go Exchange MXN',
+    costo_promedio: 'Costo promedio',
+    total_fisico_dolares: 'Total físico USD', total_fisico_mxn: 'Total físico MXN',
+    total_en_sistema: 'Total en sistema', gran_total_vales_mxn: 'Total vales',
+    resultado_final: 'Resultado final',
+    capital_trabajo: 'Capital de Trabajo', gastos_tramite: 'Gastos en trámite',
+    adeudo: 'Adeudo', reinversion: 'Reinversión', utilidad: 'Utilidad',
+    estado: 'Estado', nombre: 'Nombre', fecha: 'Fecha'
+  };
+  var SECCIONES = { cajon: 'Cajón', morrallero: 'Morrallero',
+    caja_fuerte: 'Caja Fuerte', morrallero_cf: 'Morrallero CF' };
+
+  function fmtVal(v) {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'number') return v.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    return String(v);
+  }
+
+  function filaDiff(campo, antes, despues) {
+    return '<tr><td>' + campo + '</td>' +
+      '<td class="val-antes">' + fmtVal(antes) + '</td>' +
+      '<td class="val-despues">' + fmtVal(despues) + '</td></tr>';
+  }
+
+  // Compara escalares planos de dos objetos (ignora sub-objetos/arrays)
+  function diffPlano(a, b, prefijo) {
+    var filas = '';
+    var claves = {};
+    Object.keys(a || {}).concat(Object.keys(b || {})).forEach(function (k) { claves[k] = true; });
+    Object.keys(claves).forEach(function (k) {
+      var va = a ? a[k] : undefined, vb = b ? b[k] : undefined;
+      if (typeof va === 'object' && va !== null) return;
+      if (typeof vb === 'object' && vb !== null) return;
+      if (String(va ?? '') !== String(vb ?? '')) {
+        filas += filaDiff((prefijo || '') + (ETIQUETAS_CAMPO[k] || k), va, vb);
+      }
+    });
+    return filas;
+  }
+
+  function claveDenom(d) { return d.seccion + '|' + d.moneda + '|' + d.tipo + '|' + d.denominacion; }
+  function etiquetaDenom(d) {
+    return (SECCIONES[d.seccion] || d.seccion) + ' · ' +
+      (d.tipo.charAt(0).toUpperCase() + d.tipo.slice(1)) + ' $' + d.denominacion + ' ' + d.moneda;
+  }
+
+  function construirDiff(antes, despues) {
+    var filas = diffPlano(antes, despues, '');
+    if (antes && despues && (antes.totales || despues.totales)) {
+      filas += diffPlano((antes || {}).totales, (despues || {}).totales, '');
+    }
+    // Denominaciones: comparar cantidades por clave seccion|moneda|tipo|denominacion
+    if ((antes && antes.denominaciones) || (despues && despues.denominaciones)) {
+      var mapA = {}, mapB = {};
+      ((antes && antes.denominaciones) || []).forEach(function (d) { mapA[claveDenom(d)] = d; });
+      ((despues && despues.denominaciones) || []).forEach(function (d) { mapB[claveDenom(d)] = d; });
+      var claves = {};
+      Object.keys(mapA).concat(Object.keys(mapB)).forEach(function (k) { claves[k] = true; });
+      Object.keys(claves).sort().forEach(function (k) {
+        var ca = mapA[k] ? mapA[k].cantidad : 0;
+        var cb = mapB[k] ? mapB[k].cantidad : 0;
+        if (Number(ca) !== Number(cb)) {
+          filas += filaDiff(etiquetaDenom(mapA[k] || mapB[k]), ca, cb);
+        }
+      });
+    }
+    // Vales: comparar por posición
+    if ((antes && antes.vales) || (despues && despues.vales)) {
+      var va = (antes && antes.vales) || [], vb = (despues && despues.vales) || [];
+      var n = Math.max(va.length, vb.length);
+      for (var i = 0; i < n; i++) {
+        var f = diffPlano(va[i] || {}, vb[i] || {}, 'Vale ' + (i + 1) + ' · ');
+        filas += f;
+      }
+    }
+    return filas;
+  }
+
+  $(document).on('click', '.btn-ver-cambios', function () {
+    var antes = null, despues = null;
+    try { antes = JSON.parse($(this).attr('data-antes') || 'null'); } catch (e) {}
+    try { despues = JSON.parse($(this).attr('data-despues') || 'null'); } catch (e) {}
+    var filas = construirDiff(antes, despues);
+    $('#tabla_diff tbody').html(filas);
+    $('#tabla_diff').toggle(filas !== '');
+    $('#diff_sin_cambios').toggle(filas === '');
+    $('#modal_diff').modal('show');
+  });
+</script>
+{% endblock %}
