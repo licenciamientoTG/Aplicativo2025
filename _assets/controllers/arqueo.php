@@ -388,7 +388,9 @@ class Arqueo
                 ];
             }
             $grupos[$sid]['D'] += (float) $c['total_en_sistema'];
-            $grupos[$sid]['E'] += (float) $c['total_fisico_mxn'];
+            // E: físico MXN + (físico USD valuado al costo promedio de la caja)
+            $grupos[$sid]['E'] += (float) $c['total_fisico_mxn']
+                + ((float) $c['total_fisico_dolares'] * (float) $c['costo_promedio']);
             $grupos[$sid]['G'] += (float) $c['gran_total_vales_mxn'];
         }
 
