@@ -13,6 +13,7 @@ class ArqueoAuditLogModel extends Model
     const ACC_GUARDAR_CAJA        = 'GUARDAR_CAJA';
     const ACC_EDITAR_CONCENTRADO  = 'EDITAR_CONCENTRADO';
     const ACC_EDITAR_CAPITAL_BASE = 'EDITAR_CAPITAL_BASE';
+    const ACC_ASIGNAR_CAJA        = 'ASIGNAR_CAJA';
 
     /**
      * Inserta un movimiento. $antes/$despues son arrays (o null) y se

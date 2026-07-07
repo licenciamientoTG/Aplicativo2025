@@ -130,8 +130,12 @@ class UsuariosModel extends Model{
      * @param int $permission_id ID del permiso a buscar
      * @return array Lista de usuarios con ese permiso
      */
-    public function get_users_by_permission($permission_id) : array {
+    public function get_users_by_permission($permission_id, bool $require_email = true) : array {
         try {
+            $filtro_correo = $require_email
+                ? "AND t1.Correo IS NOT NULL
+                    AND t1.Correo != ''"
+                : "";
             $query = "
                 SELECT DISTINCT
                     t1.Id,
@@ -143,12 +147,11 @@ class UsuariosModel extends Model{
                 FROM [TG].[dbo].[Usuario] t1
                 INNER JOIN [TG].[dbo].[tg_permissions_users] t3 ON t1.Id = t3.user_id
                 LEFT JOIN [TG].[dbo].[Perfil] t2 ON t1.IdPerfil = t2.Id
-                WHERE t3.permission_id = ? 
+                WHERE t3.permission_id = ?
                     AND t1.Estatus = 1
-                    AND t1.Correo IS NOT NULL
-                    AND t1.Correo != ''
+                    {$filtro_correo}
             ";
-            
+
             $params = [$permission_id];
             $result = $this->sql->select($query, $params);
             

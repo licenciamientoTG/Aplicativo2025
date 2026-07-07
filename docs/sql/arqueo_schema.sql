@@ -235,3 +235,11 @@ BEGIN
     CREATE INDEX [IX_aal_sesion] ON [TG].[dbo].[arqueo_audit_log] ([sesion_id]);
 END
 GO
+
+/* ---------------------------------------------------------------------------
+   9) Asignación de usuario capturista por caja.
+   NULL = sin asignar (solo administradores pueden capturar esa caja).
+   --------------------------------------------------------------------------- */
+IF COL_LENGTH('[TG].[dbo].[arqueo_cajas]', 'asignado_user_id') IS NULL
+    ALTER TABLE [TG].[dbo].[arqueo_cajas] ADD [asignado_user_id] INT NULL;
+GO

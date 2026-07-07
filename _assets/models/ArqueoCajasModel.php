@@ -7,14 +7,16 @@
 class ArqueoCajasModel extends Model
 {
     /**
-     * Todas las cajas de una sesión.
+     * Todas las cajas de una sesión, con el nombre del usuario asignado.
      */
     public function by_sesion(int $sesion_id): array
     {
         $query = "
-            SELECT * FROM [TG].[dbo].[arqueo_cajas]
-            WHERE sesion_id = ?
-            ORDER BY sucursal_id, caja_numero;
+            SELECT c.*, u.Nombre AS asignado_nombre
+            FROM [TG].[dbo].[arqueo_cajas] c
+            LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.asignado_user_id
+            WHERE c.sesion_id = ?
+            ORDER BY c.sucursal_id, c.caja_numero;
         ";
         return $this->sql->select($query, [$sesion_id]) ?: [];
     }
@@ -126,5 +128,32 @@ class ArqueoCajasModel extends Model
              ORDER BY sucursal_id, caja_numero;",
             [$sesion_id]
         ) ?: [];
+    }
+
+    /**
+     * Cajas de la sesión asignadas a un usuario (vista del capturista).
+     */
+    public function by_sesion_asignadas(int $sesion_id, int $user_id): array
+    {
+        $query = "
+            SELECT c.*, u.Nombre AS asignado_nombre
+            FROM [TG].[dbo].[arqueo_cajas] c
+            LEFT JOIN [TG].[dbo].[Usuario] u ON u.Id = c.asignado_user_id
+            WHERE c.sesion_id = ? AND c.asignado_user_id = ?
+            ORDER BY c.sucursal_id, c.caja_numero;
+        ";
+        return $this->sql->select($query, [$sesion_id, $user_id]) ?: [];
+    }
+
+    /**
+     * Asigna (o desasigna con NULL) el usuario capturista de una caja.
+     */
+    public function asignar(int $caja_id, ?int $user_id): bool
+    {
+        return (bool) $this->sql->update(
+            "UPDATE [TG].[dbo].[arqueo_cajas] SET asignado_user_id = ?, updated_at = GETDATE()
+             WHERE id = ?;",
+            [$user_id, $caja_id]
+        );
     }
 }
