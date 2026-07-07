@@ -73,6 +73,7 @@ class Arqueo
     public ArqueoConcentradoExtrasModel $concentradoExtrasModel;
     public ArqueoCapitalBaseModel $capitalBaseModel;
     public ArqueoAuditLogModel $auditLogModel;
+    public UsuariosModel $usuariosModel;
 
     public function __construct($twig)
     {
@@ -85,6 +86,7 @@ class Arqueo
         $this->concentradoExtrasModel = new ArqueoConcentradoExtrasModel();
         $this->capitalBaseModel       = new ArqueoCapitalBaseModel();
         $this->auditLogModel          = new ArqueoAuditLogModel();
+        $this->usuariosModel          = new UsuariosModel();
     }
 
     /* ===================================================================== */
@@ -123,6 +125,20 @@ class Arqueo
             echo 'No autorizado para acceder a este módulo.';
         }
         exit;
+    }
+
+    /**
+     * ¿El usuario actual puede entrar/guardar esta caja?
+     * Admin: siempre. Capturista: solo si la caja está asignada a él.
+     * Caja sin asignar: solo admin.
+     */
+    private function puede_capturar(array $caja): bool
+    {
+        if (authorized(self::PERM_ADMIN)) {
+            return true;
+        }
+        $asignado = (int) ($caja['asignado_user_id'] ?? 0);
+        return $asignado > 0 && $asignado === (int) $this->user_id();
     }
 
     private function es_ajax(): bool
@@ -164,8 +180,81 @@ class Arqueo
             (new Errors())->get404();
             return;
         }
-        $cajas = $this->cajasModel->by_sesion((int) $sesion_id);
-        echo $this->twig->render($this->route . 'cajas.html', compact('sesion', 'cajas'));
+        $es_admin = authorized(self::PERM_ADMIN);
+        if ($es_admin) {
+            $cajas    = $this->cajasModel->by_sesion((int) $sesion_id);
+            $usuarios = $this->usuariosModel->get_users_by_permission(self::PERM_AUDITOR, false);
+        } else {
+            $cajas    = $this->cajasModel->by_sesion_asignadas((int) $sesion_id, (int) $this->user_id());
+            $usuarios = [];
+        }
+        echo $this->twig->render($this->route . 'cajas.html', compact('sesion', 'cajas', 'es_admin', 'usuarios'));
+    }
+
+    /**
+     * Asigna (o desasigna) el usuario capturista de una caja. Solo admin.
+     * POST JSON: caja_id, user_id (null o 0 = desasignar).
+     */
+    public function asignar_caja(): void
+    {
+        $this->guard([self::PERM_ADMIN]);
+        header('Content-Type: application/json');
+
+        $in      = $this->input();
+        $caja_id = (int) ($in['caja_id'] ?? 0);
+        $user_id = isset($in['user_id']) && (int) $in['user_id'] > 0 ? (int) $in['user_id'] : null;
+
+        if ($caja_id <= 0) {
+            $this->json(['success' => false, 'message' => 'Caja inválida.']);
+        }
+        $caja = $this->cajasModel->find($caja_id);
+        if (!$caja) {
+            $this->json(['success' => false, 'message' => 'Caja no encontrada.']);
+        }
+        $sesion = $this->sesionesModel->find((int) $caja['sesion_id']);
+        if (!$sesion || $sesion['estado'] === 'cerrado') {
+            $this->json(['success' => false, 'message' => 'La sesión está cerrada; no se puede reasignar.']);
+        }
+
+        $asignado_nombre = null;
+        if ($user_id !== null) {
+            $capturistas = $this->usuariosModel->get_users_by_permission(self::PERM_AUDITOR, false);
+            foreach ($capturistas as $u) {
+                if ((int) $u['Id'] === $user_id) {
+                    $asignado_nombre = $u['Nombre'];
+                    break;
+                }
+            }
+            if ($asignado_nombre === null) {
+                $this->json(['success' => false, 'message' => 'El usuario no tiene el permiso de captura de arqueos.']);
+            }
+        }
+
+        // Nombre del asignado anterior (para auditoría)
+        $anterior_id     = isset($caja['asignado_user_id']) ? (int) $caja['asignado_user_id'] : 0;
+        $anterior_nombre = $anterior_id > 0 ? $this->sql_nombre_usuario($anterior_id) : null;
+
+        $ok = $this->cajasModel->asignar($caja_id, $user_id);
+        if ($ok) {
+            $this->auditLogModel->log(
+                ArqueoAuditLogModel::ACC_ASIGNAR_CAJA,
+                (int) $caja['sesion_id'], $caja_id, (int) $caja['sucursal_id'],
+                $anterior_id > 0 ? ['asignado_user_id' => $anterior_id, 'asignado_nombre' => $anterior_nombre] : null,
+                $user_id !== null ? ['asignado_user_id' => $user_id, 'asignado_nombre' => $asignado_nombre] : null,
+                $this->user_id(), $this->user_name()
+            );
+        }
+        $this->json(['success' => (bool) $ok, 'asignado_nombre' => $asignado_nombre]);
+    }
+
+    /** Nombre de un usuario por Id (para auditoría de reasignaciones). */
+    private function sql_nombre_usuario(int $user_id): ?string
+    {
+        $rows = $this->cajasModel->sql->select(
+            "SELECT Nombre FROM [TG].[dbo].[Usuario] WHERE Id = ?;",
+            [$user_id]
+        );
+        return $rows ? ($rows[0]['Nombre'] ?? null) : null;
     }
 
     /* ===================================================================== */
@@ -319,6 +408,11 @@ class Arqueo
             (new Errors())->get404();
             return;
         }
+        if (!$this->puede_capturar($caja)) {
+            http_response_code(403);
+            echo 'No tienes asignada esta caja. Pide a un administrador que te la asigne.';
+            return;
+        }
         $sesion         = $this->sesionesModel->find((int) $caja['sesion_id']);
         $denominaciones = $this->denominacionesModel->by_caja((int) $caja_id);
         $vales          = $this->valesModel->by_caja((int) $caja_id);
@@ -346,6 +440,9 @@ class Arqueo
         $caja = $this->cajasModel->find((int) $caja_id);
         if (!$caja) {
             $this->json(['success' => false, 'message' => 'Caja no encontrada.']);
+        }
+        if (!$this->puede_capturar($caja)) {
+            $this->json(['success' => false, 'message' => 'No tienes asignada esta caja.']);
         }
         $sesion = $this->sesionesModel->find((int) $caja['sesion_id']);
         if (!$sesion) {
