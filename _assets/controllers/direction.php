@@ -130,6 +130,67 @@ class Direction{
         echo $this->twig->render($this->route . 'tg6/tg6_product.html');
     }
 
+    function valeras() {
+        echo $this->twig->render($this->route . 'tg6/valeras.html');
+    }
+
+    function valeras_table() {
+        $from  = DateTime::createFromFormat('!Y-m-d', $_POST['fromDate'] ?? '');
+        $until = DateTime::createFromFormat('!Y-m-d', $_POST['untilDate'] ?? '');
+        if (!$from || !$until || $from > $until) {
+            echo json_encode(['columns' => [], 'data' => []]);
+            return;
+        }
+
+        $months_in_spanish = [
+            1 => 'Ene', 2 => 'Feb', 3 => 'Mar', 4 => 'Abr', 5 => 'May', 6 => 'Jun',
+            7 => 'Jul', 8 => 'Ago', 9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dic'
+        ];
+
+        // Columnas dinámicas: un mes por cada mes del rango seleccionado
+        $columns = [];
+        $cursor = new DateTime($from->format('Y-m-01'));
+        $end    = new DateTime($until->format('Y-m-01'));
+        while ($cursor <= $end) {
+            $year  = (int)$cursor->format('Y');
+            $month = (int)$cursor->format('n');
+            $columns[] = [
+                'key'   => $year . '_' . $month,
+                'label' => $months_in_spanish[$month] . ' ' . $year
+            ];
+            $cursor->modify('first day of next month');
+        }
+
+        $rows = $this->movimientosTarModel->get_valeras_report(
+            dateToInt($from->format('Y-m-d')),
+            dateToInt($until->format('Y-m-d'))
+        );
+
+        // Pivote: una fila por estación + denominación, respetando el orden del query
+        $data = [];
+        if ($rows) {
+            foreach ($rows as $row) {
+                $key = $row['abr'] . '|' . $row['denominacion'];
+                if (!isset($data[$key])) {
+                    $data[$key] = [
+                        'estacion'     => trim($row['abr']),
+                        'denominacion' => trim($row['denominacion']),
+                        'total'        => 0
+                    ];
+                    foreach ($columns as $col) {
+                        $data[$key][$col['key']] = 0;
+                    }
+                }
+                $colKey = $row['anio'] . '_' . $row['mes'];
+                if (array_key_exists($colKey, $data[$key])) {
+                    $data[$key][$colKey] = (float)$row['total'];
+                }
+                $data[$key]['total'] = round($data[$key]['total'] + (float)$row['total'], 2);
+            }
+        }
+        echo json_encode(['columns' => $columns, 'data' => array_values($data)]);
+    }
+
     public function credit_debit_product_table() {
 
         if ($rows = $this->valesr->GetCreditoProduct($_POST['fromDate'], $_POST['untilDate'], $_POST['tipo'])) {

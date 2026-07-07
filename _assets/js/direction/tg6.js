@@ -615,6 +615,131 @@ async function vta_vs_meta_canvas(ctx) {
 }
 
 
+async function valeras_table() {
+    var fromDate = document.getElementById('from').value;
+    var untilDate = document.getElementById('until').value;
+
+    if (!fromDate || !untilDate || fromDate > untilDate) {
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">Por favor, seleccione un rango de fechas válido.</p>
+            </div>`
+        );
+        return;
+    }
+
+    if ($.fn.DataTable.isDataTable('#valeras_table')) {
+        $('#valeras_table').DataTable().destroy();
+    }
+    $('#valeras_table thead tr').empty();
+    $('#valeras_table tfoot tr').empty();
+    $('#valeras_table tbody').empty();
+
+    $('.table-responsive').removeClass('d-none');
+    $('#alert_valeras_table').addClass('d-none');
+    $('#card_table').addClass('loading');
+
+    $.ajax({
+        method: 'POST',
+        url: '/direction/valeras_table',
+        data: { 'fromDate': fromDate, 'untilDate': untilDate },
+        dataType: 'json',
+        timeout: 600000
+    })
+    .done(function (response) {
+        var columns = [
+            { data: 'estacion', title: 'Estación', className: 'text-nowrap' },
+            { data: 'denominacion', title: 'Denominación', className: 'text-nowrap' }
+        ];
+        response.columns.forEach(function (col) {
+            columns.push({
+                data: col.key,
+                title: col.label,
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2)
+            });
+        });
+        columns.push({
+            data: 'total',
+            title: 'Total',
+            className: 'text-end fw-bold',
+            render: $.fn.dataTable.render.number(',', '.', 2)
+        });
+
+        columns.forEach(function (col) {
+            $('#valeras_table thead tr').append('<th>' + col.title + '</th>');
+            $('#valeras_table tfoot tr').append('<th></th>');
+        });
+
+        $('#valeras_table').DataTable({
+            data: response.data,
+            columns: columns,
+            order: [],
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel',
+                    title: 'Valeras_' + fromDate + '_' + untilDate
+                },
+            ],
+            deferRender: true,
+            initComplete: function () {
+                $('#card_table').removeClass('loading');
+                if (!response.data.length) {
+                    alertify.myAlert(
+                        `<div class="container text-center text-danger">
+                            <h4 class="mt-2 text-danger">¡Atención!</h4>
+                        </div>
+                        <div class="text-dark">
+                            <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                        </div>`
+                    );
+                }
+            },
+            footerCallback: function (row, data, start, end, display) {
+                const nf = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2 });
+                var api = this.api();
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ? i : 0;
+                };
+                $(api.column(1).footer()).html('Suma');
+                api.columns().every(function (index) {
+                    if (index > 1) {
+                        var total = api
+                            .column(index, { page: 'current' })
+                            .data()
+                            .reduce(function (a, b) { return intVal(a) + intVal(b); }, 0);
+                        $(api.column(index).footer()).html(nf.format(total.toFixed(2)));
+                    }
+                });
+            }
+        });
+    })
+    .fail(function () {
+        $('#card_table').removeClass('loading');
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+            </div>`
+        );
+    });
+}
+
+
 function downloadExcel() {
     // Mostrar el indicador de carga
     $('.tab-pane').addClass('loading');

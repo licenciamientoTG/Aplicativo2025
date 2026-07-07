@@ -388,6 +388,60 @@ class MovimientosTarModel extends Model{
         return $this->sql->select($query, []) ?: false;
     }
 
+    function get_valeras_report(int $fromInt, int $untilInt) : array|false {
+        $query = "
+            SELECT
+                t2.abr,
+                t13.den AS denominacion,
+                YEAR(DATEADD(DAY, t1.fchtrn - 1, 0))  AS anio,
+                MONTH(DATEADD(DAY, t1.fchtrn - 1, 0)) AS mes,
+                ROUND(SUM(t1.can), 2) AS total
+            FROM [SG12].[dbo].[Despachos] t1
+            INNER JOIN [SG12].[dbo].[gasolineras] t2 ON t1.codgas = t2.cod
+            INNER JOIN [SG12].[dbo].[Productos] t8 ON t1.codprd = t8.cod
+            INNER JOIN [SG12].[dbo].[MovimientosTar] t12 ON t1.nrotrn = t12.nrotrn AND t1.codgas = t12.codgas AND t12.mto != 0
+            INNER JOIN [SG12].[dbo].[Valores] t13 ON t12.codbco = t13.cod
+            WHERE
+                t1.mto != 0
+                AND t1.fchtrn BETWEEN ? AND ?
+                AND t8.den IS NOT NULL
+                AND NOT EXISTS (
+                    SELECT 1 FROM (VALUES
+                        (' DOLARES'), (' SMARTBT - American Express'), (' SMARTBT - Bancarias'),
+                        (' Tarjetas Bancomer'), (' Tarjetas Santander'), (' Tarjetas Banorte'),
+                        (N'INTERL - Tarjeta de Débito'), (N'INTERL - Tarjeta de Crédito'),
+                        ('MAS QUE GAS'), (' Tarjetas Afirme'), (' Tarjetas American Express'),
+                        (' Banorte Payworks'), ('Promociones MKT'), ('Raspaditos'),
+                        (' SMARTBT - MANUAL Bancarias')
+                    ) AS excl(den)
+                    WHERE excl.den = t13.den
+                )
+            GROUP BY
+                t2.abr, t13.den,
+                YEAR(DATEADD(DAY, t1.fchtrn - 1, 0)),
+                MONTH(DATEADD(DAY, t1.fchtrn - 1, 0))
+            ORDER BY
+                t2.abr,
+                CASE t13.den
+                    WHEN ' SMARTBT - SODEXO WIZEO' THEN 1
+                    WHEN ' Vale Efectivale' THEN 2
+                    WHEN ' Tarjeta Inburgas' THEN 3
+                    WHEN ' Vale Sodexo' THEN 4
+                    WHEN ' Vale Edenred' THEN 5
+                    WHEN ' SMARTBT - EFECTIVALE' THEN 6
+                    WHEN ' Tarjeta EfectiCard' THEN 7
+                    WHEN 'Ultra Gas' THEN 8
+                    WHEN ' Tarjetas Sodexo (Pluxee)' THEN 9
+                    WHEN 'Mobil FleetPro' THEN 10
+                    WHEN ' Tarjeta TicketCar' THEN 11
+                    ELSE 12
+                END,
+                anio, mes
+            OPTION (RECOMPILE);
+        ";
+        return $this->sql->select($query, [$fromInt, $untilInt]) ?: false;
+    }
+
     function monthly_dollar_sales_report_table(){
         $query = "SELECT * FROM [TG].[dbo].VTGPivotDolaresMontos ORDER BY estacion, año;";
         return $this->sql->select($query, []) ?: false;
