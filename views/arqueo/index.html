@@ -144,9 +144,16 @@
                                 <i class="fas fa-cash-register"></i> Cajas
                             </a>
                             {% endif %}
+                            {% if es_admin %}
                             <a href="/arqueo/concentrado/{{ s.id }}" class="btn btn-sm btn-outline-secondary" title="Concentrado de la sesión">
                                 <i class="fas fa-table"></i> Concentrado
                             </a>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="Concentrado de la sesión"
+                                    onclick="alertify.error('Solo los administradores pueden ver el concentrado.')">
+                                <i class="fas fa-table"></i> Concentrado
+                            </button>
+                            {% endif %}
                             {% if es_admin %}
                                 {% if s.estado == 'programado' %}
                                 <button class="btn btn-sm btn-success" onclick="abrirSesion({{ s.id }})" title="Abrir arqueo">
