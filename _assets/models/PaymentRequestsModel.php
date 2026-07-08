@@ -279,7 +279,17 @@ class PaymentRequestsModel extends Model
                 t1.scheduled_payment_date,
                 t1.status,
                 t1.comment,
+                t1.tipo,
+                ISNULL(t1.monto_total, 0) AS monto_total,
                 t3.Nombre AS usuario_nombre,
+                -- Pagado de anticipos: transacciones directas del request, sin factura
+                ISNULL((
+                    SELECT SUM(pt.payment_amount)
+                    FROM [TG].[dbo].[payment_transactions] pt
+                    WHERE pt.payment_request_id = t1.id
+                      AND pt.invoice_id IS NULL
+                      AND pt.status IN (1, 2)
+                ), 0) AS anticipo_paid,
                 -- Resumen de facturas
                 ISNULL(t2.total_invoices, 0) AS total_invoices,
                 ISNULL(t2.total_amount, 0)   AS total_amount,

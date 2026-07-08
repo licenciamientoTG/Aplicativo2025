@@ -1203,9 +1203,11 @@ class Payment
                     ? '<span style="display:inline-block;font-size:.6rem;font-weight:700;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:0 4px;margin-left:4px;vertical-align:middle;letter-spacing:.03em;">ANT</span>'
                     : '';
 
-                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas
+                // Para anticipos: monto_total es el monto del anticipo, no suma de facturas,
+                // y lo pagado viene de transacciones sin factura (anticipo_paid)
                 $montoAnticipo = $esAnticipo ? floatval($row['monto_total'] ?? 0) : $totalFacturas;
                 $montoNetoFinal = $esAnticipo ? $montoAnticipo : $montoNeto;
+                $totalPagado = $esAnticipo ? floatval($row['anticipo_paid'] ?? 0) : floatval($row['total_paid']);
 
                 $data[] = [
                     'id'             => $row['id'] . $pdfDot . $anticipoBadge,
@@ -1221,7 +1223,7 @@ class Payment
                     'total_notas_credito' => $esAnticipo ? 0 : $totalNC,
                     'total_notas_cargo'   => $esAnticipo ? 0 : $totalND,
                     'monto_neto'     => '$' . number_format($montoNetoFinal, 2),
-                    'total_paid'     => '$' . number_format($row['total_paid'], 2),
+                    'total_paid'     => '$' . number_format($totalPagado, 2),
                     'authorized_invoices_count' => $esAnticipo ? '—' : $row['authorized_invoices_count'],
                     'authorized_amount_total' => $esAnticipo ? '—' : '$' . number_format($row['authorized_amount_total'], 2),
                     'status'         => $statusBadge,
@@ -5771,6 +5773,8 @@ class Payment
             json_output(['success' => false, 'message' => 'Anticipo no encontrado']);
             return;
         }
+        // Comprobantes del pago del anticipo (para mostrarlos en el panel expandible)
+        $summary['comprobantes'] = $this->PaymentTransactionDocumentsModel->get_by_anticipo((int)$anticipo_id);
         json_output(['success' => true, 'data' => $summary]);
     }
 

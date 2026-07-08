@@ -1780,6 +1780,23 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
         if (resp && resp.success) {
           var d = resp.data;
           var fmt = function(v) { return '$' + parseFloat(v||0).toLocaleString('es-MX', {minimumFractionDigits:2}); };
+
+          // Si el anticipo ya se pagó, mostrar el/los comprobantes en lugar de "Ver detalle"
+          // (el detalle sigue accesible con el botón del ojo en la columna de acciones)
+          var accion;
+          if (d.comprobantes && d.comprobantes.length > 0) {
+            accion = d.comprobantes.map(function(c) {
+              var nombre = (c.original_filename || "Comprobante de pago").replace(/'/g, "");
+              return "<button type='button' class='btn btn-sm' style='background:#ecfdf5;color:#059669;border:1px solid #a7f3d0;border-radius:4px;font-size:.75rem;' " +
+                "title='" + nombre + "' " +
+                "onclick=\"window.open('/payment/view_payment_document/" + c.doc_id + "', '_blank')\">" +
+                "<i class='fas fa-receipt me-1'></i>Comprobante</button>";
+            }).join(" ");
+            accion = "<span class='ms-auto d-flex gap-1'>" + accion + "</span>";
+          } else {
+            accion = "<a href='/payment/anticipo_detail/" + paymentId + "' class='btn btn-sm ms-auto' style='background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:.75rem;'><i class='fas fa-eye me-1'></i>Ver detalle</a>";
+          }
+
           var html =
             "<div class='p-3' style='background:#fffbeb;border-top:2px solid #fcd34d;'>" +
             "<div class='d-flex flex-wrap gap-4 align-items-center'>" +
@@ -1788,7 +1805,7 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
             "<span style='font-size:.8rem;color:#334155;'><strong>Aplicado:</strong> <span class='text-danger'>" + fmt(d.total_aplicado) + "</span></span>" +
             "<span style='font-size:.8rem;color:#334155;'><strong>Saldo disponible:</strong> <span class='fw-bold text-success'>" + fmt(d.saldo_disponible) + "</span></span>" +
             "<span style='font-size:.8rem;color:#64748b;'><i class='fas fa-layer-group me-1'></i>" + (d.total_aplicaciones || 0) + " aplicación(es)</span>" +
-            "<a href='/payment/anticipo_detail/" + paymentId + "' class='btn btn-sm ms-auto' style='background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:.75rem;'><i class='fas fa-eye me-1'></i>Ver detalle</a>" +
+            accion +
             "</div></div>";
           row.child(html).show();
         } else {
