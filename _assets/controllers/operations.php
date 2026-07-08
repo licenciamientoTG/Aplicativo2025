@@ -1284,18 +1284,35 @@ class Operations{
     }
 
     /**
+     * Un corte es válido para marcar despachos si su fecha es la fecha actual,
+     * o si se trata del turno 4 (41) del día anterior, ya que ese turno cruza
+     * la medianoche y sigue operando dentro del día en curso.
+     * @param string $fechaTabular
+     * @param $turno
+     * @return bool
+     */
+    private function is_valid_dispatch_date(string $fechaTabular, $turno) : bool {
+        $fechaTabularInt = dateToInt($fechaTabular);
+        if ($fechaTabularInt === dateToInt(date('Y-m-d'))) {
+            return true;
+        }
+        $ayerInt = dateToInt(date('Y-m-d', strtotime('-1 day')));
+        return $fechaTabularInt === $ayerInt && intval($turno) === 41;
+    }
+
+    /**
      * @param $tabId
      * @return void
      * @throws Exception
      */
     function markDispatchesModal($tabId) : void {
         $tabular = $this->tabulatorModel->get_tabulator($tabId);
-        $is_today = dateToInt($tabular['FechaTabular']) === dateToInt(date('Y-m-d'));
+        $can_mark_dispatches = $this->is_valid_dispatch_date($tabular['FechaTabular'], $tabular['Turno']);
         $modal = [
             "title"    => "Marcación de despachos",
             "size"     => "modal-sm",
             "position" => "modal-dialog-centered",
-            "content"  => $this->twig->render($this->route . 'modals/markDispatchesModal.html', compact('tabular', 'is_today'))
+            "content"  => $this->twig->render($this->route . 'modals/markDispatchesModal.html', compact('tabular', 'can_mark_dispatches'))
         ];
         json_output($modal);
     }
@@ -1378,8 +1395,9 @@ class Operations{
         // Obtenemos la informacion del tabular
         $tabular = $this->tabulatorModel->get_tabulator($_POST['tabularId']);
 
-        // No se permite marcar despachos si la fecha del corte no es la fecha actual
-        if (dateToInt($tabular['FechaTabular']) !== dateToInt(date('Y-m-d'))) {
+        // No se permite marcar despachos si la fecha del corte no es la fecha actual,
+        // salvo que sea el turno 4 (41) del día anterior (turno nocturno).
+        if (!$this->is_valid_dispatch_date($tabular['FechaTabular'], $tabular['Turno'])) {
             setFlashMessage('error', 'No es posible marcar despachos de un corte con fecha distinta a la actual.');
             redirect("/operations/tab_process/{$_POST['tabularId']}");
         }
