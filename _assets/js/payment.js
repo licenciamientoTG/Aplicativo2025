@@ -1337,7 +1337,6 @@ function addColumnFilters(tableId, api) {
 
 function loadPaymentList() {
   // Conservar el valor de los filtros entre reconstrucciones de la tabla
-  const pdfStatusPrevValue = $("#pdf_status_filter").val() || "";
   const statusFilterPrevValue = $("#payment_status_filter").val() || "";
 
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
@@ -1346,7 +1345,6 @@ function loadPaymentList() {
   }
   // Los selects de filtro y el botón de refrescar se inyectan dinámicamente en
   // initComplete; quitar los anteriores para que no se dupliquen al reconstruir.
-  $("#pdf_status_filter").remove();
   $("#payment_status_filter").remove();
   $("#payment_list_refresh_btn").remove();
 
@@ -1463,12 +1461,14 @@ function loadPaymentList() {
             totalInvoices > 0 ? Math.round((count / totalInvoices) * 100) : 0;
 
           // Aunque todas las facturas estén marcadas como autorizadas (100% por
-          // conteo), el monto autorizado puede ser menor al monto total si alguna
-          // factura fue autorizada por un pago parcial: comparamos montos también
-          // (se refleja en la columna "Faltante" de al lado, no aquí).
-          var rawTotal = (row.total_amount || "0").toString().replace(/[$,]/g, "");
-          var totalAmount = parseFloat(rawTotal) || 0;
-          var montoCompleto = totalAmount > 0 && authorized_amount_total >= totalAmount - 0.01;
+          // conteo), el monto autorizado puede ser menor al monto NETO (total -
+          // NC + ND) si alguna factura fue autorizada por un pago parcial:
+          // comparamos contra el neto, no el bruto, para no marcar como
+          // incompleto algo que ya está saldado por nota de crédito (se
+          // refleja en la columna "Faltante" de al lado, no aquí).
+          var rawNeto = (row.monto_neto || "0").toString().replace(/[$,]/g, "");
+          var montoNeto = parseFloat(rawNeto) || 0;
+          var montoCompleto = montoNeto > 0 && authorized_amount_total >= montoNeto - 0.01;
 
           let badgeColor = "bg-warning";
           let icon = "fa-check-circle";
@@ -1502,9 +1502,13 @@ function loadPaymentList() {
           }
           var rawAuth = (row.authorized_amount_total || "0").toString().replace(/[$,]/g, "");
           var authorizedTotal = parseFloat(rawAuth) || 0;
-          var rawTotal = (row.total_amount || "0").toString().replace(/[$,]/g, "");
-          var totalAmount = parseFloat(rawTotal) || 0;
-          var faltante = totalAmount - authorizedTotal;
+          // Comparar contra el monto NETO (total_amount - NC + ND), no el bruto:
+          // una factura ya saldada por nota de crédito no debe contar como
+          // "falta autorizar" solo porque authorized_amount quedó por debajo
+          // del monto bruto de la factura.
+          var rawNeto = (row.monto_neto || "0").toString().replace(/[$,]/g, "");
+          var montoNeto = parseFloat(rawNeto) || 0;
+          var faltante = montoNeto - authorizedTotal;
 
           if (faltante <= 0.01) {
             return '<span class="text-muted" style="font-size:.8rem;">$0.00</span>';
@@ -1540,25 +1544,6 @@ function loadPaymentList() {
     },
     initComplete: function () {
       var api = this.api();
-
-      // Select de filtro por estado de PDF junto a los botones de DataTables
-      // (se quita en loadPaymentList() antes de reconstruir la tabla para no duplicarlo)
-      var pdfColIdx = api.column('pdf_status:name').index();
-      var $select = $(
-        '<select id="pdf_status_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por PDF">' +
-        '<option value="">🔵 Todos</option>' +
-        '<option value="complete">🟢 Completos</option>' +
-        '<option value="missing">🔴 Incompletos</option>' +
-        '</select>'
-      );
-      $select.val(pdfStatusPrevValue);
-      $(".dt-buttons").append($select);
-      if (pdfStatusPrevValue) {
-        api.column(pdfColIdx).search(pdfStatusPrevValue);
-      }
-      $select.on("change", function () {
-        api.column(pdfColIdx).search(this.value).draw();
-      });
 
       // Select de filtro por columna "Estado" (Pendiente/Autorizado/Pagado/Cancelado)
       // junto al filtro de PDF. Busca el texto del badge ya renderizado en la celda.

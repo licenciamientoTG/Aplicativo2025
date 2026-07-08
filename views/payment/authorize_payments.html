@@ -32,7 +32,16 @@
     .apf-kpi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #64748b; }
     .apf-kpi-value { font-size: 1.4rem; font-weight: 700; margin: .2rem 0 0; }
 
-    .apf-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: .8rem; padding: .85rem 1.1rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); position: sticky; top: 0; z-index: 10; }
+    /* Los KPIs de resumen (Seleccionadas, Monto a Autorizar, etc.) y el toolbar
+       de acciones quedan fijos al hacer scroll, para no perder de vista la
+       selección actual mientras se revisan facturas más abajo en la tabla.
+       El layout base (.main) tiene overflow:hidden, lo que rompe position:sticky
+       para cualquier descendiente — por eso el "pin" se hace con JS agregando
+       la clase .is-pinned (position: fixed) en vez de depender de sticky puro. */
+    .apf-kpi-sticky { background: #f8fafc; padding-top: .5rem; margin-top: -.5rem; z-index: 11; }
+    .apf-kpi-sticky.is-pinned { position: fixed; top: 0; z-index: 11; }
+    .apf-toolbar { background: #fff; border: 1px solid #e2e8f0; border-radius: .8rem; padding: .85rem 1.1rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); z-index: 10; }
+    .apf-toolbar.is-pinned { position: fixed; z-index: 10; }
     .apf-btn-toggle { display: inline-flex; align-items: center; gap: .4rem; padding: .45rem 1rem; font-size: .85rem; font-weight: 500; color: #374151; background: #fff; border: 1px solid #cbd5e1; border-radius: .6rem; transition: background .15s; }
     .apf-btn-toggle:hover { background: #f8fafc; }
     .apf-search { position: relative; min-width: 280px; }
@@ -90,7 +99,7 @@
         </div>
 
         <!-- Resumen -->
-        <div class="row mb-4 g-3">
+        <div class="row mb-4 g-3 apf-kpi-sticky">
             <div class="col-6 col-md-4 col-lg-2">
                 <div class="apf-kpi">
                     <div class="apf-kpi-label">Monto Facturas</div>
@@ -236,6 +245,104 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         cargarFacturasPagoMasivo();
+
+        // El bloque de KPIs y el toolbar deben quedar visibles al hacer scroll.
+        // El layout base (.main, en app.css) tiene overflow:hidden, lo que anula
+        // position:sticky para cualquier descendiente (rompe el "viewport" de
+        // sticky aunque el scroll visible ocurra en <main class="content">).
+        // Por eso se implementa el pin a mano: al hacer scroll, si el bloque de
+        // KPIs ya pasó su posición original, se fija con position:fixed y se
+        // inserta un placeholder de la misma altura para no saltar el layout.
+        var kpiRow = document.querySelector('.apf-kpi-sticky');
+        var toolbar = document.querySelector('.apf-toolbar');
+        if (!kpiRow || !toolbar) return;
+
+        // El scroll real ocurre en la ventana: <main class="content"> no tiene
+        // overflow-y propio, solo su ancestro .main tiene overflow:hidden (que
+        // es lo que invalida position:sticky, sin convertir a .content en el
+        // contenedor de scroll).
+        var scrollContainer = window;
+
+        var kpiPlaceholder = document.createElement('div');
+        kpiPlaceholder.style.display = 'none';
+        kpiRow.parentNode.insertBefore(kpiPlaceholder, kpiRow);
+
+        var toolbarPlaceholder = document.createElement('div');
+        toolbarPlaceholder.style.display = 'none';
+        toolbar.parentNode.insertBefore(toolbarPlaceholder, toolbar);
+
+        var kpiOffsetTop = null;
+        var pinned = false;
+
+        function medirOffsets() {
+            // Solo remedir cuando NO está fijo, para no medir la propia posición fixed.
+            if (pinned) return;
+            var rect = kpiRow.getBoundingClientRect();
+            var scrollY = scrollContainer === window ? window.scrollY : scrollContainer.scrollTop;
+            kpiOffsetTop = rect.top + scrollY;
+        }
+
+        function actualizarFixedWidthAndLeft() {
+            var rect = kpiPlaceholder.getBoundingClientRect();
+            kpiRow.style.left = rect.left + 'px';
+            kpiRow.style.width = rect.width + 'px';
+            toolbar.style.left = rect.left + 'px';
+            toolbar.style.width = rect.width + 'px';
+        }
+
+        function fijar() {
+            if (pinned) return;
+            pinned = true;
+            var kpiHeight = kpiRow.offsetHeight;
+            var toolbarHeight = toolbar.offsetHeight;
+            kpiPlaceholder.style.display = 'block';
+            kpiPlaceholder.style.height = kpiHeight + 'px';
+            toolbarPlaceholder.style.display = 'block';
+            toolbarPlaceholder.style.height = toolbarHeight + 'px';
+            actualizarFixedWidthAndLeft();
+            kpiRow.classList.add('is-pinned');
+            toolbar.classList.add('is-pinned');
+            toolbar.style.top = kpiHeight + 'px';
+        }
+
+        function soltar() {
+            if (!pinned) return;
+            pinned = false;
+            kpiRow.classList.remove('is-pinned');
+            toolbar.classList.remove('is-pinned');
+            kpiRow.style.left = '';
+            kpiRow.style.width = '';
+            toolbar.style.left = '';
+            toolbar.style.width = '';
+            toolbar.style.top = '';
+            kpiPlaceholder.style.display = 'none';
+            toolbarPlaceholder.style.display = 'none';
+        }
+
+        function onScroll() {
+            var scrollY = scrollContainer === window ? window.scrollY : scrollContainer.scrollTop;
+            if (kpiOffsetTop === null) medirOffsets();
+            if (scrollY >= kpiOffsetTop) {
+                fijar();
+            } else {
+                soltar();
+            }
+        }
+
+        medirOffsets();
+        scrollContainer.addEventListener('scroll', onScroll);
+        window.addEventListener('resize', function () {
+            if (pinned) {
+                actualizarFixedWidthAndLeft();
+            } else {
+                medirOffsets();
+            }
+        });
+        if (window.ResizeObserver) {
+            new ResizeObserver(function () {
+                if (pinned) actualizarFixedWidthAndLeft();
+            }).observe(kpiPlaceholder);
+        }
     });
 </script>
 {% endblock %}

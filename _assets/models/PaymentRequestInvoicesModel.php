@@ -295,7 +295,9 @@ class PaymentRequestInvoicesModel extends Model
                     FROM [TG].[dbo].[payment_transactions] t5
                     WHERE t5.invoice_id = t1.id
                 ), 0) as paid_amount,
-                -- Calcular status dinámicamente
+                -- Calcular status dinámicamente, contra el saldo NETO (amount -
+                -- notas de crédito + notas de cargo): una factura saldada por
+                -- nota de crédito debe verse Pagada, no Parcial para siempre.
                 CASE
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
@@ -306,7 +308,22 @@ class PaymentRequestInvoicesModel extends Model
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
-                    ), 0) < t1.amount THEN 3  -- Parcial
+                    ), 0) < (
+                        t1.amount
+                        - ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'CREDIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        + ISNULL((
+                            SELECT SUM(CASE WHEN n.note_type = \'DEBIT\' THEN ca.applied_amount ELSE 0 END)
+                            FROM [TG].[dbo].[credit_note_applications] ca
+                            INNER JOIN [TG].[dbo].[invoice_credit_debit_notes] n ON ca.credit_note_id = n.id
+                            WHERE ca.invoice_id = t1.id AND ca.status = 1
+                        ), 0)
+                        - 0.01
+                    ) THEN 3  -- Parcial
                     ELSE 2  -- Pagado
                 END as status,
                 -- Notas de crédito aplicadas a esta factura

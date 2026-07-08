@@ -848,6 +848,355 @@ async function valeras_base_table() {
     });
 }
 
+async function valeras_conc_table() {
+    var fromDate = document.getElementById('from_conc').value;
+    var untilDate = document.getElementById('until_conc').value;
+    var codgas = document.getElementById('codgas_conc').value;
+
+    if (!valeras_valid_range(fromDate, untilDate)) return;
+
+    if ($.fn.DataTable.isDataTable('#valeras_conc_table')) {
+        $('#valeras_conc_table').DataTable().destroy();
+    }
+    $('#valeras_conc_table thead tr').empty();
+    $('#valeras_conc_table tfoot tr').empty();
+    $('#valeras_conc_table tbody').empty();
+
+    $('#card_table_conc .table-responsive').removeClass('d-none');
+    $('#alert_valeras_conc_table').addClass('d-none');
+    $('#card_table_conc').addClass('loading');
+    $('#search_valeras_conc_table').prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Consultando...');
+
+    $.ajax({
+        method: 'POST',
+        url: '/direction/valeras_table',
+        data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
+        dataType: 'json',
+        timeout: 600000
+    })
+    .done(function (response) {
+        // Concentrar por valera: sumar todas las estaciones en cada mes y en el total
+        var round2 = function (n) { return Math.round(n * 100) / 100; };
+        var conc = {};
+        var order = []; // conserva el orden de aparición (orden custom del query)
+        response.data.forEach(function (row) {
+            if (!conc[row.denominacion]) {
+                order.push(row.denominacion);
+                conc[row.denominacion] = { denominacion: row.denominacion, total: 0 };
+                response.columns.forEach(function (col) {
+                    conc[row.denominacion][col.key] = 0;
+                });
+            }
+            response.columns.forEach(function (col) {
+                conc[row.denominacion][col.key] = round2(conc[row.denominacion][col.key] + (row[col.key] || 0));
+            });
+            conc[row.denominacion].total = round2(conc[row.denominacion].total + row.total);
+        });
+        var data = order.map(function (den) { return conc[den]; });
+
+        var columns = [
+            { data: 'denominacion', title: 'Denominación', className: 'text-nowrap' }
+        ];
+        response.columns.forEach(function (col) {
+            columns.push({
+                data: col.key,
+                title: col.label,
+                className: 'text-end',
+                render: $.fn.dataTable.render.number(',', '.', 2)
+            });
+        });
+        columns.push({
+            data: 'total',
+            title: 'Total',
+            className: 'text-end fw-bold',
+            render: $.fn.dataTable.render.number(',', '.', 2)
+        });
+
+        columns.forEach(function (col) {
+            $('#valeras_conc_table thead tr').append('<th>' + col.title + '</th>');
+            $('#valeras_conc_table tfoot tr').append('<th></th>');
+        });
+
+        $('#valeras_conc_table').DataTable({
+            data: data,
+            columns: columns,
+            order: [],
+            scrollY: '700px',
+            scrollX: true,
+            scrollCollapse: true,
+            paging: false,
+            dom: '<"top"Bf>rt<"bottom"lip>',
+            buttons: [
+                {
+                    extend: 'excel',
+                    className: 'btn btn-success',
+                    text: ' Excel',
+                    title: 'Valeras_Concentrado_' + fromDate + '_' + untilDate
+                },
+            ],
+            deferRender: true,
+            initComplete: function () {
+                $('#card_table_conc').removeClass('loading');
+            },
+            footerCallback: function (row, data, start, end, display) {
+                const nf = new Intl.NumberFormat("es-MX", { minimumFractionDigits: 2 });
+                var api = this.api();
+                var intVal = function (i) {
+                    return typeof i === 'string' ?
+                        i.replace(/[\$,]/g, '') * 1 :
+                        typeof i === 'number' ? i : 0;
+                };
+                $(api.column(0).footer()).html('Suma');
+                api.columns().every(function (index) {
+                    if (index > 0) {
+                        var total = api
+                            .column(index, { page: 'current' })
+                            .data()
+                            .reduce(function (a, b) { return intVal(a) + intVal(b); }, 0);
+                        $(api.column(index).footer()).html(nf.format(total.toFixed(2)));
+                    }
+                });
+            }
+        });
+
+        if (!data.length) {
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Atención!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+        }
+    })
+    .fail(function () {
+        $('#card_table_conc').removeClass('loading');
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+            </div>`
+        );
+    })
+    .always(function () {
+        $('#search_valeras_conc_table').prop('disabled', false).html('Generar Reporte');
+    });
+}
+
+
+// Instancias de las gráficas de valeras (para destruirlas al re-consultar)
+var valeras_chart_stations = null;
+var valeras_chart_totals = null;
+// Datos agregados de la última consulta, para redibujar al filtrar sin volver a consultar
+var valeras_graph_cache = null;
+
+var VALERAS_CHART_COLORS = [
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
+    '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#3959a8', '#cc6600'
+];
+
+async function valeras_graph() {
+    var fromDate = document.getElementById('from_graph').value;
+    var untilDate = document.getElementById('until_graph').value;
+    var codgas = document.getElementById('codgas_graph').value;
+
+    if (!valeras_valid_range(fromDate, untilDate)) return;
+
+    $('#alert_valeras_graph').addClass('d-none');
+    $('#card_graph').addClass('loading');
+    $('#search_valeras_graph').prop('disabled', true)
+        .html('<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Consultando...');
+
+    $.ajax({
+        method: 'POST',
+        url: '/direction/valeras_table',
+        data: { 'fromDate': fromDate, 'untilDate': untilDate, 'codgas': codgas },
+        dataType: 'json',
+        timeout: 600000
+    })
+    .done(function (response) {
+        $('#card_graph').removeClass('loading');
+
+        if (!response.data.length) {
+            $('#charts_valeras').addClass('d-none');
+            alertify.myAlert(
+                `<div class="container text-center text-danger">
+                    <h4 class="mt-2 text-danger">¡Atención!</h4>
+                </div>
+                <div class="text-dark">
+                    <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+                </div>`
+            );
+            return;
+        }
+
+        // Cada fila de response.data ya trae el total del rango por estación + valera
+        var stations = [];
+        var valeras = [];
+        var byValeraStation = {}; // denominación -> { estación: litros }
+        response.data.forEach(function (row) {
+            if (stations.indexOf(row.estacion) === -1) stations.push(row.estacion);
+            if (valeras.indexOf(row.denominacion) === -1) valeras.push(row.denominacion);
+            if (!byValeraStation[row.denominacion]) byValeraStation[row.denominacion] = {};
+            byValeraStation[row.denominacion][row.estacion] =
+                (byValeraStation[row.denominacion][row.estacion] || 0) + row.total;
+        });
+
+        valeras_graph_cache = {
+            stations: stations,
+            valeras: valeras,
+            byValeraStation: byValeraStation,
+            fromDate: fromDate,
+            untilDate: untilDate
+        };
+
+        // Poblar los filtros de la gráfica con todo seleccionado
+        var $stationsSelect = $('#graph_filter_stations').empty();
+        stations.forEach(function (est) {
+            $stationsSelect.append(new Option(est, est, true, true));
+        });
+        var $valerasSelect = $('#graph_filter_valeras').empty();
+        valeras.forEach(function (den) {
+            $valerasSelect.append(new Option(den, den, true, true));
+        });
+        $stationsSelect.selectpicker('refresh');
+        $valerasSelect.selectpicker('refresh');
+
+        // Mostrar el contenedor ANTES de crear las gráficas para que el canvas tenga dimensiones
+        $('#charts_valeras').removeClass('d-none');
+
+        render_valeras_charts();
+    })
+    .fail(function () {
+        $('#card_graph').removeClass('loading');
+        alertify.myAlert(
+            `<div class="container text-center text-danger">
+                <h4 class="mt-2 text-danger">¡Error!</h4>
+            </div>
+            <div class="text-dark">
+                <p class="text-center">No existen registros con los parametros dados. Intentelo nuevamente.</p>
+            </div>`
+        );
+    })
+    .always(function () {
+        $('#search_valeras_graph').prop('disabled', false).html('Generar Gráfica');
+    });
+}
+
+// Dibuja ambas gráficas respetando las estaciones y valeras seleccionadas en los filtros
+function render_valeras_charts() {
+    if (!valeras_graph_cache) return;
+
+    var cache = valeras_graph_cache;
+    var selStations = $('#graph_filter_stations').val() || [];
+    var selValeras = $('#graph_filter_valeras').val() || [];
+
+    // Conservar el orden original de la consulta
+    var stations = cache.stations.filter(function (est) { return selStations.indexOf(est) !== -1; });
+    var valeras = cache.valeras.filter(function (den) { return selValeras.indexOf(den) !== -1; });
+
+    var round2 = function (n) { return Math.round(n * 100) / 100; };
+    var fmt = function (n) {
+        return Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+    // Mismo color por valera en ambas gráficas, estable aunque se filtren
+    var colorFor = function (den) {
+        return VALERAS_CHART_COLORS[cache.valeras.indexOf(den) % VALERAS_CHART_COLORS.length];
+    };
+
+    // Gráfica 1: barras agrupadas — litros por estación, un dataset por valera
+    var datasets = valeras.map(function (den) {
+        var color = colorFor(den);
+        return {
+            label: den,
+            data: stations.map(function (est) {
+                return round2(cache.byValeraStation[den][est] || 0);
+            }),
+            backgroundColor: color,
+            borderColor: color,
+            borderWidth: 1
+        };
+    });
+
+    if (valeras_chart_stations) valeras_chart_stations.destroy();
+    valeras_chart_stations = new Chart(document.getElementById('valeras_stations_canvas'), {
+        type: 'bar',
+        data: { labels: stations, datasets: datasets },
+        options: {
+            responsive: true,
+            title: {
+                display: true,
+                fontSize: 16,
+                text: 'Litros por estación y valera (' + cache.fromDate + ' a ' + cache.untilDate + ')'
+            },
+            legend: { position: 'bottom' },
+            scales: {
+                xAxes: [{ ticks: { autoSkip: false } }],
+                yAxes: [{
+                    ticks: {
+                        beginAtZero: true,
+                        callback: function (value) { return value.toLocaleString('es-MX'); }
+                    }
+                }]
+            },
+            tooltips: {
+                callbacks: {
+                    label: function (tooltipItem, data) {
+                        var label = data.datasets[tooltipItem.datasetIndex].label || '';
+                        return label + ': ' + fmt(tooltipItem.yLabel) + ' lts';
+                    }
+                }
+            }
+        }
+    });
+
+    // Gráfica 2: total de litros por valera, sumando solo las estaciones seleccionadas
+    var byValera = {};
+    valeras.forEach(function (den) {
+        byValera[den] = stations.reduce(function (sum, est) {
+            return sum + (cache.byValeraStation[den][est] || 0);
+        }, 0);
+    });
+    var valerasSorted = valeras.slice().sort(function (a, b) { return byValera[b] - byValera[a]; });
+
+    if (valeras_chart_totals) valeras_chart_totals.destroy();
+    valeras_chart_totals = new Chart(document.getElementById('valeras_totals_canvas'), {
+        type: 'horizontalBar',
+        data: {
+            labels: valerasSorted,
+            datasets: [{
+                label: 'Litros',
+                data: valerasSorted.map(function (den) { return round2(byValera[den]); }),
+                backgroundColor: valerasSorted.map(colorFor)
+            }]
+        },
+        options: {
+            responsive: true,
+            title: { display: true, fontSize: 16, text: 'Total de litros por valera' },
+            legend: { display: false },
+            scales: {
+                xAxes: [{
+                    ticks: {
+                        beginAtZero: true,
+                        callback: function (value) { return value.toLocaleString('es-MX'); }
+                    }
+                }]
+            },
+            tooltips: {
+                callbacks: {
+                    label: function (tooltipItem) {
+                        return fmt(tooltipItem.xLabel) + ' lts';
+                    }
+                }
+            }
+        }
+    });
+}
+
 
 function downloadExcel() {
     // Mostrar el indicador de carga
