@@ -2620,6 +2620,13 @@ function renderPaymentItems() {
     const noteBtn = typeof openAssignNoteModal === "function"
       ? `<button type="button" class="btn btn-xs btn-outline-light ms-1" style="font-size:0.7rem;padding:1px 5px;" onclick="openAssignNoteModal('${tempKey}')" title="Asignar nota"><i class="fas fa-tag"></i></button>`
       : "";
+    // Factura con anticipo parcial aplicado: mostrar el descuento y lo que resta por pagar
+    const anticipoHtml = item.anticipo_parcial == 1
+      ? `<small class="d-block" style="color:#fcd34d;">
+           <i class="fas fa-hand-holding-usd"></i> Anticipo: −$${(parseFloat(item.anticipo_aplicado) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+           · a pagar $${(parseFloat(item.monto_restante) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+         </small>`
+      : "";
     html += `
             <li class="list-group-item payment-item d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1">
@@ -2630,6 +2637,7 @@ function renderPaymentItems() {
                     <small class="d-block">Factura: ${item.Factura || "N/A"} | Remisión: ${item.Remision || "N/A"}</small>
                     <small class="d-block">Proveedor: ${item.proveedor}</small>
                     <small class="d-block text-light">Fecha: ${item.fecha}</small>
+                    ${anticipoHtml}
                     ${notesHtml}
                 </div>
                 <div class="d-flex flex-column align-items-center ms-2 gap-1">
@@ -2662,10 +2670,14 @@ function removeFromPayment(index) {
 function updatePaymentSummary() {
   const totalDocs = paymentItems.length;
   let totalAmount = 0;
+  let totalAnticipos = 0;
 
   paymentItems.forEach((item) => {
     const amount = parseFloat(item.total_mostrar != null ? item.total_mostrar : item.total_fac) || 0;
     totalAmount += amount;
+    if (item.anticipo_parcial == 1) {
+      totalAnticipos += parseFloat(item.anticipo_aplicado) || 0;
+    }
   });
 
   // Actualizar contador en el header
@@ -2676,6 +2688,20 @@ function updatePaymentSummary() {
   $("#total-amount").text(
     `$${totalAmount.toLocaleString("es-MX", { minimumFractionDigits: 2 })}`,
   );
+
+  // Descuento por anticipos aplicados a las facturas del carrito
+  if (totalAnticipos > 0) {
+    const neto = totalAmount - totalAnticipos;
+    if ($("#anticipos-resumen").length === 0) {
+      $("#payment-summary .row").after('<div id="anticipos-resumen" class="mt-2 text-end" style="font-size:.78rem;"></div>');
+    }
+    $("#anticipos-resumen").html(
+      `<span class="text-white-50">Anticipos aplicados: </span><strong style="color:#fcd34d;">−$${totalAnticipos.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong><br>` +
+      `<span class="text-white-50">A pagar: </span><strong class="text-white" style="font-size:.95rem;">$${neto.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong>`
+    );
+  } else {
+    $("#anticipos-resumen").remove();
+  }
   // ✅ Mostrar proveedor actual
   if (currentProvider && totalDocs > 0) {
     // Agregar badge de proveedor si no existe
