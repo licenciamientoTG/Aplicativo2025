@@ -19,6 +19,17 @@ let selectedInvoices = new Set();
 let paymentTable = null;
 
 
+// Recarga las tablas afectadas por un pago (pestaña Pagos, Anticipos y
+// facturas autorizadas), sin perder la página actual. Solo toca las que
+// ya estén inicializadas.
+function refreshPaymentTables() {
+  ["#payment_list_table", "#tabla_anticipos", "#tabla_facturas_autorizadas"].forEach(function (sel) {
+    if ($.fn.DataTable.isDataTable(sel)) {
+      $(sel).DataTable().ajax.reload(null, false);
+    }
+  });
+}
+
 async function payment_create_table() {
   var fromDate = document.getElementById("from1").value;
   var untilDate = document.getElementById("until1").value;
@@ -5299,10 +5310,8 @@ function desautorizarSeleccionadas() {
                 $("#modalDesgloseFacturas").modal("hide");
               }
 
-              // Refrescar la tabla principal de facturas autorizadas.
-              if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-                $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-              }
+              // Refrescar las tablas afectadas por el pago.
+              refreshPaymentTables();
             } else {
               alertify.error(resp.message || "No se pudo desautorizar");
             }
@@ -5580,9 +5589,7 @@ function ejecutarGeneracionLayoutSantander(invoiceIds, anticipoIds) {
         anticipoIds?.length || 0,
       );
 
-      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-      }
+      refreshPaymentTables();
     })
     .catch((error) => {
       console.error("Error:", error);
@@ -6019,9 +6026,7 @@ function guardarRegistroPagoMulti() {
             <ul style="font-size:.85rem;max-height:300px;overflow:auto;">${detalle}</ul>
          </div>`
       );
-      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-      }
+      refreshPaymentTables();
       if ((res.aplicados || 0) > 0) {
         $("#modalRegistroPagoNuevo").modal("hide");
       }
@@ -6095,10 +6100,8 @@ function ejecutarRegistroPago() {
         // Mostrar resumen
         mostrarResumenPagoRegistrado(response);
 
-        // Recargar tabla
-        if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-          $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-        }
+        // Recargar tablas afectadas
+        refreshPaymentTables();
       } else {
         alertify.error(response.message || "Error al registrar pago");
       }
@@ -6301,9 +6304,7 @@ function ejecutarGeneracionLayoutBanorte(invoiceIds, anticipoIds) {
         anticipoIds?.length || 0,
       );
 
-      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-      }
+      refreshPaymentTables();
     })
     .catch((error) => {
       console.error("Error:", error);
@@ -7866,9 +7867,7 @@ function ejecutarConciliacionComprobantes(asignaciones) {
          </div>`
       );
       // Refrescar la tabla de facturas autorizadas (ya no estarán las pagadas)
-      if ($.fn.DataTable.isDataTable("#tabla_facturas_autorizadas")) {
-        $("#tabla_facturas_autorizadas").DataTable().ajax.reload(null, false);
-      }
+      refreshPaymentTables();
       if (res.aplicados > 0) {
         $("#modalComprobantes").modal("hide");
       }
