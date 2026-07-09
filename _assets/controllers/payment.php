@@ -469,6 +469,73 @@ class Payment
     }
 
 
+    /**
+     * Documentos de compra DISPONIBLES (sin orden de pago) del proveedor de un
+     * anticipo, para la página de aplicar anticipo. Misma fuente que
+     * payment_control_table (API estacion_documentos_compra) pero filtrada:
+     * solo documentos con CFDI (satuid) y en_orden_pago = 0.
+     */
+    public function anticipo_documentos_table()
+    {
+        ini_set('max_execution_time', 5000);
+        ini_set('memory_limit', '1024M');
+        set_time_limit(0);
+        header('Content-Type: application/json');
+
+        $anticipo_id = intval($_POST['anticipo_id'] ?? 0);
+        $anticipo = $anticipo_id ? $this->PaymentRequestsModel->get_request_by_id($anticipo_id) : false;
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            json_output(['data' => [], 'error' => 'Anticipo no encontrado']);
+            return;
+        }
+
+        $postData = [
+            'from'      => dateToInt($_POST['fromDate']),
+            'until'     => dateToInt($_POST['untilDate']),
+            'codgas'    => !empty($_POST['codgas']) ? $_POST['codgas'] : '0',
+            'proveedor' => $anticipo['provider_cod'],
+            'company'   => '0'
+        ];
+
+        $ch = curl_init('http://192.168.0.109:82/api/estacion_documentos_compra/');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+        curl_setopt($ch, CURLOPT_POST, true);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        $apiData = json_decode($response, true);
+        $data = [];
+        if (is_array($apiData)) {
+            foreach ($apiData as $row) {
+                // Solo documentos con CFDI y que NO estén ya en una orden de pago
+                if (empty($row['satuid']) || !empty($row['en_orden_pago'])) {
+                    continue;
+                }
+
+                $tieneFacturaRecibida = !empty($row['tiene_factura_recibida']) ? 1 : 0;
+                $totalMostrar = $tieneFacturaRecibida
+                    ? ($row['total_factura_recibida'] ?? $row['total_fac'])
+                    : $row['total_fac'];
+
+                $data[] = [
+                    'nro'                    => $row['nro'],
+                    'Factura'                => $row['Factura'],
+                    'fecha'                  => $row['fecha_emision_efectiva'] ?? ($row['fecha'] ?? null),
+                    'fechaVto'               => !empty($row['fecha_vencimiento_credito']) ? $row['fecha_vencimiento_credito'] : ($row['fechaVto'] ?? null),
+                    'gasolinera'             => $row['gasolinera'],
+                    'codgas'                 => $row['codgas'],
+                    'total_fac'              => $row['total_fac'],
+                    'total_mostrar'          => $totalMostrar,
+                    'tiene_factura_recibida' => $tieneFacturaRecibida,
+                    'satuid'                 => $row['satuid'],
+                ];
+            }
+        }
+        json_output(['data' => $data]);
+    }
+
+
     function uploadPdf()
     {
         $uploadDir = __DIR__ . '/../../_assets/uploads/creAcuses/';
