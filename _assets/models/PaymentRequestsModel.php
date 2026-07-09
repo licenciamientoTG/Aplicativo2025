@@ -58,6 +58,7 @@ class PaymentRequestsModel extends Model
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ';
 
+            $invModel = new PaymentRequestInvoicesModel();
             foreach ($documents as $doc) {
                 $folio          = $doc['nro'] ?? null;
                 $invoice_number = $doc['Factura'] ?? null;
@@ -67,6 +68,23 @@ class PaymentRequestsModel extends Model
                 $expiration_date = $doc['fechaVto'] ?? null;
                 $status         = self::STATUS_PENDING;
                 $uuid           = $doc['satuid'] ?? null;
+
+                // Si el UUID ya vive en una orden activa: mover cuando es un
+                // anticipo con aplicación parcial (pagar el remanente), rechazar
+                // en cualquier otro caso (nunca duplicar filas por UUID).
+                $activa = $uuid ? $invModel->get_active_invoice_by_uuid($uuid) : null;
+                if ($activa) {
+                    if ((int)$activa['owner_tipo'] === 1 && $activa['restante'] > 0.01) {
+                        if (!$invModel->move_invoice_to_payment((int)$activa['id'], (int)$payment_id)) {
+                            throw new Exception("Error al mover la factura $folio desde el anticipo #" . $activa['owner_id']);
+                        }
+                        continue;
+                    }
+                    if ((int)$activa['owner_tipo'] === 1) {
+                        throw new Exception("La factura $folio está cubierta completamente por el anticipo #" . $activa['owner_id']);
+                    }
+                    throw new Exception("La factura $folio ya está incluida en otra orden de pago");
+                }
 
                 if (!$this->sql->insert($query2, [
                     $payment_id, $folio, $invoice_number, $codgas,
@@ -236,7 +254,7 @@ class PaymentRequestsModel extends Model
     }
     public function get_requests_with_summary($type, $status = 'all', $search = ''): array|false
     {
-        $whereClauses = [];
+        $whereClauses = ["t1.is_deleted = 0"];
         $params = [];
 
         if ($status !== 'all') {
@@ -421,6 +439,7 @@ class PaymentRequestsModel extends Model
             LEFT JOIN [SG12].[dbo].Proveedores t5 ON t1.provider_cod = t5.cod
             LEFT JOIN [SG12].[dbo].Empresas    t6 ON t1.emp_cod = t6.cod
             WHERE t1.tipo IN (0)
+              AND t1.is_deleted = 0
               AND t1.status = " . self::STATUS_PENDING . "
               AND ISNULL(t2.total_invoices, 0) > 0
               -- Que NO exista ninguna factura normal sin archivo (notas de cargo is_debit_note=1 se omiten)
@@ -512,7 +531,7 @@ class PaymentRequestsModel extends Model
 
     public function get_all_requests(): array|false
     {
-        $query = 'SELECT id, request_date, user_id, comment, status, date_added FROM [TG].[dbo].[payment_requests] ORDER BY request_date DESC;';
+        $query = 'SELECT id, request_date, user_id, comment, status, date_added FROM [TG].[dbo].[payment_requests] WHERE is_deleted = 0 ORDER BY request_date DESC;';
         return ($this->sql->select($query)) ?: false;
     }
 
@@ -551,7 +570,7 @@ class PaymentRequestsModel extends Model
 
     public function get_anticipos_with_summary($type  = 'payment', $status = 'all'): array|false
     {
-        $whereClauses = ["t1.tipo = 1"]; // Solo anticipos
+        $whereClauses = ["t1.tipo = 1", "t1.is_deleted = 0"]; // Solo anticipos activos
         $params = [];
 
         if ($status !== 'all') {
@@ -670,7 +689,7 @@ class PaymentRequestsModel extends Model
                     t2.folio,
                     t2.invoice_number,
                     t2.amount as monto_factura,
-                    t2.payment_request_id,            
+                    t2.payment_request_id,
                     -- Información del pago asociado a la factura
                     t3.id as pago_id,
                     t3.request_date as pago_fecha,
@@ -683,7 +702,10 @@ class PaymentRequestsModel extends Model
                     -- Proveedor
                     t7.den as proveedor_nombre,
                     -- Empresa
-                    t5.den as empresa_nombre
+                    t5.den as empresa_nombre,
+                    -- Archivo de la factura (CFDI recibido)
+                    fr.Id as fr_id,
+                    fr.NombreArchivo as nombre_archivo
                 FROM [TG].[dbo].[anticipo_invoice_applications] t1
                 LEFT JOIN [TG].[dbo].[payment_request_invoices] t2 ON t1.invoice_id = t2.id
                 LEFT JOIN [TG].[dbo].[payment_requests] t3 ON t2.payment_request_id = t3.id
@@ -691,6 +713,9 @@ class PaymentRequestsModel extends Model
                 LEFT JOIN [SG12].[dbo].[Empresas] t5 ON t3.emp_cod = t5.cod
                 LEFT JOIN [SG12].[dbo].Gasolineras t6 ON t2.codgas = t6.cod
                 LEFT JOIN [SG12].[dbo].[Proveedores] t7 ON t3.provider_cod = t7.cod
+                LEFT JOIN [TG].[dbo].[FacturasRecibidas] fr
+                    ON t2.uuid COLLATE DATABASE_DEFAULT = fr.UUID COLLATE DATABASE_DEFAULT
+                    AND fr.RutaArchivo IS NOT NULL AND fr.RutaArchivo != ''
                 WHERE t1.anticipo_id = ?
                 ORDER BY t1.fecha_aplicacion DESC
             ";
@@ -861,57 +886,113 @@ class PaymentRequestsModel extends Model
     /**
      * Registrar aplicaciones de anticipo
      */
-    public function register_anticipo_applications($anticipo_id, $aplicaciones, $user_id)
+    /**
+     * Liga documentos de compra DISPONIBLES a un anticipo: inserta cada uno
+     * como factura del anticipo (payment_request_id = anticipo) y crea su
+     * aplicación con el monto. La factura queda "en orden de pago" y deja de
+     * aparecer en add_payment. NO toca monto_total/status/autorizaciones del
+     * anticipo.
+     *
+     * Cada documento: nro, Factura, codgas, total, satuid, fecha_vencimiento, monto_aplicar.
+     */
+    public function attach_invoices_to_anticipo(int $anticipo_id, array $documents, int $user_id): array
     {
-        $this->sql->beginTransaction();
+        if (empty($documents)) {
+            return ['success' => false, 'message' => 'No hay documentos para ligar'];
+        }
 
-        try {
-            // Validar saldo
-            $saldo = $this->get_saldo_disponible($anticipo_id);
-            $total_aplicar = array_sum(array_column($aplicaciones, 'monto'));
+        $anticipo = $this->get_request_by_id($anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => 'Anticipo no encontrado'];
+        }
+        if (intval($anticipo['status']) !== self::STATUS_PAID) {
+            return ['success' => false, 'message' => 'El anticipo debe estar pagado para ligarle facturas'];
+        }
 
-            if ($total_aplicar > $saldo) {
-                throw new Exception('El monto a aplicar excede el saldo disponible');
+        // Validar montos y duplicados antes de abrir la transacción
+        $total_aplicar = 0.0;
+        foreach ($documents as $doc) {
+            $monto = floatval($doc['monto_aplicar'] ?? 0);
+            $total = floatval($doc['total'] ?? 0);
+            $folio = $doc['nro'] ?? '?';
+
+            if ($monto <= 0) {
+                return ['success' => false, 'message' => "Monto inválido en el documento $folio"];
             }
+            if ($monto > $total + 0.01) {
+                return ['success' => false, 'message' => "El monto a aplicar excede el total del documento $folio"];
+            }
+            if (empty($doc['satuid'])) {
+                return ['success' => false, 'message' => "El documento $folio no tiene CFDI (satuid)"];
+            }
+            $existe = $this->sql->select(
+                'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ? AND is_deleted = 0',
+                [$doc['satuid']]
+            );
+            if (!empty($existe)) {
+                return ['success' => false, 'message' => "El documento $folio ya está en una orden de pago o anticipo"];
+            }
+            $total_aplicar += $monto;
+        }
 
-            // Fecha actual
-            $fecha_aplicacion = date('Y-m-d H:i:s');
+        $saldo = floatval($this->get_saldo_disponible($anticipo_id));
+        if ($total_aplicar > $saldo + 0.01) {
+            return ['success' => false, 'message' => 'El total a aplicar ($' . number_format($total_aplicar, 2) . ') excede el saldo disponible del anticipo ($' . number_format($saldo, 2) . ')'];
+        }
 
-            // Insertar cada aplicación
-            $query = "
+        $this->sql->beginTransaction();
+        try {
+            $query_invoice = '
+                INSERT INTO [TG].[dbo].[payment_request_invoices]
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date, uuid, is_debit_note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            ';
+            $query_app = '
                 INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
                 (anticipo_id, invoice_id, monto_aplicado, fecha_aplicacion, aplicado_por)
-                VALUES (?, ?, ?, ?, ?)
-            ";
+                VALUES (?, ?, ?, GETDATE(), ?)
+            ';
 
-            foreach ($aplicaciones as $app) {
-                $params = [
+            $ligadas = 0;
+            foreach ($documents as $doc) {
+                $monto = floatval($doc['monto_aplicar']);
+                $total = floatval($doc['total']);
+                // 2 = Pagado (cubierta completa por el anticipo), 3 = Pago Parcial
+                $status_factura = abs($total - $monto) <= 0.01 ? 2 : 3;
+
+                $invoice_id = $this->sql->insert($query_invoice, [
                     $anticipo_id,
-                    $app['invoice_id'] ?? null,
-                    $app['monto'],
-                    $fecha_aplicacion,
-                    $user_id
-                ];
-
-                if (!$this->sql->insert($query, $params)) {
-                    throw new Exception('Error al registrar aplicación');
+                    $doc['nro'] ?? null,
+                    $doc['Factura'] ?? null,
+                    $doc['codgas'] ?? null,
+                    $total,
+                    $status_factura,
+                    $doc['fecha_vencimiento'] ?? null,
+                    $doc['satuid'],
+                ]);
+                if (!$invoice_id || !is_numeric($invoice_id)) {
+                    throw new Exception('Error al insertar la factura ' . ($doc['nro'] ?? ''));
                 }
+
+                if (!$this->sql->insert($query_app, [$anticipo_id, $invoice_id, $monto, $user_id])) {
+                    throw new Exception('Error al registrar la aplicación de la factura ' . ($doc['nro'] ?? ''));
+                }
+                $ligadas++;
             }
 
             $this->sql->commit();
 
             return [
-                'success' => true,
-                'message' => 'Anticipo aplicado exitosamente'
+                'success'         => true,
+                'message'         => "Se ligaron $ligadas factura(s) al anticipo",
+                'facturas_ligadas'=> $ligadas,
+                'total_aplicado'  => $total_aplicar,
+                'saldo_restante'  => $saldo - $total_aplicar,
             ];
         } catch (Exception $e) {
             $this->sql->rollback();
-            error_log("Error en register_anticipo_applications: " . $e->getMessage());
-
-            return [
-                'success' => false,
-                'message' => $e->getMessage()
-            ];
+            error_log('Error en attach_invoices_to_anticipo: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
     // public function get_anticipos_para_layout(array $anticipo_ids) : array|false {
@@ -1053,6 +1134,7 @@ class PaymentRequestsModel extends Model
                 WHERE t1.id IN ($placeholders)
                     AND t1.tipo = ?  -- Solo anticipos
                     AND t1.status = ?  -- Solo autorizados
+                    AND t1.is_deleted = 0
                 ORDER BY t1.emp_cod, t1.provider_cod
         ";
 
@@ -1150,6 +1232,7 @@ class PaymentRequestsModel extends Model
             WHERE
                 pr.status = ?  -- Solo pendientes (STATUS_PENDING = 0)
                 AND pr.tipo = 0
+                AND pr.is_deleted = 0
                 -- Tesorería (68): ya agrupados en contabilidad y sin autorización de Tesorería aún
                 AND ? = 68
                 AND pr.accounting_group_id IS NOT NULL
@@ -1200,6 +1283,7 @@ class PaymentRequestsModel extends Model
             WHERE
                 pr.status = ?
                 AND pr.tipo = 1
+                AND pr.is_deleted = 0
                 AND pra.id IS NULL
 
             ORDER BY pr.request_date ASC
@@ -1366,6 +1450,7 @@ class PaymentRequestsModel extends Model
 
             WHERE
                 pr.status = ?
+                AND pr.is_deleted = 0
                 AND (
                     (? = 66 AND ISNULL(auth_summary.auth_abastos, 0) = 0)
                     OR
@@ -1655,15 +1740,34 @@ class PaymentRequestsModel extends Model
         }
     }
 
-    public function delete_payment_by_id(int $payment_id): array
+    /**
+     * "Eliminar" una requisición = borrado LÓGICO: marca is_deleted en la
+     * requisición y en sus facturas activas (así los documentos vuelven a estar
+     * disponibles y no choca con la FK de anticipo_invoice_applications).
+     * Autorizaciones y transacciones se conservan como historial; las
+     * aplicaciones de notas de crédito sí se eliminan para regresar el saldo
+     * a la nota.
+     */
+    public function delete_payment_by_id(int $payment_id, ?int $deleted_by = null): array
     {
         $this->sql->beginTransaction();
         try {
-            $this->sql->delete("DELETE FROM [TG].[dbo].[credit_note_applications]       WHERE payment_request_id = :id", [':id' => $payment_id]);
-            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_transactions]           WHERE payment_request_id = :id", [':id' => $payment_id]);
-            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_authorizations] WHERE payment_request_id = :id", [':id' => $payment_id]);
-            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_request_invoices]       WHERE payment_request_id = :id", [':id' => $payment_id]);
-            $this->sql->delete("DELETE FROM [TG].[dbo].[payment_requests]               WHERE id = :id",                 [':id' => $payment_id]);
+            $this->sql->delete("DELETE FROM [TG].[dbo].[credit_note_applications] WHERE payment_request_id = :id", [':id' => $payment_id]);
+            // Liberar aplicaciones de anticipo sobre las facturas de esta requisición:
+            // el saldo apartado regresa al anticipo (mismo criterio que al quitar una
+            // factura individual). Si no hay anticipos ligados, borra 0 filas.
+            $this->sql->delete("
+                DELETE a FROM [TG].[dbo].[anticipo_invoice_applications] a
+                INNER JOIN [TG].[dbo].[payment_request_invoices] pri ON pri.id = a.invoice_id
+                WHERE pri.payment_request_id = :id", [':id' => $payment_id]);
+            $this->sql->update("
+                UPDATE [TG].[dbo].[payment_request_invoices]
+                SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = :uid
+                WHERE payment_request_id = :id AND is_deleted = 0", [':uid' => $deleted_by, ':id' => $payment_id]);
+            $this->sql->update("
+                UPDATE [TG].[dbo].[payment_requests]
+                SET is_deleted = 1, deleted_at = GETDATE(), deleted_by = :uid
+                WHERE id = :id AND is_deleted = 0", [':uid' => $deleted_by, ':id' => $payment_id]);
             $this->sql->commit();
             return ['success' => true];
         } catch (Exception $e) {

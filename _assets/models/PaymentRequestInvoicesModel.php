@@ -35,35 +35,6 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
-     * Facturas con saldo pendiente de un proveedor (para ligar anticipos).
-     * @param string $provider_cod
-     * @return array|false
-     */
-    public function get_pending_by_provider($provider_cod) : array|false {
-        $query = "
-            SELECT
-                pri.id,
-                pri.payment_request_id,
-                pri.folio,
-                pri.invoice_number,
-                pri.amount,
-                ISNULL(pri.paid_amount, 0) AS paid_amount,
-                (pri.amount - ISNULL(pri.paid_amount, 0)) AS saldo,
-                pri.uuid,
-                g.abr AS estacion_nombre
-            FROM [TG].[dbo].[payment_request_invoices] pri
-            INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
-            LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
-            WHERE pr.provider_cod = ?
-              AND pri.is_deleted = 0
-              AND pri.status IN (0, 1, 3)
-              AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
-            ORDER BY pri.id DESC
-        ";
-        return ($this->sql->select($query, [$provider_cod])) ?: false;
-    }
-
-    /**
      * Inserta una factura para una solicitud de pago.
      * @param int $payment_request_id
      * @param string $folio
@@ -163,6 +134,84 @@ class PaymentRequestInvoicesModel extends Model
     /**
      * Verifica si una factura ya existe en alguna orden de pago (por UUID)
      */
+    /**
+     * Fila ACTIVA de un UUID con datos de su requisición dueña y lo aplicado
+     * de anticipos. Devuelve null si el UUID no está en ninguna orden activa.
+     */
+    public function get_active_invoice_by_uuid($uuid) : ?array {
+        $query = '
+            SELECT
+                pri.id,
+                pri.amount,
+                pri.payment_request_id AS owner_id,
+                ISNULL(pr.tipo, 0) AS owner_tipo,
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    WHERE a.invoice_id = pri.id
+                ), 0) AS aplicado
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+            WHERE pri.uuid = ? AND pri.is_deleted = 0
+        ';
+        $rs = $this->sql->select($query, [$uuid]);
+        if (!$rs) return null;
+        $row = $rs[0];
+        $row['restante'] = floatval($row['amount']) - floatval($row['aplicado']);
+        return $row;
+    }
+
+    /**
+     * Info batch de facturas que viven bajo un ANTICIPO (tipo=1), para marcar
+     * en los listados las de aplicación parcial (con remanente por pagar).
+     * Devuelve mapa invoice_id => [anticipo_id, amount, aplicado, restante].
+     */
+    public function get_anticipo_parcial_info(array $invoice_ids) : array {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $invoice_ids))));
+        if (empty($ids)) return [];
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $query = "
+            SELECT
+                pri.id,
+                pri.amount,
+                pr.id AS anticipo_id,
+                ISNULL(SUM(a.monto_aplicado), 0) AS aplicado
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr
+                ON pr.id = pri.payment_request_id AND pr.tipo = 1
+            LEFT JOIN [TG].[dbo].[anticipo_invoice_applications] a
+                ON a.invoice_id = pri.id
+            WHERE pri.id IN ($ph) AND pri.is_deleted = 0
+            GROUP BY pri.id, pri.amount, pr.id
+        ";
+        $rows = $this->sql->select($query, $ids) ?: [];
+
+        $mapa = [];
+        foreach ($rows as $r) {
+            $mapa[(int)$r['id']] = [
+                'anticipo_id' => (int)$r['anticipo_id'],
+                'amount'      => floatval($r['amount']),
+                'aplicado'    => floatval($r['aplicado']),
+                'restante'    => floatval($r['amount']) - floatval($r['aplicado']),
+            ];
+        }
+        return $mapa;
+    }
+
+    /**
+     * Mueve una factura de su requisición actual (típicamente un anticipo con
+     * aplicación parcial) a otra requisición. NUNCA duplicar filas por UUID:
+     * las aplicaciones de anticipo siguen a la factura (FK por invoice_id).
+     */
+    public function move_invoice_to_payment(int $invoice_id, int $payment_request_id) : bool {
+        return (bool)$this->sql->update('
+            UPDATE [TG].[dbo].[payment_request_invoices]
+            SET payment_request_id = ?, status = ?
+            WHERE id = ? AND is_deleted = 0
+        ', [$payment_request_id, self::STATUS_PENDING, $invoice_id]);
+    }
+
     public function invoice_exists_by_uuid($uuid) : bool {
         $query = 'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ? AND is_deleted = 0';
         $result = $this->sql->select($query, [$uuid]);
@@ -387,14 +436,22 @@ class PaymentRequestInvoicesModel extends Model
             WHERE pri.payment_request_id = ? AND pri.is_deleted = 0
             GROUP BY pri.id, pri.amount
         )
-        SELECT 
+        SELECT
             COUNT(*) as total_invoices,
             SUM(amount) as total_amount,
             SUM(paid_amount) as total_paid,
-            SUM(amount - paid_amount) as total_pending
+            SUM(amount - paid_amount) as total_pending,
+            -- Anticipos aplicados a las facturas activas de esta requisición
+            ISNULL((
+                SELECT SUM(a.monto_aplicado)
+                FROM [TG].[dbo].[anticipo_invoice_applications] a
+                INNER JOIN [TG].[dbo].[payment_request_invoices] pri2
+                    ON pri2.id = a.invoice_id
+                WHERE pri2.payment_request_id = ? AND pri2.is_deleted = 0
+            ), 0) as total_advances
         FROM InvoicePayments
         ';
-        $result = $this->sql->select($query, [$payment_request_id]);
+        $result = $this->sql->select($query, [$payment_request_id, $payment_request_id]);
         return $result ? $result[0] : false;
     }
     public function get_by_ids($ids) {
@@ -1037,6 +1094,7 @@ class PaymentRequestInvoicesModel extends Model
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
+                AND pr.is_deleted = 0
                 AND pri.is_deleted = 0
             GROUP BY
                 pr.id,
@@ -1093,8 +1151,9 @@ class PaymentRequestInvoicesModel extends Model
                 ON pr.emp_cod = emp.cod
             WHERE pr.tipo = 1
                 AND pr.status = ?  -- Autorizados
-            
-            ORDER BY 
+                AND pr.is_deleted = 0
+
+            ORDER BY
                 banco_asignado,
                 empresa_nombre,
                 proveedor_nombre,
@@ -1838,8 +1897,24 @@ class PaymentRequestInvoicesModel extends Model
                 ];
             }
 
-            // Verificar si ya existe en algún pago
-            if ($this->invoice_exists_by_uuid($uuid)) {
+            // Verificar si ya existe en algún pago o anticipo
+            $activa = $this->get_active_invoice_by_uuid($uuid);
+            if ($activa) {
+                // Vive bajo un anticipo con aplicación PARCIAL: se MUEVE a esta
+                // requisición (conserva su aplicación) para pagar el remanente.
+                if ((int)$activa['owner_tipo'] === 1 && $activa['restante'] > 0.01) {
+                    if (!$this->move_invoice_to_payment((int)$activa['id'], (int)$payment_request_id)) {
+                        return ['success' => false, 'message' => 'Error al mover la factura desde el anticipo'];
+                    }
+                    return [
+                        'success'    => true,
+                        'message'    => 'Factura movida desde el anticipo #' . $activa['owner_id'] . ' (anticipo aplicado: $' . number_format($activa['aplicado'], 2) . ')',
+                        'invoice_id' => (int)$activa['id']
+                    ];
+                }
+                if ((int)$activa['owner_tipo'] === 1) {
+                    return ['success' => false, 'message' => 'Esta factura está cubierta completamente por el anticipo #' . $activa['owner_id']];
+                }
                 return [
                     'success' => false,
                     'message' => 'Esta factura ya está incluida en otro pago'
@@ -1930,6 +2005,13 @@ class PaymentRequestInvoicesModel extends Model
                     'message' => 'No se puede quitar una factura que ya tiene pagos aplicados'
                 ];
             }
+
+            // Liberar aplicaciones de anticipo ligadas a esta factura: la aplicación
+            // es un apartado del saldo, no un consumo; al quitar la factura el saldo
+            // debe regresar al anticipo (si no hay aplicaciones, borra 0 filas).
+            $this->sql->delete("
+                DELETE FROM [TG].[dbo].[anticipo_invoice_applications]
+                WHERE invoice_id = ?", [$invoice_id]);
 
             // Soft-delete: se conserva la fila para auditoría/restauración en vez de borrarla físicamente.
             $query_delete = "
