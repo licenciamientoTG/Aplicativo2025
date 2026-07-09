@@ -887,6 +887,133 @@ class PaymentRequestsModel extends Model
      * Registrar aplicaciones de anticipo
      */
     /**
+     * Facturas del proveedor que viven bajo un ANTICIPO y tienen remanente
+     * (total - aplicado > 0), para poder cubrirlas con otro anticipo desde
+     * la página de aplicar.
+     */
+    public function get_facturas_con_remanente_anticipo($provider_cod): array
+    {
+        $query = "
+            SELECT
+                pri.id AS invoice_id,
+                pri.folio,
+                pri.invoice_number,
+                pri.codgas,
+                g.abr AS estacion_nombre,
+                pri.amount,
+                pr.id AS anticipo_origen,
+                ISNULL(SUM(a.monto_aplicado), 0) AS aplicado
+            FROM [TG].[dbo].[payment_request_invoices] pri
+            INNER JOIN [TG].[dbo].[payment_requests] pr
+                ON pr.id = pri.payment_request_id AND pr.tipo = 1 AND pr.is_deleted = 0
+            INNER JOIN [TG].[dbo].[anticipo_invoice_applications] a
+                ON a.invoice_id = pri.id
+            LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
+            WHERE pr.provider_cod = ? AND pri.is_deleted = 0
+            GROUP BY pri.id, pri.folio, pri.invoice_number, pri.codgas, g.abr, pri.amount, pr.id
+            HAVING (pri.amount - ISNULL(SUM(a.monto_aplicado), 0)) > 0.01
+            ORDER BY pri.id DESC
+        ";
+        $rows = $this->sql->select($query, [$provider_cod]) ?: [];
+        foreach ($rows as &$r) {
+            $r['restante'] = floatval($r['amount']) - floatval($r['aplicado']);
+        }
+        unset($r);
+        return $rows;
+    }
+
+    /**
+     * Aplica un anticipo a facturas EXISTENTES con remanente (que viven bajo
+     * otro anticipo del mismo proveedor). No inserta ni mueve la factura:
+     * solo agrega la aplicación y actualiza su status (2 cubierta / 3 parcial).
+     *
+     * Cada item: invoice_id, monto_aplicar.
+     */
+    public function apply_anticipo_to_existing_invoices(int $anticipo_id, array $items, int $user_id): array
+    {
+        if (empty($items)) {
+            return ['success' => false, 'message' => 'No hay facturas para aplicar'];
+        }
+
+        $anticipo = $this->get_request_by_id($anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => 'Anticipo no encontrado'];
+        }
+        if (intval($anticipo['status']) !== self::STATUS_PAID) {
+            return ['success' => false, 'message' => 'El anticipo debe estar pagado para aplicarse'];
+        }
+
+        // Validar cada factura y el total contra el saldo, antes de la transacción
+        $total_aplicar = 0.0;
+        $validadas = [];
+        foreach ($items as $item) {
+            $invoice_id = intval($item['invoice_id'] ?? 0);
+            $monto = floatval($item['monto_aplicar'] ?? 0);
+            if (!$invoice_id || $monto <= 0) {
+                return ['success' => false, 'message' => 'Factura o monto inválido en la solicitud'];
+            }
+
+            $rs = $this->sql->select("
+                SELECT pri.id, pri.folio, pri.amount, pr.tipo AS owner_tipo, pr.provider_cod,
+                       ISNULL((SELECT SUM(a.monto_aplicado) FROM [TG].[dbo].[anticipo_invoice_applications] a WHERE a.invoice_id = pri.id), 0) AS aplicado
+                FROM [TG].[dbo].[payment_request_invoices] pri
+                INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
+                WHERE pri.id = ? AND pri.is_deleted = 0", [$invoice_id]);
+            if (!$rs) {
+                return ['success' => false, 'message' => "Factura $invoice_id no encontrada o inactiva"];
+            }
+            $f = $rs[0];
+            if (intval($f['owner_tipo']) !== 1) {
+                return ['success' => false, 'message' => "La factura {$f['folio']} ya no vive bajo un anticipo"];
+            }
+            if ((string)$f['provider_cod'] !== (string)$anticipo['provider_cod']) {
+                return ['success' => false, 'message' => "La factura {$f['folio']} es de otro proveedor"];
+            }
+            $restante = floatval($f['amount']) - floatval($f['aplicado']);
+            if ($monto > $restante + 0.01) {
+                return ['success' => false, 'message' => "El monto excede el remanente de la factura {$f['folio']} ($" . number_format($restante, 2) . ')'];
+            }
+
+            $total_aplicar += $monto;
+            $validadas[] = ['invoice_id' => $invoice_id, 'monto' => $monto, 'amount' => floatval($f['amount']), 'aplicado' => floatval($f['aplicado'])];
+        }
+
+        $saldo = floatval($this->get_saldo_disponible($anticipo_id));
+        if ($total_aplicar > $saldo + 0.01) {
+            return ['success' => false, 'message' => 'El total a aplicar excede el saldo disponible del anticipo ($' . number_format($saldo, 2) . ')'];
+        }
+
+        $this->sql->beginTransaction();
+        try {
+            foreach ($validadas as $v) {
+                if (!$this->sql->insert('
+                    INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
+                    (anticipo_id, invoice_id, monto_aplicado, fecha_aplicacion, aplicado_por)
+                    VALUES (?, ?, ?, GETDATE(), ?)', [$anticipo_id, $v['invoice_id'], $v['monto'], $user_id])) {
+                    throw new Exception('Error al registrar la aplicación');
+                }
+                // 2 = cubierta completa, 3 = sigue parcial
+                $nuevo_restante = $v['amount'] - $v['aplicado'] - $v['monto'];
+                $this->sql->update('
+                    UPDATE [TG].[dbo].[payment_request_invoices] SET status = ? WHERE id = ?',
+                    [$nuevo_restante <= 0.01 ? 2 : 3, $v['invoice_id']]);
+            }
+
+            $this->sql->commit();
+            return [
+                'success'         => true,
+                'message'         => 'Se aplicaron ' . count($validadas) . ' factura(s) con remanente',
+                'facturas_ligadas'=> count($validadas),
+                'total_aplicado'  => $total_aplicar,
+            ];
+        } catch (Exception $e) {
+            $this->sql->rollback();
+            error_log('Error en apply_anticipo_to_existing_invoices: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Liga documentos de compra DISPONIBLES a un anticipo: inserta cada uno
      * como factura del anticipo (payment_request_id = anticipo) y crea su
      * aplicación con el monto. La factura queda "en orden de pago" y deja de

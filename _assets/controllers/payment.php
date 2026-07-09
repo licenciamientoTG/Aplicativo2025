@@ -565,7 +565,12 @@ class Payment
                 ];
             }
         }
-        json_output(['data' => $data]);
+
+        // Facturas del proveedor con remanente de anticipo (viven bajo otro
+        // anticipo con aplicación parcial): se pueden cubrir desde este anticipo.
+        $remanentes = $this->PaymentRequestsModel->get_facturas_con_remanente_anticipo($anticipo['provider_cod']);
+
+        json_output(['data' => $data, 'remanentes' => $remanentes]);
     }
 
 
@@ -5927,15 +5932,59 @@ class Payment
 
             $data = json_decode(file_get_contents('php://input'), true);
             $anticipo_id = intval($data['anticipo_id'] ?? 0);
-            $documentos  = $data['documentos'] ?? [];
+            $documentos  = is_array($data['documentos'] ?? null) ? $data['documentos'] : [];
+            $remanentes  = is_array($data['remanentes'] ?? null) ? $data['remanentes'] : [];
 
-            if (!$anticipo_id || empty($documentos) || !is_array($documentos)) {
+            if (!$anticipo_id || (empty($documentos) && empty($remanentes))) {
                 json_output(['success' => false, 'message' => 'Faltan datos: anticipo y documentos']);
                 return;
             }
 
-            $result = $this->PaymentRequestsModel->attach_invoices_to_anticipo($anticipo_id, $documentos, (int)$user_id);
-            json_output($result);
+            // Validar el saldo contra el TOTAL combinado antes de ejecutar,
+            // para no aplicar los documentos y luego fallar en los remanentes.
+            $total_combinado = 0.0;
+            foreach ($documentos as $d) $total_combinado += floatval($d['monto_aplicar'] ?? 0);
+            foreach ($remanentes as $r) $total_combinado += floatval($r['monto_aplicar'] ?? 0);
+            $saldo = floatval($this->PaymentRequestsModel->get_saldo_disponible($anticipo_id));
+            if ($total_combinado > $saldo + 0.01) {
+                json_output(['success' => false, 'message' => 'El total a aplicar ($' . number_format($total_combinado, 2) . ') excede el saldo disponible ($' . number_format($saldo, 2) . ')']);
+                return;
+            }
+
+            $mensajes = [];
+            $total_aplicado = 0.0;
+            $facturas = 0;
+
+            if (!empty($documentos)) {
+                $res = $this->PaymentRequestsModel->attach_invoices_to_anticipo($anticipo_id, $documentos, (int)$user_id);
+                if (!$res['success']) {
+                    json_output($res);
+                    return;
+                }
+                $mensajes[] = $res['message'];
+                $total_aplicado += floatval($res['total_aplicado'] ?? 0);
+                $facturas += intval($res['facturas_ligadas'] ?? 0);
+            }
+
+            if (!empty($remanentes)) {
+                $res = $this->PaymentRequestsModel->apply_anticipo_to_existing_invoices($anticipo_id, $remanentes, (int)$user_id);
+                if (!$res['success']) {
+                    // Los documentos nuevos (si hubo) ya quedaron aplicados
+                    $res['message'] = (empty($mensajes) ? '' : implode('. ', $mensajes) . '. PERO: ') . $res['message'];
+                    json_output($res);
+                    return;
+                }
+                $mensajes[] = $res['message'];
+                $total_aplicado += floatval($res['total_aplicado'] ?? 0);
+                $facturas += intval($res['facturas_ligadas'] ?? 0);
+            }
+
+            json_output([
+                'success'          => true,
+                'message'          => implode('. ', $mensajes),
+                'facturas_ligadas' => $facturas,
+                'total_aplicado'   => $total_aplicado,
+            ]);
         } catch (Exception $e) {
             error_log('Error en apply_anticipo_documentos: ' . $e->getMessage());
             json_output(['success' => false, 'message' => 'Error del servidor']);

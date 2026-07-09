@@ -122,6 +122,33 @@
                 </table>
             </div>
         </div>
+
+        <!-- CARD: FACTURAS CON REMANENTE DE ANTICIPO -->
+        <div class="card mb-3" id="card-remanentes" style="display:none;">
+            <div class="card-header py-2" style="background:#fffbeb;">
+                <i class="fas fa-hand-holding-usd me-2" style="color:#92400e;"></i>
+                <strong>Facturas con remanente de anticipo</strong>
+                <span class="badge ms-1" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" id="badge-rem-count">0</span>
+                <small class="text-muted ms-2">parcialmente cubiertas por otro anticipo — puedes completar su pago con este</small>
+            </div>
+            <div class="card-body table-responsive pt-2">
+                <table id="rem_anticipo_table" class="table table-sm table-striped table-hover w-100">
+                    <thead>
+                        <tr>
+                            <th width="30"></th>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Estación</th>
+                            <th class="text-center">Anticipo origen</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-end">Aplicado</th>
+                            <th class="text-end">Restante</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- ═══════════════ COLUMNA DERECHA: carrito ═══════════════ -->
@@ -175,8 +202,9 @@
 const ANTICIPO_ID = {{ anticipo.id }};
 const SALDO_DISPONIBLE = {{ summary.saldo_disponible }};
 
-let documentos = [];          // resultado de la búsqueda (indexados por satuid)
-let seleccion = {};           // satuid -> {doc, monto}
+let documentos = [];          // documentos disponibles (indexados por satuid)
+let remanentes = [];          // facturas con remanente de anticipo (por invoice_id)
+let seleccion = {};           // key -> {tipo:'doc'|'rem', doc|rem, monto}
 let docsTable = null;
 
 // ── Búsqueda de documentos ──────────────────────────────────────────
@@ -193,11 +221,71 @@ function buscarDocumentos() {
     }, null, "json")
     .done(function (res) {
         documentos = res.data || [];
+        remanentes = res.remanentes || [];
         renderDocumentos();
+        renderRemanentes();
     })
     .fail(function () {
         $tbody.html('<tr><td colspan="7" class="text-center text-danger py-3">Error al consultar documentos</td></tr>');
     });
+}
+
+// ── Facturas con remanente de anticipo ─────────────────────────────
+function renderRemanentes() {
+    const $card = $("#card-remanentes");
+    const $tbody = $("#rem_anticipo_table tbody");
+    $tbody.empty();
+
+    if (!remanentes.length) {
+        $card.hide();
+        return;
+    }
+    $card.show();
+    $("#badge-rem-count").text(remanentes.length);
+
+    remanentes.forEach(function (r) {
+        const key = "rem-" + r.invoice_id;
+        const sel = !!seleccion[key];
+        const fmt = (v) => "$" + (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+        $tbody.append(
+            '<tr data-rem-id="' + r.invoice_id + '" class="' + (sel ? "table-success" : "") + '" style="cursor:pointer;">' +
+            '<td class="text-center"><input type="checkbox" class="rem-check" ' + (sel ? "checked" : "") + '></td>' +
+            "<td><strong>" + (r.folio || "") + "</strong></td>" +
+            "<td>" + (r.invoice_number || "") + "</td>" +
+            "<td>" + (r.estacion_nombre || "") + "</td>" +
+            '<td class="text-center"><a href="/payment/anticipo_detail/' + r.anticipo_origen + '" target="_blank">#' + r.anticipo_origen + "</a></td>" +
+            '<td class="text-end">' + fmt(r.amount) + "</td>" +
+            '<td class="text-end text-danger">' + fmt(r.aplicado) + "</td>" +
+            '<td class="text-end fw-bold">' + fmt(r.restante) + "</td>" +
+            "</tr>"
+        );
+    });
+}
+
+$(document).on("click", "#rem_anticipo_table tbody tr[data-rem-id]", function () {
+    toggleRem($(this).data("rem-id"));
+});
+
+function toggleRem(invoiceId) {
+    const r = remanentes.find((x) => String(x.invoice_id) === String(invoiceId));
+    if (!r) return;
+    const key = "rem-" + r.invoice_id;
+    if (seleccion[key]) {
+        delete seleccion[key];
+    } else {
+        const disponible = SALDO_DISPONIBLE - totalSeleccionado();
+        const restante = parseFloat(r.restante) || 0;
+        seleccion[key] = { tipo: "rem", rem: r, monto: Math.min(restante, Math.max(disponible, 0)) };
+    }
+    syncFilaRem(invoiceId);
+    renderSeleccion();
+}
+
+function syncFilaRem(invoiceId) {
+    const $tr = $('#rem_anticipo_table tbody tr[data-rem-id="' + invoiceId + '"]');
+    const sel = !!seleccion["rem-" + invoiceId];
+    $tr.toggleClass("table-success", sel);
+    $tr.find(".rem-check").prop("checked", sel);
 }
 
 function renderDocumentos() {
@@ -246,7 +334,7 @@ function toggleDoc(satuid) {
         // Monto precargado: total del documento, tope = saldo restante actual
         const restante = SALDO_DISPONIBLE - totalSeleccionado();
         const total = parseFloat(d.total_mostrar) || 0;
-        seleccion[satuid] = { doc: d, monto: Math.min(total, Math.max(restante, 0)) };
+        seleccion[satuid] = { tipo: "doc", doc: d, monto: Math.min(total, Math.max(restante, 0)) };
     }
     syncFila(satuid);
     renderSeleccion();
@@ -264,6 +352,16 @@ function totalSeleccionado() {
 }
 
 // ── Carrito ─────────────────────────────────────────────────────────
+// key de un item seleccionado: satuid (documento nuevo) o "rem-<invoice_id>"
+function keyDeItem(x) {
+    return x.tipo === "rem" ? "rem-" + x.rem.invoice_id : x.doc.satuid;
+}
+
+// Tope del monto aplicable: total del documento nuevo, o restante del remanente
+function maxDeItem(x) {
+    return x.tipo === "rem" ? (parseFloat(x.rem.restante) || 0) : (parseFloat(x.doc.total_mostrar) || 0);
+}
+
 function renderSeleccion() {
     const $lista = $("#lista-seleccionadas");
     const items = Object.values(seleccion);
@@ -273,17 +371,26 @@ function renderSeleccion() {
         $lista.html('<div class="text-center text-muted py-3" id="sin-seleccion"><i class="fas fa-inbox"></i><br><small>Da click en un documento para ligarlo</small></div>');
     } else {
         items.forEach(function (x) {
-            const d = x.doc;
-            const total = parseFloat(d.total_mostrar) || 0;
+            const key = keyDeItem(x);
+            const max = maxDeItem(x);
+            const fmt = (v) => (parseFloat(v) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+            let titulo, detalle;
+            if (x.tipo === "rem") {
+                titulo = "<strong>" + (x.rem.folio || "") + "</strong> · " + (x.rem.invoice_number || "");
+                detalle = (x.rem.estacion_nombre || "") + " · <span style='color:#92400e;'>remanente de ANT #" + x.rem.anticipo_origen + "</span> · resta $" + fmt(x.rem.restante);
+            } else {
+                titulo = "<strong>" + x.doc.nro + "</strong> · " + (x.doc.Factura || "");
+                detalle = (x.doc.gasolinera || "") + " · Total $" + fmt(x.doc.total_mostrar);
+            }
             $lista.append(
-                '<div class="border rounded p-1 mb-1" data-satuid="' + d.satuid + '" style="font-size:.78rem;">' +
+                '<div class="border rounded p-1 mb-1" style="font-size:.78rem;">' +
                 '<div class="d-flex justify-content-between align-items-center">' +
-                "<span><strong>" + d.nro + "</strong> · " + (d.Factura || "") + "<br><small class='text-muted'>" + (d.gasolinera || "") + " · Total $" + total.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</small></span>" +
-                '<button class="btn btn-sm p-0 text-danger" onclick="quitarDoc(\'' + d.satuid + '\')" title="Quitar"><i class="fas fa-times"></i></button>' +
+                "<span>" + titulo + "<br><small class='text-muted'>" + detalle + "</small></span>" +
+                '<button class="btn btn-sm p-0 text-danger" onclick="quitarItem(\'' + key + '\')" title="Quitar"><i class="fas fa-times"></i></button>' +
                 "</div>" +
                 '<div class="input-group input-group-sm mt-1">' +
                 '<span class="input-group-text">$</span>' +
-                '<input type="number" class="form-control monto-doc" data-satuid="' + d.satuid + '" step="0.01" min="0.01" max="' + total + '" value="' + x.monto.toFixed(2) + '">' +
+                '<input type="number" class="form-control monto-doc" data-key="' + key + '" step="0.01" min="0.01" max="' + max + '" value="' + x.monto.toFixed(2) + '">' +
                 "</div>" +
                 "</div>"
             );
@@ -304,16 +411,21 @@ function renderSeleccion() {
     $("#btn-aplicar").prop("disabled", excede || total <= 0 || !items.length);
 }
 
-function quitarDoc(satuid) {
-    delete seleccion[satuid];
-    syncFila(satuid);
+function quitarItem(key) {
+    const item = seleccion[key];
+    delete seleccion[key];
+    if (item && item.tipo === "rem") {
+        syncFilaRem(item.rem.invoice_id);
+    } else if (item) {
+        syncFila(item.doc.satuid);
+    }
     renderSeleccion();
 }
 
 $(document).on("input", ".monto-doc", function () {
-    const satuid = $(this).data("satuid");
-    if (!seleccion[satuid]) return;
-    seleccion[satuid].monto = parseFloat(this.value) || 0;
+    const key = $(this).data("key");
+    if (!seleccion[key]) return;
+    seleccion[key].monto = parseFloat(this.value) || 0;
     // Recalcular totales sin re-render (para no perder el foco del input)
     const total = totalSeleccionado();
     const restante = SALDO_DISPONIBLE - total;
@@ -332,9 +444,9 @@ function confirmarAplicar() {
     const items = Object.values(seleccion);
     if (!items.length) return;
 
-    const invalidos = items.filter((x) => !(parseFloat(x.monto) > 0) || parseFloat(x.monto) > (parseFloat(x.doc.total_mostrar) || 0) + 0.01);
+    const invalidos = items.filter((x) => !(parseFloat(x.monto) > 0) || parseFloat(x.monto) > maxDeItem(x) + 0.01);
     if (invalidos.length) {
-        alertify.error("Revisa los montos: deben ser mayores a 0 y no exceder el total del documento");
+        alertify.error("Revisa los montos: deben ser mayores a 0 y no exceder el total o remanente del documento");
         return;
     }
 
@@ -349,22 +461,31 @@ function confirmarAplicar() {
 }
 
 function ejecutarAplicar(items) {
-    const documentosPayload = items.map((x) => ({
-        nro: x.doc.nro,
-        Factura: x.doc.Factura,
-        codgas: x.doc.codgas,
-        total: parseFloat(x.doc.total_mostrar) || 0,
-        satuid: x.doc.satuid,
-        fecha_vencimiento: x.doc.fechaVto || null,
-        monto_aplicar: parseFloat(x.monto),
-    }));
+    const documentosPayload = items
+        .filter((x) => x.tipo !== "rem")
+        .map((x) => ({
+            nro: x.doc.nro,
+            Factura: x.doc.Factura,
+            codgas: x.doc.codgas,
+            total: parseFloat(x.doc.total_mostrar) || 0,
+            satuid: x.doc.satuid,
+            fecha_vencimiento: x.doc.fechaVto || null,
+            monto_aplicar: parseFloat(x.monto),
+        }));
+
+    const remanentesPayload = items
+        .filter((x) => x.tipo === "rem")
+        .map((x) => ({
+            invoice_id: x.rem.invoice_id,
+            monto_aplicar: parseFloat(x.monto),
+        }));
 
     $("#btn-aplicar").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Aplicando...');
 
     fetch("/payment/apply_anticipo_documentos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anticipo_id: ANTICIPO_ID, documentos: documentosPayload }),
+        body: JSON.stringify({ anticipo_id: ANTICIPO_ID, documentos: documentosPayload, remanentes: remanentesPayload }),
     })
         .then((r) => r.json())
         .then((res) => {
