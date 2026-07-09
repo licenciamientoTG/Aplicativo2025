@@ -12,8 +12,30 @@
                     $<span id="saldoDisponibleModal">0.00</span>
                 </div>
 
-                <input type="search" id="buscarFacturaAplicar" class="form-control mb-2"
-                       placeholder="Buscar por folio o número de factura...">
+                <div class="d-flex gap-2 align-items-center mb-2">
+                    <input type="search" id="buscarFacturaAplicar" class="form-control"
+                           placeholder="Buscar por folio o número de factura...">
+                    <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap"
+                            onclick="toggleFolioFilterAplicar()">
+                        <i class="fas fa-list me-1"></i> Filtrar por folios
+                        <span id="folioCountBadgeAplicar" class="badge bg-primary ms-1" style="display:none;"></span>
+                    </button>
+                </div>
+
+                <div id="folioFilterCollapseAplicar" style="display:none;" class="mb-2">
+                    <div class="d-flex gap-2 align-items-start">
+                        <textarea id="folioFilterInputAplicar" class="form-control form-control-sm" rows="4"
+                                  placeholder="Pega folios de Excel (uno por línea)..."></textarea>
+                        <button type="button" class="btn btn-sm btn-link text-danger p-0" id="btnClearFoliosAplicar"
+                                onclick="clearFolioFilterAplicar()" style="display:none;font-size:.8rem;white-space:nowrap;">
+                            <i class="fas fa-times"></i> Limpiar
+                        </button>
+                    </div>
+                </div>
+
+                <style>
+                    #tablaFacturasPendientesAplicar tbody tr[data-invoice-id] { cursor: pointer; }
+                </style>
 
                 <div class="table-responsive">
                     <table class="table table-sm table-hover" id="tablaFacturasPendientesAplicar">

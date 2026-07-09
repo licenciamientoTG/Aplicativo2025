@@ -1797,6 +1797,49 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
             accion = "<a href='/payment/anticipo_detail/" + paymentId + "' class='btn btn-sm ms-auto' style='background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:4px;font-size:.75rem;'><i class='fas fa-eye me-1'></i>Ver detalle</a>";
           }
 
+          // Tabla de facturas ligadas al anticipo, con su archivo como en las líneas de pago
+          var tablaAplicaciones = "";
+          if (d.aplicaciones && d.aplicaciones.length > 0) {
+            var filas = d.aplicaciones.map(function (a) {
+              var archivo = a.fr_id
+                ? "<button type='button' class='btn btn-sm' style='background:#059669;color:#fff;border:1px solid #059669;' " +
+                  "title='" + (a.nombre_archivo || "Ver factura").replace(/'/g, "") + "' " +
+                  "onclick='ModalinvoicePdf(" + a.fr_id + ", {})'>" +
+                  "<i class='fas fa-file-pdf'></i> Factura</button>"
+                : "<span class='badge bg-danger' title='No se ha recibido el archivo de esta factura'><i class='fas fa-exclamation-triangle'></i> Sin archivo</span>";
+              var req = a.pago_id
+                ? "<a href='/payment/payment_detail/" + a.pago_id + "' target='_blank' class='text-primary text-decoration-none fw-semibold'>#" + a.pago_id + "</a>"
+                : "—";
+              var fecha = a.fecha_aplicacion
+                ? new Date(a.fecha_aplicacion).toLocaleDateString("es-MX")
+                : "—";
+              return (
+                "<tr>" +
+                  "<td><strong>" + (a.folio || "") + "</strong><br><small class='text-muted'>" + (a.invoice_number || "") + "</small></td>" +
+                  "<td>" + (a.estacion_nombre || "—") + "</td>" +
+                  "<td class='text-center'>" + req + "</td>" +
+                  "<td class='text-end'>" + fmt(a.monto_factura) + "</td>" +
+                  "<td class='text-end fw-bold text-danger'>" + fmt(a.monto_aplicado) + "</td>" +
+                  "<td class='text-center'>" + fecha + "</td>" +
+                  "<td><small>" + (a.aplicado_por_nombre || "—") + "</small></td>" +
+                  "<td class='text-center'>" + archivo + "</td>" +
+                "</tr>"
+              );
+            }).join("");
+
+            tablaAplicaciones =
+              "<div class='mt-3'>" +
+                "<table class='table table-sm table-hover mb-0' style='font-size:.8rem;background:#fff;'>" +
+                  "<thead class='table-light'><tr>" +
+                    "<th>Folio / Factura</th><th>Estación</th><th class='text-center'>Requisición</th>" +
+                    "<th class='text-end'>Monto Factura</th><th class='text-end'>Aplicado</th>" +
+                    "<th class='text-center'>Fecha Aplicación</th><th>Aplicó</th><th class='text-center'>Archivo</th>" +
+                  "</tr></thead>" +
+                  "<tbody>" + filas + "</tbody>" +
+                "</table>" +
+              "</div>";
+          }
+
           var html =
             "<div class='p-3' style='background:#fffbeb;border-top:2px solid #fcd34d;'>" +
             "<div class='d-flex flex-wrap gap-4 align-items-center'>" +
@@ -1806,7 +1849,9 @@ $(document).on("click", "#payment_list_table .btn-toggle-invoices", function () 
             "<span style='font-size:.8rem;color:#334155;'><strong>Saldo disponible:</strong> <span class='fw-bold text-success'>" + fmt(d.saldo_disponible) + "</span></span>" +
             "<span style='font-size:.8rem;color:#64748b;'><i class='fas fa-layer-group me-1'></i>" + (d.total_aplicaciones || 0) + " aplicación(es)</span>" +
             accion +
-            "</div></div>";
+            "</div>" +
+            tablaAplicaciones +
+            "</div>";
           row.child(html).show();
         } else {
           row.child('<div class="p-3 text-danger">Error al cargar datos del anticipo.</div>').show();
@@ -7852,11 +7897,24 @@ function confirmarPagoAnticipo() {
     });
 }
 
+// Estado del modal Aplicar Anticipo: la selección y los montos viven aquí
+// (no en el DOM) para que sobrevivan al buscador y al filtro por folios.
 let facturasPendientesAplicar = [];
+let folioFilterSetAplicar = new Set();
 
 function abrirModalAplicarAFacturas() {
   const providerCod = $("#anticipoProviderCod").val();
   const saldo = parseFloat($("#anticipoSaldoDisponible").val()) || 0;
+
+  // Reset de filtros y selección al abrir
+  facturasPendientesAplicar = [];
+  folioFilterSetAplicar = new Set();
+  $("#buscarFacturaAplicar").val("");
+  $("#folioFilterInputAplicar").val("");
+  $("#folioFilterCollapseAplicar").hide();
+  $("#folioCountBadgeAplicar").hide();
+  $("#btnClearFoliosAplicar").hide();
+  $("#selectAllFacturasAplicar").prop("checked", false);
 
   $("#saldoDisponibleModal").text(saldo.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
   $("#tbodyFacturasAplicar").html(
@@ -7871,8 +7929,10 @@ function abrirModalAplicarAFacturas() {
   })
     .then((r) => r.json())
     .then((data) => {
-      facturasPendientesAplicar = data.success ? data.data : [];
-      renderFacturasPendientesAplicar(facturasPendientesAplicar);
+      facturasPendientesAplicar = (data.success ? data.data : []).map(function (f) {
+        return Object.assign({}, f, { sel: false, monto: null });
+      });
+      renderFacturasPendientesAplicar();
     })
     .catch(() => {
       $("#tbodyFacturasAplicar").html(
@@ -7881,22 +7941,63 @@ function abrirModalAplicarAFacturas() {
     });
 }
 
-function renderFacturasPendientesAplicar(facturas) {
+// Normaliza folios para comparar: sin guiones/espacios y en mayúsculas (igual que add_payment)
+function normalizeFolioAplicar(str) {
+  return (str || "").replace(/[-\s]/g, "").toUpperCase().trim();
+}
+
+// Facturas que pasan el buscador de texto + el filtro por folios pegados
+function facturasAplicarVisibles() {
+  const term = ($("#buscarFacturaAplicar").val() || "").toLowerCase();
+  return facturasPendientesAplicar.filter(function (f) {
+    if (
+      term &&
+      !(f.folio || "").toLowerCase().includes(term) &&
+      !(f.invoice_number || "").toLowerCase().includes(term)
+    ) {
+      return false;
+    }
+    if (folioFilterSetAplicar.size > 0) {
+      const fol = normalizeFolioAplicar(f.folio);
+      const num = normalizeFolioAplicar(f.invoice_number);
+      let match = false;
+      for (const raw of folioFilterSetAplicar) {
+        const n = normalizeFolioAplicar(raw);
+        if (!n) continue;
+        if (
+          fol === n || num === n ||
+          (fol && (fol.includes(n) || n.includes(fol))) ||
+          (num && (num.includes(n) || n.includes(num)))
+        ) {
+          match = true;
+          break;
+        }
+      }
+      if (!match) return false;
+    }
+    return true;
+  });
+}
+
+function renderFacturasPendientesAplicar() {
   const $tbody = $("#tbodyFacturasAplicar");
   $tbody.empty();
 
-  if (!facturas.length) {
+  const visibles = facturasAplicarVisibles();
+  if (!visibles.length) {
     $tbody.html(
       '<tr><td colspan="7" class="text-center text-muted">No hay facturas pendientes de este proveedor</td></tr>',
     );
+    actualizarTotalAplicar();
     return;
   }
 
-  facturas.forEach((f) => {
+  visibles.forEach((f) => {
     const saldo = parseFloat(f.saldo) || 0;
+    const montoVal = f.sel && f.monto !== null ? f.monto : "";
     const row = `
-      <tr data-invoice-id="${f.id}" data-payment-request-id="${f.payment_request_id}" data-saldo="${saldo}">
-        <td><input type="checkbox" class="factura-aplicar-checkbox"></td>
+      <tr data-invoice-id="${f.id}" data-payment-request-id="${f.payment_request_id}" data-saldo="${saldo}" class="${f.sel ? "table-success" : ""}">
+        <td><input type="checkbox" class="factura-aplicar-checkbox" ${f.sel ? "checked" : ""}></td>
         <td>${f.folio}</td>
         <td>${f.invoice_number}</td>
         <td>${f.estacion_nombre || "N/A"}</td>
@@ -7904,44 +8005,111 @@ function renderFacturasPendientesAplicar(facturas) {
         <td class="text-end">$${saldo.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</td>
         <td>
           <input type="number" class="form-control form-control-sm monto-aplicar-input"
-                 step="0.01" min="0.01" max="${saldo}" placeholder="0.00" disabled>
+                 step="0.01" min="0.01" max="${saldo}" placeholder="0.00" value="${montoVal}" ${f.sel ? "" : "disabled"}>
         </td>
       </tr>`;
     $tbody.append(row);
   });
 
-  $(".factura-aplicar-checkbox").on("change", function () {
-    const $input = $(this).closest("tr").find(".monto-aplicar-input");
-    $input.prop("disabled", !this.checked);
-    if (!this.checked) $input.val("");
-    actualizarTotalAplicar();
-  });
-  $(".monto-aplicar-input").on("input", actualizarTotalAplicar);
+  actualizarTotalAplicar();
 }
 
-$(document).on("input", "#buscarFacturaAplicar", function () {
-  const term = $(this).val().toLowerCase();
-  const filtradas = facturasPendientesAplicar.filter(
-    (f) =>
-      (f.folio || "").toLowerCase().includes(term) ||
-      (f.invoice_number || "").toLowerCase().includes(term),
-  );
-  renderFacturasPendientesAplicar(filtradas);
+// Alterna la selección de una factura; al seleccionar, precarga el monto con su saldo
+function toggleFacturaAplicar(invoiceId) {
+  const f = facturasPendientesAplicar.find((x) => String(x.id) === String(invoiceId));
+  if (!f) return;
+  f.sel = !f.sel;
+  f.monto = f.sel ? parseFloat(f.saldo) || 0 : null;
+  renderFacturasPendientesAplicar();
+}
+
+// Click en cualquier parte de la fila selecciona/deselecciona (los inputs se manejan aparte)
+$(document).on("click", "#tablaFacturasPendientesAplicar tbody tr[data-invoice-id]", function (e) {
+  if ($(e.target).is("input")) return;
+  toggleFacturaAplicar($(this).data("invoice-id"));
 });
 
+$(document).on("change", "#tablaFacturasPendientesAplicar .factura-aplicar-checkbox", function () {
+  toggleFacturaAplicar($(this).closest("tr").data("invoice-id"));
+});
+
+$(document).on("input", "#tablaFacturasPendientesAplicar .monto-aplicar-input", function () {
+  const id = $(this).closest("tr").data("invoice-id");
+  const f = facturasPendientesAplicar.find((x) => String(x.id) === String(id));
+  if (!f) return;
+  f.monto = this.value === "" ? 0 : parseFloat(this.value) || 0;
+  actualizarTotalAplicar();
+});
+
+$(document).on("input", "#buscarFacturaAplicar", function () {
+  renderFacturasPendientesAplicar();
+});
+
+// ── Filtro masivo por folios pegados de Excel ──
+function toggleFolioFilterAplicar() {
+  const $collapse = $("#folioFilterCollapseAplicar");
+  if ($collapse.is(":visible")) {
+    clearFolioFilterAplicar();
+    $collapse.hide();
+  } else {
+    $collapse.show();
+    $("#folioFilterInputAplicar").focus();
+  }
+}
+
+function clearFolioFilterAplicar() {
+  $("#folioFilterInputAplicar").val("");
+  parseFolioFilterAplicar("");
+}
+
+function parseFolioFilterAplicar(raw) {
+  const lines = raw
+    .split(/[\n\r]+/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  folioFilterSetAplicar = new Set(lines);
+
+  if (folioFilterSetAplicar.size > 0) {
+    $("#folioCountBadgeAplicar").text(folioFilterSetAplicar.size + " folios").show();
+    $("#btnClearFoliosAplicar").show();
+  } else {
+    $("#folioCountBadgeAplicar").hide();
+    $("#btnClearFoliosAplicar").hide();
+  }
+
+  renderFacturasPendientesAplicar();
+}
+
+$(document).on("input", "#folioFilterInputAplicar", function () {
+  parseFolioFilterAplicar(this.value);
+});
+
+// "Seleccionar todos" aplica solo a las facturas visibles con el filtro actual
 $(document).on("change", "#selectAllFacturasAplicar", function () {
-  $(".factura-aplicar-checkbox").prop("checked", this.checked).trigger("change");
+  const marcar = this.checked;
+  facturasAplicarVisibles().forEach(function (f) {
+    f.sel = marcar;
+    f.monto = marcar ? parseFloat(f.saldo) || 0 : null;
+  });
+  renderFacturasPendientesAplicar();
 });
 
 function actualizarTotalAplicar() {
   const saldoDisponible = parseFloat($("#anticipoSaldoDisponible").val()) || 0;
   let total = 0;
-  $(".factura-aplicar-checkbox:checked").each(function () {
-    const monto = parseFloat($(this).closest("tr").find(".monto-aplicar-input").val()) || 0;
-    total += monto;
+  let seleccionadas = 0;
+  facturasPendientesAplicar.forEach(function (f) {
+    if (f.sel) {
+      seleccionadas++;
+      total += parseFloat(f.monto) || 0;
+    }
   });
 
-  $("#totalAplicarModal").text(total.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
+  $("#totalAplicarModal").text(
+    total.toLocaleString("es-MX", { minimumFractionDigits: 2 }) +
+    (seleccionadas > 0 ? " (" + seleccionadas + " factura" + (seleccionadas === 1 ? "" : "s") + ")" : "")
+  );
 
   const excede = total > saldoDisponible;
   $("#alertExcedeSaldo").toggleClass("d-none", !excede);
@@ -7951,19 +8119,29 @@ function actualizarTotalAplicar() {
 function confirmarAplicarAnticipo() {
   const anticipoId = $("#anticipoId").val();
   const aplicaciones = [];
+  const excedidas = [];
 
-  $(".factura-aplicar-checkbox:checked").each(function () {
-    const $row = $(this).closest("tr");
-    const monto = parseFloat($row.find(".monto-aplicar-input").val()) || 0;
+  facturasPendientesAplicar.forEach(function (f) {
+    if (!f.sel) return;
+    const monto = parseFloat(f.monto) || 0;
+    const saldo = parseFloat(f.saldo) || 0;
+    if (monto > saldo + 0.01) {
+      excedidas.push(f.folio);
+      return;
+    }
     if (monto > 0) {
       aplicaciones.push({
-        invoice_id: $row.data("invoice-id"),
-        payment_request_id: $row.data("payment-request-id"),
+        invoice_id: f.id,
+        payment_request_id: f.payment_request_id,
         monto: monto,
       });
     }
   });
 
+  if (excedidas.length) {
+    alertify.error("El monto excede el saldo de la(s) factura(s): " + excedidas.join(", "));
+    return;
+  }
   if (!aplicaciones.length) {
     alertify.error("Seleccione al menos una factura y un monto a aplicar");
     return;

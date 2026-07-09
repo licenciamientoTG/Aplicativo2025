@@ -5336,7 +5336,8 @@ class Payment
             echo json_encode(['success' => false, 'message' => 'ID de pago inválido.']);
             return;
         }
-        echo json_encode($this->PaymentRequestsModel->delete_payment_by_id($payment_id));
+        $user_id = isset($_SESSION['tg_user']['Id']) ? intval($_SESSION['tg_user']['Id']) : null;
+        echo json_encode($this->PaymentRequestsModel->delete_payment_by_id($payment_id, $user_id));
     }
 
 
@@ -5775,6 +5776,8 @@ class Payment
         }
         // Comprobantes del pago del anticipo (para mostrarlos en el panel expandible)
         $summary['comprobantes'] = $this->PaymentTransactionDocumentsModel->get_by_anticipo((int)$anticipo_id);
+        // Facturas ligadas al anticipo, con su archivo CFDI si existe
+        $summary['aplicaciones'] = $this->PaymentRequestsModel->get_anticipo_applications((int)$anticipo_id);
         json_output(['success' => true, 'data' => $summary]);
     }
 

@@ -55,6 +55,7 @@ class PaymentRequestInvoicesModel extends Model
             INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
             LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
             WHERE pr.provider_cod = ?
+              AND pr.is_deleted = 0
               AND pri.is_deleted = 0
               AND pri.status IN (0, 1, 3)
               AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
@@ -1037,6 +1038,7 @@ class PaymentRequestInvoicesModel extends Model
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pr.status = ?
+                AND pr.is_deleted = 0
                 AND pri.is_deleted = 0
             GROUP BY
                 pr.id,
@@ -1093,8 +1095,9 @@ class PaymentRequestInvoicesModel extends Model
                 ON pr.emp_cod = emp.cod
             WHERE pr.tipo = 1
                 AND pr.status = ?  -- Autorizados
-            
-            ORDER BY 
+                AND pr.is_deleted = 0
+
+            ORDER BY
                 banco_asignado,
                 empresa_nombre,
                 proveedor_nombre,
@@ -1930,6 +1933,13 @@ class PaymentRequestInvoicesModel extends Model
                     'message' => 'No se puede quitar una factura que ya tiene pagos aplicados'
                 ];
             }
+
+            // Liberar aplicaciones de anticipo ligadas a esta factura: la aplicación
+            // es un apartado del saldo, no un consumo; al quitar la factura el saldo
+            // debe regresar al anticipo (si no hay aplicaciones, borra 0 filas).
+            $this->sql->delete("
+                DELETE FROM [TG].[dbo].[anticipo_invoice_applications]
+                WHERE invoice_id = ?", [$invoice_id]);
 
             // Soft-delete: se conserva la fila para auditoría/restauración en vez de borrarla físicamente.
             $query_delete = "
