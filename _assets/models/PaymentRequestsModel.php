@@ -58,6 +58,7 @@ class PaymentRequestsModel extends Model
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ';
 
+            $invModel = new PaymentRequestInvoicesModel();
             foreach ($documents as $doc) {
                 $folio          = $doc['nro'] ?? null;
                 $invoice_number = $doc['Factura'] ?? null;
@@ -67,6 +68,23 @@ class PaymentRequestsModel extends Model
                 $expiration_date = $doc['fechaVto'] ?? null;
                 $status         = self::STATUS_PENDING;
                 $uuid           = $doc['satuid'] ?? null;
+
+                // Si el UUID ya vive en una orden activa: mover cuando es un
+                // anticipo con aplicación parcial (pagar el remanente), rechazar
+                // en cualquier otro caso (nunca duplicar filas por UUID).
+                $activa = $uuid ? $invModel->get_active_invoice_by_uuid($uuid) : null;
+                if ($activa) {
+                    if ((int)$activa['owner_tipo'] === 1 && $activa['restante'] > 0.01) {
+                        if (!$invModel->move_invoice_to_payment((int)$activa['id'], (int)$payment_id)) {
+                            throw new Exception("Error al mover la factura $folio desde el anticipo #" . $activa['owner_id']);
+                        }
+                        continue;
+                    }
+                    if ((int)$activa['owner_tipo'] === 1) {
+                        throw new Exception("La factura $folio está cubierta completamente por el anticipo #" . $activa['owner_id']);
+                    }
+                    throw new Exception("La factura $folio ya está incluida en otra orden de pago");
+                }
 
                 if (!$this->sql->insert($query2, [
                     $payment_id, $folio, $invoice_number, $codgas,

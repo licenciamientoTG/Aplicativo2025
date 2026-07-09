@@ -459,12 +459,45 @@ class Payment
                     'gasolinera'       => $row['gasolinera'],
                     'codgas'           => $row['codgas'],
                     'en_orden_pago'    => $row['en_orden_pago'],
+                    'payment_invoice_id' => $row['payment_invoice_id'] ?? null,
                     'payment_status'   => $row['payment_status'],
                     'codigo_empresa'   => $row['codigo_empresa'],
-                    'statusLabel'      => $statusLabel
+                    'statusLabel'      => $statusLabel,
+                    'anticipo_parcial' => 0,
+                    'anticipo_aplicado' => 0,
+                    'monto_restante'   => null,
                 );
             }
         }
+
+        // Post-proceso: facturas que viven bajo un ANTICIPO. Con aplicación
+        // parcial quedan seleccionables (se pagará el remanente moviéndolas a
+        // la requisición); cubiertas al 100% se etiquetan como pagadas con anticipo.
+        $ids_en_orden = array_values(array_filter(array_map(
+            fn($d) => !empty($d['en_orden_pago']) ? (int)($d['payment_invoice_id'] ?? 0) : 0,
+            $data
+        )));
+        if (!empty($ids_en_orden)) {
+            $info_anticipos = $this->paymentRequestInvoicesModel->get_anticipo_parcial_info($ids_en_orden);
+            foreach ($data as &$d) {
+                $inv_id = (int)($d['payment_invoice_id'] ?? 0);
+                if (!$inv_id || empty($info_anticipos[$inv_id])) continue;
+                $info = $info_anticipos[$inv_id];
+
+                if ($info['restante'] > 0.01) {
+                    $d['anticipo_parcial']  = 1;
+                    $d['anticipo_aplicado'] = $info['aplicado'];
+                    $d['monto_restante']    = $info['restante'];
+                    $d['statusLabel'] = '<span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;" '
+                        . 'title="Anticipo #' . $info['anticipo_id'] . ' aplicado: $' . number_format($info['aplicado'], 2) . '">'
+                        . 'Anticipo −$' . number_format($info['aplicado'], 2) . '<br>resta $' . number_format($info['restante'], 2) . '</span>';
+                } else {
+                    $d['statusLabel'] = '<span class="badge bg-success" title="Cubierta completamente por el anticipo #' . $info['anticipo_id'] . '">Pagada con anticipo</span>';
+                }
+            }
+            unset($d);
+        }
+
         json_output(array("data" => $data));
     }
 

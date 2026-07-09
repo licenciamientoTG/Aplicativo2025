@@ -115,7 +115,9 @@ async function payment_create_table() {
         orderable: false,
         className: "text-center text-nowrap",
         render: function (data, type, row) {
-          if (row.en_orden_pago != 0) {
+          // Facturas en orden de pago no se seleccionan, EXCEPTO las que viven
+          // bajo un anticipo con aplicación parcial (se paga su remanente).
+          if (row.en_orden_pago != 0 && row.anticipo_parcial != 1) {
             return ""; // o un ícono si quieres
           }
           return `
@@ -123,7 +125,7 @@ async function payment_create_table() {
                             class="invoice-checkbox"
                             data-nro="${row.nro}"
                             data-factura="${row.Factura}" data-codigo_empresa="${row.codigo_empresa}"
-                            data-codgas="${row.codgas}" data-proveedor_codigo="${row.proveedor_codigo}" 
+                            data-codgas="${row.codgas}" data-proveedor_codigo="${row.proveedor_codigo}"
                             onchange="updateSelectedCount()">
                     `;
         },
@@ -179,9 +181,13 @@ async function payment_create_table() {
     deferRender: true,
     // destroy: true,
     createdRow: function (row, data, dataIndex) {
-      if (data.en_orden_pago != 0) {
+      if (data.en_orden_pago != 0 && data.anticipo_parcial != 1) {
         $(row).addClass("bg_send");
       } else {
+        if (data.anticipo_parcial == 1) {
+          // Parcial de anticipo: fondo ámbar distintivo, pero seleccionable/arrastrable
+          $(row).css("background", "#fffbeb");
+        }
         $(row).addClass("draggable-row");
         $(row).attr("draggable", "true");
         $(row).data("rowData", data);
