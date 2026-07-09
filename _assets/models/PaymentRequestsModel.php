@@ -868,60 +868,6 @@ class PaymentRequestsModel extends Model
     /**
      * Registrar aplicaciones de anticipo
      */
-    public function register_anticipo_applications($anticipo_id, $aplicaciones, $user_id)
-    {
-        $this->sql->beginTransaction();
-
-        try {
-            // Validar saldo
-            $saldo = $this->get_saldo_disponible($anticipo_id);
-            $total_aplicar = array_sum(array_column($aplicaciones, 'monto'));
-
-            if ($total_aplicar > $saldo) {
-                throw new Exception('El monto a aplicar excede el saldo disponible');
-            }
-
-            // Fecha actual
-            $fecha_aplicacion = date('Y-m-d H:i:s');
-
-            // Insertar cada aplicación
-            $query = "
-                INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
-                (anticipo_id, invoice_id, monto_aplicado, fecha_aplicacion, aplicado_por)
-                VALUES (?, ?, ?, ?, ?)
-            ";
-
-            foreach ($aplicaciones as $app) {
-                $params = [
-                    $anticipo_id,
-                    $app['invoice_id'] ?? null,
-                    $app['monto'],
-                    $fecha_aplicacion,
-                    $user_id
-                ];
-
-                if (!$this->sql->insert($query, $params)) {
-                    throw new Exception('Error al registrar aplicación');
-                }
-            }
-
-            $this->sql->commit();
-
-            return [
-                'success' => true,
-                'message' => 'Anticipo aplicado exitosamente'
-            ];
-        } catch (Exception $e) {
-            $this->sql->rollback();
-            error_log("Error en register_anticipo_applications: " . $e->getMessage());
-
-            return [
-                'success' => false,
-                'message' => $e->getMessage()
-            ];
-        }
-    }
-
     /**
      * Liga documentos de compra DISPONIBLES a un anticipo: inserta cada uno
      * como factura del anticipo (payment_request_id = anticipo) y crea su

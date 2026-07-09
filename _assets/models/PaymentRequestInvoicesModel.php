@@ -35,36 +35,6 @@ class PaymentRequestInvoicesModel extends Model
     }
 
     /**
-     * Facturas con saldo pendiente de un proveedor (para ligar anticipos).
-     * @param string $provider_cod
-     * @return array|false
-     */
-    public function get_pending_by_provider($provider_cod) : array|false {
-        $query = "
-            SELECT
-                pri.id,
-                pri.payment_request_id,
-                pri.folio,
-                pri.invoice_number,
-                pri.amount,
-                ISNULL(pri.paid_amount, 0) AS paid_amount,
-                (pri.amount - ISNULL(pri.paid_amount, 0)) AS saldo,
-                pri.uuid,
-                g.abr AS estacion_nombre
-            FROM [TG].[dbo].[payment_request_invoices] pri
-            INNER JOIN [TG].[dbo].[payment_requests] pr ON pr.id = pri.payment_request_id
-            LEFT JOIN [SG12].[dbo].Gasolineras g ON g.cod = pri.codgas
-            WHERE pr.provider_cod = ?
-              AND pr.is_deleted = 0
-              AND pri.is_deleted = 0
-              AND pri.status IN (0, 1, 3)
-              AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
-            ORDER BY pri.id DESC
-        ";
-        return ($this->sql->select($query, [$provider_cod])) ?: false;
-    }
-
-    /**
      * Inserta una factura para una solicitud de pago.
      * @param int $payment_request_id
      * @param string $folio
