@@ -7591,9 +7591,18 @@ function normalizarNombreEmpresa(s) {
   return (s || "")
     .toUpperCase()
     .replace(/[.,]/g, "")
-    .replace(/\b(SA|SAPI|DE|CV|RL|S|C|V)\b/g, "")
+    .replace(/\b(SA|SAPI|DE|CV|RL|[A-Z])\b/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Comparación laxa: formas compactas (sin espacios) para que
+// "PREMIER GAS SAPI DE CV" empate con "PREMIERGAS S.A. P. I. DE C.V."
+function nombresEmpresaCoinciden(a, b) {
+  const ca = normalizarNombreEmpresa(a).replace(/\s+/g, "");
+  const cb = normalizarNombreEmpresa(b).replace(/\s+/g, "");
+  if (!ca || !cb) return false;
+  return ca.includes(cb) || cb.includes(ca);
 }
 
 function opcionesGruposSelect(idxSeleccionado, c) {
@@ -7601,22 +7610,31 @@ function opcionesGruposSelect(idxSeleccionado, c) {
 
   const rfcEmpresa = (c && c.rfc_ordenante ? c.rfc_ordenante : "").trim().toUpperCase();
   const rfcProveedor = (c && c.rfc_beneficiario ? c.rfc_beneficiario : "").trim().toUpperCase();
-  const nombreProveedorNorm = normalizarNombreEmpresa(c && c.nombre_beneficiario);
+  const nombreProveedor = c && c.nombre_beneficiario ? c.nombre_beneficiario : "";
 
-  const gruposFiltrados = comprobantesGrupos.filter((g) => {
+  const pasaFiltro = (g, usarProveedor) => {
     // Si ya está seleccionado ese grupo (reasignación), siempre se muestra.
     if (idxSeleccionado !== null && idxSeleccionado === g.idx) return true;
     if (rfcEmpresa && (g.empresa_rfc || "").toUpperCase() !== rfcEmpresa) return false;
+    if (!usarProveedor) return true;
     if (rfcProveedor) {
       return (g.proveedor_rfc || "").toUpperCase() === rfcProveedor;
     }
-    if (nombreProveedorNorm) {
-      const grupoProveedorNorm = normalizarNombreEmpresa(g.proveedor_nombre);
-      return grupoProveedorNorm.includes(nombreProveedorNorm)
-        || nombreProveedorNorm.includes(grupoProveedorNorm);
+    if (nombreProveedor) {
+      return nombresEmpresaCoinciden(nombreProveedor, g.proveedor_nombre);
     }
     return true;
-  });
+  };
+
+  // El select de reasignación manual NUNCA debe quedar vacío: se relaja el
+  // filtro por pasos (empresa+proveedor → solo empresa → todos los grupos).
+  let gruposFiltrados = comprobantesGrupos.filter((g) => pasaFiltro(g, true));
+  if (gruposFiltrados.length === 0) {
+    gruposFiltrados = comprobantesGrupos.filter((g) => pasaFiltro(g, false));
+  }
+  if (gruposFiltrados.length === 0) {
+    gruposFiltrados = comprobantesGrupos;
+  }
 
   gruposFiltrados.forEach((g) => {
     const sel = idxSeleccionado !== null && idxSeleccionado === g.idx ? "selected" : "";
