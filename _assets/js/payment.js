@@ -1341,9 +1341,20 @@ function addColumnFilters(tableId, api) {
 }
 
 
+// Filtro por tipo (pagos/anticipos) de la tabla de Pagos: lee el select en
+// vivo y compara contra el campo tipo (0=pago, 1=anticipo) de cada fila.
+$.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+  if (settings.nTable.id !== "payment_list_table") return true;
+  var val = $("#payment_tipo_filter").val();
+  if (!val) return true;
+  var rowData = settings.aoData[dataIndex] ? settings.aoData[dataIndex]._aData : null;
+  return rowData ? String(rowData.tipo) === val : true;
+});
+
 function loadPaymentList() {
   // Conservar el valor de los filtros entre reconstrucciones de la tabla
   const statusFilterPrevValue = $("#payment_status_filter").val() || "";
+  const tipoFilterPrevValue = $("#payment_tipo_filter").val() || "";
 
   if ($.fn.DataTable.isDataTable("#payment_list_table")) {
     $("#payment_list_table").DataTable().destroy();
@@ -1352,6 +1363,7 @@ function loadPaymentList() {
   // Los selects de filtro y el botón de refrescar se inyectan dinámicamente en
   // initComplete; quitar los anteriores para que no se dupliquen al reconstruir.
   $("#payment_status_filter").remove();
+  $("#payment_tipo_filter").remove();
   $("#payment_list_refresh_btn").remove();
 
   const status = "all";
@@ -1571,6 +1583,23 @@ function loadPaymentList() {
       $statusSelect.on("change", function () {
         api.column(statusColIdx).search(this.value).draw();
       });
+
+      // Select de filtro por tipo (pagos vs anticipos), junto al de estados
+      var $tipoSelect = $(
+        '<select id="payment_tipo_filter" class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;" title="Filtrar por tipo">' +
+        '<option value="">Pagos y anticipos</option>' +
+        '<option value="0">Solo pagos</option>' +
+        '<option value="1">Solo anticipos</option>' +
+        '</select>'
+      );
+      $tipoSelect.val(tipoFilterPrevValue);
+      $(".dt-buttons").append($tipoSelect);
+      $tipoSelect.on("change", function () {
+        api.draw();
+      });
+      if (tipoFilterPrevValue) {
+        api.draw();
+      }
 
       // Botón para refrescar la tabla (vuelve a pedir los datos al servidor)
       var $refreshBtn = $(
