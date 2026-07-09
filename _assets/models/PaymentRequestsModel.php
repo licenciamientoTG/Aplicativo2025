@@ -921,6 +921,116 @@ class PaymentRequestsModel extends Model
             ];
         }
     }
+
+    /**
+     * Liga documentos de compra DISPONIBLES a un anticipo: inserta cada uno
+     * como factura del anticipo (payment_request_id = anticipo) y crea su
+     * aplicación con el monto. La factura queda "en orden de pago" y deja de
+     * aparecer en add_payment. NO toca monto_total/status/autorizaciones del
+     * anticipo.
+     *
+     * Cada documento: nro, Factura, codgas, total, satuid, fecha_vencimiento, monto_aplicar.
+     */
+    public function attach_invoices_to_anticipo(int $anticipo_id, array $documents, int $user_id): array
+    {
+        if (empty($documents)) {
+            return ['success' => false, 'message' => 'No hay documentos para ligar'];
+        }
+
+        $anticipo = $this->get_request_by_id($anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            return ['success' => false, 'message' => 'Anticipo no encontrado'];
+        }
+        if (intval($anticipo['status']) !== self::STATUS_PAID) {
+            return ['success' => false, 'message' => 'El anticipo debe estar pagado para ligarle facturas'];
+        }
+
+        // Validar montos y duplicados antes de abrir la transacción
+        $total_aplicar = 0.0;
+        foreach ($documents as $doc) {
+            $monto = floatval($doc['monto_aplicar'] ?? 0);
+            $total = floatval($doc['total'] ?? 0);
+            $folio = $doc['nro'] ?? '?';
+
+            if ($monto <= 0) {
+                return ['success' => false, 'message' => "Monto inválido en el documento $folio"];
+            }
+            if ($monto > $total + 0.01) {
+                return ['success' => false, 'message' => "El monto a aplicar excede el total del documento $folio"];
+            }
+            if (empty($doc['satuid'])) {
+                return ['success' => false, 'message' => "El documento $folio no tiene CFDI (satuid)"];
+            }
+            $existe = $this->sql->select(
+                'SELECT id FROM [TG].[dbo].[payment_request_invoices] WHERE uuid = ? AND is_deleted = 0',
+                [$doc['satuid']]
+            );
+            if (!empty($existe)) {
+                return ['success' => false, 'message' => "El documento $folio ya está en una orden de pago o anticipo"];
+            }
+            $total_aplicar += $monto;
+        }
+
+        $saldo = floatval($this->get_saldo_disponible($anticipo_id));
+        if ($total_aplicar > $saldo + 0.01) {
+            return ['success' => false, 'message' => 'El total a aplicar ($' . number_format($total_aplicar, 2) . ') excede el saldo disponible del anticipo ($' . number_format($saldo, 2) . ')'];
+        }
+
+        $this->sql->beginTransaction();
+        try {
+            $query_invoice = '
+                INSERT INTO [TG].[dbo].[payment_request_invoices]
+                (payment_request_id, folio, invoice_number, codgas, amount, status, expiration_date, uuid, is_debit_note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+            ';
+            $query_app = '
+                INSERT INTO [TG].[dbo].[anticipo_invoice_applications]
+                (anticipo_id, invoice_id, monto_aplicado, fecha_aplicacion, aplicado_por)
+                VALUES (?, ?, ?, GETDATE(), ?)
+            ';
+
+            $ligadas = 0;
+            foreach ($documents as $doc) {
+                $monto = floatval($doc['monto_aplicar']);
+                $total = floatval($doc['total']);
+                // 2 = Pagado (cubierta completa por el anticipo), 3 = Pago Parcial
+                $status_factura = abs($total - $monto) <= 0.01 ? 2 : 3;
+
+                $invoice_id = $this->sql->insert($query_invoice, [
+                    $anticipo_id,
+                    $doc['nro'] ?? null,
+                    $doc['Factura'] ?? null,
+                    $doc['codgas'] ?? null,
+                    $total,
+                    $status_factura,
+                    $doc['fecha_vencimiento'] ?? null,
+                    $doc['satuid'],
+                ]);
+                if (!$invoice_id || !is_numeric($invoice_id)) {
+                    throw new Exception('Error al insertar la factura ' . ($doc['nro'] ?? ''));
+                }
+
+                if (!$this->sql->insert($query_app, [$anticipo_id, $invoice_id, $monto, $user_id])) {
+                    throw new Exception('Error al registrar la aplicación de la factura ' . ($doc['nro'] ?? ''));
+                }
+                $ligadas++;
+            }
+
+            $this->sql->commit();
+
+            return [
+                'success'         => true,
+                'message'         => "Se ligaron $ligadas factura(s) al anticipo",
+                'facturas_ligadas'=> $ligadas,
+                'total_aplicado'  => $total_aplicar,
+                'saldo_restante'  => $saldo - $total_aplicar,
+            ];
+        } catch (Exception $e) {
+            $this->sql->rollback();
+            error_log('Error en attach_invoices_to_anticipo: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
     // public function get_anticipos_para_layout(array $anticipo_ids) : array|false {
     //     if (empty($anticipo_ids)) {
     //         return false;
