@@ -1,0 +1,442 @@
+{% extends "views/layouts/base.html" %}
+{% block title %}Aplicar Anticipo #{{ anticipo.id }}{% endblock %}
+{% block content %}
+
+<div class="row">
+    <!-- ═══════════════ COLUMNA IZQUIERDA ═══════════════ -->
+    <div class="col-9">
+
+        <!-- CARD: DATOS DEL ANTICIPO -->
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <span>
+                    <i class="fas fa-hand-holding-usd me-2"></i>
+                    <strong>Anticipo #{{ anticipo.id }}</strong>
+                    <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fcd34d;font-weight:600;margin-left:.5rem;">Anticipo</span>
+                    {% if anticipo.status != 2 %}
+                    <span class="badge bg-warning text-dark ms-1">No pagado — no se pueden ligar facturas</span>
+                    {% endif %}
+                </span>
+                <a href="/payment/anticipo_detail/{{ anticipo.id }}" class="btn btn-sm btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Volver al detalle
+                </a>
+            </div>
+            <div class="card-body py-2">
+                <div class="row">
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Proveedor</small>
+                        <strong>{{ proveedor_nombre }}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted d-block">Empresa</small>
+                        <strong>{{ empresa_nombre ?: '—' }}</strong>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <small class="text-muted d-block">Monto original</small>
+                        <strong>${{ summary.monto_original|number_format(2) }}</strong>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <small class="text-muted d-block">Aplicado</small>
+                        <strong class="text-danger">${{ summary.total_aplicado|number_format(2) }}</strong>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <small class="text-muted d-block">Saldo disponible</small>
+                        <strong class="text-success h5">${{ summary.saldo_disponible|number_format(2) }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD: FILTROS -->
+        <div class="card mb-3">
+            <div class="card-body py-2">
+                <div class="row align-items-end">
+                    <div class="col">
+                        <label class="col-form-label-sm fw-bold">DESDE:</label>
+                        <input type="date" class="form-control form-control-sm" id="fromDate"
+                               value="{{ '-60 days'|date('Y-m-d') }}">
+                    </div>
+                    <div class="col">
+                        <label class="col-form-label-sm fw-bold">HASTA:</label>
+                        <input type="date" class="form-control form-control-sm" id="untilDate"
+                               value="{{ 'now'|date('Y-m-d') }}">
+                    </div>
+                    <div class="col">
+                        <label class="col-form-label-sm fw-bold">ESTACIÓN:</label>
+                        <select class="form-select form-select-sm" id="codgas">
+                            <option value="0" selected>Todas las estaciones</option>
+                            {% for station in stations %}
+                            <option value="{{ station.cod }}">{{ station.abr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="buscarDocumentos()">
+                            <i class="fas fa-search me-1"></i> Buscar Documentos
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD: DOCUMENTOS DISPONIBLES -->
+        <div class="card mb-3">
+            <div class="card-header py-2">
+                <i class="fas fa-file-invoice me-2"></i>
+                <strong>Documentos disponibles del proveedor</strong>
+                <span class="badge bg-secondary ms-1" id="badge-docs-count">0</span>
+            </div>
+            <div class="card-body table-responsive pt-2">
+                <!-- Filtro masivo por folio (mismo patrón que add_payment) -->
+                <div class="mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                        onclick="toggleFolioFilter()" style="font-size:0.8rem;">
+                        <i class="fas fa-list me-1"></i> Filtrar por folios
+                        <span id="folio-count-badge" class="badge bg-primary ms-1" style="display:none;"></span>
+                    </button>
+                    <div id="folio-filter-collapse" style="display:none;" class="mt-2">
+                        <div class="d-flex align-items-start gap-2">
+                            <textarea id="folio-filter-input" class="form-control form-control-sm" rows="3"
+                                placeholder="Pega folios de Excel (uno por línea)..."
+                                style="font-size:0.82rem; font-family:monospace; resize:vertical;"></textarea>
+                            <button type="button" class="btn btn-sm btn-link text-danger p-0" id="btn-clear-folios"
+                                onclick="clearFolioFilter()" style="display:none; font-size:0.8rem; white-space:nowrap;">
+                                <i class="fas fa-times-circle"></i> Limpiar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <table id="docs_anticipo_table" class="table table-sm table-striped table-hover w-100">
+                    <thead>
+                        <tr>
+                            <th width="30"></th>
+                            <th>Folio</th>
+                            <th>Factura</th>
+                            <th>Estación</th>
+                            <th>Fecha</th>
+                            <th>Vencimiento</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════ COLUMNA DERECHA: carrito ═══════════════ -->
+    <div class="col-3">
+        <div class="card" style="position:sticky; top:70px;">
+            <div class="card-header text-white d-flex justify-content-between align-items-center" style="background:#92400e;">
+                <h6 class="text-white mb-0"><i class="fas fa-link me-1"></i> Aplicando Anticipo</h6>
+                <span id="sel-count" class="badge bg-light text-dark">0</span>
+            </div>
+            <div class="card-body p-2">
+                <div id="lista-seleccionadas" style="max-height:50vh;overflow-y:auto;">
+                    <div class="text-center text-muted py-3" id="sin-seleccion">
+                        <i class="fas fa-inbox"></i><br>
+                        <small>Da click en un documento para ligarlo</small>
+                    </div>
+                </div>
+                <hr class="my-2">
+                <div class="d-flex justify-content-between" style="font-size:.85rem;">
+                    <span>Total a aplicar:</span>
+                    <strong id="total-aplicar">$0.00</strong>
+                </div>
+                <div class="d-flex justify-content-between" style="font-size:.85rem;">
+                    <span>Saldo restante:</span>
+                    <strong id="saldo-restante" class="text-success">${{ summary.saldo_disponible|number_format(2) }}</strong>
+                </div>
+                <div class="alert alert-danger py-1 px-2 mt-2 mb-0 d-none" id="alert-excede" style="font-size:.78rem;">
+                    <i class="fas fa-exclamation-triangle"></i> El total excede el saldo disponible.
+                </div>
+                {% if anticipo.status == 2 and authorized(68) %}
+                <button class="btn btn-success btn-sm w-100 mt-2" id="btn-aplicar" onclick="confirmarAplicar()" disabled>
+                    <i class="fas fa-check me-1"></i> Aplicar Anticipo
+                </button>
+                {% elseif anticipo.status != 2 %}
+                <div class="alert alert-warning py-1 px-2 mt-2 mb-0" style="font-size:.78rem;">
+                    El anticipo debe estar <strong>Pagado</strong> para ligarle facturas.
+                </div>
+                {% else %}
+                <div class="alert alert-info py-1 px-2 mt-2 mb-0" style="font-size:.78rem;">
+                    Solo Tesorería puede aplicar el anticipo.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const ANTICIPO_ID = {{ anticipo.id }};
+const SALDO_DISPONIBLE = {{ summary.saldo_disponible }};
+
+let documentos = [];          // resultado de la búsqueda (indexados por satuid)
+let seleccion = {};           // satuid -> {doc, monto}
+let docsTable = null;
+
+// ── Búsqueda de documentos ──────────────────────────────────────────
+function buscarDocumentos() {
+    const $tbody = $("#docs_anticipo_table tbody");
+    if (docsTable) { docsTable.destroy(); docsTable = null; }
+    $tbody.html('<tr><td colspan="7" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin"></i> Consultando estaciones (puede tardar)...</td></tr>');
+
+    $.post("/payment/anticipo_documentos_table", {
+        anticipo_id: ANTICIPO_ID,
+        fromDate: $("#fromDate").val(),
+        untilDate: $("#untilDate").val(),
+        codgas: $("#codgas").val(),
+    }, null, "json")
+    .done(function (res) {
+        documentos = res.data || [];
+        renderDocumentos();
+    })
+    .fail(function () {
+        $tbody.html('<tr><td colspan="7" class="text-center text-danger py-3">Error al consultar documentos</td></tr>');
+    });
+}
+
+function renderDocumentos() {
+    if (docsTable) { docsTable.destroy(); docsTable = null; }
+    const $tbody = $("#docs_anticipo_table tbody");
+    $tbody.empty();
+
+    documentos.forEach(function (d) {
+        const sel = !!seleccion[d.satuid];
+        const totalFmt = "$" + (parseFloat(d.total_mostrar) || 0).toLocaleString("es-MX", { minimumFractionDigits: 2 });
+        const totalCell = d.tiene_factura_recibida ? totalFmt : '<span class="text-danger" title="Total de ControlGas (sin factura recibida)">' + totalFmt + '</span>';
+        $tbody.append(
+            '<tr data-satuid="' + d.satuid + '" class="' + (sel ? "table-success" : "") + '" style="cursor:pointer;">' +
+            '<td class="text-center"><input type="checkbox" class="doc-check" ' + (sel ? "checked" : "") + '></td>' +
+            '<td><strong>' + d.nro + "</strong></td>" +
+            "<td>" + (d.Factura || "") + "</td>" +
+            "<td>" + (d.gasolinera || "") + "</td>" +
+            "<td>" + (d.fecha || "") + "</td>" +
+            "<td>" + (d.fechaVto || "") + "</td>" +
+            '<td class="text-end">' + totalCell + "</td>" +
+            "</tr>"
+        );
+    });
+
+    $("#badge-docs-count").text(documentos.length);
+    docsTable = $("#docs_anticipo_table").DataTable({
+        pageLength: 25,
+        order: [[1, "desc"]],
+        columnDefs: [{ orderable: false, targets: 0 }],
+    });
+}
+
+// Click en cualquier parte de la fila (o en el checkbox) alterna la selección
+$(document).on("click", "#docs_anticipo_table tbody tr[data-satuid]", function (e) {
+    const satuid = $(this).data("satuid");
+    if ($(e.target).is("input")) { toggleDoc(satuid); return; }
+    toggleDoc(satuid);
+});
+
+function toggleDoc(satuid) {
+    const d = documentos.find((x) => x.satuid === satuid);
+    if (!d) return;
+    if (seleccion[satuid]) {
+        delete seleccion[satuid];
+    } else {
+        // Monto precargado: total del documento, tope = saldo restante actual
+        const restante = SALDO_DISPONIBLE - totalSeleccionado();
+        const total = parseFloat(d.total_mostrar) || 0;
+        seleccion[satuid] = { doc: d, monto: Math.min(total, Math.max(restante, 0)) };
+    }
+    syncFila(satuid);
+    renderSeleccion();
+}
+
+function syncFila(satuid) {
+    const $tr = $('#docs_anticipo_table tbody tr[data-satuid="' + satuid + '"]');
+    const sel = !!seleccion[satuid];
+    $tr.toggleClass("table-success", sel);
+    $tr.find(".doc-check").prop("checked", sel);
+}
+
+function totalSeleccionado() {
+    return Object.values(seleccion).reduce((s, x) => s + (parseFloat(x.monto) || 0), 0);
+}
+
+// ── Carrito ─────────────────────────────────────────────────────────
+function renderSeleccion() {
+    const $lista = $("#lista-seleccionadas");
+    const items = Object.values(seleccion);
+    $lista.empty();
+
+    if (!items.length) {
+        $lista.html('<div class="text-center text-muted py-3" id="sin-seleccion"><i class="fas fa-inbox"></i><br><small>Da click en un documento para ligarlo</small></div>');
+    } else {
+        items.forEach(function (x) {
+            const d = x.doc;
+            const total = parseFloat(d.total_mostrar) || 0;
+            $lista.append(
+                '<div class="border rounded p-1 mb-1" data-satuid="' + d.satuid + '" style="font-size:.78rem;">' +
+                '<div class="d-flex justify-content-between align-items-center">' +
+                "<span><strong>" + d.nro + "</strong> · " + (d.Factura || "") + "<br><small class='text-muted'>" + (d.gasolinera || "") + " · Total $" + total.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</small></span>" +
+                '<button class="btn btn-sm p-0 text-danger" onclick="quitarDoc(\'' + d.satuid + '\')" title="Quitar"><i class="fas fa-times"></i></button>' +
+                "</div>" +
+                '<div class="input-group input-group-sm mt-1">' +
+                '<span class="input-group-text">$</span>' +
+                '<input type="number" class="form-control monto-doc" data-satuid="' + d.satuid + '" step="0.01" min="0.01" max="' + total + '" value="' + x.monto.toFixed(2) + '">' +
+                "</div>" +
+                "</div>"
+            );
+        });
+    }
+
+    const total = totalSeleccionado();
+    const restante = SALDO_DISPONIBLE - total;
+    const excede = restante < -0.009;
+
+    $("#sel-count").text(items.length);
+    $("#total-aplicar").text("$" + total.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
+    $("#saldo-restante")
+        .text("$" + restante.toLocaleString("es-MX", { minimumFractionDigits: 2 }))
+        .toggleClass("text-danger", excede)
+        .toggleClass("text-success", !excede);
+    $("#alert-excede").toggleClass("d-none", !excede);
+    $("#btn-aplicar").prop("disabled", excede || total <= 0 || !items.length);
+}
+
+function quitarDoc(satuid) {
+    delete seleccion[satuid];
+    syncFila(satuid);
+    renderSeleccion();
+}
+
+$(document).on("input", ".monto-doc", function () {
+    const satuid = $(this).data("satuid");
+    if (!seleccion[satuid]) return;
+    seleccion[satuid].monto = parseFloat(this.value) || 0;
+    // Recalcular totales sin re-render (para no perder el foco del input)
+    const total = totalSeleccionado();
+    const restante = SALDO_DISPONIBLE - total;
+    const excede = restante < -0.009;
+    $("#total-aplicar").text("$" + total.toLocaleString("es-MX", { minimumFractionDigits: 2 }));
+    $("#saldo-restante")
+        .text("$" + restante.toLocaleString("es-MX", { minimumFractionDigits: 2 }))
+        .toggleClass("text-danger", excede)
+        .toggleClass("text-success", !excede);
+    $("#alert-excede").toggleClass("d-none", !excede);
+    $("#btn-aplicar").prop("disabled", excede || total <= 0);
+});
+
+// ── Confirmar ───────────────────────────────────────────────────────
+function confirmarAplicar() {
+    const items = Object.values(seleccion);
+    if (!items.length) return;
+
+    const invalidos = items.filter((x) => !(parseFloat(x.monto) > 0) || parseFloat(x.monto) > (parseFloat(x.doc.total_mostrar) || 0) + 0.01);
+    if (invalidos.length) {
+        alertify.error("Revisa los montos: deben ser mayores a 0 y no exceder el total del documento");
+        return;
+    }
+
+    const total = totalSeleccionado();
+    alertify.confirm(
+        "Aplicar anticipo",
+        "Vas a ligar <strong>" + items.length + "</strong> factura(s) al anticipo #" + ANTICIPO_ID +
+        " por un total de <strong>$" + total.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</strong>. ¿Continuar?",
+        function () { ejecutarAplicar(items); },
+        function () {}
+    ).set("labels", { ok: "Sí, aplicar", cancel: "Cancelar" });
+}
+
+function ejecutarAplicar(items) {
+    const documentosPayload = items.map((x) => ({
+        nro: x.doc.nro,
+        Factura: x.doc.Factura,
+        codgas: x.doc.codgas,
+        total: parseFloat(x.doc.total_mostrar) || 0,
+        satuid: x.doc.satuid,
+        fecha_vencimiento: x.doc.fechaVto || null,
+        monto_aplicar: parseFloat(x.monto),
+    }));
+
+    $("#btn-aplicar").prop("disabled", true).html('<i class="fas fa-spinner fa-spin"></i> Aplicando...');
+
+    fetch("/payment/apply_anticipo_documentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ anticipo_id: ANTICIPO_ID, documentos: documentosPayload }),
+    })
+        .then((r) => r.json())
+        .then((res) => {
+            if (res.success) {
+                alertify.success(res.message || "Anticipo aplicado");
+                setTimeout(() => (window.location.href = "/payment/anticipo_detail/" + ANTICIPO_ID), 1200);
+            } else {
+                alertify.error(res.message || "No se pudo aplicar el anticipo");
+                $("#btn-aplicar").prop("disabled", false).html('<i class="fas fa-check me-1"></i> Aplicar Anticipo');
+            }
+        })
+        .catch(() => {
+            alertify.error("Error de conexión");
+            $("#btn-aplicar").prop("disabled", false).html('<i class="fas fa-check me-1"></i> Aplicar Anticipo');
+        });
+}
+
+// ── Filtro masivo por folios (mismo patrón que add_payment) ─────────
+let folioFilterSet = new Set();
+
+function normalizeFolio(str) {
+    return (str || "").replace(/[-\s]/g, "").toUpperCase().trim();
+}
+
+$.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+    if (settings.nTable.id !== "docs_anticipo_table") return true;
+    if (folioFilterSet.size === 0) return true;
+    const folioNormRow = normalizeFolio(data[1]);
+    const facturaNorm = normalizeFolio(data[2]);
+    for (const folio of folioFilterSet) {
+        const n = normalizeFolio(folio);
+        if (!n) continue;
+        if (folioNormRow === n || facturaNorm === n ||
+            folioNormRow.includes(n) || n.includes(folioNormRow) ||
+            facturaNorm.includes(n) || n.includes(facturaNorm)) {
+            return true;
+        }
+    }
+    return false;
+});
+
+function parseFolioFilter(raw) {
+    const lines = raw.split(/[\n\r]+/).map((l) => l.trim()).filter((l) => l.length > 0);
+    folioFilterSet = new Set(lines);
+
+    const badge = document.getElementById("folio-count-badge");
+    const btnClear = document.getElementById("btn-clear-folios");
+    if (folioFilterSet.size > 0) {
+        badge.textContent = folioFilterSet.size + " folios";
+        badge.style.display = "";
+        btnClear.style.display = "";
+    } else {
+        badge.style.display = "none";
+        btnClear.style.display = "none";
+    }
+    if (docsTable) docsTable.draw();
+}
+
+function toggleFolioFilter() {
+    const collapse = document.getElementById("folio-filter-collapse");
+    collapse.style.display = collapse.style.display === "none" ? "" : "none";
+    if (collapse.style.display === "none") clearFolioFilter();
+}
+
+function clearFolioFilter() {
+    document.getElementById("folio-filter-input").value = "";
+    parseFolioFilter("");
+}
+
+document.getElementById("folio-filter-input").addEventListener("input", function () {
+    parseFolioFilter(this.value);
+});
+
+// Búsqueda inicial al cargar
+$(function () { buscarDocumentos(); });
+</script>
+
+{% endblock %}

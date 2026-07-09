@@ -5833,6 +5833,47 @@ class Payment
     }
 
 
+    /**
+     * Página para ligar facturas disponibles a un anticipo (reemplaza el modal
+     * de aplicar anticipo). Copia adaptada del patrón de add_payment.
+     */
+    public function aplicar_anticipo($anticipo_id)
+    {
+        $anticipo = $this->PaymentRequestsModel->get_request_by_id((int)$anticipo_id);
+        if (!$anticipo || intval($anticipo['tipo'] ?? 0) !== 1) {
+            setFlashMessage('error', 'Anticipo no encontrado');
+            redirect('/payment/payment_list');
+            return;
+        }
+
+        $summary = $this->PaymentRequestsModel->get_anticipo_summary((int)$anticipo_id) ?: [
+            'monto_original'   => $anticipo['monto_total'],
+            'total_aplicado'   => 0,
+            'saldo_disponible' => $anticipo['monto_total'],
+        ];
+
+        $proveedor = $this->proveedores->get_by_id($anticipo['provider_cod']);
+        $empresa_nombre = '';
+        foreach ($this->gasolinerasModel->get_company() ?: [] as $c) {
+            if ($c['codemp'] == $anticipo['emp_cod']) {
+                $empresa_nombre = $c['den'];
+                break;
+            }
+        }
+
+        $all_stations = $this->gasolinerasModel->get_stations();
+        $stations = array_filter($all_stations, fn($s) => $s['cod'] != 0);
+
+        echo $this->twig->render($this->route . 'aplicar_anticipo.html', [
+            'anticipo'         => $anticipo,
+            'summary'          => $summary,
+            'proveedor_nombre' => $proveedor['den'] ?? ('Proveedor ' . $anticipo['provider_cod']),
+            'empresa_nombre'   => $empresa_nombre,
+            'stations'         => $stations,
+        ]);
+    }
+
+
     public function anticipo_summary_json($anticipo_id)
     {
         header('Content-Type: application/json');
