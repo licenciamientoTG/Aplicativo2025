@@ -5874,6 +5874,42 @@ class Payment
     }
 
 
+    /**
+     * Liga documentos disponibles a un anticipo (confirmación de la página
+     * aplicar_anticipo). Inserta las facturas bajo el anticipo + aplicaciones.
+     */
+    public function apply_anticipo_documentos()
+    {
+        header('Content-Type: application/json');
+        try {
+            if (!authorized(68)) {
+                json_output(['success' => false, 'message' => 'Solo Tesorería puede aplicar anticipos']);
+                return;
+            }
+            $user_id = $_SESSION['tg_user']['Id'] ?? null;
+            if (!$user_id) {
+                json_output(['success' => false, 'message' => 'Usuario no identificado']);
+                return;
+            }
+
+            $data = json_decode(file_get_contents('php://input'), true);
+            $anticipo_id = intval($data['anticipo_id'] ?? 0);
+            $documentos  = $data['documentos'] ?? [];
+
+            if (!$anticipo_id || empty($documentos) || !is_array($documentos)) {
+                json_output(['success' => false, 'message' => 'Faltan datos: anticipo y documentos']);
+                return;
+            }
+
+            $result = $this->PaymentRequestsModel->attach_invoices_to_anticipo($anticipo_id, $documentos, (int)$user_id);
+            json_output($result);
+        } catch (Exception $e) {
+            error_log('Error en apply_anticipo_documentos: ' . $e->getMessage());
+            json_output(['success' => false, 'message' => 'Error del servidor']);
+        }
+    }
+
+
     public function anticipo_summary_json($anticipo_id)
     {
         header('Content-Type: application/json');
