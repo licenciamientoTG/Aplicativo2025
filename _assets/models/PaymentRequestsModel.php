@@ -317,6 +317,14 @@ class PaymentRequestsModel extends Model
                 -- Notas de crédito y cargo
                 ISNULL(t1.total_notas_credito, 0) AS total_notas_credito,
                 ISNULL(t1.total_notas_cargo, 0)   AS total_notas_cargo,
+                -- Anticipos aplicados a las facturas activas de esta requisición
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    INNER JOIN [TG].[dbo].[payment_request_invoices] pri_a
+                        ON pri_a.id = a.invoice_id
+                    WHERE pri_a.payment_request_id = t1.id AND pri_a.is_deleted = 0
+                ), 0) AS total_anticipos_aplicados,
                 -- Indicador PDF:
                 -- 'complete' = todas las facturas normales tienen PDF (notas de cargo cuentan como OK)
                 -- 'missing'  = al menos una factura normal sin PDF

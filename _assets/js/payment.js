@@ -1466,7 +1466,20 @@ function loadPaymentList() {
           return '<small class="text-muted">$0.00</small>';
         },
       },
-      { data: "monto_neto", className: "text-end fw-bold" },
+      {
+        data: "monto_neto",
+        className: "text-end fw-bold",
+        render: function (data, type, row) {
+          if (type !== "display") return data;
+          var ant = parseFloat(row.total_anticipos) || 0;
+          if (ant > 0) {
+            return data +
+              '<br><small style="color:#92400e;font-weight:400;" title="Anticipos aplicados a las facturas de esta requisición">ant. -$' +
+              ant.toLocaleString("es-MX", { minimumFractionDigits: 2 }) + "</small>";
+          }
+          return data;
+        },
+      },
       { data: "total_paid", className: "text-end" },
       {
         data: null,
@@ -1717,6 +1730,11 @@ function formatPaymentInvoicesChild(invoices) {
     if (v <= 0) return '<span class="text-muted" style="font-size:.75rem;">—</span>';
     return '<span style="color:#dc2626;font-size:.78rem;">+' + fmtMoney(v) + '</span>';
   }
+  function antBadge(v) {
+    v = parseFloat(v) || 0;
+    if (v <= 0) return '<span class="text-muted" style="font-size:.75rem;">—</span>';
+    return '<span style="color:#92400e;font-size:.78rem;" title="Anticipo aplicado a esta factura">-' + fmtMoney(v) + '</span>';
+  }
 
   var rows = invoices.map(function (inv) {
     var esNotaCargo = parseInt(inv.is_debit_note) === 1;
@@ -1724,7 +1742,8 @@ function formatPaymentInvoicesChild(invoices) {
     var autorizada = inv.payment_authorized === 1;
     var nc = parseFloat(inv.total_notas_credito) || 0;
     var nd = parseFloat(inv.total_notas_cargo) || 0;
-    var tieneNotas = nc > 0 || nd > 0;
+    var anc = parseFloat(inv.anticipo_aplicado) || 0;
+    var tieneNotas = nc > 0 || nd > 0 || anc > 0;
     var saldoNeto = parseFloat(inv.saldo_neto);
 
     var rowStyle = esNotaCargo
@@ -1769,6 +1788,7 @@ function formatPaymentInvoicesChild(invoices) {
         "<td class='text-end'>" + montoCell + "</td>" +
         "<td class='text-end'>" + (esNotaCargo ? '<span class="text-muted" style="font-size:.75rem;">—</span>' : ncBadge(nc)) + "</td>" +
         "<td class='text-end'>" + (esNotaCargo ? '<span class="text-muted" style="font-size:.75rem;">—</span>' : ndBadge(nd)) + "</td>" +
+        "<td class='text-end'>" + (esNotaCargo ? '<span class="text-muted" style="font-size:.75rem;">—</span>' : antBadge(anc)) + "</td>" +
         "<td class='text-end fw-bold'>" + saldoCell + "</td>" +
         "<td>" + statusBadge(inv.status) + "</td>" +
         "<td class='text-center'>" + venc + "</td>" +
@@ -1785,6 +1805,7 @@ function formatPaymentInvoicesChild(invoices) {
           "<th class='text-end'>Monto</th>" +
           "<th class='text-end' title='Notas de Crédito' style='color:#16a34a;'>NC</th>" +
           "<th class='text-end' title='Notas de Cargo' style='color:#dc2626;'>ND</th>" +
+          "<th class='text-end' title='Anticipos aplicados a la factura' style='color:#92400e;'>Anticipo</th>" +
           "<th class='text-end'>Saldo Neto</th>" +
           "<th>Estado</th><th class='text-center'>Vencimiento</th><th class='text-center'>Archivo</th>" +
         "</tr></thead>" +

@@ -347,16 +347,27 @@ class PaymentRequestInvoicesModel extends Model
                 -- Calcular status dinámicamente, contra el saldo NETO (amount -
                 -- notas de crédito + notas de cargo): una factura saldada por
                 -- nota de crédito debe verse Pagada, no Parcial para siempre.
+                -- Los anticipos aplicados cuentan como cobertura: una factura
+                -- cubierta 100% por anticipo debe verse Pagada aunque no tenga
+                -- transacciones (nunca las tendrá).
                 CASE
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
                     ), 0) = 0 THEN 0  -- Pendiente
                     WHEN ISNULL((
                         SELECT SUM(payment_amount)
                         FROM [TG].[dbo].[payment_transactions] t5
                         WHERE t5.invoice_id = t1.id
+                    ), 0) + ISNULL((
+                        SELECT SUM(a.monto_aplicado)
+                        FROM [TG].[dbo].[anticipo_invoice_applications] a
+                        WHERE a.invoice_id = t1.id
                     ), 0) < (
                         t1.amount
                         - ISNULL((
@@ -395,6 +406,12 @@ class PaymentRequestInvoicesModel extends Model
                     FROM [TG].[dbo].[credit_note_applications] ca
                     WHERE ca.invoice_id = t1.id AND ca.status = 1
                 ), 0) as notas_count,
+                -- Anticipos aplicados a esta factura
+                ISNULL((
+                    SELECT SUM(a.monto_aplicado)
+                    FROM [TG].[dbo].[anticipo_invoice_applications] a
+                    WHERE a.invoice_id = t1.id
+                ), 0) as anticipo_aplicado,
                 -- Comprobantes de pago (documentos) ligados por transacción o por lote
                 (
                     SELECT STRING_AGG(CAST(d.id AS VARCHAR), \',\')

@@ -1295,7 +1295,9 @@ class Payment
                 $totalFacturas = floatval($row['total_amount']);
                 $totalNC = floatval($row['total_notas_credito']);
                 $totalND = floatval($row['total_notas_cargo']);
-                $montoNeto = max(0, $totalFacturas - $totalNC + $totalND);
+                // Los anticipos aplicados a las facturas reducen lo que queda por pagar
+                $totalAnticipos = $esAnticipo ? 0 : floatval($row['total_anticipos_aplicados'] ?? 0);
+                $montoNeto = max(0, $totalFacturas - $totalNC + $totalND - $totalAnticipos);
 
                 $pdfStatus = $row['pdf_status'] ?? 'no_invoices';
                 $pdfDot = match($pdfStatus) {
@@ -1327,6 +1329,7 @@ class Payment
                     'total_amount'   => '$' . number_format($montoAnticipo, 2),
                     'total_notas_credito' => $esAnticipo ? 0 : $totalNC,
                     'total_notas_cargo'   => $esAnticipo ? 0 : $totalND,
+                    'total_anticipos' => $totalAnticipos,
                     'monto_neto'     => '$' . number_format($montoNetoFinal, 2),
                     'total_paid'     => '$' . number_format($totalPagado, 2),
                     'authorized_invoices_count' => $esAnticipo ? '—' : $row['authorized_invoices_count'],
@@ -1549,6 +1552,7 @@ class Payment
                 $paid_amount   = (float)($inv['paid_amount'] ?? 0);
                 $saldo         = (float)$inv['amount'] - $paid_amount;
                 $neto_notas    = (float)$inv['total_notas_cargo'] - (float)$inv['total_notas_credito'];
+                $anticipo      = (float)($inv['anticipo_aplicado'] ?? 0);
 
                 $comprobantes = [];
                 if (!empty($inv['comprobante_doc_ids'])) {
@@ -1572,7 +1576,8 @@ class Payment
                     'saldo'                 => $esNotaCargo ? 0 : $saldo,
                     'total_notas_credito'   => $esNotaCargo ? 0 : (float)($inv['total_notas_credito'] ?? 0),
                     'total_notas_cargo'     => $esNotaCargo ? 0 : (float)($inv['total_notas_cargo'] ?? 0),
-                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas),
+                    'anticipo_aplicado'     => $esNotaCargo ? 0 : $anticipo,
+                    'saldo_neto'            => $esNotaCargo ? (float)$inv['amount'] : ($saldo + $neto_notas - $anticipo),
                     'status'                => (int)$inv['status'],
                     'payment_authorized'    => (int)($inv['payment_authorized'] ?? 0),
                     'authorized_amount'     => (float)($inv['authorized_amount'] ?? 0),
