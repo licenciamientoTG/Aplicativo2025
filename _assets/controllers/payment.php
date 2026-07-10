@@ -1230,11 +1230,15 @@ class Payment
 
 
     /**
-     * Vista completa (no modal) de autorización de pago de facturas.
-     * Misma funcionalidad que el modal #modalAutorizarPagoMasivo de payment_list.html.
+     * Vista completa de autorización de pago de facturas (Tesorería).
+     * Reemplaza al modal #modalAutorizarPagoMasivo que vivía en payment_list.html.
      */
     function authorize_payments()
     {
+        if (!authorized(68)) {
+            redirect('/payment/payment_list');
+            return;
+        }
         echo $this->twig->render($this->route . 'authorize_payments.html');
     }
 
@@ -2135,6 +2139,7 @@ class Payment
                     'total_notas_credito' => floatval($invoice['total_notas_credito'] ?? 0),
                     'total_notas_cargo' => floatval($invoice['total_notas_cargo'] ?? 0),
                     'notas_count' => intval($invoice['notas_count'] ?? 0),
+                    'anticipo_aplicado' => floatval($invoice['anticipo_aplicado'] ?? 0),
                     'saldo_neto' => floatval($invoice['saldo_neto']),
                     'expiration_date' => $invoice['expiration_date'],
                     'empresa_nombre' => $invoice['empresa_nombre'] ?? 'N/A',

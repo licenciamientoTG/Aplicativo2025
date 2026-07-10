@@ -1504,10 +1504,18 @@ class PaymentRequestInvoicesModel extends Model
                 ISNULL(notas.total_notas_cargo, 0)   as total_notas_cargo,
                 ISNULL(notas.notas_count, 0)          as notas_count,
 
-                -- Saldo neto pendiente por autorizar (saldo - NC + ND)
+                -- Anticipos aplicados a esta factura
+                ISNULL(ant.total_anticipo, 0) as anticipo_aplicado,
+
+                -- Saldo neto pendiente por autorizar (saldo - NC + ND - anticipos).
+                -- Los anticipos aplicados ya están pagados al proveedor: Tesorería
+                -- solo debe autorizar (y el banco pagar) la diferencia. La ejecución
+                -- paga authorized_amount - paid_amount, así que autorizar el neto
+                -- hace que el layout/transferencia salga por el neto.
                 (pri.amount - ISNULL(pri.authorized_amount, 0))
                     - ISNULL(notas.total_notas_credito, 0)
-                    + ISNULL(notas.total_notas_cargo, 0) as saldo_neto,
+                    + ISNULL(notas.total_notas_cargo, 0)
+                    - ISNULL(ant.total_anticipo, 0) as saldo_neto,
 
                 -- Información de payment_request
                 pr.id as pago_id,
@@ -1560,9 +1568,17 @@ class PaymentRequestInvoicesModel extends Model
                 GROUP BY a.invoice_id
             ) notas ON pri.id = notas.invoice_id
 
+            LEFT JOIN (
+                SELECT invoice_id, SUM(monto_aplicado) as total_anticipo
+                FROM [TG].[dbo].[anticipo_invoice_applications]
+                GROUP BY invoice_id
+            ) ant ON pri.id = ant.invoice_id
+
             WHERE pr.status IN (?, ?)
                 AND pr.accounting_group_id IS NOT NULL
-                AND pri.amount > ISNULL(pri.authorized_amount, 0) + 0.01
+                -- Excluir lo ya cubierto por autorizaciones previas Y por anticipos:
+                -- una factura cubierta 100% por anticipo no tiene nada que autorizar.
+                AND pri.amount > ISNULL(pri.authorized_amount, 0) + ISNULL(ant.total_anticipo, 0) + 0.01
                 AND pri.status != ?
                 AND (pri.amount - ISNULL(pri.paid_amount, 0)) > 0
                 AND pri.is_deleted = 0

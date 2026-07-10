@@ -181,6 +181,7 @@ function renderTablaPagoMasivo(facturas) {
     totalSaldo = 0,
     totalNC = 0,
     totalND = 0,
+    totalAnticipo = 0,
     totalSaldoNeto = 0;
   const totalCols = 11;
 
@@ -240,16 +241,18 @@ function renderTablaPagoMasivo(facturas) {
 
     // Filas de facturas del grupo
     grupo.facturas.forEach(function (inv) {
+      const anticipo = parseFloat(inv.anticipo_aplicado || 0);
       const saldoNeto = Math.max(0, parseFloat(inv.saldo_neto || 0));
       totalMonto += parseFloat(inv.amount);
       totalPagado += parseFloat(inv.paid_amount);
       totalSaldo += parseFloat(inv.saldo);
       totalNC += parseFloat(inv.total_notas_credito);
       totalND += parseFloat(inv.total_notas_cargo);
+      totalAnticipo += anticipo;
       totalSaldoNeto += saldoNeto;
 
       let notasHtml = '<span class="text-muted">-</span>';
-      if (inv.notas_count > 0) {
+      if (inv.notas_count > 0 || anticipo > 0) {
         let parts = [];
         if (inv.total_notas_credito > 0)
           parts.push(
@@ -258,6 +261,10 @@ function renderTablaPagoMasivo(facturas) {
         if (inv.total_notas_cargo > 0)
           parts.push(
             '<small class="text-danger">+' + fmt(inv.total_notas_cargo) + "</small>",
+          );
+        if (anticipo > 0)
+          parts.push(
+            '<small style="color:#92400e;" title="Anticipo aplicado a esta factura">ant. -' + fmt(anticipo) + "</small>",
           );
         notasHtml = parts.join("<br>");
       }
@@ -316,7 +323,10 @@ function renderTablaPagoMasivo(facturas) {
       fmt(totalNC) +
       '</small><br><small class="text-danger">+' +
       fmt(totalND) +
-      "</small>",
+      "</small>" +
+      (totalAnticipo > 0
+        ? '<br><small style="color:#92400e;" title="Anticipos aplicados">ant. -' + fmt(totalAnticipo) + "</small>"
+        : ""),
   );
   $("#footerMasivoPagoSaldoNeto").text(fmt(totalSaldoNeto));
 
